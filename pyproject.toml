@@ -62,7 +62,7 @@ warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
 
-[tool.pylint.'MESSAGES CONTROL']
+[tool.pylint.master]
 max-line-length = 120
 disable = """
     super-init-not-called,
@@ -93,6 +93,7 @@ disable = """
     global-statement,
     wrong-import-order,
     consider-using-with,
+    abstract-class-instantiated
 """
 
 [tool.setuptools.packages.find]

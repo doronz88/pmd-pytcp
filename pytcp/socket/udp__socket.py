@@ -73,7 +73,7 @@ class UdpSocket(socket):
     _socket_type = SocketType.DGRAM
     _ip_proto = IpProto.UDP
 
-    def __init__(
+    def __init__(  # pyright: ignore[reportInconsistentConstructor]
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.DGRAM,

@@ -75,7 +75,7 @@ class TcpSocket(socket):
     _socket_type = SocketType.STREAM
     _ip_proto = IpProto.TCP
 
-    def __init__(
+    def __init__(  # pyright: ignore[reportInconsistentConstructor]
         self,
         family: AddressFamily,
         type: SocketType = SocketType.STREAM,

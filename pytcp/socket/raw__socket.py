@@ -68,7 +68,7 @@ class RawSocket(socket):
 
     _socket_type = SocketType.RAW
 
-    def __init__(
+    def __init__(  # pyright: ignore[reportInconsistentConstructor]
         self,
         family: AddressFamily,
         type: SocketType = SocketType.RAW,
