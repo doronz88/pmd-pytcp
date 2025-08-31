@@ -3,6 +3,7 @@ testslide
 black
 mypy
 flake8
+flake8-pyproject
 codespell
 isort
 pylint

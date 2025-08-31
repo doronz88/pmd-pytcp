@@ -50,6 +50,14 @@ honor_noqa = true
 quiet-level = 2
 ignore-words-list = "ect, ether, nd, tha, assertIn, sourc"
 
+[tool.flake8]
+max-line-length = 120
+ignore = ["E203", "E266", "E701", "E704", "W503", "E731", "E741"]
+per-file-ignores = [
+    "pytcp/**/__init__.py:F401",
+    "pytcp/stack/__init__.py:F821",
+]
+
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
