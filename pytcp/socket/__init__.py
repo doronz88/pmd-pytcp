@@ -36,6 +36,7 @@ ver 3.0.3
 from __future__ import annotations
 
 from abc import ABC
+from types import TracebackType
 from typing import Any
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
@@ -149,6 +150,23 @@ class socket(ABC):
                     )
 
         return super().__new__(cls)
+
+    def __enter__(self) -> socket:
+        """
+        Enter the socket runtime context.
+        """
+
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException],
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """
+        Exit the socket runtime context.
+        """
 
     def __str__(self) -> str:
         """

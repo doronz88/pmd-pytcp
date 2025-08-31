@@ -158,7 +158,7 @@ arp_probe_unicast_conflict: set[Ip4Address] = set()
 
 
 def initialize_interface__tap(
-    *, interface_name: str, mac_address: MacAddress | None = None
+    interface_name: str, *, mac_address: MacAddress | None = None
 ) -> dict[str, Any]:
     """
     Initialize the TAP interface.
@@ -192,7 +192,7 @@ def initialize_interface__tap(
     }
 
 
-def initialize_interface__tun(*, interface_name: str) -> dict[str, Any]:
+def initialize_interface__tun(interface_name: str) -> dict[str, Any]:
     """
     Initialize the TUN interface.
     """
