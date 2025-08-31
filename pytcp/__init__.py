@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from pytcp import stack
-from pytcp.socket import socket
+from pytcp import socket
 
 __all__ = [
-    "socket",
     "stack",
+    "socket",
 ]
