@@ -49,19 +49,19 @@ from pytcp import stack
 from pytcp.lib.ip_helper import pick_local_ip_address
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
-from pytcp.socket.socket import (
+from pytcp.socket import (
     AddressFamily,
-    Socket,
     SocketType,
     gaierror,
+    socket,
 )
 
 if TYPE_CHECKING:
+    from pytcp.socket import IpProto
     from pytcp.socket.raw__metadata import RawMetadata
-    from pytcp.socket.socket import IpProto
 
 
-class RawSocket(Socket):
+class RawSocket(socket):
     """
     Support for IPv6/IPv4 Raw socket operations.
     """
@@ -69,14 +69,24 @@ class RawSocket(Socket):
     _socket_type = SocketType.RAW
 
     def __init__(
-        self, *, address_family: AddressFamily, ip_proto: IpProto
+        self,
+        family: AddressFamily,
+        type: SocketType = SocketType.RAW,
+        protocol: IpProto | None = None,
     ) -> None:
         """
         Class constructor.
         """
 
-        self._address_family = address_family
-        self._ip_proto = ip_proto
+        assert type is SocketType.RAW
+
+        match family:
+            case AddressFamily.INET6:
+                self._ip_proto = protocol or IpProto.IP6
+            case AddressFamily.INET4:
+                self._ip_proto = protocol or IpProto.IP4
+
+        self._address_family = family
         self._packet_rx_md: list[RawMetadata] = []
         self._packet_rx_md_ready = threading.Semaphore(0)
 
@@ -88,7 +98,7 @@ class RawSocket(Socket):
                 self._local_ip_address = Ip4Address()
                 self._remote_ip_address = Ip4Address()
 
-        self._local_port = int(ip_proto)
+        self._local_port = int(self._ip_proto)
         self._remote_port = 0
 
         __debug__ and log("socket", f"<g>[{self}]</> - Created socket")

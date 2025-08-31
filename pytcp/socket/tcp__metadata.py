@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pytcp.socket.socket import AddressFamily, SocketType
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
 
 if TYPE_CHECKING:

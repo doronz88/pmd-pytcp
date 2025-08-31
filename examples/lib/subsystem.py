@@ -47,7 +47,6 @@ from pytcp.socket import (
     SOCK_DGRAM,
     SOCK_RAW,
     SOCK_STREAM,
-    Socket,
     socket,
 )
 
@@ -109,7 +108,7 @@ class Subsystem(ABC):
 
     def _get_subsystem_socket(
         self, *, ip_version: IpVersion, protocol_name: str
-    ) -> Socket:
+    ) -> socket:
         """
         Create and bind the subsystem socket.
         """

@@ -53,19 +53,19 @@ from pytcp.lib.ip_helper import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
-from pytcp.socket.socket import (
+from pytcp.socket import (
     AddressFamily,
     IpProto,
-    Socket,
     SocketType,
     gaierror,
+    socket,
 )
 
 if TYPE_CHECKING:
     from pytcp.socket.udp__metadata import UdpMetadata
 
 
-class UdpSocket(Socket):
+class UdpSocket(socket):
     """
     Support for IPv6/IPv4 UDP socket operations.
     """
@@ -73,12 +73,20 @@ class UdpSocket(Socket):
     _socket_type = SocketType.DGRAM
     _ip_proto = IpProto.UDP
 
-    def __init__(self, *, address_family: AddressFamily) -> None:
+    def __init__(
+        self,
+        family: AddressFamily = AddressFamily.INET4,
+        type: SocketType = SocketType.DGRAM,
+        protocol: IpProto | None = IpProto.UDP,
+    ) -> None:
         """
         Class constructor.
         """
 
-        self._address_family = address_family
+        assert type is SocketType.DGRAM
+        assert protocol is IpProto.UDP
+
+        self._address_family = family
         self._local_port = 0
         self._remote_port = 0
         self._packet_rx_md: list[UdpMetadata] = []

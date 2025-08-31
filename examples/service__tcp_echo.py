@@ -46,7 +46,7 @@ from net_addr import (
 from examples.lib.malpi import malpa, malpi, malpka
 from examples.lib.tcp_service import TcpService
 from examples.stack import cli as stack_cli
-from pytcp.socket import Socket
+from pytcp.socket import socket
 
 
 class TcpEchoService(TcpService):
@@ -69,7 +69,7 @@ class TcpEchoService(TcpService):
         super().__init__()
 
     @override
-    def _service(self, *, socket: Socket) -> None:
+    def _service(self, *, socket: socket) -> None:
         """
         Service logic handler.
         """

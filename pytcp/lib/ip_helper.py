@@ -45,7 +45,7 @@ from net_addr import (
 )
 
 from pytcp import stack
-from pytcp.socket.socket import AddressFamily, SocketType
+from pytcp.socket import AddressFamily, SocketType
 
 
 def ip_version(

@@ -37,7 +37,7 @@ import threading
 from typing import override
 
 from examples.lib.service import Service
-from pytcp.socket import Socket
+from pytcp.socket import socket
 
 
 class TcpService(Service):
@@ -76,7 +76,7 @@ class TcpService(Service):
                 ).start()
 
     def _thread__service__connection_handler(
-        self, *, connected_socket: Socket
+        self, *, connected_socket: socket
     ) -> None:
         """
         Inbound connection handler.

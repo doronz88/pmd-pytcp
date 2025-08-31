@@ -56,7 +56,7 @@ from pytcp.stack.tx_ring import TxRing
 if TYPE_CHECKING:
     from net_addr import Ip4Address
 
-    from pytcp.socket.socket import Socket
+    from pytcp.socket import socket
 
 
 assert sys.version_info >= (
@@ -153,7 +153,7 @@ packet_handler: PacketHandlerL2 | PacketHandlerL3
 # Stack shared data.
 stack_initialized: bool = False
 interface_mtu: int
-sockets: dict[SocketId, Socket] = {}
+sockets: dict[SocketId, socket] = {}
 arp_probe_unicast_conflict: set[Ip4Address] = set()
 
 

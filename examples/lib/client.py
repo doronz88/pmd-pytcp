@@ -44,7 +44,7 @@ from examples.lib.subsystem import Subsystem
 from pytcp.socket import (
     IPPROTO_ICMP4,
     IPPROTO_ICMP6,
-    Socket,
+    socket,
 )
 
 
@@ -59,7 +59,7 @@ class Client(Subsystem):
     _local_port: int
     _remote_ip_address: Ip4Address | Ip6Address
     _remote_port: int
-    _client_socket: Socket | None
+    _client_socket: socket | None
 
     _event__stop_subsystem: threading.Event
 
@@ -97,7 +97,7 @@ class Client(Subsystem):
 
         self._event__stop_subsystem.set()
 
-    def _get_client_socket(self) -> Socket:
+    def _get_client_socket(self) -> socket:
         """
         Create and bind the client's socket.
         """

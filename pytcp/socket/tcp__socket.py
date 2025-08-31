@@ -52,12 +52,12 @@ from pytcp.lib.ip_helper import (
     pick_local_port,
 )
 from pytcp.lib.logger import log
-from pytcp.socket.socket import (
+from pytcp.socket import (
     AddressFamily,
     IpProto,
-    Socket,
     SocketType,
     gaierror,
+    socket,
 )
 from pytcp.socket.tcp__session import FsmState, TcpSession, TcpSessionError
 
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-class TcpSocket(Socket):
+class TcpSocket(socket):
     """
     Support for IPv6/IPv4 TCP socket operations.
     """
@@ -77,17 +77,22 @@ class TcpSocket(Socket):
 
     def __init__(
         self,
+        family: AddressFamily,
+        type: SocketType = SocketType.STREAM,
+        protocol: IpProto | None = IpProto.TCP,
         *,
-        address_family: AddressFamily,
         tcp_session: TcpSession | None = None,
     ) -> None:
         """
         Class constructor.
         """
 
-        self._address_family = address_family
+        assert type is SocketType.STREAM
+        assert protocol is IpProto.TCP
+
+        self._address_family = family
         self._event_tcp_session_established: Semaphore = threading.Semaphore(0)
-        self._tcp_accept: list[Socket] = []
+        self._tcp_accept: list[socket] = []
         self._tcp_session: TcpSession | None
 
         # Create established socket based on established TCP session, called by
@@ -354,7 +359,7 @@ class TcpSocket(Socket):
 
     def accept(
         self, *, timeout: float | None = None
-    ) -> tuple[Socket, tuple[str, int]]:
+    ) -> tuple[socket, tuple[str, int]]:
         """
         Wait for the established inbound connection, once available return
         it's socket.

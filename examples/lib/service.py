@@ -40,7 +40,7 @@ from typing import override
 from net_addr import IpAddress
 
 from examples.lib.subsystem import Subsystem
-from pytcp.socket import Socket
+from pytcp.socket import socket
 
 
 class Service(Subsystem):
@@ -77,7 +77,7 @@ class Service(Subsystem):
 
         self._event__stop_subsystem.set()
 
-    def _get_service_socket(self) -> Socket | None:
+    def _get_service_socket(self) -> socket | None:
         """
         Create and bind the service socket.
         """
@@ -108,7 +108,7 @@ class Service(Subsystem):
         raise NotImplementedError
 
     @abstractmethod
-    def _service(self, *, socket: Socket) -> None:
+    def _service(self, *, socket: socket) -> None:
         """
         Service logic handler.
         """

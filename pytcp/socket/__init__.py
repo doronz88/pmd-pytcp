@@ -33,21 +33,16 @@ ver 3.0.3
 """
 
 
-from pytcp.socket.socket import gaierror  # pyright: ignore[reportUnusedImport]
-from pytcp.socket.socket import (
-    AddressFamily,
-    IpProto,
-    Socket,
-    SocketType,
-)
+from __future__ import annotations
 
-AF_INET = AddressFamily.INET4
-AF_INET4 = AddressFamily.INET4
-AF_INET6 = AddressFamily.INET6
+from abc import ABC
+from typing import Any
 
-SOCK_STREAM = SocketType.STREAM
-SOCK_DGRAM = SocketType.DGRAM
-SOCK_RAW = SocketType.RAW
+from net_addr import Ip4Address, Ip6Address, IpVersion
+from net_proto.lib.enums import IpProto
+
+from pytcp.lib.name_enum import NameEnum
+from pytcp.socket.socket_id import SocketId
 
 IPPROTO_IP = IpProto.IP4
 IPPROTO_IP4 = IpProto.IP4
@@ -62,39 +57,308 @@ IPPROTO_ICMP6 = IpProto.ICMP6
 IPPROTO_RAW = IpProto.RAW
 
 
-def socket(
-    family: AddressFamily = AddressFamily.INET4,
-    type: SocketType = SocketType.STREAM,
-    protocol: IpProto | None = None,
-) -> Socket:
+class gaierror(OSError):
     """
-    Return Socket class object.
+    BSD Socket error for compatibility.
     """
 
-    from pytcp.socket.raw__socket import RawSocket
-    from pytcp.socket.tcp__socket import TcpSocket
-    from pytcp.socket.udp__socket import UdpSocket
 
-    match family, type, protocol:
-        case _, SocketType.STREAM, None | IpProto.TCP:
-            return TcpSocket(address_family=family)
+class AddressFamily(NameEnum):
+    """
+    Address family identifier.
+    """
 
-        case _, SocketType.DGRAM, None | IpProto.UDP:
-            return UdpSocket(address_family=family)
+    INET4 = 1
+    INET6 = 2
 
-        case _, SocketType.DGRAM, IpProto.ICMP4 | IpProto.ICMP6:
-            raise NotImplementedError
+    @staticmethod
+    def from_ver(ver: IpVersion) -> AddressFamily:
+        """
+        Get the address family from an IP version.
+        """
 
-        case AddressFamily.INET4, SocketType.RAW, None:
-            return RawSocket(address_family=family, ip_proto=IpProto.IP4)
+        match ver:
+            case IpVersion.IP4:
+                return AddressFamily.INET4
+            case IpVersion.IP6:
+                return AddressFamily.INET6
 
-        case AddressFamily.INET6, SocketType.RAW, None:
-            return RawSocket(address_family=family, ip_proto=IpProto.IP6)
 
-        case _, SocketType.RAW, _ if (
-            protocol is not None
-        ):  # pyright: ignore[reportUnnecessaryComparison]
-            return RawSocket(address_family=family, ip_proto=protocol)
+class SocketType(NameEnum):
+    """
+    Socket type identifier.
+    """
 
-        case _:
-            raise ValueError("Invalid socket type.")
+    STREAM = 1
+    DGRAM = 2
+    RAW = 3
+
+
+AF_INET = AddressFamily.INET4
+AF_INET4 = AddressFamily.INET4
+AF_INET6 = AddressFamily.INET6
+
+SOCK_STREAM = SocketType.STREAM
+SOCK_DGRAM = SocketType.DGRAM
+SOCK_RAW = SocketType.RAW
+
+
+class socket(ABC):
+    """
+    Base class for all socket classes. It contains only the methods that are relevant
+    for the BSD socket API. The rest of the methods and actual socket logic are
+    implemented in the derived classes.
+    """
+
+    _address_family: AddressFamily
+    _socket_type: SocketType
+    _ip_proto: IpProto
+    _local_ip_address: Ip4Address | Ip6Address
+    _remote_ip_address: Ip4Address | Ip6Address
+    _local_port: int
+    _remote_port: int
+
+    def __new__(
+        cls,
+        family: AddressFamily = AddressFamily.INET4,
+        type: SocketType = SocketType.STREAM,
+        protocol: IpProto | None = None,
+        **__: Any,
+    ) -> socket:
+        """
+        Create appropriate socket class object.
+        """
+
+        if cls is socket:
+            from pytcp.socket.raw__socket import RawSocket
+            from pytcp.socket.tcp__socket import TcpSocket
+            from pytcp.socket.udp__socket import UdpSocket
+
+            match family, type, protocol:
+                case _, SocketType.STREAM, IpProto.TCP | None:
+                    return cls.__new__(TcpSocket)
+                case _, SocketType.DGRAM, IpProto.UDP | None:
+                    return cls.__new__(UdpSocket)
+                case AddressFamily.INET6, SocketType.RAW, IpProto.IP6 | None:
+                    return cls.__new__(RawSocket)
+                case AddressFamily.INET4, SocketType.RAW, IpProto.IP4 | None:
+                    return cls.__new__(RawSocket)
+                case _:
+                    raise ValueError(
+                        f"Invalid socket {family=}, {type=}, {protocol=} combination."
+                    )
+
+        return super().__new__(cls)
+
+    def __str__(self) -> str:
+        """
+        Get socket log string.
+        """
+
+        return (
+            f"{self._address_family}/{self._socket_type}/{self._ip_proto}/"
+            f"{self._local_ip_address}/{self._local_port}/"
+            f"{self._remote_ip_address}/{self._remote_port}"
+        )
+
+    def __repr__(self) -> str:
+        """
+        Get socket string representation.
+        """
+
+        return self.__str__()
+
+    @property
+    def socket_id(self) -> SocketId:
+        """
+        Get the socket ID.
+        """
+
+        return SocketId(
+            address_family=self._address_family,
+            socket_type=self._socket_type,
+            local_address=self._local_ip_address,
+            local_port=self._local_port,
+            remote_address=self._remote_ip_address,
+            remote_port=self._remote_port,
+        )
+
+    @property
+    def address_family(self) -> AddressFamily:
+        """
+        Get the '_family' attribute.
+        """
+
+        return self._address_family
+
+    @property
+    def socket_type(self) -> SocketType:
+        """
+        Get the '_type' attribute.
+        """
+
+        return self._socket_type
+
+    @property
+    def ip_proto(self) -> IpProto:
+        """
+        Get the '_proto' attribute.
+        """
+
+        return self._ip_proto
+
+    @property
+    def local_ip_address(self) -> Ip6Address | Ip4Address:
+        """
+        Get the '_local_ip_address' attribute.
+        """
+
+        return self._local_ip_address
+
+    @property
+    def remote_ip_address(self) -> Ip6Address | Ip4Address:
+        """
+        Get the '_remote_ip_address' attribute.
+        """
+
+        return self._remote_ip_address
+
+    @property
+    def local_port(self) -> int:
+        """
+        Get the '_local_port' attribute.
+        """
+
+        return self._local_port
+
+    @property
+    def remote_port(self) -> int:
+        """
+        Get the '_remote_port' attribute.
+        """
+
+        return self._remote_port
+
+    ###############################
+    ##  BSD socket API methods.  ##
+    ###############################
+
+    @property
+    def family(self) -> AddressFamily:
+        """
+        Get the '_family' attribute.
+        """
+
+        return self._address_family
+
+    @property
+    def type(self) -> SocketType:
+        """
+        Get the '_type' attribute.
+        """
+
+        return self._socket_type
+
+    @property
+    def proto(self) -> IpProto:
+        """
+        Get the '_proto' attribute.
+        """
+
+        return self._ip_proto
+
+    def getsockname(self) -> tuple[str, int]:
+        """
+        Get the local address and port.
+        """
+
+        return str(self._local_ip_address), self._local_port
+
+    def getpeername(self) -> tuple[str, int]:
+        """
+        Get the remote address and port.
+        """
+
+        return str(self._remote_ip_address), self._local_port
+
+    def bind(
+        self,
+        address: tuple[str, int],
+    ) -> None:
+        """
+        The 'bind()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
+    def connect(
+        self,
+        address: tuple[str, int],
+    ) -> None:
+        """
+        The 'connect()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
+    def send(
+        self,
+        data: bytes,
+    ) -> int:
+        """
+        The 'send()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
+    def recv(
+        self,
+        bufsize: int | None = None,
+        timeout: float | None = None,
+    ) -> bytes:
+        """
+        The 'recv()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
+    def close(self) -> None:
+        """
+        The 'close()' socket API placeholder.
+        """
+
+        raise NotImplementedError
+
+    def listen(self) -> None:
+        """
+        The 'listen()' socket API placeholder.
+        """
+
+        raise NotImplementedError
+
+    def accept(
+        self, *, timeout: float | None = None
+    ) -> tuple[socket, tuple[str, int]]:
+        """
+        The 'accept()' socket API placeholder.
+        """
+
+        raise NotImplementedError
+
+    def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+        """
+        The 'sendto()' socket API placeholder.
+        """
+
+        raise NotImplementedError
+
+    def recvfrom(
+        self,
+        bufsize: int | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, tuple[str, int]]:
+        """
+        The 'recvfrom()' socket API placeholder.
+        """
+
+        raise NotImplementedError
