@@ -74,7 +74,7 @@ class Raw[P: bytes](Proto):
         Get the Raw packet representation string.
         """
 
-        return f"{self.__class__.__name__}(raw__payload={self._payload!r})"
+        return f"{type(self).__name__}(raw__payload={self._payload!r})"
 
     @override
     def __bytes__(self) -> bytes:

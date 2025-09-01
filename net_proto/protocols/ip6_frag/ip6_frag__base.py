@@ -80,7 +80,7 @@ class Ip6Frag[P: (memoryview, bytes)](Proto, Ip6FragHeaderProperties):
         """
 
         return (
-            f"{self.__class__.__name__}(header={self._header!r}, "
+            f"{type(self).__name__}(header={self._header!r}, "
             f"payload={self._payload!r})"
         )
 

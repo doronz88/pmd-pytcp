@@ -72,7 +72,7 @@ class Arp(Proto, ArpHeaderProperties):
         Get the ARP packet representation string.
         """
 
-        return f"{self.__class__.__name__}(header={self._header!r})"
+        return f"{type(self).__name__}(header={self._header!r})"
 
     @override
     def __bytes__(self) -> bytes:

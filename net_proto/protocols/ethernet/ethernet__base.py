@@ -88,7 +88,7 @@ class Ethernet[P: (EthernetPayload, memoryview)](
         Get the Ethernet packet representation string.
         """
 
-        return f"{self.__class__.__name__}(header={self._header}, payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header}, payload={self._payload!r})"
 
     @override
     def __bytes__(self) -> bytes:

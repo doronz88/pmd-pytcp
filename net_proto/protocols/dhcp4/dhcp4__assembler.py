@@ -25,85 +25,60 @@
 
 
 """
-This module contains the UDP protocol base class.
+This module contains the DHCPv4 packet assembler class.
 
-net_proto/protocols/udp/udp__base.py
+net_proto/protocols/dhcp4/dhcp4__assembler.py
 
 ver 3.0.4
 """
 
 
-from typing import override
+from net_addr.ip4_address import Ip4Address
+from net_addr.mac_address import MacAddress
+from net_proto.lib.proto_assembler import ProtoAssembler
+from net_proto.protocols.dhcp4.dhcp4__base import Dhcp4
+from net_proto.protocols.dhcp4.dhcp4__enums import (
+    Dhcp4Operation,
+)
+from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4Header
 
-from net_proto.lib.inet_cksum import inet_cksum
-from net_proto.lib.proto import Proto
-from net_proto.protocols.udp.udp__header import UdpHeader, UdpHeaderProperties
 
-
-class Udp[P: (memoryview, bytes)](Proto, UdpHeaderProperties):
+class Dhcp4Assembler(Dhcp4, ProtoAssembler):
     """
-    The UDP protocol base.
+    The DHCPv4 packet assembler.
     """
 
-    _header: UdpHeader
-    _payload: P
-
-    pshdr_sum: int = 0
-
-    @override
-    def __len__(self) -> int:
+    def __init__(
+        self,
+        *,
+        dhcp4__operation: Dhcp4Operation,
+        dhcp4__hops: int = 0,
+        dhcp4__xid: int,
+        dhcp4__secs: int = 0,
+        dhcp4__flag_b: bool = False,
+        dhcp4__ciaddr: Ip4Address = Ip4Address("0.0.0.0"),
+        dhcp4__yiaddr: Ip4Address = Ip4Address("0.0.0.0"),
+        dhcp4__siaddr: Ip4Address = Ip4Address("0.0.0.0"),
+        dhcp4__giaddr: Ip4Address = Ip4Address("0.0.0.0"),
+        dhcp4__chaddr: MacAddress,
+        dhcp4__sname: str | None = None,
+        dhcp4__file: str | None = None,
+    ) -> None:
         """
-        Get the UDP packet length.
+        Initialize the DHCPv4 packet assembler.
         """
 
-        return len(self._header) + len(self._payload)
-
-    @override
-    def __str__(self) -> str:
-        """
-        Get the UDP packet log string.
-        """
-
-        return (
-            f"UDP {self._header.sport} > {self._header.dport}, "
-            f"len {self._header.plen} "
-            f"({len(self._header)}+{self._header.plen - len(self._header)})"
+        self._header = Dhcp4Header(
+            oper=dhcp4__operation,
+            hops=dhcp4__hops,
+            xid=dhcp4__xid,
+            secs=dhcp4__secs,
+            flag_b=dhcp4__flag_b,
+            ciaddr=dhcp4__ciaddr,
+            yiaddr=dhcp4__yiaddr,
+            siaddr=dhcp4__siaddr,
+            giaddr=dhcp4__giaddr,
+            chaddr=dhcp4__chaddr,
+            sname=dhcp4__sname or "",
+            file=dhcp4__file or "",
         )
-
-    @override
-    def __repr__(self) -> str:
-        """
-        Get the UDP packet representation string.
-        """
-
-        return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"payload={self._payload!r})"
-        )
-
-    @override
-    def __bytes__(self) -> bytes:
-        """
-        Get the UDP packet as bytes.
-        """
-
-        _bytes = bytearray(bytes(self._header) + self._payload)
-        _bytes[6:8] = inet_cksum(data=_bytes, init=self.pshdr_sum).to_bytes(2)
-
-        return bytes(_bytes)
-
-    @property
-    def header(self) -> UdpHeader:
-        """
-        Get the UDP packet '_header' attribute.
-        """
-
-        return self._header
-
-    @property
-    def payload(self) -> bytes:
-        """
-        Get the UDP packet '_payload' attribute.
-        """
-
-        return self._payload

@@ -662,7 +662,9 @@ class PacketHandlerL2(
         # acquire one using DHCP.
         if not self._ip4_host_candidate:
             if self._ip4_dhcp:
-                if ip4_host := Dhcp4Client(self._mac_unicast).fetch():
+                if ip4_host := Dhcp4Client(
+                    mac_address=self._mac_unicast
+                ).fetch():
                     self._ip4_host_candidate.append(ip4_host)
 
         # Perform Duplicate Address Detection.

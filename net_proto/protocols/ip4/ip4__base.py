@@ -94,7 +94,7 @@ class Ip4[P: (Ip4Payload, memoryview, bytes)](
         """
 
         return (
-            f"{self.__class__.__name__}(header={self._header!r}, "
+            f"{type(self).__name__}(header={self._header!r}, "
             f"options={self._options!r}, payload={self._payload!r})"
         )
 

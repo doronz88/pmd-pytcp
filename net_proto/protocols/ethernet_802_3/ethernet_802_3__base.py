@@ -80,7 +80,7 @@ class Ethernet8023[P: (RawAssembler, memoryview)](
         Get the Ethernet 802.3 packet representation string.
         """
 
-        return f"{self.__class__.__name__}(header={self._header}, payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header}, payload={self._payload!r})"
 
     @override
     def __bytes__(self) -> bytes:

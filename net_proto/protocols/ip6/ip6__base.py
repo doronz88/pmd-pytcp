@@ -89,7 +89,7 @@ class Ip6[P: (Ip6Payload, memoryview)](Proto, Ip6HeaderProperties):
         """
 
         return (
-            f"{self.__class__.__name__}(header={self._header!r}, "
+            f"{type(self).__name__}(header={self._header!r}, "
             f"payload={self._payload!r})"
         )
 

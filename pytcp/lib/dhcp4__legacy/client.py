@@ -59,13 +59,14 @@ if TYPE_CHECKING:
 
 class Dhcp4Client:
     """
-    Class supporting Dhc4 client operation.
+    Class supporting DHCPv4 client operation.
     """
 
-    def __init__(self, mac_address: MacAddress) -> None:
+    def __init__(self, *, mac_address: MacAddress) -> None:
         """
         Class constructor.
         """
+
         self._mac_address = mac_address
 
     def fetch(self) -> Ip4Host | None:
@@ -73,10 +74,7 @@ class Dhcp4Client:
         IPv4 DHCP client.
         """
 
-        client_socket = socket(
-            family=AF_INET4,
-            type=SOCK_DGRAM,
-        )
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         client_socket.bind(("0.0.0.0", 68))
         client_socket.connect(("255.255.255.255", 67))
 

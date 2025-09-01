@@ -97,7 +97,7 @@ class ProtoOptions(ABC):
         Get the options representation string.
         """
 
-        return f"{self.__class__.__name__}(options={self._options!r})"
+        return f"{type(self).__name__}(options={self._options!r})"
 
     def __bytes__(self) -> bytes:
         """
@@ -118,10 +118,7 @@ class ProtoOptions(ABC):
         Check if the options are equal.
         """
 
-        return (
-            isinstance(other, self.__class__)
-            and self._options == other._options
-        )
+        return isinstance(other, type(self)) and self._options == other._options
 
     def __contains__(self, option: ProtoOption, /) -> bool:
         """
