@@ -78,7 +78,11 @@ class Proto(ABC):
         Compare two packets.
         """
 
-        return isinstance(other, self.__class__) and repr(self) == repr(other)
+        return (
+            self is other
+            or isinstance(other, type(self))
+            and repr(self) == repr(other)
+        )
 
     def __hash__(self) -> int:
         """
