@@ -39,5 +39,5 @@ from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4HeaderProperties
 
 class Dhcp4(Proto, Dhcp4HeaderProperties):
     """
-    The Ethernet protocol base class.
+    The DHCPv4 protocol base class.
     """
