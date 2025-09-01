@@ -37,8 +37,8 @@ import threading
 from abc import ABC, abstractmethod
 
 import click
-from net_addr import Ip4Address, Ip6Address, IpVersion
 
+from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp.socket import (
     AF_INET4,
     AF_INET6,

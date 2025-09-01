@@ -33,6 +33,8 @@ ver 3.0.4
 """
 
 
+from testslide import TestCase
+
 from net_proto import (
     IP4__OPTIONS__MAX_LEN,
     Ip4Assembler,
@@ -41,7 +43,6 @@ from net_proto import (
     Ip4OptionNop,
     Ip4Options,
 )
-from testslide import TestCase
 
 
 class TestIp4AssemblerAsserts(TestCase):

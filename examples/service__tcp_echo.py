@@ -37,15 +37,15 @@ import threading
 from typing import Any, override
 
 import click
+
+from examples.lib.malpi import malpa, malpi, malpka
+from examples.lib.tcp_service import TcpService
+from examples.stack import cli as stack_cli
 from net_addr import (
     Ip4Address,
     Ip6Address,
     IpAddress,
 )
-
-from examples.lib.malpi import malpa, malpi, malpka
-from examples.lib.tcp_service import TcpService
-from examples.stack import cli as stack_cli
 from pytcp.socket import socket
 
 

@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import Ip4Address, IpVersion
 from net_proto import (
     Ip4Assembler,
@@ -45,8 +48,6 @@ from net_proto import (
     IpProto,
     RawAssembler,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

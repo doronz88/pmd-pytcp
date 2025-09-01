@@ -29,7 +29,7 @@ This module contains classes used to store the packet processing statistics.
 
 pytcp/lib/packet_stats.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 

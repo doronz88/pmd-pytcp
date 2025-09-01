@@ -35,13 +35,14 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import Ip6Address
 from net_proto import (
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

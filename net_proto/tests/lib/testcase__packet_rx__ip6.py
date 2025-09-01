@@ -35,10 +35,11 @@ ver 3.0.4
 
 from typing import Any, cast
 
-from net_addr import Ip6Address
-from net_proto import Ip6Parser, PacketRx
 from testslide import TestCase
 from testslide.strict_mock import StrictMock
+
+from net_addr import Ip6Address
+from net_proto import Ip6Parser, PacketRx
 
 
 class TestCasePacketRxIp6(TestCase):

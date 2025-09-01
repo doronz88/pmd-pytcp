@@ -40,7 +40,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from net_addr import Address
-
     from pytcp.socket import AddressFamily, SocketType
 
 

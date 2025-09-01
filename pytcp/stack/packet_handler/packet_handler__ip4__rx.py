@@ -46,7 +46,6 @@ from net_proto import (
     PacketValidationError,
     inet_cksum,
 )
-
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 from pytcp.lib.logger import log
@@ -61,7 +60,6 @@ class PacketHandlerIp4Rx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import Ip4Address
-
         from pytcp.lib.packet_stats import PacketStatsRx
 
         _packet_stats_rx: PacketStatsRx

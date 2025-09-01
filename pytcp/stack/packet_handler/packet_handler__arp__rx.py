@@ -37,7 +37,6 @@ from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
-
 from pytcp import stack
 from pytcp.lib.logger import log
 
@@ -50,7 +49,6 @@ class PacketHandlerArpRx(ABC):
     if TYPE_CHECKING:
         from net_addr import Ip4Address, Ip4Host, MacAddress
         from net_proto import Tracker
-
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 

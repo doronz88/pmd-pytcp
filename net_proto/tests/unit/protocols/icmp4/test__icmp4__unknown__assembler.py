@@ -36,9 +36,10 @@ ver 3.0.4
 
 from typing import Any, cast
 
-from net_proto import Icmp4Assembler, Icmp4Code, Icmp4Type, Icmp4UnknownMessage
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_proto import Icmp4Assembler, Icmp4Code, Icmp4Type, Icmp4UnknownMessage
 
 
 @parameterized_class(

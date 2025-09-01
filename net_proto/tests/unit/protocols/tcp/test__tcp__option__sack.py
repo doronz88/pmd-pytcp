@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     TCP__OPTION__SACK__LEN,
     TCP__OPTION__SACK__MAX_BLOCK_NUM,
@@ -43,8 +46,6 @@ from net_proto import (
     TcpOptionType,
     TcpSackBlock,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestTcpOptionSackAsserts(TestCase):

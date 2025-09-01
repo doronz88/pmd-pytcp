@@ -35,14 +35,15 @@ ver 3.0.4
 
 from typing import Any, cast
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     Icmp4Assembler,
     Icmp4DestinationUnreachableCode,
     Icmp4DestinationUnreachableMessage,
     Icmp4Type,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import Ip6Address
 from net_proto import (
     ICMP6__MLD2__REPORT__LEN,
@@ -45,7 +47,6 @@ from net_proto import (
     Icmp6Mld2ReportMessage,
 )
 from net_proto.lib.int_checks import UINT_16__MAX, UINT_16__MIN
-from testslide import TestCase
 
 
 class TestIcmp6MessageMld2ReportAsserts(TestCase):

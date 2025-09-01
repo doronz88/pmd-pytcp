@@ -51,7 +51,6 @@ from net_proto import (
     Icmp6Type,
     Tracker,
 )
-
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -63,7 +62,6 @@ class PacketHandlerIcmp6Tx(ABC):
 
     if TYPE_CHECKING:
         from net_proto import IP6__DEFAULT_HOP_LIMIT, Ip6Payload, RawAssembler
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx

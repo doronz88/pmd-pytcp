@@ -41,7 +41,6 @@ from typing import Any
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
-
 from pytcp.lib.name_enum import NameEnum
 from pytcp.socket.socket_id import SocketId
 

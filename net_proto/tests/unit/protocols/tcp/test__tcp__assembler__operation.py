@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import TcpAssembler, TcpHeader, TcpOptionNop, TcpOptions, Tracker
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_proto import TcpAssembler, TcpHeader, TcpOptionNop, TcpOptions, Tracker
 
 
 @parameterized_class(

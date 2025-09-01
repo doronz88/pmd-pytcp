@@ -29,7 +29,7 @@ This module contains helper functions for the IP related operations.
 
 pycp/lib/ip_helper.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 
@@ -43,7 +43,6 @@ from net_addr import (
     IpAddress,
     IpVersion,
 )
-
 from pytcp import stack
 from pytcp.socket import AddressFamily, SocketType
 

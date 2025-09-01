@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import Ip6Address
 from net_proto import (
     UINT_16__MAX,
@@ -43,7 +45,6 @@ from net_proto import (
     Icmp6NdNeighborAdvertisementMessage,
     Icmp6NdOptions,
 )
-from testslide import TestCase
 
 
 class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):

@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     TcpOption,
     TcpOptionEol,
@@ -50,8 +53,6 @@ from net_proto import (
     TcpSackBlock,
     TcpTimestamps,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     UINT_6__MAX,
     UINT_6__MIN,
@@ -44,7 +46,6 @@ from net_proto import (
     UINT_32__MIN,
     TcpHeader,
 )
-from testslide import TestCase
 
 
 class TestTcpHeaderAsserts(TestCase):

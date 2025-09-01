@@ -35,8 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import UINT_16__MAX, UINT_16__MIN, UdpHeader
 from testslide import TestCase
+
+from net_proto import UINT_16__MAX, UINT_16__MIN, UdpHeader
 
 
 class TestUdpHeaderAsserts(TestCase):

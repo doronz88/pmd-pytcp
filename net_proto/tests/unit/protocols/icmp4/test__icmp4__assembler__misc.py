@@ -33,8 +33,9 @@ ver 3.0.4
 """
 
 
-from net_proto import Icmp4Assembler, Icmp4EchoReplyMessage, Tracker
 from testslide import TestCase
+
+from net_proto import Icmp4Assembler, Icmp4EchoReplyMessage, Tracker
 
 
 class TestIcmp4AssemblerMisc(TestCase):

@@ -46,7 +46,6 @@ from net_proto import (
     Ip6Assembler,
     RawAssembler,
 )
-
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -60,7 +59,6 @@ class PacketHandlerEthernetTx(ABC):
     if TYPE_CHECKING:
         from net_addr import Ip4Host, Ip6Host
         from net_proto import EthernetPayload
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx

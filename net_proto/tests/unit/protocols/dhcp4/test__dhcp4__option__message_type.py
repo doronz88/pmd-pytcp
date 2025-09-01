@@ -35,14 +35,15 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     Dhcp4IntegrityError,
     Dhcp4MessageType,
     Dhcp4OptionMessageType,
     Dhcp4OptionType,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestDhcp4OptionMessageTypeAsserts(TestCase):

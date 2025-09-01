@@ -29,14 +29,14 @@ This module contains definition of the TX status codes.
 
 pytcp/lib/tx_status.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 
-from enum import Enum, auto
+from enum import IntEnum, auto
 
 
-class TxStatus(Enum):
+class TxStatus(IntEnum):
     """
     TX status codes.
     """
@@ -95,17 +95,3 @@ class TxStatus(Enum):
         """
 
         return str(self.name)
-
-    def __eq__(self, other: object) -> bool:
-        """
-        Compare the enum with another object.
-        """
-
-        return repr(self) == repr(other)
-
-    def __hash__(self) -> int:
-        """
-        Get the hash of the enum.
-        """
-
-        return hash(repr)

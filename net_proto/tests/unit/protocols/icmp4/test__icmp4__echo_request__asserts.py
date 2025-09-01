@@ -36,6 +36,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     ICMP4__ECHO_REQUEST__LEN,
     IP4__PAYLOAD__MAX_LEN,
@@ -44,7 +46,6 @@ from net_proto import (
     Icmp4EchoRequestCode,
     Icmp4EchoRequestMessage,
 )
-from testslide import TestCase
 
 
 class TestIcmp4EchoRequestAssemblerAsserts(TestCase):

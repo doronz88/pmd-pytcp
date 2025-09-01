@@ -30,7 +30,7 @@ processes.
 
 pytcp/lib/ip_frag.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 

@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any, cast
 
+from parameterized import parameterized_class  # type: ignore
+
 from net_proto import (
     Icmp6Code,
     Icmp6Parser,
@@ -43,7 +45,6 @@ from net_proto import (
     PacketRx,
 )
 from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
-from parameterized import parameterized_class  # type: ignore
 
 
 @parameterized_class(

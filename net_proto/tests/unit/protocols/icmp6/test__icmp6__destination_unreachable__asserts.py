@@ -36,6 +36,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     ICMP6__DESTINATION_UNREACHABLE__LEN,
     IP6__PAYLOAD__MAX_LEN,
@@ -44,7 +46,6 @@ from net_proto import (
     Icmp6DestinationUnreachableCode,
     Icmp6DestinationUnreachableMessage,
 )
-from testslide import TestCase
 
 
 class TestIcmp6DestinationUnreachableAssemblerAsserts(TestCase):

@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import Ip6FragAssembler, Ip6FragHeader, IpProto
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_proto import Ip6FragAssembler, Ip6FragHeader, IpProto
 
 
 @parameterized_class(

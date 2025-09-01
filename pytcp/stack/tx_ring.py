@@ -40,7 +40,6 @@ import queue
 from typing import TYPE_CHECKING, override
 
 from net_proto import Ip4Assembler, Ip4FragAssembler, Ip6Assembler
-
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 

@@ -40,7 +40,6 @@ import random
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask
-
 from pytcp.lib.dhcp4__legacy.base import (
     DHCP4_MSG_ACK,
     DHCP4_MSG_DISCOVER,

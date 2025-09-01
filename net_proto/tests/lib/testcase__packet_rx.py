@@ -35,8 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import PacketRx
 from testslide import TestCase
+
+from net_proto import PacketRx
 
 
 class TestCasePacketRx(TestCase):

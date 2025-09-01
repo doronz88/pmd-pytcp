@@ -36,14 +36,15 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import MacAddress
 from net_proto import (
     Icmp6IntegrityError,
     Icmp6NdOptionTlla,
     Icmp6NdOptionType,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestIcmp6NdOptionTllaAsserts(TestCase):

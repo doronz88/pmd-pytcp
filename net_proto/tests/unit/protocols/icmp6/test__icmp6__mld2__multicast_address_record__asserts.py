@@ -34,12 +34,13 @@ ver 3.0.4
 """
 
 
+from testslide import TestCase
+
 from net_addr import Ip6Address
 from net_proto import (
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
 )
-from testslide import TestCase
 
 
 class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):

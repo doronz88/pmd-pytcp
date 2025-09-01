@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     TCP__OPTION__WSCALE__MAX_VALUE,
     UINT_8__MIN,
@@ -42,8 +45,6 @@ from net_proto import (
     TcpOptionType,
     TcpOptionWscale,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestTcpOptionWscaleAsserts(TestCase):

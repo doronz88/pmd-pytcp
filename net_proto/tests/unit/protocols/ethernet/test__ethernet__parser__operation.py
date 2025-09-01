@@ -35,10 +35,11 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+
 from net_addr import MacAddress
 from net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
 from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
-from parameterized import parameterized_class  # type: ignore
 
 
 @parameterized_class(

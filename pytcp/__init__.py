@@ -33,8 +33,7 @@ ver 3.0.4
 """
 
 
-from pytcp import stack
-from pytcp import socket
+from pytcp import socket, stack
 
 __all__ = [
     "stack",

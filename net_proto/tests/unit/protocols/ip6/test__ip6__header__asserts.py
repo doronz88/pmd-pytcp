@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import Ip6Address
 from net_proto import (
     UINT_2__MAX,
@@ -50,7 +52,6 @@ from net_proto import (
     Ip6Header,
     IpProto,
 )
-from testslide import TestCase
 
 
 class TestIp6HeaderAsserts(TestCase):

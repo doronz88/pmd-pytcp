@@ -38,6 +38,8 @@ ver 3.0.3
 import time
 
 import click
+
+from examples.lib.subsystem import Subsystem
 from net_addr import (
     ClickTypeIp4Address,
     ClickTypeIp4Host,
@@ -50,8 +52,6 @@ from net_addr import (
     Ip6Host,
     MacAddress,
 )
-
-from examples.lib.subsystem import Subsystem
 from pytcp import stack
 
 

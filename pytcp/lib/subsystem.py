@@ -29,7 +29,7 @@ This module contains base class for all of the subsystems used by the stack.
 
 pytcp/lib/subsystem.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 

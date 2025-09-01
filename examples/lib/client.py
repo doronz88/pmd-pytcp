@@ -38,9 +38,8 @@ import threading
 from abc import abstractmethod
 from typing import override
 
-from net_addr import Ip4Address, Ip6Address, IpVersion
-
 from examples.lib.subsystem import Subsystem
+from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp.socket import (
     IPPROTO_ICMP4,
     IPPROTO_ICMP6,

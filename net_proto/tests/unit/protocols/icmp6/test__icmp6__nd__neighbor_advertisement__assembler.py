@@ -36,6 +36,9 @@ ver 3.0.4
 
 from typing import Any, cast
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
     Icmp6Assembler,
@@ -45,8 +48,6 @@ from net_proto import (
     Icmp6NdOptionSlla,
     Icmp6Type,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

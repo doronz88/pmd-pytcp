@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
-from net_addr import MacAddress, MacAddressFormatError
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_addr import MacAddress, MacAddressFormatError
 
 
 @parameterized_class(

@@ -37,7 +37,6 @@ from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import EthernetParser, EtherType, PacketRx, PacketValidationError
-
 from pytcp.lib.logger import log
 
 
@@ -48,7 +47,6 @@ class PacketHandlerEthernetRx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import MacAddress
-
         from pytcp.lib.packet_stats import PacketStatsRx
 
         _packet_stats_rx: PacketStatsRx

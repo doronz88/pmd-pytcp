@@ -35,13 +35,14 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import MacAddress
 from net_proto import (
     ETHERNET_802_3__PAYLOAD__MAX_LEN,
     UINT_16__MIN,
     Ethernet8023Header,
 )
-from testslide import TestCase
 
 
 class TestEthernet8023HeaderAsserts(TestCase):

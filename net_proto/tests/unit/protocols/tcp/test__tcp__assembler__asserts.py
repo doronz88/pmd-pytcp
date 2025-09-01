@@ -33,6 +33,8 @@ ver 3.0.4
 """
 
 
+from testslide import TestCase
+
 from net_proto import (
     TCP__OPTIONS__MAX_LEN,
     TcpAssembler,
@@ -40,7 +42,6 @@ from net_proto import (
     TcpOptionNop,
     TcpOptions,
 )
-from testslide import TestCase
 
 
 class TestTcpAssemblerAsserts(TestCase):

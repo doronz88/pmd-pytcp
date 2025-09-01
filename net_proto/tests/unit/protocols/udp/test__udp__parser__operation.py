@@ -35,10 +35,11 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+
 from net_proto import PacketRx, UdpHeader, UdpParser
 from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
 from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
-from parameterized import parameterized_class  # type: ignore
 
 testcases: list[dict[str, Any]] = [
     {

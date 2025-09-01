@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import MacAddress
 from net_proto import EthernetHeader, EtherType
-from testslide import TestCase
 
 
 class TestEthernetHeaderAsserts(TestCase):

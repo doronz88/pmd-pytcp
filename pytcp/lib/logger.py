@@ -29,7 +29,7 @@ This module contains methods supporting the stack logging.
 
 pytcp/lib/logger.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 

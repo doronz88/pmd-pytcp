@@ -36,6 +36,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
@@ -43,7 +45,6 @@ from net_proto import (
     Icmp6NdRouterSolicitationCode,
     Icmp6NdRouterSolicitationMessage,
 )
-from testslide import TestCase
 
 
 class TestIcmp6NdRouterSolicitationAsserts(TestCase):

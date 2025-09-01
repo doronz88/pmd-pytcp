@@ -36,6 +36,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     Icmp6NdOptions,
     Icmp6NdRouterAdvertisementCode,
@@ -49,7 +51,6 @@ from net_proto.lib.int_checks import (
     UINT_32__MAX,
     UINT_32__MIN,
 )
-from testslide import TestCase
 
 
 class TestIcmp6NdRouterAdvertisementAsserts(TestCase):

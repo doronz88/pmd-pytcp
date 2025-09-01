@@ -47,7 +47,6 @@ from net_proto import (
     PacketValidationError,
     UdpParser,
 )
-
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.socket.udp__metadata import UdpMetadata
@@ -62,7 +61,6 @@ class PacketHandlerUdpRx(ABC):
     if TYPE_CHECKING:
         from net_addr import Ip6Address, IpAddress
         from net_proto import Icmp6Message, Tracker
-
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 

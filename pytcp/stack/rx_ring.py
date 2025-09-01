@@ -41,7 +41,6 @@ import selectors
 from typing import override
 
 from net_proto.lib.packet_rx import PacketRx
-
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 

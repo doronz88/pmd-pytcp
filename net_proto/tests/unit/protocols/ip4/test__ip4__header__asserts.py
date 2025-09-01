@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import Ip4Address
 from net_proto import (
     IP4__HEADER__LEN,
@@ -52,7 +54,6 @@ from net_proto import (
     Ip4Header,
     IpProto,
 )
-from testslide import TestCase
 
 
 class TestIp4HeaderAsserts(TestCase):

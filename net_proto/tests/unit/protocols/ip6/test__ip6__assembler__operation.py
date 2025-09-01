@@ -34,10 +34,11 @@ ver 3.0.4
 
 from typing import Any
 
-from net_addr import Ip6Address, IpVersion
-from net_proto import Ip6Assembler, Ip6Header, IpProto, RawAssembler
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_addr import Ip6Address, IpVersion
+from net_proto import Ip6Assembler, Ip6Header, IpProto, RawAssembler
 
 
 @parameterized_class(

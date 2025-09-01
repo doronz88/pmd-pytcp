@@ -56,7 +56,6 @@ from net_proto import (
     PacketRx,
     PacketValidationError,
 )
-
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.socket.raw__metadata import RawMetadata
@@ -75,7 +74,6 @@ class PacketHandlerIcmp6Rx(ABC):
 
         from net_addr import Ip6Network, MacAddress
         from net_proto import Icmp6Message, Tracker
-
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 

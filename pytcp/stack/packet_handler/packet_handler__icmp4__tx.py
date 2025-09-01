@@ -44,7 +44,6 @@ from net_proto import (
     Icmp4Type,
     Tracker,
 )
-
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -56,7 +55,6 @@ class PacketHandlerIcmp4Tx(ABC):
 
     if TYPE_CHECKING:
         from net_proto import IP4__DEFAULT_TTL, Ip4Payload, RawAssembler
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx

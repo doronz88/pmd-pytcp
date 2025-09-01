@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
     DHCP4__HEADER__FILE__MAX_LEN,
@@ -48,7 +50,6 @@ from net_proto import (
     Dhcp4Header,
     Dhcp4Operation,
 )
-from testslide import TestCase
 
 
 class TestDhcp4HeaderAsserts(TestCase):

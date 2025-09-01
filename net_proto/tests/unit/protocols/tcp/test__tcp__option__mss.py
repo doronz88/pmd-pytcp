@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     TCP__OPTION__MSS__LEN,
     UINT_16__MAX,
@@ -43,8 +46,6 @@ from net_proto import (
     TcpOptionMss,
     TcpOptionType,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestTcpOptionMssAsserts(TestCase):

@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import Tracker, UdpAssembler
-
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -60,7 +59,6 @@ class PacketHandlerUdpTx(ABC):
             Ip6Payload,
             RawAssembler,
         )
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx

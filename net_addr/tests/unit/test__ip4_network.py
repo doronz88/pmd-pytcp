@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import (
     Ip4Address,
     Ip4Mask,
@@ -42,8 +45,6 @@ from net_addr import (
     Ip4NetworkFormatError,
     IpVersion,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

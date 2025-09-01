@@ -42,7 +42,6 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Host, Ip6Host, MacAddress
-
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.socket.socket_id import SocketId
@@ -55,7 +54,6 @@ from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address
-
     from pytcp.socket import socket
 
 

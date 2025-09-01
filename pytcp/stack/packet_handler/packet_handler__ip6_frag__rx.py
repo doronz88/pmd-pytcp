@@ -39,7 +39,6 @@ from time import time
 from typing import TYPE_CHECKING
 
 from net_proto import Ip6FragParser, PacketRx
-
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 from pytcp.lib.logger import log
@@ -52,7 +51,6 @@ class PacketHandlerIp6FragRx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import Ip6Address
-
         from pytcp.lib.packet_stats import PacketStatsRx
 
         _packet_stats_rx: PacketStatsRx

@@ -37,9 +37,8 @@ import threading
 from abc import abstractmethod
 from typing import override
 
-from net_addr import IpAddress
-
 from examples.lib.subsystem import Subsystem
+from net_addr import IpAddress
 from pytcp.socket import socket
 
 

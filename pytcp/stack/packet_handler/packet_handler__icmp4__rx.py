@@ -50,7 +50,6 @@ from net_proto import (
     PacketRx,
     PacketValidationError,
 )
-
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.socket.raw__metadata import RawMetadata
@@ -66,7 +65,6 @@ class PacketHandlerIcmp4Rx(ABC):
 
     if TYPE_CHECKING:
         from net_proto import Icmp4Message, Tracker
-
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 

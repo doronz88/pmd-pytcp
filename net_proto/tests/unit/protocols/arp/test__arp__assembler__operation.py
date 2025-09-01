@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
     ARP__HARDWARE_LEN__ETHERNET,
@@ -46,8 +49,6 @@ from net_proto import (
     EtherType,
     Tracker,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(

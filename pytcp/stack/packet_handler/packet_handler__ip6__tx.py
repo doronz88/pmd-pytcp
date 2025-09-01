@@ -48,7 +48,6 @@ from net_proto import (
     IpProto,
     RawAssembler,
 )
-
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
@@ -63,7 +62,6 @@ class PacketHandlerIp6Tx(ABC):
     if TYPE_CHECKING:
         from net_addr import Ip6Host
         from net_proto import EthernetPayload, Ip6Payload, Tracker
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _interface_layer: InterfaceLayer

@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any, cast
 
+from parameterized import parameterized_class  # type: ignore
+
 from net_proto import (
     Icmp4DestinationUnreachableCode,
     Icmp4DestinationUnreachableMessage,
@@ -42,7 +44,6 @@ from net_proto import (
     PacketRx,
 )
 from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
-from parameterized import parameterized_class  # type: ignore
 
 
 @parameterized_class(

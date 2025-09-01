@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import Ip6Network
 from net_proto import (
     UINT_32__MAX,
@@ -43,8 +46,6 @@ from net_proto import (
     Icmp6NdOptionPi,
     Icmp6NdOptionType,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestIcmp6NdOptionPiAsserts(TestCase):

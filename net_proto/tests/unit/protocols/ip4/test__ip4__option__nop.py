@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import IP4__OPTION__NOP__LEN, Ip4OptionNop, Ip4OptionType
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_proto import IP4__OPTION__NOP__LEN, Ip4OptionNop, Ip4OptionType
 
 
 class TestIp4OptionNopAsserts(TestCase):

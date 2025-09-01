@@ -35,6 +35,8 @@ ver 3.0.4
 
 from typing import Any
 
+from testslide import TestCase
+
 from net_proto import (
     UINT_13__MAX,
     UINT_13__MIN,
@@ -43,7 +45,6 @@ from net_proto import (
     Ip6FragHeader,
     IpProto,
 )
-from testslide import TestCase
 
 
 class TestIpExtFrag6HeaderAsserts(TestCase):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PyTCP"
-version = "3.0.0"
+version = "3.0.4"
 description = "TCP/IP stack written in Python."
 readme = "README.md"
 authors = [{ name = "Sebastian Majewski", email = "ccie18643@gmail.com" }]
@@ -42,7 +42,7 @@ line-length = 80
 
 [tool.isort]
 profile = "black"
-src_paths = ["pytcp", "examples", "tests"]
+src_paths = ["pytcp", "examples", "net_addr", "net_proto"]
 line_length = 80
 honor_noqa = true
 
@@ -54,7 +54,6 @@ ignore-words-list = "ect, ether, nd, tha, assertIn, sourc"
 max-line-length = 120
 ignore = ["E203", "E266", "E701", "E704", "W503", "E731", "E741"]
 per-file-ignores = [
-    "pytcp/**/__init__.py:F401",
     "pytcp/stack/__init__.py:F821",
 ]
 

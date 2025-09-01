@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+
 from net_proto import Ip4IntegrityError, Ip4Parser, PacketRx
 from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
-from parameterized import parameterized_class  # type: ignore
 
 
 @parameterized_class(

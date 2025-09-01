@@ -35,10 +35,11 @@ ver 3.0.4
 
 from typing import Any
 
-from net_addr import MacAddress
-from net_proto import EthernetAssembler, EthernetHeader, EtherType, RawAssembler
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_addr import MacAddress
+from net_proto import EthernetAssembler, EthernetHeader, EtherType, RawAssembler
 
 
 @parameterized_class(

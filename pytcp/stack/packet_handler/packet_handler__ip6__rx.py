@@ -37,7 +37,6 @@ from abc import ABC
 from typing import TYPE_CHECKING, cast
 
 from net_proto import Ip6Parser, IpProto, PacketRx, PacketValidationError
-
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.socket.raw__metadata import RawMetadata
@@ -51,7 +50,6 @@ class PacketHandlerIp6Rx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import Ip6Address
-
         from pytcp.lib.packet_stats import PacketStatsRx
 
         _packet_stats_rx: PacketStatsRx

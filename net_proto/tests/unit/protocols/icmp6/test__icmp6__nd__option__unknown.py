@@ -35,6 +35,9 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_proto import (
     ICMP6__ND__OPTION__LEN,
     UINT_8__MAX,
@@ -43,8 +46,6 @@ from net_proto import (
     Icmp6NdOptionType,
     Icmp6NdOptionUnknown,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 class TestIcmp6NdOptionUnknownAsserts(TestCase):

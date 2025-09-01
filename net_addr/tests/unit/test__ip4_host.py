@@ -36,6 +36,9 @@ ver 3.0.4
 import time
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import (
     Ip4Address,
     Ip4Host,
@@ -45,8 +48,6 @@ from net_addr import (
     Ip4Network,
     IpVersion,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
 

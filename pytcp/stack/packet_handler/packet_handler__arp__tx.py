@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import ArpAssembler, ArpOperation, Tracker
-
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -50,7 +49,6 @@ class PacketHandlerArpTx(ABC):
 
     if TYPE_CHECKING:
         from net_proto import EthernetPayload
-
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx

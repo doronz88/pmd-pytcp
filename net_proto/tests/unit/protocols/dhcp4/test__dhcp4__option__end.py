@@ -35,9 +35,10 @@ ver 3.0.4
 
 from typing import Any
 
-from net_proto import DHCP4__OPTION__END__LEN, Dhcp4OptionEnd, Dhcp4OptionType
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
+
+from net_proto import DHCP4__OPTION__END__LEN, Dhcp4OptionEnd, Dhcp4OptionType
 
 
 class TestDhcp4OptionEndAsserts(TestCase):

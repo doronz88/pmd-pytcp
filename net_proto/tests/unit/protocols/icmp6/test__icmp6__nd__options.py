@@ -35,14 +35,15 @@ ver 3.0.4
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore
+from testslide import TestCase
+
 from net_addr import MacAddress
 from net_proto import (
     Icmp6NdOption,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
 )
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 
 @parameterized_class(
