@@ -55,14 +55,14 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4OptionMessageType,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
+    Dhcp4OptionParamReqList,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
     Dhcp4OptionSrvId,
-)
-from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
-    Dhcp4OptionParamReqList,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from pytcp.lib.dhcp4__legacy.base import (

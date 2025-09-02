@@ -64,7 +64,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
-            "oper": Dhcp4Operation.REQUEST,
+            "operation": Dhcp4Operation.REQUEST,
             "hops": 0,
             "xid": 0x12345678,
             "secs": 0,
@@ -84,7 +84,7 @@ class TestDhcp4HeaderAsserts(TestCase):
         provided 'oper' argument is not a Dhcp4Operation.
         """
 
-        self._kwargs["oper"] = value = "not a Dhcp4Operation"
+        self._kwargs["operation"] = value = "not a Dhcp4Operation"
 
         with self.assertRaises(AssertionError) as error:
             Dhcp4Header(*self._args, **self._kwargs)

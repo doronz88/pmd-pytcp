@@ -90,7 +90,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DISCOVER: 1>)"
                 ),
-                "__bytes__": b"\x35\x03\x01",
+                "__bytes__": b"\x35\x01\x01",
                 "message_type": Dhcp4MessageType.DISCOVER,
             },
         },
@@ -104,7 +104,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.OFFER: 2>)"
                 ),
-                "__bytes__": b"\x35\x03\x02",
+                "__bytes__": b"\x35\x01\x02",
                 "message_type": Dhcp4MessageType.OFFER,
             },
         },
@@ -118,7 +118,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.REQUEST: 3>)"
                 ),
-                "__bytes__": b"\x35\x03\x03",
+                "__bytes__": b"\x35\x01\x03",
                 "message_type": Dhcp4MessageType.REQUEST,
             },
         },
@@ -132,7 +132,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DECLINE: 4>)"
                 ),
-                "__bytes__": b"\x35\x03\x04",
+                "__bytes__": b"\x35\x01\x04",
                 "message_type": Dhcp4MessageType.DECLINE,
             },
         },
@@ -146,7 +146,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.ACK: 5>)"
                 ),
-                "__bytes__": b"\x35\x03\x05",
+                "__bytes__": b"\x35\x01\x05",
                 "message_type": Dhcp4MessageType.ACK,
             },
         },
@@ -160,7 +160,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.NAK: 6>)"
                 ),
-                "__bytes__": b"\x35\x03\x06",
+                "__bytes__": b"\x35\x01\x06",
                 "message_type": Dhcp4MessageType.NAK,
             },
         },
@@ -174,7 +174,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.RELEASE: 7>)"
                 ),
-                "__bytes__": b"\x35\x03\x07",
+                "__bytes__": b"\x35\x01\x07",
                 "message_type": Dhcp4MessageType.RELEASE,
             },
         },
@@ -188,7 +188,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
                 "__repr__": (
                     "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.INFORM: 8>)"
                 ),
-                "__bytes__": b"\x35\x03\x08",
+                "__bytes__": b"\x35\x01\x08",
                 "message_type": Dhcp4MessageType.INFORM,
             },
         },
