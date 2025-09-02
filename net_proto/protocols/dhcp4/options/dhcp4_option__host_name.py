@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Parameters Request List option support code.
+This module contains the DHCPv4 Host Name option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__param_req_list.py
+net_proto/protocols/dhcp4/options/dhcp4_option__host_name.py
 
 ver 3.0.4
 """
@@ -47,76 +47,75 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 # The DHCPv4 Parameter Request List option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code=55   |     Len=N     |  Option Code  | Option Code  ...
+# |     Code=12   |     Len=N     |           Hostname           ...
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__PARAM_REQ_LIST__LEN = 2
-DHCP4__OPTION__PARAM_REQ_LIST__STRUCT = "! BB"
+DHCP4__OPTION__HOST_NAME__LEN = 2
+DHCP4__OPTION__HOST_NAME__STRUCT = "! BB"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionParamReqList(Dhcp4Option):
+class Dhcp4OptionHostName(Dhcp4Option):
     """
-    The DHCPv4 Parameter Request List option support class.
+    The DHCPv4 Host Name option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.PARAM_REQ_LIST,
+        default=Dhcp4OptionType.HOST_NAME,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__PARAM_REQ_LIST__LEN,
+        default=DHCP4__OPTION__HOST_NAME__LEN,
     )
 
-    param_req_list: list[Dhcp4OptionType]
+    host_name: str
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Parameter Request List option fields.
+        Validate the DHCPv4 Host Name option fields.
         """
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Parameter Request List option log string.
+        Get the DHCPv4 Host Name option log string.
         """
 
-        return f"param_req_list {self.param_req_list}"
+        return f"host_name {self.host_name}"
 
     @override
     def __bytes__(self) -> bytes:
         """
-        Get the DHCPv4 Parameter Request List option as bytes.
+        Get the DHCPv4 Host Name option as bytes.
         """
 
         return struct.pack(
-            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT
-            + f"{len(self.param_req_list)}s",
+            DHCP4__OPTION__HOST_NAME__STRUCT + f"{len(self.host_name)}s",
             int(self.type),
-            self.len,
-            bytes([int(option) for option in self.param_req_list]),
+            len(self.host_name),
+            self.host_name.encode("utf-8"),
         )
 
     @staticmethod
     def _validate_integrity(_bytes: bytes, /) -> None:
         """
-        Validate the DHCPv4 Parameter Request List option integrity before parsing it.
+        Validate the DHCPv4 Host Name option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) >= DHCP4__OPTION__PARAM_REQ_LIST__LEN:
+        if (value := _bytes[1]) >= DHCP4__OPTION__HOST_NAME__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Parameter Request List option length must be "
-                f"at least {DHCP4__OPTION__PARAM_REQ_LIST__LEN} bytes. Got: {value!r}"
+                "The DHCPv4 Host Name option length must be "
+                f"at least {DHCP4__OPTION__HOST_NAME__LEN} bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Parameter Request List option length must be less than or equal "
+                "The DHCPv4 Host Name option length must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
@@ -124,24 +123,21 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
     @classmethod
     def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
-        Initialize the DHCPv4 Parameter Request List option from bytes.
+        Initialize the DHCPv4 Host Name option from bytes.
         """
 
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Parameter Request List option must "
+            f"The minimum length of the DHCPv4 Host Name option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.PARAM_REQ_LIST), (
-            f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
+        assert (value := _bytes[0]) == int(Dhcp4OptionType.HOST_NAME), (
+            f"The DHCPv4 Host Name option type must be {Dhcp4OptionType.HOST_NAME!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(_bytes)
 
         return cls(
-            param_req_list=[
-                Dhcp4OptionType.from_int(option)
-                for option in _bytes[2 : 2 + _bytes[1]]
-            ]
+            host_name=_bytes[2 : 2 + _bytes[1]].decode("utf-8"),
         )

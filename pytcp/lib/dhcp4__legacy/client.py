@@ -49,6 +49,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     Dhcp4OptionEnd,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
+    Dhcp4OptionHostName,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4OptionMessageType,
 )
@@ -96,26 +99,6 @@ class Dhcp4Client:
         dhcp_xid = random.randint(0, 0xFFFFFFFF)
 
         # Send DHCP Discover
-        """
-        client_socket.send(
-            Dhcp4Packet(
-                dhcp_op=DHCP4_OP_REQUEST,
-                dhcp_xid=dhcp_xid,
-                dhcp_ciaddr=Ip4Address("0.0.0.0"),
-                dhcp_yiaddr=Ip4Address("0.0.0.0"),
-                dhcp_siaddr=Ip4Address("0.0.0.0"),
-                dhcp_giaddr=Ip4Address("0.0.0.0"),
-                dhcp_chaddr=bytes(self._mac_address),
-                dhcp_msg_type=DHCP4_MSG_DISCOVER,
-                dhcp_param_req_list=[
-                    DHCP4_OPT_SUBNET_MASK,
-                    DHCP4_OPT_ROUTER,
-                ],
-                dhcp_host_name="PyTCP",
-            ).raw_packet
-        )
-        """
-
         client_socket.send(
             bytes(
                 Dhcp4Assembler(
@@ -133,6 +116,7 @@ class Dhcp4Client:
                                 Dhcp4OptionType.ROUTER,
                             ]
                         ),
+                        Dhcp4OptionHostName("PyTCP"),
                         Dhcp4OptionEnd(),
                     ),
                 )
