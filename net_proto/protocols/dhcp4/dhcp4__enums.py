@@ -33,10 +33,10 @@ ver 3.0.4
 """
 
 
-from net_proto.lib.proto_enum import ProtoEnumWord
+from net_proto.lib.proto_enum import ProtoEnumByte
 
 
-class Dhcp4Operation(ProtoEnumWord):
+class Dhcp4Operation(ProtoEnumByte):
     """
     The DHCPv4 header 'oper' field values.
     """
@@ -45,7 +45,7 @@ class Dhcp4Operation(ProtoEnumWord):
     REPLY = 0x02
 
 
-class Dhcp4HardwareType(ProtoEnumWord):
+class Dhcp4HardwareType(ProtoEnumByte):
     """
     The DHCPv4 header 'htype' field values.
     """
@@ -56,7 +56,7 @@ class Dhcp4HardwareType(ProtoEnumWord):
 DHCP4__HARDWARE_LEN__ETHERNET = 6
 
 
-class Dhcp4MessageType(ProtoEnumWord):
+class Dhcp4MessageType(ProtoEnumByte):
     """
     The DHCPv4 message type option values.
     """

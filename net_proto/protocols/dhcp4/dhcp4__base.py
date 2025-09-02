@@ -65,7 +65,7 @@ class Dhcp4(Proto, Dhcp4HeaderProperties):
         Get the DHCPv4 packet log string.
         """
 
-        return f"DHCPv4 {self._header.oper}"
+        return f"DHCPv4 {self._header.operation}"
 
     @override
     def __repr__(self) -> str:

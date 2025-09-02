@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Message Type option support code.
+This module contains the DHCPv4 Subnet Mask option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__message_type.py
+net_proto/protocols/dhcp4/options/dhcp4_option__subnet_mask.py
 
 ver 3.0.4
 """
@@ -37,7 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
+from net_addr.ip4_mask import Ip4Mask
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -45,83 +45,86 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Message Type option [RFC 2132].
+# The DHCPv4 Subnet Mask option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 1   |   Length = 1  |     Value     |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# Subnet Mask (Option 1)
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Code = 1    |    Length = 4   |        Subnet Mask
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#              Subnet Mask            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__MESSAGE_TYPE__LEN = 3
-DHCP4__OPTION__MESSAGE_TYPE__STRUCT = "! BB B"
+DHCP4__OPTION__SUBNET_MASK__LEN = 6
+DHCP4__OPTION__SUBNET_MASK__STRUCT = "! BB 4s"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionMessageType(Dhcp4Option):
+class Dhcp4OptionSubnetMask(Dhcp4Option):
     """
-    The DHCPv4 Message Type option support class.
+    The DHCPv4 Subnet Mask option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.MESSAGE_TYPE,
+        default=Dhcp4OptionType.SUBNET_MASK,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__MESSAGE_TYPE__LEN,
+        default=DHCP4__OPTION__SUBNET_MASK__LEN,
     )
 
-    message_type: Dhcp4MessageType
+    subnet_mask: Ip4Mask
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Message Type option fields.
+        Validate the DHCPv4 Subnet Mask option fields.
         """
 
-        assert isinstance(self.message_type, Dhcp4MessageType), (
-            f"The 'message_type' field must be a Dhcp4MessageType. "
-            f"Got: {type(self.message_type)!r}"
+        assert isinstance(self.subnet_mask, Ip4Mask), (
+            f"The 'subnet_mask' field must be an Ip4Mask. "
+            f"Got: {type(self.subnet_mask)!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Message Type option log string.
+        Get the DHCPv4 Subnet Mask option log string.
         """
 
-        return f"message_type {self.message_type}"
+        return f"subnet_mask {self.subnet_mask}"
 
     @override
     def __bytes__(self) -> bytes:
         """
-        Get the DHCPv4 Message Type option as bytes.
+        Get the DHCPv4 Subnet Mask option as bytes.
         """
 
         return struct.pack(
-            DHCP4__OPTION__MESSAGE_TYPE__STRUCT,
+            DHCP4__OPTION__SUBNET_MASK__STRUCT,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            int(self.message_type),
+            bytes(self.subnet_mask),
         )
 
     @staticmethod
     def _validate_integrity(_bytes: bytes, /) -> None:
         """
-        Validate the DHCPv4 Message Type option integrity before parsing it.
+        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
+        if (value := _bytes[1]) != DHCP4__OPTION__SUBNET_MASK__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length must be "
-                f"{DHCP4__OPTION__MESSAGE_TYPE__LEN} bytes. Got: {value!r}"
+                "The DHCPv4 Subnet Mask option length must be "
+                f"{DHCP4__OPTION__SUBNET_MASK__LEN} bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length must be less than or equal "
+                "The DHCPv4 Subnet Mask option length must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
@@ -129,19 +132,19 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @classmethod
     def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
-        Initialize the DHCPv4 Message Type option from bytes.
+        Initialize the DHCPv4 Subnet Mask option from bytes.
         """
 
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Message Type option must "
+            f"The minimum length of the DHCPv4 Subnet Mask option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.MESSAGE_TYPE), (
-            f"The DHCPv4 Message Type option type must be {Dhcp4OptionType.MESSAGE_TYPE!r}. "
+        assert (value := _bytes[0]) == int(Dhcp4OptionType.SUBNET_MASK), (
+            f"The DHCPv4 Subnet Mask option type must be {Dhcp4OptionType.SUBNET_MASK!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(_bytes)
 
-        return cls(message_type=Dhcp4MessageType.from_int(_bytes[2]))
+        return cls(subnet_mask=Ip4Mask(_bytes[2:6]))

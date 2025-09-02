@@ -140,7 +140,7 @@ class Dhcp4Header(ProtoStruct):
     The DHCPv4 header.
     """
 
-    oper: Dhcp4Operation
+    operation: Dhcp4Operation
     hrtype: Dhcp4HardwareType = field(
         repr=False,
         init=False,
@@ -175,8 +175,8 @@ class Dhcp4Header(ProtoStruct):
         """
 
         assert isinstance(
-            self.oper, Dhcp4Operation
-        ), f"The 'oper' field must be a Dhcp4Operation. Got: {type(self.oper)!r}"
+            self.operation, Dhcp4Operation
+        ), f"The 'oper' field must be a Dhcp4Operation. Got: {type(self.operation)!r}"
 
         assert is_uint8(self.hops), (
             "The 'hops' field must be an 8-bit unsigned integer. "
@@ -257,8 +257,8 @@ class Dhcp4Header(ProtoStruct):
 
         return struct.pack(
             DHCP4__HEADER__STRUCT,
-            self.oper,
-            self.hrtype,
+            int(self.operation),
+            int(self.hrtype),
             self.hrlen,
             self.hops,
             self.xid,
@@ -283,7 +283,7 @@ class Dhcp4Header(ProtoStruct):
         """
 
         (
-            oper,
+            operation,
             hrtype,
             hrlen,
             hops,
@@ -318,7 +318,7 @@ class Dhcp4Header(ProtoStruct):
         )
 
         return cls(
-            oper=Dhcp4Operation(oper),
+            operation=Dhcp4Operation(operation),
             hops=hops,
             xid=xid,
             secs=secs,
@@ -346,7 +346,7 @@ class Dhcp4HeaderProperties(ABC):
         Get the DHCPv4 operation.
         """
 
-        return self._header.oper
+        return self._header.operation
 
     @property
     def hrtype(self) -> Dhcp4HardwareType:

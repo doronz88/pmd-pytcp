@@ -47,7 +47,10 @@ class Dhcp4OptionType(ProtoOptionType):
     """
 
     PAD = 0
+    SUBNET_MASK = 1
+    ROUTER = 3
     MESSAGE_TYPE = 53
+    PARAM_REQ_LIST = 55
     END = 255
 
 

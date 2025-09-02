@@ -40,9 +40,24 @@ import random
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask
+from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
+from net_proto.protocols.dhcp4.dhcp4__enums import (
+    Dhcp4MessageType,
+    Dhcp4Operation,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
+from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
+    Dhcp4OptionEnd,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
+    Dhcp4OptionMessageType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
+    Dhcp4OptionParamReqList,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from pytcp.lib.dhcp4__legacy.base import (
     DHCP4_MSG_ACK,
-    DHCP4_MSG_DISCOVER,
     DHCP4_MSG_OFFER,
     DHCP4_MSG_REQUEST,
     DHCP4_OP_REQUEST,
@@ -81,6 +96,7 @@ class Dhcp4Client:
         dhcp_xid = random.randint(0, 0xFFFFFFFF)
 
         # Send DHCP Discover
+        """
         client_socket.send(
             Dhcp4Packet(
                 dhcp_op=DHCP4_OP_REQUEST,
@@ -98,6 +114,31 @@ class Dhcp4Client:
                 dhcp_host_name="PyTCP",
             ).raw_packet
         )
+        """
+
+        client_socket.send(
+            bytes(
+                Dhcp4Assembler(
+                    dhcp4__operation=Dhcp4Operation.REQUEST,
+                    dhcp4__xid=dhcp_xid,
+                    dhcp4__flag_b=True,
+                    dhcp4__chaddr=self._mac_address,
+                    dhcp4__options=Dhcp4Options(
+                        Dhcp4OptionMessageType(
+                            message_type=Dhcp4MessageType.DISCOVER
+                        ),
+                        Dhcp4OptionParamReqList(
+                            [
+                                Dhcp4OptionType.SUBNET_MASK,
+                                Dhcp4OptionType.ROUTER,
+                            ]
+                        ),
+                        Dhcp4OptionEnd(),
+                    ),
+                )
+            )
+        )
+
         __debug__ and log(
             "dhcp4", "Sent out DHCP Discover message to 255.255.255.255"
         )

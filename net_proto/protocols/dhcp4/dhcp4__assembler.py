@@ -41,6 +41,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4Header
+from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 
 
 class Dhcp4Assembler(Dhcp4, ProtoAssembler):
@@ -63,13 +64,14 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         dhcp4__chaddr: MacAddress,
         dhcp4__sname: str | None = None,
         dhcp4__file: str | None = None,
+        dhcp4__options: Dhcp4Options = Dhcp4Options(),
     ) -> None:
         """
         Initialize the DHCPv4 packet assembler.
         """
 
         self._header = Dhcp4Header(
-            oper=dhcp4__operation,
+            operation=dhcp4__operation,
             hops=dhcp4__hops,
             xid=dhcp4__xid,
             secs=dhcp4__secs,
@@ -82,3 +84,5 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
             sname=dhcp4__sname or "",
             file=dhcp4__file or "",
         )
+
+        self._options = dhcp4__options
