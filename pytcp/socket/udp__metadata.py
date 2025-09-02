@@ -58,7 +58,7 @@ class UdpMetadata:
 
     udp__local_port: int
     udp__remote_port: int
-    udp__data: bytes = bytes()
+    udp__data: memoryview = memoryview(bytes())
 
     tracker: Tracker | None = None
 

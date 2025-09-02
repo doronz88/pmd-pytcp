@@ -379,7 +379,7 @@ class UdpSocket(socket):
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} " "bytes of data",
             )
-            return data_rx
+            return bytes(data_rx)  # NOTE: Conversion: memoryview -> bytes
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     def recvfrom(
@@ -399,7 +399,9 @@ class UdpSocket(socket):
                 f"{len(packet_rx_md.udp__data)} bytes of data",
             )
             return (
-                packet_rx_md.udp__data,
+                bytes(
+                    packet_rx_md.udp__data
+                ),  # NOTE: Conversion: memoryview -> bytes.
                 (
                     str(packet_rx_md.ip__remote_address),
                     packet_rx_md.udp__remote_port,

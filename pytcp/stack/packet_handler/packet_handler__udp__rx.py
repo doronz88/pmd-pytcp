@@ -120,7 +120,7 @@ class PacketHandlerUdpRx(ABC):
 
         assert isinstance(
             packet_rx.udp.payload, memoryview
-        )  # memoryview: data type check point.
+        )  # NOTE: Memoryview type checkpoint.
 
         # Create UdpMetadata object and try to find matching UDP socket.
         packet_rx_md = UdpMetadata(
@@ -129,9 +129,7 @@ class PacketHandlerUdpRx(ABC):
             udp__local_port=packet_rx.udp.dport,
             ip__remote_address=packet_rx.ip.src,
             udp__remote_port=packet_rx.udp.sport,
-            udp__data=bytes(
-                packet_rx.udp.payload
-            ),  # memoryview: conversion for end-user interface.
+            udp__data=packet_rx.udp.payload,
             tracker=packet_rx.tracker,
         )
 

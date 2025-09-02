@@ -106,7 +106,7 @@ class PacketHandlerTcpRx(ABC):
 
         assert isinstance(
             packet_rx.tcp.payload, memoryview
-        )  # memoryview: data type check point.
+        )  # NOTE: Memoryview type checkpoint.
 
         # Create TcpMetadata object for further processing by TCP FSM.
         packet_rx_md = TcpMetadata(
