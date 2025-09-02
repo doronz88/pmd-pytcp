@@ -68,10 +68,6 @@ from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from pytcp.lib.dhcp4__legacy.base import (
     DHCP4_MSG_ACK,
     DHCP4_MSG_OFFER,
-    DHCP4_MSG_REQUEST,
-    DHCP4_OP_REQUEST,
-    DHCP4_OPT_ROUTER,
-    DHCP4_OPT_SUBNET_MASK,
     Dhcp4Packet,
 )
 from pytcp.lib.logger import log
