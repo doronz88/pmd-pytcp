@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Subnet Mask option support code.
+This module contains the DHCPv4 Requested Ip Address option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__subnet_mask.py
+net_proto/protocols/dhcp4/options/dhcp4_option__req_ip_addr.py
 
 ver 3.0.4
 """
@@ -37,7 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_addr.ip4_mask import Ip4Mask
+from net_addr.ip4_address import Ip4Address
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -45,85 +45,85 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Subnet Mask option [RFC 2132].
+# The DHCPv4 Requested Ip Address option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 1    |    Length = 4   |        Subnet Mask
+# |     Code = 50   |    Length = 4   |    Requested IP Address
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#              Subnet Mask            |
+#         Requested IP Address        |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__SUBNET_MASK__LEN = 6
-DHCP4__OPTION__SUBNET_MASK__STRUCT = "! BB 4s"
+DHCP4__OPTION__REQ_IP_ADDR__LEN = 6
+DHCP4__OPTION__REQ_IP_ADDR__STRUCT = "! BB 4s"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionSubnetMask(Dhcp4Option):
+class Dhcp4OptionReqIpAddr(Dhcp4Option):
     """
-    The DHCPv4 Subnet Mask option support class.
+    The DHCPv4 Request Ip Address option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.SUBNET_MASK,
+        default=Dhcp4OptionType.REQ_IP_ADDR,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__SUBNET_MASK__LEN,
+        default=DHCP4__OPTION__REQ_IP_ADDR__LEN,
     )
 
-    subnet_mask: Ip4Mask
+    req_ip_addr: Ip4Address
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option fields.
+        Validate the DHCPv4 Request Ip Address option fields.
         """
 
-        assert isinstance(self.subnet_mask, Ip4Mask), (
-            f"The 'subnet_mask' field must be an Ip4Mask. "
-            f"Got: {type(self.subnet_mask)!r}"
+        assert isinstance(self.req_ip_addr, Ip4Address), (
+            f"The 'req_ip_addr' field must be an Ip4Address. "
+            f"Got: {type(self.req_ip_addr)!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Subnet Mask option log string.
+        Get the DHCPv4 Requested Ip Address option log string.
         """
 
-        return f"subnet_mask {self.subnet_mask}"
+        return f"req_ip_addr {self.req_ip_addr}"
 
     @override
     def __bytes__(self) -> bytes:
         """
-        Get the DHCPv4 Subnet Mask option as bytes.
+        Get the DHCPv4 Requested Ip Address option as bytes.
         """
 
         return struct.pack(
-            DHCP4__OPTION__SUBNET_MASK__STRUCT,
+            DHCP4__OPTION__REQ_IP_ADDR__STRUCT,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            bytes(self.subnet_mask),
+            bytes(self.req_ip_addr),
         )
 
     @staticmethod
     def _validate_integrity(_bytes: bytes, /) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
+        Validate the DHCPv4 Requested Ip Address option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) != DHCP4__OPTION__SUBNET_MASK__LEN:
+        if (value := _bytes[1]) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Subnet Mask option length must be "
-                f"{DHCP4__OPTION__SUBNET_MASK__LEN} bytes. Got: {value!r}"
+                "The DHCPv4 Requested Ip Address option length must be "
+                f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Subnet Mask option length must be less than or equal "
+                "The DHCPv4 Requested Ip Address option length must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
@@ -131,19 +131,19 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
     @classmethod
     def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
-        Initialize the DHCPv4 Subnet Mask option from bytes.
+        Initialize the DHCPv4 Requested Ip Address option from bytes.
         """
 
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Subnet Mask option must "
+            f"The minimum length of the DHCPv4 Requested Ip Address option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.SUBNET_MASK), (
-            f"The DHCPv4 Subnet Mask option type must be {Dhcp4OptionType.SUBNET_MASK!r}. "
+        assert (value := _bytes[0]) == int(Dhcp4OptionType.REQ_IP_ADDR), (
+            f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(_bytes)
 
-        return cls(subnet_mask=Ip4Mask(_bytes[2:6]))
+        return cls(req_ip_addr=Ip4Address(_bytes[2:6]))

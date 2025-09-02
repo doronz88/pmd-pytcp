@@ -55,6 +55,12 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4OptionMessageType,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
+    Dhcp4OptionReqIpAddr,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
+    Dhcp4OptionSrvId,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
     Dhcp4OptionParamReqList,
 )
@@ -171,23 +177,29 @@ class Dhcp4Client:
 
         # Send DHCP Request
         client_socket.send(
-            Dhcp4Packet(
-                dhcp_op=DHCP4_OP_REQUEST,
-                dhcp_xid=dhcp_xid,
-                dhcp_ciaddr=Ip4Address("0.0.0.0"),
-                dhcp_yiaddr=Ip4Address("0.0.0.0"),
-                dhcp_siaddr=Ip4Address("0.0.0.0"),
-                dhcp_giaddr=Ip4Address("0.0.0.0"),
-                dhcp_chaddr=bytes(self._mac_address),
-                dhcp_msg_type=DHCP4_MSG_REQUEST,
-                dhcp_srv_id=dhcp_srv_id,
-                dhcp_req_ip_addr=dhcp_yiaddr,
-                dhcp_param_req_list=[
-                    DHCP4_OPT_SUBNET_MASK,
-                    DHCP4_OPT_ROUTER,
-                ],
-                dhcp_host_name="PyTCP",
-            ).raw_packet
+            bytes(
+                Dhcp4Assembler(
+                    dhcp4__operation=Dhcp4Operation.REQUEST,
+                    dhcp4__xid=dhcp_xid,
+                    dhcp4__flag_b=True,
+                    dhcp4__chaddr=self._mac_address,
+                    dhcp4__options=Dhcp4Options(
+                        Dhcp4OptionMessageType(
+                            message_type=Dhcp4MessageType.REQUEST
+                        ),
+                        Dhcp4OptionParamReqList(
+                            [
+                                Dhcp4OptionType.SUBNET_MASK,
+                                Dhcp4OptionType.ROUTER,
+                            ]
+                        ),
+                        Dhcp4OptionSrvId(dhcp_srv_id or Ip4Address()),
+                        Dhcp4OptionReqIpAddr(dhcp_yiaddr),
+                        Dhcp4OptionHostName("PyTCP"),
+                        Dhcp4OptionEnd(),
+                    ),
+                )
+            )
         )
 
         __debug__ and log(

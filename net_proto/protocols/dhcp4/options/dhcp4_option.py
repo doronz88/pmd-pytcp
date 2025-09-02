@@ -50,7 +50,9 @@ class Dhcp4OptionType(ProtoOptionType):
     SUBNET_MASK = 1
     ROUTER = 3
     HOST_NAME = 12
+    REQ_IP_ADDR = 50
     MESSAGE_TYPE = 53
+    SRV_ID = 54
     PARAM_REQ_LIST = 55
     END = 255
 
