@@ -47,9 +47,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 Requested Ip Address option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 50   |    Length = 4   |    Requested IP Address
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Code = 50   |    Length = 4   |        Requested IP Address
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #         Requested IP Address        |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -115,15 +115,17 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Validate the DHCPv4 Requested Ip Address option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
+        if (
+            value := DHCP4__OPTION__LEN + _bytes[1]
+        ) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Requested Ip Address option length must be "
+                "The DHCPv4 Requested Ip Address option length value must be "
                 f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"
             )
 
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Requested Ip Address option length must be less than or equal "
+                "The DHCPv4 Requested Ip Address option length value must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

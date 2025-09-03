@@ -127,7 +127,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
 
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
-                "The unknown ICMPv6 ND option length must be less than or equal to "
+                "The unknown ICMPv6 ND option length value must be less than or equal to "
                 f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

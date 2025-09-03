@@ -169,7 +169,7 @@ class TcpOptionSack(TcpOption):
 
         if (value := _bytes[1]) > len(_bytes):
             raise TcpIntegrityError(
-                "The TCP Sack option length must be less than or equal to "
+                "The TCP Sack option length value must be less than or equal to "
                 f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
@@ -177,7 +177,7 @@ class TcpOptionSack(TcpOption):
             value := _bytes[1] - TCP__OPTION__SACK__LEN
         ) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
-                "The TCP Sack option blocks length must be a multiple of "
+                "The TCP Sack option blocks length value must be a multiplication of "
                 f"{TCP__OPTION__SACK__BLOCK_LEN}. Got: {value!r}"
             )
 

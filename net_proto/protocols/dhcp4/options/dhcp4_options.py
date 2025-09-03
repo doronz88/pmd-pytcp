@@ -63,6 +63,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
+    Dhcp4OptionRouter,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
     Dhcp4OptionSrvId,
 )
@@ -131,6 +134,18 @@ class Dhcp4Options(ProtoOptions):
         for option in self._options:
             if isinstance(option, Dhcp4OptionReqIpAddr):
                 return option.req_ip_addr
+
+        return None
+
+    @property
+    def router(self) -> list[Ip4Address] | None:
+        """
+        Get the value of the DHCP Router option if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionRouter):
+                return option.routers
 
         return None
 
@@ -224,6 +239,10 @@ class Dhcp4Options(ProtoOptions):
                     options.append(
                         Dhcp4OptionReqIpAddr.from_bytes(_bytes[offset:])
                     )
+                case Dhcp4OptionType.ROUTER:
+                    options.append(
+                        Dhcp4OptionRouter.from_bytes(_bytes[offset:])
+                    )
                 case Dhcp4OptionType.SRV_ID:
                     options.append(Dhcp4OptionSrvId.from_bytes(_bytes[offset:]))
                 case Dhcp4OptionType.SUBNET_MASK:
@@ -278,6 +297,14 @@ class Dhcp4OptionsProperties(ABC):
         """
 
         return self._options.req_ip_addr
+
+    @property
+    def router(self) -> list[Ip4Address] | None:
+        """
+        Get the value of the DHCP Router option if present.
+        """
+
+        return self._options.router
 
     @property
     def srv_id(self) -> Ip4Address | None:

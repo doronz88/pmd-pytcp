@@ -188,13 +188,13 @@ class Icmp6NdOptionPi(Icmp6NdOption):
 
         if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
             raise Icmp6IntegrityError(
-                f"The ICMPv6 ND Pi option length must be {ICMP6__ND__OPTION__PI__LEN} "
+                f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
-                "The ICMPv6 ND Pi option length must be less than or equal to the "
+                "The ICMPv6 ND Pi option length value must be less than or equal to the "
                 f"length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

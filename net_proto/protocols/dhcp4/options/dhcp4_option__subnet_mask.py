@@ -47,9 +47,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 Subnet Mask option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 1    |    Length = 4   |        Subnet Mask
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Code = 1    |    Length = 4   |             Subnet Mask
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #              Subnet Mask            |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -115,15 +115,17 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Validate the DHCPv4 Subnet Mask option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) != DHCP4__OPTION__SUBNET_MASK__LEN:
+        if (
+            value := DHCP4__OPTION__LEN + _bytes[1]
+        ) != DHCP4__OPTION__SUBNET_MASK__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Subnet Mask option length must be "
+                "The DHCPv4 Subnet Mask option length value must be "
                 f"{DHCP4__OPTION__SUBNET_MASK__LEN} bytes. Got: {value!r}"
             )
 
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Subnet Mask option length must be less than or equal "
+                "The DHCPv4 Subnet Mask option length value must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

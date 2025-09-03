@@ -113,15 +113,17 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         Validate the DHCPv4 Message Type option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
+        if (
+            value := DHCP4__OPTION__LEN + _bytes[1]
+        ) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length must be "
+                "The DHCPv4 Message Type option length value must be "
                 f"{DHCP4__OPTION__MESSAGE_TYPE__LEN} bytes. Got: {value!r}"
             )
 
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length must be less than or equal "
+                "The DHCPv4 Message Type option length value must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

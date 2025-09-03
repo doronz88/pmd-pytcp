@@ -108,15 +108,17 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Validate the DHCPv4 Parameter Request List option integrity before parsing it.
         """
 
-        if (value := _bytes[1]) >= DHCP4__OPTION__PARAM_REQ_LIST__LEN:
+        if (
+            value := DHCP4__OPTION__LEN + _bytes[1]
+        ) >= DHCP4__OPTION__PARAM_REQ_LIST__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Parameter Request List option length must be "
+                "The DHCPv4 Parameter Request List option length value must be "
                 f"at least {DHCP4__OPTION__PARAM_REQ_LIST__LEN} bytes. Got: {value!r}"
             )
 
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Parameter Request List option length must be less than or equal "
+                "The DHCPv4 Parameter Request List option length value must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

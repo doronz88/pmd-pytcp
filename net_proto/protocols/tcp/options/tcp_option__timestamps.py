@@ -135,13 +135,13 @@ class TcpOptionTimestamps(TcpOption):
 
         if (value := _bytes[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
-                f"The TCP Timestamps option length must be {TCP__OPTION__TIMESTAMPS__LEN} "
+                f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1]) > len(_bytes):
             raise TcpIntegrityError(
-                "The TCP Timestamps option length must be less than or equal to "
+                "The TCP Timestamps option length value must be less than or equal to "
                 f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

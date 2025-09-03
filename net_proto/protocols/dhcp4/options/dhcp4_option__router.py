@@ -25,9 +25,9 @@
 
 
 """
-This module contains the unknown DHCPv4 option support code.
+This module contains the DHCPv4 Router option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__unknown.py
+net_proto/protocols/dhcp4/options/dhcp4_option__router.py
 
 ver 3.0.4
 """
@@ -37,117 +37,128 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_proto.lib.int_checks import is_uint8
+from net_addr.ip4_address import Ip4Address
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
-    DHCP4__OPTION__STRUCT,
     Dhcp4Option,
     Dhcp4OptionType,
 )
 
+# The DHCPv4 Router option [RFC 2132].
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class Dhcp4OptionUnknown(Dhcp4Option):
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Code = 3    |    Length = 4n  |          Router IP Address
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#            Router IP Address       ...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+DHCP4__OPTION__ROUTER__LEN = 2
+DHCP4__OPTION__ROUTER__STRUCT = "! BB"
+
+
+@dataclass(frozen=True, kw_only=False, slots=True)
+class Dhcp4OptionRouter(Dhcp4Option):
     """
-    The DHCPv4 unknown option support class.
+    The DHCPv4 Router option support class.
     """
 
     type: Dhcp4OptionType = field(
-        repr=True,
-        init=True,
-        default=Dhcp4OptionType.from_int(255),
+        repr=False,
+        init=False,
+        default=Dhcp4OptionType.ROUTER,
     )
     len: int = field(
-        repr=True,
-        init=True,
-        default=DHCP4__OPTION__LEN,
+        repr=False,
+        init=False,
+        default=DHCP4__OPTION__ROUTER__LEN,
     )
 
-    data: bytes
+    routers: list[Ip4Address]
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 unknown option fields.
+        Validate the DHCPv4 Router option fields.
         """
 
-        assert isinstance(self.type, Dhcp4OptionType), (
-            f"The 'type' field must be a Dhcp4OptionType. "
-            f"Got: {type(self.type)!r}"
-        )
-
-        assert int(self.type) not in Dhcp4OptionType.get_known_values(), (
-            "The 'type' field must not be a core Dhcp4OptionType. "
-            f"Got: {self.type!r}"
-        )
-
-        assert is_uint8(self.len), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
-        )
-
-        assert self.len == DHCP4__OPTION__LEN + len(self.data), (
-            "The 'len' field must reflect the length of the 'data' field. "
-            f"Got: {self.len!r} != {DHCP4__OPTION__LEN + len(self.data)!r}"
+        assert isinstance(self.routers, list) and all(
+            isinstance(router, Ip4Address) for router in self.routers
+        ), (
+            f"The 'router' field must be a list of Ip4Address. "
+            f"Got: {type(self.routers)!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the unknown DHCPv4 option log string.
+        Get the DHCPv4 Router option log string.
         """
 
-        return f"unk-{int(self.type)}-{self.len}"
+        return f"router {self.routers}"
 
     @override
     def __bytes__(self) -> bytes:
         """
-        Get the unknown DHCPv4 option as bytes.
+        Get the DHCPv4 Router option as bytes.
         """
 
-        return (
-            struct.pack(
-                DHCP4__OPTION__STRUCT,
-                int(self.type),
-                self.len,
-            )
-            + self.data
+        return struct.pack(
+            DHCP4__OPTION__ROUTER__STRUCT + f"{len(self.routers) * 4}s",
+            int(self.type),
+            self.len - DHCP4__OPTION__LEN,
+            b"".join(bytes(router) for router in self.routers),
         )
 
     @staticmethod
     def _validate_integrity(_bytes: bytes, /) -> None:
         """
-        Validate the unknown DHCPv4 option integrity before parsing it.
+        Validate the DHCPv4 Router option integrity before parsing it.
         """
+
+        if (
+            value := DHCP4__OPTION__LEN + _bytes[1]
+        ) != DHCP4__OPTION__ROUTER__LEN:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Router option length value must be "
+                f"{DHCP4__OPTION__ROUTER__LEN} bytes. Got: {value!r}"
+            )
 
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The unknown DHCPv4 option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                "The DHCPv4 Router option length value must be less than or equal "
+                f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+            )
+
+        if (value := _bytes[1] % 4) != 0:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Router option length value (less header) must be a multiplication of 4. "
+                f"Got: {value!r}"
             )
 
     @override
     @classmethod
     def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
-        Initialize the unknown DHCPv4 option from bytes.
+        Initialize the DHCPv4 Router option from bytes.
         """
 
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the unknown DHCPv4 option must be "
-            f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the DHCPv4 Router option must "
+            f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := _bytes[0]) not in Dhcp4OptionType.get_known_values(), (
-            f"The unknown DHCPv4 option type must not be known. "
+        assert (value := _bytes[0]) == int(Dhcp4OptionType.ROUTER), (
+            f"The DHCPv4 Router option type must be {Dhcp4OptionType.ROUTER!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
-        Dhcp4OptionUnknown._validate_integrity(_bytes)
+        cls._validate_integrity(_bytes)
 
         return cls(
-            type=Dhcp4OptionType(_bytes[0]),
-            len=_bytes[1],
-            data=_bytes[DHCP4__OPTION__LEN : _bytes[1]],
+            routers=[
+                Ip4Address(_bytes[i : i + 4])
+                for i in range(2, _bytes[1] + 2, 4)
+            ]
         )

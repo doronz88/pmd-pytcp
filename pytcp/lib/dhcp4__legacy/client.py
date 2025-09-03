@@ -100,7 +100,7 @@ class Dhcp4Client:
 
         dhcp_xid = random.randint(0, 0xFFFFFFFF)
 
-        # Send DHCP Discover
+        # Send DHCP Discover.
         client_socket.send(
             bytes(
                 Dhcp4Assembler(
@@ -129,7 +129,7 @@ class Dhcp4Client:
             "dhcp4", "Sent out DHCP Discover message to 255.255.255.255"
         )
 
-        # Wait for DHCP Offer
+        # Wait for DHCP Offer.
         try:
             dhcp_packet_rx = Dhcp4Packet(client_socket.recv(timeout=5))
         except TimeoutError:
@@ -171,7 +171,7 @@ class Dhcp4Client:
             f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
         )
 
-        # Send DHCP Request
+        # Send DHCP Request.
         client_socket.send(
             bytes(
                 Dhcp4Assembler(

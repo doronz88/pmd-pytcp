@@ -115,13 +115,13 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
 
         if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
             raise Icmp6IntegrityError(
-                f"The ICMPv6 ND Slla option length must be {ICMP6__ND__OPTION__SLLA__LEN} "
+                f"The ICMPv6 ND Slla option length value must be {ICMP6__ND__OPTION__SLLA__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
-                "The ICMPv6 ND Slla option length must be less than or equal to "
+                "The ICMPv6 ND Slla option length value must be less than or equal to "
                 f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 

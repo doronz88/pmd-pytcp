@@ -105,7 +105,7 @@ class TcpOptionSackperm(TcpOption):
 
         if (value := _bytes[1]) != TCP__OPTION__SACKPERM__LEN:
             raise TcpIntegrityError(
-                f"The TCP Sackperm option length must be {TCP__OPTION__SACKPERM__LEN} "
+                f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
