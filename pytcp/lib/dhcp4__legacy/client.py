@@ -45,6 +45,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
     Dhcp4Operation,
 )
+from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     Dhcp4OptionEnd,
@@ -131,7 +132,7 @@ class Dhcp4Client:
 
         # Wait for DHCP Offer.
         try:
-            dhcp_packet_rx = Dhcp4Packet(client_socket.recv(timeout=5))
+            dhcp_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
         except TimeoutError:
             __debug__ and log(
                 "dhcp4", "Didn't receive DHCP Offer message - timeout"
@@ -139,7 +140,7 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        if dhcp_packet_rx.dhcp_msg_type != DHCP4_MSG_OFFER:
+        if dhcp_packet_rx.message_type != Dhcp4MessageType.OFFER:
             __debug__ and log(
                 "dhcp4",
                 "Didn't receive DHCP Offer message - message type error",
@@ -147,9 +148,10 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        dhcp_srv_id = dhcp_packet_rx.dhcp_srv_id
-        dhcp_yiaddr = dhcp_packet_rx.dhcp_yiaddr
+        dhcp_srv_id = dhcp_packet_rx.srv_id
+        dhcp_yiaddr = dhcp_packet_rx.yiaddr
 
+        """
         dhcp_router_log = (
             None
             if dhcp_packet_rx.dhcp_router is None
@@ -159,16 +161,17 @@ class Dhcp4Client:
                 )
             )
         )
+        """
 
         __debug__ and log(
             "dhcp4",
             f"Received DHCP Offer from "
-            f"{dhcp_packet_rx.dhcp_srv_id} - "
-            f"IP: {dhcp_packet_rx.dhcp_yiaddr}, "
-            f"Mask: {dhcp_packet_rx.dhcp_subnet_mask}, "
-            f"Router: {dhcp_router_log}, "
-            f"DNS: {dhcp_packet_rx.dhcp_dns}, "
-            f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
+            f"{dhcp_packet_rx.srv_id} - "
+            f"IP: {dhcp_packet_rx.yiaddr}, "
+            f"Mask: {dhcp_packet_rx.subnet_mask}, ",
+            # f"Router: {dhcp_router_log}, "
+            # f"DNS: {dhcp_packet_rx.dhcp_dns}, "
+            # f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
         )
 
         # Send DHCP Request.
@@ -200,7 +203,7 @@ class Dhcp4Client:
 
         __debug__ and log(
             "dhcp4",
-            "Sent out DHCP Request message to " f"{dhcp_packet_rx.dhcp_srv_id}",
+            "Sent out DHCP Request message to " f"{dhcp_packet_rx.srv_id}",
         )
 
         # Wait for DHCP Ack

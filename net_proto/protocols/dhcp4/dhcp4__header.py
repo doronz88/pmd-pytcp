@@ -322,14 +322,14 @@ class Dhcp4Header(ProtoStruct):
             hops=hops,
             xid=xid,
             secs=secs,
-            flag_b=flags >> 15,
+            flag_b=bool(flags >> 15),
             ciaddr=Ip4Address(ciaddr),
             yiaddr=Ip4Address(yiaddr),
             siaddr=Ip4Address(siaddr),
             giaddr=Ip4Address(giaddr),
-            chaddr=MacAddress(chaddr),
-            sname=str(sname),
-            file=str(file),
+            chaddr=MacAddress(chaddr[:6]),
+            sname=sname.rstrip(b"\x00").decode("ascii"),
+            file=file.rstrip(b"\x00").decode("ascii"),
         )
 
 
