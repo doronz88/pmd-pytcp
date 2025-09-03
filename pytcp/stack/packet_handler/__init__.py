@@ -50,7 +50,7 @@ from net_addr import (
     MacAddress,
 )
 from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType
-from pytcp.lib.dhcp4__legacy.client import Dhcp4Client
+from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 from pytcp.lib.logger import log
