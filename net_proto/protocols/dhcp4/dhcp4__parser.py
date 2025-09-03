@@ -35,19 +35,16 @@ ver 3.0.4
 
 from typing import override
 
-from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.dhcp4.dhcp4__base import Dhcp4
-from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4HardwareType
 from net_proto.protocols.dhcp4.dhcp4__errors import (
     Dhcp4IntegrityError,
-    Dhcp4SanityError,
 )
 from net_proto.protocols.dhcp4.dhcp4__header import (
     DHCP4__HEADER__LEN,
-    DHCP4__HEADER__MAGIC_COOKIE,
     Dhcp4Header,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 
 
 class Dhcp4Parser(Dhcp4, ProtoParser):
@@ -57,12 +54,12 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
 
     _payload: memoryview
 
-    def __init__(self, packet_rx: PacketRx) -> None:
+    def __init__(self, data_rx: bytes) -> None:
         """
         Initialize the DHCPv4 packet parser.
         """
 
-        self._frame = packet_rx.frame
+        self._frame = memoryview(data_rx)
 
         self._validate_integrity()
         self._parse()
@@ -87,27 +84,12 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         """
 
         self._header = Dhcp4Header.from_bytes(self._frame)
-        self._payload = self._frame[len(self._header) :]
+        self._options = Dhcp4Options.from_bytes(
+            self._frame[len(self._header) :]
+        )
 
     @override
     def _validate_sanity(self) -> None:
         """
         Validate sanity of the DHCPv4 packet after parsing it.
         """
-
-        if self._header.hrtype == Dhcp4HardwareType.ETHERNET:
-            raise Dhcp4SanityError(
-                f"The 'hrtype' field value must be {Dhcp4HardwareType.ETHERNET}, "
-                f"got {self._header.hrtype}."
-            )
-
-        if self._header.hrlen != 6:
-            raise Dhcp4SanityError(
-                f"The 'hrlen' field value must be 6, got {self._header.hrlen}."
-            )
-
-        if self._header.magic_cookie != DHCP4__HEADER__MAGIC_COOKIE:
-            raise Dhcp4SanityError(
-                "The 'magic_cookie' field value must be "
-                f"{DHCP4__HEADER__MAGIC_COOKIE}, got {self._header.magic_cookie}."
-            )
