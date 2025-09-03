@@ -40,10 +40,13 @@ from net_proto.protocols.dhcp4.dhcp4__header import (
     Dhcp4Header,
     Dhcp4HeaderProperties,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
+from net_proto.protocols.dhcp4.options.dhcp4_options import (
+    Dhcp4Options,
+    Dhcp4OptionsProperties,
+)
 
 
-class Dhcp4(Proto, Dhcp4HeaderProperties):
+class Dhcp4(Proto, Dhcp4HeaderProperties, Dhcp4OptionsProperties):
     """
     The DHCPv4 protocol base class.
     """
