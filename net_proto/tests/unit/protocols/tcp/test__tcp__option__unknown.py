@@ -39,9 +39,6 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import (
-    TCP__OPTION__LEN,
-    UINT_8__MAX,
-    UINT_8__MIN,
     TcpIntegrityError,
     TcpOptionType,
     TcpOptionUnknown,
@@ -61,7 +58,6 @@ class TestTcpOptionUnknownAsserts(TestCase):
         self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "type": TcpOptionType.from_int(255),
-            "len": 8,
             "data": b"012345",
         }
 
@@ -101,62 +97,6 @@ class TestTcpOptionUnknownAsserts(TestCase):
                 f"Got: {value!r}",
             )
 
-    def test__tcp__option__unknown__len__under_min(self) -> None:
-        """
-        Ensure the TCP unknown option constructor raises an exception when
-        the provided 'len' argument is lower than the minimum supported
-        value.
-        """
-
-        self._kwargs["len"] = value = UINT_8__MIN - 1
-
-        with self.assertRaises(AssertionError) as error:
-            TcpOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__tcp__option__unknown__len__over_max(self) -> None:
-        """
-        Ensure the TCP unknown option constructor raises an exception when
-        the provided 'len' argument is higher than the maximum supported
-        value.
-        """
-
-        self._kwargs["len"] = value = UINT_8__MAX + 1
-
-        with self.assertRaises(AssertionError) as error:
-            TcpOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__tcp__option__unknown__len__mismatch(self) -> None:
-        """
-        Ensure the TCP unknown option constructor raises an exception when
-        the provided 'len' argument is different than the length of the
-        'data' field.
-        """
-
-        self._kwargs["len"] = value = (
-            TCP__OPTION__LEN + len(self._kwargs["data"]) + 1
-        )
-
-        with self.assertRaises(AssertionError) as error:
-            TcpOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            (
-                "The 'len' field must reflect the length of the 'data' field. "
-                f"Got: {value} != {TCP__OPTION__LEN + len(self._kwargs['data'])}"
-            ),
-        )
-
 
 @parameterized_class(
     [
@@ -165,7 +105,6 @@ class TestTcpOptionUnknownAsserts(TestCase):
             "_args": [],
             "_kwargs": {
                 "type": TcpOptionType.from_int(255),
-                "len": 18,
                 "data": b"0123456789ABCDEF",
             },
             "_results": {
@@ -290,7 +229,6 @@ class TestTcpOptionUnknownAssembler(TestCase):
             "_results": {
                 "option": TcpOptionUnknown(
                     type=TcpOptionType.from_int(255),
-                    len=18,
                     data=b"0123456789ABCDEF",
                 ),
             },

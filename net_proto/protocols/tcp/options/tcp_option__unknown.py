@@ -37,7 +37,6 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.tcp.options.tcp_option import (
     TCP__OPTION__LEN,
     TCP__OPTION__STRUCT,
@@ -60,8 +59,7 @@ class TcpOptionUnknown(TcpOption):
     )
     len: int = field(
         repr=True,
-        init=True,
-        default=TCP__OPTION__LEN,
+        init=False,
     )
 
     data: bytes
@@ -72,6 +70,9 @@ class TcpOptionUnknown(TcpOption):
         Validate the TCP unknown option fields.
         """
 
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", TCP__OPTION__LEN + len(self.data))
+
         assert isinstance(self.type, TcpOptionType), (
             f"The 'type' field must be a TcpOptionType. "
             f"Got: {type(self.type)!r}"
@@ -80,16 +81,6 @@ class TcpOptionUnknown(TcpOption):
         assert int(self.type) not in TcpOptionType.get_known_values(), (
             "The 'type' field must not be a core TcpOptionType. "
             f"Got: {self.type!r}"
-        )
-
-        assert is_uint8(self.len), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
-        )
-
-        assert self.len == TCP__OPTION__LEN + len(self.data), (
-            "The 'len' field must reflect the length of the 'data' field. "
-            f"Got: {self.len!r} != {TCP__OPTION__LEN + len(self.data)!r}"
         )
 
     @override
@@ -148,6 +139,5 @@ class TcpOptionUnknown(TcpOption):
 
         return cls(
             type=TcpOptionType(_bytes[0]),
-            len=_bytes[1],
             data=_bytes[TCP__OPTION__LEN : _bytes[1]],
         )

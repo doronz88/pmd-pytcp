@@ -37,7 +37,6 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.options.ip4_option import (
     IP4__OPTION__LEN,
@@ -82,11 +81,6 @@ class Ip4OptionUnknown(Ip4Option):
         assert int(self.type) not in Ip4OptionType.get_known_values(), (
             "The 'type' field must not be a known Ip4OptionType. "
             f"Got: {self.type!r}"
-        )
-
-        assert is_uint8(self.len), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len}"
         )
 
     @override
