@@ -499,7 +499,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length must be "
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length value must be "
                     "32 bytes. Got: 40"
                 ),
             },
@@ -514,7 +514,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length must be "
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length value must be "
                     "less than or equal to the length of provided bytes (31). Got: 32"
                 ),
             },

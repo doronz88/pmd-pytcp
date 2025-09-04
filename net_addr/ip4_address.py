@@ -33,14 +33,19 @@ ver 3.0.4
 """
 
 
+from __future__ import annotations
+
 import re
 import socket
-from typing import Self, override
+from typing import TYPE_CHECKING, Self, override
 
 from net_addr.errors import Ip4AddressFormatError
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MacAddress
+
+if TYPE_CHECKING:
+    from net_addr.ip4_mask import Ip4Mask
 
 IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
@@ -224,3 +229,70 @@ class Ip4Address(IpAddress):
         return (
             self._address & 0xFF_00_00_00 == 0x00_00_00_00
         ) and self._address != 0x00_00_00_00  # 0.0.0.1 - 0.255.255.255
+
+    @property
+    def is_class_a(self) -> bool:
+        """
+        Check if the IPv4 address is a Class A address.
+        """
+
+        return (
+            self._address & 0x80_00_00_00 == 0x00_00_00_00
+        )  # 0.0.0.0 - 127.255.255.255
+
+    @property
+    def is_class_b(self) -> bool:
+        """
+        Check if the IPv4 address is a Class B address.
+        """
+
+        return (
+            self._address & 0xC0_00_00_00 == 0x80_00_00_00
+        )  # 128.0.0.0 - 191.255.255.255
+
+    @property
+    def is_class_c(self) -> bool:
+        """
+        Check if the IPv4 address is a Class C address.
+        """
+
+        return (
+            self._address & 0xE0_00_00_00 == 0xC0_00_00_00
+        )  # 192.0.0.0 - 223.255.255.255
+
+    @property
+    def is_class_d(self) -> bool:
+        """
+        Check if the IPv4 address is a Class D address.
+        """
+
+        return (
+            self._address & 0xF0_00_00_00 == 0xE0_00_00_00
+        )  # 224.0.0.0 - 239.255.255.255
+
+    @property
+    def is_class_e(self) -> bool:
+        """
+        Check if the IPv4 address is a Class E address.
+        """
+
+        return (
+            self._address & 0xF0_00_00_00 == 0xF0_00_00_00
+        )  # 240.0.0.0 - 255.255.255.255
+
+    @property
+    def classful_mask(self) -> Ip4Mask:
+        """
+        Get the classful mask for the IPv4 address.
+        """
+
+        from net_addr.ip4_mask import Ip4Mask
+
+        if self.is_class_a:
+            return Ip4Mask("255.0.0.0")
+        if self.is_class_b:
+            return Ip4Mask("255.255.0.0")
+        if self.is_class_c:
+            return Ip4Mask("255.255.255.0")
+
+        raise ValueError("Unable to assign classful mask to IPv4 address.")

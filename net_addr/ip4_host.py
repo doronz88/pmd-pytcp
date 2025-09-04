@@ -70,6 +70,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             Self
             | tuple[Ip4Address, Ip4Network]
             | tuple[Ip4Address, Ip4Mask]
+            | tuple[Ip4Address, None]
             | str
         ),
         /,
@@ -95,6 +96,8 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             self._address = host[0]
             if isinstance(host[1], Ip4Network):
                 self._network = host[1]
+            elif host[1] is None:
+                self._network = Ip4Network((host[0], host[0].classful_mask))
             else:
                 self._network = Ip4Network((host[0], host[1]))
             if self._address not in self._network:

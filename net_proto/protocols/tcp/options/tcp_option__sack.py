@@ -177,7 +177,7 @@ class TcpOptionSack(TcpOption):
             value := _bytes[1] - TCP__OPTION__SACK__LEN
         ) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
-                "The TCP Sack option blocks length value must be a multiplication of "
+                "The TCP Sack option blocks length value must be a multiple of "
                 f"{TCP__OPTION__SACK__BLOCK_LEN}. Got: {value!r}"
             )
 

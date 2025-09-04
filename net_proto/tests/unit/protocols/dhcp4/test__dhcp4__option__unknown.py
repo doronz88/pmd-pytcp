@@ -39,9 +39,6 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import (
-    DHCP4__OPTION__LEN,
-    UINT_8__MAX,
-    UINT_8__MIN,
     Dhcp4IntegrityError,
     Dhcp4OptionType,
     Dhcp4OptionUnknown,
@@ -60,7 +57,6 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
 
         self._option_args: dict[str, Any] = {
             "type": Dhcp4OptionType.from_int(254),
-            "len": 8,
             "data": b"012345",
         }
 
@@ -100,62 +96,6 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                 f"Got: {value!r}",
             )
 
-    def test__dhcp4__option__unknown__len__under_min(self) -> None:
-        """
-        Ensure the DHCPv4 unknown option constructor raises an exception
-        when the provided 'len' argument is lower than the minimum supported
-        value.
-        """
-
-        self._option_args["len"] = value = UINT_8__MIN - 1
-
-        with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown(**self._option_args)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__dhcp4__option__unknown__len__over_max(self) -> None:
-        """
-        Ensure the DHCPv4 unknown option constructor raises an exception
-        when the provided 'len' argument is higher than the maximum supported
-        value.
-        """
-
-        self._option_args["len"] = value = UINT_8__MAX + 1
-
-        with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown(**self._option_args)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__dhcp4__option__unknown__len__mismatch(self) -> None:
-        """
-        Ensure the DHCPv4 unknown option constructor raises an exception
-        when the provided 'len' argument is different than the length of the
-        'data' field.
-        """
-
-        self._option_args["len"] = value = (
-            DHCP4__OPTION__LEN + len(self._option_args["data"]) + 1
-        )
-
-        with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown(**self._option_args)
-
-        self.assertEqual(
-            str(error.exception),
-            (
-                "The 'len' field must reflect the length of the 'data' field. "
-                f"Got: {value} != {DHCP4__OPTION__LEN + len(self._option_args['data'])}"
-            ),
-        )
-
 
 @parameterized_class(
     [
@@ -163,7 +103,6 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             "_description": "The unknown DHCPv4 option.",
             "_args": {
                 "type": Dhcp4OptionType.from_int(254),
-                "len": 18,
                 "data": b"0123456789ABCDEF",
             },
             "_results": {
@@ -288,7 +227,6 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_results": {
                 "option": Dhcp4OptionUnknown(
                     type=Dhcp4OptionType.from_int(254),
-                    len=18,
                     data=b"0123456789ABCDEF",
                 ),
             },
@@ -349,7 +287,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_results": {
                 "error": Dhcp4IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The unknown DHCPv4 option length must be "
+                    "[INTEGRITY ERROR][DHCPv4] The unknown DHCPv4 option length value must be "
                     "less than or equal to the length of provided bytes (17). Got: 18"
                 ),
             },

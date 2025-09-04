@@ -60,8 +60,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
     )
     len: int = field(
         repr=True,
-        init=True,
-        default=DHCP4__OPTION__LEN,
+        init=False,
     )
 
     data: bytes
@@ -71,6 +70,9 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         """
         Validate the DHCPv4 unknown option fields.
         """
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
 
         assert isinstance(self.type, Dhcp4OptionType), (
             f"The 'type' field must be a Dhcp4OptionType. "
@@ -148,6 +150,5 @@ class Dhcp4OptionUnknown(Dhcp4Option):
 
         return cls(
             type=Dhcp4OptionType(_bytes[0]),
-            len=DHCP4__OPTION__LEN + _bytes[1],
             data=_bytes[DHCP4__OPTION__LEN : DHCP4__OPTION__LEN + _bytes[1]],
         )

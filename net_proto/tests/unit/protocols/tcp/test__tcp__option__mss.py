@@ -245,7 +245,7 @@ class TestTcpOptionMssAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Mss option length must be "
+                    "[INTEGRITY ERROR][TCP] The TCP Mss option length value must be "
                     "4 bytes. Got: 3"
                 ),
             },
@@ -257,7 +257,7 @@ class TestTcpOptionMssAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Mss option length must be "
+                    "[INTEGRITY ERROR][TCP] The TCP Mss option length value must be "
                     "less than or equal to the length of provided bytes "
                     "(3). Got: 4"
                 ),

@@ -195,7 +195,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length must be "
+                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length value must be "
                     "2 bytes. Got: 1"
                 ),
             },

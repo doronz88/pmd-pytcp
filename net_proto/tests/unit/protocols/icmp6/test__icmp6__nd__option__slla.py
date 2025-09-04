@@ -232,7 +232,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length "
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length value "
                     "must be 8 bytes. Got: 16"
                 ),
             },
@@ -244,7 +244,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length "
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length value "
                     "must be less than or equal to the length of provided bytes "
                     "(7). Got: 8"
                 ),

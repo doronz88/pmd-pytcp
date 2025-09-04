@@ -373,7 +373,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The unknown ICMPv6 ND option length "
+                    "[INTEGRITY ERROR][ICMPv6] The unknown ICMPv6 ND option length value "
                     "must be less than or equal to the length of provided bytes "
                     "(15). Got: 16"
                 ),

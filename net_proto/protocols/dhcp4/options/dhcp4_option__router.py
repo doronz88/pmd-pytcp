@@ -129,7 +129,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
 
         if (value := _bytes[1] % 4) != 0:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Router option length value (less header) must be a multiplication of 4. "
+                "The DHCPv4 Router option length value (less header) must be a multiple of 4. "
                 f"Got: {value!r}"
             )
 

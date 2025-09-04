@@ -422,7 +422,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The unknown TCP option length must be "
+                    "[INTEGRITY ERROR][TCP] The unknown TCP option length value must be "
                     "less than or equal to the length of provided bytes (17). Got: 18"
                 ),
             },

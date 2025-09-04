@@ -361,7 +361,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sack option length must "
+                    "[INTEGRITY ERROR][TCP] The TCP Sack option length value must "
                     "be less than or equal to the length of provided bytes "
                     "(9). Got: 10"
                 ),
@@ -374,7 +374,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sack option blocks length "
+                    "[INTEGRITY ERROR][TCP] The TCP Sack option blocks length value "
                     "must be a multiple of 8. Got: 9"
                 ),
             },

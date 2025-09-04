@@ -328,7 +328,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length "
+                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value "
                     "must be 10 bytes. Got: 9"
                 ),
             },
@@ -340,7 +340,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length "
+                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value "
                     "must be less than or equal to the length of provided "
                     "bytes (9). Got: 10"
                 ),
