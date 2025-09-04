@@ -71,6 +71,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
     )
     len: int = field(
         repr=False,
+        init=False,
     )
 
     routers: list[Ip4Address]
@@ -80,6 +81,11 @@ class Dhcp4OptionRouter(Dhcp4Option):
         """
         Validate the DHCPv4 Router option fields.
         """
+
+        # Set the 'len' field based on the number of routers.
+        object.__setattr__(
+            self, "len", DHCP4__OPTION__ROUTER__LEN + len(self.routers) * 4
+        )
 
         assert isinstance(self.routers, list) and all(
             isinstance(router, Ip4Address) for router in self.routers
@@ -147,7 +153,6 @@ class Dhcp4OptionRouter(Dhcp4Option):
         cls._validate_integrity(_bytes)
 
         return cls(
-            len=DHCP4__OPTION__LEN + _bytes[1],
             routers=[
                 Ip4Address(_bytes[i : i + 4])
                 for i in range(2, _bytes[1] + 2, 4)

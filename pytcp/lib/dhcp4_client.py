@@ -62,6 +62,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
+    Dhcp4OptionRouter,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
     Dhcp4OptionSrvId,
 )
@@ -167,6 +170,13 @@ class Dhcp4Client:
             # f"Router: {dhcp_router_log}, "
             # f"DNS: {dhcp_packet_rx.dhcp_dns}, "
             # f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
+        )
+
+        Dhcp4OptionRouter(
+            routers=[
+                Ip4Address("1.1.1.1"),
+                Ip4Address("2.2.2.2"),
+            ]
         )
 
         # Send DHCP Request.
