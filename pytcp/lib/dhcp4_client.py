@@ -34,12 +34,9 @@ ver 3.0.2
 """
 
 
-from __future__ import annotations
-
 import random
-from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask
+from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
@@ -71,9 +68,6 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
 from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from pytcp.lib.logger import log
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
-
-if TYPE_CHECKING:
-    from net_addr import MacAddress
 
 
 class Dhcp4Client:
