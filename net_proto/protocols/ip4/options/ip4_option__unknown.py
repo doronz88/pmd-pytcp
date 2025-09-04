@@ -60,8 +60,7 @@ class Ip4OptionUnknown(Ip4Option):
     )
     len: int = field(
         repr=True,
-        init=True,
-        default=IP4__OPTION__LEN,
+        init=False,
     )
 
     data: bytes
@@ -71,6 +70,9 @@ class Ip4OptionUnknown(Ip4Option):
         """
         Validate the IPv4 unknown option fields.
         """
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
 
         assert isinstance(self.type, Ip4OptionType), (
             f"The 'type' field must be a Ip4OptionType. "
@@ -85,11 +87,6 @@ class Ip4OptionUnknown(Ip4Option):
         assert is_uint8(self.len), (
             f"The 'len' field must be an 8-bit unsigned integer. "
             f"Got: {self.len}"
-        )
-
-        assert self.len == IP4__OPTION__LEN + len(self.data), (
-            "The 'len' field must reflect the length of the 'data' field. "
-            f"Got: {self.len!r} != {IP4__OPTION__LEN + len(self.data)!r}"
         )
 
     @override
@@ -148,6 +145,5 @@ class Ip4OptionUnknown(Ip4Option):
 
         return cls(
             type=Ip4OptionType(_bytes[0]),
-            len=_bytes[1],
             data=_bytes[IP4__OPTION__LEN : _bytes[1]],
         )
