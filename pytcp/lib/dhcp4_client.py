@@ -149,25 +149,19 @@ class Dhcp4Client:
         dhcp_srv_id = dhcp_packet_rx.srv_id
         dhcp_yiaddr = dhcp_packet_rx.yiaddr
 
-        """
         dhcp_router_log = (
             None
-            if dhcp_packet_rx.dhcp_router is None
-            else (
-                ", ".join(
-                    str(address) for address in dhcp_packet_rx.dhcp_router
-                )
-            )
+            if dhcp_packet_rx.router is None
+            else (", ".join(str(address) for address in dhcp_packet_rx.router))
         )
-        """
 
         __debug__ and log(
             "dhcp4",
             f"Received DHCP Offer from "
             f"{dhcp_packet_rx.srv_id} - "
             f"IP: {dhcp_packet_rx.yiaddr}, "
-            f"Mask: {dhcp_packet_rx.subnet_mask}, ",
-            # f"Router: {dhcp_router_log}, "
+            f"Mask: {dhcp_packet_rx.subnet_mask}, "
+            f"Router: {dhcp_router_log}, ",
             # f"DNS: {dhcp_packet_rx.dhcp_dns}, "
             # f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
         )
@@ -229,24 +223,18 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        """
         dhcp_router_log = (
             None
-            if dhcp_packet_rx.dhcp_router is None
-            else (
-                ", ".join(
-                    str(address) for address in dhcp_packet_rx.dhcp_router
-                )
-            )
+            if dhcp_packet_rx.router is None
+            else (", ".join(str(address) for address in dhcp_packet_rx.router))
         )
-        """
 
         __debug__ and log(
             "dhcp4",
             f"Received DHCP Offer from {dhcp_packet_rx.srv_id} - "
             f"IP: {dhcp_packet_rx.yiaddr}, "
-            f"Mask: {dhcp_packet_rx.subnet_mask}, ",
-            # f"Router: {dhcp_router_log}, ",
+            f"Mask: {dhcp_packet_rx.subnet_mask}, "
+            f"Router: {dhcp_router_log}, ",
             # f"DNS: {dhcp_packet_rx.dns}, "
             # f"Domain: {dhcp_packet_rx.domain_name}",
         )
