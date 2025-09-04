@@ -72,12 +72,17 @@ class Dhcp4Client:
     Class supporting DHCPv4 client operation.
     """
 
-    def __init__(self, *, mac_address: MacAddress) -> None:
+    def __init__(
+        self, *, mac_address: MacAddress, timeout__sec: int = 5
+    ) -> None:
         """
         Class constructor.
         """
 
         self._mac_address = mac_address
+        self._timeout__sec = timeout__sec
+
+        self._xid = random.randint(0, 0xFFFFFFFF)
 
     def fetch(self) -> Ip4Host | None:
         """
@@ -88,12 +93,10 @@ class Dhcp4Client:
         client_socket.bind(("0.0.0.0", 68))
         client_socket.connect(("255.255.255.255", 67))
 
-        dhcp_xid = random.randint(0, 0xFFFFFFFF)
-
-        # Send DHCP Discover.
+        # Send DHCP Discover to broadcast address.
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
-            dhcp4__xid=dhcp_xid,
+            dhcp4__xid=self._xid,
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -108,12 +111,14 @@ class Dhcp4Client:
                 Dhcp4OptionEnd(),
             ),
         )
-        client_socket.send(bytes(dhcp4_packet_tx))
         __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
 
         # Wait for DHCP Offer.
         try:
-            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            dhcp4_packet_rx = Dhcp4Parser(
+                client_socket.recv(timeout=self._timeout__sec)
+            )
             __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
@@ -130,13 +135,13 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        dhcp4_srv_id = dhcp4_packet_rx.srv_id
-        dhcp4_yiaddr = dhcp4_packet_rx.yiaddr
+        srv_id = dhcp4_packet_rx.srv_id
+        yiaddr = dhcp4_packet_rx.yiaddr
 
-        # Send DHCP Request.
+        # Send DHCP Request packet to server.
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
-            dhcp4__xid=dhcp_xid,
+            dhcp4__xid=self._xid,
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -147,18 +152,20 @@ class Dhcp4Client:
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
-                Dhcp4OptionSrvId(dhcp4_srv_id or Ip4Address()),
-                Dhcp4OptionReqIpAddr(dhcp4_yiaddr),
+                Dhcp4OptionSrvId(srv_id or Ip4Address()),
+                Dhcp4OptionReqIpAddr(yiaddr),
                 Dhcp4OptionHostName("PyTCP"),
                 Dhcp4OptionEnd(),
             ),
         )
-        client_socket.send(bytes(dhcp4_packet_tx))
         __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
 
-        # Wait for DHCP Ack
+        # Wait for the DHCP Ack packet from server.
         try:
-            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            dhcp4_packet_rx = Dhcp4Parser(
+                client_socket.recv(timeout=self._timeout__sec)
+            )
             __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
