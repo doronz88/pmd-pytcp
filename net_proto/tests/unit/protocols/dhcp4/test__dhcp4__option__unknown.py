@@ -220,8 +220,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_description": "The unknown DHCPv4 option.",
             "_args": {
                 "bytes": (
-                    b"\xfe\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
+                    b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x45\x46" + b"ZH0PA"
                 ),
             },
             "_results": {
@@ -248,7 +248,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_description": "The unknown DHCPv4 option incorrect 'type' field (End) assert.",
             "_args": {
                 "bytes": (
-                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
             },
@@ -264,7 +264,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_description": "The unknown DHCPv4 option incorrect 'type' field (Pad) assert.",
             "_args": {
                 "bytes": (
-                    b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
             },
@@ -280,7 +280,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_description": "The unknown DHCPv4 option length integrity check (II).",
             "_args": {
                 "bytes": (
-                    b"\xfe\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45"
                 ),
             },
