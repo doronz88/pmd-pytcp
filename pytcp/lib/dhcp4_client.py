@@ -30,7 +30,7 @@ Module contains simple DHCPv4 client that is used internally by the stack.
 
 pytcp/protocols/dhcp4/client.py
 
-ver 3.0.2
+ver 3.0.3
 """
 
 
@@ -58,9 +58,6 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
-)
-from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
-    Dhcp4OptionRouter,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
     Dhcp4OptionSrvId,
@@ -94,37 +91,30 @@ class Dhcp4Client:
         dhcp_xid = random.randint(0, 0xFFFFFFFF)
 
         # Send DHCP Discover.
-        client_socket.send(
-            bytes(
-                Dhcp4Assembler(
-                    dhcp4__operation=Dhcp4Operation.REQUEST,
-                    dhcp4__xid=dhcp_xid,
-                    dhcp4__flag_b=True,
-                    dhcp4__chaddr=self._mac_address,
-                    dhcp4__options=Dhcp4Options(
-                        Dhcp4OptionMessageType(
-                            message_type=Dhcp4MessageType.DISCOVER
-                        ),
-                        Dhcp4OptionParamReqList(
-                            [
-                                Dhcp4OptionType.SUBNET_MASK,
-                                Dhcp4OptionType.ROUTER,
-                            ]
-                        ),
-                        Dhcp4OptionHostName("PyTCP"),
-                        Dhcp4OptionEnd(),
-                    ),
-                )
-            )
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=dhcp_xid,
+            dhcp4__flag_b=True,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
+                    ]
+                ),
+                Dhcp4OptionHostName("PyTCP"),
+                Dhcp4OptionEnd(),
+            ),
         )
-
-        __debug__ and log(
-            "dhcp4", "Sent out DHCP Discover message to 255.255.255.255"
-        )
+        client_socket.send(bytes(dhcp4_packet_tx))
+        __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
 
         # Wait for DHCP Offer.
         try:
-            dhcp_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
                 "dhcp4", "Didn't receive DHCP Offer message - timeout"
@@ -132,7 +122,7 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        if dhcp_packet_rx.message_type != Dhcp4MessageType.OFFER:
+        if dhcp4_packet_rx.message_type != Dhcp4MessageType.OFFER:
             __debug__ and log(
                 "dhcp4",
                 "Didn't receive DHCP Offer message - message type error",
@@ -140,68 +130,36 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        dhcp_srv_id = dhcp_packet_rx.srv_id
-        dhcp_yiaddr = dhcp_packet_rx.yiaddr
-
-        dhcp_router_log = (
-            None
-            if dhcp_packet_rx.router is None
-            else (", ".join(str(address) for address in dhcp_packet_rx.router))
-        )
-
-        __debug__ and log(
-            "dhcp4",
-            f"Received DHCP Offer from "
-            f"{dhcp_packet_rx.srv_id} - "
-            f"IP: {dhcp_packet_rx.yiaddr}, "
-            f"Mask: {dhcp_packet_rx.subnet_mask}, "
-            f"Router: {dhcp_router_log}, ",
-            # f"DNS: {dhcp_packet_rx.dhcp_dns}, "
-            # f"Domain: {dhcp_packet_rx.dhcp_domain_name}",
-        )
-
-        Dhcp4OptionRouter(
-            routers=[
-                Ip4Address("1.1.1.1"),
-                Ip4Address("2.2.2.2"),
-            ]
-        )
+        dhcp4_srv_id = dhcp4_packet_rx.srv_id
+        dhcp4_yiaddr = dhcp4_packet_rx.yiaddr
 
         # Send DHCP Request.
-        client_socket.send(
-            bytes(
-                Dhcp4Assembler(
-                    dhcp4__operation=Dhcp4Operation.REQUEST,
-                    dhcp4__xid=dhcp_xid,
-                    dhcp4__flag_b=True,
-                    dhcp4__chaddr=self._mac_address,
-                    dhcp4__options=Dhcp4Options(
-                        Dhcp4OptionMessageType(
-                            message_type=Dhcp4MessageType.REQUEST
-                        ),
-                        Dhcp4OptionParamReqList(
-                            [
-                                Dhcp4OptionType.SUBNET_MASK,
-                                Dhcp4OptionType.ROUTER,
-                            ]
-                        ),
-                        Dhcp4OptionSrvId(dhcp_srv_id or Ip4Address()),
-                        Dhcp4OptionReqIpAddr(dhcp_yiaddr),
-                        Dhcp4OptionHostName("PyTCP"),
-                        Dhcp4OptionEnd(),
-                    ),
-                )
-            )
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=dhcp_xid,
+            dhcp4__flag_b=True,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.REQUEST),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
+                    ]
+                ),
+                Dhcp4OptionSrvId(dhcp4_srv_id or Ip4Address()),
+                Dhcp4OptionReqIpAddr(dhcp4_yiaddr),
+                Dhcp4OptionHostName("PyTCP"),
+                Dhcp4OptionEnd(),
+            ),
         )
-
-        __debug__ and log(
-            "dhcp4",
-            "Sent out DHCP Request message to " f"{dhcp_packet_rx.srv_id}",
-        )
+        client_socket.send(bytes(dhcp4_packet_tx))
+        __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
 
         # Wait for DHCP Ack
         try:
-            dhcp_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv(timeout=5))
+            __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
                 "dhcp4", "Didn't receive DHCP ACK message - timeout"
@@ -209,7 +167,7 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        if dhcp_packet_rx.message_type != Dhcp4MessageType.ACK:
+        if dhcp4_packet_rx.message_type != Dhcp4MessageType.ACK:
             __debug__ and log(
                 "dhcp4",
                 "Didn't receive DHCP ACK message - message type error",
@@ -217,32 +175,17 @@ class Dhcp4Client:
             client_socket.close()
             return None
 
-        dhcp_router_log = (
-            None
-            if dhcp_packet_rx.router is None
-            else (", ".join(str(address) for address in dhcp_packet_rx.router))
-        )
-
-        __debug__ and log(
-            "dhcp4",
-            f"Received DHCP Offer from {dhcp_packet_rx.srv_id} - "
-            f"IP: {dhcp_packet_rx.yiaddr}, "
-            f"Mask: {dhcp_packet_rx.subnet_mask}, "
-            f"Router: {dhcp_router_log}, ",
-            # f"DNS: {dhcp_packet_rx.dns}, "
-            # f"Domain: {dhcp_packet_rx.domain_name}",
-        )
         client_socket.close()
 
-        assert dhcp_packet_rx.subnet_mask is not None
+        assert dhcp4_packet_rx.subnet_mask is not None
 
         ip4_host = Ip4Host(
             (
-                Ip4Address(dhcp_packet_rx.yiaddr),
-                Ip4Mask(dhcp_packet_rx.subnet_mask),
+                Ip4Address(dhcp4_packet_rx.yiaddr),
+                Ip4Mask(dhcp4_packet_rx.subnet_mask),
             )
         )
-        # if dhcp_packet_rx.router is not None:
-        #    ip4_host.gateway = Ip4Address(dhcp_packet_rx.router[0])
+        if dhcp4_packet_rx.router is not None:
+            ip4_host.gateway = Ip4Address(dhcp4_packet_rx.router[0])
 
         return ip4_host

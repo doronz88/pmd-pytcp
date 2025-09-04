@@ -100,7 +100,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Get the DHCPv4 Router option log string.
         """
 
-        return f"router {self.routers}"
+        return f"router {[str(router) for router in self.routers]}"
 
     @override
     def __bytes__(self) -> bytes:

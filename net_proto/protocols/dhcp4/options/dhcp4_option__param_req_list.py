@@ -86,7 +86,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Get the DHCPv4 Parameter Request List option log string.
         """
 
-        return f"param_req_list {self.param_req_list}"
+        return f"param_req_list {[param.name for param in self.param_req_list]}"
 
     @override
     def __bytes__(self) -> bytes:
