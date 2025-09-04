@@ -90,7 +90,6 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionUnknown(
                     type=TcpOptionType.from_int(255),
-                    len=18,
                     data=b"0123456789ABCDEF",
                 ),
                 TcpOptionNop(),
@@ -371,7 +370,6 @@ class TestTcpOptionsAssembler(TestCase):
                     TcpOptionNop(),
                     TcpOptionUnknown(
                         type=TcpOptionType.from_int(255),
-                        len=18,
                         data=b"0123456789ABCDEF",
                     ),
                     TcpOptionNop(),

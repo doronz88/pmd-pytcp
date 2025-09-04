@@ -60,8 +60,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     )
     len: int = field(
         repr=True,
-        init=True,
-        default=ICMP6__ND__OPTION__LEN,
+        init=False,
     )
 
     data: bytes
@@ -71,6 +70,9 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         """
         Validate the ICMPv6 unknown option fields.
         """
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", ICMP6__ND__OPTION__LEN + len(self.data))
 
         assert isinstance(self.type, Icmp6NdOptionType), (
             f"The 'type' field must be an Icmp6NdOptionType. "
@@ -154,6 +156,5 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
 
         return cls(
             type=Icmp6NdOptionType(_bytes[0]),
-            len=_bytes[1] << 3,
             data=_bytes[ICMP6__ND__OPTION__LEN : _bytes[1] << 3],
         )

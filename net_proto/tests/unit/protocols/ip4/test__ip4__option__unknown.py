@@ -223,7 +223,7 @@ class TestIp4OptionUnknownAssembler(TestCase):
             "_description": "The unknown IPv4 option.",
             "_args": [
                 b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46"
+                b"\x45\x46" + b"ZH0PA"
             ],
             "_kwargs": {},
             "_results": {

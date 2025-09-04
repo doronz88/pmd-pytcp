@@ -39,9 +39,6 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import (
-    ICMP6__ND__OPTION__LEN,
-    UINT_8__MAX,
-    UINT_8__MIN,
     Icmp6IntegrityError,
     Icmp6NdOptionType,
     Icmp6NdOptionUnknown,
@@ -61,7 +58,6 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "type": Icmp6NdOptionType.from_int(255),
-            "len": 8,
             "data": b"012345",
         }
 
@@ -103,76 +99,6 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
                 f"Got: {value!r}",
             )
 
-    def test__icmp6__nd__option__unknown__len__under_min(self) -> None:
-        """
-        Ensure the ICMPv6 ND unknown option constructor raises an exception when
-        the provided 'len' argument is lower than the minimum supported value.
-        """
-
-        self._kwargs["len"] = value = UINT_8__MIN - 1
-
-        with self.assertRaises(AssertionError) as error:
-            Icmp6NdOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__icmp6__nd__option__unknown__len__over_max(self) -> None:
-        """
-        Ensure the ICMPv6 ND unknown option constructor raises an exception when
-        the provided 'len' argument is higher than the maximum supported value.
-        """
-
-        self._kwargs["len"] = value = UINT_8__MAX + 1
-
-        with self.assertRaises(AssertionError) as error:
-            Icmp6NdOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. Got: {value}",
-        )
-
-    def test__tcp__assembler__hlen__not_8_bytes_alligned(self) -> None:
-        """
-        Ensure the ICMPv6 ND unknown option constructor raises an exception when
-        the value of the 'len' field is not 8 bytes aligned.
-        """
-
-        self._kwargs["len"] = value = UINT_8__MAX - 1
-
-        with self.assertRaises(AssertionError) as error:
-            Icmp6NdOptionUnknown(*self._args, **self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            f"The 'len' field must be 8-byte aligned. Got: {value!r}",
-        )
-
-    def test__icmp6__nd__option__unknown__len__mismatch(self) -> None:
-        """
-        Ensure the ICMPv6 ND unknown option constructor raises an exception when
-        the provided 'len' argument is different than the length of the 'data'
-        field.
-        """
-
-        self._kwargs["len"] = value = (
-            ICMP6__ND__OPTION__LEN + len(self._kwargs["data"]) + 8
-        )
-
-        with self.assertRaises(AssertionError) as error:
-            Icmp6NdOptionUnknown(**self._kwargs)
-
-        self.assertEqual(
-            str(error.exception),
-            (
-                "The 'len' field must reflect the length of the 'data' field. "
-                f"Got: {value} != {ICMP6__ND__OPTION__LEN + len(self._kwargs['data'])}"
-            ),
-        )
-
 
 @parameterized_class(
     [
@@ -181,7 +107,6 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
             "_args": [],
             "_kwargs": {
                 "type": Icmp6NdOptionType.from_int(255),
-                "len": 16,
                 "data": b"0123456789ABCD",
             },
             "_results": {
@@ -305,7 +230,6 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_results": {
                 "option": Icmp6NdOptionUnknown(
                     type=Icmp6NdOptionType.from_int(255),
-                    len=16,
                     data=b"0123456789ABCD",
                 ),
             },

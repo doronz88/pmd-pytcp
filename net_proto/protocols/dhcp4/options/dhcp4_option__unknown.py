@@ -84,16 +84,6 @@ class Dhcp4OptionUnknown(Dhcp4Option):
             f"Got: {self.type!r}"
         )
 
-        assert is_uint8(self.len), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
-        )
-
-        assert self.len == DHCP4__OPTION__LEN + len(self.data), (
-            "The 'len' field must reflect the length of the 'data' field. "
-            f"Got: {self.len!r} != {DHCP4__OPTION__LEN + len(self.data)!r}"
-        )
-
     @override
     def __str__(self) -> str:
         """
