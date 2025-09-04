@@ -148,6 +148,6 @@ class Dhcp4OptionUnknown(Dhcp4Option):
 
         return cls(
             type=Dhcp4OptionType(_bytes[0]),
-            len=_bytes[1],
-            data=_bytes[DHCP4__OPTION__LEN : _bytes[1]],
+            len=DHCP4__OPTION__LEN + _bytes[1],
+            data=_bytes[DHCP4__OPTION__LEN : DHCP4__OPTION__LEN + _bytes[1]],
         )

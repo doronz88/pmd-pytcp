@@ -71,8 +71,6 @@ class Dhcp4OptionRouter(Dhcp4Option):
     )
     len: int = field(
         repr=False,
-        init=False,
-        default=DHCP4__OPTION__ROUTER__LEN,
     )
 
     routers: list[Ip4Address]
@@ -117,14 +115,6 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Validate the DHCPv4 Router option integrity before parsing it.
         """
 
-        if (
-            value := DHCP4__OPTION__LEN + _bytes[1]
-        ) != DHCP4__OPTION__ROUTER__LEN:
-            raise Dhcp4IntegrityError(
-                "The DHCPv4 Router option length value must be "
-                f"{DHCP4__OPTION__ROUTER__LEN} bytes. Got: {value!r}"
-            )
-
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Router option length value must be less than or equal "
@@ -157,8 +147,9 @@ class Dhcp4OptionRouter(Dhcp4Option):
         cls._validate_integrity(_bytes)
 
         return cls(
+            len=DHCP4__OPTION__LEN + _bytes[1],
             routers=[
                 Ip4Address(_bytes[i : i + 4])
                 for i in range(2, _bytes[1] + 2, 4)
-            ]
+            ],
         )

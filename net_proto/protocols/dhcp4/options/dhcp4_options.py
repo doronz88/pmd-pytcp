@@ -217,6 +217,7 @@ class Dhcp4Options(ProtoOptions):
         options: list[Dhcp4Option] = []
 
         while offset < len(_bytes):
+            print(options)
             match Dhcp4OptionType.from_bytes(_bytes[offset:]):
                 case Dhcp4OptionType.END:
                     options.append(Dhcp4OptionEnd.from_bytes(_bytes[offset:]))

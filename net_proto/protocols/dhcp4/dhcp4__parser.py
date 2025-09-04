@@ -87,9 +87,6 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         self._options = Dhcp4Options.from_bytes(
             self._frame[len(self._header) :]
         )
-        print("*" * 80)
-        print(self._options)
-        print("*" * 80)
 
     @override
     def _validate_sanity(self) -> None:
