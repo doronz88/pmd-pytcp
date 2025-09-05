@@ -86,9 +86,6 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     DHCP4__OPTION__END__LEN,
     Dhcp4OptionEnd,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
-    Dhcp4OptionParamReqList,
-)
 from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
     Dhcp4OptionHostName,
 )
@@ -99,6 +96,21 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__pad import (
     DHCP4__OPTION__PAD__LEN,
     Dhcp4OptionPad,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
+    Dhcp4OptionParamReqList,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
+    Dhcp4OptionReqIpAddr,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
+    Dhcp4OptionRouter,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
+    Dhcp4OptionSrvId,
+)
+from net_proto.protocols.dhcp4.options.dhcp4_option__subnet_mask import (
+    Dhcp4OptionSubnetMask,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__unknown import (
     Dhcp4OptionUnknown,
@@ -390,8 +402,12 @@ __all__ = [
     "Dhcp4MessageType",
     "Dhcp4OptionHostName",
     "Dhcp4OptionType",
+    "Dhcp4OptionReqIpAddr",
     "Dhcp4OptionEnd",
+    "Dhcp4OptionSubnetMask",
+    "Dhcp4OptionSrvId",
     "Dhcp4OptionPad",
+    "Dhcp4OptionRouter",
     "Dhcp4OptionParamReqList",
     "Dhcp4OptionUnknown",
     "DHCP4__OPTION__PAD__LEN",

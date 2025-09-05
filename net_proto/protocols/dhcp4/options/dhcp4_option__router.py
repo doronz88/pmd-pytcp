@@ -82,16 +82,18 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Validate the DHCPv4 Router option fields.
         """
 
-        # Set the 'len' field based on the number of routers.
-        object.__setattr__(
-            self, "len", DHCP4__OPTION__ROUTER__LEN + len(self.routers) * 4
+        assert isinstance(
+            self.routers, list
+        ), f"The 'routers' field must be a list. Got: {type(self.routers)!r}"
+
+        assert all(isinstance(item, Ip4Address) for item in self.routers), (
+            f"The 'routers' field must be a list of Ip4Address elements. "
+            f"Got: {[type(element) for element in self.routers]!r}"
         )
 
-        assert isinstance(self.routers, list) and all(
-            isinstance(router, Ip4Address) for router in self.routers
-        ), (
-            f"The 'router' field must be a list of Ip4Address. "
-            f"Got: {type(self.routers)!r}"
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(
+            self, "len", DHCP4__OPTION__ROUTER__LEN + len(self.routers) * 4
         )
 
     @override
