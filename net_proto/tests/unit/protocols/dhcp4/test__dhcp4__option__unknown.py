@@ -43,6 +43,8 @@ from net_proto import (
     Dhcp4OptionType,
     Dhcp4OptionUnknown,
 )
+from net_proto.lib.int_checks import UINT_8__MAX
+from net_proto.protocols.dhcp4.options.dhcp4_option import DHCP4__OPTION__LEN
 
 
 class TestDhcp4OptionUnknownAsserts(TestCase):
@@ -55,7 +57,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         Create the default arguments for the DHCPv4 unknown option constructor.
         """
 
-        self._option_args: dict[str, Any] = {
+        self._kwargs: dict[str, Any] = {
             "type": Dhcp4OptionType.from_int(254),
             "data": b"012345",
         }
@@ -66,10 +68,10 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         when the provided 'type' argument is not a Dhcp4OptionType.
         """
 
-        self._option_args["type"] = value = "not a Dhcp4OptionType"
+        self._kwargs["type"] = value = "not a Dhcp4OptionType"
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown(**self._option_args)
+            Dhcp4OptionUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -85,16 +87,32 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         """
 
         for type in Dhcp4OptionType.get_known_values():
-            self._option_args["type"] = value = Dhcp4OptionType(type)
+            self._kwargs["type"] = value = Dhcp4OptionType(type)
 
             with self.assertRaises(AssertionError) as error:
-                Dhcp4OptionUnknown(**self._option_args)
+                Dhcp4OptionUnknown(**self._kwargs)
 
             self.assertEqual(
                 str(error.exception),
                 "The 'type' field must not be a core Dhcp4OptionType. "
                 f"Got: {value!r}",
             )
+
+    def test__dhcp4__option__unknown__len__8bit_integer(self) -> None:
+        """
+        Ensure the DHCPv4 unknown option 'len' field is an 8-bit unsigned integer.
+        """
+
+        self._kwargs["data"] = b"X" * (UINT_8__MAX + 1)
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'len' field must be an 8-bit unsigned integer. "
+            f"Got: {UINT_8__MAX + DHCP4__OPTION__LEN + 1}",
+        )
 
 
 @parameterized_class(

@@ -43,6 +43,10 @@ from net_proto import (
     Icmp6NdOptionType,
     Icmp6NdOptionUnknown,
 )
+from net_proto.lib.int_checks import UINT_8__MAX
+from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
+    ICMP6__ND__OPTION__LEN,
+)
 
 
 class TestIcmp6NdOptionUnknownAsserts(TestCase):
@@ -98,6 +102,36 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
                 "The 'type' field must not be a known Icmp6NdOptionType. "
                 f"Got: {value!r}",
             )
+
+    def test__icmp6__nd__option__unknown__len__8bit_integer(self) -> None:
+        """
+        Ensure the ICMPv6 unknown option 'len' field is an 8-bit unsigned integer.
+        """
+
+        self._kwargs["data"] = b"X" * (UINT_8__MAX - ICMP6__ND__OPTION__LEN + 1)
+
+        with self.assertRaises(AssertionError) as error:
+            Icmp6NdOptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'len' field must be an 8-bit unsigned integer. Got: {UINT_8__MAX + 1}",
+        )
+
+    def test__icmp6__nd__option__unknown__len__8bit_alligned(self) -> None:
+        """
+        Ensure the ICMPv6 unknown option 'len' field is a multiple of 8 bits.
+        """
+
+        self._kwargs["data"] = b"X" * 7
+
+        with self.assertRaises(AssertionError) as error:
+            Icmp6NdOptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            "The 'len' field must be 8-byte aligned. Got: 9",
+        )
 
 
 @parameterized_class(

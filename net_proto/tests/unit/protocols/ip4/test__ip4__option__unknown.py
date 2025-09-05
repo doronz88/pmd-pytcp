@@ -43,6 +43,8 @@ from net_proto import (
     Ip4OptionType,
     Ip4OptionUnknown,
 )
+from net_proto.lib.int_checks import UINT_8__MAX
+from net_proto.protocols.ip4.options.ip4_option import IP4__OPTION__LEN
 
 
 class TestIp4OptionUnknownAsserts(TestCase):
@@ -96,6 +98,21 @@ class TestIp4OptionUnknownAsserts(TestCase):
                 "The 'type' field must not be a known Ip4OptionType. "
                 f"Got: {value!r}",
             )
+
+    def test__ip4__option__unknown__len__8bit_integer(self) -> None:
+        """
+        Ensure the IPv4 unknown option 'len' field is an 8-bit unsigned integer.
+        """
+
+        self._kwargs["data"] = b"X" * (UINT_8__MAX - IP4__OPTION__LEN + 1)
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4OptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'len' field must be an 8-bit unsigned integer. Got: {UINT_8__MAX + 1}",
+        )
 
 
 @parameterized_class(

@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -70,9 +71,6 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Validate the DHCPv4 unknown option fields.
         """
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
-
         assert isinstance(self.type, Dhcp4OptionType), (
             f"The 'type' field must be a Dhcp4OptionType. "
             f"Got: {type(self.type)!r}"
@@ -81,6 +79,14 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         assert int(self.type) not in Dhcp4OptionType.get_known_values(), (
             "The 'type' field must not be a core Dhcp4OptionType. "
             f"Got: {self.type!r}"
+        )
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
+
+        assert is_uint8(self.len - DHCP4__OPTION__LEN), (
+            f"The 'len' field must be an 8-bit unsigned integer. "
+            f"Got: {self.len!r}"
         )
 
     @override

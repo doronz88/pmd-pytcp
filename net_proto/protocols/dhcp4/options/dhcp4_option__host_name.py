@@ -69,7 +69,6 @@ class Dhcp4OptionHostName(Dhcp4Option):
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__HOST_NAME__LEN,
     )
 
     host_name: str
@@ -79,6 +78,15 @@ class Dhcp4OptionHostName(Dhcp4Option):
         """
         Validate the DHCPv4 Host Name option fields.
         """
+
+        assert isinstance(
+            self.host_name, str
+        ), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(
+            self, "len", DHCP4__OPTION__HOST_NAME__LEN + len(self.host_name)
+        )
 
     @override
     def __str__(self) -> str:
@@ -109,7 +117,7 @@ class Dhcp4OptionHostName(Dhcp4Option):
 
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
-        ) >= DHCP4__OPTION__HOST_NAME__LEN:
+        ) < DHCP4__OPTION__HOST_NAME__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Host Name option length value must be "
                 f"at least {DHCP4__OPTION__HOST_NAME__LEN} bytes. Got: {value!r}"

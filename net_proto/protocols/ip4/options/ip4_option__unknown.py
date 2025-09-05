@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.options.ip4_option import (
     IP4__OPTION__LEN,
@@ -70,9 +71,6 @@ class Ip4OptionUnknown(Ip4Option):
         Validate the IPv4 unknown option fields.
         """
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
-
         assert isinstance(self.type, Ip4OptionType), (
             f"The 'type' field must be a Ip4OptionType. "
             f"Got: {type(self.type)!r}"
@@ -81,6 +79,14 @@ class Ip4OptionUnknown(Ip4Option):
         assert int(self.type) not in Ip4OptionType.get_known_values(), (
             "The 'type' field must not be a known Ip4OptionType. "
             f"Got: {self.type!r}"
+        )
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
+
+        assert is_uint8(self.len), (
+            f"The 'len' field must be an 8-bit unsigned integer. "
+            f"Got: {self.len!r}"
         )
 
     @override

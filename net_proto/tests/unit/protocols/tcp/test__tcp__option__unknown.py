@@ -43,6 +43,8 @@ from net_proto import (
     TcpOptionType,
     TcpOptionUnknown,
 )
+from net_proto.lib.int_checks import UINT_8__MAX
+from net_proto.protocols.tcp.options.tcp_option import TCP__OPTION__LEN
 
 
 class TestTcpOptionUnknownAsserts(TestCase):
@@ -96,6 +98,21 @@ class TestTcpOptionUnknownAsserts(TestCase):
                 "The 'type' field must not be a core TcpOptionType. "
                 f"Got: {value!r}",
             )
+
+    def test__tcp__option__unknown__len__8bit_integer(self) -> None:
+        """
+        Ensure the TCP unknown option 'len' field is an 8-bit unsigned integer.
+        """
+
+        self._kwargs["data"] = b"X" * (UINT_8__MAX - TCP__OPTION__LEN + 1)
+
+        with self.assertRaises(AssertionError) as error:
+            TcpOptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'len' field must be an 8-bit unsigned integer. Got: {UINT_8__MAX + 1}",
+        )
 
 
 @parameterized_class(

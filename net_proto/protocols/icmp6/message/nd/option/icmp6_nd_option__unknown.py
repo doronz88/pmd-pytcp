@@ -71,9 +71,6 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         Validate the ICMPv6 unknown option fields.
         """
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(self, "len", ICMP6__ND__OPTION__LEN + len(self.data))
-
         assert isinstance(self.type, Icmp6NdOptionType), (
             f"The 'type' field must be an Icmp6NdOptionType. "
             f"Got: {type(self.type)!r}"
@@ -84,6 +81,9 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
             f"Got: {self.type!r}"
         )
 
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", ICMP6__ND__OPTION__LEN + len(self.data))
+
         assert is_uint8(self.len), (
             f"The 'len' field must be an 8-bit unsigned integer. "
             f"Got: {self.len!r}"
@@ -92,11 +92,6 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         assert is_8_byte_alligned(
             self.len
         ), f"The 'len' field must be 8-byte aligned. Got: {self.len!r}"
-
-        assert self.len == ICMP6__ND__OPTION__LEN + len(self.data), (
-            "The 'len' field must reflect the length of the 'data' field. "
-            f"Got: {self.len!r} != {ICMP6__ND__OPTION__LEN + len(self.data)!r}"
-        )
 
     @override
     def __str__(self) -> str:

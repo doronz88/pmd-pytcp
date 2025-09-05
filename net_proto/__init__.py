@@ -86,6 +86,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     DHCP4__OPTION__END__LEN,
     Dhcp4OptionEnd,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
+    Dhcp4OptionHostName,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4MessageType,
     Dhcp4OptionMessageType,
@@ -382,6 +385,7 @@ __all__ = [
     "Dhcp4Header",
     "Dhcp4Operation",
     "Dhcp4MessageType",
+    "Dhcp4OptionHostName",
     "Dhcp4OptionType",
     "Dhcp4OptionEnd",
     "Dhcp4OptionPad",
