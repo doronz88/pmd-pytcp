@@ -69,7 +69,6 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__PARAM_REQ_LIST__LEN,
     )
 
     param_req_list: list[Dhcp4OptionType]
@@ -79,6 +78,22 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         """
         Validate the DHCPv4 Parameter Request List option fields.
         """
+
+        assert isinstance(
+            self.param_req_list, list
+        ), f"The 'param_req_list' field must be a list. Got: {type(self.param_req_list)!r}"
+
+        assert all(
+            isinstance(item, Dhcp4OptionType) for item in self.param_req_list
+        ), (
+            f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
+            f"Got: {[type(element) for element in self.param_req_list]!r}"
+        )
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(
+            self, "len", DHCP4__OPTION__LEN + len(self.param_req_list)
+        )
 
     @override
     def __str__(self) -> str:
@@ -98,7 +113,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
             DHCP4__OPTION__PARAM_REQ_LIST__STRUCT
             + f"{len(self.param_req_list)}s",
             int(self.type),
-            self.len,
+            self.len - DHCP4__OPTION__LEN,
             bytes([int(option) for option in self.param_req_list]),
         )
 
@@ -110,7 +125,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
 
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
-        ) >= DHCP4__OPTION__PARAM_REQ_LIST__LEN:
+        ) < DHCP4__OPTION__PARAM_REQ_LIST__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Parameter Request List option length value must be "
                 f"at least {DHCP4__OPTION__PARAM_REQ_LIST__LEN} bytes. Got: {value!r}"
