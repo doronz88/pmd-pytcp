@@ -50,6 +50,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__end import Dhcp4OptionEnd
 from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
     Dhcp4OptionHostName,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__lease_time import (
+    Dhcp4OptionLeaseTime,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4OptionMessageType,
 )
@@ -226,6 +229,10 @@ class Dhcp4Options(ProtoOptions):
                 case Dhcp4OptionType.HOST_NAME:
                     options.append(
                         Dhcp4OptionHostName.from_bytes(_bytes[offset:])
+                    )
+                case Dhcp4OptionType.LEASE_TIME:
+                    options.append(
+                        Dhcp4OptionLeaseTime.from_bytes(_bytes[offset:])
                     )
                 case Dhcp4OptionType.MESSAGE_TYPE:
                     options.append(

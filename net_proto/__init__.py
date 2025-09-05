@@ -89,6 +89,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
     Dhcp4OptionHostName,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__lease_time import (
+    Dhcp4OptionLeaseTime,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
     Dhcp4MessageType,
     Dhcp4OptionMessageType,
@@ -408,6 +411,7 @@ __all__ = [
     "Dhcp4OptionSrvId",
     "Dhcp4OptionPad",
     "Dhcp4OptionRouter",
+    "Dhcp4OptionLeaseTime",
     "Dhcp4OptionParamReqList",
     "Dhcp4OptionUnknown",
     "DHCP4__OPTION__PAD__LEN",

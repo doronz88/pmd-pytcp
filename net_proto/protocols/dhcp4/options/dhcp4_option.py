@@ -51,6 +51,7 @@ class Dhcp4OptionType(ProtoOptionType):
     ROUTER = 3
     HOST_NAME = 12
     REQ_IP_ADDR = 50
+    LEASE_TIME = 51
     MESSAGE_TYPE = 53
     SRV_ID = 54
     PARAM_REQ_LIST = 55
