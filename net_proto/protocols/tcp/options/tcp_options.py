@@ -172,7 +172,7 @@ class TcpOptions(ProtoOptions):
         options: list[TcpOption] = []
 
         while offset < len(_bytes):
-            match TcpOptionType.from_bytes(_bytes[offset:]):
+            match TcpOptionType(_bytes[offset]):
                 case TcpOptionType.EOL:
                     options.append(TcpOptionEol.from_bytes(_bytes[offset:]))
                     break

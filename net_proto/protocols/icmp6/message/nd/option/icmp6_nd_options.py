@@ -137,7 +137,7 @@ class Icmp6NdOptions(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
         Read the ICMPv6 ND options from bytes.
         """
@@ -145,17 +145,21 @@ class Icmp6NdOptions(ProtoOptions):
         offset = 0
         options: list[Icmp6NdOption] = []
 
-        while offset < len(bytes):
-            match Icmp6NdOptionType.from_bytes(bytes[offset:]):
+        while offset < len(_bytes):
+            match Icmp6NdOptionType(_bytes[offset]):
                 case Icmp6NdOptionType.SLLA:
-                    options.append(Icmp6NdOptionSlla.from_bytes(bytes[offset:]))
+                    options.append(
+                        Icmp6NdOptionSlla.from_bytes(_bytes[offset:])
+                    )
                 case Icmp6NdOptionType.TLLA:
-                    options.append(Icmp6NdOptionTlla.from_bytes(bytes[offset:]))
+                    options.append(
+                        Icmp6NdOptionTlla.from_bytes(_bytes[offset:])
+                    )
                 case Icmp6NdOptionType.PI:
-                    options.append(Icmp6NdOptionPi.from_bytes(bytes[offset:]))
+                    options.append(Icmp6NdOptionPi.from_bytes(_bytes[offset:]))
                 case _:
                     options.append(
-                        Icmp6NdOptionUnknown.from_bytes(bytes[offset:])
+                        Icmp6NdOptionUnknown.from_bytes(_bytes[offset:])
                     )
 
             offset += options[-1].len
