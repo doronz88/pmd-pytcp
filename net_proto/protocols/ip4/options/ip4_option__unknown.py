@@ -71,19 +71,22 @@ class Ip4OptionUnknown(Ip4Option):
         Validate the IPv4 unknown option fields.
         """
 
+        # Ensure the 'type' field is a valid Ip4OptionType enum member.
         assert isinstance(self.type, Ip4OptionType), (
             f"The 'type' field must be a Ip4OptionType. "
             f"Got: {type(self.type)!r}"
         )
 
+        # Ensure the 'type' field is not a known Ip4OptionType.
         assert int(self.type) not in Ip4OptionType.get_known_values(), (
             "The 'type' field must not be a known Ip4OptionType. "
             f"Got: {self.type!r}"
         )
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
+        # Update the option 'len' field based on the length of the 'data' field.
         object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
 
+        # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(self.len), (
             f"The 'len' field must be an 8-bit unsigned integer. "
             f"Got: {self.len!r}"
@@ -118,6 +121,7 @@ class Ip4OptionUnknown(Ip4Option):
         Validate the unknown IPv4 option integrity before parsing it.
         """
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1]) > len(_bytes):
             raise Ip4IntegrityError(
                 "The unknown IPv4 option length must be less than or equal to "
@@ -131,11 +135,13 @@ class Ip4OptionUnknown(Ip4Option):
         Initialize the unknown IPv4 option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= IP4__OPTION__LEN, (
             f"The minimum length of the unknown IPv4 option must be "
             f"{IP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is not known.
         assert (value := _bytes[0]) not in Ip4OptionType.get_known_values(), (
             f"The unknown IPv4 option type must not be known. "
             f"Got: {Ip4OptionType.from_int(value)!r}"

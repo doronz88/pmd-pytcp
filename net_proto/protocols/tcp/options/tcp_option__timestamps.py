@@ -95,11 +95,13 @@ class TcpOptionTimestamps(TcpOption):
         Validate the TCP Timestamps option fields.
         """
 
+        # Ensure the 'tsval' field is 32-bit unsigned integer.
         assert is_uint32(self.tsval), (
             f"The 'tsval' field must be a 32-bit unsigned integer. "
             f"Got: {self.tsval}"
         )
 
+        # Ensure the 'tsecr' field is 32-bit unsigned integer.
         assert is_uint32(self.tsecr), (
             f"The 'tsecr' field must be a 32-bit unsigned integer. "
             f"Got: {self.tsecr}"
@@ -133,12 +135,14 @@ class TcpOptionTimestamps(TcpOption):
         Validate the TCP Timestamps option integrity before parsing it.
         """
 
+        # Raise integrity error when the option length value is incorrect.
         if (value := _bytes[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1]) > len(_bytes):
             raise TcpIntegrityError(
                 "The TCP Timestamps option length value must be less than or equal to "
@@ -152,11 +156,13 @@ class TcpOptionTimestamps(TcpOption):
         Initialize the TCP Timestamps option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Timestamps option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(TcpOptionType.TIMESTAMPS), (
             f"The TCP Timestamps option type must be {TcpOptionType.TIMESTAMPS!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"

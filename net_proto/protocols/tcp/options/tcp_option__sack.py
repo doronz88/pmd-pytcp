@@ -60,7 +60,6 @@ from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 # |                   Right Edge of nth Block                     |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-TCP__OPTION__SACK__LEN = 2
 TCP__OPTION__SACK__STRUCT = "! BB"
 TCP__OPTION__SACK__BLOCK_LEN = 8
 TCP__OPTION__SACK__BLOCK_STRUCT = "! LL"
@@ -116,7 +115,6 @@ class TcpOptionSack(TcpOption):
     len: int = field(
         repr=False,
         init=False,
-        default=TCP__OPTION__SACK__LEN,
     )
 
     blocks: list[TcpSackBlock]
@@ -127,6 +125,7 @@ class TcpOptionSack(TcpOption):
         Validate the TCP Sack option fields.
         """
 
+        # Ensure the number of blocks is within the allowed range.
         assert len(self.blocks) <= TCP__OPTION__SACK__MAX_BLOCK_NUM, (
             f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} "
             f"elements. Got: {len(self.blocks)}"
@@ -136,8 +135,7 @@ class TcpOptionSack(TcpOption):
         object.__setattr__(
             self,
             "len",
-            TCP__OPTION__SACK__LEN
-            + TCP__OPTION__SACK__BLOCK_LEN * len(self.blocks),
+            TCP__OPTION__LEN + TCP__OPTION__SACK__BLOCK_LEN * len(self.blocks),
         )
 
     @override
@@ -167,14 +165,16 @@ class TcpOptionSack(TcpOption):
         Validate the TCP Sack option integrity before parsing it.
         """
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1]) > len(_bytes):
             raise TcpIntegrityError(
                 "The TCP Sack option length value must be less than or equal to "
                 f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
+        # Raise integrity error when the option length doesn't align properly with block size.
         if (
-            value := _bytes[1] - TCP__OPTION__SACK__LEN
+            value := _bytes[1] - TCP__OPTION__LEN
         ) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
                 "The TCP Sack option blocks length value must be a multiple of "
@@ -188,11 +188,13 @@ class TcpOptionSack(TcpOption):
         Initialize the TCP Sack option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Sack option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(TcpOptionType.SACK), (
             f"The TCP Sack option type must be {TcpOptionType.SACK!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
@@ -217,8 +219,8 @@ class TcpOptionSack(TcpOption):
                     ),
                 )
                 for offset in range(
-                    TCP__OPTION__SACK__LEN,
-                    _bytes[1] - TCP__OPTION__SACK__LEN,
+                    TCP__OPTION__LEN,
+                    _bytes[1] - TCP__OPTION__LEN,
                     TCP__OPTION__SACK__BLOCK_LEN,
                 )
             ]

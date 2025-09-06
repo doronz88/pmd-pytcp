@@ -71,19 +71,22 @@ class TcpOptionUnknown(TcpOption):
         Validate the TCP unknown option fields.
         """
 
+        # Ensure the 'type' field is a valid TcpOptionType enum member.
         assert isinstance(self.type, TcpOptionType), (
             f"The 'type' field must be a TcpOptionType. "
             f"Got: {type(self.type)!r}"
         )
 
+        # Ensure the 'type' field is not a known TcpOptionType.
         assert int(self.type) not in TcpOptionType.get_known_values(), (
             "The 'type' field must not be a core TcpOptionType. "
             f"Got: {self.type!r}"
         )
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
+        # Update the option 'len' field based on the length of the 'data' field.
         object.__setattr__(self, "len", TCP__OPTION__LEN + len(self.data))
 
+        # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(self.len), (
             f"The 'len' field must be an 8-bit unsigned integer. "
             f"Got: {self.len!r}"
@@ -118,6 +121,7 @@ class TcpOptionUnknown(TcpOption):
         Validate the unknown TCP option integrity before parsing it.
         """
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1]) > len(_bytes):
             raise TcpIntegrityError(
                 "The unknown TCP option length value must be less than or equal to "
@@ -131,11 +135,13 @@ class TcpOptionUnknown(TcpOption):
         Initialize the unknown TCP option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
             f"The minimum length of the unknown TCP option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is not known.
         assert (value := _bytes[0]) not in TcpOptionType.get_known_values(), (
             f"The unknown TCP option type must not be known. "
             f"Got: {TcpOptionType.from_int(value)!r}"

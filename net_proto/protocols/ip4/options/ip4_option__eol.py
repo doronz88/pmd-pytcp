@@ -95,11 +95,13 @@ class Ip4OptionEol(Ip4Option):
         Initialize the IPv4 Eol option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= IP4__OPTION__EOL__LEN, (
             f"The minimum length of the IPv4 Eol option must be "
             f"{IP4__OPTION__EOL__LEN} byte. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Ip4OptionType.EOL), (
             f"The IPv4 Eol option type must be {Ip4OptionType.EOL!r}. "
             f"Got: {Ip4OptionType.from_int(value)!r}"

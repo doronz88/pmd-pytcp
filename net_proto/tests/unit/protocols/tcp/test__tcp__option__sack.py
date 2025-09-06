@@ -39,13 +39,13 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import (
-    TCP__OPTION__SACK__LEN,
     TCP__OPTION__SACK__MAX_BLOCK_NUM,
     TcpIntegrityError,
     TcpOptionSack,
     TcpOptionType,
     TcpSackBlock,
 )
+from net_proto.protocols.tcp.options.tcp_option import TCP__OPTION__LEN
 
 
 class TestTcpOptionSackAsserts(TestCase):
@@ -92,7 +92,7 @@ class TestTcpOptionSackAsserts(TestCase):
                 "__repr__": "TcpOptionSack(blocks=[])",
                 "__bytes__": b"\x05\x02",
                 "type": TcpOptionType.SACK,
-                "length": TCP__OPTION__SACK__LEN,
+                "length": TCP__OPTION__LEN,
                 "blocks": [],
             },
         },
@@ -109,7 +109,7 @@ class TestTcpOptionSackAsserts(TestCase):
                 ),
                 "__bytes__": b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff",
                 "type": TcpOptionType.SACK,
-                "length": TCP__OPTION__SACK__LEN + 8 * 1,
+                "length": TCP__OPTION__LEN + 8 * 1,
                 "blocks": [TcpSackBlock(4294967295, 4294967295)],
             },
         },
@@ -136,7 +136,7 @@ class TestTcpOptionSackAsserts(TestCase):
                     b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a"
                 ),
                 "type": TcpOptionType.SACK,
-                "length": TCP__OPTION__SACK__LEN + 8 * 3,
+                "length": TCP__OPTION__LEN + 8 * 3,
                 "blocks": [
                     TcpSackBlock(1111, 2222),
                     TcpSackBlock(3333, 4444),
@@ -169,7 +169,7 @@ class TestTcpOptionSackAsserts(TestCase):
                     b"\x03\x78"
                 ),
                 "type": TcpOptionType.SACK,
-                "length": TCP__OPTION__SACK__LEN + 8 * 4,
+                "length": TCP__OPTION__LEN + 8 * 4,
                 "blocks": [
                     TcpSackBlock(111, 222),
                     TcpSackBlock(333, 444),

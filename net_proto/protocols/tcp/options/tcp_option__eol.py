@@ -94,11 +94,13 @@ class TcpOptionEol(TcpOption):
         Initialize the TCP Eol option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= TCP__OPTION__EOL__LEN, (
             f"The minimum length of the TCP Eol option must be "
             f"{TCP__OPTION__EOL__LEN} byte. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(TcpOptionType.EOL), (
             f"The TCP Eol option type must be {TcpOptionType.EOL!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"

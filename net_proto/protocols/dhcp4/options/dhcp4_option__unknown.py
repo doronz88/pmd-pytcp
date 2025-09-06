@@ -71,19 +71,22 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Validate the DHCPv4 unknown option fields.
         """
 
+        # Ensure the 'type' field is a valid Dhcp4OptionType enum member.
         assert isinstance(self.type, Dhcp4OptionType), (
             f"The 'type' field must be a Dhcp4OptionType. "
             f"Got: {type(self.type)!r}"
         )
 
+        # Ensure the 'type' field is not a known Dhcp4OptionType.
         assert int(self.type) not in Dhcp4OptionType.get_known_values(), (
-            "The 'type' field must not be a core Dhcp4OptionType. "
+            "The 'type' field must not be a known Dhcp4OptionType. "
             f"Got: {self.type!r}"
         )
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
+        # Update the option 'len' field based on the length of the 'data' field.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
 
+        # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(self.len - DHCP4__OPTION__LEN), (
             f"The 'len' field must be an 8-bit unsigned integer. "
             f"Got: {self.len!r}"
@@ -118,6 +121,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Validate the unknown DHCPv4 option integrity before parsing it.
         """
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The unknown DHCPv4 option length value must be less than or equal to "
@@ -131,11 +135,13 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Initialize the unknown DHCPv4 option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the unknown DHCPv4 option must be "
             f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is not known.
         assert (value := _bytes[0]) not in Dhcp4OptionType.get_known_values(), (
             f"The unknown DHCPv4 option type must not be known. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

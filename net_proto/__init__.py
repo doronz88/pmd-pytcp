@@ -335,7 +335,6 @@ from net_proto.protocols.tcp.options.tcp_option__nop import (
 )
 from net_proto.protocols.tcp.options.tcp_option__sack import (
     TCP__OPTION__SACK__BLOCK_LEN,
-    TCP__OPTION__SACK__LEN,
     TCP__OPTION__SACK__MAX_BLOCK_NUM,
     TcpOptionSack,
     TcpSackBlock,
@@ -547,7 +546,6 @@ __all__ = [
     "TCP__OPTION__TIMESTAMPS__LEN",
     "TCP__OPTION__EOL__LEN",
     "TCP__OPTION__SACKPERM__LEN",
-    "TCP__OPTION__SACK__LEN",
     "TCP__OPTION__MSS__LEN",
     "TCP__OPTION__SACK__BLOCK_LEN",
     "TCP__OPTION__SACK__MAX_BLOCK_NUM",

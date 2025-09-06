@@ -78,12 +78,12 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             f"The 'type' field must be a Dhcp4OptionType. Got: {type(value)!r}",
         )
 
-    def test__dhcp4__option__unknown__type__core_value(
+    def test__dhcp4__option__unknown__type__known_value(
         self,
     ) -> None:
         """
         Ensure the DHCPv4 unknown option constructor raises an exception
-        when the provided 'type' argument is a core Dhcp4OptionType.
+        when the provided 'type' argument is a known Dhcp4OptionType.
         """
 
         for type in Dhcp4OptionType.get_known_values():
@@ -94,7 +94,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                "The 'type' field must not be a core Dhcp4OptionType. "
+                "The 'type' field must not be a known Dhcp4OptionType. "
                 f"Got: {value!r}",
             )
 
