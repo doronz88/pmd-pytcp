@@ -44,6 +44,9 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 )
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
+from net_proto.protocols.dhcp4.options.dhcp4_option__clt_id import (
+    Dhcp4OptionCltId,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     Dhcp4OptionEnd,
 )
@@ -101,6 +104,7 @@ class Dhcp4Client:
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
                 Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+                Dhcp4OptionCltId(b"\x01" + bytes(self._mac_address)),
                 Dhcp4OptionParamReqList(
                     [
                         Dhcp4OptionType.SUBNET_MASK,

@@ -82,6 +82,9 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
     Dhcp4OptionType,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_option__clt_id import (
+    Dhcp4OptionCltId,
+)
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     DHCP4__OPTION__END__LEN,
     Dhcp4OptionEnd,
@@ -409,6 +412,7 @@ __all__ = [
     "Dhcp4OptionEnd",
     "Dhcp4OptionSubnetMask",
     "Dhcp4OptionSrvId",
+    "Dhcp4OptionCltId",
     "Dhcp4OptionPad",
     "Dhcp4OptionRouter",
     "Dhcp4OptionLeaseTime",

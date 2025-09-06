@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Server Identifier option support code.
+This module contains the DHCPv4 Client Identifier option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__srv_id.py
+net_proto/protocols/dhcp4/options/dhcp4_option__clt_id.py
 
 ver 3.0.4
 """
@@ -37,7 +37,6 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_addr.ip4_address import Ip4Address
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -45,87 +44,79 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Server Identifier option [RFC 2132].
-
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 54   |    Length = 4   |          Server Identifier
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#              Server Identifier      |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# The DHCPv4 Client Identifier option [RFC 2132].
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |    Code = 61  |    Len = N    |         Client Identifier    ...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__SRV_ID__LEN = 6
-DHCP4__OPTION__SRV_ID__STRUCT = "! BB 4s"
+DHCP4__OPTION__CLT_ID__LEN = 2
+DHCP4__OPTION__CLT_ID__STRUCT = "! BB"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionSrvId(Dhcp4Option):
+class Dhcp4OptionCltId(Dhcp4Option):
     """
-    The DHCPv4 Server Identifier option support class.
+    The DHCPv4 Client Identifier option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.SRV_ID,
+        default=Dhcp4OptionType.CLT_ID,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__SRV_ID__LEN,
+        default=DHCP4__OPTION__CLT_ID__LEN,
     )
 
-    srv_id: Ip4Address
+    clt_id: bytes
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Server Identifier option fields.
+        Validate the DHCPv4 Client Identifier option fields.
         """
 
-        assert isinstance(self.srv_id, Ip4Address), (
-            f"The 'srv_id' field must be an Ip4Address. "
-            f"Got: {type(self.srv_id)!r}"
-        )
+        assert isinstance(
+            self.clt_id, (bytes, bytearray)
+        ), f"The 'clt_id' field must be bytes. Got: {type(self.clt_id)!r}"
+
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.clt_id))
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Server Identifier option log string.
+        Get the DHCPv4 Client Identifier option log string.
         """
 
-        return f"srv_id {self.srv_id}"
+        hex_str = ":".join(f"{b:02x}" for b in self.clt_id)
+        return f"clt_id {hex_str}"
 
     @override
     def __bytes__(self) -> bytes:
         """
-        Get the DHCPv4 Server Identifier option as bytes.
+        Get the DHCPv4 Client Identifier option as bytes.
         """
 
         return struct.pack(
-            DHCP4__OPTION__SRV_ID__STRUCT,
+            DHCP4__OPTION__CLT_ID__STRUCT + f"{len(self.clt_id)}s",
             int(self.type),
-            self.len - DHCP4__OPTION__LEN,
-            bytes(self.srv_id),
+            len(self.clt_id),
+            bytes(self.clt_id),
         )
 
     @staticmethod
     def _validate_integrity(_bytes: bytes, /) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
+        Validate the DHCPv4 Client Identifier option integrity before parsing it.
         """
-
-        if (
-            value := DHCP4__OPTION__LEN + _bytes[1]
-        ) != DHCP4__OPTION__SRV_ID__LEN:
-            raise Dhcp4IntegrityError(
-                "The DHCPv4 Server Identifier option length value must be "
-                f"{DHCP4__OPTION__SRV_ID__LEN} bytes. Got: {value!r}"
-            )
 
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Server Identifier option length value must be less than or equal "
+                "The DHCPv4 Client Identifier option length value must be less than or equal "
                 f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
             )
 
@@ -133,19 +124,19 @@ class Dhcp4OptionSrvId(Dhcp4Option):
     @classmethod
     def from_bytes(cls, _bytes: bytes, /) -> Self:
         """
-        Initialize the DHCPv4 Subnet Mask option from bytes.
+        Initialize the DHCPv4 Client Identifier option from bytes.
         """
 
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Subnet Mask option must "
+            f"The minimum length of the DHCPv4 Client Identifier option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.SRV_ID), (
-            f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SRV_ID!r}. "
+        assert (value := _bytes[0]) == int(Dhcp4OptionType.CLT_ID), (
+            f"The DHCPv4 Client Identifier option type must be {Dhcp4OptionType.CLT_ID!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(_bytes)
 
-        return cls(srv_id=Ip4Address(_bytes[2:6]))
+        return cls(clt_id=bytes(_bytes[2 : 2 + _bytes[1]]))
