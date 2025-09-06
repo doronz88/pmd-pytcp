@@ -111,7 +111,7 @@ class Dhcp4Client:
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
         # Wait for DHCP Offer.
@@ -119,10 +119,10 @@ class Dhcp4Client:
             dhcp4_packet_rx = Dhcp4Parser(
                 client_socket.recv(timeout=self._timeout__sec)
             )
-            __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
+            __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
-                "dhcp4", "Didn't receive DHCP Offer message - timeout"
+                "dhcp4", "<WARN>Didn't receive DHCP Offer message - timeout</>"
             )
             client_socket.close()
             return None
@@ -130,7 +130,7 @@ class Dhcp4Client:
         if dhcp4_packet_rx.message_type != Dhcp4MessageType.OFFER:
             __debug__ and log(
                 "dhcp4",
-                "Didn't receive DHCP Offer message - message type error",
+                "<WARN>Didn't receive DHCP Offer message - message type errori</>",
             )
             client_socket.close()
             return None
@@ -158,7 +158,7 @@ class Dhcp4Client:
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"{dhcp4_packet_tx}")
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
         # Wait for the DHCP Ack packet from server.
@@ -166,10 +166,10 @@ class Dhcp4Client:
             dhcp4_packet_rx = Dhcp4Parser(
                 client_socket.recv(timeout=self._timeout__sec)
             )
-            __debug__ and log("dhcp4", f"{dhcp4_packet_rx}")
+            __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log(
-                "dhcp4", "Didn't receive DHCP ACK message - timeout"
+                "dhcp4", "<WARN>Didn't receive DHCP ACK message - timeout</>"
             )
             client_socket.close()
             return None
@@ -177,7 +177,7 @@ class Dhcp4Client:
         if dhcp4_packet_rx.message_type != Dhcp4MessageType.ACK:
             __debug__ and log(
                 "dhcp4",
-                "Didn't receive DHCP ACK message - message type error",
+                "<WARN>Didn't receive DHCP ACK message - message type error</>",
             )
             client_socket.close()
             return None
