@@ -44,8 +44,8 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 )
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
-from net_proto.protocols.dhcp4.options.dhcp4_option__clt_id import (
-    Dhcp4OptionCltId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__client_id import (
+    Dhcp4OptionClientId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     Dhcp4OptionEnd,
@@ -62,8 +62,8 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
-    Dhcp4OptionSrvId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__server_id import (
+    Dhcp4OptionServerId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from pytcp.lib.logger import log
@@ -104,7 +104,7 @@ class Dhcp4Client:
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
                 Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
-                Dhcp4OptionCltId(b"\x01" + bytes(self._mac_address)),
+                Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address)),
                 Dhcp4OptionParamReqList(
                     [
                         Dhcp4OptionType.SUBNET_MASK,
@@ -156,7 +156,7 @@ class Dhcp4Client:
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
-                Dhcp4OptionSrvId(srv_id or Ip4Address()),
+                Dhcp4OptionServerId(srv_id or Ip4Address()),
                 Dhcp4OptionReqIpAddr(yiaddr),
                 Dhcp4OptionHostName("PyTCP"),
                 Dhcp4OptionEnd(),

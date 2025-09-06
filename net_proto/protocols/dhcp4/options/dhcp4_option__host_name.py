@@ -51,7 +51,6 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__HOST_NAME__LEN = 2
 DHCP4__OPTION__HOST_NAME__STRUCT = "! BB"
 
 
@@ -85,7 +84,7 @@ class Dhcp4OptionHostName(Dhcp4Option):
 
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(
-            self, "len", DHCP4__OPTION__HOST_NAME__LEN + len(self.host_name)
+            self, "len", DHCP4__OPTION__LEN + len(self.host_name)
         )
 
     @override
@@ -114,14 +113,6 @@ class Dhcp4OptionHostName(Dhcp4Option):
         """
         Validate the DHCPv4 Host Name option integrity before parsing it.
         """
-
-        if (
-            value := DHCP4__OPTION__LEN + _bytes[1]
-        ) < DHCP4__OPTION__HOST_NAME__LEN:
-            raise Dhcp4IntegrityError(
-                "The DHCPv4 Host Name option length value must be "
-                f"at least {DHCP4__OPTION__HOST_NAME__LEN} bytes. Got: {value!r}"
-            )
 
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(

@@ -53,9 +53,9 @@ class Dhcp4OptionType(ProtoOptionType):
     REQ_IP_ADDR = 50
     LEASE_TIME = 51
     MESSAGE_TYPE = 53
-    SRV_ID = 54
+    SERVER_ID = 54
     PARAM_REQ_LIST = 55
-    CLT_ID = 61
+    CLIENT_ID = 61
     END = 255
 
 

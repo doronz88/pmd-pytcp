@@ -46,8 +46,8 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     Dhcp4Option,
     Dhcp4OptionType,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__clt_id import (
-    Dhcp4OptionCltId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__client_id import (
+    Dhcp4OptionClientId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import Dhcp4OptionEnd
 from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
@@ -72,8 +72,8 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
     Dhcp4OptionRouter,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
-    Dhcp4OptionSrvId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__server_id import (
+    Dhcp4OptionServerId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__subnet_mask import (
     Dhcp4OptionSubnetMask,
@@ -156,14 +156,14 @@ class Dhcp4Options(ProtoOptions):
         return None
 
     @property
-    def srv_id(self) -> Ip4Address | None:
+    def server_id(self) -> Ip4Address | None:
         """
         Get the value of the DHCP Server Identifier option if present.
         """
 
         for option in self._options:
-            if isinstance(option, Dhcp4OptionSrvId):
-                return option.srv_id
+            if isinstance(option, Dhcp4OptionServerId):
+                return option.server_id
 
         return None
 
@@ -229,8 +229,10 @@ class Dhcp4Options(ProtoOptions):
                     break
                 case Dhcp4OptionType.PAD:
                     options.append(Dhcp4OptionPad.from_bytes(_bytes[offset:]))
-                case Dhcp4OptionType.CLT_ID:
-                    options.append(Dhcp4OptionCltId.from_bytes(_bytes[offset:]))
+                case Dhcp4OptionType.CLIENT_ID:
+                    options.append(
+                        Dhcp4OptionClientId.from_bytes(_bytes[offset:])
+                    )
                 case Dhcp4OptionType.HOST_NAME:
                     options.append(
                         Dhcp4OptionHostName.from_bytes(_bytes[offset:])
@@ -255,8 +257,10 @@ class Dhcp4Options(ProtoOptions):
                     options.append(
                         Dhcp4OptionRouter.from_bytes(_bytes[offset:])
                     )
-                case Dhcp4OptionType.SRV_ID:
-                    options.append(Dhcp4OptionSrvId.from_bytes(_bytes[offset:]))
+                case Dhcp4OptionType.SERVER_ID:
+                    options.append(
+                        Dhcp4OptionServerId.from_bytes(_bytes[offset:])
+                    )
                 case Dhcp4OptionType.SUBNET_MASK:
                     options.append(
                         Dhcp4OptionSubnetMask.from_bytes(_bytes[offset:])
@@ -324,7 +328,7 @@ class Dhcp4OptionsProperties(ABC):
         Get the value of the DHCP Server Identifier option if present.
         """
 
-        return self._options.srv_id
+        return self._options.server_id
 
     @property
     def subnet_mask(self) -> Ip4Mask | None:

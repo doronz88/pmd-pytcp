@@ -27,7 +27,7 @@
 """
 Module contains tests for the DHCPv4 Client Identifier option code.
 
-net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__clt_id.py
+net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__client_id.py
 
 ver 3.0.4
 """
@@ -40,12 +40,12 @@ from testslide import TestCase
 
 from net_proto import (
     Dhcp4IntegrityError,
-    Dhcp4OptionCltId,
+    Dhcp4OptionClientId,
     Dhcp4OptionType,
 )
 
 
-class TestDhcp4OptionCltIdAsserts(TestCase):
+class TestDhcp4OptionClientIdAsserts(TestCase):
     """
     The DHCPv4 Client Identifier option constructor argument assert tests.
     """
@@ -58,20 +58,20 @@ class TestDhcp4OptionCltIdAsserts(TestCase):
         self._args: list[Any] = [b"\xaa\xbb\xcc\xdd\xee\xff"]
         self._kwargs: dict[str, Any] = {}
 
-    def test__dhcp4__option__clt_id__clt_id__not_bytes(self) -> None:
+    def test__dhcp4__option__client_id__client_id__not_bytes(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option constructor raises an exception when the
-        provided 'clt_id' argument is not bytes.
+        provided 'client_id' argument is not bytes.
         """
 
         self._args[0] = value = "not bytes"
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionCltId(*self._args, **self._kwargs)
+            Dhcp4OptionClientId(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'clt_id' field must be bytes. Got: {type(value)!r}",
+            f"The 'client_id' field must be bytes. Got: {type(value)!r}",
         )
 
 
@@ -83,10 +83,10 @@ class TestDhcp4OptionCltIdAsserts(TestCase):
             "_kwargs": {},
             "_results": {
                 "__len__": 2,
-                "__str__": "client_identifier ",
-                "__repr__": "Dhcp4OptionCltId(clt_id=b'')",
+                "__str__": "client_id ",
+                "__repr__": "Dhcp4OptionClientId(client_id=b'')",
                 "__bytes__": b"\x3d\x00",
-                "clt_id": b"",
+                "client_id": b"",
             },
         },
         {
@@ -95,10 +95,10 @@ class TestDhcp4OptionCltIdAsserts(TestCase):
             "_kwargs": {},
             "_results": {
                 "__len__": 8,
-                "__str__": "client_identifier aa:bb:cc:dd:ee:ff",
-                "__repr__": "Dhcp4OptionCltId(clt_id=b'\\xaa\\xbb\\xcc\\xdd\\xee\\xff')",
+                "__str__": "client_id aa:bb:cc:dd:ee:ff",
+                "__repr__": "Dhcp4OptionClientId(client_id=b'\\xaa\\xbb\\xcc\\xdd\\xee\\xff')",
                 "__bytes__": b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff",
-                "clt_id": b"\xaa\xbb\xcc\xdd\xee\xff",
+                "client_id": b"\xaa\xbb\xcc\xdd\xee\xff",
             },
         },
         {
@@ -107,15 +107,15 @@ class TestDhcp4OptionCltIdAsserts(TestCase):
             "_kwargs": {},
             "_results": {
                 "__len__": 9,
-                "__str__": "client_identifier 01:de:ad:be:ef:00:01",
-                "__repr__": "Dhcp4OptionCltId(clt_id=b'\\x01\\xde\\xad\\xbe\\xef\\x00\\x01')",
+                "__str__": "client_id 01:de:ad:be:ef:00:01",
+                "__repr__": "Dhcp4OptionClientId(client_id=b'\\x01\\xde\\xad\\xbe\\xef\\x00\\x01')",
                 "__bytes__": b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01",
-                "clt_id": b"\x01\xde\xad\xbe\xef\x00\x01",
+                "client_id": b"\x01\xde\xad\xbe\xef\x00\x01",
             },
         },
     ]
 )
-class TestDhcp4OptionCltIdAssembler(TestCase):
+class TestDhcp4OptionClientIdAssembler(TestCase):
     """
     The DHCPv4 Client Identifier option assembler tests.
     """
@@ -130,9 +130,9 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
         Initialize the DHCPv4 Client Identifier option object with testcase arguments.
         """
 
-        self._option = Dhcp4OptionCltId(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionClientId(*self._args, **self._kwargs)
 
-    def test__dhcp4__option__clt_id__len(self) -> None:
+    def test__dhcp4__option__client_id__len(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option '__len__()' method returns a correct
         value.
@@ -140,7 +140,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
 
         self.assertEqual(len(self._option), self._results["__len__"])
 
-    def test__dhcp4__option__clt_id__str(self) -> None:
+    def test__dhcp4__option__client_id__str(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option '__str__()' method returns a correct
         value.
@@ -148,7 +148,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
 
         self.assertEqual(str(self._option), self._results["__str__"])
 
-    def test__dhcp4__option__clt_id__repr(self) -> None:
+    def test__dhcp4__option__client_id__repr(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option '__repr__()' method returns a correct
         value.
@@ -156,7 +156,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
 
         self.assertEqual(repr(self._option), self._results["__repr__"])
 
-    def test__dhcp4__option__clt_id__bytes(self) -> None:
+    def test__dhcp4__option__client_id__bytes(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option '__bytes__()' method returns a correct
         value.
@@ -164,13 +164,13 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
 
         self.assertEqual(bytes(self._option), self._results["__bytes__"])
 
-    def test__dhcp4__option__clt_id__field(self) -> None:
+    def test__dhcp4__option__client_id__field(self) -> None:
         """
-        Ensure the DHCPv4 Client Identifier option 'clt_id' field contains a correct
+        Ensure the DHCPv4 Client Identifier option 'client_id' field contains a correct
         value.
         """
 
-        self.assertEqual(self._option.clt_id, self._results["clt_id"])
+        self.assertEqual(self._option.client_id, self._results["client_id"])
 
 
 @parameterized_class(
@@ -180,7 +180,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
             "_args": [b"\x3d\x00" + b"ZH0PA"],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionCltId(clt_id=b""),
+                "option": Dhcp4OptionClientId(client_id=b""),
             },
         },
         {
@@ -188,7 +188,9 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
             "_args": [b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff" + b"ZH0PA"],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionCltId(clt_id=b"\xaa\xbb\xcc\xdd\xee\xff"),
+                "option": Dhcp4OptionClientId(
+                    client_id=b"\xaa\xbb\xcc\xdd\xee\xff"
+                ),
             },
         },
         {
@@ -196,8 +198,8 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
             "_args": [b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01" + b"ZH0PA"],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionCltId(
-                    clt_id=b"\x01\xde\xad\xbe\xef\x00\x01"
+                "option": Dhcp4OptionClientId(
+                    client_id=b"\x01\xde\xad\xbe\xef\x00\x01"
                 ),
             },
         },
@@ -220,7 +222,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The DHCPv4 Client Identifier option type must be {Dhcp4OptionType.CLT_ID!r}. "
+                    f"The DHCPv4 Client Identifier option type must be {Dhcp4OptionType.CLIENT_ID!r}. "
                     f"Got: {Dhcp4OptionType.from_int(254)!r}"
                 ),
             },
@@ -241,7 +243,7 @@ class TestDhcp4OptionCltIdAssembler(TestCase):
         },
     ]
 )
-class TestDhcp4OptionCltIdParser(TestCase):
+class TestDhcp4OptionClientIdParser(TestCase):
     """
     The DHCPv4 Client Identifier option parser tests.
     """
@@ -251,14 +253,14 @@ class TestDhcp4OptionCltIdParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__clt_id__from_bytes(self) -> None:
+    def test__dhcp4__option__client_id__from_bytes(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionCltId.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionClientId.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -267,7 +269,7 @@ class TestDhcp4OptionCltIdParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionCltId.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionClientId.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

@@ -82,8 +82,8 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
     Dhcp4OptionType,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__clt_id import (
-    Dhcp4OptionCltId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__client_id import (
+    Dhcp4OptionClientId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
     DHCP4__OPTION__END__LEN,
@@ -112,8 +112,8 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
     Dhcp4OptionRouter,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__srv_id import (
-    Dhcp4OptionSrvId,
+from net_proto.protocols.dhcp4.options.dhcp4_option__server_id import (
+    Dhcp4OptionServerId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4_option__subnet_mask import (
     Dhcp4OptionSubnetMask,
@@ -411,8 +411,8 @@ __all__ = [
     "Dhcp4OptionReqIpAddr",
     "Dhcp4OptionEnd",
     "Dhcp4OptionSubnetMask",
-    "Dhcp4OptionSrvId",
-    "Dhcp4OptionCltId",
+    "Dhcp4OptionServerId",
+    "Dhcp4OptionClientId",
     "Dhcp4OptionPad",
     "Dhcp4OptionRouter",
     "Dhcp4OptionLeaseTime",
