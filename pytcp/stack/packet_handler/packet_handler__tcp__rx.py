@@ -104,9 +104,10 @@ class PacketHandlerTcpRx(ABC):
 
         __debug__ and log("tcp", f"{packet_rx.tracker} - {packet_rx.tcp}")
 
+        # Ensure that TCP payload type is memoryview.
         assert isinstance(
             packet_rx.tcp.payload, memoryview
-        )  # NOTE: Memoryview type checkpoint.
+        ), f"The payload must be a memoryview. Got {type(packet_rx.tcp.payload)}"
 
         # Create TcpMetadata object for further processing by TCP FSM.
         packet_rx_md = TcpMetadata(

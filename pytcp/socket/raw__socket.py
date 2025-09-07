@@ -313,7 +313,7 @@ class RawSocket(socket):
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} " "bytes of data",
             )
-            return data_rx
+            return bytes(data_rx)  # Note: Conversion: memoryview -> bytes
 
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
@@ -334,7 +334,9 @@ class RawSocket(socket):
                 f"{len(packet_rx_md.raw__data)} bytes of data",
             )
             return (
-                packet_rx_md.raw__data,
+                bytes(
+                    packet_rx_md.raw__data
+                ),  # Note: Conversion: memoryview -> bytes
                 (
                     str(packet_rx_md.ip__remote_address),
                     0,

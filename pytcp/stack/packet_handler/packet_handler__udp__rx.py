@@ -118,9 +118,10 @@ class PacketHandlerUdpRx(ABC):
 
         __debug__ and log("udp", f"{packet_rx.tracker} - {packet_rx.udp}")
 
+        # Ensure that UDP payload type is memoryview.
         assert isinstance(
             packet_rx.udp.payload, memoryview
-        )  # NOTE: Memoryview type checkpoint.
+        ), f"The payload must be a memoryview. Got {type(packet_rx.udp.payload)}"
 
         # Create UdpMetadata object and try to find matching UDP socket.
         packet_rx_md = UdpMetadata(
