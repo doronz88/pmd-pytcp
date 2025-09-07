@@ -121,6 +121,7 @@ from net_proto.protocols.dhcp4.options.dhcp4_option__subnet_mask import (
 from net_proto.protocols.dhcp4.options.dhcp4_option__unknown import (
     Dhcp4OptionUnknown,
 )
+from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ethernet.ethernet__base import EthernetPayload
 from net_proto.protocols.ethernet.ethernet__errors import (
@@ -403,6 +404,7 @@ __all__ = [
     "ETHERNET_802_3__PACKET__MAX_LEN",
     "ETHERNET_802_3__PAYLOAD__MAX_LEN",
     "Dhcp4Header",
+    "Dhcp4Options",
     "Dhcp4Operation",
     "Dhcp4MessageType",
     "Dhcp4OptionHostName",
