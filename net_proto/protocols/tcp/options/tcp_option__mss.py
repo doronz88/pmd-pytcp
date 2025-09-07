@@ -113,6 +113,11 @@ class TcpOptionMss(TcpOption):
         Validate the TCP Mss option integrity before parsing it.
         """
 
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
+
         # Raise integrity error when the option length value is incorrect.
         if (value := _bytes[1]) != TCP__OPTION__MSS__LEN:
             raise TcpIntegrityError(

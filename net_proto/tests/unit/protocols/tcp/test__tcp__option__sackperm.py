@@ -158,7 +158,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
     [
         {
             "_description": "The TCP Sackperm option.",
-            "_args": [b"\x04\x02" + b"ZH0PA"],
+            "_args": [memoryview(b"\x04\x02" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionSackperm(),
@@ -166,7 +166,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         },
         {
             "_description": "The 'Sackperm' TCP option minimum length assert.",
-            "_args": [b"\x04"],
+            "_args": [memoryview(b"\x04")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -178,7 +178,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         },
         {
             "_description": "The TCP Sackperm option 'type' incorrect field assert.",
-            "_args": [b"\xff\02"],
+            "_args": [memoryview(b"\xff\02")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -190,7 +190,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         },
         {
             "_description": "The TCP Sackperm option length integrity check (I).",
-            "_args": [b"\x04\01"],
+            "_args": [memoryview(b"\x04\01")],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,

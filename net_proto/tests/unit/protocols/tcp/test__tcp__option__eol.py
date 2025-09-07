@@ -60,7 +60,7 @@ class TestTcpOptionEolAsserts(TestCase):
                 "__len__": 1,
                 "__str__": "eol",
                 "__repr__": "TcpOptionEol()",
-                "__bytes__": b"\x00",
+                "__bytes__": memoryview(b"\x00"),
                 "type": TcpOptionType.EOL,
                 "len": TCP__OPTION__EOL__LEN,
             },
@@ -153,7 +153,7 @@ class TestTcpOptionEolAssembler(TestCase):
     [
         {
             "_description": "The TCP Eol option.",
-            "_args": [b"\x00" + b"ZH0PA"],
+            "_args": [memoryview(b"\x00" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionEol(),
@@ -161,7 +161,7 @@ class TestTcpOptionEolAssembler(TestCase):
         },
         {
             "_description": "The TCP Eol option minimum length assert.",
-            "_args": [b""],
+            "_args": [memoryview(b"")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -173,7 +173,7 @@ class TestTcpOptionEolAssembler(TestCase):
         },
         {
             "_description": "The TCP Eol option incorrect 'type' field assert.",
-            "_args": [b"\xff"],
+            "_args": [memoryview(b"\xff")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

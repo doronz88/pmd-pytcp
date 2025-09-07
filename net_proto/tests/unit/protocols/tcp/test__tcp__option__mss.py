@@ -208,7 +208,7 @@ class TestTcpOptionMssAssembler(TestCase):
     [
         {
             "_description": "The TCP Mss option.",
-            "_args": [b"\x02\x04\xff\xff" + b"ZH0PA"],
+            "_args": [memoryview(b"\x02\x04\xff\xff" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionMss(mss=65535),
@@ -216,7 +216,7 @@ class TestTcpOptionMssAssembler(TestCase):
         },
         {
             "_description": "The TCP Mss option minimum length assert.",
-            "_args": [b"\x02"],
+            "_args": [memoryview(b"\x02")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -228,7 +228,7 @@ class TestTcpOptionMssAssembler(TestCase):
         },
         {
             "_description": "The TCP Mss option incorrect 'type' field assert.",
-            "_args": [b"\xff\04\xff\xff"],
+            "_args": [memoryview(b"\xff\04\xff\xff")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -240,7 +240,7 @@ class TestTcpOptionMssAssembler(TestCase):
         },
         {
             "_description": "The TCP Mss option length integrity check (I).",
-            "_args": [b"\x02\03\xff\xff"],
+            "_args": [memoryview(b"\x02\03\xff\xff")],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
@@ -252,7 +252,7 @@ class TestTcpOptionMssAssembler(TestCase):
         },
         {
             "_description": "The TCP Mss option length integrity check (II).",
-            "_args": [b"\x02\04\xff"],
+            "_args": [memoryview(b"\x02\04\xff")],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
