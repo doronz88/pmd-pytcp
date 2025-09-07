@@ -47,7 +47,7 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 # The DHCPv4 Client Identifier option [RFC 2132].
 #
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Code = 61  |    Len = N    |         Client Identifier    ...
+# |    Code = 61  |    Len = N    |        Client Identifier     ...
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
@@ -78,10 +78,12 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Validate the DHCPv4 Client Identifier option fields.
         """
 
+        # Ensure that the 'client_id' field is bytes.
         assert isinstance(
             self.client_id, (bytes, bytearray)
         ), f"The 'client_id' field must be bytes. Got: {type(self.client_id)!r}"
 
+        # Update the option 'len' field based on the length of the 'client_id' field.
         object.__setattr__(
             self, "len", DHCP4__OPTION__LEN + len(self.client_id)
         )
@@ -92,8 +94,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Get the DHCPv4 Client Identifier option log string.
         """
 
-        hex_str = ":".join(f"{b:02x}" for b in self.client_id)
-        return f"client_id {hex_str}"
+        return f"client_id {':'.join(f'{b:02x}' for b in self.client_id)}"
 
     @override
     def __bytes__(self) -> bytes:
@@ -114,6 +115,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Validate the DHCPv4 Client Identifier option integrity before parsing it.
         """
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Client Identifier option length value must be less than or equal "
@@ -127,11 +129,13 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Initialize the DHCPv4 Client Identifier option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Client Identifier option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.CLIENT_ID), (
             f"The DHCPv4 Client Identifier option type must be {Dhcp4OptionType.CLIENT_ID!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

@@ -114,31 +114,37 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         Validate the ICMPv4 ND Pi option fields.
         """
 
+        # Ensure the 'flag_l' field is a boolean.
         assert isinstance(self.flag_l, bool), (
             f"The 'flag_l' field must be a boolean. "
             f"Got: {type(self.flag_l)!r}"
         )
 
+        # Ensure the 'flag_a' field is a boolean.
         assert isinstance(self.flag_a, bool), (
             f"The 'flag_a' field must be a boolean. "
             f"Got: {type(self.flag_a)!r}"
         )
 
+        # Ensure the 'flag_r' field is a boolean.
         assert isinstance(self.flag_r, bool), (
             f"The 'flag_r' field must be a boolean. "
             f"Got: {type(self.flag_r)!r}"
         )
 
+        # Ensure the 'valid_lifetime' field is a 32-bit unsigned integer.
         assert is_uint32(self.valid_lifetime), (
             f"The 'valid_lifetime' field must be a 32-bit unsigned integer. "
             f"Got: {self.valid_lifetime!r}"
         )
 
+        # Ensure the 'preferred_lifetime' field is a 32-bit unsigned integer.
         assert is_uint32(self.preferred_lifetime), (
             f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. "
             f"Got: {self.preferred_lifetime!r}"
         )
 
+        # Ensure the 'prefix' field is an Ip6Network instance.
         assert isinstance(self.prefix, Ip6Network), (
             f"The 'prefix' field must be an Ip6Network. "
             f"Got: {type(self.prefix)!r}"
@@ -186,12 +192,14 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         Validate the ICMPv6 ND Pi option integrity before parsing it.
         """
 
+        # Raise integrity error when the option length value is incorrect.
         if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
                 "The ICMPv6 ND Pi option length value must be less than or equal to the "
@@ -205,11 +213,13 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         Initialize the ICMPv6 ND Pi option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the ICMPv6 ND Pi option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Icmp6NdOptionType.PI), (
             f"The ICMPv6 ND Pi option type must be {Icmp6NdOptionType.PI!r}. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"

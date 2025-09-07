@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.int_checks import is_uint32
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -46,11 +47,11 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 IP Address Lease Time option [RFC 2132].
 #
+#                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 |    Code = 51  |   Length = 4  |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Code = 51  |   Length = 4  |         Lease Time (seconds)
+# |                       Lease Time (seconds)                    |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#        Lease Time (seconds)     |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
 DHCP4__OPTION__LEASE_TIME__LEN = 6
@@ -74,7 +75,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         default=DHCP4__OPTION__LEASE_TIME__LEN,
     )
 
-    lease_time: int  # seconds (uint32)
+    lease_time: int
 
     @override
     def __post_init__(self) -> None:
@@ -82,13 +83,10 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         Validate the DHCPv4 IP Address Lease Time option fields.
         """
 
-        assert isinstance(
-            self.lease_time, int
-        ), f"The 'lease_time' field must be an int. Got: {type(self.lease_time)!r}"
-
-        assert 0 <= self.lease_time <= 0xFFFFFFFF, (
-            f"The 'lease_time' field must be between 0 and 4294967295. "
-            f"Got: {self.lease_time!r}"
+        # Ensure the 'lease_time' field is 32-bit unsigned integer.
+        assert is_uint32(self.lease_time), (
+            f"The 'lease_time' field must be a 32-bit unsigned integer. "
+            f"Got: {self.lease_time}"
         )
 
     @override
@@ -118,6 +116,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         Validate the DHCPv4 IP Address Lease Time option integrity before parsing it.
         """
 
+        # Raise integrity error when the option length value is incorrect.
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
         ) != DHCP4__OPTION__LEASE_TIME__LEN:
@@ -126,6 +125,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
                 f"{DHCP4__OPTION__LEASE_TIME__LEN} bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 IP Address Lease Time option length value must be less than or equal "
@@ -139,11 +139,13 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         Initialize the DHCPv4 IP Address Lease Time option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 IP Address Lease Time option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.LEASE_TIME), (
             f"The DHCPv4 IP Address Lease Time option type must be {Dhcp4OptionType.LEASE_TIME!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

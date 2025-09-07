@@ -47,11 +47,11 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 Server Identifier option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 54   |    Length = 4   |          Server Identifier
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#              Server Identifier      |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 |    Code = 54  |   Length = 4  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                       Server Identifier                       |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
 DHCP4__OPTION__SERVER_ID__LEN = 6
@@ -83,6 +83,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
         Validate the DHCPv4 Server Identifier option fields.
         """
 
+        # Ensure that the 'server_id' field is an Ip4Address instance.
         assert isinstance(self.server_id, Ip4Address), (
             f"The 'server_id' field must be an Ip4Address. "
             f"Got: {type(self.server_id)!r}"
@@ -115,6 +116,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
         Validate the DHCPv4 Subnet Mask option integrity before parsing it.
         """
 
+        # Raise integrity error if the option length value is incorrect.
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
         ) != DHCP4__OPTION__SERVER_ID__LEN:
@@ -123,6 +125,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
                 f"{DHCP4__OPTION__SERVER_ID__LEN} bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Server Identifier option length value must be less than or equal "
@@ -136,11 +139,13 @@ class Dhcp4OptionServerId(Dhcp4Option):
         Initialize the DHCPv4 Subnet Mask option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Subnet Mask option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.SERVER_ID), (
             f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SERVER_ID!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

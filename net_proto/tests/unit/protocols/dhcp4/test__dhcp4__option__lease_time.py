@@ -43,6 +43,7 @@ from net_proto import (
     Dhcp4OptionLeaseTime,
     Dhcp4OptionType,
 )
+from net_proto.lib.int_checks import UINT_32__MAX
 
 
 class TestDhcp4OptionLeaseTimeAsserts(TestCase):
@@ -64,14 +65,14 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
         provided 'lease_time' argument is not an int.
         """
 
-        self._args[0] = value = "60"
+        self._args[0] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
             Dhcp4OptionLeaseTime(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'lease_time' field must be an int. Got: {type(value)!r}",
+            f"The 'lease_time' field must be a 32-bit unsigned integer. Got: {value}",
         )
 
     def test__dhcp4__option__lease_time__lease_time__out_of_range(self) -> None:
@@ -87,7 +88,7 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'lease_time' field must be between 0 and 4294967295. Got: {value}",
+            f"The 'lease_time' field must be a 32-bit unsigned integer. Got: {value}",
         )
 
 

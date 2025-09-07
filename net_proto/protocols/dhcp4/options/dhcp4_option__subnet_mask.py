@@ -47,11 +47,11 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 Subnet Mask option [RFC 2132].
 
+#                                     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                     |     Code = 1    |    Length = 4   |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 1    |    Length = 4   |             Subnet Mask
+#                                Subnet Mask                              |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#              Subnet Mask            |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
 DHCP4__OPTION__SUBNET_MASK__LEN = 6
@@ -83,6 +83,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Validate the DHCPv4 Subnet Mask option fields.
         """
 
+        # Ensure that the 'subnet_mask' field is an Ip4Mask instance.
         assert isinstance(self.subnet_mask, Ip4Mask), (
             f"The 'subnet_mask' field must be an Ip4Mask. "
             f"Got: {type(self.subnet_mask)!r}"
@@ -115,6 +116,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Validate the DHCPv4 Subnet Mask option integrity before parsing it.
         """
 
+        # Raise integrity error if the option length value is incorrect.
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
         ) != DHCP4__OPTION__SUBNET_MASK__LEN:
@@ -123,6 +125,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
                 f"{DHCP4__OPTION__SUBNET_MASK__LEN} bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Subnet Mask option length value must be less than or equal "
@@ -136,11 +139,13 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Initialize the DHCPv4 Subnet Mask option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Subnet Mask option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.SUBNET_MASK), (
             f"The DHCPv4 Subnet Mask option type must be {Dhcp4OptionType.SUBNET_MASK!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

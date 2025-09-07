@@ -82,6 +82,7 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
         Validate the ICMPv4 ND Tlla option fields.
         """
 
+        # Ensure the 'tlla' field is a MacAddress instance.
         assert isinstance(
             self.tlla, MacAddress
         ), f"The 'tlla' field must be a MacAddress. Got: {type(self.tlla)!r}"
@@ -113,12 +114,14 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
         Validate the integrity of the ICMPv6 ND Tlla option before parsing it.
         """
 
+        # Raise integrity error when the option length value is incorrect.
         if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__TLLA__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Tlla option length value must be {ICMP6__ND__OPTION__TLLA__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
                 "The ICMPv6 ND Tlla option length value must be less than or equal to "
@@ -132,11 +135,13 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
         Initialize the ICMPv6 ND Tlla option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the ICMPv6 ND Tlla option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Icmp6NdOptionType.TLLA), (
             f"The ICMPv6 ND Tlla option type must be {Icmp6NdOptionType.TLLA!r}. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"

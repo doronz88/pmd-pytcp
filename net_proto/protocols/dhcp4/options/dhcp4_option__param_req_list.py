@@ -47,11 +47,12 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 # The DHCPv4 Parameter Request List option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code=55   |     Len=N     |  Option Code  | Option Code  ...
+# |     Code=55   |     Len=N     |  Option Code  |  Option Code  |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |  Option Code  |  Option Code  | ...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__PARAM_REQ_LIST__LEN = 2
 DHCP4__OPTION__PARAM_REQ_LIST__STRUCT = "! BB"
 
 
@@ -79,10 +80,12 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Validate the DHCPv4 Parameter Request List option fields.
         """
 
+        # Ensure that the 'param_req_list' field is a list.
         assert isinstance(
             self.param_req_list, list
         ), f"The 'param_req_list' field must be a list. Got: {type(self.param_req_list)!r}"
 
+        # Ensure that each element of the 'param_req_list' field is a Dhcp4OptionType instance.
         assert all(
             isinstance(item, Dhcp4OptionType) for item in self.param_req_list
         ), (
@@ -90,7 +93,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
             f"Got: {[type(element) for element in self.param_req_list]!r}"
         )
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
+        # Update the option 'len' field based on the length of the 'param_req_list' field.
         object.__setattr__(
             self, "len", DHCP4__OPTION__LEN + len(self.param_req_list)
         )
@@ -123,14 +126,14 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Validate the DHCPv4 Parameter Request List option integrity before parsing it.
         """
 
-        if (
-            value := DHCP4__OPTION__LEN + _bytes[1]
-        ) < DHCP4__OPTION__PARAM_REQ_LIST__LEN:
+        # Raise integrity error when the option length value is incorrect.
+        if (value := DHCP4__OPTION__LEN + _bytes[1]) < DHCP4__OPTION__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Parameter Request List option length value must be "
-                f"at least {DHCP4__OPTION__PARAM_REQ_LIST__LEN} bytes. Got: {value!r}"
+                f"at least {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Parameter Request List option length value must be less than or equal "
@@ -144,11 +147,13 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Initialize the DHCPv4 Parameter Request List option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Parameter Request List option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.PARAM_REQ_LIST), (
             f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

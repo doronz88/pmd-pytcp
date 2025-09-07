@@ -47,11 +47,11 @@ from net_proto.protocols.dhcp4.options.dhcp4_option import (
 
 # The DHCPv4 Requested Ip Address option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Code = 50   |    Length = 4   |        Requested IP Address
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#         Requested IP Address        |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 |    Code = 50  |   Length = 4  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                    Requested IP Address                       |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
 DHCP4__OPTION__REQ_IP_ADDR__LEN = 6
@@ -83,6 +83,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Validate the DHCPv4 Request Ip Address option fields.
         """
 
+        # Ensure that the 'req_ip_addr' field is Ip4Address instance.
         assert isinstance(self.req_ip_addr, Ip4Address), (
             f"The 'req_ip_addr' field must be an Ip4Address. "
             f"Got: {type(self.req_ip_addr)!r}"
@@ -115,6 +116,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Validate the DHCPv4 Requested Ip Address option integrity before parsing it.
         """
 
+        # Raise integrity error when the option length value is incorrect.
         if (
             value := DHCP4__OPTION__LEN + _bytes[1]
         ) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
@@ -123,6 +125,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
                 f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"
             )
 
+        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Requested Ip Address option length value must be less than or equal "
@@ -136,11 +139,13 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Initialize the DHCPv4 Requested Ip Address option from bytes.
         """
 
+        # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Requested Ip Address option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
+        # Ensure the option type is the expected value.
         assert (value := _bytes[0]) == int(Dhcp4OptionType.REQ_IP_ADDR), (
             f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
