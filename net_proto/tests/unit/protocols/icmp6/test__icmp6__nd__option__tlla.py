@@ -193,7 +193,9 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     [
         {
             "_description": "The ICMPv6 ND Tlla option (I).",
-            "_args": [b"\x02\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA"],
+            "_args": [
+                memoryview(b"\x02\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA")
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Icmp6NdOptionTlla(
@@ -203,7 +205,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Tlla option minimum length assert.",
-            "_args": [b"\x02"],
+            "_args": [memoryview(b"\x02")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -215,7 +217,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Tlla option incorrect 'type' field assert.",
-            "_args": [b"\xff\x01\x01\x02\x03\x04\x05\x06"],
+            "_args": [memoryview(b"\xff\x01\x01\x02\x03\x04\x05\x06")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -227,7 +229,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Tlla option length integrity check (I).",
-            "_args": [b"\x02\x02\x01\x02\x03\x04\x05\x06"],
+            "_args": [memoryview(b"\x02\x02\x01\x02\x03\x04\x05\x06")],
             "_kwargs": {},
             "_results": {
                 "error": Icmp6IntegrityError,
@@ -239,7 +241,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
         },
         {
             "_description": "The ND Tlla option length integrity check (II).",
-            "_args": [b"\x02\x01\x01\x02\x03\x04\x05"],
+            "_args": [memoryview(b"\x02\x01\x01\x02\x03\x04\x05")],
             "_kwargs": {},
             "_results": {
                 "error": Icmp6IntegrityError,

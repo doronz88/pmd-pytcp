@@ -409,9 +409,11 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option .",
             "_args": [
-                b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                + b"ZH0PA"
+                memoryview(
+                    b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
+                    b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                    + b"ZH0PA"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -428,9 +430,11 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option (I).",
             "_args": [
-                b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                + b"ZH0PA"
+                memoryview(
+                    b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
+                    b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                    + b"ZH0PA"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -447,9 +451,11 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option (II).",
             "_args": [
-                b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
-                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
-                + b"ZH0PA"
+                memoryview(
+                    b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
+                    b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
+                    + b"ZH0PA"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -477,8 +483,10 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option incorrect 'type' field assert.",
             "_args": [
-                b"\xff\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
-                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
+                memoryview(
+                    b"\xff\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
+                    b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -492,8 +500,10 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option length integrity check (I).",
             "_args": [
-                b"\x03\x05\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
-                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
+                memoryview(
+                    b"\x03\x05\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
+                    b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -507,8 +517,10 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Pi option length integrity check (II).",
             "_args": [
-                b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
-                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab"
+                memoryview(
+                    b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
+                    b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab"
+                )
             ],
             "_kwargs": {},
             "_results": {

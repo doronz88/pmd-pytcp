@@ -257,8 +257,10 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 ND option.",
             "_args": [
-                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                + b"ZH0PA"
+                memoryview(
+                    b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    + b"ZH0PA"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -270,7 +272,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown ICMPv6 ND option minimum length assert.",
-            "_args": [b"\xff"],
+            "_args": [memoryview(b"\xff")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -283,7 +285,9 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 option incorrect 'type' field (1) assert.",
             "_args": [
-                b"\x01\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                memoryview(
+                    b"\x01\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -297,7 +301,9 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (2) assert.",
             "_args": [
-                b"\x02\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                memoryview(
+                    b"\x02\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -311,7 +317,9 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (3) assert.",
             "_args": [
-                b"\x03\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                memoryview(
+                    b"\x03\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -325,7 +333,9 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv4 ND option length integrity check (II).",
             "_args": [
-                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43"
+                memoryview(
+                    b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43"
+                )
             ],
             "_kwargs": {},
             "_results": {

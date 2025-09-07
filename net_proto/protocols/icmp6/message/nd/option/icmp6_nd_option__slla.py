@@ -114,6 +114,11 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         Validate the ICMPv6 ND Slla option integrity before parsing it.
         """
 
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
+
         # Raise integrity error when the option length value is incorrect.
         if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
             raise Icmp6IntegrityError(

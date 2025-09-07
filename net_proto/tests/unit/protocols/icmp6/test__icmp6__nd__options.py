@@ -139,7 +139,7 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND options (II).",
             "_args": {
-                "bytes": (
+                "bytes": memoryview(
                     b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
                     b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
                 ),
