@@ -75,9 +75,11 @@ from net_proto.protocols.dhcp4.dhcp4__errors import (
 )
 from net_proto.protocols.dhcp4.dhcp4__header import (
     DHCP4__HEADER__FILE__MAX_LEN,
+    DHCP4__HEADER__LEN,
     DHCP4__HEADER__SNAME__MAX_LEN,
     Dhcp4Header,
 )
+from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
     Dhcp4OptionType,
@@ -404,6 +406,8 @@ __all__ = [
     "ETHERNET_802_3__PACKET__MAX_LEN",
     "ETHERNET_802_3__PAYLOAD__MAX_LEN",
     "Dhcp4Header",
+    "Dhcp4Parser",
+    "DHCP4__HEADER__LEN",
     "Dhcp4Options",
     "Dhcp4Operation",
     "Dhcp4MessageType",
