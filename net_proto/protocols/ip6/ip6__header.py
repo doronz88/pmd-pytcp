@@ -165,7 +165,7 @@ class Ip6Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the IPv6 header from bytes.
         """

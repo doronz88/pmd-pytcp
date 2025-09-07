@@ -191,7 +191,7 @@ class Ip4Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the IPv4 header from bytes.
         """

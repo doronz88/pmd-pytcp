@@ -146,7 +146,9 @@ class PacketHandlerIp6FragRx(ABC):
                 f"{len(self._ip6_frag_flows[flow_id].payload[offset])}s",
                 payload,
                 offset,
-                self._ip6_frag_flows[flow_id].payload[offset],
+                bytes(
+                    self._ip6_frag_flows[flow_id].payload[offset]
+                ),  # NOTE: conversion: memoryview -> bytes
             )
         del self._ip6_frag_flows[flow_id]
         struct.pack_into("!H", header, 4, len(payload))

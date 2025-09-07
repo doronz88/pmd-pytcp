@@ -118,25 +118,25 @@ class Ip6Parser(Ip6[memoryview], ProtoParser):
             )
 
     @property
-    def header_bytes(self) -> bytes:
+    def header_bytes(self) -> memoryview:
         """
         Get the IPv6 packet header bytes.
         """
 
-        return bytes(self._frame[: len(self._header)])
+        return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> bytes:
+    def payload_bytes(self) -> memoryview:
         """
         Get the IPv6 packet payload bytes.
         """
 
-        return bytes(self._payload)
+        return self._payload
 
     @property
-    def packet_bytes(self) -> bytes:
+    def packet_bytes(self) -> memoryview:
         """
         Get the IPv6 packet bytes.
         """
 
-        return bytes(self._frame[: len(self._header) + self._header.dlen])
+        return self._frame[: len(self._header) + self._header.dlen]

@@ -116,7 +116,7 @@ class TcpOptionUnknown(TcpOption):
         )
 
     @staticmethod
-    def _validate_integrity(_bytes: bytes, /) -> None:
+    def _validate_integrity(_bytes: memoryview, /) -> None:
         """
         Validate the unknown TCP option integrity before parsing it.
         """
@@ -130,7 +130,7 @@ class TcpOptionUnknown(TcpOption):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the unknown TCP option from bytes.
         """

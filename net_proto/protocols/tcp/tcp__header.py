@@ -210,7 +210,7 @@ class TcpHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the TCP header from bytes.
         """

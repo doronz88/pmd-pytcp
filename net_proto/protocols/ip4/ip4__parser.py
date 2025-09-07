@@ -150,7 +150,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
             )
 
     @property
-    def header_bytes(self) -> bytes:
+    def header_bytes(self) -> memoryview:
         """
         Get the IPv4 packet header bytes.
         """
@@ -158,7 +158,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
         return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> bytes:
+    def payload_bytes(self) -> memoryview:
         """
         Get the IPv4 packet payload bytes.
         """
@@ -166,7 +166,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
         return self._payload
 
     @property
-    def packet_bytes(self) -> bytes:
+    def packet_bytes(self) -> memoryview:
         """
         Get the whole IPv4 packet bytes.
         """

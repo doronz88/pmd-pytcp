@@ -116,7 +116,7 @@ class Ip4OptionUnknown(Ip4Option):
         )
 
     @staticmethod
-    def _validate_integrity(_bytes: bytes, /) -> None:
+    def _validate_integrity(_bytes: memoryview, /) -> None:
         """
         Validate the unknown IPv4 option integrity before parsing it.
         """
@@ -130,7 +130,7 @@ class Ip4OptionUnknown(Ip4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the unknown IPv4 option from bytes.
         """

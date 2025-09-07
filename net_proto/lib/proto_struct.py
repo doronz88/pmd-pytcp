@@ -70,7 +70,7 @@ class ProtoStruct(ABC):
 
     @classmethod
     @abstractmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Create the protocol structure from bytes.
         """

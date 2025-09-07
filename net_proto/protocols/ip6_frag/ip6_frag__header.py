@@ -116,7 +116,7 @@ class Ip6FragHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the IPv6 Frag header from bytes.
         """

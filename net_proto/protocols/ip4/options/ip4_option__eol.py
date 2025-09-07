@@ -90,7 +90,7 @@ class Ip4OptionEol(Ip4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the IPv4 Eol option from bytes.
         """

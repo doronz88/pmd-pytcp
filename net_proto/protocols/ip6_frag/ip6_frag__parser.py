@@ -98,25 +98,25 @@ class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
         # Currently no sanity checks are implemented for the IPv6 Frag protocol.
 
     @property
-    def header_bytes(self) -> bytes:
+    def header_bytes(self) -> memoryview:
         """
         Get the IPv6 Frag packet header bytes.
         """
 
-        return bytes(self._frame[: len(self._header)])
+        return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> bytes:
+    def payload_bytes(self) -> memoryview:
         """
         Get the IPv6 Frag packet payload bytes.
         """
 
-        return bytes(self._payload)
+        return self._payload
 
     @property
-    def packet_bytes(self) -> bytes:
+    def packet_bytes(self) -> memoryview:
         """
         Get the IPv6 Frag packet bytes.
         """
 
-        return bytes(self._frame[: len(self._header) + len(self._payload)])
+        return self._frame[: len(self._header) + len(self._payload)]

@@ -90,7 +90,7 @@ class Ip4OptionNop(Ip4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the IPv4 Nop option from bytes.
         """

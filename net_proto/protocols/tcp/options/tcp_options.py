@@ -131,7 +131,7 @@ class TcpOptions(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: bytes,
+        frame: memoryview,
         hlen: int,
     ) -> None:
         """
@@ -163,7 +163,7 @@ class TcpOptions(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Read the TCP options from bytes.
         """

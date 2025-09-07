@@ -98,7 +98,7 @@ class TcpOptionSackperm(TcpOption):
         )
 
     @staticmethod
-    def _validate_integrity(_bytes: bytes, /) -> None:
+    def _validate_integrity(_bytes: memoryview, /) -> None:
         """
         Validate the TCP Sackperm option integrity before parsing it.
         """
@@ -117,7 +117,7 @@ class TcpOptionSackperm(TcpOption):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the TCP Sackperm option from bytes.
         """
