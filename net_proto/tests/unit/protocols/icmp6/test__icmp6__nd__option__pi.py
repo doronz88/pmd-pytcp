@@ -471,7 +471,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Pi option minimum length assert.",
-            "_args": [b"\x03"],
+            "_args": [memoryview(b"\x03")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

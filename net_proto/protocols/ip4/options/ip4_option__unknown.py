@@ -135,6 +135,11 @@ class Ip4OptionUnknown(Ip4Option):
         Initialize the unknown IPv4 option from bytes.
         """
 
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
+
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= IP4__OPTION__LEN, (
             f"The minimum length of the unknown IPv4 option must be "

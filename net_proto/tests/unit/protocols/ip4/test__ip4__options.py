@@ -125,7 +125,7 @@ class TestIp4OptionsAssembler(TestCase):
         {
             "_description": "The IPv4 options (I).",
             "_args": {
-                "bytes": b"\x01\x01\x01\x00",
+                "bytes": memoryview(b"\x01\x01\x01\x00"),
             },
             "_results": {
                 "options": Ip4Options(

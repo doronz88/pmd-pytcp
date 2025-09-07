@@ -95,6 +95,11 @@ class Ip4OptionEol(Ip4Option):
         Initialize the IPv4 Eol option from bytes.
         """
 
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
+
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= IP4__OPTION__EOL__LEN, (
             f"The minimum length of the IPv4 Eol option must be "

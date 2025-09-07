@@ -126,11 +126,6 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         Validate the unknown ICMPv6 option integrity before parsing it.
         """
 
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
-
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := _bytes[1] << 3) > len(_bytes):
             raise Icmp6IntegrityError(
@@ -144,6 +139,11 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         """
         Initialize the unknown ICMPv6 option from bytes.
         """
+
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (

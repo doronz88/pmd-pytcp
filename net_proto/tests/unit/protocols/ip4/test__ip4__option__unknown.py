@@ -131,7 +131,7 @@ class TestIp4OptionUnknownAsserts(TestCase):
                     f"Ip4OptionUnknown(type={Ip4OptionType.from_int(255)!r}, "
                     "len=18, data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": (
+                "__bytes__": memoryview(
                     b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
@@ -239,8 +239,10 @@ class TestIp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown IPv4 option.",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46" + b"ZH0PA"
+                memoryview(
+                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x45\x46" + b"ZH0PA"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -252,7 +254,7 @@ class TestIp4OptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown IPv4 option minimum length assert.",
-            "_args": [b"\xff"],
+            "_args": [memoryview(b"\xff")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -265,8 +267,10 @@ class TestIp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown IPv4 option incorrect 'type' field (Eol) assert.",
             "_args": [
-                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46"
+                memoryview(
+                    b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x45\x46"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -280,8 +284,10 @@ class TestIp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown IPv4 option incorrect 'type' field (Nop) assert.",
             "_args": [
-                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46"
+                memoryview(
+                    b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x45\x46"
+                )
             ],
             "_kwargs": {},
             "_results": {
@@ -295,8 +301,10 @@ class TestIp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown IPv4 option length integrity check (II).",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45"
+                memoryview(
+                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                    b"\x45"
+                )
             ],
             "_kwargs": {},
             "_results": {
