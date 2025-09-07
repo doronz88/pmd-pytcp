@@ -146,7 +146,7 @@ class Icmp6NdOptions(ProtoOptions):
         options: list[Icmp6NdOption] = []
 
         while offset < len(_bytes):
-            match Icmp6NdOptionType(_bytes[offset]):
+            match Icmp6NdOptionType.from_bytes(_bytes[offset : offset + 1]):
                 case Icmp6NdOptionType.SLLA:
                     options.append(
                         Icmp6NdOptionSlla.from_bytes(_bytes[offset:])

@@ -99,7 +99,7 @@ class Ip4Options(ProtoOptions):
         options: list[Ip4Option] = []
 
         while offset < len(_bytes):
-            match Ip4OptionType(_bytes[offset]):
+            match Ip4OptionType.from_bytes(_bytes[offset : offset + 1]):
                 case Ip4OptionType.EOL:
                     options.append(Ip4OptionEol.from_bytes(_bytes[offset:]))
                     break
