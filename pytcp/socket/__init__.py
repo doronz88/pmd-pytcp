@@ -139,9 +139,9 @@ class socket(ABC):
                     return cls.__new__(TcpSocket)
                 case _, SocketType.DGRAM, IpProto.UDP | None:
                     return cls.__new__(UdpSocket)
-                case AddressFamily.INET6, SocketType.RAW, IpProto.IP6 | None:
+                case (AddressFamily.INET6, SocketType.RAW, _):
                     return cls.__new__(RawSocket)
-                case AddressFamily.INET4, SocketType.RAW, IpProto.IP4 | None:
+                case (AddressFamily.INET4, SocketType.RAW, _):
                     return cls.__new__(RawSocket)
                 case _:
                     raise ValueError(
