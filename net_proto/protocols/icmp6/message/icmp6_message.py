@@ -93,7 +93,7 @@ class Icmp6Message(ProtoStruct):
 
     @staticmethod
     @abstractmethod
-    def validate_integrity(*, frame: bytes, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
         """
         Validate the ICMPv6 message integrity.
         """

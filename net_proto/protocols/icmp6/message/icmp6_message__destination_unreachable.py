@@ -185,7 +185,7 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
         """
         Validate the ICMPv6 Destination Unreachable message integrity before
         parsing it.
@@ -201,7 +201,7 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv6 Destination Unreachable message from bytes.
         """

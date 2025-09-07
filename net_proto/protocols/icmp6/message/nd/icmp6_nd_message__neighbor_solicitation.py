@@ -216,7 +216,7 @@ class Icmp6NdNeighborSolicitationMessage(Icmp6NdMessage):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 ND Neighbor Solicitation message
         before parsing it.
@@ -238,7 +238,7 @@ class Icmp6NdNeighborSolicitationMessage(Icmp6NdMessage):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv6 ND Neighbor Solicitation message from bytes.
         """

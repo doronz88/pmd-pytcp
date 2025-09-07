@@ -175,7 +175,7 @@ class Icmp6EchoReplyMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 Echo Reply message before parsing it.
         """
@@ -189,7 +189,7 @@ class Icmp6EchoReplyMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv6 Echo Reply message from bytes.
         """

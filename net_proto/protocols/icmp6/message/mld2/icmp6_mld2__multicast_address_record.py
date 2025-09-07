@@ -227,7 +227,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv6 MLDv2 Multicast Address Record from bytes.
         """

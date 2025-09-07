@@ -112,7 +112,7 @@ class Icmp6NdOptions(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: bytes,
+        frame: memoryview,
         offset: int,
     ) -> None:
         """
@@ -137,7 +137,7 @@ class Icmp6NdOptions(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Read the ICMPv6 ND options from bytes.
         """
