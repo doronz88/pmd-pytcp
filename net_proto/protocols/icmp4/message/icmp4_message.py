@@ -85,7 +85,7 @@ class Icmp4Message(ProtoStruct):
 
     @staticmethod
     @abstractmethod
-    def validate_integrity(*, frame: bytes, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
         """
         Validate the ICMPv4 message integrity.
         """

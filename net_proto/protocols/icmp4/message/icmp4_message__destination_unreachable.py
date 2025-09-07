@@ -243,7 +243,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
         """
         Validate the ICMPv4 Destination Unreachable message integrity before parsing it.
         """
@@ -262,7 +262,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv4 Destination Unreachable message from bytes.
         """

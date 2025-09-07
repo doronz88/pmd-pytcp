@@ -169,7 +169,7 @@ class Icmp4EchoRequestMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
         """
         Validate the integrity of the ICMPv4 Echo Request message before parsing it.
         """
@@ -183,7 +183,7 @@ class Icmp4EchoRequestMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv4 Echo Request message from bytes.
         """

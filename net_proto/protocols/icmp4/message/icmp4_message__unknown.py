@@ -128,7 +128,7 @@ class Icmp4UnknownMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
         """
         Validate integrity of the ICMPv4 unknown message before parsing it.
         """
@@ -137,7 +137,7 @@ class Icmp4UnknownMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the ICMPv4 unknown message from bytes.
         """
