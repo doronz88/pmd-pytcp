@@ -42,8 +42,8 @@ from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp.socket import (
     AF_INET4,
     AF_INET6,
-    IPPROTO_ICMP4,
-    IPPROTO_ICMP6,
+    IPPROTO_IP4,
+    IPPROTO_IP6,
     SOCK_DGRAM,
     SOCK_RAW,
     SOCK_STREAM,
@@ -124,11 +124,11 @@ class Subsystem(ABC):
                 subsystem_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
             case IpVersion.IP6, "ICMP":
                 subsystem_socket = socket(
-                    family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_ICMP6
+                    family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_IP6
                 )
             case IpVersion.IP4, "ICMP":
                 subsystem_socket = socket(
-                    family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_ICMP4
+                    family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_IP4
                 )
             case _:
                 raise ValueError("Invalid IP versions or protocol combination.")
