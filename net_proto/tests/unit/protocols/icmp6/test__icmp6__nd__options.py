@@ -138,12 +138,13 @@ class TestIcmp6NdOptionsAssembler(TestCase):
     [
         {
             "_description": "The ICMPv6 ND options (II).",
-            "_args": {
-                "bytes": memoryview(
+            "_args": [
+                memoryview(
                     b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
                     b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
                 ),
-            },
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Icmp6NdOptions(
                     Icmp6NdOptionSlla(slla=MacAddress()),
@@ -161,7 +162,8 @@ class TestIcmp6NdOptionsParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__icmp6_nd_options__from_bytes(self) -> None:
@@ -170,7 +172,9 @@ class TestIcmp6NdOptionsParser(TestCase):
         object.
         """
 
-        icmp6_nd_options = Icmp6NdOptions.from_bytes(self._args["bytes"])
+        icmp6_nd_options = Icmp6NdOptions.from_bytes(
+            *self._args, **self._kwargs
+        )
 
         self.assertEqual(
             icmp6_nd_options,

@@ -63,12 +63,13 @@ from net_proto import (
     [
         {
             "_description": "The DHCPv4 options (I) — single option + End.",
-            "_args": {
-                "bytes": memoryview(
+            "_args": [
+                memoryview(
                     b"\x35\x01\x01"  # message_type=DISCOVER
                     b"\xff"  # End
                 )
-            },
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER),
@@ -78,8 +79,8 @@ from net_proto import (
         },
         {
             "_description": "The DHCPv4 options (II) — rich mix, pads, trailing data.",
-            "_args": {
-                "bytes": memoryview(
+            "_args": [
+                memoryview(
                     b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
                     b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
                     b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
@@ -93,7 +94,8 @@ from net_proto import (
                     b"\xff"  # End
                     b"\x00\x00\x00"  # bytes after End ignored
                 ),
-            },
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
@@ -123,9 +125,10 @@ from net_proto import (
         },
         {
             "_description": "The DHCPv4 options (III) — only End.",
-            "_args": {
-                "bytes": memoryview(b"\xff"),
-            },
+            "_args": [
+                memoryview(b"\xff"),
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionEnd(),
@@ -134,13 +137,14 @@ from net_proto import (
         },
         {
             "_description": "The DHCPv4 options (IV) — options behind End are ignored.",
-            "_args": {
-                "bytes": memoryview(
+            "_args": [
+                memoryview(
                     b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
                     b"\xff"  # End
                     b"\x01\x04\xff\xff\xff\x00"  # subnet_mask (ignored)
                 ),
-            },
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
@@ -150,13 +154,14 @@ from net_proto import (
         },
         {
             "_description": "The DHCPv4 options (V) — empty/zero-length valued options allowed.",
-            "_args": {
-                "bytes": memoryview(
+            "_args": [
+                memoryview(
                     b"\x3d\x00"  # client_id empty
                     b"\x0c\x00"  # host_name empty
                     b"\xff"
                 ),
-            },
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionClientId(b""),
@@ -173,7 +178,8 @@ class TestDhcp4OptionsParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__options__from_bytes(self) -> None:
@@ -181,7 +187,7 @@ class TestDhcp4OptionsParser(TestCase):
         Ensure the 'Dhcp4Options' class parser creates the proper options object.
         """
 
-        dhcp4_options = Dhcp4Options.from_bytes(self._args["bytes"])
+        dhcp4_options = Dhcp4Options.from_bytes(*self._args, **self._kwargs)
 
         self.assertEqual(
             dhcp4_options,

@@ -153,7 +153,9 @@ class TestIp4OptionNopAssembler(TestCase):
     [
         {
             "_description": "The IPv4 Nop option.",
-            "_args": [memoryview(b"\x01" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x01" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Ip4OptionNop(),
@@ -161,7 +163,9 @@ class TestIp4OptionNopAssembler(TestCase):
         },
         {
             "_description": "The IPv4 Nop option minimum length assert.",
-            "_args": [memoryview(b"")],
+            "_args": [
+                memoryview(b""),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -173,7 +177,9 @@ class TestIp4OptionNopAssembler(TestCase):
         },
         {
             "_description": "The IPv4 Nop option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xff")],
+            "_args": [
+                memoryview(b"\xff"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

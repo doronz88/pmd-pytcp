@@ -178,7 +178,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-1).",
-            "_args": [memoryview(b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
@@ -186,7 +188,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option (low address).",
-            "_args": [memoryview(b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("1.2.3.4")),
@@ -194,7 +198,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-3).",
-            "_args": [memoryview(b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("203.0.113.10")),
@@ -202,7 +208,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option minimum length assert.",
-            "_args": [memoryview(b"\x36")],
+            "_args": [
+                memoryview(b"\x36"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -214,7 +222,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xfe\x04\xc0\x00\x02\x01")],
+            "_args": [
+                memoryview(b"\xfe\x04\xc0\x00\x02\x01"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -226,7 +236,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option length integrity check (I).",
-            "_args": [memoryview(b"\x36\x03\xc0\x00\x02")],
+            "_args": [
+                memoryview(b"\x36\x03\xc0\x00\x02"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,
@@ -238,7 +250,9 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option length integrity check (II).",
-            "_args": [memoryview(b"\x36\x04")],
+            "_args": [
+                memoryview(b"\x36\x04"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

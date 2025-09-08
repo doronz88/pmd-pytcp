@@ -155,9 +155,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Pad option.",
-            "_args": {
+            "_args": [
                 memoryview(b"\x00" + b"ZH0PA"),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionPad(),
@@ -165,9 +165,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Pad option minimum length assert.",
-            "_args": {
+            "_args": [
                 memoryview(b""),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -179,9 +179,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Pad option incorrect 'type' field assert.",
-            "_args": {
+            "_args": [
                 memoryview(b"\xfe"),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

@@ -242,7 +242,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46" + b"ZH0PA"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -254,7 +254,9 @@ class TestTcpOptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown TCP option minimum length assert.",
-            "_args": [memoryview(b"\xff")],
+            "_args": [
+                memoryview(b"\xff"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -270,7 +272,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -287,7 +289,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -304,7 +306,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x02\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -321,7 +323,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x03\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -338,7 +340,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x04\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -355,7 +357,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x05\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -372,7 +374,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\x08\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -389,7 +391,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {

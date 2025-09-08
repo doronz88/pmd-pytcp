@@ -194,7 +194,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Slla option (I).",
             "_args": [
-                memoryview(b"\x01\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA")
+                memoryview(b"\x01\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA"),
             ],
             "_kwargs": {},
             "_results": {
@@ -205,7 +205,9 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Slla option minimum length assert.",
-            "_args": [memoryview(b"\x01")],
+            "_args": [
+                memoryview(b"\x01"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -217,7 +219,9 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Slla option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xff\x01\x01\x02\x03\x04\x05\x06")],
+            "_args": [
+                memoryview(b"\xff\x01\x01\x02\x03\x04\x05\x06"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -229,7 +233,9 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Slla option length integrity check (I).",
-            "_args": [memoryview(b"\x01\x02\x01\x02\x03\x04\x05\x06")],
+            "_args": [
+                memoryview(b"\x01\x02\x01\x02\x03\x04\x05\x06"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Icmp6IntegrityError,
@@ -241,7 +247,9 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         },
         {
             "_description": "The ND Slla option length integrity check (II).",
-            "_args": [memoryview(b"\x01\x01\x01\x02\x03\x04\x05")],
+            "_args": [
+                memoryview(b"\x01\x01\x01\x02\x03\x04\x05"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Icmp6IntegrityError,

@@ -218,7 +218,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [memoryview(b"\x37\x00" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x37\x00" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionParamReqList(param_req_list=[]),
@@ -226,7 +228,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
-            "_args": [memoryview(b"\x37\x01\x0c" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x37\x01\x0c" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionParamReqList(
@@ -236,7 +240,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
-            "_args": [memoryview(b"\x37\x02\x0c\x35" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x37\x02\x0c\x35" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionParamReqList(
@@ -249,7 +255,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option minimum length assert.",
-            "_args": [memoryview(b"\x37")],
+            "_args": [
+                memoryview(b"\x37"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -261,7 +269,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xfe\x00")],
+            "_args": [
+                memoryview(b"\xfe\x00"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -273,7 +283,9 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option length integrity check (II).",
-            "_args": [memoryview(b"\x37\x02")],
+            "_args": [
+                memoryview(b"\x37\x02"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

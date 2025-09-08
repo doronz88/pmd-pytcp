@@ -260,7 +260,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
                 memoryview(
                     b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     + b"ZH0PA"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -272,7 +272,9 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown ICMPv6 ND option minimum length assert.",
-            "_args": [memoryview(b"\xff")],
+            "_args": [
+                memoryview(b"\xff"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -287,7 +289,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x01\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -303,7 +305,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x02\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -319,7 +321,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x03\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -335,7 +337,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {

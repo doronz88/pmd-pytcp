@@ -206,7 +206,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 IP Address Lease Time option (zero).",
-            "_args": [memoryview(b"\x33\x04\x00\x00\x00\x00" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x33\x04\x00\x00\x00\x00" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=0),
@@ -214,7 +216,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one minute).",
-            "_args": [memoryview(b"\x33\x04\x00\x00\x00\x3c" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x33\x04\x00\x00\x00\x3c" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=60),
@@ -222,7 +226,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one day).",
-            "_args": [memoryview(b"\x33\x04\x00\x01\x51\x80" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x33\x04\x00\x01\x51\x80" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=86400),
@@ -230,7 +236,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (max uint32).",
-            "_args": [memoryview(b"\x33\x04\xff\xff\xff\xff" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x33\x04\xff\xff\xff\xff" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=4294967295),
@@ -238,7 +246,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option minimum length assert.",
-            "_args": [memoryview(b"\x33")],
+            "_args": [
+                memoryview(b"\x33"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -250,7 +260,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xfe\x04\x00\x00\x00\x3c")],
+            "_args": [
+                memoryview(b"\xfe\x04\x00\x00\x00\x3c"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -262,7 +274,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option length integrity check (I).",
-            "_args": [memoryview(b"\x33\x03\x00\x00\x3c")],
+            "_args": [
+                memoryview(b"\x33\x03\x00\x00\x3c"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,
@@ -274,7 +288,9 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option length integrity check (II).",
-            "_args": [memoryview(b"\x33\x04")],
+            "_args": [
+                memoryview(b"\x33\x04"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

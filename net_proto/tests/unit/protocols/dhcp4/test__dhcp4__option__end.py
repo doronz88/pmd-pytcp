@@ -151,9 +151,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 End option.",
-            "_args": {
+            "_args": [
                 memoryview(b"\xff" + b"ZH0PA"),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionEnd(),
@@ -161,9 +161,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 End option minimum length assert.",
-            "_args": {
+            "_args": [
                 memoryview(b""),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -175,9 +175,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 End option incorrect 'type' field assert.",
-            "_args": {
+            "_args": [
                 memoryview(b"\xfe"),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

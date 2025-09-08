@@ -471,7 +471,9 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         },
         {
             "_description": "The ICMPv6 ND Pi option minimum length assert.",
-            "_args": [memoryview(b"\x03")],
+            "_args": [
+                memoryview(b"\x03"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -486,7 +488,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
                 memoryview(
                     b"\xff\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
                     b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -503,7 +505,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
                 memoryview(
                     b"\x03\x05\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
                     b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -520,7 +522,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
                 memoryview(
                     b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
                     b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {

@@ -187,7 +187,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
     [
         {
             "_description": "The TCP Wscale option.",
-            "_args": [memoryview(b"\x03\x03\x0e" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x03\x03\x0e" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionWscale(wscale=14),
@@ -195,7 +197,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
         },
         {
             "_description": "The TCP Wscale option (maximum value correction).",
-            "_args": [memoryview(b"\x03\x03\xff" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x03\x03\xff" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionWscale(wscale=14),
@@ -203,7 +207,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
         },
         {
             "_description": "The TCP Wscale option minimum length assert.",
-            "_args": [memoryview(b"\x03")],
+            "_args": [
+                memoryview(b"\x03"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -215,7 +221,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
         },
         {
             "_description": "The TCP Wscale option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xff\03\x0e")],
+            "_args": [
+                memoryview(b"\xff\03\x0e"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -227,7 +235,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
         },
         {
             "_description": "The TCP Wscale option length integrity check (I).",
-            "_args": [memoryview(b"\x03\02\x0e")],
+            "_args": [
+                memoryview(b"\x03\02\x0e"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
@@ -239,7 +249,9 @@ class TestTcpOptionWscaleAssembler(TestCase):
         },
         {
             "_description": "The TCP Wscale option length integrity check (II).",
-            "_args": [memoryview(b"\x03\03")],
+            "_args": [
+                memoryview(b"\x03\03"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,

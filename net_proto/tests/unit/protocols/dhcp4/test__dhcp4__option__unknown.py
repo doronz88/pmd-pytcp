@@ -236,12 +236,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     [
         {
             "_description": "The unknown DHCPv4 option.",
-            "_args": {
+            "_args": [
                 memoryview(
                     b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46" + b"ZH0PA"
                 ),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionUnknown(
@@ -252,9 +252,9 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown DHCPv4 option minimum length assert.",
-            "_args": {
+            "_args": [
                 memoryview(b"\xfe"),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -266,12 +266,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (End) assert.",
-            "_args": {
+            "_args": [
                 memoryview(
                     b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -283,12 +283,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (Pad) assert.",
-            "_args": {
+            "_args": [
                 memoryview(
                     b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -300,12 +300,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         },
         {
             "_description": "The unknown DHCPv4 option length integrity check (II).",
-            "_args": {
+            "_args": [
                 memoryview(
                     b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45"
                 ),
-            },
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

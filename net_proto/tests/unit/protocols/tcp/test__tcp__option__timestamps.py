@@ -282,7 +282,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -296,7 +296,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e" + b"ZH0PA"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -307,7 +307,9 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         },
         {
             "_description": "The TCP Timestamps option minimum length assert.",
-            "_args": [memoryview(b"\x08")],
+            "_args": [
+                memoryview(b"\x08"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -319,7 +321,9 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         },
         {
             "_description": "The TCP Timestamps option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00")],
+            "_args": [
+                memoryview(b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -331,7 +335,9 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         },
         {
             "_description": "The TCP Timestamps option length integrity check (I).",
-            "_args": [memoryview(b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00")],
+            "_args": [
+                memoryview(b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
@@ -343,7 +349,9 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         },
         {
             "_description": "The TCP Timestamps option length integrity check (II).",
-            "_args": [memoryview(b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00")],
+            "_args": [
+                memoryview(b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,

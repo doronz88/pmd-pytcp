@@ -124,9 +124,10 @@ class TestIp4OptionsAssembler(TestCase):
     [
         {
             "_description": "The IPv4 options (I).",
-            "_args": {
-                "bytes": memoryview(b"\x01\x01\x01\x00"),
-            },
+            "_args": [
+                memoryview(b"\x01\x01\x01\x00"),
+            ],
+            "_kwargs": {},
             "_results": {
                 "options": Ip4Options(
                     Ip4OptionNop(),
@@ -144,7 +145,8 @@ class TestIp4OptionsParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__ip4_options__from_bytes(self) -> None:
@@ -152,7 +154,7 @@ class TestIp4OptionsParser(TestCase):
         Ensure the 'Ip4Options' class parser creates the proper option object.
         """
 
-        ip4_options = Ip4Options.from_bytes(self._args["bytes"])
+        ip4_options = Ip4Options.from_bytes(*self._args, **self._kwargs)
 
         self.assertEqual(
             ip4_options,

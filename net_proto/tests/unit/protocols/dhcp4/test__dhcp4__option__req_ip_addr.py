@@ -181,7 +181,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         {
             "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-1).",
             "_args": [
-                memoryview(b"\x32\x04\xc0\x00\x02\x01" + memoryview(b"ZH0PA"))
+                memoryview(b"\x32\x04\xc0\x00\x02\x01" + memoryview(b"ZH0PA")),
             ],
             "_kwargs": {},
             "_results": {
@@ -193,7 +193,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         {
             "_description": "The DHCPv4 Requested Ip Address option (low address).",
             "_args": [
-                memoryview(b"\x32\x04\x01\x02\x03\x04" + memoryview(b"ZH0PA"))
+                memoryview(b"\x32\x04\x01\x02\x03\x04" + memoryview(b"ZH0PA")),
             ],
             "_kwargs": {},
             "_results": {
@@ -205,7 +205,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         {
             "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-3).",
             "_args": [
-                memoryview(b"\x32\x04\xcb\x00\x71\x0a" + memoryview(b"ZH0PA"))
+                memoryview(b"\x32\x04\xcb\x00\x71\x0a" + memoryview(b"ZH0PA")),
             ],
             "_kwargs": {},
             "_results": {
@@ -216,7 +216,9 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option minimum length assert.",
-            "_args": [memoryview(b"\x32")],
+            "_args": [
+                memoryview(b"\x32"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -228,7 +230,9 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xfe\x04\xc0\x00\x02\x01")],
+            "_args": [
+                memoryview(b"\xfe\x04\xc0\x00\x02\x01"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -240,7 +244,9 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option length integrity check (I).",
-            "_args": [memoryview(b"\x32\x03\xc0\x00\x02")],
+            "_args": [
+                memoryview(b"\x32\x03\xc0\x00\x02"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,
@@ -252,7 +258,9 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option length integrity check (II).",
-            "_args": [memoryview(b"\x32\x04")],
+            "_args": [
+                memoryview(b"\x32\x04"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

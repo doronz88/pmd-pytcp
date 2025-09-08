@@ -276,7 +276,9 @@ class TestTcpOptionSackAssembler(TestCase):
     [
         {
             "_description": "The TCP Sack option (I).",
-            "_args": [memoryview(b"\x05\x02" + b"ZH0PA")],
+            "_args": [
+                memoryview(b"\x05\x02" + b"ZH0PA"),
+            ],
             "_kwargs": {},
             "_results": {
                 "option": TcpOptionSack(blocks=[]),
@@ -287,7 +289,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_args": [
                 memoryview(
                     b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -304,7 +306,7 @@ class TestTcpOptionSackAssembler(TestCase):
                 memoryview(
                     b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
                     b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a" + b"ZH0PA",
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -324,7 +326,7 @@ class TestTcpOptionSackAssembler(TestCase):
                     b"\x05\x22\x00\x00\x00\x6f\x00\x00\x00\xde\x00\x00\x01\x4d\x00\x00"
                     b"\x01\xbc\x00\x00\x02\x2b\x00\x00\x02\x9a\x00\x00\x03\x09\x00\x00"
                     b"\x03\x78" + b"ZH0PA",
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -340,7 +342,9 @@ class TestTcpOptionSackAssembler(TestCase):
         },
         {
             "_description": "The TCP Sack option minimum length assert.",
-            "_args": [memoryview(b"\x05")],
+            "_args": [
+                memoryview(b"\x05"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -352,7 +356,9 @@ class TestTcpOptionSackAssembler(TestCase):
         },
         {
             "_description": "The TCP Sack option incorrect 'type' field assert.",
-            "_args": [memoryview(b"\xff\x02")],
+            "_args": [
+                memoryview(b"\xff\x02"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -364,7 +370,9 @@ class TestTcpOptionSackAssembler(TestCase):
         },
         {
             "_description": "The TCP Sack option length integrity check (II).",
-            "_args": [memoryview(b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff")],
+            "_args": [
+                memoryview(b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff"),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
@@ -378,7 +386,7 @@ class TestTcpOptionSackAssembler(TestCase):
         {
             "_description": "The TCP Sack option length integrity check (III).",
             "_args": [
-                memoryview(b"\x05\x0b\xff\xff\xff\xff\xff\xff\xff\xff\x00")
+                memoryview(b"\x05\x0b\xff\xff\xff\xff\xff\xff\xff\xff\x00"),
             ],
             "_kwargs": {},
             "_results": {
