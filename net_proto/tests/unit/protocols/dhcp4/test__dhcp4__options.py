@@ -64,8 +64,10 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (I) — single option + End.",
             "_args": {
-                "bytes": b"\x35\x01\x01"  # message_type=DISCOVER
-                b"\xff",  # End
+                "bytes": memoryview(
+                    b"\x35\x01\x01"  # message_type=DISCOVER
+                    b"\xff"  # End
+                )
             },
             "_results": {
                 "options": Dhcp4Options(
@@ -77,7 +79,7 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (II) — rich mix, pads, trailing data.",
             "_args": {
-                "bytes": (
+                "bytes": memoryview(
                     b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
                     b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
                     b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
@@ -122,7 +124,7 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (III) — only End.",
             "_args": {
-                "bytes": b"\xff",
+                "bytes": memoryview(b"\xff"),
             },
             "_results": {
                 "options": Dhcp4Options(
@@ -133,7 +135,7 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (IV) — options behind End are ignored.",
             "_args": {
-                "bytes": (
+                "bytes": memoryview(
                     b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
                     b"\xff"  # End
                     b"\x01\x04\xff\xff\xff\x00"  # subnet_mask (ignored)
@@ -149,7 +151,7 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (V) — empty/zero-length valued options allowed.",
             "_args": {
-                "bytes": (
+                "bytes": memoryview(
                     b"\x3d\x00"  # client_id empty
                     b"\x0c\x00"  # host_name empty
                     b"\xff"

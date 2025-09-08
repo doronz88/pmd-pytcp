@@ -123,7 +123,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
         )
 
     @staticmethod
-    def _validate_integrity(_bytes: bytes, /) -> None:
+    def _validate_integrity(_bytes: memoryview, /) -> None:
         """
         Validate the DHCPv4 Router option integrity before parsing it.
         """
@@ -144,10 +144,15 @@ class Dhcp4OptionRouter(Dhcp4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the DHCPv4 Router option from bytes.
         """
+
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
@@ -164,8 +169,5 @@ class Dhcp4OptionRouter(Dhcp4Option):
         cls._validate_integrity(_bytes)
 
         return cls(
-            routers=[
-                Ip4Address(_bytes[i : i + 4])
-                for i in range(2, _bytes[1] + 2, 4)
-            ],
+            [Ip4Address(_bytes[i : i + 4]) for i in range(2, _bytes[1] + 2, 4)],
         )

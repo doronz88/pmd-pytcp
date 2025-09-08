@@ -271,7 +271,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Message Type option (discover).",
-            "_args": [b"\x35\x01\x01" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x01" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -281,7 +281,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (offer).",
-            "_args": [b"\x35\x01\x02" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x02" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -291,7 +291,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (request).",
-            "_args": [b"\x35\x01\x03" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x03" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -301,7 +301,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (decline).",
-            "_args": [b"\x35\x01\x04" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x04" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -311,7 +311,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (ack).",
-            "_args": [b"\x35\x01\x05" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x05" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -321,7 +321,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (nak).",
-            "_args": [b"\x35\x01\x06" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x06" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -331,7 +331,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (release).",
-            "_args": [b"\x35\x01\x07" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x07" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -341,7 +341,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (inform).",
-            "_args": [b"\x35\x01\x08" + b"ZH0PA"],
+            "_args": [memoryview(b"\x35\x01\x08" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionMessageType(
@@ -351,7 +351,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option minimum length assert.",
-            "_args": [b"\x35"],
+            "_args": [memoryview(b"\x35")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -363,7 +363,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option incorrect 'type' field assert.",
-            "_args": [b"\xfe\01\x01"],
+            "_args": [memoryview(b"\xfe\01\x01")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -375,7 +375,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option length integrity check (I).",
-            "_args": [b"\x35\00\x01"],
+            "_args": [memoryview(b"\x35\00\x01")],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,
@@ -387,7 +387,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option length integrity check (II).",
-            "_args": [b"\x35\01"],
+            "_args": [memoryview(b"\x35\01")],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

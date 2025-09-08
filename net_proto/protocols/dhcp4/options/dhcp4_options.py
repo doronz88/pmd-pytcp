@@ -214,7 +214,7 @@ class Dhcp4Options(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Read the DHCPv4 options from bytes.
         """

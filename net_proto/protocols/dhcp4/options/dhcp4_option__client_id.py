@@ -110,7 +110,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
         )
 
     @staticmethod
-    def _validate_integrity(_bytes: bytes, /) -> None:
+    def _validate_integrity(_bytes: memoryview, /) -> None:
         """
         Validate the DHCPv4 Client Identifier option integrity before parsing it.
         """
@@ -124,10 +124,15 @@ class Dhcp4OptionClientId(Dhcp4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_bytes(cls, _bytes: memoryview, /) -> Self:
         """
         Initialize the DHCPv4 Client Identifier option from bytes.
         """
+
+        # Ensure the '_bytes' argument is a memoryview.
+        assert isinstance(
+            _bytes, memoryview
+        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
@@ -143,4 +148,6 @@ class Dhcp4OptionClientId(Dhcp4Option):
 
         cls._validate_integrity(_bytes)
 
-        return cls(bytes(_bytes[2 : 2 + _bytes[1]]))
+        return cls(
+            bytes(_bytes[2 : 2 + _bytes[1]])
+        )  # Note: Conversion: memoryview -> bytes

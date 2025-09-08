@@ -237,11 +237,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option.",
             "_args": {
-                "bytes": (
+                memoryview(
                     b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46" + b"ZH0PA"
                 ),
             },
+            "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionUnknown(
                     type=Dhcp4OptionType.from_int(254),
@@ -252,8 +253,9 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option minimum length assert.",
             "_args": {
-                "bytes": b"\xfe",
+                memoryview(b"\xfe"),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -265,11 +267,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (End) assert.",
             "_args": {
-                "bytes": (
+                memoryview(
                     b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -281,11 +284,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (Pad) assert.",
             "_args": {
-                "bytes": (
+                memoryview(
                     b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45\x46"
                 ),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -297,11 +301,12 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option length integrity check (II).",
             "_args": {
-                "bytes": (
+                memoryview(
                     b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
                     b"\x45"
                 ),
             },
+            "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,
                 "error_message": (
@@ -318,7 +323,8 @@ class TestDhcp4OptionUnknownParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__unknown__from_bytes(self) -> None:
@@ -328,7 +334,7 @@ class TestDhcp4OptionUnknownParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionUnknown.from_bytes(self._args["bytes"])
+            option = Dhcp4OptionUnknown.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -337,7 +343,7 @@ class TestDhcp4OptionUnknownParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionUnknown.from_bytes(self._args["bytes"])
+                Dhcp4OptionUnknown.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

@@ -177,7 +177,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Client Identifier option (empty).",
-            "_args": [b"\x3d\x00" + b"ZH0PA"],
+            "_args": [memoryview(b"\x3d\x00" + b"ZH0PA")],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionClientId(client_id=b""),
@@ -185,7 +185,9 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Client Identifier option (6-byte ID).",
-            "_args": [b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff" + b"ZH0PA"],
+            "_args": [
+                memoryview(b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff" + b"ZH0PA")
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionClientId(
@@ -195,7 +197,9 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Client Identifier option (htype + MAC, 7 bytes).",
-            "_args": [b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01" + b"ZH0PA"],
+            "_args": [
+                memoryview(b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01" + b"ZH0PA")
+            ],
             "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionClientId(
@@ -205,7 +209,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Client Identifier option minimum length assert.",
-            "_args": [b"\x3d"],
+            "_args": [memoryview(b"\x3d")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -217,7 +221,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Client Identifier option incorrect 'type' field assert.",
-            "_args": [b"\xfe\x01\x00"],
+            "_args": [memoryview(b"\xfe\x01\x00")],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
@@ -229,9 +233,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         },
         {
             "_description": "The DHCPv4 Client Identifier option length integrity check (II).",
-            "_args": [
-                b"\x3d\x02"
-            ],  # claims 2 -> total 4, but provided only 2 bytes
+            "_args": [memoryview(b"\x3d\x02")],
             "_kwargs": {},
             "_results": {
                 "error": Dhcp4IntegrityError,

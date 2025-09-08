@@ -156,8 +156,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
         {
             "_description": "The DHCPv4 Pad option.",
             "_args": {
-                "bytes": b"\x00",
+                memoryview(b"\x00" + b"ZH0PA"),
             },
+            "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionPad(),
             },
@@ -165,8 +166,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
         {
             "_description": "The DHCPv4 Pad option minimum length assert.",
             "_args": {
-                "bytes": b"",
+                memoryview(b""),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -178,8 +180,9 @@ class TestDhcp4OptionPadAssembler(TestCase):
         {
             "_description": "The DHCPv4 Pad option incorrect 'type' field assert.",
             "_args": {
-                "bytes": b"\xfe",
+                memoryview(b"\xfe"),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -196,7 +199,8 @@ class TestDhcp4OptionPadParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__pad__from_bytes(self) -> None:
@@ -206,7 +210,7 @@ class TestDhcp4OptionPadParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionPad.from_bytes(self._args["bytes"] + b"ZH0PA")
+            option = Dhcp4OptionPad.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -215,7 +219,7 @@ class TestDhcp4OptionPadParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionPad.from_bytes(self._args["bytes"])
+                Dhcp4OptionPad.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

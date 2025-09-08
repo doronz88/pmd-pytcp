@@ -152,8 +152,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option.",
             "_args": {
-                "bytes": b"\xff",
+                memoryview(b"\xff" + b"ZH0PA"),
             },
+            "_kwargs": {},
             "_results": {
                 "option": Dhcp4OptionEnd(),
             },
@@ -161,8 +162,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option minimum length assert.",
             "_args": {
-                "bytes": b"",
+                memoryview(b""),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -174,8 +176,9 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option incorrect 'type' field assert.",
             "_args": {
-                "bytes": b"\xfe",
+                memoryview(b"\xfe"),
             },
+            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -192,7 +195,8 @@ class TestDhcp4OptionEndParser(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: Any
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__end__from_bytes(self) -> None:
@@ -202,7 +206,7 @@ class TestDhcp4OptionEndParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionEnd.from_bytes(self._args["bytes"] + b"ZH0PA")
+            option = Dhcp4OptionEnd.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -211,7 +215,7 @@ class TestDhcp4OptionEndParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionEnd.from_bytes(self._args["bytes"])
+                Dhcp4OptionEnd.from_bytes(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

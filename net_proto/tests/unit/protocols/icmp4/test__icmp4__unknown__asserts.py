@@ -172,7 +172,7 @@ class TestIcmp4UnknownParserAsserts(TestCase):
             _bytes[2:4] = inet_cksum(data=_bytes).to_bytes(2)
 
             with self.assertRaises(AssertionError) as error:
-                Icmp4UnknownMessage.from_bytes(bytes(_bytes))
+                Icmp4UnknownMessage.from_bytes(memoryview(_bytes))
 
             self.assertEqual(
                 str(error.exception),
