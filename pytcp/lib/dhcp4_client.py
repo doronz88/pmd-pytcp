@@ -121,7 +121,7 @@ class Dhcp4Client:
         # Wait for DHCP Offer.
         try:
             dhcp4_packet_rx = Dhcp4Parser(
-                client_socket.recv(timeout=self._timeout__sec)
+                client_socket.recv__mv(timeout=self._timeout__sec)
             )
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
@@ -168,7 +168,7 @@ class Dhcp4Client:
         # Wait for the DHCP Ack packet from server.
         try:
             dhcp4_packet_rx = Dhcp4Parser(
-                client_socket.recv(timeout=self._timeout__sec)
+                client_socket.recv__mv(timeout=self._timeout__sec)
             )
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:

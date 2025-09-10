@@ -52,14 +52,12 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
     The DHCPv4 packet parser.
     """
 
-    _payload: memoryview
-
-    def __init__(self, data_rx: bytes) -> None:
+    def __init__(self, data_rx: memoryview) -> None:
         """
         Initialize the DHCPv4 packet parser.
         """
 
-        self._frame = memoryview(data_rx)
+        self._frame = data_rx
 
         self._validate_integrity()
         self._parse()

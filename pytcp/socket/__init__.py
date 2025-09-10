@@ -339,6 +339,17 @@ class socket(ABC):
 
         raise NotImplementedError
 
+    def recv__mv(
+        self,
+        bufsize: int | None = None,
+        timeout: float | None = None,
+    ) -> memoryview:
+        """
+        The 'recv__mv()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
     def close(self) -> None:
         """
         The 'close()' socket API placeholder.
@@ -376,6 +387,17 @@ class socket(ABC):
     ) -> tuple[bytes, tuple[str, int]]:
         """
         The 'recvfrom()' socket API placeholder.
+        """
+
+        raise NotImplementedError
+
+    def recvfrom__mv(
+        self,
+        bufsize: int | None = None,
+        timeout: float | None = None,
+    ) -> tuple[memoryview, tuple[str, int]]:
+        """
+        The 'recvfrom__mv()' socket API placeholder.
         """
 
         raise NotImplementedError

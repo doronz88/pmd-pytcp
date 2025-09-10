@@ -364,6 +364,15 @@ class UdpSocket(socket):
         Read data from socket.
         """
 
+        return bytes(self.recv__mv(bufsize=bufsize, timeout=timeout))
+
+    def recv__mv(
+        self, bufsize: int | None = None, timeout: float | None = None
+    ) -> memoryview:
+        """
+        Read data from socket as memoryview.
+        """
+
         # TODO - Implement support for buffsize.
 
         if self._unreachable:
@@ -379,7 +388,8 @@ class UdpSocket(socket):
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} " "bytes of data",
             )
-            return bytes(data_rx)  # NOTE: Conversion: memoryview -> bytes
+            return data_rx
+
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     def recvfrom(
@@ -387,6 +397,19 @@ class UdpSocket(socket):
     ) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
+        """
+
+        _bytes, (remote_ip, remote_port) = self.recvfrom__vm(
+            bufsize=bufsize, timeout=timeout
+        )
+
+        return bytes(_bytes), (remote_ip, remote_port)
+
+    def recvfrom__vm(
+        self, bufsize: int | None = None, timeout: float | None = None
+    ) -> tuple[memoryview, tuple[str, int]]:
+        """
+        Read data from socket as memoryview.
         """
 
         # TODO - Implement support for buffsize.
@@ -399,9 +422,7 @@ class UdpSocket(socket):
                 f"{len(packet_rx_md.udp__data)} bytes of data",
             )
             return (
-                bytes(
-                    packet_rx_md.udp__data
-                ),  # NOTE: Conversion: memoryview -> bytes.
+                packet_rx_md.udp__data,
                 (
                     str(packet_rx_md.ip__remote_address),
                     packet_rx_md.udp__remote_port,
