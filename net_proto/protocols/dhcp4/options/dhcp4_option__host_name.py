@@ -97,17 +97,21 @@ class Dhcp4OptionHostName(Dhcp4Option):
         return f"host_name {self.host_name}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Host Name option as bytes.
+        Get the DHCPv4 Host Name option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__HOST_NAME__STRUCT + f"{len(self.host_name)}s",
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             len(self.host_name),
             self.host_name.encode("utf-8"),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

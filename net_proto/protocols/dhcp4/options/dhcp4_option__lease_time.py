@@ -98,17 +98,21 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         return f"lease_time {self.lease_time}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 IP Address Lease Time option as bytes.
+        Get the DHCPv4 IP Address Lease Time option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__LEASE_TIME__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
             int(self.lease_time),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

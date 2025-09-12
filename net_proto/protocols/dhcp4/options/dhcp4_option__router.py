@@ -110,17 +110,21 @@ class Dhcp4OptionRouter(Dhcp4Option):
         return f"router {[str(router) for router in self.routers]}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Router option as bytes.
+        Get the DHCPv4 Router option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__ROUTER__STRUCT + f"{len(self.routers) * 4}s",
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
             b"".join(bytes(router) for router in self.routers),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

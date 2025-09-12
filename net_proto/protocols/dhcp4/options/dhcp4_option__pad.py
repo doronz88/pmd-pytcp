@@ -84,12 +84,12 @@ class Dhcp4OptionPad(Dhcp4Option):
         return "pad"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Pad option as bytes.
+        Get the DHCPv4 Pad option as memoryview.
         """
 
-        return bytes(self.type)
+        return memoryview(bytearray(bytes(self.type)))
 
     @override
     @classmethod

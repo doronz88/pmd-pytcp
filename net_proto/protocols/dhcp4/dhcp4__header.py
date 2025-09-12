@@ -250,13 +250,15 @@ class Dhcp4Header(ProtoStruct):
         return DHCP4__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP header as bytes.
+        Get the ARP header as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.operation),
             int(self.hrtype),
             self.hrlen,
@@ -274,6 +276,8 @@ class Dhcp4Header(ProtoStruct):
             bytes(self.file, encoding="ascii") + b"\0" * (128 - len(self.file)),
             self.magic_cookie,
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

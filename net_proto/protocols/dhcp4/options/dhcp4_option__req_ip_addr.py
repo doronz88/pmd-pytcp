@@ -98,17 +98,21 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         return f"req_ip_addr {self.req_ip_addr}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Requested Ip Address option as bytes.
+        Get the DHCPv4 Requested Ip Address option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__REQ_IP_ADDR__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
             bytes(self.req_ip_addr),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

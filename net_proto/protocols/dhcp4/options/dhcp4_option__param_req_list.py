@@ -107,18 +107,22 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         return f"param_req_list {[param.name for param in self.param_req_list]}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Parameter Request List option as bytes.
+        Get the DHCPv4 Parameter Request List option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__PARAM_REQ_LIST__STRUCT
             + f"{len(self.param_req_list)}s",
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
             bytes([int(option) for option in self.param_req_list]),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

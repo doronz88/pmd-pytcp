@@ -96,17 +96,21 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         return f"message_type {self.message_type}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Message Type option as bytes.
+        Get the DHCPv4 Message Type option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__MESSAGE_TYPE__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
             int(self.message_type),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

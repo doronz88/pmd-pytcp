@@ -97,17 +97,21 @@ class Dhcp4OptionClientId(Dhcp4Option):
         return f"client_id {':'.join(f'{b:02x}' for b in self.client_id)}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Client Identifier option as bytes.
+        Get the DHCPv4 Client Identifier option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             DHCP4__OPTION__CLIENT_ID__STRUCT + f"{len(self.client_id)}s",
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             len(self.client_id),
             bytes(self.client_id),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

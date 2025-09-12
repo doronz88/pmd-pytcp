@@ -101,19 +101,22 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         return f"unk-{int(self.type)}-{self.len}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown DHCPv4 option as bytes.
+        Get the unknown DHCPv4 option as memoryview.
         """
 
-        return (
-            struct.pack(
-                DHCP4__OPTION__STRUCT,
-                int(self.type),
-                self.len,
-            )
-            + self.data
+        struct.pack_into(
+            DHCP4__OPTION__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            self.len,
         )
+
+        buffer[DHCP4__OPTION__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:
