@@ -104,12 +104,8 @@ class Ip4[P: (Ip4Payload, memoryview, bytes)](
         Get the IPv4 packet as bytes.
         """
 
-        header_and_options = bytearray(
-            bytes(self._header) + bytes(self._options)
-        )
-        header_and_options[10:12] = inet_cksum(
-            data=header_and_options
-        ).to_bytes(2)
+        header_and_options = bytearray(self._header) + bytes(self._options)
+        header_and_options[10:12] = inet_cksum(header_and_options).to_bytes(2)
 
         if isinstance(
             self._payload, (TcpAssembler, UdpAssembler, RawAssembler)

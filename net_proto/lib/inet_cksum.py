@@ -38,8 +38,8 @@ import struct
 
 
 def inet_cksum(
-    *,
     data: bytes | bytearray | memoryview,
+    *,
     init: int = 0,
 ) -> int:
     """
