@@ -61,6 +61,7 @@ from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 TCP__OPTION__SACK__STRUCT = "! BB"
+TCP__OPTION__SACK__LEN = 2
 TCP__OPTION__SACK__BLOCK_LEN = 8
 TCP__OPTION__SACK__BLOCK_STRUCT = "! LL"
 TCP__OPTION__SACK__MAX_BLOCK_NUM = 4
@@ -151,17 +152,23 @@ class TcpOptionSack(TcpOption):
         return f"sack [{', '.join([str(block) for block in self.blocks])}]"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Sack option as bytes.
+        Get the TCP Sack option as memoryview.
         """
 
-        return struct.pack(
-            f"{TCP__OPTION__SACK__STRUCT} {TCP__OPTION__SACK__BLOCK_LEN * len(self.blocks)}s",
+        struct.pack_into(
+            f"{TCP__OPTION__SACK__STRUCT}",
+            buffer := bytearray(TCP__OPTION__SACK__LEN),
+            0,
             int(self.type),
             self.len,
-            b"".join([bytes(block) for block in self.blocks]),
         )
+
+        for block in self.blocks:
+            buffer.extend(bytearray(block))
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

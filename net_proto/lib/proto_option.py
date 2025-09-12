@@ -104,13 +104,10 @@ class ProtoOptions(ABC):
         Get the options as memoryview.
         """
 
-        buffer = bytearray(sum(len(option) for option in self._options))
+        buffer = bytearray()
 
-        offset = 0
         for option in self._options:
-            buffer[offset : (offset := offset + len(option))] = bytes(
-                option
-            )  # TODO: change 'bytes' to 'memoryview' after migration
+            buffer.extend(bytearray(option))
 
         return memoryview(buffer)
 
