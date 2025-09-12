@@ -52,7 +52,7 @@ def inet_cksum(
     else:
         cksum = init + int(sum(struct.unpack_from(f"!{dlen >> 3}Q", data)))
         if remainder := dlen & 7:
-            cksum += int().from_bytes(data[-remainder:], byteorder="big") << (
+            cksum += int.from_bytes(data[-remainder:], byteorder="big") << (
                 (8 - remainder) << 3
             )
         cksum = (cksum >> 64) + (cksum & 0xFFFFFFFFFFFFFFFF)
