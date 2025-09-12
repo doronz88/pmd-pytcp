@@ -138,13 +138,15 @@ class ArpHeader(ProtoStruct):
         return ARP__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP header as bytes.
+        Get the ARP header as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ARP__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.hrtype),
             int(self.prtype),
             self.hrlen,
@@ -155,6 +157,8 @@ class ArpHeader(ProtoStruct):
             bytes(self.tha),
             int(self.tpa),
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

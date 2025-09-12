@@ -101,18 +101,22 @@ class Ip6FragHeader(ProtoStruct):
         return IP6_FRAG__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 Frag header as bytes.
+        Get the IPv6 Frag header as a memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             IP6_FRAG__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.next),
             0,
             self.offset | self.flag_mf,
             self.id,
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

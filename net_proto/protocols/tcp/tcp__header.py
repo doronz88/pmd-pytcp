@@ -182,13 +182,15 @@ class TcpHeader(ProtoStruct):
         return TCP__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP header as bytes.
+        Get the TCP header as a memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             TCP__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             self.sport,
             self.dport,
             self.seq,
@@ -207,6 +209,8 @@ class TcpHeader(ProtoStruct):
             0,
             self.urg,
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

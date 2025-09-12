@@ -99,18 +99,22 @@ class UdpHeader(ProtoStruct):
         return UDP__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the UDP header as bytes.
+        Get the UDP header as a memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             UDP__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             self.sport,
             self.dport,
             self.plen,
             0,
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

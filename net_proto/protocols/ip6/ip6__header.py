@@ -148,13 +148,15 @@ class Ip6Header(ProtoStruct):
         return IP6__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 header as bytes.
+        Get the IPv6 header as a memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             IP6__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.ver) << 28 | self.dscp << 22 | self.ecn << 20 | self.flow,
             self.dlen,
             int(self.next),
@@ -162,6 +164,8 @@ class Ip6Header(ProtoStruct):
             bytes(self.src),
             bytes(self.dst),
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

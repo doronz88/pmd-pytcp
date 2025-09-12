@@ -170,13 +170,15 @@ class Ip4Header(ProtoStruct):
         return IP4__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 header as bytes.
+        Get the IPv4 header as a memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             IP4__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.ver) << 4 | self.hlen >> 2,
             self.dscp << 2 | self.ecn,
             self.plen,
@@ -188,6 +190,8 @@ class Ip4Header(ProtoStruct):
             int(self.src),
             int(self.dst),
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

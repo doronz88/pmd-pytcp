@@ -96,17 +96,21 @@ class EthernetHeader(ProtoStruct):
         return ETHERNET__HEADER__LEN
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
         Get the Ethernet header as bytes.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ETHERNET__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             bytes(self.dst),
             bytes(self.src),
             int(self.type),
         )
+
+        return memoryview(buffer)
 
     @override
     @classmethod

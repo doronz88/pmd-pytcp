@@ -60,13 +60,20 @@ class ProtoStruct(ABC):
 
         raise NotImplementedError
 
-    @abstractmethod
+    # @abstractmethod
+    def __buffer__(self, _: int) -> memoryview:
+        """
+        Get the protocol structure as a memoryview.
+        """
+
+        raise NotImplementedError
+
     def __bytes__(self) -> bytes:
         """
         Get the protocol structure as bytes.
         """
 
-        raise NotImplementedError
+        return bytes(memoryview(self))
 
     @classmethod
     @abstractmethod
