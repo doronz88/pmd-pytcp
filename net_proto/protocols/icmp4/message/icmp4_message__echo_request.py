@@ -145,19 +145,25 @@ class Icmp4EchoRequestMessage(Icmp4Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 Echo Request message as bytes.
+        Get the ICMPv4 Echo Request message as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP4__ECHO_REQUEST__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             int(self.code),
             0,
             self.id,
             self.seq,
-        ) + bytes(self.data)
+        )
+
+        buffer[ICMP4__ECHO_REQUEST__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(self) -> None:

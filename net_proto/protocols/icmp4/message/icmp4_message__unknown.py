@@ -103,20 +103,23 @@ class Icmp4UnknownMessage(Icmp4Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 unknown message as bytes.
+        Get the ICMPv4 unknown message as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP4__HEADER__STRUCT,
-                int(self.type),
-                int(self.code),
-                0,
-            )
-            + self.raw
+        struct.pack_into(
+            ICMP4__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
         )
+
+        buffer[ICMP4__HEADER__LEN:] = self.raw
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(self) -> None:

@@ -208,29 +208,37 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 Destination Unreachable message as bytes.
+        Get the ICMPv4 Destination Unreachable message as memoryview.
         """
 
         match self.code:
             case Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
-                return struct.pack(
+                struct.pack_into(
                     ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
+                    buffer := bytearray(len(self)),
+                    0,
                     int(self.type),
                     int(self.code),
                     0,
                     0,
                     self.mtu,
-                ) + bytes(self.data)
+                )
             case _:
-                return struct.pack(
+                struct.pack_into(
                     ICMP4__DESTINATION_UNREACHABLE__STRUCT,
+                    buffer := bytearray(len(self)),
+                    0,
                     int(self.type),
                     int(self.code),
                     0,
                     0,
-                ) + bytes(self.data)
+                )
+
+        buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(self) -> None:
