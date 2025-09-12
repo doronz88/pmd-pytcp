@@ -132,18 +132,24 @@ class Icmp6NdRouterSolicitationMessage(Icmp6NdMessage):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Router Solicitation message as bytes.
+        Get the ICMPv6 ND Router Solicitation message as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP6__ND__ROUTER_SOLICITATION__STRUCT,
+            buffer := bytearray(ICMP6__ND__ROUTER_SOLICITATION__LEN),
+            0,
             int(self.type),
             int(self.code),
             0,
             0,
-        ) + bytes(self.options)
+        )
+
+        buffer.extend(bytearray(self.options))
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(

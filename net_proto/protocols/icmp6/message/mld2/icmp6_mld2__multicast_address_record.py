@@ -172,27 +172,29 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 MLDv2 Multicast Address Record as bytes.
+        Get the ICMPv6 MLDv2 Multicast Address Record as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
-                int(self.type),
-                self.aux_data_len >> 2,
-                self.number_of_sources,
-                bytes(self.multicast_address),
-            )
-            + b"".join(
-                [
-                    bytes(source_address)
-                    for source_address in self.source_addresses
-                ]
-            )
-            + self.aux_data
+        struct.pack_into(
+            ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
+            buffer := bytearray(ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN),
+            0,
+            int(self.type),
+            self.aux_data_len >> 2,
+            self.number_of_sources,
+            bytes(self.multicast_address),
         )
+
+        for source_address in self.source_addresses:
+            buffer.extend(
+                bytes(source_address)
+            )  # TODO: replace 'bytes' with 'bytearray' after migration
+
+        buffer.extend(self.aux_data)
+
+        return memoryview(buffer)
 
     @override
     def __hash__(self) -> int:

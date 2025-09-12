@@ -146,22 +146,25 @@ class Icmp6EchoReplyMessage(Icmp6Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Echo Reply message as bytes.
+        Get the ICMPv6 Echo Reply message as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP6__ECHO_REPLY__STRUCT,
-                int(self.type),
-                int(self.code),
-                0,
-                self.id,
-                self.seq,
-            )
-            + self.data
+        struct.pack_into(
+            ICMP6__ECHO_REPLY__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
+            self.id,
+            self.seq,
         )
+
+        buffer[ICMP6__ECHO_REPLY__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(

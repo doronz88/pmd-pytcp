@@ -166,13 +166,15 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Nd Pi option as bytes.
+        Get the ICMPv6 Nd Pi option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP6__ND__OPTION__PI__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len >> 3,
             len(self.prefix.mask),
@@ -185,6 +187,8 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             0,
             bytes(self.prefix.address),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

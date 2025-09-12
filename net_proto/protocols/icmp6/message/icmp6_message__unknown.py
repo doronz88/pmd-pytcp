@@ -106,20 +106,23 @@ class Icmp6UnknownMessage(Icmp6Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 unknown message as bytes.
+        Get the ICMPv6 unknown message as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP6__HEADER__STRUCT,
-                int(self.type),
-                int(self.code),
-                0,
-            )
-            + self.raw
+        struct.pack_into(
+            ICMP6__HEADER__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
         )
+
+        buffer[ICMP6__HEADER__LEN:] = self.raw
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(

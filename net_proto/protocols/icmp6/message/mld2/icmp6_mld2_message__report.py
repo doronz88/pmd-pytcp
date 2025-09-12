@@ -154,19 +154,26 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 MLDv2 Report message as bytes.
+        Get the ICMPv6 MLDv2 Report message as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP6__MLD2__REPORT__STRUCT,
+            buffer := bytearray(ICMP6__MLD2__REPORT__LEN),
+            0,
             int(self.type),
             int(self.code),
             0,
             0,
             len(self.records),
-        ) + b"".join([bytes(record) for record in self.records])
+        )
+
+        for record in self.records:
+            buffer.extend(bytearray(record))
+
+        return memoryview(buffer)
 
     @property
     def number_of_records(self) -> int:

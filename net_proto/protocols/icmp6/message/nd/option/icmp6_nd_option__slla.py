@@ -96,17 +96,21 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         return f"slla {self.slla}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Slla option as bytes.
+        Get the ICMPv6 ND Slla option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP6__ND__OPTION__SLLA__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len >> 3,
             bytes(self.slla),
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

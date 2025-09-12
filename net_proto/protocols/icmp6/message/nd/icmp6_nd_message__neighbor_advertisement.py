@@ -170,19 +170,25 @@ class Icmp6NdNeighborAdvertisementMessage(Icmp6NdMessage):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Neighbor Advertisement message as bytes.
+        Get the ICMPv6 ND Neighbor Advertisement message as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
+            buffer := bytearray(ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN),
+            0,
             int(self.type),
             int(self.code),
             0,
             (self.flag_r << 31) | (self.flag_s << 30) | (self.flag_o << 29),
             bytes(self.target_address),
-        ) + bytes(self.options)
+        )
+
+        buffer.extend(bytearray(self.options))
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(

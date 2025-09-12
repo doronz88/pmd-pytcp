@@ -106,19 +106,22 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         return f"unk-{int(self.type)}-{self.len}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown ICMPv6 option as bytes.
+        Get the unknown ICMPv6 option as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP6__ND__OPTION__STRUCT,
-                int(self.type),
-                self.len >> 3,
-            )
-            + self.data
+        struct.pack_into(
+            ICMP6__ND__OPTION__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            self.len >> 3,
         )
+
+        buffer[ICMP6__ND__OPTION__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

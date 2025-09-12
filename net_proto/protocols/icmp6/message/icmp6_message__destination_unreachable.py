@@ -156,21 +156,24 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Destination Unreachable message as bytes.
+        Get the ICMPv6 Destination Unreachable message as memoryview.
         """
 
-        return (
-            struct.pack(
-                ICMP6__DESTINATION_UNREACHABLE__STRUCT,
-                int(self.type),
-                int(self.code),
-                0,
-                0,
-            )
-            + self.data
+        struct.pack_into(
+            ICMP6__DESTINATION_UNREACHABLE__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
+            0,
         )
+
+        buffer[ICMP6__DESTINATION_UNREACHABLE__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @override
     def validate_sanity(
