@@ -101,19 +101,22 @@ class TcpOptionUnknown(TcpOption):
         return f"unk-{int(self.type)}-{self.len}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown TCP option as bytes.
+        Get the unknown TCP option as memoryview.
         """
 
-        return (
-            struct.pack(
-                TCP__OPTION__STRUCT,
-                int(self.type),
-                self.len,
-            )
-            + self.data
+        struct.pack_into(
+            TCP__OPTION__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            int(self.type),
+            self.len,
         )
+
+        buffer[TCP__OPTION__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

@@ -99,12 +99,20 @@ class ProtoOptions(ABC):
 
         return f"{type(self).__name__}(options={self._options!r})"
 
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the options as bytes.
+        Get the options as memoryview.
         """
 
-        return b"".join(bytes(option) for option in self._options)
+        buffer = bytearray(sum(len(option) for option in self._options))
+
+        offset = 0
+        for option in self._options:
+            buffer[offset : (offset := offset + len(option))] = bytes(
+                option
+            )  # TODO: change 'bytes' to 'memoryview' after migration
+
+        return memoryview(buffer)
 
     def __bool__(self) -> bool:
         """

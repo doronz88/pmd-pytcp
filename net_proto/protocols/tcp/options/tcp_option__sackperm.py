@@ -86,16 +86,20 @@ class TcpOptionSackperm(TcpOption):
         return "sackperm"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Sackperm option as bytes.
+        Get the TCP Sackperm option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             TCP__OPTION__SACKPERM__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             self.type.value,
             self.len,
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

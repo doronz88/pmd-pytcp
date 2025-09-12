@@ -95,17 +95,21 @@ class TcpOptionMss(TcpOption):
         return f"mss {self.mss}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Mss option as bytes.
+        Get the TCP Mss option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             TCP__OPTION__MSS__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len,
             self.mss,
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

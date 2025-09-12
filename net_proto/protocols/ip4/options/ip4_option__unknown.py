@@ -101,19 +101,22 @@ class Ip4OptionUnknown(Ip4Option):
         return f"unk-{int(self.type)}-{self.len}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown IPv4 option as bytes.
+        Get the unknown IPv4 option as memoryview.
         """
 
-        return (
-            struct.pack(
-                IP4__OPTION__STRUCT,
-                int(self.type),
-                self.len,
-            )
-            + self.data
+        struct.pack_into(
+            IP4__OPTION__STRUCT,
+            buffer := bytearray(self.len),
+            0,
+            int(self.type),
+            self.len,
         )
+
+        buffer[IP4__OPTION__LEN:] = self.data
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

@@ -116,18 +116,22 @@ class TcpOptionTimestamps(TcpOption):
         return f"timestamps {self.tsval}/{self.tsecr}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Timestamps option as bytes.
+        Get the TCP Timestamps option as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             TCP__OPTION__TIMESTAMPS__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
             int(self.type),
             self.len,
             self.tsval,
             self.tsecr,
         )
+
+        return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(_bytes: memoryview, /) -> None:

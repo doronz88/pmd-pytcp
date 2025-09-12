@@ -81,12 +81,12 @@ class Ip4OptionNop(Ip4Option):
         return "nop"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 Nop option as bytes.
+        Get the IPv4 Nop option as memoryview.
         """
 
-        return bytes(self.type)
+        return memoryview(bytearray(bytes(self.type)))
 
     @override
     @classmethod

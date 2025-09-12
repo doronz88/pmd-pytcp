@@ -82,16 +82,20 @@ class TcpSackBlock:
 
         return TCP__OPTION__SACK__BLOCK_LEN
 
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Sack block as bytes.
+        Get the TCP Sack block as memoryview.
         """
 
-        return struct.pack(
+        struct.pack_into(
             TCP__OPTION__SACK__BLOCK_STRUCT,
+            buffer := bytearray(self.__len__()),
+            0,
             self.left,
             self.right,
         )
+
+        return memoryview(buffer)
 
     def __str__(self) -> str:
         """

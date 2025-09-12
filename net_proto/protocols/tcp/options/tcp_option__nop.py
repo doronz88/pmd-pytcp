@@ -80,12 +80,12 @@ class TcpOptionNop(TcpOption):
         return "nop"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Nop option as bytes.
+        Get the TCP Nop option as memoryview.
         """
 
-        return bytes(self.type)
+        return memoryview(bytearray(bytes(self.type)))
 
     @override
     @classmethod
