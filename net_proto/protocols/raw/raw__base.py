@@ -77,32 +77,28 @@ class Raw[P: bytes](Proto):
         return f"{type(self).__name__}(raw__payload={self._payload!r})"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Raw packet as bytes.
+        Get the Raw packet as memoryview.
         """
+
+        buffer = bytearray(self._payload)
 
         # Automatically calculate checksum if IpProto is ICMPv6 packet and checksum is not set.
         if (
             self._ip_proto == IpProto.ICMP6
             and self._payload[2:4] == b"\x00\x00"
         ):
-            _payload = bytearray(self._payload)
-            _payload[2:4] = inet_cksum(
-                data=_payload, init=self.pshdr_sum
-            ).to_bytes(2)
-            return bytes(_payload)
+            buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
         # Automatically calculate checksum if IpProto is ICMPv4 packet and checksum is not set.
         if (
             self._ip_proto == IpProto.ICMP4
             and self._payload[2:4] == b"\x00\x00"
         ):
-            _payload = bytearray(self._payload)
-            _payload[2:4] = inet_cksum(data=_payload).to_bytes(2)
-            return bytes(_payload)
+            buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
-        return self._payload
+        return memoryview(buffer)
 
     @property
     def payload(self) -> bytes:

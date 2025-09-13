@@ -72,15 +72,15 @@ class Icmp4(Proto):
         return f"{self._message!r}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 packet as bytes.
+        Get the ICMPv4 packet as memoryview.
         """
 
-        _bytes = bytearray(bytes(self._message))
-        _bytes[2:4] = inet_cksum(data=_bytes).to_bytes(2)
+        buffer = bytearray(self._message)
+        buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
-        return bytes(_bytes)
+        return memoryview(buffer)
 
     @property
     def message(self) -> Icmp4Message:

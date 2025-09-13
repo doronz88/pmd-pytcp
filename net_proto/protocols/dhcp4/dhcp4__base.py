@@ -87,12 +87,15 @@ class Dhcp4(Proto, Dhcp4HeaderProperties, Dhcp4OptionsProperties):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 packet as bytes.
+        Get the DHCPv4 packet as memoryview.
         """
 
-        return bytes(bytes(self._header) + bytes(self._options))
+        buffer = bytearray(self._header)
+        buffer.extend(bytearray(self._options))
+
+        return memoryview(buffer)
 
     @property
     def header(self) -> Dhcp4Header:

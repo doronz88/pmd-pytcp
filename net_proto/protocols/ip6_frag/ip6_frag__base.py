@@ -85,12 +85,15 @@ class Ip6Frag[P: (memoryview, bytes)](Proto, Ip6FragHeaderProperties):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 packet packet as bytes.
+        Get the IPv6 packet packet as memoryview.
         """
 
-        return bytes(self._header) + self._payload
+        buffer = bytearray(self._header)
+        buffer.extend(self._payload)
+
+        return memoryview(buffer)
 
     @property
     def header(self) -> Ip6FragHeader:

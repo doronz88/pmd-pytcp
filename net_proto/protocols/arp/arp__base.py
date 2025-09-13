@@ -75,12 +75,12 @@ class Arp(Proto, ArpHeaderProperties):
         return f"{type(self).__name__}(header={self._header!r})"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP packet as bytes.
+        Get the ARP packet as memoryview.
         """
 
-        return bytes(self._header)
+        return memoryview(self._header)
 
     @property
     def header(self) -> ArpHeader:

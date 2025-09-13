@@ -94,9 +94,9 @@ class Ip6[P: (Ip6Payload, memoryview)](Proto, Ip6HeaderProperties):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 packet as bytes.
+        Get the IPv6 packet as memoryview.
         """
 
         if isinstance(
@@ -105,7 +105,10 @@ class Ip6[P: (Ip6Payload, memoryview)](Proto, Ip6HeaderProperties):
         ):
             self._payload.pshdr_sum = self.pshdr_sum
 
-        return bytes(self._header) + bytes(self._payload)
+        buffer = bytearray(self._header)
+        buffer.extend(bytearray(self._payload))
+
+        return memoryview(buffer)
 
     @property
     def pshdr_sum(self) -> int:

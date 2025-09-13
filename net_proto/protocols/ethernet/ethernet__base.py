@@ -91,12 +91,15 @@ class Ethernet[P: (EthernetPayload, memoryview)](
         return f"{type(self).__name__}(header={self._header}, payload={self._payload!r})"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Ethernet packet as bytes.
+        Get the Ethernet packet as memoryview.
         """
 
-        return bytes(self._header) + bytes(self._payload)
+        buffer = bytearray(self._header)
+        buffer.extend(bytearray(self._payload))
+
+        return memoryview(buffer)
 
     @property
     def header(self) -> EthernetHeader:

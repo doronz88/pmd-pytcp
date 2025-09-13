@@ -82,15 +82,16 @@ class Udp[P: (memoryview, bytes)](Proto, UdpHeaderProperties):
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the UDP packet as bytes.
+        Get the UDP packet as memoryview.
         """
 
-        _bytes = bytearray(bytes(self._header) + self._payload)
-        _bytes[6:8] = inet_cksum(data=_bytes, init=self.pshdr_sum).to_bytes(2)
+        buffer = bytearray(self._header)
+        buffer.extend(self._payload)
+        buffer[6:8] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
-        return bytes(_bytes)
+        return memoryview(buffer)
 
     @property
     def header(self) -> UdpHeader:

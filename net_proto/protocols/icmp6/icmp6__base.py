@@ -74,15 +74,15 @@ class Icmp6(Proto):
         return f"{self._message!r}"
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 packet as bytes.
+        Get the ICMPv6 packet as memoryview.
         """
 
-        _bytes = bytearray(bytes(self._message))
-        _bytes[2:4] = inet_cksum(data=_bytes, init=self.pshdr_sum).to_bytes(2)
+        buffer = bytearray(self._message)
+        buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
-        return bytes(_bytes)
+        return memoryview(buffer)
 
     @property
     def message(self) -> Icmp6Message:

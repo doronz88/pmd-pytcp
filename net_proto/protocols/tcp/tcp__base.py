@@ -114,17 +114,17 @@ class Tcp[P: (memoryview, bytes)](
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP packet as bytes.
+        Get the TCP packet as memoryview.
         """
 
-        _bytes = bytearray(
-            bytes(self._header) + bytes(self._options) + self._payload
-        )
-        _bytes[16:18] = inet_cksum(data=_bytes, init=self.pshdr_sum).to_bytes(2)
+        buffer = bytearray(self._header)
+        buffer.extend(bytearray(self._options))
+        buffer.extend(self._payload)
+        buffer[16:18] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
-        return bytes(_bytes)
+        return memoryview(buffer)
 
     @property
     def header(self) -> TcpHeader:

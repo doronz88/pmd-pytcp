@@ -65,20 +65,13 @@ class Proto(ABC):
 
         raise NotImplementedError
 
-    # @abstractmethod
+    @abstractmethod
     def __buffer__(self, _: int) -> memoryview:
         """
         Get the packet as a memoryview.
         """
 
         return memoryview(bytes(self))
-
-    def __bytes__(self) -> bytes:
-        """
-        Get the packet as bytes.
-        """
-
-        return bytes(memoryview(self))
 
     def __eq__(self, other: object) -> bool:
         """

@@ -99,20 +99,22 @@ class Ip4[P: (Ip4Payload, memoryview, bytes)](
         )
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 packet as bytes.
+        Get the IPv4 packet as memoryview.
         """
-
-        header_and_options = bytearray(self._header) + bytes(self._options)
-        header_and_options[10:12] = inet_cksum(header_and_options).to_bytes(2)
 
         if isinstance(
             self._payload, (TcpAssembler, UdpAssembler, RawAssembler)
         ):
             self._payload.pshdr_sum = self.pshdr_sum
 
-        return bytes(header_and_options + bytes(self._payload))
+        buffer = bytearray(self._header)
+        buffer.extend(bytearray(self._options))
+        buffer[10:12] = inet_cksum(buffer).to_bytes(2)
+        buffer.extend(bytearray(self._payload))
+
+        return memoryview(buffer)
 
     @property
     def pshdr_sum(self) -> int:
