@@ -110,9 +110,9 @@ class Ip4[P: (Ip4Payload, memoryview, bytes)](
             self._payload.pshdr_sum = self.pshdr_sum
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._options))
+        buffer += bytearray(self._options)
         buffer[10:12] = inet_cksum(buffer).to_bytes(2)
-        buffer.extend(bytearray(self._payload))
+        buffer += bytearray(self._payload)
 
         return memoryview(buffer)
 

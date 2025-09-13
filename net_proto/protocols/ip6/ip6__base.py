@@ -106,7 +106,7 @@ class Ip6[P: (Ip6Payload, memoryview)](Proto, Ip6HeaderProperties):
             self._payload.pshdr_sum = self.pshdr_sum
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._payload))
+        buffer += bytearray(self._payload)
 
         return memoryview(buffer)
 

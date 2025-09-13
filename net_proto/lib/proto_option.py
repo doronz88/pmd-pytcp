@@ -107,7 +107,7 @@ class ProtoOptions(ABC):
         buffer = bytearray()
 
         for option in self._options:
-            buffer.extend(bytearray(option))
+            buffer += bytearray(option)
 
         return memoryview(buffer)
 

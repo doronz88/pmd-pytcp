@@ -91,7 +91,7 @@ class Ip6Frag[P: (memoryview, bytes)](Proto, Ip6FragHeaderProperties):
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(self._payload)
+        buffer += self._payload
 
         return memoryview(buffer)
 

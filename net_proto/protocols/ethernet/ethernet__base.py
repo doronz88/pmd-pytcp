@@ -97,7 +97,7 @@ class Ethernet[P: (EthernetPayload, memoryview)](
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._payload))
+        buffer += bytearray(self._payload)
 
         return memoryview(buffer)
 

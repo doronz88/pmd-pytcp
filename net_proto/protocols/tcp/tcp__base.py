@@ -120,8 +120,8 @@ class Tcp[P: (memoryview, bytes)](
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._options))
-        buffer.extend(self._payload)
+        buffer += bytearray(self._options)
+        buffer += self._payload
         buffer[16:18] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
         return memoryview(buffer)

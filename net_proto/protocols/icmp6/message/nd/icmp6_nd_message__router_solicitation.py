@@ -147,7 +147,7 @@ class Icmp6NdRouterSolicitationMessage(Icmp6NdMessage):
             0,
         )
 
-        buffer.extend(bytearray(self.options))
+        buffer += bytearray(self.options)
 
         return memoryview(buffer)
 

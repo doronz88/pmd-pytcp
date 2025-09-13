@@ -188,9 +188,9 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         )
 
         for source_address in self.source_addresses:
-            buffer.extend(bytearray(source_address))
+            buffer += bytearray(source_address)
 
-        buffer.extend(self.aux_data)
+        buffer += self.aux_data
 
         return memoryview(buffer)
 

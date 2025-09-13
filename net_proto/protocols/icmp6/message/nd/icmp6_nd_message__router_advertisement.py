@@ -196,7 +196,7 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             self.retrans_timer,
         )
 
-        buffer.extend(bytearray(self.options))
+        buffer += bytearray(self.options)
 
         return memoryview(buffer)
 

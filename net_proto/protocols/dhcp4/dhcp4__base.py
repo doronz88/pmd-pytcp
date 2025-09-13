@@ -93,7 +93,7 @@ class Dhcp4(Proto, Dhcp4HeaderProperties, Dhcp4OptionsProperties):
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._options))
+        buffer += bytearray(self._options)
 
         return memoryview(buffer)
 

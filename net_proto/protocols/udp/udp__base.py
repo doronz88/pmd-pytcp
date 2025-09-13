@@ -88,7 +88,7 @@ class Udp[P: (memoryview, bytes)](Proto, UdpHeaderProperties):
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(self._payload)
+        buffer += self._payload
         buffer[6:8] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
         return memoryview(buffer)

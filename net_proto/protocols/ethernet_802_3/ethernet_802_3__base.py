@@ -89,7 +89,7 @@ class Ethernet8023[P: (RawAssembler, memoryview)](
         """
 
         buffer = bytearray(self._header)
-        buffer.extend(bytearray(self._payload))
+        buffer += bytearray(self._payload)
 
         return memoryview(buffer)
 

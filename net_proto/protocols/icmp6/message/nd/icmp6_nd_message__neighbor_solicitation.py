@@ -166,7 +166,7 @@ class Icmp6NdNeighborSolicitationMessage(Icmp6NdMessage):
             bytes(self.target_address),
         )
 
-        buffer.extend(bytearray(self.options))
+        buffer += bytearray(self.options)
 
         return memoryview(buffer)
 

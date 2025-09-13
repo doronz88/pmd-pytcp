@@ -1,1 +1,3 @@
 aenum
+click
+types-click
