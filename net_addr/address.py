@@ -56,9 +56,9 @@ class Address(Base, ABC):
         return self._address
 
     @abstractmethod
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the network address bytes representation.
+        Get the network address as memoryview.
         """
 
         raise NotImplementedError

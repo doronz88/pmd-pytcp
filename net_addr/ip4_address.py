@@ -112,12 +112,12 @@ class Ip4Address(IpAddress):
         return socket.inet_ntoa(bytes(self))
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 address as bytes.
+        Get the IPv4 address as memoryview.
         """
 
-        return self._address.to_bytes(IP4__ADDRESS_LEN)
+        return memoryview(bytearray(self._address.to_bytes(IP4__ADDRESS_LEN)))
 
     @property
     @override

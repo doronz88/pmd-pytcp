@@ -116,12 +116,12 @@ class Ip6Address(IpAddress):
         return socket.inet_ntop(socket.AF_INET6, bytes(self))
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 address as bytes.
+        Get the IPv6 address as memoryview.
         """
 
-        return self._address.to_bytes(16)
+        return memoryview(bytearray(self._address.to_bytes(16)))
 
     @property
     @override

@@ -98,12 +98,12 @@ class MacAddress(Address):
         return ":".join([f"{_:0>2x}" for _ in bytes(self)])
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the MAC address as bytes.
+        Get the MAC address as memoryview.
         """
 
-        return int(self._address).to_bytes(6)
+        return memoryview(bytearray(int(self._address).to_bytes(6)))
 
     @property
     def is_unicast(self) -> bool:

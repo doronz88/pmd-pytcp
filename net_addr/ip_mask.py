@@ -65,10 +65,12 @@ class IpMask(Base, Ip, ABC):
         return f"/{len(self)}"
 
     @abstractmethod
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IP mask as bytes.
+        Get the IP mask as memoryview.
         """
+
+        raise NotImplementedError
 
     def __int__(self) -> int:
         """

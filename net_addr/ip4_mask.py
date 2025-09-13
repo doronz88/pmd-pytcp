@@ -98,9 +98,9 @@ class Ip4Mask(IpMask):
         raise Ip4MaskFormatError(mask)
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 mask as bytes.
+        Get the IPv4 mask as memoryview.
         """
 
-        return self._mask.to_bytes(4)
+        return memoryview(bytearray(self._mask.to_bytes(4)))

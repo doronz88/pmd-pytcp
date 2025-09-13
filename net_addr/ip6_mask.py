@@ -89,9 +89,9 @@ class Ip6Mask(IpMask):
         raise Ip6MaskFormatError(mask)
 
     @override
-    def __bytes__(self) -> bytes:
+    def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 mask as bytes.
+        Get the IPv6 mask as memoryview.
         """
 
-        return self._mask.to_bytes(16)
+        return memoryview(bytearray(self._mask.to_bytes(16)))

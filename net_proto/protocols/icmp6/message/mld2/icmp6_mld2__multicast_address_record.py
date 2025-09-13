@@ -188,9 +188,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         )
 
         for source_address in self.source_addresses:
-            buffer.extend(
-                bytes(source_address)
-            )  # TODO: replace 'bytes' with 'bytearray' after migration
+            buffer.extend(bytearray(source_address))
 
         buffer.extend(self.aux_data)
 
