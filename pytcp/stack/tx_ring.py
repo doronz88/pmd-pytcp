@@ -106,14 +106,14 @@ class TxRing(Subsystem):
 
         # Prepare payload for sending. Add PI header for L3 interface if needed.
         elif isinstance(packet_tx, Ip6Assembler):
-            payload = b"\x00\x00\x86\xdd" + bytes(packet_tx)
+            buffers = [b"\x00\x00\x86\xdd", bytes(packet_tx)]
         elif isinstance(packet_tx, (Ip4Assembler, Ip4FragAssembler)):
-            payload = b"\x00\x00\x08\x00" + bytes(packet_tx)
+            buffers = [b"\x00\x00\x08\x00", bytes(packet_tx)]
         else:
-            payload = bytes(packet_tx)
+            buffers = [bytes(packet_tx)]
 
         try:
-            os.write(self._fd, payload)
+            os.writev(self._fd, buffers)
         except OSError as error:
             __debug__ and log(
                 "tx-ring",
