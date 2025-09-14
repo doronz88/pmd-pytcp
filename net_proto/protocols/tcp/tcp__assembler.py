@@ -33,6 +33,7 @@ ver 3.0.4
 """
 
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
@@ -45,12 +46,12 @@ from net_proto.protocols.tcp.tcp__base import Tcp
 from net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TcpHeader
 
 
-class TcpAssembler(Tcp[bytes], ProtoAssembler):
+class TcpAssembler(Tcp, ProtoAssembler):
     """
     The TCP packet base.
     """
 
-    _payload: bytes
+    _payload: Buffer
 
     def __init__(
         self,
@@ -71,7 +72,7 @@ class TcpAssembler(Tcp[bytes], ProtoAssembler):
         tcp__win: int = 0,
         tcp__urg: int = 0,
         tcp__options: TcpOptions = TcpOptions(),
-        tcp__payload: bytes = bytes(),
+        tcp__payload: Buffer = bytes(),
         echo_tracker: Tracker | None = None,
     ) -> None:
         """

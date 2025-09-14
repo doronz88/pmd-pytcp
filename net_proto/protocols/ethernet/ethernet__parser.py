@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.ethernet.ethernet__base import Ethernet
@@ -48,12 +49,12 @@ from net_proto.protocols.ethernet.ethernet__header import (
 )
 
 
-class EthernetParser(Ethernet[memoryview], ProtoParser):
+class EthernetParser(Ethernet[Buffer], ProtoParser):
     """
     The Ethernet packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -87,7 +88,7 @@ class EthernetParser(Ethernet[memoryview], ProtoParser):
         Parse the Ethernet packet.
         """
 
-        self._header = EthernetHeader.from_bytes(self._frame)
+        self._header = EthernetHeader.from_buffer(self._frame)
         self._payload = self._frame[len(self._header) :]
 
     @override

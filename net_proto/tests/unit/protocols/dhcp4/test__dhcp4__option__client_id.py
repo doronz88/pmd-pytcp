@@ -178,7 +178,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option (empty).",
             "_args": [
-                memoryview(b"\x3d\x00" + b"ZH0PA"),
+                b"\x3d\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -188,7 +188,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option (6-byte ID).",
             "_args": [
-                memoryview(b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff" + b"ZH0PA"),
+                b"\x3d\x06\xaa\xbb\xcc\xdd\xee\xff" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -200,7 +200,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option (htype + MAC, 7 bytes).",
             "_args": [
-                memoryview(b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01" + b"ZH0PA"),
+                b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -212,7 +212,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option minimum length assert.",
             "_args": [
-                memoryview(b"\x3d"),
+                b"\x3d",
             ],
             "_kwargs": {},
             "_results": {
@@ -226,7 +226,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x01\x00"),
+                b"\xfe\x01\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -240,7 +240,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Client Identifier option length integrity check (II).",
             "_args": [
-                memoryview(b"\x3d\x02"),
+                b"\x3d\x02",
             ],
             "_kwargs": {},
             "_results": {
@@ -263,14 +263,16 @@ class TestDhcp4OptionClientIdParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__client_id__from_bytes(self) -> None:
+    def test__dhcp4__option__client_id__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionClientId.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionClientId.from_buffer(
+                *self._args, **self._kwargs
+            )
 
             self.assertEqual(
                 option,
@@ -279,7 +281,7 @@ class TestDhcp4OptionClientIdParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionClientId.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionClientId.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

@@ -175,8 +175,8 @@ class TestIcmp6Mld2ReportParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage.from_bytes(
-                memoryview(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp6Mld2ReportMessage.from_buffer(
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 
         self.assertEqual(

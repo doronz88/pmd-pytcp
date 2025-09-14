@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
@@ -46,12 +47,12 @@ from net_proto.protocols.udp.udp__errors import (
 from net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
 
 
-class UdpParser(Udp[memoryview], ProtoParser):
+class UdpParser(Udp, ProtoParser):
     """
     The UDP packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -107,7 +108,7 @@ class UdpParser(Udp[memoryview], ProtoParser):
         Parse the UDP packet.
         """
 
-        self._header = UdpHeader.from_bytes(self._frame)
+        self._header = UdpHeader.from_buffer(self._frame)
         self._payload = self._frame[len(self._header) : self._header.plen]
 
     @override

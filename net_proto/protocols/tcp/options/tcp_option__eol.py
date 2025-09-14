@@ -36,6 +36,7 @@ ver 3.0.4
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.tcp.options.tcp_option import TcpOption, TcpOptionType
 
 # The TCP Eol (End of Option List) option [RFC 793].
@@ -89,24 +90,19 @@ class TcpOptionEol(TcpOption):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Eol option from bytes.
+        Initialize the TCP Eol option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= TCP__OPTION__EOL__LEN, (
+        assert (value := len(buffer)) >= TCP__OPTION__EOL__LEN, (
             f"The minimum length of the TCP Eol option must be "
             f"{TCP__OPTION__EOL__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(TcpOptionType.EOL), (
+        assert (value := buffer[0]) == int(TcpOptionType.EOL), (
             f"The TCP Eol option type must be {TcpOptionType.EOL!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )

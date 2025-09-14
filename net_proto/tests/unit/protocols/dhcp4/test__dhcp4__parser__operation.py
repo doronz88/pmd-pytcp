@@ -104,11 +104,9 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "DHCPv4 packet with only Message Type (DISCOVER) and End.",
         "_args": [
-            memoryview(
-                DHCP4_HEADER
-                + b"\x35\x01\x01"  # message_type = DISCOVER
-                + b"\xff"  # End
-            ),
+            DHCP4_HEADER
+            + b"\x35\x01\x01"  # message_type = DISCOVER
+            + b"\xff",  # End
         ],
         "_kwargs": {},
         "_results": {
@@ -122,21 +120,19 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "DHCPv4 packet with a rich mix of options, pads, trailing ignored bytes (no HostName).",
         "_args": [
-            memoryview(
-                DHCP4_HEADER
-                + (
-                    b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
-                    b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
-                    b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
-                    b"\x33\x04\x00\x00\x00\x3c"  # lease_time 60
-                    b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"  # client_id 01:de:ad:be:ef:00:01
-                    b"\x00\x00"  # Pad, Pad
-                    b"\x32\x04\x01\x02\x03\x04"  # req_ip_addr 1.2.3.4
-                    b"\x37\x02\x0c\x35"  # param_req_list [HOST_NAME, MESSAGE_TYPE]
-                    b"\x35\x01\x03"  # message_type = REQUEST
-                    b"\xff"  # End
-                    b"\x00\x00\x00"  # ignored
-                )
+            DHCP4_HEADER
+            + (
+                b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
+                b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
+                b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
+                b"\x33\x04\x00\x00\x00\x3c"  # lease_time 60
+                b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"  # client_id 01:de:ad:be:ef:00:01
+                b"\x00\x00"  # Pad, Pad
+                b"\x32\x04\x01\x02\x03\x04"  # req_ip_addr 1.2.3.4
+                b"\x37\x02\x0c\x35"  # param_req_list [HOST_NAME, MESSAGE_TYPE]
+                b"\x35\x01\x03"  # message_type = REQUEST
+                b"\xff"  # End
+                b"\x00\x00\x00"  # ignored
             )
         ],
         "_kwargs": {},
@@ -170,12 +166,10 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "DHCPv4 packet with empty ClientId (no HostName).",
         "_args": [
-            memoryview(
-                DHCP4_HEADER
-                + (
-                    b"\x3d\x00"  # client_id empty
-                    b"\xff"  # End
-                )
+            DHCP4_HEADER
+            + (
+                b"\x3d\x00"  # client_id empty
+                b"\xff"  # End
             )
         ],
         "_kwargs": {},
@@ -201,16 +195,14 @@ class TestDhcp4ParserOperation(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__parser__from_bytes(self) -> None:
+    def test__dhcp4__parser__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 packet parser creates the proper header and options objects.
         """
 
         dhcp_parser = Dhcp4Parser(*self._args, **self._kwargs)
 
-        expected_header = Dhcp4Header.from_bytes(
-            memoryview(self._results["header_bytes"])
-        )
+        expected_header = Dhcp4Header.from_buffer(self._results["header_bytes"])
 
         self.assertEqual(
             dhcp_parser.header,

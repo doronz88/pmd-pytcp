@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_8_byte_alligned, is_uint8
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
@@ -124,47 +125,42 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the unknown ICMPv6 option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1] << 3) > len(_bytes):
+        if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 "The unknown ICMPv6 ND option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown ICMPv6 option from bytes.
+        Initialize the unknown ICMPv6 option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (
+        assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the unknown ICMPv6 ND option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is not known.
         assert (
-            value := _bytes[0]
+            value := buffer[0]
         ) not in Icmp6NdOptionType.get_known_values(), (
             f"The unknown ICMPv6 ND option type must not be known. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionUnknown._validate_integrity(_bytes)
+        Icmp6NdOptionUnknown._validate_integrity(buffer)
 
         return cls(
-            type=Icmp6NdOptionType(_bytes[0]),
-            data=_bytes[ICMP6__ND__OPTION__LEN : _bytes[1] << 3],
+            type=Icmp6NdOptionType(buffer[0]),
+            data=buffer[ICMP6__ND__OPTION__LEN : buffer[1] << 3],
         )

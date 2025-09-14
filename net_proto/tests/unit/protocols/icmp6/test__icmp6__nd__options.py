@@ -139,10 +139,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND options (II).",
             "_args": [
-                memoryview(
-                    b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
-                    b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
-                ),
+                b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00"
+                b"\x01\x01\x00\x00\x00\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -172,7 +170,7 @@ class TestIcmp6NdOptionsParser(TestCase):
         object.
         """
 
-        icmp6_nd_options = Icmp6NdOptions.from_bytes(
+        icmp6_nd_options = Icmp6NdOptions.from_buffer(
             *self._args, **self._kwargs
         )
 

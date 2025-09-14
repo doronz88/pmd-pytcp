@@ -189,11 +189,9 @@ class TestIcmp6NdNeighborSolicitationParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborSolicitationMessage.from_bytes(
-                memoryview(
-                    b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x00\x00\x00\x00\x00"
-                )
+            Icmp6NdNeighborSolicitationMessage.from_buffer(
+                b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00",
             )
 
         self.assertEqual(

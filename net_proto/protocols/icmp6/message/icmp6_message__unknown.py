@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Self, override
 
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.message.icmp6_message import (
     ICMP6__HEADER__LEN,
@@ -136,7 +137,7 @@ class Icmp6UnknownMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 unknown message before parsing it.
         """
@@ -145,13 +146,13 @@ class Icmp6UnknownMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 unknown message from bytes.
         """
 
         type, code, cksum = struct.unpack(
-            ICMP6__HEADER__STRUCT, _bytes[:ICMP6__HEADER__LEN]
+            ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN]
         )
 
         assert (received_type := type) not in Icmp6Type.get_known_values(), (
@@ -163,5 +164,5 @@ class Icmp6UnknownMessage(Icmp6Message):
             type=Icmp6Type.from_int(type),
             code=Icmp6Code.from_int(code),
             cksum=cksum,
-            raw=_bytes[ICMP6__HEADER__LEN:],
+            raw=buffer[ICMP6__HEADER__LEN:],
         )

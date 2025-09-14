@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6IntegrityError,
@@ -231,7 +232,7 @@ class Icmp6NdNeighborAdvertisementMessage(Icmp6NdMessage):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 ND Neighbor Advertisement message
         before parsing it.
@@ -253,14 +254,14 @@ class Icmp6NdNeighborAdvertisementMessage(Icmp6NdMessage):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Neighbor Advertisement message from bytes.
+        Initialize the ICMPv6 ND Neighbor Advertisement message from buffer.
         """
 
         type, code, cksum, flags, target_address = struct.unpack(
             ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
-            _bytes[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
+            buffer[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
         )
 
         assert (received_type := Icmp6Type.from_int(type)) == (
@@ -277,7 +278,7 @@ class Icmp6NdNeighborAdvertisementMessage(Icmp6NdMessage):
             flag_s=bool(flags & 0b01000000_00000000_00000000_00000000),
             flag_o=bool(flags & 0b00100000_00000000_00000000_00000000),
             target_address=Ip6Address(target_address),
-            options=Icmp6NdOptions.from_bytes(
-                _bytes[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:]
+            options=Icmp6NdOptions.from_buffer(
+                buffer[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:]
             ),
         )

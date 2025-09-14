@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
 from net_proto.protocols.tcp.options.tcp_options import (
@@ -44,16 +45,14 @@ from net_proto.protocols.tcp.options.tcp_options import (
 from net_proto.protocols.tcp.tcp__header import TcpHeader, TcpHeaderProperties
 
 
-class Tcp[P: (memoryview, bytes)](
-    Proto, TcpHeaderProperties, TcpOptionsProperties
-):
+class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
     """
     The TCP protocol base.
     """
 
     _header: TcpHeader
     _options: TcpOptions
-    _payload: P
+    _payload: Buffer
 
     pshdr_sum: int = 0
 
@@ -143,7 +142,7 @@ class Tcp[P: (memoryview, bytes)](
         return self._options
 
     @property
-    def payload(self) -> bytes:
+    def payload(self) -> Buffer:
         """
         Get the TCP packet '_payload' attribute.
         """

@@ -36,6 +36,7 @@ ver 3.0.4
 from typing import Self, override
 
 from net_addr import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
@@ -112,7 +113,7 @@ class Icmp6NdOptions(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: memoryview,
+        frame: Buffer,
         offset: int,
     ) -> None:
         """
@@ -137,7 +138,7 @@ class Icmp6NdOptions(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Read the ICMPv6 ND options from bytes.
         """
@@ -145,21 +146,21 @@ class Icmp6NdOptions(ProtoOptions):
         offset = 0
         options: list[Icmp6NdOption] = []
 
-        while offset < len(_bytes):
-            match Icmp6NdOptionType.from_bytes(_bytes[offset : offset + 1]):
+        while offset < len(buffer):
+            match Icmp6NdOptionType.from_bytes(buffer[offset : offset + 1]):
                 case Icmp6NdOptionType.SLLA:
                     options.append(
-                        Icmp6NdOptionSlla.from_bytes(_bytes[offset:])
+                        Icmp6NdOptionSlla.from_buffer(buffer[offset:])
                     )
                 case Icmp6NdOptionType.TLLA:
                     options.append(
-                        Icmp6NdOptionTlla.from_bytes(_bytes[offset:])
+                        Icmp6NdOptionTlla.from_buffer(buffer[offset:])
                     )
                 case Icmp6NdOptionType.PI:
-                    options.append(Icmp6NdOptionPi.from_bytes(_bytes[offset:]))
+                    options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
                 case _:
                     options.append(
-                        Icmp6NdOptionUnknown.from_bytes(_bytes[offset:])
+                        Icmp6NdOptionUnknown.from_buffer(buffer[offset:])
                     )
 
             offset += options[-1].len

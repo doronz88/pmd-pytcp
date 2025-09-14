@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
@@ -47,12 +48,12 @@ from net_proto.protocols.tcp.tcp__errors import (
 from net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TcpHeader
 
 
-class TcpParser(Tcp[memoryview], ProtoParser):
+class TcpParser(Tcp, ProtoParser):
     """
     The TCP packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -112,9 +113,9 @@ class TcpParser(Tcp[memoryview], ProtoParser):
         Parse the TCP packet.
         """
 
-        self._header = TcpHeader.from_bytes(self._frame)
+        self._header = TcpHeader.from_buffer(self._frame)
 
-        self._options = TcpOptions.from_bytes(
+        self._options = TcpOptions.from_buffer(
             self._frame[len(self._header) : self._header.hlen]
         )
 

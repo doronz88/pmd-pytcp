@@ -64,10 +64,8 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (I) — single option + End.",
             "_args": [
-                memoryview(
-                    b"\x35\x01\x01"  # message_type=DISCOVER
-                    b"\xff"  # End
-                )
+                b"\x35\x01\x01"  # message_type=DISCOVER
+                b"\xff"  # End
             ],
             "_kwargs": {},
             "_results": {
@@ -80,20 +78,18 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (II) — rich mix, pads, trailing data.",
             "_args": [
-                memoryview(
-                    b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
-                    b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
-                    b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
-                    b"\x33\x04\x00\x00\x00\x3c"  # lease_time 60
-                    b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"  # client_id 01:de:ad:be:ef:00:01
-                    b"\x00\x00"  # Pad, Pad
-                    b"\x0c\x04\x68\x6f\x73\x74"  # host_name "host"
-                    b"\x32\x04\x01\x02\x03\x04"  # req_ip_addr 1.2.3.4
-                    b"\x37\x02\x0c\x35"  # param_req_list [HOST_NAME, MESSAGE_TYPE]
-                    b"\x35\x01\x03"  # message_type=REQUEST
-                    b"\xff"  # End
-                    b"\x00\x00\x00"  # bytes after End ignored
-                ),
+                b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
+                b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
+                b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
+                b"\x33\x04\x00\x00\x00\x3c"  # lease_time 60
+                b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"  # client_id 01:de:ad:be:ef:00:01
+                b"\x00\x00"  # Pad, Pad
+                b"\x0c\x04\x68\x6f\x73\x74"  # host_name "host"
+                b"\x32\x04\x01\x02\x03\x04"  # req_ip_addr 1.2.3.4
+                b"\x37\x02\x0c\x35"  # param_req_list [HOST_NAME, MESSAGE_TYPE]
+                b"\x35\x01\x03"  # message_type=REQUEST
+                b"\xff"  # End
+                b"\x00\x00\x00",  # bytes after End ignored
             ],
             "_kwargs": {},
             "_results": {
@@ -126,7 +122,7 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (III) — only End.",
             "_args": [
-                memoryview(b"\xff"),
+                b"\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -138,11 +134,9 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (IV) — options behind End are ignored.",
             "_args": [
-                memoryview(
-                    b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
-                    b"\xff"  # End
-                    b"\x01\x04\xff\xff\xff\x00"  # subnet_mask (ignored)
-                ),
+                b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
+                b"\xff"  # End
+                b"\x01\x04\xff\xff\xff\x00",  # subnet_mask (ignored)
             ],
             "_kwargs": {},
             "_results": {
@@ -155,11 +149,9 @@ from net_proto import (
         {
             "_description": "The DHCPv4 options (V) — empty/zero-length valued options allowed.",
             "_args": [
-                memoryview(
-                    b"\x3d\x00"  # client_id empty
-                    b"\x0c\x00"  # host_name empty
-                    b"\xff"
-                ),
+                b"\x3d\x00"  # client_id empty
+                b"\x0c\x00"  # host_name empty
+                b"\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -182,12 +174,12 @@ class TestDhcp4OptionsParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__options__from_bytes(self) -> None:
+    def test__dhcp4__options__from_buffer(self) -> None:
         """
         Ensure the 'Dhcp4Options' class parser creates the proper options object.
         """
 
-        dhcp4_options = Dhcp4Options.from_bytes(*self._args, **self._kwargs)
+        dhcp4_options = Dhcp4Options.from_buffer(*self._args, **self._kwargs)
 
         self.assertEqual(
             dhcp4_options,

@@ -229,8 +229,8 @@ class TestIcmp4EchoReqestParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoRequestMessage.from_bytes(
-                memoryview(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp4EchoRequestMessage.from_buffer(
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 
         self.assertEqual(

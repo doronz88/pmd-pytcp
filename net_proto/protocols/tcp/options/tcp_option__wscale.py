@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.tcp.options.tcp_option import (
     TCP__OPTION__LEN,
@@ -116,53 +117,48 @@ class TcpOptionWscale(TcpOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the TCP Wscale option integrity before parsing it.
         """
 
         # Raise an exception if the TCP Wscale option length value is incorrect.
-        if (value := _bytes[1]) != TCP__OPTION__WSCALE__LEN:
+        if (value := buffer[1]) != TCP__OPTION__WSCALE__LEN:
             raise TcpIntegrityError(
                 f"The TCP Wscale option length value must be {TCP__OPTION__WSCALE__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Wscale option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Wscale option from bytes.
+        Initialize the TCP Wscale option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
+        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Wscale option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(TcpOptionType.WSCALE), (
+        assert (value := buffer[0]) == int(TcpOptionType.WSCALE), (
             f"The TCP Wscale option type must be {TcpOptionType.WSCALE!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
-        cls._validate_integrity(_bytes)
+        cls._validate_integrity(buffer)
 
         # Correct the received Wscale option value to maximum allowed
         # if it exceeds the limit.
-        wscale = min(_bytes[2], TCP__OPTION__WSCALE__MAX_VALUE)
+        wscale = min(buffer[2], TCP__OPTION__WSCALE__MAX_VALUE)
 
         return cls(wscale=wscale)

@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import TYPE_CHECKING
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.tracker import Tracker
 
 if TYPE_CHECKING:
@@ -57,12 +58,12 @@ class PacketRx:
     Class representing the received packet.
     """
 
-    def __init__(self, frame: bytes, /) -> None:
+    def __init__(self, frame: Buffer, /) -> None:
         """
         Class constructor.
         """
 
-        self.frame: memoryview = memoryview(frame)
+        self.frame: Buffer = memoryview(frame)
         self.tracker: Tracker = Tracker(prefix="RX")
         self.parse_failed: str = ""
 

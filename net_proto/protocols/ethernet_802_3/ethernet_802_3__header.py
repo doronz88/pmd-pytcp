@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from typing import Self, override
 
 from net_addr import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.lib.proto_struct import ProtoStruct
 
@@ -122,13 +123,13 @@ class Ethernet8023Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the Ethernet 802.3 header from bytes.
+        Initialize the Ethernet 802.3 header from buffer.
         """
 
         dst, src, dlen = struct.unpack(
-            ETHERNET_802_3__HEADER__STRUCT, _bytes[:ETHERNET_802_3__HEADER__LEN]
+            ETHERNET_802_3__HEADER__STRUCT, buffer[:ETHERNET_802_3__HEADER__LEN]
         )
 
         return cls(

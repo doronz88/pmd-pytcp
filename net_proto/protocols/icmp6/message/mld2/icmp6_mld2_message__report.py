@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import IP6__ADDRESS_LEN, Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6IntegrityError,
@@ -199,7 +200,7 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 MLDv2 Report message before
         parsing it.
@@ -239,15 +240,15 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 MLDv2 Report message from bytes.
         """
 
         type, code, cksum, _, number_of_records = struct.unpack(
-            ICMP6__MLD2__REPORT__STRUCT, _bytes[:ICMP6__MLD2__REPORT__LEN]
+            ICMP6__MLD2__REPORT__STRUCT, buffer[:ICMP6__MLD2__REPORT__LEN]
         )
-        record_bytes = _bytes[ICMP6__MLD2__REPORT__LEN:]
+        record_bytes = buffer[ICMP6__MLD2__REPORT__LEN:]
 
         assert (received_type := Icmp6Type.from_int(type)) == (
             valid_type := Icmp6Type.MLD2__REPORT
@@ -258,7 +259,7 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
 
         records: list[Icmp6Mld2MulticastAddressRecord] = []
         for _ in range(number_of_records):
-            record = Icmp6Mld2MulticastAddressRecord.from_bytes(record_bytes)
+            record = Icmp6Mld2MulticastAddressRecord.from_buffer(record_bytes)
             record_bytes = record_bytes[len(record) :]
             records.append(record)
 

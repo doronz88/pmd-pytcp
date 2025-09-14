@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8, is_uint16, is_uint32
 from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6IntegrityError,
@@ -231,7 +232,7 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 ND Router Advertisement message
         before parsing it.
@@ -253,9 +254,9 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Router Advertisement message from bytes.
+        Initialize the ICMPv6 ND Router Advertisement message from buffer.
         """
 
         (
@@ -269,7 +270,7 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             retrans_timer,
         ) = struct.unpack(
             ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT,
-            _bytes[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
+            buffer[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
         )
 
         assert (received_type := Icmp6Type.from_int(type)) == (
@@ -288,7 +289,7 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             router_lifetime=router_lifetime,
             reachable_time=reachable_time,
             retrans_timer=retrans_timer,
-            options=Icmp6NdOptions.from_bytes(
-                _bytes[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]
+            options=Icmp6NdOptions.from_buffer(
+                buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]
             ),
         )

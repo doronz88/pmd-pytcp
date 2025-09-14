@@ -36,6 +36,7 @@ ver 3.0.4
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ip4.options.ip4_option import Ip4Option, Ip4OptionType
 
 # The IPv4 Nop (No Operation) option [RFC 793].
@@ -90,24 +91,19 @@ class Ip4OptionNop(Ip4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the IPv4 Nop option from bytes.
+        Initialize the IPv4 Nop option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= IP4__OPTION__NOP__LEN, (
+        assert (value := len(buffer)) >= IP4__OPTION__NOP__LEN, (
             f"The minimum length of the IPv4 Nop option must be "
             f"{IP4__OPTION__NOP__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(Ip4OptionType.NOP), (
+        assert (value := buffer[0]) == int(Ip4OptionType.NOP), (
             f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. "
             f"Got: {Ip4OptionType.from_int(value)!r}"
         )

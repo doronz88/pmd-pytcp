@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip4Address, MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8, is_uint16, is_uint32
 from net_proto.lib.proto_struct import ProtoStruct
 from net_proto.protocols.dhcp4.dhcp4__enums import (
@@ -281,9 +282,9 @@ class Dhcp4Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ARP header from bytes.
+        Initialize the ARP header from buffer.
         """
 
         (
@@ -302,7 +303,7 @@ class Dhcp4Header(ProtoStruct):
             sname,
             file,
             magic_cookie,
-        ) = struct.unpack(DHCP4__HEADER__STRUCT, _bytes[:DHCP4__HEADER__LEN])
+        ) = struct.unpack(DHCP4__HEADER__STRUCT, buffer[:DHCP4__HEADER__LEN])
 
         assert (
             value := Dhcp4HardwareType.from_int(hrtype)

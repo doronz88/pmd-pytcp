@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.ethernet_802_3.ethernet_802_3__base import Ethernet8023
@@ -48,12 +49,12 @@ from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
 )
 
 
-class Ethernet8023Parser(Ethernet8023[memoryview], ProtoParser):
+class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
     """
     The Ethernet 802.3 packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -104,7 +105,7 @@ class Ethernet8023Parser(Ethernet8023[memoryview], ProtoParser):
         Parse the Ethernet 802.3 packet.
         """
 
-        self._header = Ethernet8023Header.from_bytes(self._frame)
+        self._header = Ethernet8023Header.from_buffer(self._frame)
         self._payload = self._frame[
             len(self._header) : len(self._header) + self._header.dlen
         ]

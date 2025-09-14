@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import IP6__ADDRESS_LEN, Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_enum import ProtoEnumByte
 from net_proto.lib.proto_struct import ProtoStruct
@@ -227,7 +228,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 MLDv2 Multicast Address Record from bytes.
         """
@@ -235,13 +236,13 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         type, aux_data_len, number_of_sources, multicast_address = (
             struct.unpack(
                 ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
-                _bytes[0:ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN],
+                buffer[0:ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN],
             )
         )
 
         source_addresses = [
             Ip6Address(
-                _bytes[
+                buffer[
                     ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
                     + IP6__ADDRESS_LEN
                     * n : ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
@@ -255,7 +256,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
             ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
             + IP6__ADDRESS_LEN * number_of_sources
         )
-        aux_data = _bytes[
+        aux_data = buffer[
             aux_data_offset : aux_data_offset + (aux_data_len << 2)
         ]
 

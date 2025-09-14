@@ -181,7 +181,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option (/24).",
             "_args": [
-                memoryview(b"\x01\x04\xff\xff\xff\x00" + b"ZH0PA"),
+                b"\x01\x04\xff\xff\xff\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -193,7 +193,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option (/16).",
             "_args": [
-                memoryview(b"\x01\x04\xff\xff\x00\x00" + b"ZH0PA"),
+                b"\x01\x04\xff\xff\x00\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -205,7 +205,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option (/8).",
             "_args": [
-                memoryview(b"\x01\x04\xff\x00\x00\x00" + b"ZH0PA"),
+                b"\x01\x04\xff\x00\x00\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -217,7 +217,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option minimum length assert.",
             "_args": [
-                memoryview(b"\x01"),
+                b"\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -231,7 +231,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x04\xff\xff\xff\x00"),
+                b"\xfe\x04\xff\xff\xff\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -245,7 +245,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option length integrity check (I).",
             "_args": [
-                memoryview(b"\x01\x03\xff\xff\xff"),
+                b"\x01\x03\xff\xff\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -259,7 +259,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         {
             "_description": "The DHCPv4 Subnet Mask option length integrity check (II).",
             "_args": [
-                memoryview(b"\x01\x04"),
+                b"\x01\x04",
             ],
             "_kwargs": {},
             "_results": {
@@ -282,14 +282,14 @@ class TestDhcp4OptionSubnetMaskParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__subnet_mask__from_bytes(self) -> None:
+    def test__dhcp4__option__subnet_mask__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Subnet Mask option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionSubnetMask.from_bytes(
+            option = Dhcp4OptionSubnetMask.from_buffer(
                 *self._args, **self._kwargs
             )
 
@@ -300,7 +300,7 @@ class TestDhcp4OptionSubnetMaskParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionSubnetMask.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionSubnetMask.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

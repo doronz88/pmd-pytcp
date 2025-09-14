@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
@@ -119,47 +120,42 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the unknown DHCPv4 option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The unknown DHCPv4 option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown DHCPv4 option from bytes.
+        Initialize the unknown DHCPv4 option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
+        assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the unknown DHCPv4 option must be "
             f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is not known.
-        assert (value := _bytes[0]) not in Dhcp4OptionType.get_known_values(), (
+        assert (value := buffer[0]) not in Dhcp4OptionType.get_known_values(), (
             f"The unknown DHCPv4 option type must not be known. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
-        Dhcp4OptionUnknown._validate_integrity(_bytes)
+        Dhcp4OptionUnknown._validate_integrity(buffer)
 
         return cls(
-            type=Dhcp4OptionType(_bytes[0]),
+            type=Dhcp4OptionType(buffer[0]),
             data=bytes(
-                _bytes[DHCP4__OPTION__LEN : DHCP4__OPTION__LEN + _bytes[1]]
+                buffer[DHCP4__OPTION__LEN : DHCP4__OPTION__LEN + buffer[1]]
             ),  # NOTE: Conversion: memoryview -> bytes
         )

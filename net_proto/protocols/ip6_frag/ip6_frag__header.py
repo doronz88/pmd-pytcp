@@ -38,6 +38,7 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import is_8_byte_alligned, is_uint13, is_uint32
 from net_proto.lib.proto_struct import ProtoStruct
@@ -120,13 +121,13 @@ class Ip6FragHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the IPv6 Frag header from bytes.
+        Initialize the IPv6 Frag header from buffer.
         """
 
         next, _, offset__flag_mf, id = struct.unpack(
-            IP6_FRAG__HEADER__STRUCT, _bytes[:IP6_FRAG__HEADER__LEN]
+            IP6_FRAG__HEADER__STRUCT, buffer[:IP6_FRAG__HEADER__LEN]
         )
 
         return cls(

@@ -201,16 +201,16 @@ class TestIcmp6Mld2MulticastAddressRecordParser(TestCase):
     _args: list[Any]
     _results: dict[str, Any]
 
-    def test__icmp6__mld2__multicast_address_record__parser__from_bytes(
+    def test__icmp6__mld2__multicast_address_record__parser__from_buffer(
         self,
     ) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Multicast Address Record method 'from_bytes()'
+        Ensure the ICMPv6 MLDv2 Multicast Address Record method 'from_buffer()'
         creates a proper message object.
         """
 
         self.assertEqual(
-            Icmp6Mld2MulticastAddressRecord.from_bytes(
+            Icmp6Mld2MulticastAddressRecord.from_buffer(
                 self._args[0] + b"ZH0PA"
             ),
             self._results["from_bytes"],

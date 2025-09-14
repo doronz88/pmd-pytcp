@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
@@ -45,12 +46,12 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
 )
 
 
-class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
+class Ip6FragParser(Ip6Frag, ProtoParser):
     """
     IPv6 Frag packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -84,7 +85,7 @@ class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
         Parse the IPv6 Frag packet.
         """
 
-        self._header = Ip6FragHeader.from_bytes(self._frame)
+        self._header = Ip6FragHeader.from_buffer(self._frame)
         self._payload = self._frame[
             len(self._header) : len(self._header) + self._ip6__dlen
         ]
@@ -98,7 +99,7 @@ class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
         # Currently no sanity checks are implemented for the IPv6 Frag protocol.
 
     @property
-    def header_bytes(self) -> memoryview:
+    def header_bytes(self) -> Buffer:
         """
         Get the IPv6 Frag packet header bytes.
         """
@@ -106,7 +107,7 @@ class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
         return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> memoryview:
+    def payload_bytes(self) -> Buffer:
         """
         Get the IPv6 Frag packet payload bytes.
         """
@@ -114,7 +115,7 @@ class Ip6FragParser(Ip6Frag[memoryview], ProtoParser):
         return self._payload
 
     @property
-    def packet_bytes(self) -> memoryview:
+    def packet_bytes(self) -> Buffer:
         """
         Get the IPv6 Frag packet bytes.
         """

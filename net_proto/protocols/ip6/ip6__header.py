@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address, IpVersion
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import (
     UINT_16__MAX,
@@ -169,13 +170,13 @@ class Ip6Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the IPv6 header from bytes.
+        Initialize the IPv6 header from buffer.
         """
 
         ver__dscp__ecn__flow, dlen, next, hop, src, dst = struct.unpack(
-            IP6__HEADER__STRUCT, _bytes[:IP6__HEADER__LEN]
+            IP6__HEADER__STRUCT, buffer[:IP6__HEADER__LEN]
         )
 
         return cls(

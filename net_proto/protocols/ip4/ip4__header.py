@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip4Address, IpVersion
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import (
     UINT_16__MAX,
@@ -195,9 +196,9 @@ class Ip4Header(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the IPv4 header from bytes.
+        Initialize the IPv4 header from buffer.
         """
 
         (
@@ -211,7 +212,7 @@ class Ip4Header(ProtoStruct):
             cksum,
             src,
             dst,
-        ) = struct.unpack(IP4__HEADER__STRUCT, _bytes[:IP4__HEADER__LEN])
+        ) = struct.unpack(IP4__HEADER__STRUCT, buffer[:IP4__HEADER__LEN])
 
         return cls(
             hlen=(ver__hlen & 0b00001111) << 2,

@@ -212,7 +212,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option (empty list).",
             "_args": [
-                memoryview(b"\x03\x00" + b"ZH0PA"),
+                b"\x03\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -222,7 +222,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option (one router).",
             "_args": [
-                memoryview(b"\x03\x04\xc0\x00\x02\x01" + b"ZH0PA"),
+                b"\x03\x04\xc0\x00\x02\x01" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -232,9 +232,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option (two routers).",
             "_args": [
-                memoryview(
-                    b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05" + b"ZH0PA"
-                ),
+                b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -249,7 +247,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option minimum length assert.",
             "_args": [
-                memoryview(b"\x03"),
+                b"\x03",
             ],
             "_kwargs": {},
             "_results": {
@@ -263,7 +261,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x04\xc0\x00\x02\x01"),
+                b"\xfe\x04\xc0\x00\x02\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -277,7 +275,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option length integrity check (multiple of 4).",
             "_args": [
-                memoryview(b"\x03\x03\x01\x02\x03"),
+                b"\x03\x03\x01\x02\x03",
             ],
             "_kwargs": {},
             "_results": {
@@ -291,7 +289,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         {
             "_description": "The DHCPv4 Router option length integrity check (II).",
             "_args": [
-                memoryview(b"\x03\x04"),
+                b"\x03\x04",
             ],
             "_kwargs": {},
             "_results": {
@@ -314,14 +312,14 @@ class TestDhcp4OptionRouterParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__router__from_bytes(self) -> None:
+    def test__dhcp4__option__router__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Router option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionRouter.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionRouter.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -330,7 +328,7 @@ class TestDhcp4OptionRouterParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionRouter.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionRouter.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

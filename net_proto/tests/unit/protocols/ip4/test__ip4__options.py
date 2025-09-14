@@ -149,12 +149,12 @@ class TestIp4OptionsParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__ip4_options__from_bytes(self) -> None:
+    def test__ip4_options__from_buffer(self) -> None:
         """
         Ensure the 'Ip4Options' class parser creates the proper option object.
         """
 
-        ip4_options = Ip4Options.from_bytes(*self._args, **self._kwargs)
+        ip4_options = Ip4Options.from_buffer(*self._args, **self._kwargs)
 
         self.assertEqual(
             ip4_options,

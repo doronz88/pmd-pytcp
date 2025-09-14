@@ -79,7 +79,7 @@ class TestDhcp4ParserIntegrityChecks(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__parser__from_bytes(self) -> None:
+    def test__dhcp4__parser__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 packet parser raises integrity error on malformed packets.
         """

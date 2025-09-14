@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip4Address, MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import EtherType
 from net_proto.lib.proto_struct import ProtoStruct
 from net_proto.protocols.arp.arp__enums import (
@@ -162,13 +163,13 @@ class ArpHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ARP header from bytes.
+        Initialize the ARP header from buffer.
         """
 
         _, _, _, _, oper, sha, spa, tha, tpa = struct.unpack(
-            ARP__HEADER__STRUCT, _bytes[:ARP__HEADER__LEN]
+            ARP__HEADER__STRUCT, buffer[:ARP__HEADER__LEN]
         )
 
         return cls(

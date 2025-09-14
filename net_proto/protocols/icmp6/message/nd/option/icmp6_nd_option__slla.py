@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
     ICMP6__ND__OPTION__LEN,
@@ -113,49 +114,44 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the ICMPv6 ND Slla option integrity before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
+        if (value := buffer[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Slla option length value must be {ICMP6__ND__OPTION__SLLA__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1] << 3) > len(_bytes):
+        if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 "The ICMPv6 ND Slla option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Slla option from bytes.
+        Initialize the ICMPv6 ND Slla option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (
+        assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the ICMPv6 ND Slla option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(Icmp6NdOptionType.SLLA), (
+        assert (value := buffer[0]) == int(Icmp6NdOptionType.SLLA), (
             f"The ICMPv6 ND Slla option type must be {Icmp6NdOptionType.SLLA!r}. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionSlla._validate_integrity(_bytes)
+        Icmp6NdOptionSlla._validate_integrity(buffer)
 
-        return cls(slla=MacAddress(_bytes[2:8]))
+        return cls(slla=MacAddress(buffer[2:8]))

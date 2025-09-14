@@ -116,7 +116,7 @@ class ArpParser(Arp, ProtoParser):
         Parse the ARP packet.
         """
 
-        self._header = ArpHeader.from_bytes(self._frame)
+        self._header = ArpHeader.from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:

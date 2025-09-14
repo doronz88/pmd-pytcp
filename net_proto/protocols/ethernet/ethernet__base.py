@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.protocols.arp.arp__assembler import ArpAssembler
 from net_proto.protocols.ethernet.ethernet__header import (
@@ -53,9 +54,7 @@ type EthernetPayload = (
 )
 
 
-class Ethernet[P: (EthernetPayload, memoryview)](
-    Proto, EthernetHeaderProperties
-):
+class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
     """
     The Ethernet protocol base class.
     """

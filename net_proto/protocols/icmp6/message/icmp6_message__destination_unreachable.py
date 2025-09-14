@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.icmp6_message import (
@@ -188,7 +189,7 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate the ICMPv6 Destination Unreachable message integrity before
         parsing it.
@@ -204,14 +205,14 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 Destination Unreachable message from bytes.
+        Initialize the ICMPv6 Destination Unreachable message from buffer.
         """
 
         type, code, cksum, _ = struct.unpack(
             ICMP6__DESTINATION_UNREACHABLE__STRUCT,
-            _bytes[:ICMP6__DESTINATION_UNREACHABLE__LEN],
+            buffer[:ICMP6__DESTINATION_UNREACHABLE__LEN],
         )
 
         assert (received_type := Icmp6Type.from_int(type)) == (
@@ -224,5 +225,5 @@ class Icmp6DestinationUnreachableMessage(Icmp6Message):
         return cls(
             code=Icmp6DestinationUnreachableCode.from_int(code),
             cksum=cksum,
-            data=_bytes[ICMP6__DESTINATION_UNREACHABLE__LEN:],
+            data=buffer[ICMP6__DESTINATION_UNREACHABLE__LEN:],
         )

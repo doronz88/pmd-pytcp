@@ -219,7 +219,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option (empty).",
             "_args": [
-                memoryview(b"\x37\x00" + b"ZH0PA"),
+                b"\x37\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -229,7 +229,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
             "_args": [
-                memoryview(b"\x37\x01\x0c" + b"ZH0PA"),
+                b"\x37\x01\x0c" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -241,7 +241,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
             "_args": [
-                memoryview(b"\x37\x02\x0c\x35" + b"ZH0PA"),
+                b"\x37\x02\x0c\x35" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -256,7 +256,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option minimum length assert.",
             "_args": [
-                memoryview(b"\x37"),
+                b"\x37",
             ],
             "_kwargs": {},
             "_results": {
@@ -270,7 +270,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x00"),
+                b"\xfe\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -284,7 +284,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option length integrity check (II).",
             "_args": [
-                memoryview(b"\x37\x02"),
+                b"\x37\x02",
             ],
             "_kwargs": {},
             "_results": {
@@ -307,14 +307,14 @@ class TestDhcp4OptionParamReqListParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__param_req_list__from_bytes(self) -> None:
+    def test__dhcp4__option__param_req_list__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Parameter Request List option parser creates the proper
         option object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionParamReqList.from_bytes(
+            option = Dhcp4OptionParamReqList.from_buffer(
                 *self._args, **self._kwargs
             )
 
@@ -325,7 +325,7 @@ class TestDhcp4OptionParamReqListParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionParamReqList.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionParamReqList.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

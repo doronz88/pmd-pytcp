@@ -35,18 +35,19 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
 from net_proto.protocols.udp.udp__header import UdpHeader, UdpHeaderProperties
 
 
-class Udp[P: (memoryview, bytes)](Proto, UdpHeaderProperties):
+class Udp(Proto, UdpHeaderProperties):
     """
     The UDP protocol base.
     """
 
     _header: UdpHeader
-    _payload: P
+    _payload: Buffer
 
     pshdr_sum: int = 0
 
@@ -102,7 +103,7 @@ class Udp[P: (memoryview, bytes)](Proto, UdpHeaderProperties):
         return self._header
 
     @property
-    def payload(self) -> bytes:
+    def payload(self) -> Buffer:
         """
         Get the UDP packet '_payload' attribute.
         """

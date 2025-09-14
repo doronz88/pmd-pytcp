@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
 from net_proto.protocols.icmp4.message.icmp4_message import (
@@ -175,7 +176,7 @@ class Icmp4EchoReplyMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
         Validate integrity of the ICMPv4 Echo Reply message before parsing it.
         """
@@ -189,13 +190,13 @@ class Icmp4EchoReplyMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv4 Echo Reply message from bytes.
+        Initialize the ICMPv4 Echo Reply message from buffer.
         """
 
         type, code, cksum, id, seq = struct.unpack(
-            ICMP4__ECHO_REPLY__STRUCT, _bytes[:ICMP4__ECHO_REPLY__LEN]
+            ICMP4__ECHO_REPLY__STRUCT, buffer[:ICMP4__ECHO_REPLY__LEN]
         )
 
         assert (received_type := Icmp4Type.from_int(type)) == (
@@ -207,5 +208,5 @@ class Icmp4EchoReplyMessage(Icmp4Message):
             cksum=cksum,
             id=id,
             seq=seq,
-            data=_bytes[ICMP4__ECHO_REPLY__LEN:],
+            data=buffer[ICMP4__ECHO_REPLY__LEN:],
         )

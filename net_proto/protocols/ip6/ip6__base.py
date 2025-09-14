@@ -36,6 +36,7 @@ ver 3.0.4
 import struct
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler
 from net_proto.protocols.ip6.ip6__header import Ip6Header, Ip6HeaderProperties
@@ -53,7 +54,7 @@ type Ip6Payload = (
 )
 
 
-class Ip6[P: (Ip6Payload, memoryview)](Proto, Ip6HeaderProperties):
+class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
     """
     The IPv6 protocol base.
     """

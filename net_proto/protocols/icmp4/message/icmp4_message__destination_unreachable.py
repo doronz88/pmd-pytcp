@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
 from net_proto.protocols.icmp4.message.icmp4_message import (
@@ -251,7 +252,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: bytes, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
         Validate the ICMPv4 Destination Unreachable message integrity before parsing it.
         """
@@ -270,21 +271,21 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: bytes, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv4 Destination Unreachable message from bytes.
+        Initialize the ICMPv4 Destination Unreachable message from buffer.
         """
 
-        match Icmp4DestinationUnreachableCode.from_int(_bytes[1]):
+        match Icmp4DestinationUnreachableCode.from_int(buffer[1]):
             case Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
                 type, code, cksum, _, mtu = struct.unpack(
                     ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
-                    _bytes[:ICMP4__DESTINATION_UNREACHABLE__LEN],
+                    buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
                 )
             case _:
                 type, code, cksum, _ = struct.unpack(
                     ICMP4__DESTINATION_UNREACHABLE__STRUCT,
-                    _bytes[:ICMP4__DESTINATION_UNREACHABLE__LEN],
+                    buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
                 )
                 mtu = None
 
@@ -296,5 +297,5 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
             code=Icmp4DestinationUnreachableCode.from_int(code),
             cksum=cksum,
             mtu=mtu,
-            data=_bytes[ICMP4__DESTINATION_UNREACHABLE__LEN:],
+            data=buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:],
         )

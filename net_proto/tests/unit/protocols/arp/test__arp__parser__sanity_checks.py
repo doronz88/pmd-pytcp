@@ -68,7 +68,7 @@ class TestArpParserSanityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__arp__parser__from_bytes(self) -> None:
+    def test__arp__parser__from_buffer(self) -> None:
         """
         Ensure the ARP packet parser raises sanity errors on crazy packets.
         """

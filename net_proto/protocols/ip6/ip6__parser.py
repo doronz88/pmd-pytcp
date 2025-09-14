@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.ip6.ip6__base import Ip6
@@ -45,12 +46,12 @@ from net_proto.protocols.ip6.ip6__errors import (
 from net_proto.protocols.ip6.ip6__header import IP6__HEADER__LEN, Ip6Header
 
 
-class Ip6Parser(Ip6[memoryview], ProtoParser):
+class Ip6Parser(Ip6[Buffer], ProtoParser):
     """
     The IPv6 packet parser
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -96,7 +97,7 @@ class Ip6Parser(Ip6[memoryview], ProtoParser):
         Parse the IPv6 packet.
         """
 
-        self._header = Ip6Header.from_bytes(self._frame)
+        self._header = Ip6Header.from_buffer(self._frame)
         self._payload = self._frame[
             len(self._header) : len(self._header) + self._header.dlen
         ]
@@ -118,7 +119,7 @@ class Ip6Parser(Ip6[memoryview], ProtoParser):
             )
 
     @property
-    def header_bytes(self) -> memoryview:
+    def header_bytes(self) -> Buffer:
         """
         Get the IPv6 packet header bytes.
         """
@@ -126,7 +127,7 @@ class Ip6Parser(Ip6[memoryview], ProtoParser):
         return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> memoryview:
+    def payload_bytes(self) -> Buffer:
         """
         Get the IPv6 packet payload bytes.
         """
@@ -134,7 +135,7 @@ class Ip6Parser(Ip6[memoryview], ProtoParser):
         return self._payload
 
     @property
-    def packet_bytes(self) -> memoryview:
+    def packet_bytes(self) -> Buffer:
         """
         Get the IPv6 packet bytes.
         """

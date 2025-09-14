@@ -34,6 +34,7 @@ ver 3.0.4
 
 
 from net_addr import Ip4Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
@@ -117,12 +118,12 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
         return self._payload
 
 
-class Ip4FragAssembler(Ip4[bytes], ProtoAssembler):
+class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
     """
     The IPv4 (Frag) packet assembler.
     """
 
-    _payload: bytes
+    _payload: Buffer
 
     def __init__(
         self,
@@ -137,7 +138,7 @@ class Ip4FragAssembler(Ip4[bytes], ProtoAssembler):
         ip4_frag__offset: int = 0,
         ip4_frag__options: Ip4Options = Ip4Options(),
         ip4_frag__proto: IpProto = IpProto.RAW,
-        ip4_frag__payload: bytes = bytes(),
+        ip4_frag__payload: Buffer = bytes(),
     ):
         """
         Initialize the IPv4 (Frag) packet assembler.

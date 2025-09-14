@@ -36,6 +36,7 @@ ver 3.0.4
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     Dhcp4Option,
     Dhcp4OptionType,
@@ -93,24 +94,19 @@ class Dhcp4OptionEnd(Dhcp4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 End option from bytes.
+        Initialize the DHCPv4 End option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= DHCP4__OPTION__END__LEN, (
+        assert (value := len(buffer)) >= DHCP4__OPTION__END__LEN, (
             f"The minimum length of the DHCPv4 End option must be "
             f"{DHCP4__OPTION__END__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.END), (
+        assert (value := buffer[0]) == int(Dhcp4OptionType.END), (
             f"The DHCPv4 End option type must be {Dhcp4OptionType.END!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )

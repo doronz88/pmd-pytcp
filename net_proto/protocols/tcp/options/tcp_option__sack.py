@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.tcp.options.tcp_option import (
     TCP__OPTION__LEN,
     TcpOption,
@@ -171,21 +172,21 @@ class TcpOptionSack(TcpOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the TCP Sack option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Sack option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
         # Raise integrity error when the option length doesn't align properly with block size.
         if (
-            value := _bytes[1] - TCP__OPTION__LEN
+            value := buffer[1] - TCP__OPTION__LEN
         ) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
                 "The TCP Sack option blocks length value must be a multiple of "
@@ -194,40 +195,35 @@ class TcpOptionSack(TcpOption):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Sack option from bytes.
+        Initialize the TCP Sack option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
+        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Sack option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(TcpOptionType.SACK), (
+        assert (value := buffer[0]) == int(TcpOptionType.SACK), (
             f"The TCP Sack option type must be {TcpOptionType.SACK!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
-        cls._validate_integrity(_bytes)
+        cls._validate_integrity(buffer)
 
         return cls(
             blocks=[
                 TcpSackBlock(
                     left=int.from_bytes(
-                        _bytes[
+                        buffer[
                             offset : offset + TCP__OPTION__SACK__BLOCK_LEN // 2
                         ]
                     ),
                     right=int.from_bytes(
-                        _bytes[
+                        buffer[
                             offset
                             + TCP__OPTION__SACK__BLOCK_LEN // 2 : offset
                             + TCP__OPTION__SACK__BLOCK_LEN
@@ -236,7 +232,7 @@ class TcpOptionSack(TcpOption):
                 )
                 for offset in range(
                     TCP__OPTION__LEN,
-                    _bytes[1] - TCP__OPTION__LEN,
+                    buffer[1] - TCP__OPTION__LEN,
                     TCP__OPTION__SACK__BLOCK_LEN,
                 )
             ]

@@ -35,6 +35,7 @@ ver 3.0.4
 
 from abc import abstractmethod
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 
 
@@ -43,7 +44,7 @@ class ProtoParser(Proto):
     Base class for all of the protocol parser classes.
     """
 
-    _frame: memoryview
+    _frame: Buffer
 
     @abstractmethod
     def _validate_integrity(self) -> None:
@@ -75,4 +76,4 @@ class ProtoParser(Proto):
         Get the '_frame' attribute.
         """
 
-        return self._frame
+        return memoryview(self._frame)

@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.options.ip4_option import (
@@ -119,45 +120,40 @@ class Ip4OptionUnknown(Ip4Option):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the unknown IPv4 option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The unknown IPv4 option length must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown IPv4 option from bytes.
+        Initialize the unknown IPv4 option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= IP4__OPTION__LEN, (
+        assert (value := len(buffer)) >= IP4__OPTION__LEN, (
             f"The minimum length of the unknown IPv4 option must be "
             f"{IP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is not known.
-        assert (value := _bytes[0]) not in Ip4OptionType.get_known_values(), (
+        assert (value := buffer[0]) not in Ip4OptionType.get_known_values(), (
             f"The unknown IPv4 option type must not be known. "
             f"Got: {Ip4OptionType.from_int(value)!r}"
         )
 
-        cls._validate_integrity(_bytes)
+        cls._validate_integrity(buffer)
 
         return cls(
-            type=Ip4OptionType(_bytes[0]),
-            data=_bytes[IP4__OPTION__LEN : _bytes[1]],
+            type=Ip4OptionType(buffer[0]),
+            data=buffer[IP4__OPTION__LEN : buffer[1]],
         )

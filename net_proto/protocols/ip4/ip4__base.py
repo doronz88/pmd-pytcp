@@ -36,6 +36,7 @@ ver 3.0.4
 import struct
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
@@ -51,7 +52,7 @@ from net_proto.protocols.udp.udp__assembler import UdpAssembler
 type Ip4Payload = (Icmp4Assembler | TcpAssembler | UdpAssembler | RawAssembler)
 
 
-class Ip4[P: (Ip4Payload, memoryview, bytes)](
+class Ip4[P: (Ip4Payload, Buffer)](
     Proto, Ip4HeaderProperties, Ip4OptionsProperties
 ):
     """

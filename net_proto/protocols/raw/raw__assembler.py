@@ -33,23 +33,24 @@ ver 3.0.4
 """
 
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import EtherType, IpProto
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.raw.raw__base import Raw
 
 
-class RawAssembler(Raw[bytes], ProtoAssembler):
+class RawAssembler(Raw, ProtoAssembler):
     """
     The Raw protocol assembler.
     """
 
-    _payload: bytes
+    _payload: Buffer
 
     def __init__(
         self,
         *,
-        raw__payload: bytes = bytes(),
+        raw__payload: Buffer = bytes(),
         ether_type: EtherType = EtherType.RAW,
         ip_proto: IpProto = IpProto.RAW,
         echo_tracker: Tracker | None = None,
@@ -60,6 +61,6 @@ class RawAssembler(Raw[bytes], ProtoAssembler):
 
         self._tracker: Tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
-        self._payload: bytes = raw__payload
-        self._ether_type: EtherType = ether_type
-        self._ip_proto: IpProto = ip_proto
+        self._payload = raw__payload
+        self._ether_type = ether_type
+        self._ip_proto = ip_proto

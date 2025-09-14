@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address, Ip6Mask, Ip6Network
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint32
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
@@ -191,50 +192,45 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the ICMPv6 ND Pi option integrity before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (value := _bytes[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
+        if (value := buffer[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1] << 3) > len(_bytes):
+        if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 "The ICMPv6 ND Pi option length value must be less than or equal to the "
-                f"length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 ND Pi option from bytes.
         """
 
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
-
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= ICMP6__ND__OPTION__LEN, (
+        assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the ICMPv6 ND Pi option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(Icmp6NdOptionType.PI), (
+        assert (value := buffer[0]) == int(Icmp6NdOptionType.PI), (
             f"The ICMPv6 ND Pi option type must be {Icmp6NdOptionType.PI!r}. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionPi._validate_integrity(_bytes)
+        Icmp6NdOptionPi._validate_integrity(buffer)
 
         (
             _,
@@ -246,7 +242,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             _,
             prefix,
         ) = struct.unpack(
-            ICMP6__ND__OPTION__PI__STRUCT, _bytes[:ICMP6__ND__OPTION__PI__LEN]
+            ICMP6__ND__OPTION__PI__STRUCT, buffer[:ICMP6__ND__OPTION__PI__LEN]
         )
 
         return cls(

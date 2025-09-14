@@ -280,9 +280,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option (I).",
             "_args": [
-                memoryview(
-                    b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA"
-                ),
+                b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -294,9 +292,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option (II).",
             "_args": [
-                memoryview(
-                    b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e" + b"ZH0PA"
-                ),
+                b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -308,7 +304,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option minimum length assert.",
             "_args": [
-                memoryview(b"\x08"),
+                b"\x08",
             ],
             "_kwargs": {},
             "_results": {
@@ -322,7 +318,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00"),
+                b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -336,7 +332,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option length integrity check (I).",
             "_args": [
-                memoryview(b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00"),
+                b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -350,7 +346,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
         {
             "_description": "The TCP Timestamps option length integrity check (II).",
             "_args": [
-                memoryview(b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00"),
+                b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -374,14 +370,16 @@ class TestTcpOptionTimestampsParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__timestamps__from_bytes(self) -> None:
+    def test__tcp__option__timestamps__from_buffer(self) -> None:
         """
         Ensure the TCP Timestamps option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = TcpOptionTimestamps.from_bytes(*self._args, **self._kwargs)
+            option = TcpOptionTimestamps.from_buffer(
+                *self._args, **self._kwargs
+            )
 
             self.assertEqual(
                 option,
@@ -390,7 +388,7 @@ class TestTcpOptionTimestampsParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                TcpOptionTimestamps.from_bytes(*self._args, **self._kwargs)
+                TcpOptionTimestamps.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

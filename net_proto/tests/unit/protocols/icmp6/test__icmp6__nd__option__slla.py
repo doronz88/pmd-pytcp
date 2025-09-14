@@ -194,7 +194,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Slla option (I).",
             "_args": [
-                memoryview(b"\x01\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA"),
+                b"\x01\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -206,7 +206,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Slla option minimum length assert.",
             "_args": [
-                memoryview(b"\x01"),
+                b"\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -220,7 +220,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Slla option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xff\x01\x01\x02\x03\x04\x05\x06"),
+                b"\xff\x01\x01\x02\x03\x04\x05\x06",
             ],
             "_kwargs": {},
             "_results": {
@@ -234,7 +234,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ICMPv6 ND Slla option length integrity check (I).",
             "_args": [
-                memoryview(b"\x01\x02\x01\x02\x03\x04\x05\x06"),
+                b"\x01\x02\x01\x02\x03\x04\x05\x06",
             ],
             "_kwargs": {},
             "_results": {
@@ -248,7 +248,7 @@ class TestIcmp6NdOptionSllaAssembler(TestCase):
         {
             "_description": "The ND Slla option length integrity check (II).",
             "_args": [
-                memoryview(b"\x01\x01\x01\x02\x03\x04\x05"),
+                b"\x01\x01\x01\x02\x03\x04\x05",
             ],
             "_kwargs": {},
             "_results": {
@@ -272,14 +272,14 @@ class TestIcmp6NdOptionSllaParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__icmp6__nd__option__slla__from_bytes(self) -> None:
+    def test__icmp6__nd__option__slla__from_buffer(self) -> None:
         """
         Ensure the ICMPv6 ND Slla option parser creates the proper option object
         or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Icmp6NdOptionSlla.from_bytes(*self._args, **self._kwargs)
+            option = Icmp6NdOptionSlla.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -288,7 +288,7 @@ class TestIcmp6NdOptionSllaParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Icmp6NdOptionSlla.from_bytes(*self._args, **self._kwargs)
+                Icmp6NdOptionSlla.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

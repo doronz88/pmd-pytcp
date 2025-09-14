@@ -99,7 +99,7 @@ class TestIp6ParserIntegrityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ip6__parser__from_bytes(self) -> None:
+    def test__ip6__parser__from_buffer(self) -> None:
         """
         Ensure the IPv6 packet parser raises integrity error on malformed packets.
         """

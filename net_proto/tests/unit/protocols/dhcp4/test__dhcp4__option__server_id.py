@@ -179,7 +179,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-1).",
             "_args": [
-                memoryview(b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA"),
+                b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -189,7 +189,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option (low address).",
             "_args": [
-                memoryview(b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA"),
+                b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -199,7 +199,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-3).",
             "_args": [
-                memoryview(b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA"),
+                b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -209,7 +209,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option minimum length assert.",
             "_args": [
-                memoryview(b"\x36"),
+                b"\x36",
             ],
             "_kwargs": {},
             "_results": {
@@ -223,7 +223,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x04\xc0\x00\x02\x01"),
+                b"\xfe\x04\xc0\x00\x02\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -237,7 +237,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option length integrity check (I).",
             "_args": [
-                memoryview(b"\x36\x03\xc0\x00\x02"),
+                b"\x36\x03\xc0\x00\x02",
             ],
             "_kwargs": {},
             "_results": {
@@ -251,7 +251,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         {
             "_description": "The DHCPv4 Server Identifier option length integrity check (II).",
             "_args": [
-                memoryview(b"\x36\x04"),
+                b"\x36\x04",
             ],
             "_kwargs": {},
             "_results": {
@@ -274,14 +274,16 @@ class TestDhcp4OptionServerIdParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__server_id__from_bytes(self) -> None:
+    def test__dhcp4__option__server_id__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Server Identifier option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionServerId.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionServerId.from_buffer(
+                *self._args, **self._kwargs
+            )
 
             self.assertEqual(
                 option,
@@ -290,7 +292,7 @@ class TestDhcp4OptionServerIdParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionServerId.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionServerId.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

@@ -373,10 +373,8 @@ class TestIcmp6NdRouterAdvertisementParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage.from_bytes(
-                memoryview(
-                    b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                )
+            Icmp6NdRouterAdvertisementMessage.from_buffer(
+                b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             )
 
         self.assertEqual(

@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.icmp6_message import (
@@ -178,7 +179,7 @@ class Icmp6EchoReplyMessage(Icmp6Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip6__dlen: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate integrity of the ICMPv6 Echo Reply message before parsing it.
         """
@@ -192,13 +193,13 @@ class Icmp6EchoReplyMessage(Icmp6Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 Echo Reply message from bytes.
         """
 
         type, code, cksum, id, seq = struct.unpack(
-            ICMP6__ECHO_REPLY__STRUCT, _bytes[:ICMP6__ECHO_REPLY__LEN]
+            ICMP6__ECHO_REPLY__STRUCT, buffer[:ICMP6__ECHO_REPLY__LEN]
         )
 
         assert (received_type := Icmp6Type.from_int(type)) == (
@@ -213,5 +214,5 @@ class Icmp6EchoReplyMessage(Icmp6Message):
             cksum=cksum,
             id=id,
             seq=seq,
-            data=_bytes[ICMP6__ECHO_REPLY__LEN:],
+            data=buffer[ICMP6__ECHO_REPLY__LEN:],
         )

@@ -242,8 +242,8 @@ class TestIcmp6EchoReplyParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoReplyMessage.from_bytes(
-                memoryview(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp6EchoReplyMessage.from_buffer(
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 
         self.assertEqual(

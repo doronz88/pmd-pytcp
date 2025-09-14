@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
@@ -47,12 +48,12 @@ from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, Ip4Header
 from net_proto.protocols.ip4.options.ip4_options import Ip4Options
 
 
-class Ip4Parser(Ip4[memoryview], ProtoParser):
+class Ip4Parser(Ip4[Buffer], ProtoParser):
     """
     The IPv4 packet parser.
     """
 
-    _payload: memoryview
+    _payload: Buffer
 
     def __init__(self, packet_rx: PacketRx) -> None:
         """
@@ -105,9 +106,9 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
         Parse the IPv4 packet.
         """
 
-        self._header = Ip4Header.from_bytes(self._frame)
+        self._header = Ip4Header.from_buffer(self._frame)
 
-        self._options = Ip4Options.from_bytes(
+        self._options = Ip4Options.from_buffer(
             self._frame[len(self._header) : self._header.hlen]
         )
 
@@ -150,7 +151,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
             )
 
     @property
-    def header_bytes(self) -> memoryview:
+    def header_bytes(self) -> Buffer:
         """
         Get the IPv4 packet header bytes.
         """
@@ -158,7 +159,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
         return self._frame[: len(self._header)]
 
     @property
-    def payload_bytes(self) -> memoryview:
+    def payload_bytes(self) -> Buffer:
         """
         Get the IPv4 packet payload bytes.
         """
@@ -166,7 +167,7 @@ class Ip4Parser(Ip4[memoryview], ProtoParser):
         return self._payload
 
     @property
-    def packet_bytes(self) -> memoryview:
+    def packet_bytes(self) -> Buffer:
         """
         Get the whole IPv4 packet bytes.
         """

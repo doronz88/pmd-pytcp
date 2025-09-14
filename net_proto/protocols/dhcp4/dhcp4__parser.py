@@ -81,8 +81,8 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         Parse the DHCPv4 packet.
         """
 
-        self._header = Dhcp4Header.from_bytes(self._frame)
-        self._options = Dhcp4Options.from_bytes(
+        self._header = Dhcp4Header.from_buffer(self._frame)
+        self._options = Dhcp4Options.from_buffer(
             self._frame[len(self._header) :]
         )
 

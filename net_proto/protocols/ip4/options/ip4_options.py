@@ -36,6 +36,7 @@ ver 3.0.4
 from abc import ABC
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
@@ -58,7 +59,7 @@ class Ip4Options(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: memoryview,
+        frame: Buffer,
         hlen: int,
     ) -> None:
         """
@@ -90,23 +91,25 @@ class Ip4Options(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Read the IPv4 options from bytes.
+        Read the IPv4 options from buffer.
         """
 
         offset = 0
         options: list[Ip4Option] = []
 
-        while offset < len(_bytes):
-            match Ip4OptionType.from_bytes(_bytes[offset : offset + 1]):
+        while offset < len(buffer):
+            match Ip4OptionType.from_bytes(buffer[offset : offset + 1]):
                 case Ip4OptionType.EOL:
-                    options.append(Ip4OptionEol.from_bytes(_bytes[offset:]))
+                    options.append(Ip4OptionEol.from_buffer(buffer[offset:]))
                     break
                 case Ip4OptionType.NOP:
-                    options.append(Ip4OptionNop.from_bytes(_bytes[offset:]))
+                    options.append(Ip4OptionNop.from_buffer(buffer[offset:]))
                 case _:
-                    options.append(Ip4OptionUnknown.from_bytes(_bytes[offset:]))
+                    options.append(
+                        Ip4OptionUnknown.from_buffer(buffer[offset:])
+                    )
 
             offset += options[-1].len
 

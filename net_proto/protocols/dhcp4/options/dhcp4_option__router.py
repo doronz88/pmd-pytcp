@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr.ip4_address import Ip4Address
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4_option import (
     DHCP4__OPTION__LEN,
@@ -127,20 +128,20 @@ class Dhcp4OptionRouter(Dhcp4Option):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the DHCPv4 Router option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := DHCP4__OPTION__LEN + _bytes[1]) > len(_bytes):
+        if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Router option length value must be less than or equal "
-                f"to the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
         # Raise integrity error when the option length value (less header) is not a multiple of 4.
-        if (value := _bytes[1] % 4) != 0:
+        if (value := buffer[1] % 4) != 0:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Router option length value (less header) must be a multiple of 4. "
                 f"Got: {value!r}"
@@ -148,30 +149,25 @@ class Dhcp4OptionRouter(Dhcp4Option):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 Router option from bytes.
+        Initialize the DHCPv4 Router option from buffer.
         """
-
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= DHCP4__OPTION__LEN, (
+        assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Router option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(Dhcp4OptionType.ROUTER), (
+        assert (value := buffer[0]) == int(Dhcp4OptionType.ROUTER), (
             f"The DHCPv4 Router option type must be {Dhcp4OptionType.ROUTER!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
-        cls._validate_integrity(_bytes)
+        cls._validate_integrity(buffer)
 
         return cls(
-            [Ip4Address(_bytes[i : i + 4]) for i in range(2, _bytes[1] + 2, 4)],
+            [Ip4Address(buffer[i : i + 4]) for i in range(2, buffer[1] + 2, 4)],
         )

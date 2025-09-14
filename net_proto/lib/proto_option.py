@@ -37,6 +37,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Self
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
 from net_proto.lib.proto_struct import ProtoStruct
 
@@ -155,9 +156,9 @@ class ProtoOptions(ABC):
 
     @classmethod
     @abstractmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Extract the options from the provided bytes.
+        Extract the options from the provided buffer.
         """
 
         raise NotImplementedError

@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.tcp.options.tcp_option import (
     TCP__OPTION__LEN,
@@ -112,49 +113,44 @@ class TcpOptionMss(TcpOption):
         return memoryview(buffer)
 
     @staticmethod
-    def _validate_integrity(_bytes: memoryview, /) -> None:
+    def _validate_integrity(buffer: Buffer, /) -> None:
         """
         Validate the TCP Mss option integrity before parsing it.
         """
 
-        # Ensure the '_bytes' argument is a memoryview.
-        assert isinstance(
-            _bytes, memoryview
-        ), f"The '_bytes' argument must be a memoryview. Got: {type(_bytes)!r}"
-
         # Raise integrity error when the option length value is incorrect.
-        if (value := _bytes[1]) != TCP__OPTION__MSS__LEN:
+        if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
-        if (value := _bytes[1]) > len(_bytes):
+        if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Mss option length value must be less than or equal to "
-                f"the length of provided bytes ({len(_bytes)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Mss option from bytes.
+        Initialize the TCP Mss option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(_bytes)) >= TCP__OPTION__LEN, (
+        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Mss option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := _bytes[0]) == int(TcpOptionType.MSS), (
+        assert (value := buffer[0]) == int(TcpOptionType.MSS), (
             f"The TCP Mss option type must be {TcpOptionType.MSS!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
-        cls._validate_integrity(_bytes)
+        cls._validate_integrity(buffer)
 
-        return cls(mss=int.from_bytes(_bytes[2:4]))
+        return cls(mss=int.from_bytes(buffer[2:4]))

@@ -172,47 +172,47 @@ class Icmp6Parser(Icmp6, ProtoParser):
 
         match Icmp6Type.from_bytes(self._frame[0:1]):
             case Icmp6Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp6DestinationUnreachableMessage.from_bytes(
+                self._message = Icmp6DestinationUnreachableMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ECHO_REQUEST:
-                self._message = Icmp6EchoRequestMessage.from_bytes(
+                self._message = Icmp6EchoRequestMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ECHO_REPLY:
-                self._message = Icmp6EchoReplyMessage.from_bytes(
+                self._message = Icmp6EchoReplyMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__ROUTER_SOLICITATION:
-                self._message = Icmp6NdRouterSolicitationMessage.from_bytes(
+                self._message = Icmp6NdRouterSolicitationMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                self._message = Icmp6NdRouterAdvertisementMessage.from_bytes(
+                self._message = Icmp6NdRouterAdvertisementMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                self._message = Icmp6NdNeighborSolicitationMessage.from_bytes(
+                self._message = Icmp6NdNeighborSolicitationMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                self._message = Icmp6NdNeighborAdvertisementMessage.from_bytes(
+                self._message = Icmp6NdNeighborAdvertisementMessage.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.MLD2__REPORT:
-                self._message = Icmp6Mld2ReportMessage.from_bytes(
+                self._message = Icmp6Mld2ReportMessage.from_buffer(
                     self._frame,
                 )
 
             case _:
-                self._message = Icmp6UnknownMessage.from_bytes(
+                self._message = Icmp6UnknownMessage.from_buffer(
                     self._frame,
                 )
 

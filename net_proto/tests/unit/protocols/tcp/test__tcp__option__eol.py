@@ -60,7 +60,7 @@ class TestTcpOptionEolAsserts(TestCase):
                 "__len__": 1,
                 "__str__": "eol",
                 "__repr__": "TcpOptionEol()",
-                "__bytes__": memoryview(b"\x00"),
+                "__bytes__": b"\x00",
                 "type": TcpOptionType.EOL,
                 "len": TCP__OPTION__EOL__LEN,
             },
@@ -154,7 +154,7 @@ class TestTcpOptionEolAssembler(TestCase):
         {
             "_description": "The TCP Eol option.",
             "_args": [
-                memoryview(b"\x00" + b"ZH0PA"),
+                b"\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -164,7 +164,7 @@ class TestTcpOptionEolAssembler(TestCase):
         {
             "_description": "The TCP Eol option minimum length assert.",
             "_args": [
-                memoryview(b""),
+                b"",
             ],
             "_kwargs": {},
             "_results": {
@@ -178,7 +178,7 @@ class TestTcpOptionEolAssembler(TestCase):
         {
             "_description": "The TCP Eol option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xff"),
+                b"\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -201,14 +201,14 @@ class TestTcpOptionEolParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__eol__from_bytes(self) -> None:
+    def test__tcp__option__eol__from_buffer(self) -> None:
         """
         Ensure the TCP Eol option parser creates the proper option object
         or throws assertion error.
         """
 
         if "option" in self._results:
-            option = TcpOptionEol.from_bytes(*self._args, **self._kwargs)
+            option = TcpOptionEol.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -217,7 +217,7 @@ class TestTcpOptionEolParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                TcpOptionEol.from_bytes(*self._args, **self._kwargs)
+                TcpOptionEol.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

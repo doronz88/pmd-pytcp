@@ -37,6 +37,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Self
 
+from net_proto.lib.buffer import Buffer
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ProtoStruct(ABC):
@@ -70,7 +72,7 @@ class ProtoStruct(ABC):
 
     @classmethod
     @abstractmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Create the protocol structure from bytes.
         """

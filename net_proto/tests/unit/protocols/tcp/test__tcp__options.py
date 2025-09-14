@@ -341,7 +341,7 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options (I).",
             "_args": [
-                memoryview(b"\x01\x01\x01\x00"),
+                b"\x01\x01\x01\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -356,11 +356,9 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options (II).",
             "_args": [
-                memoryview(
-                    b"\x02\x04\x05\xb4\x03\x03\x07\x04\x02\x08\x0a\x42\x3a\x35\xc7\x84"
-                    b"\x74\x6b\x8e\x01\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
-                    b"\x41\x42\x43\x44\x45\x46\x01\x00"
-                ),
+                b"\x02\x04\x05\xb4\x03\x03\x07\x04\x02\x08\x0a\x42\x3a\x35\xc7\x84"
+                b"\x74\x6b\x8e\x01\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
+                b"\x41\x42\x43\x44\x45\x46\x01\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -382,10 +380,8 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options (III).",
             "_args": [
-                memoryview(
-                    b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b"
-                    b"\x00\x00\x01\x59"
-                ),
+                b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b"
+                b"\x00\x00\x01\x59",
             ],
             "_kwargs": {},
             "_results": {
@@ -401,11 +397,9 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options (IV).",
             "_args": [
-                memoryview(
-                    b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
-                    b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a\x08\x0a\x00\x01\xe2\x40"
-                    b"\x00\x09\xfb\xf1"
-                ),
+                b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
+                b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a\x08\x0a\x00\x01\xe2\x40"
+                b"\x00\x09\xfb\xf1",
             ],
             "_kwargs": {},
             "_results": {
@@ -424,7 +418,7 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options with options behind the 'Eol' options.",
             "_args": [
-                memoryview(b"\x01\x01\x01\x00\x01\x01"),
+                b"\x01\x01\x01\x00\x01\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -448,12 +442,12 @@ class TestTcpOptionsParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp_options__from_bytes(self) -> None:
+    def test__tcp_options__from_buffer(self) -> None:
         """
         Ensure the 'TcpOptions' class parser creates the proper option object.
         """
 
-        tcp_options = TcpOptions.from_bytes(*self._args, **self._kwargs)
+        tcp_options = TcpOptions.from_buffer(*self._args, **self._kwargs)
 
         self.assertEqual(
             tcp_options,

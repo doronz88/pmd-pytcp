@@ -36,6 +36,7 @@ ver 3.0.4
 from abc import abstractmethod
 from dataclasses import dataclass
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
 from net_proto.lib.proto_struct import ProtoStruct
 
@@ -85,7 +86,7 @@ class Icmp4Message(ProtoStruct):
 
     @staticmethod
     @abstractmethod
-    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
         Validate the ICMPv4 message integrity.
         """

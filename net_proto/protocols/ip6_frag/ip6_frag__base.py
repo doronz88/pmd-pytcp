@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.protocols.ip6_frag.ip6_frag__header import (
     Ip6FragHeader,
@@ -42,13 +43,13 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
 )
 
 
-class Ip6Frag[P: (memoryview, bytes)](Proto, Ip6FragHeaderProperties):
+class Ip6Frag(Proto, Ip6FragHeaderProperties):
     """
     The IPv6 Frag base.
     """
 
     _header: Ip6FragHeader
-    _payload: P
+    _payload: Buffer
 
     pshdr_sum: int = 0
 
@@ -104,7 +105,7 @@ class Ip6Frag[P: (memoryview, bytes)](Proto, Ip6FragHeaderProperties):
         return self._header
 
     @property
-    def payload(self) -> bytes:
+    def payload(self) -> Buffer:
         """
         Get the IPv6 Frag packet '_payload' attribute.
         """

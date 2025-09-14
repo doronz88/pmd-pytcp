@@ -152,7 +152,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option.",
             "_args": [
-                memoryview(b"\xff" + b"ZH0PA"),
+                b"\xff" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -162,7 +162,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option minimum length assert.",
             "_args": [
-                memoryview(b""),
+                b"",
             ],
             "_kwargs": {},
             "_results": {
@@ -176,7 +176,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
         {
             "_description": "The DHCPv4 End option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe"),
+                b"\xfe",
             ],
             "_kwargs": {},
             "_results": {
@@ -199,14 +199,14 @@ class TestDhcp4OptionEndParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__end__from_bytes(self) -> None:
+    def test__dhcp4__option__end__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 End option parser creates the proper option object
         or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionEnd.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionEnd.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -215,7 +215,7 @@ class TestDhcp4OptionEndParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionEnd.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionEnd.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

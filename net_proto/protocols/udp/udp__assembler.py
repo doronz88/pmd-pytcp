@@ -33,13 +33,14 @@ ver 3.0.4
 """
 
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.udp.udp__base import Udp
 from net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
 
 
-class UdpAssembler(Udp[bytes], ProtoAssembler):
+class UdpAssembler(Udp, ProtoAssembler):
     """
     The UDP packet assembler.
     """
@@ -51,7 +52,7 @@ class UdpAssembler(Udp[bytes], ProtoAssembler):
         *,
         udp__sport: int = 0,
         udp__dport: int = 0,
-        udp__payload: bytes = bytes(),
+        udp__payload: Buffer = bytes(),
         echo_tracker: Tracker | None = None,
     ) -> None:
         """

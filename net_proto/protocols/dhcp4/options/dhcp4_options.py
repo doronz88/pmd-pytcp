@@ -38,6 +38,7 @@ from typing import Self, override
 
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
@@ -182,7 +183,7 @@ class Dhcp4Options(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: bytes,
+        frame: Buffer,
         hlen: int,
     ) -> None:
         """
@@ -214,60 +215,60 @@ class Dhcp4Options(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Read the DHCPv4 options from bytes.
+        Read the DHCPv4 options from buffer.
         """
 
         offset = 0
         options: list[Dhcp4Option] = []
 
-        while offset < len(_bytes):
-            match Dhcp4OptionType.from_bytes(_bytes[offset : offset + 1]):
+        while offset < len(buffer):
+            match Dhcp4OptionType.from_bytes(buffer[offset : offset + 1]):
                 case Dhcp4OptionType.END:
-                    options.append(Dhcp4OptionEnd.from_bytes(_bytes[offset:]))
+                    options.append(Dhcp4OptionEnd.from_buffer(buffer[offset:]))
                     break
                 case Dhcp4OptionType.PAD:
-                    options.append(Dhcp4OptionPad.from_bytes(_bytes[offset:]))
+                    options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.CLIENT_ID:
                     options.append(
-                        Dhcp4OptionClientId.from_bytes(_bytes[offset:])
+                        Dhcp4OptionClientId.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.HOST_NAME:
                     options.append(
-                        Dhcp4OptionHostName.from_bytes(_bytes[offset:])
+                        Dhcp4OptionHostName.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.LEASE_TIME:
                     options.append(
-                        Dhcp4OptionLeaseTime.from_bytes(_bytes[offset:])
+                        Dhcp4OptionLeaseTime.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.MESSAGE_TYPE:
                     options.append(
-                        Dhcp4OptionMessageType.from_bytes(_bytes[offset:])
+                        Dhcp4OptionMessageType.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.PARAM_REQ_LIST:
                     options.append(
-                        Dhcp4OptionParamReqList.from_bytes(_bytes[offset:])
+                        Dhcp4OptionParamReqList.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.REQ_IP_ADDR:
                     options.append(
-                        Dhcp4OptionReqIpAddr.from_bytes(_bytes[offset:])
+                        Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.ROUTER:
                     options.append(
-                        Dhcp4OptionRouter.from_bytes(_bytes[offset:])
+                        Dhcp4OptionRouter.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.SERVER_ID:
                     options.append(
-                        Dhcp4OptionServerId.from_bytes(_bytes[offset:])
+                        Dhcp4OptionServerId.from_buffer(buffer[offset:])
                     )
                 case Dhcp4OptionType.SUBNET_MASK:
                     options.append(
-                        Dhcp4OptionSubnetMask.from_bytes(_bytes[offset:])
+                        Dhcp4OptionSubnetMask.from_buffer(buffer[offset:])
                     )
                 case _:
                     options.append(
-                        Dhcp4OptionUnknown.from_bytes(_bytes[offset:])
+                        Dhcp4OptionUnknown.from_buffer(buffer[offset:])
                     )
 
             offset += options[-1].len

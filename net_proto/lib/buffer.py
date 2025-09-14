@@ -25,49 +25,12 @@
 
 
 """
-This module contains the IPv6 Frag packet assembler.
+This module contains Buffer type.
 
-net_proto/protocols/ip6_frag/ip6_frag__assembler.py
+net_proto/lib/buffer.py
 
 ver 3.0.4
 """
 
 
-from net_proto.lib.buffer import Buffer
-from net_proto.lib.enums import IpProto
-from net_proto.lib.proto_assembler import ProtoAssembler
-from net_proto.lib.tracker import Tracker
-from net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
-from net_proto.protocols.ip6_frag.ip6_frag__header import Ip6FragHeader
-
-
-class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
-    """
-    The IPv6 Frag packet assembler.
-    """
-
-    _payload: Buffer
-
-    def __init__(
-        self,
-        *,
-        ip6_frag__next: IpProto = IpProto.RAW,
-        ip6_frag__offset: int = 0,
-        ip6_frag__flag_mf: bool = False,
-        ip6_frag__id: int = 0,
-        ip6_frag__payload: Buffer = bytes(),
-    ) -> None:
-        """
-        Initialize the IPv6 Frag packet assembler.
-        """
-
-        self._tracker: Tracker = Tracker(prefix="TX")
-
-        self._payload = ip6_frag__payload
-
-        self._header = Ip6FragHeader(
-            next=ip6_frag__next,
-            offset=ip6_frag__offset,
-            flag_mf=ip6_frag__flag_mf,
-            id=ip6_frag__id,
-        )
+type Buffer = bytes | bytearray | memoryview

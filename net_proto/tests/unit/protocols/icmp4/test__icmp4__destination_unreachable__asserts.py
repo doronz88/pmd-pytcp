@@ -259,8 +259,8 @@ class TestIcmp4DestinationUnreachableParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage.from_bytes(
-                memoryview(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp4DestinationUnreachableMessage.from_buffer(
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 
         self.assertEqual(

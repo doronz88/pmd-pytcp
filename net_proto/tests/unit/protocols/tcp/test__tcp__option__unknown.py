@@ -239,10 +239,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option.",
             "_args": [
-                memoryview(
-                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46" + b"ZH0PA"
-                ),
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -255,7 +253,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option minimum length assert.",
             "_args": [
-                memoryview(b"\xff"),
+                b"\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -269,10 +267,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Eol) assert.",
             "_args": [
-                memoryview(
-                    b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -286,10 +282,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Nop) assert.",
             "_args": [
-                memoryview(
-                    b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -303,10 +297,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Mss) assert.",
             "_args": [
-                memoryview(
-                    b"\x02\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x02\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -320,10 +312,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Wscale) assert.",
             "_args": [
-                memoryview(
-                    b"\x03\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x03\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -337,10 +327,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Sackperm) assert.",
             "_args": [
-                memoryview(
-                    b"\x04\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x04\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -354,10 +342,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Sack) assert.",
             "_args": [
-                memoryview(
-                    b"\x05\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x05\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -371,10 +357,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (Timestamps) assert.",
             "_args": [
-                memoryview(
-                    b"\x08\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                b"\x08\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -388,10 +372,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option length integrity check (II).",
             "_args": [
-                memoryview(
-                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45"
-                ),
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45",
             ],
             "_kwargs": {},
             "_results": {
@@ -414,14 +396,14 @@ class TestTcpOptionUnknownParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__unknown__from_bytes(self) -> None:
+    def test__tcp__option__unknown__from_buffer(self) -> None:
         """
         Ensure the unknown TCP option parser creates the proper option object
         or throws assertion error.
         """
 
         if "option" in self._results:
-            option = TcpOptionUnknown.from_bytes(*self._args, **self._kwargs)
+            option = TcpOptionUnknown.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -430,7 +412,7 @@ class TestTcpOptionUnknownParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                TcpOptionUnknown.from_bytes(*self._args, **self._kwargs)
+                TcpOptionUnknown.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

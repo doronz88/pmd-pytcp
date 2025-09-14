@@ -188,7 +188,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option.",
             "_args": [
-                memoryview(b"\x03\x03\x0e" + b"ZH0PA"),
+                b"\x03\x03\x0e" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -198,7 +198,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option (maximum value correction).",
             "_args": [
-                memoryview(b"\x03\x03\xff" + b"ZH0PA"),
+                b"\x03\x03\xff" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -208,7 +208,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option minimum length assert.",
             "_args": [
-                memoryview(b"\x03"),
+                b"\x03",
             ],
             "_kwargs": {},
             "_results": {
@@ -222,7 +222,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xff\03\x0e"),
+                b"\xff\03\x0e",
             ],
             "_kwargs": {},
             "_results": {
@@ -236,7 +236,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option length integrity check (I).",
             "_args": [
-                memoryview(b"\x03\02\x0e"),
+                b"\x03\02\x0e",
             ],
             "_kwargs": {},
             "_results": {
@@ -250,7 +250,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
         {
             "_description": "The TCP Wscale option length integrity check (II).",
             "_args": [
-                memoryview(b"\x03\03"),
+                b"\x03\03",
             ],
             "_kwargs": {},
             "_results": {
@@ -274,14 +274,14 @@ class TestTcpOptionWscaleParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__wscale__from_bytes(self) -> None:
+    def test__tcp__option__wscale__from_buffer(self) -> None:
         """
         Ensure the TCP Wscale option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = TcpOptionWscale.from_bytes(*self._args, **self._kwargs)
+            option = TcpOptionWscale.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -290,7 +290,7 @@ class TestTcpOptionWscaleParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                TcpOptionWscale.from_bytes(*self._args, **self._kwargs)
+                TcpOptionWscale.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

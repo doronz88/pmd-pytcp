@@ -184,7 +184,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option (single char).",
             "_args": [
-                memoryview(b"\x0c\x01\x61" + b"ZH0PA"),
+                b"\x0c\x01\x61" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -194,7 +194,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option (short).",
             "_args": [
-                memoryview(b"\x0c\x04\x68\x6f\x73\x74" + b"ZH0PA"),
+                b"\x0c\x04\x68\x6f\x73\x74" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -204,10 +204,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option (alnum-hyphen).",
             "_args": [
-                memoryview(
-                    b"\x0c\x0e\x74\x6f\x6d\x2d\x74\x69\x74\x2d\x74\x6f\x74\x2d\x30\x31"
-                    + b"ZH0PA"
-                ),
+                b"\x0c\x0e\x74\x6f\x6d\x2d\x74\x69\x74\x2d\x74\x6f\x74\x2d\x30\x31"
+                + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -217,7 +215,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option (empty).",
             "_args": [
-                memoryview(b"\x0c\x00" + b"ZH0PA"),
+                b"\x0c\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -227,7 +225,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option minimum length assert.",
             "_args": [
-                memoryview(b"\x0c"),
+                b"\x0c",
             ],
             "_kwargs": {},
             "_results": {
@@ -241,7 +239,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\x01a"),
+                b"\xfe\x01a",
             ],
             "_kwargs": {},
             "_results": {
@@ -255,7 +253,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option length integrity check (II).",
             "_args": [
-                memoryview(b"\x0c\x01"),
+                b"\x0c\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -278,14 +276,16 @@ class TestDhcp4OptionHostNameParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__host_name__from_bytes(self) -> None:
+    def test__dhcp4__option__host_name__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Host Name option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionHostName.from_bytes(*self._args, **self._kwargs)
+            option = Dhcp4OptionHostName.from_buffer(
+                *self._args, **self._kwargs
+            )
 
             self.assertEqual(
                 option,
@@ -294,7 +294,7 @@ class TestDhcp4OptionHostNameParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionHostName.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionHostName.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

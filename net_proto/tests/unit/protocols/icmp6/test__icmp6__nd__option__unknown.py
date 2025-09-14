@@ -257,10 +257,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 ND option.",
             "_args": [
-                memoryview(
-                    b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    + b"ZH0PA"
-                ),
+                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -273,7 +271,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 ND option minimum length assert.",
             "_args": [
-                memoryview(b"\xff"),
+                b"\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -287,9 +285,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 option incorrect 'type' field (1) assert.",
             "_args": [
-                memoryview(
-                    b"\x01\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                ),
+                b"\x01\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44",
             ],
             "_kwargs": {},
             "_results": {
@@ -303,9 +299,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (2) assert.",
             "_args": [
-                memoryview(
-                    b"\x02\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                ),
+                b"\x02\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44",
             ],
             "_kwargs": {},
             "_results": {
@@ -319,9 +313,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option incorrect 'type' field (3) assert.",
             "_args": [
-                memoryview(
-                    b"\x03\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                ),
+                b"\x03\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44",
             ],
             "_kwargs": {},
             "_results": {
@@ -335,9 +327,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv4 ND option length integrity check (II).",
             "_args": [
-                memoryview(
-                    b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43"
-                ),
+                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43",
             ],
             "_kwargs": {},
             "_results": {
@@ -361,14 +351,14 @@ class TestIcmp4NdOptionUnknownParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__icmp6__nd__option__unknown__from_bytes(self) -> None:
+    def test__icmp6__nd__option__unknown__from_buffer(self) -> None:
         """
         Ensure the unknown ICMPv4 ND option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Icmp6NdOptionUnknown.from_bytes(
+            option = Icmp6NdOptionUnknown.from_buffer(
                 *self._args, **self._kwargs
             )
 
@@ -379,7 +369,7 @@ class TestIcmp4NdOptionUnknownParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Icmp6NdOptionUnknown.from_bytes(*self._args, **self._kwargs)
+                Icmp6NdOptionUnknown.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

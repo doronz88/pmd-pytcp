@@ -38,6 +38,7 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.lib.proto_struct import ProtoStruct
 
@@ -118,13 +119,13 @@ class UdpHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize UDP header from bytes.
+        Initialize UDP header from buffer.
         """
 
         sport, dport, plen, cksum = struct.unpack(
-            UDP__HEADER__STRUCT, _bytes[:UDP__HEADER__LEN]
+            UDP__HEADER__STRUCT, buffer[:UDP__HEADER__LEN]
         )
 
         return cls(

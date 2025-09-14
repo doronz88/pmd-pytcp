@@ -38,6 +38,7 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import (
     is_4_byte_alligned,
     is_uint6,
@@ -214,13 +215,13 @@ class TcpHeader(ProtoStruct):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP header from bytes.
+        Initialize the TCP header from buffer.
         """
 
         sport, dport, seq, ack, hlen__flags, win, cksum, urg = struct.unpack(
-            TCP__HEADER__STRUCT, _bytes[:TCP__HEADER__LEN]
+            TCP__HEADER__STRUCT, buffer[:TCP__HEADER__LEN]
         )
 
         return cls(

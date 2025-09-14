@@ -127,18 +127,18 @@ class Icmp4Parser(Icmp4, ProtoParser):
 
         match Icmp4Type.from_bytes(self._frame[0:1]):
             case Icmp4Type.ECHO_REPLY:
-                self._message = Icmp4EchoReplyMessage.from_bytes(self._frame)
+                self._message = Icmp4EchoReplyMessage.from_buffer(self._frame)
 
             case Icmp4Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp4DestinationUnreachableMessage.from_bytes(
+                self._message = Icmp4DestinationUnreachableMessage.from_buffer(
                     self._frame
                 )
 
             case Icmp4Type.ECHO_REQUEST:
-                self._message = Icmp4EchoRequestMessage.from_bytes(self._frame)
+                self._message = Icmp4EchoRequestMessage.from_buffer(self._frame)
 
             case _:
-                self._message = Icmp4UnknownMessage.from_bytes(self._frame)
+                self._message = Icmp4UnknownMessage.from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:

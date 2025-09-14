@@ -272,7 +272,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (discover).",
             "_args": [
-                memoryview(b"\x35\x01\x01" + b"ZH0PA"),
+                b"\x35\x01\x01" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -284,7 +284,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (offer).",
             "_args": [
-                memoryview(b"\x35\x01\x02" + b"ZH0PA"),
+                b"\x35\x01\x02" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -296,7 +296,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (request).",
             "_args": [
-                memoryview(b"\x35\x01\x03" + b"ZH0PA"),
+                b"\x35\x01\x03" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -308,7 +308,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (decline).",
             "_args": [
-                memoryview(b"\x35\x01\x04" + b"ZH0PA"),
+                b"\x35\x01\x04" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -320,7 +320,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (ack).",
             "_args": [
-                memoryview(b"\x35\x01\x05" + b"ZH0PA"),
+                b"\x35\x01\x05" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -332,7 +332,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (nak).",
             "_args": [
-                memoryview(b"\x35\x01\x06" + b"ZH0PA"),
+                b"\x35\x01\x06" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -344,7 +344,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (release).",
             "_args": [
-                memoryview(b"\x35\x01\x07" + b"ZH0PA"),
+                b"\x35\x01\x07" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -356,7 +356,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (inform).",
             "_args": [
-                memoryview(b"\x35\x01\x08" + b"ZH0PA"),
+                b"\x35\x01\x08" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -368,7 +368,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option minimum length assert.",
             "_args": [
-                memoryview(b"\x35"),
+                b"\x35",
             ],
             "_kwargs": {},
             "_results": {
@@ -382,7 +382,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option incorrect 'type' field assert.",
             "_args": [
-                memoryview(b"\xfe\01\x01"),
+                b"\xfe\01\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -396,7 +396,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option length integrity check (I).",
             "_args": [
-                memoryview(b"\x35\00\x01"),
+                b"\x35\00\x01",
             ],
             "_kwargs": {},
             "_results": {
@@ -410,7 +410,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
         {
             "_description": "The DHCPv4 Message Type option length integrity check (II).",
             "_args": [
-                memoryview(b"\x35\01"),
+                b"\x35\01",
             ],
             "_kwargs": {},
             "_results": {
@@ -433,14 +433,14 @@ class TestDhcp4OptionMessageTypeParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__dhcp4__option__message_type__from_bytes(self) -> None:
+    def test__dhcp4__option__message_type__from_buffer(self) -> None:
         """
         Ensure the DHCPv4 Message Type option parser creates the proper option
         object or throws assertion error.
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionMessageType.from_bytes(
+            option = Dhcp4OptionMessageType.from_buffer(
                 *self._args, **self._kwargs
             )
 
@@ -451,7 +451,7 @@ class TestDhcp4OptionMessageTypeParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionMessageType.from_bytes(*self._args, **self._kwargs)
+                Dhcp4OptionMessageType.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

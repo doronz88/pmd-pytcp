@@ -37,6 +37,7 @@ import struct
 from dataclasses import dataclass
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp4.message.icmp4_message import (
     ICMP4__HEADER__LEN,
@@ -131,7 +132,7 @@ class Icmp4UnknownMessage(Icmp4Message):
 
     @override
     @staticmethod
-    def validate_integrity(*, frame: memoryview, ip4__payload_len: int) -> None:
+    def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
         Validate integrity of the ICMPv4 unknown message before parsing it.
         """
@@ -140,13 +141,13 @@ class Icmp4UnknownMessage(Icmp4Message):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv4 unknown message from bytes.
+        Initialize the ICMPv4 unknown message from buffer.
         """
 
         type, code, cksum = struct.unpack(
-            ICMP4__HEADER__STRUCT, _bytes[:ICMP4__HEADER__LEN]
+            ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN]
         )
 
         assert (received_type := type) not in Icmp4Type.get_known_values(), (
@@ -158,5 +159,5 @@ class Icmp4UnknownMessage(Icmp4Message):
             type=Icmp4Type.from_int(type),
             code=Icmp4Code.from_int(code),
             cksum=cksum,
-            raw=_bytes[ICMP4__HEADER__LEN:],
+            raw=buffer[ICMP4__HEADER__LEN:],
         )

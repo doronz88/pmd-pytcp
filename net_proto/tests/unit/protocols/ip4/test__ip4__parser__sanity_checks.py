@@ -123,7 +123,7 @@ class TestIp4ParserSanityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ip4__parser__from_bytes(self) -> None:
+    def test__ip4__parser__from_buffer(self) -> None:
         """
         Ensure the IPv4 packet parser raises sanity error on crazy packets.
         """

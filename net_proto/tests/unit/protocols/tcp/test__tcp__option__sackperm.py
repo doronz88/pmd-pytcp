@@ -159,7 +159,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         {
             "_description": "The TCP Sackperm option.",
             "_args": [
-                memoryview(b"\x04\x02" + b"ZH0PA"),
+                b"\x04\x02" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -169,7 +169,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         {
             "_description": "The 'Sackperm' TCP option minimum length assert.",
             "_args": [
-                memoryview(b"\x04"),
+                b"\x04",
             ],
             "_kwargs": {},
             "_results": {
@@ -183,7 +183,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         {
             "_description": "The TCP Sackperm option 'type' incorrect field assert.",
             "_args": [
-                memoryview(b"\xff\02"),
+                b"\xff\02",
             ],
             "_kwargs": {},
             "_results": {
@@ -197,7 +197,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
         {
             "_description": "The TCP Sackperm option length integrity check (I).",
             "_args": [
-                memoryview(b"\x04\01"),
+                b"\x04\01",
             ],
             "_kwargs": {},
             "_results": {
@@ -220,14 +220,14 @@ class TestTcpOptionSackpermParser(TestCase):
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__sackperm__from_bytes(self) -> None:
+    def test__tcp__option__sackperm__from_buffer(self) -> None:
         """
         Ensure the TCP Sackperm option parser creates the proper option object
         or throws assertion error.
         """
 
         if "option" in self._results:
-            option = TcpOptionSackperm.from_bytes(*self._args, **self._kwargs)
+            option = TcpOptionSackperm.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,
@@ -236,7 +236,7 @@ class TestTcpOptionSackpermParser(TestCase):
 
         if "error" in self._results:
             with self.assertRaises(self._results["error"]) as error:
-                TcpOptionSackperm.from_bytes(*self._args, **self._kwargs)
+                TcpOptionSackperm.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 str(error.exception),

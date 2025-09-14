@@ -36,6 +36,7 @@ ver 3.0.4
 from abc import ABC
 from typing import Self, override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.tcp.options.tcp_option import TcpOption, TcpOptionType
 from net_proto.protocols.tcp.options.tcp_option__eol import TcpOptionEol
@@ -131,7 +132,7 @@ class TcpOptions(ProtoOptions):
     @staticmethod
     def validate_integrity(
         *,
-        frame: memoryview,
+        frame: Buffer,
         hlen: int,
     ) -> None:
         """
@@ -163,37 +164,39 @@ class TcpOptions(ProtoOptions):
 
     @override
     @classmethod
-    def from_bytes(cls, _bytes: memoryview, /) -> Self:
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Read the TCP options from bytes.
+        Read the TCP options from buffer.
         """
 
         offset = 0
         options: list[TcpOption] = []
 
-        while offset < len(_bytes):
-            match TcpOptionType.from_bytes(_bytes[offset : offset + 1]):
+        while offset < len(buffer):
+            match TcpOptionType.from_bytes(buffer[offset : offset + 1]):
                 case TcpOptionType.EOL:
-                    options.append(TcpOptionEol.from_bytes(_bytes[offset:]))
+                    options.append(TcpOptionEol.from_buffer(buffer[offset:]))
                     break
                 case TcpOptionType.NOP:
-                    options.append(TcpOptionNop.from_bytes(_bytes[offset:]))
+                    options.append(TcpOptionNop.from_buffer(buffer[offset:]))
                 case TcpOptionType.MSS:
-                    options.append(TcpOptionMss.from_bytes(_bytes[offset:]))
+                    options.append(TcpOptionMss.from_buffer(buffer[offset:]))
                 case TcpOptionType.WSCALE:
-                    options.append(TcpOptionWscale.from_bytes(_bytes[offset:]))
+                    options.append(TcpOptionWscale.from_buffer(buffer[offset:]))
                 case TcpOptionType.SACKPERM:
                     options.append(
-                        TcpOptionSackperm.from_bytes(_bytes[offset:])
+                        TcpOptionSackperm.from_buffer(buffer[offset:])
                     )
                 case TcpOptionType.SACK:
-                    options.append(TcpOptionSack.from_bytes(_bytes[offset:]))
+                    options.append(TcpOptionSack.from_buffer(buffer[offset:]))
                 case TcpOptionType.TIMESTAMPS:
                     options.append(
-                        TcpOptionTimestamps.from_bytes(_bytes[offset:])
+                        TcpOptionTimestamps.from_buffer(buffer[offset:])
                     )
                 case _:
-                    options.append(TcpOptionUnknown.from_bytes(_bytes[offset:]))
+                    options.append(
+                        TcpOptionUnknown.from_buffer(buffer[offset:])
+                    )
 
             offset += options[-1].len
 

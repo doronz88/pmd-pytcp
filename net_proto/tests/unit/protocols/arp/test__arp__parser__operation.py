@@ -92,7 +92,7 @@ class TestArpHeaderParserOperation(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__arp_parser__from_bytes(self) -> None:
+    def test__arp_parser__from_buffer(self) -> None:
         """
         Ensure the ARP packet parser creates the proper header, options
         and payload objects and also updates the appropriate 'tx_packet'

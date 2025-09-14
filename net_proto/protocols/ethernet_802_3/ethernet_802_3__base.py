@@ -35,6 +35,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     Ethernet8023Header,
@@ -45,7 +46,7 @@ from net_proto.protocols.raw.raw__assembler import RawAssembler
 type Ethernet8023Payload = RawAssembler
 
 
-class Ethernet8023[P: (RawAssembler, memoryview)](
+class Ethernet8023[P: (RawAssembler, Buffer)](
     Proto, EthernetHeader8023Properties
 ):
     """
