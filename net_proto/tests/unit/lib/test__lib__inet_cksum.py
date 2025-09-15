@@ -45,87 +45,92 @@ from net_proto import inet_cksum
     [
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                * 80
+            ],
             "_kwargs": {
-                "data": (
-                    b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-                    * 80
-                ),
                 "init": 0,
             },
             "_results": {"inet_cksum": 0x2D2D},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\xff" * 1500,
+            ],
             "_kwargs": {
-                "data": b"\xff" * 1500,
                 "init": 0,
             },
             "_results": {"inet_cksum": 0x0000},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\x00" * 1500,
+            ],
             "_kwargs": {
-                "data": b"\x00" * 1500,
                 "init": 0,
             },
             "_results": {"inet_cksum": 0xFFFF},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
+            ],
             "_kwargs": {
-                "data": b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
                 "init": 0,
             },
             "_results": {"inet_cksum": 0xF1E5},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                * 80
+            ],
             "_kwargs": {
-                "data": (
-                    b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-                    * 80
-                ),
                 "init": 0x03DF,
             },
             "_results": {"inet_cksum": 0x294E},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\xff" * 1500,
+            ],
             "_kwargs": {
-                "data": b"\xff" * 1500,
                 "init": 0x0015,
             },
             "_results": {"inet_cksum": 0xFFEA},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\x00" * 1500,
+            ],
             "_kwargs": {
-                "data": b"\x00" * 1500,
                 "init": 0xF3FF,
             },
             "_results": {"inet_cksum": 0x0C00},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
+            ],
             "_kwargs": {
-                "data": b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
                 "init": 0x7314,
             },
             "_results": {"inet_cksum": 0x7ED1},
         },
         {
             "_description": "Compute checksum.",
-            "_args": [],
+            "_args": [
+                b"\x07" * 9999,
+            ],
             "_kwargs": {
-                "data": b"\x07" * 9999,
                 "init": 0xA3DC,
             },
             "_results": {"inet_cksum": 0x1AE9},

@@ -98,8 +98,7 @@ class TcpParser(Tcp, ProtoParser):
             )
 
         if inet_cksum(
-            data=self._frame[: self._ip__payload_len],
-            init=self._ip__pshdr_sum,
+            self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum
         ):
             raise TcpIntegrityError(
                 "The packet checksum must be valid.",

@@ -33,8 +33,11 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr.ip4_address import Ip4Address
 from net_addr.mac_address import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.protocols.dhcp4.dhcp4__base import Dhcp4
 from net_proto.protocols.dhcp4.dhcp4__enums import (
@@ -86,3 +89,14 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         )
 
         self._options = dhcp4__options
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the DHCPv4 packet.
+        """
+
+        raise NotImplementedError(
+            "The 'assemble()' method is not implemented for L7 protocols. "
+            "Use Sockets instead."
+        )

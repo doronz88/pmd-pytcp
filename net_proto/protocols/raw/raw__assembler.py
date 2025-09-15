@@ -33,6 +33,8 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import EtherType, IpProto
 from net_proto.lib.proto_assembler import ProtoAssembler
@@ -64,3 +66,11 @@ class RawAssembler(Raw, ProtoAssembler):
         self._payload = raw__payload
         self._ether_type = ether_type
         self._ip_proto = ip_proto
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the Raw packet.
+        """
+
+        buffers.append(self._payload)

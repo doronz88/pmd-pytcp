@@ -33,7 +33,10 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import EtherType
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.protocols.ethernet.ethernet__base import (
@@ -79,3 +82,13 @@ class EthernetAssembler(Ethernet[EthernetPayload], ProtoAssembler):
         """
 
         return self._payload
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the Ethernet packet into the list of buffers.
+        """
+
+        buffers.append(bytearray(self._header))
+
+        self._payload.assemble(buffers)

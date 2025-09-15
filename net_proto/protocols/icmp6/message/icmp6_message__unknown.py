@@ -58,7 +58,7 @@ class Icmp6UnknownMessage(Icmp6Message):
     type: Icmp6Type
     code: Icmp6Code
     cksum: int = 0
-    raw: bytes = bytes()
+    raw: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:

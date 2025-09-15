@@ -33,16 +33,22 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
+from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler
 from net_proto.protocols.ip6.ip6__base import Ip6, Ip6Payload
 from net_proto.protocols.ip6.ip6__header import (
     IP6__DEFAULT_HOP_LIMIT,
     Ip6Header,
 )
 from net_proto.protocols.raw.raw__assembler import RawAssembler
+from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
+from net_proto.protocols.udp.udp__assembler import UdpAssembler
 
 
 class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
@@ -81,6 +87,22 @@ class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
             src=ip6__src,
             dst=ip6__dst,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the IPv6 packet.
+        """
+
+        buffers.append(bytearray(self._header))
+
+        if isinstance(
+            self._payload,
+            (TcpAssembler, UdpAssembler, Icmp6Assembler, RawAssembler),
+        ):
+            self._payload.pshdr_sum = self.pshdr_sum
+
+        self._payload.assemble(buffers)
 
     @property
     def header(self) -> Ip6Header:

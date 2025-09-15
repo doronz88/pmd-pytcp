@@ -157,8 +157,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
         if inet_cksum(
-            data=self._frame[: self._ip6__dlen],
-            init=self._ip6__pshdr_sum,
+            self._frame[: self._ip6__dlen], init=self._ip6__pshdr_sum
         ):
             raise Icmp6IntegrityError(
                 "The packet checksum must be valid.",

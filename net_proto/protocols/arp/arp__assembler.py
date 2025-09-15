@@ -33,7 +33,10 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr import Ip4Address, MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.arp.arp__base import Arp
@@ -69,3 +72,11 @@ class ArpAssembler(Arp, ProtoAssembler):
             tha=arp__tha,
             tpa=arp__tpa,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ARP packet into the list of buffers.
+        """
+
+        buffers.append(bytearray(self._header))

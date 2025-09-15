@@ -33,6 +33,9 @@ ver 3.0.4
 """
 
 
+from abc import abstractmethod
+
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.lib.tracker import Tracker
 
@@ -51,3 +54,11 @@ class ProtoAssembler(Proto):
         """
 
         return self._tracker
+
+    @abstractmethod
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the protocol packet into the list of buffers.
+        """
+
+        raise NotImplementedError

@@ -33,9 +33,12 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr import Ip4Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
+from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
@@ -48,6 +51,8 @@ from net_proto.protocols.ip4.options.ip4_options import (
     Ip4Options,
 )
 from net_proto.protocols.raw.raw__assembler import RawAssembler
+from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
+from net_proto.protocols.udp.udp__assembler import UdpAssembler
 
 
 class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
@@ -108,6 +113,25 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
             src=ip4__src,
             dst=ip4__dst,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the IPv4 packet.
+        """
+
+        header = bytearray(self._header)
+        header[10:12] = inet_cksum([header]).to_bytes(2)
+
+        buffers.append(header)
+        buffers.append(bytearray(self._options))
+
+        if isinstance(
+            self._payload, (TcpAssembler, UdpAssembler, RawAssembler)
+        ):
+            self._payload.pshdr_sum = self.pshdr_sum
+
+        self._payload.assemble(buffers)
 
     @property
     def payload(self) -> Ip4Payload:
@@ -179,8 +203,21 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
             dst=ip4_frag__dst,
         )
 
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the IPv4 (Frag) packet.
+        """
+
+        header = bytearray(self._header)
+        header[10:12] = inet_cksum([header]).to_bytes(2)
+
+        buffers.append(header)
+        buffers.append(bytearray(self._options))
+        buffers.append(self._payload)
+
     @property
-    def payload(self) -> bytes:
+    def payload(self) -> Buffer:
         """
         Get the IPv4 (Frag) packet 'payload' attribute.
         """

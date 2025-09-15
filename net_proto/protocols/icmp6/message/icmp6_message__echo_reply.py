@@ -86,7 +86,7 @@ class Icmp6EchoReplyMessage(Icmp6Message):
 
     id: int = 0
     seq: int = 0
-    data: bytes = bytes()
+    data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:

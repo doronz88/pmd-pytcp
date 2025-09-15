@@ -133,7 +133,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
     cksum: int = 0
 
     mtu: int | None = None
-    data: bytes = bytes()
+    data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:

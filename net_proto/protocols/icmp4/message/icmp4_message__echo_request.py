@@ -85,7 +85,7 @@ class Icmp4EchoRequestMessage(Icmp4Message):
 
     id: int = 0
     seq: int = 0
-    data: bytes = bytes()
+    data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:

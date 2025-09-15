@@ -33,6 +33,8 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_assembler import ProtoAssembler
@@ -71,3 +73,12 @@ class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
             flag_mf=ip6_frag__flag_mf,
             id=ip6_frag__id,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the IPv6 Frag packet.
+        """
+
+        buffers.append(bytearray(self._header))
+        buffers.append(self._payload)

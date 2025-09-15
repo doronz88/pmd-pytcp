@@ -33,7 +33,10 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_proto.lib.buffer import Buffer
+from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
@@ -117,3 +120,19 @@ class TcpAssembler(Tcp, ProtoAssembler):
             cksum=0,
             urg=tcp__urg,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the TCP packet into list of buffers.
+        """
+
+        header = bytearray(self._header)
+        options = bytearray(self._options)
+        header[6:8] = inet_cksum(
+            [header, options, self._payload], init=self.pshdr_sum
+        ).to_bytes(2)
+
+        buffers.append(header)
+        buffers.append(options)
+        buffers.append(self._payload)

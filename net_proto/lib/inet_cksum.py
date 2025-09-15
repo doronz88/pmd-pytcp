@@ -36,9 +36,12 @@ ver 3.0.4
 
 import struct
 
+from net_proto.lib.buffer import Buffer
+
 
 def inet_cksum(
-    data: bytes | bytearray | memoryview,
+    data: Buffer | list[Buffer],
+    /,
     *,
     init: int = 0,
 ) -> int:
@@ -46,17 +49,20 @@ def inet_cksum(
     Compute the Internet Checksum used by IPv4/ICMPv4/ICMPv6/UDP/TCP protocols.
     """
 
-    if (dlen := len(data)) == 20:
-        cksum = init + int(sum(struct.unpack("!5L", data)))
+    if not isinstance(data, list):
+        data = [data]
 
-    else:
-        cksum = init + int(sum(struct.unpack_from(f"!{dlen >> 3}Q", data)))
+    cksum = init
+
+    for buffer in data:
+        dlen = len(buffer)
+        cksum = cksum + int(sum(struct.unpack_from(f"!{dlen >> 3}Q", buffer)))
         if remainder := dlen & 7:
-            cksum += int.from_bytes(data[-remainder:], byteorder="big") << (
+            cksum += int.from_bytes(buffer[-remainder:], byteorder="big") << (
                 (8 - remainder) << 3
             )
-        cksum = (cksum >> 64) + (cksum & 0xFFFFFFFFFFFFFFFF)
 
+    cksum = (cksum >> 64) + (cksum & 0xFFFFFFFFFFFFFFFF)
     cksum = (cksum >> 32) + (cksum & 0xFFFFFFFF)
     cksum = (cksum >> 16) + (cksum & 0xFFFF)
     cksum = ~(cksum + (cksum >> 16)) & 0xFFFF

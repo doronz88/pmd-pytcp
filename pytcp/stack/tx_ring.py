@@ -37,14 +37,22 @@ from __future__ import annotations
 
 import os
 import queue
-from typing import TYPE_CHECKING, override
+from typing import override
 
-from net_proto import Ip4Assembler, Ip4FragAssembler, Ip6Assembler
+from net_proto import (
+    Ethernet8023Assembler,
+    EthernetAssembler,
+    Ip4Assembler,
+    Ip4FragAssembler,
+    Ip6Assembler,
+)
+from net_proto.lib.buffer import Buffer
+from net_proto.protocols.ethernet.ethernet__header import ETHERNET__HEADER__LEN
+from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
+    ETHERNET_802_3__HEADER__LEN,
+)
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
-
-if TYPE_CHECKING:
-    from net_proto import Ethernet8023Assembler, EthernetAssembler
 
 
 class TxRing(Subsystem):
@@ -96,21 +104,37 @@ class TxRing(Subsystem):
         except queue.Empty:
             return
 
-        if (packet_tx_len := len(packet_tx)) > self._mtu + 14:
+        buffers: list[Buffer]
+
+        if isinstance(packet_tx, EthernetAssembler):
+            buffers = []
+            mtu = self._mtu + ETHERNET__HEADER__LEN
+        elif isinstance(packet_tx, Ethernet8023Assembler):
+            buffers = []
+            mtu = self._mtu + ETHERNET_802_3__HEADER__LEN
+        elif isinstance(packet_tx, Ip6Assembler):
+            buffers = [b"\x00\x00\x86\xdd"]
+            mtu = self._mtu
+        elif isinstance(packet_tx, (Ip4Assembler, Ip4FragAssembler)):
+            buffers = [b"\x00\x00\x08\x00"]
+            mtu = self._mtu
+        else:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - Unable to send frame, frame"
-                f"len ({packet_tx_len}) > mtu ({self._mtu + 14})",
+                f"{packet_tx.tracker} - <CRIT>Unknown packet type: "
+                f"{type(packet_tx)!r}</>",
             )
             return
 
-        # Prepare payload for sending. Add PI header for L3 interface if needed.
-        elif isinstance(packet_tx, Ip6Assembler):
-            buffers = [b"\x00\x00\x86\xdd", bytes(packet_tx)]
-        elif isinstance(packet_tx, (Ip4Assembler, Ip4FragAssembler)):
-            buffers = [b"\x00\x00\x08\x00", bytes(packet_tx)]
-        else:
-            buffers = [bytes(packet_tx)]
+        if (packet_tx_len := len(packet_tx)) > mtu:
+            __debug__ and log(
+                "tx-ring",
+                f"{packet_tx.tracker} - Unable to send frame, frame"
+                f"len ({packet_tx_len}) > mtu ({mtu})",
+            )
+            return
+
+        packet_tx.assemble(buffers)
 
         try:
             os.writev(self._fd, buffers)

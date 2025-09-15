@@ -33,7 +33,10 @@ ver 3.0.4
 """
 
 
+from typing import override
+
 from net_addr import MacAddress
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.protocols.ethernet_802_3.ethernet_802_3__base import (
     Ethernet8023,
@@ -72,6 +75,16 @@ class Ethernet8023Assembler(Ethernet8023[Ethernet8023Payload], ProtoAssembler):
             src=ethernet_802_3__src,
             dlen=len(self._payload),
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the Ethernet 802.3 packet into the list of buffers.
+        """
+
+        buffers.append(bytearray(self._header))
+
+        self._payload.assemble(buffers)
 
     @property
     def payload(self) -> Ethernet8023Payload:
