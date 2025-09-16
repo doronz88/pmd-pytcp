@@ -69,6 +69,6 @@ class Icmp6Assembler(Icmp6, ProtoAssembler):
         """
 
         message = bytearray(self._message)
-        message[2:4] = inet_cksum([message], init=self.pshdr_sum).to_bytes(2)
+        message[2:4] = inet_cksum(message, init=self.pshdr_sum).to_bytes(2)
 
         buffers.append(message)

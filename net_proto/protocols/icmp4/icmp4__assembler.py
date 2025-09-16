@@ -69,6 +69,6 @@ class Icmp4Assembler(Icmp4, ProtoAssembler):
         """
 
         message = bytearray(self._message)
-        message[2:4] = inet_cksum([message]).to_bytes(2)
+        message[2:4] = inet_cksum(message).to_bytes(2)
 
         buffers.append(message)

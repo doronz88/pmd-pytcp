@@ -81,7 +81,7 @@ class UdpAssembler(Udp, ProtoAssembler):
 
         header = bytearray(self._header)
         header[6:8] = inet_cksum(
-            [header, self._payload], init=self.pshdr_sum
+            header, self._payload, init=self.pshdr_sum
         ).to_bytes(2)
 
         buffers.append(header)

@@ -130,7 +130,7 @@ class TcpAssembler(Tcp, ProtoAssembler):
         header = bytearray(self._header)
         options = bytearray(self._options)
         header[6:8] = inet_cksum(
-            [header, options, self._payload], init=self.pshdr_sum
+            header, options, self._payload, init=self.pshdr_sum
         ).to_bytes(2)
 
         buffers.append(header)

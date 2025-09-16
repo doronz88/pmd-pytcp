@@ -44,10 +44,14 @@ from net_proto import inet_cksum
 @parameterized_class(
     [
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 1.",
             "_args": [
                 b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-                * 80
+                * 55,
+                b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                * 5,
+                b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                * 20,
             ],
             "_kwargs": {
                 "init": 0,
@@ -55,7 +59,7 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0x2D2D},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 2.",
             "_args": [
                 b"\xff" * 1500,
             ],
@@ -65,7 +69,7 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0x0000},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 3.",
             "_args": [
                 b"\x00" * 1500,
             ],
@@ -75,9 +79,10 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0xFFFF},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 4.",
             "_args": [
-                b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
+                b"\xf7\x24\x09" * 100,
+                b"\x35\x67\x0f\x00" * 250,
             ],
             "_kwargs": {
                 "init": 0,
@@ -85,10 +90,10 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0xF1E5},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 5.",
             "_args": [
                 b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-                * 80
+                * 80,
             ],
             "_kwargs": {
                 "init": 0x03DF,
@@ -96,9 +101,11 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0x294E},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 6.",
             "_args": [
-                b"\xff" * 1500,
+                b"\xff" * 1498,
+                b"\xff",
+                b"\xff",
             ],
             "_kwargs": {
                 "init": 0x0015,
@@ -106,7 +113,7 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0xFFEA},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 7.",
             "_args": [
                 b"\x00" * 1500,
             ],
@@ -116,7 +123,7 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0x0C00},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 8.",
             "_args": [
                 b"\xf7\x24\x09" * 100 + b"\x35\x67\x0f\x00" * 250,
             ],
@@ -126,9 +133,12 @@ from net_proto import inet_cksum
             "_results": {"inet_cksum": 0x7ED1},
         },
         {
-            "_description": "Compute checksum.",
+            "_description": "Compute checksum 9.",
             "_args": [
-                b"\x07" * 9999,
+                b"\x07" * 9000,
+                b"\x07" * 900,
+                b"\x07" * 90,
+                b"\x07" * 9,
             ],
             "_kwargs": {
                 "init": 0xA3DC,

@@ -121,7 +121,7 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
         """
 
         header = bytearray(self._header)
-        header[10:12] = inet_cksum([header]).to_bytes(2)
+        header[10:12] = inet_cksum(header).to_bytes(2)
 
         buffers.append(header)
         buffers.append(bytearray(self._options))
@@ -210,7 +210,7 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
         """
 
         header = bytearray(self._header)
-        header[10:12] = inet_cksum([header]).to_bytes(2)
+        header[10:12] = inet_cksum(header).to_bytes(2)
 
         buffers.append(header)
         buffers.append(bytearray(self._options))

@@ -39,32 +39,43 @@ import struct
 from net_proto.lib.buffer import Buffer
 
 
-def inet_cksum(
-    data: Buffer | list[Buffer],
-    /,
-    *,
-    init: int = 0,
-) -> int:
+def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
     """
-    Compute the Internet Checksum used by IPv4/ICMPv4/ICMPv6/UDP/TCP protocols.
+    Calculates the Internet Checksum of the provided buffers.
     """
-
-    if not isinstance(data, list):
-        data = [data]
 
     cksum = init
+    carry = 0
 
-    for buffer in data:
-        dlen = len(buffer)
-        cksum = cksum + int(sum(struct.unpack_from(f"!{dlen >> 3}Q", buffer)))
-        if remainder := dlen & 7:
-            cksum += int.from_bytes(buffer[-remainder:], byteorder="big") << (
-                (8 - remainder) << 3
-            )
+    for buffer in buffers:
+        buffer_len = len(buffer)
+        offset = 0
 
-    cksum = (cksum >> 64) + (cksum & 0xFFFFFFFFFFFFFFFF)
-    cksum = (cksum >> 32) + (cksum & 0xFFFFFFFF)
-    cksum = (cksum >> 16) + (cksum & 0xFFFF)
-    cksum = ~(cksum + (cksum >> 16)) & 0xFFFF
+        if carry:
+            if buffer_len:
+                cksum += (carry << 8) | buffer[0]
+                offset = 1
+                carry = 0
+            else:
+                continue
 
-    return cksum
+        if reminder := buffer_len - offset >= 8:
+            q_count = reminder >> 3
+            cksum += sum(struct.unpack_from(f"!{q_count}Q", buffer, offset))
+            offset += q_count << 3
+
+        if even := (buffer_len - offset) & ~1:
+            h_count = even >> 1
+            cksum += sum(struct.unpack_from(f"!{h_count}H", buffer, offset))
+            offset += even
+
+        if buffer_len - offset == 1:
+            carry = buffer[offset]
+
+    cksum += carry << 8
+    cksum = (cksum & 0xFFFF_FFFF_FFFF_FFFF) + (cksum >> 64)
+    cksum = (cksum & 0xFFFF_FFFF) + (cksum >> 32)
+    cksum = (cksum & 0xFFFF) + (cksum >> 16)
+    cksum = (cksum & 0xFFFF) + (cksum >> 16)
+
+    return (~cksum) & 0xFFFF
