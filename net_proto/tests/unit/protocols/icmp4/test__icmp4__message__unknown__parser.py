@@ -39,9 +39,9 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto import (
     Icmp4Code,
+    Icmp4MessageUnknown,
     Icmp4Parser,
     Icmp4Type,
-    Icmp4UnknownMessage,
     PacketRx,
 )
 from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
@@ -57,7 +57,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             ],
             "_kwargs": {},
             "_results": {
-                "message": Icmp4UnknownMessage(
+                "message": Icmp4MessageUnknown(
                     type=Icmp4Type.from_int(255),
                     code=Icmp4Code.from_int(255),
                     cksum=12585,
@@ -91,7 +91,7 @@ class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
         object.__setattr__(
             icmp4_parser.message,
             "data",
-            bytes(cast(Icmp4UnknownMessage, icmp4_parser.message).data),
+            bytes(cast(Icmp4MessageUnknown, icmp4_parser.message).data),
         )
 
         self.assertEqual(

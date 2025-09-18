@@ -43,13 +43,13 @@ from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from net_proto import (
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
 )
 from net_proto import (
-    Icmp4EchoReplyMessage,
+    Icmp4MessageEchoReply,
 )
 from net_proto import (
-    Icmp4EchoRequestMessage,
+    Icmp4MessageEchoRequest,
 )
 
 TEST_FRAME_DIR = "tests__legacy/unit/test_frames/icmp4_phtx/"
@@ -80,7 +80,7 @@ class TestIcmp4Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp4(
             ip4__src=self.mns.stack_ip4_host.address,
             ip4__dst=self.mns.host_a_ip4_address,
-            icmp4__message=Icmp4EchoRequestMessage(
+            icmp4__message=Icmp4MessageEchoRequest(
                 id=12345,
                 seq=54320,
                 data=b"0123456789ABCDEF" * 20,
@@ -111,7 +111,7 @@ class TestIcmp4Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp4(
             ip4__src=self.mns.stack_ip4_host.address,
             ip4__dst=self.mns.host_a_ip4_address,
-            icmp4__message=Icmp4EchoReplyMessage(
+            icmp4__message=Icmp4MessageEchoReply(
                 id=12345,
                 seq=54320,
                 data=b"0123456789ABCDEF" * 20,
@@ -142,7 +142,7 @@ class TestIcmp4Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp4(
             ip4__src=self.mns.stack_ip4_host.address,
             ip4__dst=self.mns.host_a_ip4_address,
-            icmp4__message=Icmp4DestinationUnreachableMessage(
+            icmp4__message=Icmp4MessageDestinationUnreachable(
                 code=Icmp4DestinationUnreachableCode.PORT,
                 data=b"0123456789ABCDEF" * 100,
             ),

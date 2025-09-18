@@ -39,7 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto import (
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
     Icmp4Parser,
     PacketRx,
 )
@@ -52,7 +52,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Network) message.",
             "_args": [b"\x03\x00\xfc\xff\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK,
                     cksum=64767,
                     data=b"",
@@ -63,7 +63,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Host) message.",
             "_args": [b"\x03\x01\xfc\xfe\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST,
                     cksum=64766,
                     data=b"",
@@ -74,7 +74,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Protocol) message.",
             "_args": [b"\x03\x02\xfc\xfd\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PROTOCOL,
                     cksum=64765,
                     data=b"",
@@ -85,7 +85,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Port) message.",
             "_args": [b"\x03\x03\xfc\xfc\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
                     cksum=64764,
                     data=b"",
@@ -96,7 +96,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Fragmentation Needed) message.",
             "_args": [b"\x03\x04\xf8\x4b\x00\x00\x04\xb0"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
                     cksum=63563,
                     mtu=1200,
@@ -108,7 +108,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Source Route Failed) message.",
             "_args": [b"\x03\x05\xfc\xfa\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_ROUTE_FAILED,
                     cksum=64762,
                     data=b"",
@@ -119,7 +119,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Network Unknown) message.",
             "_args": [b"\x03\x06\xfc\xf9\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_UNKNOWN,
                     cksum=64761,
                     data=b"",
@@ -130,7 +130,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Host Unknown) message.",
             "_args": [b"\x03\x07\xfc\xf8\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_UNKNOWN,
                     cksum=64760,
                     data=b"",
@@ -141,7 +141,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Source Host Isolated) message.",
             "_args": [b"\x03\x08\xfc\xf7\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_HOST_ISOLATED,
                     cksum=64759,
                     data=b"",
@@ -152,7 +152,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Network Prohibited) message.",
             "_args": [b"\x03\x09\xfc\xf6\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_PROHIBITED,
                     cksum=64758,
                     data=b"",
@@ -163,7 +163,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Host Prohibited) message.",
             "_args": [b"\x03\x0a\xfc\xf5\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PROHIBITED,
                     cksum=64757,
                     data=b"",
@@ -174,7 +174,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Network TOS) message.",
             "_args": [b"\x03\x0b\xfc\xf4\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_TOS,
                     cksum=64756,
                     data=b"",
@@ -185,7 +185,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Host TOS) message.",
             "_args": [b"\x03\x0c\xfc\xf3\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_TOS,
                     cksum=64755,
                     data=b"",
@@ -196,7 +196,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Communication Prohibited) message.",
             "_args": [b"\x03\x0d\xfc\xf2\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.COMMUNICATION_PROHIBITED,
                     cksum=64754,
                     data=b"",
@@ -207,7 +207,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Host Precedence) message.",
             "_args": [b"\x03\x0e\xfc\xf1\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PRECEDENCE,
                     cksum=64753,
                     data=b"",
@@ -218,7 +218,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable (Precedence Cutoff) message.",
             "_args": [b"\x03\x0f\xfc\xf0\x00\x00\x00\x00"],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PRECEDENCE_CUTOFF,
                     cksum=64752,
                     data=b"",
@@ -232,7 +232,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
                     cksum=11814,
                     data=b"0123456789ABCDEF",
@@ -243,7 +243,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Destination Unreachable message, maximum length payload.",
             "_args": [b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548],
             "_results": {
-                "message": Icmp4DestinationUnreachableMessage(
+                "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
                     cksum=28270,
                     data=b"X" * 548,
@@ -280,7 +280,7 @@ class TestIcmp4MessageDestinationUnreachableParser(TestCasePacketRxIp4):
             "data",
             bytes(
                 cast(
-                    Icmp4DestinationUnreachableMessage, icmp4_parser.message
+                    Icmp4MessageDestinationUnreachable, icmp4_parser.message
                 ).data
             ),
         )

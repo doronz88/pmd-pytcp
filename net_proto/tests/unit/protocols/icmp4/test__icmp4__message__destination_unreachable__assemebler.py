@@ -41,7 +41,7 @@ from testslide import TestCase
 from net_proto import (
     Icmp4Assembler,
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
     Icmp4Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -60,7 +60,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Network, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".NETWORK: 0>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x00\xfc\xff\x00\x00\x00\x00",
@@ -81,7 +81,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Host, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".HOST: 1>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x01\xfc\xfe\x00\x00\x00\x00",
@@ -102,7 +102,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Protocol, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".PROTOCOL: 2>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x02\xfc\xfd\x00\x00\x00\x00",
@@ -123,7 +123,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Port, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".PORT: 3>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x03\xfc\xfc\x00\x00\x00\x00",
@@ -148,7 +148,7 @@ from net_proto.lib.buffer import Buffer
                     "len 8 (8+0)"
                 ),
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".FRAGMENTATION_NEEDED: 4>, cksum=0, mtu=1200, data=b'')"
                 ),
                 "__bytes__": b"\x03\x04\xf8\x4b\x00\x00\x04\xb0",
@@ -170,7 +170,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Source Route Failed, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".SOURCE_ROUTE_FAILED: 5>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x05\xfc\xfa\x00\x00\x00\x00",
@@ -191,7 +191,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Network Unknown, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".NETWORK_UNKNOWN: 6>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x06\xfc\xf9\x00\x00\x00\x00",
@@ -212,7 +212,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Host Unknown, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".HOST_UNKNOWN: 7>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x07\xfc\xf8\x00\x00\x00\x00",
@@ -233,7 +233,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Source Host Isolated, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".SOURCE_HOST_ISOLATED: 8>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x08\xfc\xf7\x00\x00\x00\x00",
@@ -254,7 +254,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Network Prohibited, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".NETWORK_PROHIBITED: 9>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x09\xfc\xf6\x00\x00\x00\x00",
@@ -275,7 +275,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Host Prohibited, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".HOST_PROHIBITED: 10>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0a\xfc\xf5\x00\x00\x00\x00",
@@ -296,7 +296,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Network TOS, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".NETWORK_TOS: 11>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0b\xfc\xf4\x00\x00\x00\x00",
@@ -317,7 +317,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Host TOS, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".HOST_TOS: 12>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0c\xfc\xf3\x00\x00\x00\x00",
@@ -340,7 +340,7 @@ from net_proto.lib.buffer import Buffer
                     "ICMPv4 Destination Unreachable - Communication Prohibited, len 8 (8+0)"
                 ),
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".COMMUNICATION_PROHIBITED: 13>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0d\xfc\xf2\x00\x00\x00\x00",
@@ -361,7 +361,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Host Precedence, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".HOST_PRECEDENCE: 14>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0e\xfc\xf1\x00\x00\x00\x00",
@@ -382,7 +382,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Destination Unreachable - Precedence Cutoff, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".PRECEDENCE_CUTOFF: 15>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": b"\x03\x0f\xfc\xf0\x00\x00\x00\x00",
@@ -403,7 +403,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 24,
                 "__str__": "ICMPv4 Destination Unreachable - Port, len 24 (8+16)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".PORT: 3>, cksum=0, mtu=None, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
@@ -427,7 +427,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 556,
                 "__str__": "ICMPv4 Destination Unreachable - Port, len 556 (8+548)",
                 "__repr__": (
-                    "Icmp4DestinationUnreachableMessage(code=<Icmp4DestinationUnreachableCode"
+                    "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     f".PORT: 3>, cksum=0, mtu=None, data=b'{"X" * 548}')"
                 ),
                 "__bytes__": b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548,
@@ -456,7 +456,7 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
 
         self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4DestinationUnreachableMessage(
+            icmp4__message=Icmp4MessageDestinationUnreachable(
                 *self._args, **self._kwargs
             )
         )
@@ -563,7 +563,7 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         if "mtu" in self._results:
             self.assertEqual(
                 cast(
-                    Icmp4DestinationUnreachableMessage,
+                    Icmp4MessageDestinationUnreachable,
                     self._icmp4__assembler.message,
                 ).mtu,
                 self._results["mtu"],
@@ -579,7 +579,7 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp4DestinationUnreachableMessage,
+                Icmp4MessageDestinationUnreachable,
                 self._icmp4__assembler.message,
             ).data,
             self._results["data"],

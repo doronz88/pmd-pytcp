@@ -168,20 +168,20 @@ from net_proto.protocols.icmp4.message.icmp4__message import (
 from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
     ICMP4__DESTINATION_UNREACHABLE__LEN,
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__echo_reply import (
     ICMP4__ECHO_REPLY__LEN,
     Icmp4EchoReplyCode,
-    Icmp4EchoReplyMessage,
+    Icmp4MessageEchoReply,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
     ICMP4__ECHO_REQUEST__LEN,
     Icmp4EchoRequestCode,
-    Icmp4EchoRequestMessage,
+    Icmp4MessageEchoRequest,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
-    Icmp4UnknownMessage,
+    Icmp4MessageUnknown,
 )
 from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler
 from net_proto.protocols.icmp6.icmp6__base import Icmp6
@@ -456,17 +456,17 @@ __all__ = [
     "Icmp4Assembler",
     "Icmp4Code",
     "Icmp4DestinationUnreachableCode",
-    "Icmp4DestinationUnreachableMessage",
+    "Icmp4MessageDestinationUnreachable",
     "Icmp4EchoReplyCode",
-    "Icmp4EchoReplyMessage",
+    "Icmp4MessageEchoReply",
     "Icmp4EchoRequestCode",
-    "Icmp4EchoRequestMessage",
+    "Icmp4MessageEchoRequest",
     "Icmp4IntegrityError",
     "Icmp4Message",
     "Icmp4Parser",
     "Icmp4SanityError",
     "Icmp4Type",
-    "Icmp4UnknownMessage",
+    "Icmp4MessageUnknown",
     "Icmp6",
     "Icmp6Assembler",
     "Icmp6Code",

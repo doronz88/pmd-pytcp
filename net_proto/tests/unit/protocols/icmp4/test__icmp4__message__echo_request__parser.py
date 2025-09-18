@@ -37,7 +37,7 @@ from typing import Any, cast
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import Icmp4EchoRequestMessage, Icmp4Parser, PacketRx
+from net_proto import Icmp4MessageEchoRequest, Icmp4Parser, PacketRx
 from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
 
 
@@ -47,7 +47,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMPv4 Echo Request message, empty data.",
             "_args": [b"\x08\x00\xf3\x94\x30\x39\xd4\x31"],
             "_results": {
-                "message": Icmp4EchoRequestMessage(
+                "message": Icmp4MessageEchoRequest(
                     cksum=62356,
                     id=12345,
                     seq=54321,
@@ -62,7 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_results": {
-                "message": Icmp4EchoRequestMessage(
+                "message": Icmp4MessageEchoRequest(
                     cksum=9406,
                     id=12345,
                     seq=54321,
@@ -74,7 +74,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": "ICMP4 Echo Request message, maximum length of data.",
             "_args": [b"\x08\x00\x1e\xcb\x2b\x67\x56\xce" + b"X" * 65507],
             "_results": {
-                "message": Icmp4EchoRequestMessage(
+                "message": Icmp4MessageEchoRequest(
                     cksum=7883,
                     id=11111,
                     seq=22222,
@@ -107,7 +107,7 @@ class TestIcmp4MessageEchoRequestParser(TestCasePacketRxIp4):
         object.__setattr__(
             icmp4_parser.message,
             "data",
-            bytes(cast(Icmp4EchoRequestMessage, icmp4_parser.message).data),
+            bytes(cast(Icmp4MessageEchoRequest, icmp4_parser.message).data),
         )
 
         self.assertEqual(

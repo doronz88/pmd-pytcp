@@ -119,7 +119,7 @@ class Icmp4DestinationUnreachableCode(Icmp4Code):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp4DestinationUnreachableMessage(Icmp4Message):
+class Icmp4MessageDestinationUnreachable(Icmp4Message):
     """
     The ICMPv4 Destination Unreachable message support.
     """

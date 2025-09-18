@@ -45,16 +45,16 @@ from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Type,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__echo_reply import (
-    Icmp4EchoReplyMessage,
+    Icmp4MessageEchoReply,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
-    Icmp4EchoRequestMessage,
+    Icmp4MessageEchoRequest,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
-    Icmp4UnknownMessage,
+    Icmp4MessageUnknown,
 )
 
 
@@ -95,22 +95,22 @@ class Icmp4Parser(Icmp4, ProtoParser):
 
         match Icmp4Type.from_int(self._frame[0]):
             case Icmp4Type.ECHO_REPLY:
-                Icmp4EchoReplyMessage.validate_integrity(
+                Icmp4MessageEchoReply.validate_integrity(
                     frame=self._frame, ip4__payload_len=self._ip4__payload_len
                 )
 
             case Icmp4Type.DESTINATION_UNREACHABLE:
-                Icmp4DestinationUnreachableMessage.validate_integrity(
+                Icmp4MessageDestinationUnreachable.validate_integrity(
                     frame=self._frame, ip4__payload_len=self._ip4__payload_len
                 )
 
             case Icmp4Type.ECHO_REQUEST:
-                Icmp4EchoRequestMessage.validate_integrity(
+                Icmp4MessageEchoRequest.validate_integrity(
                     frame=self._frame, ip4__payload_len=self._ip4__payload_len
                 )
 
             case _:
-                Icmp4UnknownMessage.validate_integrity(
+                Icmp4MessageUnknown.validate_integrity(
                     frame=self._frame, ip4__payload_len=self._ip4__payload_len
                 )
 
@@ -127,18 +127,18 @@ class Icmp4Parser(Icmp4, ProtoParser):
 
         match Icmp4Type.from_bytes(self._frame[0:1]):
             case Icmp4Type.ECHO_REPLY:
-                self._message = Icmp4EchoReplyMessage.from_buffer(self._frame)
+                self._message = Icmp4MessageEchoReply.from_buffer(self._frame)
 
             case Icmp4Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp4DestinationUnreachableMessage.from_buffer(
+                self._message = Icmp4MessageDestinationUnreachable.from_buffer(
                     self._frame
                 )
 
             case Icmp4Type.ECHO_REQUEST:
-                self._message = Icmp4EchoRequestMessage.from_buffer(self._frame)
+                self._message = Icmp4MessageEchoRequest.from_buffer(self._frame)
 
             case _:
-                self._message = Icmp4UnknownMessage.from_buffer(self._frame)
+                self._message = Icmp4MessageUnknown.from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:

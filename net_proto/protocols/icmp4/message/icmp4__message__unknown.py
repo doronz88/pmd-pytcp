@@ -49,7 +49,7 @@ from net_proto.protocols.icmp4.message.icmp4__message import (
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp4UnknownMessage(Icmp4Message):
+class Icmp4MessageUnknown(Icmp4Message):
     """
     The ICMPv4 unknown message support.
     """

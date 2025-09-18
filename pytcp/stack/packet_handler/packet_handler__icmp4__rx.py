@@ -41,9 +41,9 @@ from net_addr import Ip4Address, IpVersion
 from net_proto import (
     IP4__HEADER__LEN,
     UDP__HEADER__LEN,
-    Icmp4DestinationUnreachableMessage,
-    Icmp4EchoReplyMessage,
-    Icmp4EchoRequestMessage,
+    Icmp4MessageDestinationUnreachable,
+    Icmp4MessageEchoReply,
+    Icmp4MessageEchoRequest,
     Icmp4Parser,
     Icmp4Type,
     IpProto,
@@ -116,7 +116,7 @@ class PacketHandlerIcmp4Rx(ABC):
         Handle inbound ICMPv4 Echo Reply packets.
         """
 
-        assert isinstance(packet_rx.icmp4.message, Icmp4EchoReplyMessage)
+        assert isinstance(packet_rx.icmp4.message, Icmp4MessageEchoReply)
 
         __debug__ and log(
             "icmp4",
@@ -162,7 +162,7 @@ class PacketHandlerIcmp4Rx(ABC):
         # TODO: The proper support for MTU Exceeded ICMPv4 message needs to be added.
 
         assert isinstance(
-            packet_rx.icmp4.message, Icmp4DestinationUnreachableMessage
+            packet_rx.icmp4.message, Icmp4MessageDestinationUnreachable
         )
 
         __debug__ and log(
@@ -227,7 +227,7 @@ class PacketHandlerIcmp4Rx(ABC):
         Handle inbound ICMPv4 Echo Reply packets.
         """
 
-        assert isinstance(packet_rx.icmp4.message, Icmp4EchoRequestMessage)
+        assert isinstance(packet_rx.icmp4.message, Icmp4MessageEchoRequest)
 
         __debug__ and log(
             "icmp4",
@@ -239,7 +239,7 @@ class PacketHandlerIcmp4Rx(ABC):
         self._phtx_icmp4(
             ip4__src=packet_rx.ip4.dst,
             ip4__dst=packet_rx.ip4.src,
-            icmp4__message=Icmp4EchoReplyMessage(
+            icmp4__message=Icmp4MessageEchoReply(
                 id=packet_rx.icmp4.message.id,
                 seq=packet_rx.icmp4.message.seq,
                 data=packet_rx.icmp4.message.data,

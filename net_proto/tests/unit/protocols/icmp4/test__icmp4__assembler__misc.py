@@ -35,7 +35,7 @@ ver 3.0.4
 
 from testslide import TestCase
 
-from net_proto import Icmp4Assembler, Icmp4EchoReplyMessage, Tracker
+from net_proto import Icmp4Assembler, Icmp4MessageEchoReply, Tracker
 
 
 class TestIcmp4AssemblerMisc(TestCase):
@@ -52,7 +52,7 @@ class TestIcmp4AssemblerMisc(TestCase):
         echo_tracker = Tracker(prefix="RX")
 
         icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4EchoReplyMessage(),
+            icmp4__message=Icmp4MessageEchoReply(),
             echo_tracker=echo_tracker,
         )
 

@@ -44,7 +44,7 @@ from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
     Icmp4EchoReplyCode,
-    Icmp4EchoReplyMessage,
+    Icmp4MessageEchoReply,
 )
 
 
@@ -80,7 +80,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp4EchoReplyCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -98,7 +98,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -116,7 +116,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -134,7 +134,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -152,7 +152,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -170,7 +170,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -188,7 +188,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -207,7 +207,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage(*self._args, **self._kwargs)
+            Icmp4MessageEchoReply(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -229,7 +229,7 @@ class TestIcmp4MessageEchoReplyParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4EchoReplyMessage.from_buffer(
+            Icmp4MessageEchoReply.from_buffer(
                 b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 

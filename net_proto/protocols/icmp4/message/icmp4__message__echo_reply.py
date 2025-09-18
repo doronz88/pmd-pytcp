@@ -70,7 +70,7 @@ class Icmp4EchoReplyCode(Icmp4Code):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp4EchoReplyMessage(Icmp4Message):
+class Icmp4MessageEchoReply(Icmp4Message):
     """
     The ICMPv4 Echo Reply message.
     """

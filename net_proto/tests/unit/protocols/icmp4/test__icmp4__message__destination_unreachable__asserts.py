@@ -44,7 +44,7 @@ from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
+    Icmp4MessageDestinationUnreachable,
 )
 
 
@@ -80,7 +80,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp4DestinationUnreachableCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -104,7 +104,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["mtu"] = value = None
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -127,7 +127,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         for code in Icmp4DestinationUnreachableCode:
             if code != Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
                 with self.assertRaises(AssertionError) as error:
-                    Icmp4DestinationUnreachableMessage(
+                    Icmp4MessageDestinationUnreachable(
                         *self._args, **self._kwargs
                     )
 
@@ -148,7 +148,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -168,7 +168,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -191,7 +191,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["mtu"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -214,7 +214,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["mtu"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -235,7 +235,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -259,7 +259,7 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4DestinationUnreachableMessage.from_buffer(
+            Icmp4MessageDestinationUnreachable.from_buffer(
                 b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 

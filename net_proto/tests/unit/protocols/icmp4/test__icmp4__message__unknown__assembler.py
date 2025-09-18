@@ -39,7 +39,7 @@ from typing import Any, cast
 from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
-from net_proto import Icmp4Assembler, Icmp4Code, Icmp4Type, Icmp4UnknownMessage
+from net_proto import Icmp4Assembler, Icmp4Code, Icmp4MessageUnknown, Icmp4Type
 from net_proto.lib.buffer import Buffer
 
 
@@ -60,7 +60,7 @@ from net_proto.lib.buffer import Buffer
                     "len 20 (4+16)"
                 ),
                 "__repr__": (
-                    "Icmp4UnknownMessage(type=<Icmp4Type.UNKNOWN_255: 255>, "
+                    "Icmp4MessageUnknown(type=<Icmp4Type.UNKNOWN_255: 255>, "
                     "code=<Icmp4Code.UNKNOWN_255: 255>, cksum=0, "
                     "data=b'0123456789ABCDEF')"
                 ),
@@ -93,7 +93,7 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         """
 
         self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4UnknownMessage(*self._args, **self._kwargs)
+            icmp4__message=Icmp4MessageUnknown(*self._args, **self._kwargs)
         )
 
     def test__icmp4__message__unknown__assembler__len(self) -> None:
@@ -180,7 +180,7 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp4UnknownMessage, self._icmp4__assembler.message).data,
+            cast(Icmp4MessageUnknown, self._icmp4__assembler.message).data,
             self._results["data"],
         )
 

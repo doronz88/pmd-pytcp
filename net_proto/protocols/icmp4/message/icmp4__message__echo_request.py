@@ -70,7 +70,7 @@ class Icmp4EchoRequestCode(Icmp4Code):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp4EchoRequestMessage(Icmp4Message):
+class Icmp4MessageEchoRequest(Icmp4Message):
     """
     ICMPv4 Echo Request message.
     """

@@ -39,8 +39,8 @@ from typing import TYPE_CHECKING, cast
 from net_addr import Ip4Address, IpVersion
 from net_proto import (
     Icmp4DestinationUnreachableCode,
-    Icmp4DestinationUnreachableMessage,
     Icmp4Message,
+    Icmp4MessageDestinationUnreachable,
     Icmp6DestinationUnreachableCode,
     Icmp6DestinationUnreachableMessage,
     PacketRx,
@@ -205,7 +205,7 @@ class PacketHandlerUdpRx(ABC):
                 self._phtx_icmp4(
                     ip4__src=packet_rx.ip4.dst,
                     ip4__dst=packet_rx.ip4.src,
-                    icmp4__message=Icmp4DestinationUnreachableMessage(
+                    icmp4__message=Icmp4MessageDestinationUnreachable(
                         code=Icmp4DestinationUnreachableCode.PORT,
                         data=packet_rx.ip.packet_bytes,
                     ),

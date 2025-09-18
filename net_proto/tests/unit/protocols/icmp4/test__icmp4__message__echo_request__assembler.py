@@ -41,7 +41,7 @@ from testslide import TestCase
 from net_proto import (
     Icmp4Assembler,
     Icmp4EchoRequestCode,
-    Icmp4EchoRequestMessage,
+    Icmp4MessageEchoRequest,
     Icmp4Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -61,7 +61,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv4 Echo Request, id 12345, seq 54321, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp4EchoRequestMessage(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'')"
                 ),
                 "__bytes__": b"\x08\x00\xf3\x94\x30\x39\xd4\x31",
@@ -85,7 +85,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 24,
                 "__str__": "ICMPv4 Echo Request, id 12345, seq 54321, len 24 (8+16)",
                 "__repr__": (
-                    "Icmp4EchoRequestMessage(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
@@ -114,7 +114,7 @@ from net_proto.lib.buffer import Buffer
                     "ICMPv4 Echo Request, id 11111, seq 22222, len 65515 (8+65507)"
                 ),
                 "__repr__": (
-                    "Icmp4EchoRequestMessage(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
                     f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65507}')"
                 ),
                 "__bytes__": (
@@ -147,7 +147,7 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
         """
 
         self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4EchoRequestMessage(*self._args, **self._kwargs)
+            icmp4__message=Icmp4MessageEchoRequest(*self._args, **self._kwargs)
         )
 
     def test__icmp4__message__echo_request__assembler__len(self) -> None:
@@ -234,7 +234,7 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp4EchoRequestMessage, self._icmp4__assembler.message).id,
+            cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).id,
             self._results["id"],
         )
 
@@ -245,7 +245,7 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp4EchoRequestMessage, self._icmp4__assembler.message).seq,
+            cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).seq,
             self._results["seq"],
         )
 
@@ -256,7 +256,7 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp4EchoRequestMessage, self._icmp4__assembler.message).data,
+            cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).data,
             self._results["data"],
         )
 
