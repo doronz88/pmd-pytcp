@@ -183,6 +183,20 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
         Get the ICMPv6 ND Router Advertisement message as memoryview.
         """
 
+        buffer = self._pack_header(len(self))
+        buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:] = bytearray(self.options)
+
+        return memoryview(buffer)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv6 ND Router Advertisement message as bytes.
+        """
+
         struct.pack_into(
             ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT,
             buffer := bytearray(ICMP6__ND__ROUTER_ADVERTISEMENT__LEN),
@@ -197,9 +211,7 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             self.retrans_timer,
         )
 
-        buffer += bytearray(self.options)
-
-        return memoryview(buffer)
+        return buffer
 
     @override
     def validate_sanity(
@@ -293,3 +305,12 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
                 buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]
             ),
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv6 ND Router Advertisement message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(bytearray(self.options))

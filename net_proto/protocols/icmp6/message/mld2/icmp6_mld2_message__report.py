@@ -160,19 +160,8 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         Get the ICMPv6 MLDv2 Report message as memoryview.
         """
 
-        struct.pack_into(
-            ICMP6__MLD2__REPORT__STRUCT,
-            buffer := bytearray(ICMP6__MLD2__REPORT__LEN),
-            0,
-            int(self.type),
-            int(self.code),
-            0,
-            0,
-            len(self.records),
-        )
-
-        for record in self.records:
-            buffer.extend(bytearray(record))
+        buffer = self._pack_header()
+        buffer[ICMP6__MLD2__REPORT__LEN:] = self._pack_records()
 
         return memoryview(buffer)
 
@@ -183,6 +172,40 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         """
 
         return len(self.records)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP6__MLD2__REPORT__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv6 MLDv2 Report message as bytes.
+        """
+
+        struct.pack_into(
+            ICMP6__MLD2__REPORT__STRUCT,
+            buffer := bytearray(buffer_len),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
+            0,
+            len(self.records),
+        )
+
+        return buffer
+
+    def _pack_records(self) -> bytearray:
+        """
+        Get the ICMPv6 MLDv2 Report message records as bytes.
+        """
+
+        buffer = bytearray()
+
+        for record in self.records:
+            buffer += bytearray(record)
+
+        return buffer
 
     @override
     def validate_sanity(
@@ -268,3 +291,12 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
             cksum=cksum,
             records=records,
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv6 MLDv2 Report message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(self._pack_records())

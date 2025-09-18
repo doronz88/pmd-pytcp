@@ -39,6 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import RawAssembler, Tracker
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -129,6 +130,21 @@ class TestRawAssemblerOperation(TestCase):
         self.assertEqual(
             self._raw__assembler.payload,
             (self._results["payload"]),
+        )
+
+    def test__raw__assembler__assemble(self) -> None:
+        """
+        Ensure the RAW packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._raw__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )
 
 

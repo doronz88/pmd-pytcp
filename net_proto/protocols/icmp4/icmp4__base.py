@@ -77,10 +77,10 @@ class Icmp4(Proto):
         Get the ICMPv4 packet as memoryview.
         """
 
-        buffer = bytearray(self._message)
+        buffer = memoryview(self._message)
         buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
-        return memoryview(buffer)
+        return buffer
 
     @property
     def message(self) -> Icmp4Message:

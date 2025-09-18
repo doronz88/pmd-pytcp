@@ -39,6 +39,7 @@ from testslide import TestCase
 
 from net_addr import Ip6Address, IpVersion
 from net_proto import Ip6Assembler, Ip6Header, IpProto, RawAssembler
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -394,4 +395,19 @@ class TestIp6AssemblerOperation(TestCase):
         self.assertEqual(
             self._ip6__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__ip6__assembler__assemble(self) -> None:
+        """
+        Ensure the IPv6 packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ip6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

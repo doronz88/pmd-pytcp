@@ -121,10 +121,11 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
         """
 
         header = bytearray(self._header)
-        header[10:12] = inet_cksum(header).to_bytes(2)
+        options = bytearray(self._options)
+        header[10:12] = inet_cksum(header, options).to_bytes(2)
 
         buffers.append(header)
-        buffers.append(bytearray(self._options))
+        buffers.append(options)
 
         if isinstance(
             self._payload, (TcpAssembler, UdpAssembler, RawAssembler)

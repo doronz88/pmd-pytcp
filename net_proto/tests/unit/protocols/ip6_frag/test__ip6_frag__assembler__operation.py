@@ -39,6 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import Ip6FragAssembler, Ip6FragHeader, IpProto
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -264,7 +265,7 @@ class TestIp6FragAssemblerOperation(TestCase):
             self._results["header"],
         )
 
-    def test__ip6__assembler__payload(self) -> None:
+    def test__ip6_frag__assembler__payload(self) -> None:
         """
         Ensure the IPv6 Frag packet assembler 'payload' property returns
         a correct value.
@@ -273,4 +274,19 @@ class TestIp6FragAssemblerOperation(TestCase):
         self.assertEqual(
             self._ip6_frag__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__ip6_frag__assembler__assemble(self) -> None:
+        """
+        Ensure the IPv6 Frag packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ip6_frag__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

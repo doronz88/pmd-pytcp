@@ -39,6 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import Tracker, UdpAssembler, UdpHeader
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -260,6 +261,21 @@ class TestUdpAssemblerOperation(TestCase):
         self.assertEqual(
             self._udp__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__udp__assembler__assemble(self) -> None:
+        """
+        Ensure the UDP packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._udp__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )
 
 

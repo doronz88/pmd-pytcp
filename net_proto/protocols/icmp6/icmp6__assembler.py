@@ -33,7 +33,7 @@ ver 3.0.4
 """
 
 
-from typing import override
+from typing import cast, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
@@ -68,7 +68,8 @@ class Icmp6Assembler(Icmp6, ProtoAssembler):
         Assemble the ICMPv6 packet.
         """
 
-        message = bytearray(self._message)
-        message[2:4] = inet_cksum(message, init=self.pshdr_sum).to_bytes(2)
+        self._message.assemble(buffers)
 
-        buffers.append(message)
+        cast(bytearray, buffers[-2])[2:4] = inet_cksum(
+            *buffers[-2:], init=self.pshdr_sum
+        ).to_bytes(2)

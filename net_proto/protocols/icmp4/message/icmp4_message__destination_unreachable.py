@@ -214,11 +214,25 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
         Get the ICMPv4 Destination Unreachable message as memoryview.
         """
 
+        buffer = self._pack_header(len(self))
+        buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:] = self.data
+
+        return memoryview(buffer)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP4__DESTINATION_UNREACHABLE__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv4 Destination Unreachable message as bytes.
+        """
+
         match self.code:
             case Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
                 struct.pack_into(
                     ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
-                    buffer := bytearray(len(self)),
+                    buffer := bytearray(buffer_len),
                     0,
                     int(self.type),
                     int(self.code),
@@ -229,7 +243,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
             case _:
                 struct.pack_into(
                     ICMP4__DESTINATION_UNREACHABLE__STRUCT,
-                    buffer := bytearray(len(self)),
+                    buffer := bytearray(buffer_len),
                     0,
                     int(self.type),
                     int(self.code),
@@ -237,9 +251,7 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
                     0,
                 )
 
-        buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:] = self.data
-
-        return memoryview(buffer)
+        return buffer
 
     @override
     def validate_sanity(self) -> None:
@@ -299,3 +311,12 @@ class Icmp4DestinationUnreachableMessage(Icmp4Message):
             mtu=mtu,
             data=buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:],
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv4 Destination Unreachable message.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(self.data)

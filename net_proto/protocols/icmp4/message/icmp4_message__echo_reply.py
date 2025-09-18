@@ -151,9 +151,23 @@ class Icmp4EchoReplyMessage(Icmp4Message):
         Get the ICMPv4 Echo Reply message as memoryview.
         """
 
+        buffer = self._pack_header(len(self))
+        buffer[ICMP4__ECHO_REPLY__LEN:] = self.data
+
+        return memoryview(buffer)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP4__ECHO_REPLY__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv4 Echo Reply message as bytes.
+        """
+
         struct.pack_into(
             ICMP4__ECHO_REPLY__STRUCT,
-            buffer := bytearray(len(self)),
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
@@ -162,9 +176,7 @@ class Icmp4EchoReplyMessage(Icmp4Message):
             self.seq,
         )
 
-        buffer[ICMP4__ECHO_REPLY__LEN:] = self.data
-
-        return memoryview(buffer)
+        return buffer
 
     @override
     def validate_sanity(self) -> None:
@@ -210,3 +222,12 @@ class Icmp4EchoReplyMessage(Icmp4Message):
             seq=seq,
             data=buffer[ICMP4__ECHO_REPLY__LEN:],
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv4 Echo Reply message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(self.data)

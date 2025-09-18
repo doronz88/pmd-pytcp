@@ -39,6 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import TcpAssembler, TcpHeader, TcpOptionNop, TcpOptions, Tracker
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -832,6 +833,21 @@ class TestTcpAssemblerOperation(TestCase):
         self.assertEqual(
             self._tcp__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__tcp__assembler__assemble(self) -> None:
+        """
+        Ensure the TCP packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._tcp__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )
 
 

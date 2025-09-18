@@ -58,7 +58,7 @@ class Icmp6UnknownMessage(Icmp6Message):
     type: Icmp6Type
     code: Icmp6Code
     cksum: int = 0
-    raw: Buffer = bytes()
+    data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:
@@ -81,9 +81,9 @@ class Icmp6UnknownMessage(Icmp6Message):
             f"Got: {self.cksum!r}"
         )
 
-        assert isinstance(self.raw, (bytes, memoryview)), (
-            f"The 'raw' field must be a bytes or memoryview. "
-            f"Got: {type(self.raw)!r}"
+        assert isinstance(self.data, (bytes, memoryview)), (
+            f"The 'data' field must be a bytes or memoryview. "
+            f"Got: {type(self.data)!r}"
         )
 
     @override
@@ -92,7 +92,7 @@ class Icmp6UnknownMessage(Icmp6Message):
         Get the ICMPv6 unknown message length.
         """
 
-        return ICMP6__HEADER__LEN + len(self.raw)
+        return ICMP6__HEADER__LEN + len(self.data)
 
     @override
     def __str__(self) -> str:
@@ -103,7 +103,7 @@ class Icmp6UnknownMessage(Icmp6Message):
         return (
             f"ICMPv6 Unknown Message, type {int(self.type)}, "
             f"code {int(self.code)}, cksum {self.cksum}, "
-            f"len {len(self)} ({ICMP6__HEADER__LEN}+{len(self.raw)})"
+            f"len {len(self)} ({ICMP6__HEADER__LEN}+{len(self.data)})"
         )
 
     @override
@@ -112,18 +112,30 @@ class Icmp6UnknownMessage(Icmp6Message):
         Get the ICMPv6 unknown message as memoryview.
         """
 
+        buffer = self._pack_header(len(self))
+        buffer[ICMP6__HEADER__LEN:] = self.data
+
+        return memoryview(buffer)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP6__HEADER__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv6 Echo Reply message as bytes.
+        """
+
         struct.pack_into(
             ICMP6__HEADER__STRUCT,
-            buffer := bytearray(len(self)),
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
             0,
         )
 
-        buffer[ICMP6__HEADER__LEN:] = self.raw
-
-        return memoryview(buffer)
+        return buffer
 
     @override
     def validate_sanity(
@@ -164,5 +176,14 @@ class Icmp6UnknownMessage(Icmp6Message):
             type=Icmp6Type.from_int(type),
             code=Icmp6Code.from_int(code),
             cksum=cksum,
-            raw=buffer[ICMP6__HEADER__LEN:],
+            data=buffer[ICMP6__HEADER__LEN:],
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv6 Echo Reply message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(self.data)

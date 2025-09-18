@@ -57,7 +57,7 @@ class Icmp4UnknownMessage(Icmp4Message):
     type: Icmp4Type
     code: Icmp4Code
     cksum: int = 0
-    raw: Buffer = bytes()
+    data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:
@@ -81,8 +81,8 @@ class Icmp4UnknownMessage(Icmp4Message):
         )
 
         assert isinstance(
-            self.raw, (bytes, memoryview)
-        ), f"The 'raw' field must be a bytes or memoryview. Got: {type(self.raw)!r}"
+            self.data, (bytes, bytearray, memoryview)
+        ), f"The 'data' field must be a bytes, bytearray or memoryview. Got: {type(self.data)!r}"
 
     @override
     def __len__(self) -> int:
@@ -90,7 +90,7 @@ class Icmp4UnknownMessage(Icmp4Message):
         Get the ICMPv4 unknown message length.
         """
 
-        return ICMP4__HEADER__LEN + len(self.raw)
+        return ICMP4__HEADER__LEN + len(self.data)
 
     @override
     def __str__(self) -> str:
@@ -100,7 +100,7 @@ class Icmp4UnknownMessage(Icmp4Message):
 
         return (
             f"ICMPv4 Unknown Message, type {int(self.type)}, code {int(self.code)}, "
-            f"cksum {self.cksum}, len {len(self)} ({ICMP4__HEADER__LEN}+{len(self.raw)})"
+            f"cksum {self.cksum}, len {len(self)} ({ICMP4__HEADER__LEN}+{len(self.data)})"
         )
 
     @override
@@ -109,18 +109,30 @@ class Icmp4UnknownMessage(Icmp4Message):
         Get the ICMPv4 unknown message as memoryview.
         """
 
+        buffer = self._pack_header(len(self))
+        buffer[ICMP4__HEADER__LEN:] = self.data
+
+        return memoryview(buffer)
+
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP4__HEADER__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv4 Echo Reply message as bytes.
+        """
+
         struct.pack_into(
             ICMP4__HEADER__STRUCT,
-            buffer := bytearray(len(self)),
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
             0,
         )
 
-        buffer[ICMP4__HEADER__LEN:] = self.raw
-
-        return memoryview(buffer)
+        return buffer
 
     @override
     def validate_sanity(self) -> None:
@@ -159,5 +171,14 @@ class Icmp4UnknownMessage(Icmp4Message):
             type=Icmp4Type.from_int(type),
             code=Icmp4Code.from_int(code),
             cksum=cksum,
-            raw=buffer[ICMP4__HEADER__LEN:],
+            data=buffer[ICMP4__HEADER__LEN:],
         )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv4 Unknown message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(self.data)

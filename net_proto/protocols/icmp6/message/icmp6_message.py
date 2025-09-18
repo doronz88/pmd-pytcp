@@ -83,6 +83,14 @@ class Icmp6Message(ProtoStruct):
     cksum: int
 
     @abstractmethod
+    def _pack_header(self, buffer_len: int, /) -> bytearray:
+        """
+        Get the ICMPv6 message header as bytes.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
     def validate_sanity(
         self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
     ) -> None:
@@ -97,6 +105,14 @@ class Icmp6Message(ProtoStruct):
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
         Validate the ICMPv6 message integrity.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv6 message.
         """
 
         raise NotImplementedError

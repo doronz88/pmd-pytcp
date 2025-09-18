@@ -25,86 +25,76 @@
 
 
 """
-This module contains the ICMPv4 message base class.
+Module contains tests for the ICMPv4 unknown message parser.
 
-net_proto/protocols/icmp4/message/icmp4_message.py
+net_proto/tests/unit/protocols/icmp4/test__icmp4__message__unknown__parser.py
 
 ver 3.0.4
 """
 
 
-from abc import abstractmethod
-from dataclasses import dataclass
+from typing import Any, cast
 
-from net_proto.lib.buffer import Buffer
-from net_proto.lib.proto_enum import ProtoEnumByte
-from net_proto.lib.proto_struct import ProtoStruct
+from parameterized import parameterized_class  # type: ignore
 
-# The ICMPv4 message header [RFC 792].
-
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Type      |     Code      |           Checksum            |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-ICMP4__HEADER__LEN = 4
-ICMP4__HEADER__STRUCT = "! BBH"
+from net_proto import (
+    Icmp4Code,
+    Icmp4Parser,
+    Icmp4Type,
+    Icmp4UnknownMessage,
+    PacketRx,
+)
+from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
 
 
-class Icmp4Type(ProtoEnumByte):
+@parameterized_class(
+    [
+        {
+            "_description": "ICMPv4 unknown message.",
+            "_args": [
+                b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
+                b"\x43\x44\x45\x46"
+            ],
+            "_kwargs": {},
+            "_results": {
+                "message": Icmp4UnknownMessage(
+                    type=Icmp4Type.from_int(255),
+                    code=Icmp4Code.from_int(255),
+                    cksum=12585,
+                    data=b"0123456789ABCDEF",
+                ),
+            },
+        },
+    ]
+)
+class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
     """
-    The ICMPv4 message 'type' field values.
+    The ICMPv4 unknown message parser tests.
     """
 
-    ECHO_REPLY = 0
-    DESTINATION_UNREACHABLE = 3
-    ECHO_REQUEST = 8
+    _description: str
+    _args: list[Any]
+    _kwargs: dict[str, Any]
+    _results: dict[str, Any]
 
+    _packet_rx: PacketRx
 
-class Icmp4Code(ProtoEnumByte):
-    """
-    The ICMPv4 message 'code' field values.
-    """
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp4Message(ProtoStruct):
-    """
-    The ICMPv4 message base.
-    """
-
-    type: Icmp4Type
-    code: Icmp4Code
-    cksum: int
-
-    @abstractmethod
-    def _pack_header(self, buffer_len: int, /) -> bytearray:
+    def test__icmp4__message__unknown__parser__from_bytes(self) -> None:
         """
-        Get the ICMPv4 message header as bytes.
+        Ensure the ICMPv4 unknown message 'from_bytes()' method creates
+        a proper message object.
         """
 
-        raise NotImplementedError
+        icmp4_parser = Icmp4Parser(self._packet_rx)
 
-    @abstractmethod
-    def validate_sanity(self) -> None:
-        """
-        Validate the ICMPv4 message sanity.
-        """
+        # Convert the 'data' field from memoryview to bytes so we can compare.
+        object.__setattr__(
+            icmp4_parser.message,
+            "data",
+            bytes(cast(Icmp4UnknownMessage, icmp4_parser.message).data),
+        )
 
-        raise NotImplementedError
-
-    @staticmethod
-    @abstractmethod
-    def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
-        """
-        Validate the ICMPv4 message integrity.
-        """
-
-        raise NotImplementedError
-
-    @abstractmethod
-    def assemble(self, buffers: list[Buffer], /) -> None:
-        """
-        Assemble the ICMPv4 message.
-        """
-
-        raise NotImplementedError
+        self.assertEqual(
+            icmp4_parser.message,
+            self._results["message"],
+        )

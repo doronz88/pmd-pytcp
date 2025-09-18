@@ -48,6 +48,7 @@ from net_proto import (
     IpProto,
     RawAssembler,
 )
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -511,6 +512,21 @@ class TestIp4AssemblerOperation(TestCase):
             self._results["payload"],
         )
 
+    def test__ip4__assembler__assemble(self) -> None:
+        """
+        Ensure the IPv4 packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ip4__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
+        )
+
 
 @parameterized_class(
     [
@@ -899,4 +915,19 @@ class TestIp4FragAssemblerOperation(TestCase):
         self.assertEqual(
             self._ip4_frag__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__ip4_frag__assembler__assemble(self) -> None:
+        """
+        Ensure the IPv4 Frag packet assembler 'assemble()' method returns a correct
+        value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ip4_frag__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )
