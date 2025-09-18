@@ -41,7 +41,7 @@ from testslide import TestCase
 from net_proto import (
     Icmp6Assembler,
     Icmp6DestinationUnreachableCode,
-    Icmp6DestinationUnreachableMessage,
+    Icmp6MessageDestinationUnreachable,
     Icmp6Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -60,7 +60,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - No Route, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.NO_ROUTE: 0>, cksum=0, "
                     "data=b'')"
                 ),
@@ -82,7 +82,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Prohibited, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.PROHIBITED: 1>, cksum=0, "
                     "data=b'')"
                 ),
@@ -104,7 +104,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Scope, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.SCOPE: 2>, cksum=0, "
                     "data=b'')"
                 ),
@@ -126,7 +126,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Address, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.ADDRESS: 3>, cksum=0, "
                     "data=b'')"
                 ),
@@ -148,7 +148,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Port, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
                     "data=b'')"
                 ),
@@ -170,7 +170,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Failed Policy, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.FAILED_POLICY: 5>, cksum=0, "
                     "data=b'')"
                 ),
@@ -192,7 +192,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Reject Route, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.REJECT_ROUTE: 6>, cksum=0, "
                     "data=b'')"
                 ),
@@ -214,7 +214,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Destination Unreachable - Source Routing Header, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER: 7>, cksum=0, "
                     "data=b'')"
                 ),
@@ -236,7 +236,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 24,
                 "__str__": "ICMPv6 Destination Unreachable - Port, len 24 (8+16)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
                     "data=b'0123456789ABCDEF')"
                 ),
@@ -261,7 +261,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 1240,
                 "__str__": "ICMPv6 Destination Unreachable - Port, len 1240 (8+1232)",
                 "__repr__": (
-                    "Icmp6DestinationUnreachableMessage("
+                    "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
                     f"data=b'{"X" * 1232}')"
                 ),
@@ -291,7 +291,7 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6DestinationUnreachableMessage(
+            icmp6__message=Icmp6MessageDestinationUnreachable(
                 *self._args, **self._kwargs
             )
         )
@@ -397,7 +397,7 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6DestinationUnreachableMessage,
+                Icmp6MessageDestinationUnreachable,
                 self._icmp6__assembler.message,
             ).data,
             self._results["data"],

@@ -36,7 +36,7 @@ ver 3.0.4
 from dataclasses import dataclass
 
 from net_addr import MacAddress
-from net_proto.protocols.icmp6.message.icmp6_message import (
+from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Message,
     Icmp6Type,
 )

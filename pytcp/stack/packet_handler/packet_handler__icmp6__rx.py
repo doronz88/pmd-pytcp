@@ -41,9 +41,9 @@ from net_addr import Ip6Address, IpVersion
 from net_proto import (
     IP6__HEADER__LEN,
     UDP__HEADER__LEN,
-    Icmp6DestinationUnreachableMessage,
-    Icmp6EchoReplyMessage,
-    Icmp6EchoRequestMessage,
+    Icmp6MessageDestinationUnreachable,
+    Icmp6MessageEchoReply,
+    Icmp6MessageEchoRequest,
     Icmp6NdNeighborAdvertisementMessage,
     Icmp6NdNeighborSolicitationMessage,
     Icmp6NdOptions,
@@ -150,7 +150,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         assert isinstance(
-            packet_rx.icmp6.message, Icmp6DestinationUnreachableMessage
+            packet_rx.icmp6.message, Icmp6MessageDestinationUnreachable
         )
 
         self._packet_stats_rx.inc("icmp6__destination_unreachable")
@@ -220,7 +220,7 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound ICMPv6 Echo Request packets.
         """
 
-        assert isinstance(packet_rx.icmp6.message, Icmp6EchoRequestMessage)
+        assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoRequest)
 
         self._packet_stats_rx.inc("icmp6__echo_request__respond_echo_reply")
         __debug__ and log(
@@ -233,7 +233,7 @@ class PacketHandlerIcmp6Rx(ABC):
             ip6__src=packet_rx.ip6.dst,
             ip6__dst=packet_rx.ip6.src,
             ip6__hop=255,
-            icmp6__message=Icmp6EchoReplyMessage(
+            icmp6__message=Icmp6MessageEchoReply(
                 id=packet_rx.icmp6.message.id,
                 seq=packet_rx.icmp6.message.seq,
                 data=packet_rx.icmp6.message.data,
@@ -246,7 +246,7 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound ICMPv6 Echo Reply packets.
         """
 
-        assert isinstance(packet_rx.icmp6.message, Icmp6EchoReplyMessage)
+        assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoReply)
 
         self._packet_stats_rx.inc("icmp6__echo_reply")
         __debug__ and log(

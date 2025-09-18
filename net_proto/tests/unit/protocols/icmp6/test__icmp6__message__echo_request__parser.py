@@ -38,8 +38,8 @@ from typing import Any, cast
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto import (
-    Icmp6EchoReplyMessage,
-    Icmp6EchoRequestMessage,
+    Icmp6MessageEchoReply,
+    Icmp6MessageEchoRequest,
     Icmp6Parser,
     PacketRx,
 )
@@ -53,7 +53,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x80\x00\x7b\x94\x30\x39\xd4\x31"],
             "_mocked_values": {},
             "_results": {
-                "message": Icmp6EchoRequestMessage(
+                "message": Icmp6MessageEchoRequest(
                     cksum=31636,
                     id=12345,
                     seq=54321,
@@ -69,7 +69,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             ],
             "_mocked_values": {},
             "_results": {
-                "message": Icmp6EchoRequestMessage(
+                "message": Icmp6MessageEchoRequest(
                     cksum=44221,
                     id=12345,
                     seq=54321,
@@ -82,7 +82,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x80\x00\x33\x57\x2b\x67\x56\xce" + b"X" * 65527],
             "_mocked_values": {},
             "_results": {
-                "message": Icmp6EchoRequestMessage(
+                "message": Icmp6MessageEchoRequest(
                     cksum=13143,
                     id=11111,
                     seq=22222,
@@ -115,7 +115,7 @@ class TestIcmp6MessageEchoRequestParser(TestCasePacketRxIp6):
         object.__setattr__(
             icmp6_parser.message,
             "data",
-            bytes(cast(Icmp6EchoReplyMessage, icmp6_parser.message).data),
+            bytes(cast(Icmp6MessageEchoReply, icmp6_parser.message).data),
         )
 
         self.assertEqual(

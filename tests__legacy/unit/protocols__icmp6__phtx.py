@@ -45,13 +45,13 @@ from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from net_proto import (
     Icmp6DestinationUnreachableCode,
-    Icmp6DestinationUnreachableMessage,
+    Icmp6MessageDestinationUnreachable,
 )
 from net_proto import (
-    Icmp6EchoReplyMessage,
+    Icmp6MessageEchoReply,
 )
 from net_proto import (
-    Icmp6EchoRequestMessage,
+    Icmp6MessageEchoRequest,
 )
 from net_proto import (
     Icmp6NdRouterSolicitationMessage,
@@ -88,7 +88,7 @@ class TestIcmp6Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp6(
             ip6__src=self.mns.stack_ip6_host.address,
             ip6__dst=self.mns.host_a_ip6_address,
-            icmp6__message=Icmp6EchoRequestMessage(
+            icmp6__message=Icmp6MessageEchoRequest(
                 id=12345,
                 seq=54320,
                 data=b"0123456789ABCDEF" * 20,
@@ -120,7 +120,7 @@ class TestIcmp6Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp6(
             ip6__src=self.mns.stack_ip6_host.address,
             ip6__dst=self.mns.host_a_ip6_address,
-            icmp6__message=Icmp6EchoReplyMessage(
+            icmp6__message=Icmp6MessageEchoReply(
                 id=12345,
                 seq=54320,
                 data=b"0123456789ABCDEF" * 20,
@@ -152,7 +152,7 @@ class TestIcmp6Phtx(TestCase):
         tx_status = self.packet_handler._phtx_icmp6(
             ip6__src=self.mns.stack_ip6_host.address,
             ip6__dst=self.mns.host_a_ip6_address,
-            icmp6__message=Icmp6DestinationUnreachableMessage(
+            icmp6__message=Icmp6MessageDestinationUnreachable(
                 code=Icmp6DestinationUnreachableCode.PORT,
                 data=b"0123456789ABCDEF" * 100,
             ),

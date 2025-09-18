@@ -39,9 +39,9 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto import (
     Icmp6Code,
+    Icmp6MessageUnknown,
     Icmp6Parser,
     Icmp6Type,
-    Icmp6UnknownMessage,
     PacketRx,
 )
 from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
@@ -58,7 +58,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_kwargs": {},
             "mocked_values": {},
             "_results": {
-                "message": Icmp6UnknownMessage(
+                "message": Icmp6MessageUnknown(
                     type=Icmp6Type.from_int(255),
                     code=Icmp6Code.from_int(255),
                     cksum=12585,
@@ -92,7 +92,7 @@ class TestIcmp6MessageUnknownParser(TestCasePacketRxIp6):
         object.__setattr__(
             icmp6_parser.message,
             "data",
-            bytes(cast(Icmp6UnknownMessage, icmp6_parser.message).data),
+            bytes(cast(Icmp6MessageUnknown, icmp6_parser.message).data),
         )
 
         self.assertEqual(

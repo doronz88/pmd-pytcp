@@ -41,7 +41,7 @@ from testslide import TestCase
 from net_proto import (
     Icmp6Assembler,
     Icmp6EchoReplyCode,
-    Icmp6EchoReplyMessage,
+    Icmp6MessageEchoReply,
     Icmp6Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -61,7 +61,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Echo Reply, id 12345, seq 54321, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6EchoReplyMessage(code=<Icmp6EchoReplyCode.DEFAULT: 0>, "
+                    "Icmp6MessageEchoReply(code=<Icmp6EchoReplyCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'')"
                 ),
                 "__bytes__": b"\x81\x00\x7a\x94\x30\x39\xd4\x31",
@@ -85,7 +85,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 24,
                 "__str__": "ICMPv6 Echo Reply, id 12345, seq 54321, len 24 (8+16)",
                 "__repr__": (
-                    "Icmp6EchoReplyMessage(code=<Icmp6EchoReplyCode.DEFAULT: 0>, "
+                    "Icmp6MessageEchoReply(code=<Icmp6EchoReplyCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
@@ -112,7 +112,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 65535,
                 "__str__": "ICMPv6 Echo Reply, id 11111, seq 22222, len 65535 (8+65527)",
                 "__repr__": (
-                    "Icmp6EchoReplyMessage(code=<Icmp6EchoReplyCode.DEFAULT: 0>, cksum=0, "
+                    "Icmp6MessageEchoReply(code=<Icmp6EchoReplyCode.DEFAULT: 0>, cksum=0, "
                     f"id=11111, seq=22222, data=b'{"X" * 65527}')"
                 ),
                 "__bytes__": b"\x81\x00\x32\x57\x2b\x67\x56\xce" + b"X" * 65527,
@@ -143,7 +143,7 @@ class TestIcmp6MessageEchoReplyAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6EchoReplyMessage(*self._args, **self._kwargs)
+            icmp6__message=Icmp6MessageEchoReply(*self._args, **self._kwargs)
         )
 
     def test__icmp6__message__echo_reply__assembler__len(self) -> None:
@@ -230,7 +230,7 @@ class TestIcmp6MessageEchoReplyAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoReplyMessage, self._icmp6__assembler.message).id,
+            cast(Icmp6MessageEchoReply, self._icmp6__assembler.message).id,
             self._results["id"],
         )
 
@@ -241,7 +241,7 @@ class TestIcmp6MessageEchoReplyAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoReplyMessage, self._icmp6__assembler.message).seq,
+            cast(Icmp6MessageEchoReply, self._icmp6__assembler.message).seq,
             self._results["seq"],
         )
 
@@ -252,7 +252,7 @@ class TestIcmp6MessageEchoReplyAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoReplyMessage, self._icmp6__assembler.message).data,
+            cast(Icmp6MessageEchoReply, self._icmp6__assembler.message).data,
             self._results["data"],
         )
 

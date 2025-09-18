@@ -42,7 +42,7 @@ from net_proto import (
     Icmp4Message,
     Icmp4MessageDestinationUnreachable,
     Icmp6DestinationUnreachableCode,
-    Icmp6DestinationUnreachableMessage,
+    Icmp6MessageDestinationUnreachable,
     PacketRx,
     PacketValidationError,
     UdpParser,
@@ -192,7 +192,7 @@ class PacketHandlerUdpRx(ABC):
                 self._phtx_icmp6(
                     ip6__src=packet_rx.ip6.dst,
                     ip6__dst=packet_rx.ip6.src,
-                    icmp6__message=Icmp6DestinationUnreachableMessage(
+                    icmp6__message=Icmp6MessageDestinationUnreachable(
                         code=Icmp6DestinationUnreachableCode.PORT,
                         data=packet_rx.ip.packet_bytes,
                     ),

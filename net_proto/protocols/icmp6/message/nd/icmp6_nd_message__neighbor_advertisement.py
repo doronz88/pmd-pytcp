@@ -44,7 +44,10 @@ from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6IntegrityError,
     Icmp6SanityError,
 )
-from net_proto.protocols.icmp6.message.icmp6_message import Icmp6Code, Icmp6Type
+from net_proto.protocols.icmp6.message.icmp6__message import (
+    Icmp6Code,
+    Icmp6Type,
+)
 from net_proto.protocols.icmp6.message.nd.icmp6_nd_message import Icmp6NdMessage
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_options import (
     Icmp6NdOptions,

@@ -39,7 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto import (
     Icmp6DestinationUnreachableCode,
-    Icmp6DestinationUnreachableMessage,
+    Icmp6MessageDestinationUnreachable,
     Icmp6Parser,
     PacketRx,
 )
@@ -53,7 +53,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x00\xfe\xff\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.NO_ROUTE,
                     cksum=65279,
                     data=b"",
@@ -65,7 +65,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x01\xfe\xfe\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PROHIBITED,
                     cksum=65278,
                     data=b"",
@@ -77,7 +77,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x02\xfe\xfd\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.SCOPE,
                     cksum=65277,
                     data=b"",
@@ -89,7 +89,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x03\xfe\xfc\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.ADDRESS,
                     cksum=65276,
                     data=b"",
@@ -101,7 +101,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x04\xfe\xfb\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
                     cksum=65275,
                     data=b"",
@@ -113,7 +113,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x05\xfe\xfa\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.FAILED_POLICY,
                     cksum=65274,
                     data=b"",
@@ -125,7 +125,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x06\xfe\xf9\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.REJECT_ROUTE,
                     cksum=65273,
                     data=b"",
@@ -137,7 +137,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x07\xfe\xf8\x00\x00\x00\x00"],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER,
                     cksum=65272,
                     data=b"",
@@ -152,7 +152,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             ],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
                     cksum=12325,
                     data=b"0123456789ABCDEF",
@@ -164,7 +164,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_args": [b"\x01\x04\x6a\x67\x00\x00\x00\x00" + b"X" * 1232],
             "mocked_values": {},
             "_results": {
-                "message": Icmp6DestinationUnreachableMessage(
+                "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
                     cksum=27239,
                     data=b"X" * 1232,
@@ -201,7 +201,7 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCasePacketRxIp6):
             "data",
             bytes(
                 cast(
-                    Icmp6DestinationUnreachableMessage, icmp6_parser.message
+                    Icmp6MessageDestinationUnreachable, icmp6_parser.message
                 ).data
             ),
         )

@@ -41,8 +41,8 @@ from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
     Icmp6Code,
+    Icmp6MessageUnknown,
     Icmp6Type,
-    Icmp6UnknownMessage,
     inet_cksum,
 )
 
@@ -75,7 +75,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["type"] = value = "not an Icmp6Type"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6UnknownMessage(*self._args, **self._kwargs)
+            Icmp6MessageUnknown(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -91,7 +91,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6Code"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6UnknownMessage(*self._args, **self._kwargs)
+            Icmp6MessageUnknown(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -108,7 +108,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6UnknownMessage(*self._args, **self._kwargs)
+            Icmp6MessageUnknown(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -125,7 +125,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6UnknownMessage(*self._args, **self._kwargs)
+            Icmp6MessageUnknown(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -142,7 +142,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["data"] = value = "not bytes or memoryview"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6UnknownMessage(*self._args, **self._kwargs)
+            Icmp6MessageUnknown(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -171,7 +171,7 @@ class TestIcmp6MessageUnknownParserAsserts(TestCase):
             _bytes[2:4] = inet_cksum(_bytes).to_bytes(2)
 
             with self.assertRaises(AssertionError) as error:
-                Icmp6UnknownMessage.from_buffer(_bytes)
+                Icmp6MessageUnknown.from_buffer(_bytes)
 
             self.assertEqual(
                 str(error.exception),

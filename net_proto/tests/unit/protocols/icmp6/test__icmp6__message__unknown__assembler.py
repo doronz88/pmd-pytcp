@@ -41,8 +41,8 @@ from testslide import TestCase
 from net_proto import (
     Icmp6Assembler,
     Icmp6Code,
+    Icmp6MessageUnknown,
     Icmp6Type,
-    Icmp6UnknownMessage,
 )
 from net_proto.lib.buffer import Buffer
 
@@ -64,7 +64,7 @@ from net_proto.lib.buffer import Buffer
                     "len 20 (4+16)"
                 ),
                 "__repr__": (
-                    "Icmp6UnknownMessage(type=<Icmp6Type.UNKNOWN_255: 255>, "
+                    "Icmp6MessageUnknown(type=<Icmp6Type.UNKNOWN_255: 255>, "
                     "code=<Icmp6Code.UNKNOWN_255: 255>, cksum=0, "
                     "data=b'0123456789ABCDEF')"
                 ),
@@ -97,7 +97,7 @@ class TestIcmp6MessageUnknownAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6UnknownMessage(*self._args, **self._kwargs)
+            icmp6__message=Icmp6MessageUnknown(*self._args, **self._kwargs)
         )
 
     def test__icmp6__message__unknown__assembler__len(self) -> None:
@@ -184,7 +184,7 @@ class TestIcmp6MessageUnknownAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6UnknownMessage, self._icmp6__assembler.message).data,
+            cast(Icmp6MessageUnknown, self._icmp6__assembler.message).data,
             self._results["data"],
         )
 

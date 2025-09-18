@@ -41,7 +41,7 @@ from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.icmp6_message import (
+from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Message,
     Icmp6Type,
@@ -86,7 +86,7 @@ class Icmp6DestinationUnreachableCode(Icmp6Code):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6DestinationUnreachableMessage(Icmp6Message):
+class Icmp6MessageDestinationUnreachable(Icmp6Message):
     """
     The ICMPv6 Destination Unreachable message base.
     """

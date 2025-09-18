@@ -44,7 +44,7 @@ from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
     Icmp6EchoRequestCode,
-    Icmp6EchoRequestMessage,
+    Icmp6MessageEchoRequest,
 )
 
 
@@ -79,7 +79,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6EchoRequestCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -97,7 +97,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -115,7 +115,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -133,7 +133,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -151,7 +151,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -169,7 +169,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -187,7 +187,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -206,7 +206,7 @@ class TestIcmp6MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            Icmp6MessageEchoRequest(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -228,7 +228,7 @@ class TestIcmp6MessageEchoRequestParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6EchoRequestMessage.from_buffer(
+            Icmp6MessageEchoRequest.from_buffer(
                 b"\xff\x00\xff\x00\x00\x00\x00\x00"
             )
 

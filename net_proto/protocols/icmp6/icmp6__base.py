@@ -37,7 +37,7 @@ from typing import override
 
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
-from net_proto.protocols.icmp6.message.icmp6_message import Icmp6Message
+from net_proto.protocols.icmp6.message.icmp6__message import Icmp6Message
 
 
 class Icmp6(Proto):

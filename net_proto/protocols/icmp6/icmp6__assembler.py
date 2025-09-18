@@ -40,7 +40,7 @@ from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.icmp6.icmp6__base import Icmp6
-from net_proto.protocols.icmp6.message.icmp6_message import Icmp6Message
+from net_proto.protocols.icmp6.message.icmp6__message import Icmp6Message
 
 
 class Icmp6Assembler(Icmp6, ProtoAssembler):

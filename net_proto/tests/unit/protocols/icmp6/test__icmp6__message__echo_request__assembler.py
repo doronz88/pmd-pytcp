@@ -41,7 +41,7 @@ from testslide import TestCase
 from net_proto import (
     Icmp6Assembler,
     Icmp6EchoRequestCode,
-    Icmp6EchoRequestMessage,
+    Icmp6MessageEchoRequest,
     Icmp6Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -61,7 +61,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 Echo Request, id 12345, seq 54321, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6EchoRequestMessage(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'')"
                 ),
                 "__bytes__": b"\x80\x00\x7b\x94\x30\x39\xd4\x31",
@@ -85,7 +85,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 24,
                 "__str__": "ICMPv6 Echo Request, id 12345, seq 54321, len 24 (8+16)",
                 "__repr__": (
-                    "Icmp6EchoRequestMessage(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
@@ -112,7 +112,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 65535,
                 "__str__": "ICMPv6 Echo Request, id 11111, seq 22222, len 65535 (8+65527)",
                 "__repr__": (
-                    "Icmp6EchoRequestMessage(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
+                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
                     f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65527}')"
                 ),
                 "__bytes__": b"\x80\x00\x33\x57\x2b\x67\x56\xce" + b"X" * 65527,
@@ -143,7 +143,7 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6EchoRequestMessage(*self._args, **self._kwargs)
+            icmp6__message=Icmp6MessageEchoRequest(*self._args, **self._kwargs)
         )
 
     def test__icmp6__message__echo_request__assembler__len(self) -> None:
@@ -230,7 +230,7 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoRequestMessage, self._icmp6__assembler.message).id,
+            cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).id,
             self._results["id"],
         )
 
@@ -241,7 +241,7 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoRequestMessage, self._icmp6__assembler.message).seq,
+            cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).seq,
             self._results["seq"],
         )
 
@@ -252,7 +252,7 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6EchoRequestMessage, self._icmp6__assembler.message).data,
+            cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).data,
             self._results["data"],
         )
 

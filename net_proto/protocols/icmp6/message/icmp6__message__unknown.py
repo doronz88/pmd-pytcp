@@ -25,77 +25,54 @@
 
 
 """
-This module contains the ICMPv6 Echo Request message support class.
+This module contains the ICMPv6 unknown message support class.
 
-net_proto/protocols/icmp6/message/icmp6_message__echo_request.py
+net_proto/protocols/icmp6/message/icmp6_message__unknown.py
 
 ver 3.0.4
 """
 
 
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Self, override
 
 from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.icmp6_message import (
+from net_proto.protocols.icmp6.message.icmp6__message import (
+    ICMP6__HEADER__LEN,
+    ICMP6__HEADER__STRUCT,
     Icmp6Code,
     Icmp6Message,
     Icmp6Type,
 )
-from net_proto.protocols.ip6.ip6__header import IP6__PAYLOAD__MAX_LEN
-
-# The 'Echo Request' message (128/0) [RFC4443].
-
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     Type      |     Code      |           Checksum            |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |              Id               |              Seq              |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# ~                             Data                              ~
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-ICMP6__ECHO_REQUEST__LEN = 8
-ICMP6__ECHO_REQUEST__STRUCT = "! BBH HH"
-
-
-class Icmp6EchoRequestCode(Icmp6Code):
-    """
-    The ICMPv6 Echo Request message 'code' values.
-    """
-
-    DEFAULT = 0
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6EchoRequestMessage(Icmp6Message):
+class Icmp6MessageUnknown(Icmp6Message):
     """
-    The ICMPv6 Echo Request message.
+    The ICMPv6 unknown message support.
     """
 
-    type: Icmp6Type = field(
-        repr=False,
-        init=False,
-        default=Icmp6Type.ECHO_REQUEST,
-    )
-    code: Icmp6EchoRequestCode = Icmp6EchoRequestCode.DEFAULT
+    type: Icmp6Type
+    code: Icmp6Code
     cksum: int = 0
-
-    id: int = 0
-    seq: int = 0
     data: Buffer = bytes()
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 Echo Request message fields.
+        Validate the ICMPv6 unknown message fields.
         """
 
-        assert isinstance(self.code, Icmp6EchoRequestCode), (
-            f"The 'code' field must be an Icmp6EchoRequestCode. "
+        assert isinstance(self.type, Icmp6Type), (
+            f"The 'type' field must be an Icmp6Type. "
+            f"Got: {type(self.type)!r}"
+        )
+
+        assert isinstance(self.code, Icmp6Code), (
+            f"The 'code' field must be an Icmp6Code. "
             f"Got: {type(self.code)!r}"
         )
 
@@ -104,77 +81,58 @@ class Icmp6EchoRequestMessage(Icmp6Message):
             f"Got: {self.cksum!r}"
         )
 
-        assert is_uint16(self.id), (
-            f"The 'id' field must be a 16-bit unsigned integer. "
-            f"Got: {self.id!r}"
-        )
-
-        assert is_uint16(self.seq), (
-            f"The 'seq' field must be a 16-bit unsigned integer. "
-            f"Got: {self.seq!r}"
-        )
-
         assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be bytes or memoryview. "
+            f"The 'data' field must be a bytes or memoryview. "
             f"Got: {type(self.data)!r}"
-        )
-
-        assert (
-            len(self.data) <= IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REQUEST__LEN
-        ), (
-            f"The 'data' field length must be a 16-bit unsigned integer less than "
-            f"or equal to {IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REQUEST__LEN}. "
-            f"Got: {len(self.data)!r}"
         )
 
     @override
     def __len__(self) -> int:
         """
-        Get the ICMPv6 Echo Request message length.
+        Get the ICMPv6 unknown message length.
         """
 
-        return ICMP6__ECHO_REQUEST__LEN + len(self.data)
+        return ICMP6__HEADER__LEN + len(self.data)
 
     @override
     def __str__(self) -> str:
         """
-        Get the ICMPv6 Echo Request message log string.
+        Get the ICMPv6 unknown message log string.
         """
 
         return (
-            f"ICMPv6 Echo Request, id {self.id}, seq {self.seq}, len {len(self)} "
-            f"({ICMP6__ECHO_REQUEST__LEN}+{len(self.data)})"
+            f"ICMPv6 Unknown Message, type {int(self.type)}, "
+            f"code {int(self.code)}, cksum {self.cksum}, "
+            f"len {len(self)} ({ICMP6__HEADER__LEN}+{len(self.data)})"
         )
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Echo Request message as memoryview.
+        Get the ICMPv6 unknown message as memoryview.
         """
 
         buffer = self._pack_header(len(self))
-        buffer[ICMP6__ECHO_REQUEST__LEN:] = self.data
+        buffer[ICMP6__HEADER__LEN:] = self.data
 
         return memoryview(buffer)
 
     def _pack_header(
         self,
-        buffer_len: int = ICMP6__ECHO_REQUEST__LEN,
+        buffer_len: int = ICMP6__HEADER__LEN,
         /,
     ) -> bytearray:
         """
-        Get the ICMPv6 Echo Request message as bytes.
+        Get the ICMPv6 Echo Reply message as bytes.
         """
 
         struct.pack_into(
-            ICMP6__ECHO_REQUEST__STRUCT,
+            ICMP6__HEADER__STRUCT,
             buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
             0,
-            self.id,
-            self.seq,
         )
 
         return buffer
@@ -184,7 +142,7 @@ class Icmp6EchoRequestMessage(Icmp6Message):
         self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
     ) -> None:
         """
-        Validate the ICMPv6 Echo Request message sanity after parsing it.
+        Validate the ICMPv6 unknown message sanity after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -193,40 +151,32 @@ class Icmp6EchoRequestMessage(Icmp6Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 Echo Request message before parsing it.
+        Validate integrity of the ICMPv6 unknown message before parsing it.
         """
 
-        if not (ICMP6__ECHO_REQUEST__LEN <= ip6__dlen <= len(frame)):
-            raise Icmp6IntegrityError(
-                "The condition 'ICMP6__ECHO_REQUEST__LEN <= ip6__dlen <= "
-                f"len(frame)' must be met. Got: {ICMP6__ECHO_REQUEST__LEN=}, "
-                f"{ip6__dlen=}, {len(frame)=}"
-            )
+        # Currently no integrity checks are implemented.
 
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 Echo Request message from buffer.
+        Initialize the ICMPv6 unknown message from bytes.
         """
 
-        type, code, cksum, id, seq = struct.unpack(
-            ICMP6__ECHO_REQUEST__STRUCT, buffer[:ICMP6__ECHO_REQUEST__LEN]
+        type, code, cksum = struct.unpack(
+            ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN]
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.ECHO_REQUEST
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := type) not in Icmp6Type.get_known_values(), (
+            "The 'type' field must not be known. "
+            f"Got: {Icmp6Type.from_int(received_type)!r}"
         )
 
         return cls(
-            code=Icmp6EchoRequestCode.from_int(code),
+            type=Icmp6Type.from_int(type),
+            code=Icmp6Code.from_int(code),
             cksum=cksum,
-            id=id,
-            seq=seq,
-            data=buffer[ICMP6__ECHO_REQUEST__LEN:],
+            data=buffer[ICMP6__HEADER__LEN:],
         )
 
     @override

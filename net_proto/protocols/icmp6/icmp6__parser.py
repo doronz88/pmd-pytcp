@@ -40,21 +40,21 @@ from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.icmp6.icmp6__base import Icmp6
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.icmp6_message import (
+from net_proto.protocols.icmp6.message.icmp6__message import (
     ICMP6__HEADER__LEN,
     Icmp6Type,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__destination_unreachable import (
-    Icmp6DestinationUnreachableMessage,
+from net_proto.protocols.icmp6.message.icmp6__message__destination_unreachable import (
+    Icmp6MessageDestinationUnreachable,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__echo_reply import (
-    Icmp6EchoReplyMessage,
+from net_proto.protocols.icmp6.message.icmp6__message__echo_reply import (
+    Icmp6MessageEchoReply,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__echo_request import (
-    Icmp6EchoRequestMessage,
+from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
+    Icmp6MessageEchoRequest,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__unknown import (
-    Icmp6UnknownMessage,
+from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
+    Icmp6MessageUnknown,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6_mld2_message__report import (
     Icmp6Mld2ReportMessage,
@@ -112,17 +112,17 @@ class Icmp6Parser(Icmp6, ProtoParser):
 
         match Icmp6Type.from_int(self._frame[0]):
             case Icmp6Type.DESTINATION_UNREACHABLE:
-                Icmp6DestinationUnreachableMessage.validate_integrity(
+                Icmp6MessageDestinationUnreachable.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
             case Icmp6Type.ECHO_REQUEST:
-                Icmp6EchoRequestMessage.validate_integrity(
+                Icmp6MessageEchoRequest.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
             case Icmp6Type.ECHO_REPLY:
-                Icmp6EchoReplyMessage.validate_integrity(
+                Icmp6MessageEchoReply.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
@@ -152,7 +152,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
             case _:
-                Icmp6UnknownMessage.validate_integrity(
+                Icmp6MessageUnknown.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
@@ -171,17 +171,17 @@ class Icmp6Parser(Icmp6, ProtoParser):
 
         match Icmp6Type.from_bytes(self._frame[0:1]):
             case Icmp6Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp6DestinationUnreachableMessage.from_buffer(
+                self._message = Icmp6MessageDestinationUnreachable.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ECHO_REQUEST:
-                self._message = Icmp6EchoRequestMessage.from_buffer(
+                self._message = Icmp6MessageEchoRequest.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ECHO_REPLY:
-                self._message = Icmp6EchoReplyMessage.from_buffer(
+                self._message = Icmp6MessageEchoReply.from_buffer(
                     self._frame,
                 )
 
@@ -211,7 +211,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
             case _:
-                self._message = Icmp6UnknownMessage.from_buffer(
+                self._message = Icmp6MessageUnknown.from_buffer(
                     self._frame,
                 )
 

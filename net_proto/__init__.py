@@ -190,28 +190,28 @@ from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6SanityError,
 )
 from net_proto.protocols.icmp6.icmp6__parser import Icmp6Parser
-from net_proto.protocols.icmp6.message.icmp6_message import (
+from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Message,
     Icmp6Type,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__destination_unreachable import (
+from net_proto.protocols.icmp6.message.icmp6__message__destination_unreachable import (
     ICMP6__DESTINATION_UNREACHABLE__LEN,
     Icmp6DestinationUnreachableCode,
-    Icmp6DestinationUnreachableMessage,
+    Icmp6MessageDestinationUnreachable,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__echo_reply import (
+from net_proto.protocols.icmp6.message.icmp6__message__echo_reply import (
     ICMP6__ECHO_REPLY__LEN,
     Icmp6EchoReplyCode,
-    Icmp6EchoReplyMessage,
+    Icmp6MessageEchoReply,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__echo_request import (
+from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
     ICMP6__ECHO_REQUEST__LEN,
     Icmp6EchoRequestCode,
-    Icmp6EchoRequestMessage,
+    Icmp6MessageEchoRequest,
 )
-from net_proto.protocols.icmp6.message.icmp6_message__unknown import (
-    Icmp6UnknownMessage,
+from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
+    Icmp6MessageUnknown,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6_mld2__multicast_address_record import (
     Icmp6Mld2MulticastAddressRecord,
@@ -471,11 +471,11 @@ __all__ = [
     "Icmp6Assembler",
     "Icmp6Code",
     "Icmp6DestinationUnreachableCode",
-    "Icmp6DestinationUnreachableMessage",
+    "Icmp6MessageDestinationUnreachable",
     "Icmp6EchoReplyCode",
-    "Icmp6EchoReplyMessage",
+    "Icmp6MessageEchoReply",
     "Icmp6EchoRequestCode",
-    "Icmp6EchoRequestMessage",
+    "Icmp6MessageEchoRequest",
     "Icmp6IntegrityError",
     "Icmp6Message",
     "Icmp6Mld2MulticastAddressRecord",
@@ -501,7 +501,7 @@ __all__ = [
     "Icmp6Parser",
     "Icmp6SanityError",
     "Icmp6Type",
-    "Icmp6UnknownMessage",
+    "Icmp6MessageUnknown",
     "Ip4Assembler",
     "Ip4FragAssembler",
     "Ip4Header",
