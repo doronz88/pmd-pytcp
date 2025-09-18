@@ -27,7 +27,7 @@
 """
 This module contains the unknown ICMPv6 option support code.
 
-net_proto/protocols/icmp6/options/icmp6_nd_option__unknown.py
+net_proto/protocols/icmp6/options/icmp6__nd_option__unknown.py
 
 ver 3.0.4
 """
@@ -40,7 +40,7 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_8_byte_alligned, is_uint8
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
     ICMP6__ND__OPTION__LEN,
     ICMP6__ND__OPTION__STRUCT,
     Icmp6NdOption,

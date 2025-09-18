@@ -241,24 +241,24 @@ from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_solicitation
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdRouterSolicitationCode,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
     ICMP6__ND__OPTION__LEN,
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option__pi import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__pi import (
     Icmp6NdOptionPi,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option__slla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__slla import (
     Icmp6NdOptionSlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option__tlla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__tlla import (
     Icmp6NdOptionTlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option__unknown import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__unknown import (
     Icmp6NdOptionUnknown,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_options import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_options import (
     Icmp6NdOptions,
 )
 from net_proto.protocols.ip4.ip4__assembler import (

@@ -27,7 +27,7 @@
 """
 This module contains the ICMPv6 ND option support code.
 
-net_proto/protocols/icmp6/message/nd/option/icmp6_nd_option.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd_option.py
 
 ver 3.0.4
 """

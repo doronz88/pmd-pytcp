@@ -51,7 +51,7 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 from net_proto.protocols.icmp6.message.nd.icmp6__nd_message import (
     Icmp6NdMessage,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_options import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_options import (
     Icmp6NdOptions,
 )
 
