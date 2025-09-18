@@ -40,7 +40,7 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
-from net_proto.protocols.icmp4.message.icmp4_message import (
+from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Code,
     Icmp4Message,
     Icmp4Type,

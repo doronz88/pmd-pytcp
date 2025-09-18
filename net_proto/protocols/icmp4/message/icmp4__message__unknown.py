@@ -39,7 +39,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.icmp4.message.icmp4_message import (
+from net_proto.protocols.icmp4.message.icmp4__message import (
     ICMP4__HEADER__LEN,
     ICMP4__HEADER__STRUCT,
     Icmp4Code,

@@ -40,20 +40,20 @@ from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.icmp4.icmp4__base import Icmp4
 from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
-from net_proto.protocols.icmp4.message.icmp4_message import (
+from net_proto.protocols.icmp4.message.icmp4__message import (
     ICMP4__HEADER__LEN,
     Icmp4Type,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__destination_unreachable import (
+from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
     Icmp4DestinationUnreachableMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__echo_reply import (
+from net_proto.protocols.icmp4.message.icmp4__message__echo_reply import (
     Icmp4EchoReplyMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__echo_request import (
+from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
     Icmp4EchoRequestMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__unknown import (
+from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
     Icmp4UnknownMessage,
 )
 

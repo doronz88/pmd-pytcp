@@ -160,27 +160,27 @@ from net_proto.protocols.icmp4.icmp4__errors import (
     Icmp4SanityError,
 )
 from net_proto.protocols.icmp4.icmp4__parser import Icmp4Parser
-from net_proto.protocols.icmp4.message.icmp4_message import (
+from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Code,
     Icmp4Message,
     Icmp4Type,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__destination_unreachable import (
+from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
     ICMP4__DESTINATION_UNREACHABLE__LEN,
     Icmp4DestinationUnreachableCode,
     Icmp4DestinationUnreachableMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__echo_reply import (
+from net_proto.protocols.icmp4.message.icmp4__message__echo_reply import (
     ICMP4__ECHO_REPLY__LEN,
     Icmp4EchoReplyCode,
     Icmp4EchoReplyMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__echo_request import (
+from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
     ICMP4__ECHO_REQUEST__LEN,
     Icmp4EchoRequestCode,
     Icmp4EchoRequestMessage,
 )
-from net_proto.protocols.icmp4.message.icmp4_message__unknown import (
+from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
     Icmp4UnknownMessage,
 )
 from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler

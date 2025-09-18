@@ -37,7 +37,7 @@ from typing import override
 
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
-from net_proto.protocols.icmp4.message.icmp4_message import Icmp4Message
+from net_proto.protocols.icmp4.message.icmp4__message import Icmp4Message
 
 
 class Icmp4(Proto):
