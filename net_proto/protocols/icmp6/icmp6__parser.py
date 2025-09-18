@@ -59,17 +59,17 @@ from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
 from net_proto.protocols.icmp6.message.mld2.icmp6_mld2_message__report import (
     Icmp6Mld2ReportMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__neighbor_advertisement import (
-    Icmp6NdNeighborAdvertisementMessage,
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_advertisement import (
+    Icmp6NdMessageNeighborAdvertisement,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__neighbor_solicitation import (
-    Icmp6NdNeighborSolicitationMessage,
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_solicitation import (
+    Icmp6NdMessageNeighborSolicitation,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__router_advertisement import (
-    Icmp6NdRouterAdvertisementMessage,
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_advertisement import (
+    Icmp6NdMessageRouterAdvertisement,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__router_solicitation import (
-    Icmp6NdRouterSolicitationMessage,
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_solicitation import (
+    Icmp6NdMessageRouterSolicitation,
 )
 
 
@@ -127,22 +127,22 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
             case Icmp6Type.ND__ROUTER_SOLICITATION:
-                Icmp6NdRouterSolicitationMessage.validate_integrity(
+                Icmp6NdMessageRouterSolicitation.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                Icmp6NdRouterAdvertisementMessage.validate_integrity(
+                Icmp6NdMessageRouterAdvertisement.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                Icmp6NdNeighborSolicitationMessage.validate_integrity(
+                Icmp6NdMessageNeighborSolicitation.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                Icmp6NdNeighborAdvertisementMessage.validate_integrity(
+                Icmp6NdMessageNeighborAdvertisement.validate_integrity(
                     frame=self._frame, ip6__dlen=self._ip6__dlen
                 )
 
@@ -186,22 +186,22 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
             case Icmp6Type.ND__ROUTER_SOLICITATION:
-                self._message = Icmp6NdRouterSolicitationMessage.from_buffer(
+                self._message = Icmp6NdMessageRouterSolicitation.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                self._message = Icmp6NdRouterAdvertisementMessage.from_buffer(
+                self._message = Icmp6NdMessageRouterAdvertisement.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                self._message = Icmp6NdNeighborSolicitationMessage.from_buffer(
+                self._message = Icmp6NdMessageNeighborSolicitation.from_buffer(
                     self._frame,
                 )
 
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                self._message = Icmp6NdNeighborAdvertisementMessage.from_buffer(
+                self._message = Icmp6NdMessageNeighborAdvertisement.from_buffer(
                     self._frame,
                 )
 

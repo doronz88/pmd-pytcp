@@ -222,22 +222,24 @@ from net_proto.protocols.icmp6.message.mld2.icmp6_mld2_message__report import (
     Icmp6Mld2ReportCode,
     Icmp6Mld2ReportMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message import Icmp6NdMessage
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__neighbor_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message import (
+    Icmp6NdMessage,
+)
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_advertisement import (
+    Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
-    Icmp6NdNeighborAdvertisementMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__neighbor_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_solicitation import (
+    Icmp6NdMessageNeighborSolicitation,
     Icmp6NdNeighborSolicitationCode,
-    Icmp6NdNeighborSolicitationMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__router_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_advertisement import (
+    Icmp6NdMessageRouterAdvertisement,
     Icmp6NdRouterAdvertisementCode,
-    Icmp6NdRouterAdvertisementMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message__router_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_solicitation import (
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdRouterSolicitationCode,
-    Icmp6NdRouterSolicitationMessage,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_option import (
     ICMP6__ND__OPTION__LEN,
@@ -484,9 +486,9 @@ __all__ = [
     "Icmp6Mld2ReportMessage",
     "Icmp6NdMessage",
     "Icmp6NdNeighborAdvertisementCode",
-    "Icmp6NdNeighborAdvertisementMessage",
+    "Icmp6NdMessageNeighborAdvertisement",
     "Icmp6NdNeighborSolicitationCode",
-    "Icmp6NdNeighborSolicitationMessage",
+    "Icmp6NdMessageNeighborSolicitation",
     "Icmp6NdOption",
     "Icmp6NdOptionPi",
     "Icmp6NdOptionSlla",
@@ -495,9 +497,9 @@ __all__ = [
     "Icmp6NdOptionUnknown",
     "Icmp6NdOptions",
     "Icmp6NdRouterAdvertisementCode",
-    "Icmp6NdRouterAdvertisementMessage",
+    "Icmp6NdMessageRouterAdvertisement",
     "Icmp6NdRouterSolicitationCode",
-    "Icmp6NdRouterSolicitationMessage",
+    "Icmp6NdMessageRouterSolicitation",
     "Icmp6Parser",
     "Icmp6SanityError",
     "Icmp6Type",

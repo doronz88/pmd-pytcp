@@ -41,11 +41,11 @@ from testslide import TestCase
 from net_addr import Ip6Network, MacAddress
 from net_proto import (
     Icmp6Assembler,
+    Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOptionPi,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdRouterAdvertisementCode,
-    Icmp6NdRouterAdvertisementMessage,
     Icmp6Type,
 )
 
@@ -71,7 +71,7 @@ from net_proto import (
                     "reacht 4294967295, retrt 4294967295, len 16 (16+0)"
                 ),
                 "__repr__": (
-                    "Icmp6NdRouterAdvertisementMessage(code=<Icmp6NdRouterAdvertisementCode"
+                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), hop=255, "
                     "flag_m=True, flag_o=True, router_lifetime=65535, reachable_time=4294967295, "
                     "retrans_timer=4294967295)"
@@ -111,7 +111,7 @@ from net_proto import (
                     "retrt 789, opts [slla 00:11:22:33:44:55], len 24 (16+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdRouterAdvertisementMessage(code=<Icmp6NdRouterAdvertisementCode"
+                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
                     "slla=MacAddress('00:11:22:33:44:55'))]), hop=64, flag_m=False, flag_o=False, "
                     "router_lifetime=123, reachable_time=456, retrans_timer=789)"
@@ -165,7 +165,7 @@ from net_proto import (
                     "preferred_lifetime 654321)], len 56 (16+40)"
                 ),
                 "__repr__": (
-                    "Icmp6NdRouterAdvertisementMessage(code=<Icmp6NdRouterAdvertisementCode"
+                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
                     "slla=MacAddress('00:11:22:33:44:55')), Icmp6NdOptionPi(flag_l=True, "
                     "flag_a=True, flag_r=True, valid_lifetime=123456, preferred_lifetime=654321, "
@@ -218,7 +218,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdRouterAdvertisementMessage(
+            icmp6__message=Icmp6NdMessageRouterAdvertisement(
                 *self._args, **self._kwargs
             )
         )
@@ -324,7 +324,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).flag_m,
             self._results["flag_m"],
@@ -340,7 +340,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).flag_o,
             self._results["flag_o"],
@@ -356,7 +356,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).router_lifetime,
             self._results["router_lifetime"],
@@ -372,7 +372,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).reachable_time,
             self._results["reachable_time"],
@@ -388,7 +388,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).retrans_timer,
             self._results["retrans_timer"],
@@ -404,7 +404,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterAdvertisementMessage,
+                Icmp6NdMessageRouterAdvertisement,
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],

@@ -39,10 +39,10 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip6Address, Ip6Network, MacAddress
 from net_proto import (
+    Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOptionPi,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
-    Icmp6NdRouterAdvertisementMessage,
     Icmp6Parser,
     PacketRx,
 )
@@ -62,7 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::1"),
             },
             "_results": {
-                "message": Icmp6NdRouterAdvertisementMessage(
+                "message": Icmp6NdMessageRouterAdvertisement(
                     cksum=31294,
                     hop=255,
                     flag_m=True,
@@ -86,7 +86,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::1"),
             },
             "_results": {
-                "message": Icmp6NdRouterAdvertisementMessage(
+                "message": Icmp6NdMessageRouterAdvertisement(
                     cksum=52492,
                     hop=64,
                     flag_m=False,
@@ -114,7 +114,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("2001:db8::1"),
             },
             "_results": {
-                "message": Icmp6NdRouterAdvertisementMessage(
+                "message": Icmp6NdMessageRouterAdvertisement(
                     cksum=43910,
                     hop=22,
                     flag_m=True,

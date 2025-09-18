@@ -41,8 +41,8 @@ from testslide import TestCase
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
     Icmp6Assembler,
+    Icmp6NdMessageNeighborSolicitation,
     Icmp6NdNeighborSolicitationCode,
-    Icmp6NdNeighborSolicitationMessage,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6Type,
@@ -65,7 +65,7 @@ from net_proto import (
                     "len 24 (24+0)"
                 ),
                 "__repr__": (
-                    "Icmp6NdNeighborSolicitationMessage(code=<Icmp6NdNeighborSolicitationCode"
+                    "Icmp6NdMessageNeighborSolicitation(code=<Icmp6NdNeighborSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), target_address"
                     "=Ip6Address('2001:db8::1'))"
                 ),
@@ -96,7 +96,7 @@ from net_proto import (
                     "00:11:22:33:44:55], len 32 (24+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdNeighborSolicitationMessage(code=<Icmp6NdNeighborSolicitationCode"
+                    "Icmp6NdMessageNeighborSolicitation(code=<Icmp6NdNeighborSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
                     "slla=MacAddress('00:11:22:33:44:55'))]), target_address=Ip6Address("
                     "'2001:db8::2'))"
@@ -132,7 +132,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdNeighborSolicitationMessage(
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
                 *self._args, **self._kwargs
             )
         )
@@ -238,7 +238,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborSolicitationMessage,
+                Icmp6NdMessageNeighborSolicitation,
                 self._icmp6__assembler.message,
             ).target_address,
             self._results["target_address"],
@@ -254,7 +254,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborSolicitationMessage,
+                Icmp6NdMessageNeighborSolicitation,
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],

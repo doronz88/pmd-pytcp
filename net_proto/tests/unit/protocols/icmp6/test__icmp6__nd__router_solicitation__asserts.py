@@ -41,9 +41,9 @@ from testslide import TestCase
 from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdRouterSolicitationCode,
-    Icmp6NdRouterSolicitationMessage,
 )
 
 
@@ -77,7 +77,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6NdRouterSolicitationCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterSolicitationMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -99,7 +99,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterSolicitationMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -121,7 +121,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterSolicitationMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -142,7 +142,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterSolicitationMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -167,7 +167,7 @@ class TestIcmp6NdRouterSolicitationParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterSolicitationMessage.from_buffer(
+            Icmp6NdMessageRouterSolicitation.from_buffer(
                 b"\xff\x00\x00\xff\x00\x00\x00\x00"
             )
 

@@ -41,10 +41,10 @@ from testslide import TestCase
 from net_addr import MacAddress
 from net_proto import (
     Icmp6Assembler,
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdRouterSolicitationCode,
-    Icmp6NdRouterSolicitationMessage,
     Icmp6Type,
 )
 
@@ -61,7 +61,7 @@ from net_proto import (
                 "__len__": 8,
                 "__str__": "ICMPv6 ND Router Solicitation, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6NdRouterSolicitationMessage(code=<Icmp6NdRouterSolicitationCode"
+                    "Icmp6NdMessageRouterSolicitation(code=<Icmp6NdRouterSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]))"
                 ),
                 "__bytes__": b"\x85\x00\x7a\xff\x00\x00\x00\x00",
@@ -86,7 +86,7 @@ from net_proto import (
                     "len 16 (8+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdRouterSolicitationMessage(code=<Icmp6NdRouterSolicitationCode"
+                    "Icmp6NdMessageRouterSolicitation(code=<Icmp6NdRouterSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
                     "slla=MacAddress('00:11:22:33:44:55'))]))"
                 ),
@@ -117,7 +117,7 @@ class TestIcmp6NdRouterSolicitationAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdRouterSolicitationMessage(
+            icmp6__message=Icmp6NdMessageRouterSolicitation(
                 *self._args, **self._kwargs
             )
         )
@@ -223,7 +223,7 @@ class TestIcmp6NdRouterSolicitationAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdRouterSolicitationMessage,
+                Icmp6NdMessageRouterSolicitation,
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],

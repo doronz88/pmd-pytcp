@@ -41,8 +41,8 @@ from net_addr import Ip6Address
 from net_proto import (
     UINT_16__MAX,
     UINT_16__MIN,
+    Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
-    Icmp6NdNeighborAdvertisementMessage,
     Icmp6NdOptions,
 )
 
@@ -78,7 +78,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6NdNeighborAdvertisementCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -100,7 +100,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -122,7 +122,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -143,7 +143,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["flag_r"] = value = "not an boolean"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -161,7 +161,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["flag_s"] = value = "not an boolean"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -179,7 +179,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["flag_o"] = value = "not an boolean"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -197,7 +197,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["target_address"] = value = "not an Ip6Address"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -218,7 +218,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -243,7 +243,7 @@ class TestIcmp6NdNeighborAdvertisementParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdNeighborAdvertisementMessage.from_buffer(
+            Icmp6NdMessageNeighborAdvertisement.from_buffer(
                 b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00",
             )

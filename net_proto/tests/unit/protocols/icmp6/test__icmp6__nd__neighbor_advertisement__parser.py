@@ -39,7 +39,7 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
-    Icmp6NdNeighborAdvertisementMessage,
+    Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6Parser,
@@ -62,7 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::1"),
             },
             "_results": {
-                "message": Icmp6NdNeighborAdvertisementMessage(
+                "message": Icmp6NdMessageNeighborAdvertisement(
                     cksum=43588,
                     flag_r=True,
                     flag_s=False,
@@ -84,7 +84,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::1"),
             },
             "_results": {
-                "message": Icmp6NdNeighborAdvertisementMessage(
+                "message": Icmp6NdMessageNeighborAdvertisement(
                     cksum=41641,
                     flag_r=False,
                     flag_s=True,

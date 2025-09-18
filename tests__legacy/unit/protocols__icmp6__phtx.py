@@ -54,7 +54,7 @@ from net_proto import (
     Icmp6MessageEchoRequest,
 )
 from net_proto import (
-    Icmp6NdRouterSolicitationMessage,
+    Icmp6NdMessageRouterSolicitation,
 )
 from net_proto import (
     Icmp6NdOptions,
@@ -183,7 +183,7 @@ class TestIcmp6Phtx(TestCase):
             ip6__src=self.mns.stack_ip6_host.address,
             ip6__dst=self.mns.ip6_multicast_all_routers,
             ip6__hop=255,
-            icmp6__message=Icmp6NdRouterSolicitationMessage(
+            icmp6__message=Icmp6NdMessageRouterSolicitation(
                 options=Icmp6NdOptions(
                     Icmp6NdOptionSlla(slla=self.mns.stack_mac_address)
                 ),

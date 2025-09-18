@@ -44,10 +44,10 @@ from net_proto import (
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
     Icmp6Mld2ReportMessage,
-    Icmp6NdNeighborSolicitationMessage,
+    Icmp6NdMessageNeighborSolicitation,
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
-    Icmp6NdRouterSolicitationMessage,
     Icmp6Type,
     Tracker,
 )
@@ -163,7 +163,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__src=Ip6Address(),
             ip6__dst=ip6_unicast_candidate.solicited_node_multicast,
             ip6__hop=255,
-            icmp6__message=Icmp6NdNeighborSolicitationMessage(
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
                 target_address=ip6_unicast_candidate,
                 options=Icmp6NdOptions(),  # ND DAD message has no options.
             ),
@@ -237,7 +237,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__src=self.ip6_unicast[0],
             ip6__dst=Ip6Address("ff02::2"),
             ip6__hop=255,
-            icmp6__message=Icmp6NdRouterSolicitationMessage(
+            icmp6__message=Icmp6NdMessageRouterSolicitation(
                 options=Icmp6NdOptions(
                     Icmp6NdOptionSlla(slla=self._mac_unicast),
                 ),
@@ -273,7 +273,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__src=ip6__src,
             ip6__dst=icmp6_ns_target_address.solicited_node_multicast,
             ip6__hop=255,
-            icmp6__message=Icmp6NdNeighborSolicitationMessage(
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
                 target_address=icmp6_ns_target_address,
                 options=Icmp6NdOptions(
                     Icmp6NdOptionSlla(slla=self._mac_unicast)

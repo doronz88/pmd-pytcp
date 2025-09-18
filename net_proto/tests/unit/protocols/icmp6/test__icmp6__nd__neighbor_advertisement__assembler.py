@@ -42,8 +42,8 @@ from testslide import TestCase
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
     Icmp6Assembler,
+    Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
-    Icmp6NdNeighborAdvertisementMessage,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6Type,
@@ -69,7 +69,7 @@ from net_proto import (
                     "len 24 (24+0)"
                 ),
                 "__repr__": (
-                    "Icmp6NdNeighborAdvertisementMessage(code=<Icmp6NdNeighborAdvertisementCode"
+                    "Icmp6NdMessageNeighborAdvertisement(code=<Icmp6NdNeighborAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), flag_r=True, "
                     "flag_s=False, flag_o=True, target_address=Ip6Address('2001:db8::1'))"
                 ),
@@ -106,7 +106,7 @@ from net_proto import (
                     "[slla 00:11:22:33:44:55], len 32 (24+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdNeighborAdvertisementMessage(code=<Icmp6NdNeighborAdvertisementCode"
+                    "Icmp6NdMessageNeighborAdvertisement(code=<Icmp6NdNeighborAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
                     "slla=MacAddress('00:11:22:33:44:55'))]), flag_r=False, flag_s=True, "
                     "flag_o=False, target_address=Ip6Address('2001:db8::2'))"
@@ -145,7 +145,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdNeighborAdvertisementMessage(
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
                 *self._args, **self._kwargs
             )
         )
@@ -251,7 +251,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborAdvertisementMessage,
+                Icmp6NdMessageNeighborAdvertisement,
                 self._icmp6__assembler.message,
             ).flag_r,
             self._results["flag_r"],
@@ -267,7 +267,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborAdvertisementMessage,
+                Icmp6NdMessageNeighborAdvertisement,
                 self._icmp6__assembler.message,
             ).flag_s,
             self._results["flag_s"],
@@ -283,7 +283,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborAdvertisementMessage,
+                Icmp6NdMessageNeighborAdvertisement,
                 self._icmp6__assembler.message,
             ).flag_o,
             self._results["flag_o"],
@@ -299,7 +299,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborAdvertisementMessage,
+                Icmp6NdMessageNeighborAdvertisement,
                 self._icmp6__assembler.message,
             ).target_address,
             self._results["target_address"],
@@ -315,7 +315,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
 
         self.assertEqual(
             cast(
-                Icmp6NdNeighborAdvertisementMessage,
+                Icmp6NdMessageNeighborAdvertisement,
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],

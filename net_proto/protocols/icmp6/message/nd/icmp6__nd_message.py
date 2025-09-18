@@ -27,7 +27,7 @@
 """
 This module contains the ICMPv6 ND (Neighbor Discovery) messages support class.
 
-net_proto/protocols/icmp6/message/nd/icmp6_nd_message.py
+net_proto/protocols/icmp6/message/nd/icmp6__nd_message.py
 
 ver 3.0.4
 """

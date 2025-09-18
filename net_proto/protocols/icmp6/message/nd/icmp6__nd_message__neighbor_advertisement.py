@@ -25,9 +25,9 @@
 
 
 """
-This module contains ICMPv6 ND Router Advertisement message support class.
+Thisodule contains the ICMPv6 ND Neighbor Advertisement message support class.
 
-net_proto/protocols/icmp6/message/nd/icmp6_nd_message__router_advertisement.py
+net_proto/protocols/icmp6/message/nd/icmp6__nd_message__neighbor_advertisement.py
 
 ver 3.0.4
 """
@@ -39,7 +39,7 @@ from typing import Self, override
 
 from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.int_checks import is_uint8, is_uint16, is_uint32
+from net_proto.lib.int_checks import is_uint16
 from net_proto.protocols.icmp6.icmp6__errors import (
     Icmp6IntegrityError,
     Icmp6SanityError,
@@ -48,71 +48,75 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Type,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6_nd_message import Icmp6NdMessage
+from net_proto.protocols.icmp6.message.nd.icmp6__nd_message import (
+    Icmp6NdMessage,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6_nd_options import (
     Icmp6NdOptions,
 )
 
-# The ICMPv6 ND Router Advertisement message (134/0) [RFC4861].
+# The ICMPv6 ND Neighbor Advertisement message (136/0) [RFC4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |          Checksum             |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |   Hop Limit   |M|O|H|PRF|P|0|0|        Router Lifetime        |
+# |R|S|O|                     Reserved                            |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                          Reachable Time                       |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                           Retrans Timer                       |
+# |                                                               >
+# +                                                               +
+# >                                                               >
+# +                       Target Address                          +
+# >                                                               >
+# +                                                               +
+# >                                                               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # ~                                                               ~
-# ~                            Options                            ~
+# ~                          Options                              ~
 # ~                                                               ~
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-ICMP6__ND__ROUTER_ADVERTISEMENT__LEN = 16
-ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT = "! BBH BBH L L"
+ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN = 24
+ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT = "! BBH L 16s"
 
 
-class Icmp6NdRouterAdvertisementCode(Icmp6Code):
+class Icmp6NdNeighborAdvertisementCode(Icmp6Code):
     """
-    The ICMPv6 ND Router Advertisement message 'code' values.
+    The ICMPv6 ND Neighbor Advertisement message 'code' values.
     """
 
     DEFAULT = 0
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
+class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
     """
-    The ICMPv6 ND Router Advertisement message.
+    The ICMPv6 ND Neighbor Advertisement message class.
     """
 
     type: Icmp6Type = field(
         repr=False,
         init=False,
-        default=Icmp6Type.ND__ROUTER_ADVERTISEMENT,
+        default=Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
     )
-    code: Icmp6NdRouterAdvertisementCode = (
-        Icmp6NdRouterAdvertisementCode.DEFAULT
+    code: Icmp6NdNeighborAdvertisementCode = (
+        Icmp6NdNeighborAdvertisementCode.DEFAULT
     )
     cksum: int = 0
 
-    hop: int
-    flag_m: bool = False
+    flag_r: bool = False
+    flag_s: bool = False
     flag_o: bool = False
-    router_lifetime: int
-    reachable_time: int
-    retrans_timer: int
+    target_address: Ip6Address
     options: Icmp6NdOptions
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Router Advertisement message fields.
+        Validate the ICMPv6 ND Neighbor Advertisement message fields.
         """
 
-        assert isinstance(self.code, Icmp6NdRouterAdvertisementCode), (
-            f"The 'code' field must be an Icmp6NdRouterAdvertisementCode. "
+        assert isinstance(self.code, Icmp6NdNeighborAdvertisementCode), (
+            f"The 'code' field must be an Icmp6NdNeighborAdvertisementCode. "
             f"Got: {type(self.code)!r}"
         )
 
@@ -121,14 +125,14 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             f"Got: {self.cksum!r}"
         )
 
-        assert is_uint8(self.hop), (
-            f"The 'hop' field must be a 8-bit unsigned integer. "
-            f"Got: {self.hop!r}"
+        assert isinstance(self.flag_r, bool), (
+            f"The 'flag_r' field must be a boolean. "
+            f"Got: {type(self.flag_r)!r}"
         )
 
-        assert isinstance(self.flag_m, bool), (
-            f"The 'flag_m' field must be a boolean. "
-            f"Got: {type(self.flag_m)!r}"
+        assert isinstance(self.flag_s, bool), (
+            f"The 'flag_s' field must be a boolean. "
+            f"Got: {type(self.flag_s)!r}"
         )
 
         assert isinstance(self.flag_o, bool), (
@@ -136,19 +140,9 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
             f"Got: {type(self.flag_o)!r}"
         )
 
-        assert is_uint16(self.router_lifetime), (
-            f"The 'router_lifetime' field must be a 16-bit unsigned integer. "
-            f"Got: {self.router_lifetime!r}"
-        )
-
-        assert is_uint32(self.reachable_time), (
-            f"The 'reachable_time' field must be a 32-bit unsigned integer. "
-            f"Got: {self.reachable_time!r}"
-        )
-
-        assert is_uint32(self.retrans_timer), (
-            f"The 'retrans_timer' field must be a 32-bit unsigned integer. "
-            f"Got: {self.retrans_timer!r}"
+        assert isinstance(self.target_address, Ip6Address), (
+            f"The 'target_address' field must be an Ip6Address. "
+            f"Got: {type(self.target_address)!r}"
         )
 
         assert isinstance(self.options, Icmp6NdOptions), (
@@ -159,59 +153,59 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
     @override
     def __len__(self) -> int:
         """
-        Get the ICMPv6 ND Router Advertisement message length.
+        Get the ICMPv6 ND Neighbor Advertisement message length.
         """
 
-        return ICMP6__ND__ROUTER_ADVERTISEMENT__LEN + len(self.options)
+        return ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN + len(self.options)
 
     @override
     def __str__(self) -> str:
         """
-        Get the ICMPv6 ND Router Advertisement message log string.
+        Get the ICMPv6 ND Neighbor Advertisement message log string.
         """
 
         return (
-            f"ICMPv6 ND Router Advertisement, hop {self.hop}, flags "
-            f"{'M' if self.flag_m else '-'}{'O' if self.flag_o else '-'}, "
-            f"rlft {self.router_lifetime}, reacht {self.reachable_time}, "
-            f"retrt {self.retrans_timer}, "
+            "ICMPv6 ND Neighbor Advertisement, flags "
+            f"{'R' if self.flag_r else '-'}"
+            f"{'S' if self.flag_s else '-'}"
+            f"{'O' if self.flag_o else '-'}, "
+            f"target {self.target_address}, "
             f"{f'opts [{self.options}], ' if self.options else ''}"
-            f"len {len(self)} ({ICMP6__ND__ROUTER_ADVERTISEMENT__LEN}+"
+            f"len {len(self)} ({ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN}+"
             f"{len(self.options)})"
         )
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Router Advertisement message as memoryview.
+        Get the ICMPv6 ND Neighbor Advertisement message as memoryview.
         """
 
         buffer = self._pack_header(len(self))
-        buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:] = bytearray(self.options)
+        buffer[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:] = bytearray(
+            self.options
+        )
 
         return memoryview(buffer)
 
     def _pack_header(
         self,
-        buffer_len: int = ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+        buffer_len: int = ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
         /,
     ) -> bytearray:
         """
-        Get the ICMPv6 ND Router Advertisement message as bytes.
+        Get the ICMPv6 ND Neighbor Advertisement message as bytes.
         """
 
         struct.pack_into(
-            ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT,
-            buffer := bytearray(ICMP6__ND__ROUTER_ADVERTISEMENT__LEN),
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
             0,
-            self.hop,
-            (self.flag_m << 7) | (self.flag_o << 6),
-            self.router_lifetime,
-            self.reachable_time,
-            self.retrans_timer,
+            (self.flag_r << 31) | (self.flag_s << 30) | (self.flag_o << 29),
+            bytes(self.target_address),
         )
 
         return buffer
@@ -221,27 +215,37 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
         self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
     ) -> None:
         """
-        Validate the ICMPv6 ND Router Advertisement message sanity after
+        Validate the ICMPv6 ND Neighbor Advertisement message sanity after
         parsing it.
         """
 
         if not (ip6__hop == 255):
             raise Icmp6SanityError(
-                "ND Router Advertisement - [RFC 4861] The 'ip6__hop' field "
+                "ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field "
                 f"must be 255. Got: {ip6__hop!r}",
             )
 
-        if not (ip6__src.is_link_local):
+        if not (ip6__src.is_unicast):
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address "
-                f"must be link-local. Got: {ip6__src!r}",
+                "ND Neighbor Advertisement - [RFC 4861] The 'ip6__src' address "
+                f"must be unicast. Got: {ip6__src!r}",
             )
 
-        if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
-            raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address "
-                f"must be unicast or all-nodes multicast. Got: {ip6__dst!r}",
-            )
+        if self.flag_s is True:
+            if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
+                raise Icmp6SanityError(
+                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is "
+                    "set then 'ip6__dst' address must be either unicast or all-nodes "
+                    f"multicast. Got: {ip6__dst!r}",
+                )
+
+        if self.flag_s is False:
+            if not (ip6__dst.is_multicast__all_nodes):
+                raise Icmp6SanityError(
+                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is not "
+                    "set then 'ip6__dst' address must be all-nodes multicast address. "
+                    f"Got: {ip6__dst!r}",
+                )
 
         # TODO: Enforce proper option presence.
 
@@ -249,70 +253,59 @@ class Icmp6NdRouterAdvertisementMessage(Icmp6NdMessage):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 ND Router Advertisement message
+        Validate integrity of the ICMPv6 ND Neighbor Advertisement message
         before parsing it.
         """
 
         if not (
-            ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)
         ):
             raise Icmp6IntegrityError(
-                "The condition 'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen "
-                f"<= len(frame)' must be met. Got: {ICMP6__ND__ROUTER_ADVERTISEMENT__LEN=}, "
+                "The condition 'ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen "
+                f"<= len(frame)' must be met. Got: {ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN=}, "
                 f"{ip6__dlen=}, {len(frame)=}"
             )
 
         Icmp6NdOptions.validate_integrity(
             frame=frame,
-            offset=ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+            offset=ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
         )
 
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Router Advertisement message from buffer.
+        Initialize the ICMPv6 ND Neighbor Advertisement message from buffer.
         """
 
-        (
-            type,
-            code,
-            cksum,
-            hop,
-            flags,
-            router_lifetime,
-            reachable_time,
-            retrans_timer,
-        ) = struct.unpack(
-            ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT,
-            buffer[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
+        type, code, cksum, flags, target_address = struct.unpack(
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
+            buffer[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
         )
 
         assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT
+            valid_type := Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT
         ), (
             f"The 'type' field must be {valid_type!r}. "
             f"Got: {received_type!r}"
         )
 
         return cls(
-            code=Icmp6NdRouterAdvertisementCode(code),
+            code=Icmp6NdNeighborAdvertisementCode(code),
             cksum=cksum,
-            hop=hop,
-            flag_m=bool(flags & 0b10000000),
-            flag_o=bool(flags & 0b01000000),
-            router_lifetime=router_lifetime,
-            reachable_time=reachable_time,
-            retrans_timer=retrans_timer,
+            flag_r=bool(flags & 0b10000000_00000000_00000000_00000000),
+            flag_s=bool(flags & 0b01000000_00000000_00000000_00000000),
+            flag_o=bool(flags & 0b00100000_00000000_00000000_00000000),
+            target_address=Ip6Address(target_address),
             options=Icmp6NdOptions.from_buffer(
-                buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]
+                buffer[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:]
             ),
         )
 
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv6 ND Router Advertisement message into the buffer list.
+        Assemble the ICMPv6 ND Neighbor Advertisement message into the buffer list.
         """
 
         buffers.append(self._pack_header())

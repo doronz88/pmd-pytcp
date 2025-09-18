@@ -39,9 +39,9 @@ from typing import Any
 from testslide import TestCase
 
 from net_proto import (
+    Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOptions,
     Icmp6NdRouterAdvertisementCode,
-    Icmp6NdRouterAdvertisementMessage,
 )
 from net_proto.lib.int_checks import (
     UINT_8__MAX,
@@ -89,7 +89,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6NdRouterAdvertisementCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -111,7 +111,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -133,7 +133,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -155,7 +155,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["hop"] = value = UINT_8__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -177,7 +177,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["hop"] = value = UINT_8__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -198,7 +198,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["flag_m"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -217,7 +217,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["router_lifetime"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -239,7 +239,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["router_lifetime"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -261,7 +261,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["reachable_time"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -283,7 +283,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["reachable_time"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -305,7 +305,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["retrans_timer"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -327,7 +327,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["retrans_timer"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -348,7 +348,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage(*self._args, **self._kwargs)
+            Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -373,7 +373,7 @@ class TestIcmp6NdRouterAdvertisementParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdRouterAdvertisementMessage.from_buffer(
+            Icmp6NdMessageRouterAdvertisement.from_buffer(
                 b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             )
 

@@ -44,12 +44,12 @@ from net_proto import (
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
-    Icmp6NdNeighborAdvertisementMessage,
-    Icmp6NdNeighborSolicitationMessage,
+    Icmp6NdMessageNeighborAdvertisement,
+    Icmp6NdMessageNeighborSolicitation,
+    Icmp6NdMessageRouterAdvertisement,
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdOptionTlla,
-    Icmp6NdRouterAdvertisementMessage,
-    Icmp6NdRouterSolicitationMessage,
     Icmp6Parser,
     Icmp6Type,
     IpProto,
@@ -286,7 +286,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdRouterSolicitationMessage
+            packet_rx.icmp6.message, Icmp6NdMessageRouterSolicitation
         )
 
         self._packet_stats_rx.inc("icmp6__nd_router_solicitation")
@@ -304,7 +304,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdRouterAdvertisementMessage
+            packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement
         )
 
         self._packet_stats_rx.inc("icmp6__nd_router_advertisement")
@@ -328,7 +328,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdNeighborSolicitationMessage
+            packet_rx.icmp6.message, Icmp6NdMessageNeighborSolicitation
         )
 
         self._packet_stats_rx.inc("icmp6__nd_neighbor_solicitation")
@@ -385,7 +385,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 Ip6Address("ff02::1") if ip6_nd_dad else packet_rx.ip6.src
             ),  # Use ff02::1 destination address when responding to DAD request.
             ip6__hop=255,
-            icmp6__message=Icmp6NdNeighborAdvertisementMessage(
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
                 flag_s=not ip6_nd_dad,  # No S flag when responding to DAD request.
                 flag_o=ip6_nd_dad,  # The O flag when responding to DAD request (not necessary but Linux uses it).
                 target_address=packet_rx.icmp6.message.target_address,
@@ -405,7 +405,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdNeighborAdvertisementMessage
+            packet_rx.icmp6.message, Icmp6NdMessageNeighborAdvertisement
         )
 
         self._packet_stats_rx.inc("icmp6__nd_neighbor_advertisement")

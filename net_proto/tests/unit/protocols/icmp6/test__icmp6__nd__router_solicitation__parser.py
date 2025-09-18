@@ -39,9 +39,9 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
+    Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
-    Icmp6NdRouterSolicitationMessage,
     Icmp6Parser,
     PacketRx,
 )
@@ -59,7 +59,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::2"),
             },
             "_results": {
-                "message": Icmp6NdRouterSolicitationMessage(
+                "message": Icmp6NdMessageRouterSolicitation(
                     cksum=31487,
                     options=Icmp6NdOptions(),
                 ),
@@ -76,7 +76,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::2"),
             },
             "_results": {
-                "message": Icmp6NdRouterSolicitationMessage(
+                "message": Icmp6NdMessageRouterSolicitation(
                     cksum=4965,
                     options=Icmp6NdOptions(
                         Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55")),
