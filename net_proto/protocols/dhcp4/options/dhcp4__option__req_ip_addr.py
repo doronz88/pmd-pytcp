@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Server Identifier option support code.
+This module contains the DHCPv4 Requested Ip Address option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__server_id.py
+net_proto/protocols/dhcp4/options/dhcp4_option__req_ip_addr.py
 
 ver 3.0.4
 """
@@ -40,77 +40,77 @@ from typing import Self, override
 from net_addr.ip4_address import Ip4Address
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
     Dhcp4Option,
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Server Identifier option [RFC 2132].
+# The DHCPv4 Requested Ip Address option [RFC 2132].
 
 #                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#                                 |    Code = 54  |   Length = 4  |
+#                                 |    Code = 50  |   Length = 4  |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                       Server Identifier                       |
+# |                    Requested IP Address                       |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__SERVER_ID__LEN = 6
-DHCP4__OPTION__SERVER_ID__STRUCT = "! BB 4s"
+DHCP4__OPTION__REQ_IP_ADDR__LEN = 6
+DHCP4__OPTION__REQ_IP_ADDR__STRUCT = "! BB 4s"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionServerId(Dhcp4Option):
+class Dhcp4OptionReqIpAddr(Dhcp4Option):
     """
-    The DHCPv4 Server Identifier option support class.
+    The DHCPv4 Request Ip Address option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.SERVER_ID,
+        default=Dhcp4OptionType.REQ_IP_ADDR,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__SERVER_ID__LEN,
+        default=DHCP4__OPTION__REQ_IP_ADDR__LEN,
     )
 
-    server_id: Ip4Address
+    req_ip_addr: Ip4Address
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Server Identifier option fields.
+        Validate the DHCPv4 Request Ip Address option fields.
         """
 
-        # Ensure that the 'server_id' field is an Ip4Address instance.
-        assert isinstance(self.server_id, Ip4Address), (
-            f"The 'server_id' field must be an Ip4Address. "
-            f"Got: {type(self.server_id)!r}"
+        # Ensure that the 'req_ip_addr' field is Ip4Address instance.
+        assert isinstance(self.req_ip_addr, Ip4Address), (
+            f"The 'req_ip_addr' field must be an Ip4Address. "
+            f"Got: {type(self.req_ip_addr)!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Server Identifier option log string.
+        Get the DHCPv4 Requested Ip Address option log string.
         """
 
-        return f"server_id {self.server_id}"
+        return f"req_ip_addr {self.req_ip_addr}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Server Identifier option as memoryview.
+        Get the DHCPv4 Requested Ip Address option as memoryview.
         """
 
         struct.pack_into(
-            DHCP4__OPTION__SERVER_ID__STRUCT,
+            DHCP4__OPTION__REQ_IP_ADDR__STRUCT,
             buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            bytes(self.server_id),
+            bytes(self.req_ip_addr),
         )
 
         return memoryview(buffer)
@@ -118,22 +118,22 @@ class Dhcp4OptionServerId(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
+        Validate the DHCPv4 Requested Ip Address option integrity before parsing it.
         """
 
-        # Raise integrity error if the option length value is incorrect.
+        # Raise integrity error when the option length value is incorrect.
         if (
             value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__SERVER_ID__LEN:
+        ) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Server Identifier option length value must be "
-                f"{DHCP4__OPTION__SERVER_ID__LEN} bytes. Got: {value!r}"
+                "The DHCPv4 Requested Ip Address option length value must be "
+                f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Server Identifier option length value must be less than or equal "
+                "The DHCPv4 Requested Ip Address option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -141,18 +141,18 @@ class Dhcp4OptionServerId(Dhcp4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 Subnet Mask option from buffer.
+        Initialize the DHCPv4 Requested Ip Address option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Subnet Mask option must "
+            f"The minimum length of the DHCPv4 Requested Ip Address option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Dhcp4OptionType.SERVER_ID), (
-            f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SERVER_ID!r}. "
+        assert (value := buffer[0]) == int(Dhcp4OptionType.REQ_IP_ADDR), (
+            f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 

@@ -44,7 +44,7 @@ from net_proto import (
     Dhcp4OptionUnknown,
 )
 from net_proto.lib.int_checks import UINT_8__MAX
-from net_proto.protocols.dhcp4.options.dhcp4_option import DHCP4__OPTION__LEN
+from net_proto.protocols.dhcp4.options.dhcp4__option import DHCP4__OPTION__LEN
 
 
 class TestDhcp4OptionUnknownAsserts(TestCase):

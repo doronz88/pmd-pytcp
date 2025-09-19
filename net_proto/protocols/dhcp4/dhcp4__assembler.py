@@ -44,7 +44,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4Header
-from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
+from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 
 
 class Dhcp4Assembler(Dhcp4, ProtoAssembler):

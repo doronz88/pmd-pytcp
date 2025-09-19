@@ -40,7 +40,7 @@ from net_proto.protocols.dhcp4.dhcp4__header import (
     Dhcp4Header,
     Dhcp4HeaderProperties,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_options import (
+from net_proto.protocols.dhcp4.options.dhcp4__options import (
     Dhcp4Options,
     Dhcp4OptionsProperties,
 )

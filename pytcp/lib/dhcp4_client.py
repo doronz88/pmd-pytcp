@@ -43,29 +43,29 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
-from net_proto.protocols.dhcp4.options.dhcp4_option import Dhcp4OptionType
-from net_proto.protocols.dhcp4.options.dhcp4_option__client_id import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4OptionType
+from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__end import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__end import (
     Dhcp4OptionEnd,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__host_name import (
     Dhcp4OptionHostName,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4OptionMessageType,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__param_req_list import (
     Dhcp4OptionParamReqList,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__server_id import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
     Dhcp4OptionServerId,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_options import Dhcp4Options
+from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 from pytcp.lib.logger import log
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 

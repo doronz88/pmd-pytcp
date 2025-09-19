@@ -43,43 +43,43 @@ from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__LEN
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     Dhcp4Option,
     Dhcp4OptionType,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__client_id import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__end import Dhcp4OptionEnd
-from net_proto.protocols.dhcp4.options.dhcp4_option__host_name import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__end import Dhcp4OptionEnd
+from net_proto.protocols.dhcp4.options.dhcp4__option__host_name import (
     Dhcp4OptionHostName,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__lease_time import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__lease_time import (
     Dhcp4OptionLeaseTime,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__message_type import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4OptionMessageType,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__pad import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
     DHCP4__OPTION__PAD__LEN,
     Dhcp4OptionPad,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__param_req_list import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__param_req_list import (
     Dhcp4OptionParamReqList,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__req_ip_addr import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__router import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__router import (
     Dhcp4OptionRouter,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__server_id import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
     Dhcp4OptionServerId,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__subnet_mask import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__subnet_mask import (
     Dhcp4OptionSubnetMask,
 )
-from net_proto.protocols.dhcp4.options.dhcp4_option__unknown import (
+from net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
     Dhcp4OptionUnknown,
 )
 from net_proto.protocols.ip4.ip4__defaults import IP4__MIN_MTU

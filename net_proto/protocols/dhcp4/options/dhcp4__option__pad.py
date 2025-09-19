@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 End option support code.
+This module contains the DHCPv4 Pad option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__end.py
+net_proto/protocols/dhcp4/options/dhcp4_option__pad.py
 
 ver 3.0.4
 """
@@ -37,57 +37,57 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     Dhcp4Option,
     Dhcp4OptionType,
 )
 
-# The DHCPv4 End (End of Option List) option [RFC 2132].
+# The DHCPv4 Pad option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+
 # |    Type = 0   |
 # +-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__END__LEN = 1
-DHCP4__OPTION__END__STRUCT = "! B"
+DHCP4__OPTION__PAD__LEN = 1
+DHCP4__OPTION__PAD__STRUCT = "! B"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Dhcp4OptionEnd(Dhcp4Option):
+class Dhcp4OptionPad(Dhcp4Option):
     """
-    The DHCPv4 End option support.
+    The DHCPv4 Pad option support.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.END,
+        default=Dhcp4OptionType.PAD,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__END__LEN,
+        default=DHCP4__OPTION__PAD__LEN,
     )
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 End option fields.
+        Validate the DHCPv4 Pad option fields.
         """
 
     @override
     def __str__(self) -> str:
         """
-        Get the the DHCPv4 End option log string.
+        Get the the DHCPv4 Pad option log string.
         """
 
-        return "end"
+        return "pad"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 End option as memoryview.
+        Get the DHCPv4 Pad option as memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))
@@ -96,18 +96,18 @@ class Dhcp4OptionEnd(Dhcp4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 End option from buffer.
+        Initialize the DHCPv4 Pad option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= DHCP4__OPTION__END__LEN, (
-            f"The minimum length of the DHCPv4 End option must be "
-            f"{DHCP4__OPTION__END__LEN} byte. Got: {value!r}"
+        assert (value := len(buffer)) >= DHCP4__OPTION__PAD__LEN, (
+            f"The minimum length of the DHCPv4 Pad option must be "
+            f"{DHCP4__OPTION__PAD__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Dhcp4OptionType.END), (
-            f"The DHCPv4 End option type must be {Dhcp4OptionType.END!r}. "
+        assert (value := buffer[0]) == int(Dhcp4OptionType.PAD), (
+            f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 

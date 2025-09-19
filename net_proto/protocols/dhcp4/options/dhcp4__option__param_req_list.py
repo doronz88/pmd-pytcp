@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Message Type option support code.
+This module contains the DHCPv4 Parameters Request List option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__message_type.py
+net_proto/protocols/dhcp4/options/dhcp4_option__param_req_list.py
 
 ver 3.0.4
 """
@@ -38,77 +38,89 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
     Dhcp4Option,
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Message Type option [RFC 2132].
+# The DHCPv4 Parameter Request List option [RFC 2132].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 1   |   Length = 1  |     Value     |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Code=55   |     Len=N     |  Option Code  |  Option Code  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |  Option Code  |  Option Code  | ...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
-DHCP4__OPTION__MESSAGE_TYPE__LEN = 3
-DHCP4__OPTION__MESSAGE_TYPE__STRUCT = "! BB B"
+DHCP4__OPTION__PARAM_REQ_LIST__STRUCT = "! BB"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Dhcp4OptionMessageType(Dhcp4Option):
+class Dhcp4OptionParamReqList(Dhcp4Option):
     """
-    The DHCPv4 Message Type option support class.
+    The DHCPv4 Parameter Request List option support class.
     """
 
     type: Dhcp4OptionType = field(
         repr=False,
         init=False,
-        default=Dhcp4OptionType.MESSAGE_TYPE,
+        default=Dhcp4OptionType.PARAM_REQ_LIST,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=DHCP4__OPTION__MESSAGE_TYPE__LEN,
     )
 
-    message_type: Dhcp4MessageType
+    param_req_list: list[Dhcp4OptionType]
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Message Type option fields.
+        Validate the DHCPv4 Parameter Request List option fields.
         """
 
-        # Ensure the 'message_type' field is Dhcp4MessageType.
-        assert isinstance(self.message_type, Dhcp4MessageType), (
-            f"The 'message_type' field must be a Dhcp4MessageType. "
-            f"Got: {type(self.message_type)!r}"
+        # Ensure that the 'param_req_list' field is a list.
+        assert isinstance(
+            self.param_req_list, list
+        ), f"The 'param_req_list' field must be a list. Got: {type(self.param_req_list)!r}"
+
+        # Ensure that each element of the 'param_req_list' field is a Dhcp4OptionType instance.
+        assert all(
+            isinstance(item, Dhcp4OptionType) for item in self.param_req_list
+        ), (
+            f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
+            f"Got: {[type(element) for element in self.param_req_list]!r}"
+        )
+
+        # Update the option 'len' field based on the length of the 'param_req_list' field.
+        object.__setattr__(
+            self, "len", DHCP4__OPTION__LEN + len(self.param_req_list)
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Message Type option log string.
+        Get the DHCPv4 Parameter Request List option log string.
         """
 
-        return f"message_type {self.message_type}"
+        return f"param_req_list {[param.name for param in self.param_req_list]}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Message Type option as memoryview.
+        Get the DHCPv4 Parameter Request List option as memoryview.
         """
 
         struct.pack_into(
-            DHCP4__OPTION__MESSAGE_TYPE__STRUCT,
+            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT
+            + f"{len(self.param_req_list)}s",
             buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            int(self.message_type),
+            bytes([int(option) for option in self.param_req_list]),
         )
 
         return memoryview(buffer)
@@ -116,22 +128,20 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Message Type option integrity before parsing it.
+        Validate the DHCPv4 Parameter Request List option integrity before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (
-            value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
+        if (value := DHCP4__OPTION__LEN + buffer[1]) < DHCP4__OPTION__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length value must be "
-                f"{DHCP4__OPTION__MESSAGE_TYPE__LEN} bytes. Got: {value!r}"
+                "The DHCPv4 Parameter Request List option length value must be "
+                f"at least {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Message Type option length value must be less than or equal "
+                "The DHCPv4 Parameter Request List option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -139,21 +149,26 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 Message Type option from buffer.
+        Initialize the DHCPv4 Parameter Request List option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Message Type option must "
+            f"The minimum length of the DHCPv4 Parameter Request List option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Dhcp4OptionType.MESSAGE_TYPE), (
-            f"The DHCPv4 Message Type option type must be {Dhcp4OptionType.MESSAGE_TYPE!r}. "
+        assert (value := buffer[0]) == int(Dhcp4OptionType.PARAM_REQ_LIST), (
+            f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        return cls(Dhcp4MessageType.from_int(buffer[2]))
+        return cls(
+            [
+                Dhcp4OptionType.from_int(option)
+                for option in buffer[2 : 2 + buffer[1]]
+            ]
+        )

@@ -25,9 +25,9 @@
 
 
 """
-This module contains the unknown DHCPv4 option support code.
+This module contains the DHCPv4 Server Identifier option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__unknown.py
+net_proto/protocols/dhcp4/options/dhcp4_option__server_id.py
 
 ver 3.0.4
 """
@@ -37,125 +37,125 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
+from net_addr.ip4_address import Ip4Address
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.int_checks import is_uint8
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
-    DHCP4__OPTION__STRUCT,
     Dhcp4Option,
     Dhcp4OptionType,
 )
 
+# The DHCPv4 Server Identifier option [RFC 2132].
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class Dhcp4OptionUnknown(Dhcp4Option):
+#                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 |    Code = 54  |   Length = 4  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                       Server Identifier                       |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+DHCP4__OPTION__SERVER_ID__LEN = 6
+DHCP4__OPTION__SERVER_ID__STRUCT = "! BB 4s"
+
+
+@dataclass(frozen=True, kw_only=False, slots=True)
+class Dhcp4OptionServerId(Dhcp4Option):
     """
-    The DHCPv4 unknown option support class.
+    The DHCPv4 Server Identifier option support class.
     """
 
     type: Dhcp4OptionType = field(
-        repr=True,
-        init=True,
-        default=Dhcp4OptionType.from_int(255),
+        repr=False,
+        init=False,
+        default=Dhcp4OptionType.SERVER_ID,
     )
     len: int = field(
-        repr=True,
+        repr=False,
         init=False,
+        default=DHCP4__OPTION__SERVER_ID__LEN,
     )
 
-    data: bytes
+    server_id: Ip4Address
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 unknown option fields.
+        Validate the DHCPv4 Server Identifier option fields.
         """
 
-        # Ensure the 'type' field is a valid Dhcp4OptionType enum member.
-        assert isinstance(self.type, Dhcp4OptionType), (
-            f"The 'type' field must be a Dhcp4OptionType. "
-            f"Got: {type(self.type)!r}"
-        )
-
-        # Ensure the 'type' field is not a known Dhcp4OptionType.
-        assert int(self.type) not in Dhcp4OptionType.get_known_values(), (
-            "The 'type' field must not be a known Dhcp4OptionType. "
-            f"Got: {self.type!r}"
-        )
-
-        # Update the option 'len' field based on the length of the 'data' field.
-        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
-
-        # Ensure the 'len' field is a valid 8-bit unsigned integer.
-        assert is_uint8(self.len - DHCP4__OPTION__LEN), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
+        # Ensure that the 'server_id' field is an Ip4Address instance.
+        assert isinstance(self.server_id, Ip4Address), (
+            f"The 'server_id' field must be an Ip4Address. "
+            f"Got: {type(self.server_id)!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the unknown DHCPv4 option log string.
+        Get the DHCPv4 Server Identifier option log string.
         """
 
-        return f"unk-{int(self.type)}-{self.len}"
+        return f"server_id {self.server_id}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown DHCPv4 option as memoryview.
+        Get the DHCPv4 Server Identifier option as memoryview.
         """
 
         struct.pack_into(
-            DHCP4__OPTION__STRUCT,
+            DHCP4__OPTION__SERVER_ID__STRUCT,
             buffer := bytearray(len(self)),
             0,
             int(self.type),
-            self.len,
+            self.len - DHCP4__OPTION__LEN,
+            bytes(self.server_id),
         )
-
-        buffer[DHCP4__OPTION__LEN:] = self.data
 
         return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown DHCPv4 option integrity before parsing it.
+        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
         """
+
+        # Raise integrity error if the option length value is incorrect.
+        if (
+            value := DHCP4__OPTION__LEN + buffer[1]
+        ) != DHCP4__OPTION__SERVER_ID__LEN:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Server Identifier option length value must be "
+                f"{DHCP4__OPTION__SERVER_ID__LEN} bytes. Got: {value!r}"
+            )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
-                "The unknown DHCPv4 option length value must be less than or equal to "
-                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
+                "The DHCPv4 Server Identifier option length value must be less than or equal "
+                f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown DHCPv4 option from buffer.
+        Initialize the DHCPv4 Subnet Mask option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the unknown DHCPv4 option must be "
-            f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the DHCPv4 Subnet Mask option must "
+            f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is not known.
-        assert (value := buffer[0]) not in Dhcp4OptionType.get_known_values(), (
-            f"The unknown DHCPv4 option type must not be known. "
+        # Ensure the option type is the expected value.
+        assert (value := buffer[0]) == int(Dhcp4OptionType.SERVER_ID), (
+            f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SERVER_ID!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
-        Dhcp4OptionUnknown._validate_integrity(buffer)
+        cls._validate_integrity(buffer)
 
-        return cls(
-            type=Dhcp4OptionType(buffer[0]),
-            data=bytes(
-                buffer[DHCP4__OPTION__LEN : DHCP4__OPTION__LEN + buffer[1]]
-            ),  # NOTE: Conversion: memoryview -> bytes
-        )
+        return cls(Ip4Address(buffer[2:6]))

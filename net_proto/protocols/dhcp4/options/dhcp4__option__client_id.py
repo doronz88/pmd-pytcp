@@ -39,7 +39,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
-from net_proto.protocols.dhcp4.options.dhcp4_option import (
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
     Dhcp4Option,
     Dhcp4OptionType,
