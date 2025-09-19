@@ -116,7 +116,7 @@ class TestIp6PacketParserOperation(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__ip6__header_parser__from_bytes(self) -> None:
+    def test__ip6_frag__parser(self) -> None:
         """
         Ensure the IPv6 Frag packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.

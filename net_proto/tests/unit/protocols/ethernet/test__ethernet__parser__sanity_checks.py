@@ -71,7 +71,7 @@ class TestEthernetParserSanityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ethernet__parser__from_bytes(self) -> None:
+    def test__ethernet__parser(self) -> None:
         """
         Ensure the Ethernet packet parser raises sanity errors on crazy packets.
         """

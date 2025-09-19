@@ -165,7 +165,7 @@ class TestIp4ParserIntegrityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ip4__parser__from_buffer(self) -> None:
+    def test__ip4__parser(self) -> None:
         """
         Ensure the IPv4 packet parser raises integrity error on malformed packets.
         """

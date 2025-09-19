@@ -170,7 +170,7 @@ class TestUdpParserIntegrityChecks__Ip6(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__udp__parser__from_bytes(self) -> None:
+    def test__udp__parser(self) -> None:
         """
         Ensure the UDP packet parser raises integrity error on malformed packets.
         """

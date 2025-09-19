@@ -68,7 +68,7 @@ class TestIp6FragParserIntegrityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__ip6_frag__parser__from_bytes(self) -> None:
+    def test__ip6_frag__parser(self) -> None:
         """
         Ensure the IPv6 Frag packet parser raises integrity error on malformed packets.
         """

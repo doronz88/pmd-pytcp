@@ -254,7 +254,7 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
     def test__icmp4__message__destination_unreachable__wrong_type(self) -> None:
         """
         Ensure the ICMPv4 Destination Unreachable message parser raises
-        an exception when the provided '_bytes' argument contains incorrect
+        an exception when the provided 'buffer' argument contains incorrect
         'type' field.
         """
 

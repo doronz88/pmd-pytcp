@@ -90,7 +90,7 @@ class TestEthernetHeaderParserOperation(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ethernet__parser__from_bytes(self) -> None:
+    def test__ethernet__parser(self) -> None:
         """
         Ensure the Ethernet packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.

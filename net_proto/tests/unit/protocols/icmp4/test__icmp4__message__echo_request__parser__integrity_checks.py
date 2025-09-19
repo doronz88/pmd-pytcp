@@ -117,7 +117,7 @@ class TestIcmp4MessageEchoRequestParserIntegrityChecks(TestCasePacketRxIp4):
 
     _packet_rx: PacketRx
 
-    def test__icmp4__message__echo_request__parser__from_bytes(self) -> None:
+    def test__icmp4__message__echo_request__parser(self) -> None:
         """
         Ensure the ICMPv4 Echo Request message parser raises integrity
         error on malformed packets.

@@ -161,7 +161,7 @@ class TestIp6PacketParserOperation(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ip6__header_parser__from_buffer(self) -> None:
+    def test__ip6__parser(self) -> None:
         """
         Ensure the IPv6 packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.

@@ -122,7 +122,7 @@ class TestUdpParserOperation__Ip4(TestCasePacketRxIp4):
 
     _packet_rx: PacketRx
 
-    def test__udp__parser__from_bytes(self) -> None:
+    def test__udp__parser(self) -> None:
         """
         Ensure the UDP packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.
@@ -165,7 +165,7 @@ class TestUdpParserOperation__Ip6(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__udp__parser__from_bytes(self) -> None:
+    def test__udp__parser(self) -> None:
         """
         Ensure the UDP packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.

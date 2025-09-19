@@ -131,7 +131,7 @@ class TestTcpParserSanityChecks__Ip4(TestCasePacketRxIp4):
 
     _packet_rx: PacketRx
 
-    def test__tcp__parser__from_bytes(self) -> None:
+    def test__tcp__parser(self) -> None:
         """
         Ensure the TCP packet parser raises sanity error on crazy packets.
         """
@@ -159,7 +159,7 @@ class TestTcpParserSanityChecks__Ip6(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__tcp__parser__from_bytes(self) -> None:
+    def test__tcp__parser(self) -> None:
         """
         Ensure the TCP packet parser raises sanity error on crazy packets.
         """

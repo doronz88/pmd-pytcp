@@ -79,7 +79,7 @@ class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
 
     _packet_rx: PacketRx
 
-    def test__icmp4__message__unknown__parser__from_bytes(self) -> None:
+    def test__icmp4__message__unknown__parser(self) -> None:
         """
         Ensure the ICMPv4 unknown message 'from_bytes()' method creates
         a proper message object.

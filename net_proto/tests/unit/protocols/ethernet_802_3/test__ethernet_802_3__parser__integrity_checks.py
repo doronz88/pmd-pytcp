@@ -107,7 +107,7 @@ class TestEthernet8023ParserIntegrityChecks(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ethernet_802_3__parser__from_bytes(self) -> None:
+    def test__ethernet_802_3__parser(self) -> None:
         """
         Ensure the Ethernet 802.3 packet parser raises integrity error on malformed
         packets.

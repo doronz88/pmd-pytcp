@@ -260,7 +260,7 @@ class TestIp4PacketParserOperation(TestCasePacketRx):
 
     _packet_rx: PacketRx
 
-    def test__ip4__header_parser__from_buffer(self) -> None:
+    def test__ip4__parser(self) -> None:
         """
         Ensure the IPv4 packet parser creates the proper header and payload
         objects and also updates the appropriate 'tx_packet' object fields.

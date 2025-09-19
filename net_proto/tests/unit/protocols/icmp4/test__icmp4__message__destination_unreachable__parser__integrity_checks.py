@@ -120,7 +120,7 @@ class TestIcmp4MessageDestinationUnreachableParserIntegrityChecks(
 
     _packet_rx: PacketRx
 
-    def test__icmp4__message__destination_unreachable__parser__from_bytes(
+    def test__icmp4__message__destination_unreachable__parser(
         self,
     ) -> None:
         """
