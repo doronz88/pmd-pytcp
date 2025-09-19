@@ -185,7 +185,7 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__destination_unreachable__parser__message(
+    def test__icmp6__message__destination_unreachable__parser(
         self,
     ) -> None:
         """

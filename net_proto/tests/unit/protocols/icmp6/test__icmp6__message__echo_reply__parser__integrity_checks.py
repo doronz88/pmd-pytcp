@@ -117,7 +117,7 @@ class TestIcmp6MessageEchoReplyParserIntegrityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__echo_reply__parser__from_bytes(self) -> None:
+    def test__icmp6__message__echo_reply__parser(self) -> None:
         """
         Ensure the ICMPv6 Echo Reply message parser raises integrity error
         on malformed packets.

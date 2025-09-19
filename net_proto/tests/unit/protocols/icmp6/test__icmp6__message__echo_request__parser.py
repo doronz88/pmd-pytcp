@@ -103,7 +103,7 @@ class TestIcmp6MessageEchoRequestParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__echo_request__parser__message(self) -> None:
+    def test__icmp6__message__echo_request__parser(self) -> None:
         """
         Ensure the ICMPv6 Echo Request message 'message()' method
         creates a proper message object.

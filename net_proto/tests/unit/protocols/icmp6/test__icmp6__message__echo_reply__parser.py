@@ -103,7 +103,7 @@ class TestIcmp6MessageEchoReplyParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__echo_reply__parser__from_bytes(self) -> None:
+    def test__icmp6__message__echo_reply__parser(self) -> None:
         """
         Ensure the ICMPv6 Echo Reply message 'from_bytes()' method
         creates a proper message object.

@@ -80,7 +80,7 @@ class TestIcmp6MessageUnknownParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__unknown__parser__from_bytes(self) -> None:
+    def test__icmp6__message__unknown__parser(self) -> None:
         """
         Ensure the ICMPv6 unknown message 'from_bytes()' method creates
         a proper message object.

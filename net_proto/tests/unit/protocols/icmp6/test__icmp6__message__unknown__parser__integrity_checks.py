@@ -104,7 +104,7 @@ class TestIcmp6MessageUnknownParserIntegrityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__unknown__parser__from_bytes(
+    def test__icmp6__message__unknown__parser(
         self,
     ) -> None:
         """

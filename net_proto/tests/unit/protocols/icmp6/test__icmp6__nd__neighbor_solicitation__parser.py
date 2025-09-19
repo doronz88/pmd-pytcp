@@ -104,7 +104,7 @@ class TestIcmp6MessageNdNeighborSolicitationParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__neighbor_solicitation__parser__from_bytes(
+    def test__icmp6__nd__neighbor_solicitation__parser(
         self,
     ) -> None:
         """

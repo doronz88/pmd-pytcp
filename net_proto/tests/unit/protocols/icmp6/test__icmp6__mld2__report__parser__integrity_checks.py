@@ -157,7 +157,7 @@ class TestIcmp6Mld2ReportParserIntegrityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__mld2__report__parser__from_bytes(
+    def test__icmp6__mld2__report__parser(
         self,
     ) -> None:
         """

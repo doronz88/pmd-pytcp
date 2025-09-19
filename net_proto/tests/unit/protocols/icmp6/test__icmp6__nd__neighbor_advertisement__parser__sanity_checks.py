@@ -223,7 +223,7 @@ class TestIcmp4NdNeighborAdvertisementParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__neighbor_advertisement__parser__from_bytes(
+    def test__icmp6__nd__neighbor_advertisement__parser(
         self,
     ) -> None:
         """

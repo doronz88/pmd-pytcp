@@ -124,7 +124,7 @@ class TestIcmp6NdRouterAdvertisementParserIntegrityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__router_advertisement__parser__from_bytes(
+    def test__icmp6__nd__router_advertisement__parser(
         self,
     ) -> None:
         """

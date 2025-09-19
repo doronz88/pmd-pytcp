@@ -177,7 +177,7 @@ class TestIcmp4NdRouterAdvertisementParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__router_advertisement__parser__from_bytes(self) -> None:
+    def test__icmp6__nd__router_advertisement__parser(self) -> None:
         """
         Ensure the ICMPv6 ND Router Advertisement parser raises sanity errors
         on crazy packets.

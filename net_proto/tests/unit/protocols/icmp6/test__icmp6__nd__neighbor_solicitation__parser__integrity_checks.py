@@ -129,7 +129,7 @@ class TestIcmp6NdNeighborSolicitationMessageParserIntegrityChecks(
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__nd__neighbor_solicitation__parser__from_bytes(
+    def test__icmp6__message__nd__neighbor_solicitation__parser(
         self,
     ) -> None:
         """

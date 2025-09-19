@@ -97,7 +97,7 @@ class TestIcmp6MessageNdRouterSolicitationParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__nd__router_solicitation__parser__from_bytes(
+    def test__icmp6__message__nd__router_solicitation__parser(
         self,
     ) -> None:
         """

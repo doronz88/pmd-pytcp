@@ -77,7 +77,7 @@ class TestIcmp4Mld2ReportParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__mld2__report__parser__from_bytes(self) -> None:
+    def test__icmp6__mld2__report__parser(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report parser raises sanity errors
         on crazy packets.
