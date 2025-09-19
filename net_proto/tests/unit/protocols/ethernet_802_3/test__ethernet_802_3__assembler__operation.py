@@ -47,6 +47,7 @@ from net_proto import (
     Ethernet8023Header,
     RawAssembler,
 )
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -245,4 +246,21 @@ class TestEthernet8023AssemblerOperation(TestCase):
         self.assertEqual(
             self._ethernet_802_3__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__ethernet_802_3__assembler__assemble(
+        self,
+    ) -> None:
+        """
+        Ensure the Ethernet 802.3 packet assembler 'assemble()' method returns
+        a correct value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ethernet_802_3__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

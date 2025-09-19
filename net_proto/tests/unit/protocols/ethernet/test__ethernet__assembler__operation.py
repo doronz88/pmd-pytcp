@@ -40,6 +40,7 @@ from testslide import TestCase
 
 from net_addr import MacAddress
 from net_proto import EthernetAssembler, EthernetHeader, EtherType, RawAssembler
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -230,4 +231,21 @@ class TestEthernetAssemblerOperation(TestCase):
         self.assertEqual(
             self._ethernet__assembler.payload,
             self._results["payload"],
+        )
+
+    def test__ethernet__assembler__assemble(
+        self,
+    ) -> None:
+        """
+        Ensure the Ethernet packet assembler 'assemble()' method returns
+        a correct value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._ethernet__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

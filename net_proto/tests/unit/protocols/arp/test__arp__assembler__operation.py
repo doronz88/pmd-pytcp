@@ -49,6 +49,7 @@ from net_proto import (
     EtherType,
     Tracker,
 )
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -290,6 +291,23 @@ class TestArpAssemblerPackets(TestCase):
         self.assertEqual(
             self._arp__assembler.header,
             self._results["header"],
+        )
+
+    def test__arp__assembler__assemble(
+        self,
+    ) -> None:
+        """
+        Ensure the Arp packet assembler 'assemble()' method returns
+        a correct value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._arp__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )
 
 
