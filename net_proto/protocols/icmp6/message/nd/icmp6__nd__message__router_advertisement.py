@@ -27,7 +27,7 @@
 """
 This module contains ICMPv6 ND Router Advertisement message support class.
 
-net_proto/protocols/icmp6/message/nd/icmp6__nd_message__router_advertisement.py
+net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_advertisement.py
 
 ver 3.0.4
 """
@@ -48,10 +48,10 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Type,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message import (
     Icmp6NdMessage,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_options import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
 

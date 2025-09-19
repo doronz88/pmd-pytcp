@@ -44,7 +44,7 @@ from net_proto import (
     Icmp6NdOptionUnknown,
 )
 from net_proto.lib.int_checks import UINT_8__MAX
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     ICMP6__ND__OPTION__LEN,
 )
 

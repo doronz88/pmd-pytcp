@@ -27,7 +27,7 @@
 """
 This module contains ICMPv6 Neighbor Discovery option support classes.
 
-net_proto/protocols/icmp6/message/nd/option/icmp6__nd_options.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd__options.py
 
 ver 3.0.4
 """
@@ -39,21 +39,21 @@ from net_addr import MacAddress
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__pi import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__slla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
     Icmp6NdOptionSlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__tlla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__tlla import (
     Icmp6NdOptionTlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__unknown import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__unknown import (
     Icmp6NdOptionUnknown,
 )
 

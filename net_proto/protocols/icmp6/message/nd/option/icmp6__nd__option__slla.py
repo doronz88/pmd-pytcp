@@ -27,7 +27,7 @@
 """
 This odule contains the ICMPv6 Slla (Source Link Layer Address) option support code.
 
-net_proto/protocols/icmp6/message/nd/option/icmp6__nd_option__slla.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__slla.py
 
 ver 3.0.4
 """
@@ -40,7 +40,7 @@ from typing import Self, override
 from net_addr import MacAddress
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     ICMP6__ND__OPTION__LEN,
     Icmp6NdOption,
     Icmp6NdOptionType,

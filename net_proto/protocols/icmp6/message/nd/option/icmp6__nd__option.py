@@ -25,9 +25,9 @@
 
 
 """
-This module contains the ICMPv6 ND (Neighbor Discovery) messages support class.
+This module contains the ICMPv6 ND option support code.
 
-net_proto/protocols/icmp6/message/nd/icmp6__nd_message.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option.py
 
 ver 3.0.4
 """
@@ -35,46 +35,24 @@ ver 3.0.4
 
 from dataclasses import dataclass
 
-from net_addr import MacAddress
-from net_proto.protocols.icmp6.message.icmp6__message import (
-    Icmp6Message,
-    Icmp6Type,
-)
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_options import (
-    Icmp6NdOptions,
-    NdPrefixInfo,
-)
+from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
+
+ICMP6__ND__OPTION__STRUCT = "! BB"
+ICMP6__ND__OPTION__LEN = 2
+
+
+class Icmp6NdOptionType(ProtoOptionType):
+    """
+    The ICMPv6 ND option 'type' values.
+    """
+
+    SLLA = 1
+    TLLA = 2
+    PI = 3
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6NdMessage(Icmp6Message):
+class Icmp6NdOption(ProtoOption):
     """
-    The ICMPv6 ND (Neighbor Discovery) message base.
+    ICMPv6 ND option.
     """
-
-    type: Icmp6Type
-    options: Icmp6NdOptions
-
-    @property
-    def option_slla(self) -> MacAddress | None:
-        """
-        Get the value of the ICMPv6 ND Slla option if present.
-        """
-
-        return self.options.slla
-
-    @property
-    def option_tlla(self) -> MacAddress | None:
-        """
-        Get the value of the ICMPv6 ND Tlla option if present.
-        """
-
-        return self.options.tlla
-
-    @property
-    def option_pi(self) -> list[NdPrefixInfo]:
-        """
-        Get the value of the ICMPv6 ND Pi option if present.
-        """
-
-        return self.options.pi

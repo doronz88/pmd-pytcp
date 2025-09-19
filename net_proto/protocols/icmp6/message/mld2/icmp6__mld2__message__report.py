@@ -27,7 +27,7 @@
 """
 This module contains the ICMPv6 MLDv2 Report message support class.
 
-net_proto/protocols/icmp6/message/mld2/icmp6_mld2_message__report.py
+net_proto/protocols/icmp6/message/mld2/icmp6__mld2_message__report.py
 
 ver 3.0.4
 """
@@ -49,7 +49,7 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Message,
     Icmp6Type,
 )
-from net_proto.protocols.icmp6.message.mld2.icmp6_mld2__multicast_address_record import (
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_record import (
     ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN,
     Icmp6Mld2MulticastAddressRecord,
 )

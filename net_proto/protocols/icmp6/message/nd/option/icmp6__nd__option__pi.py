@@ -27,7 +27,7 @@
 """
 This module contains the ICMPv6 Pi (Prefix Information) option support code.
 
-net_proto/protocols/icmp6/message/nd/option/icmp6__nd_option__pi.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__pi.py
 
 ver 3.0.4
 """
@@ -41,7 +41,7 @@ from net_addr import Ip6Address, Ip6Mask, Ip6Network
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint32
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     ICMP6__ND__OPTION__LEN,
     Icmp6NdOption,
     Icmp6NdOptionType,

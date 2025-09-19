@@ -25,9 +25,9 @@
 
 
 """
-This module contains the ICMPv6 Tlla (Target Link Layer Address) option support code.
+This module contains the unknown ICMPv6 option support code.
 
-net_proto/protocols/icmp6/message/nd/option/icmp6__nd_option__tlla.py
+net_proto/protocols/icmp6/options/icmp6__nd__option__unknown.py
 
 ver 3.0.4
 """
@@ -37,99 +37,103 @@ import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
-from net_addr import MacAddress
 from net_proto.lib.buffer import Buffer
+from net_proto.lib.int_checks import is_8_byte_alligned, is_uint8
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     ICMP6__ND__OPTION__LEN,
+    ICMP6__ND__OPTION__STRUCT,
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
 
-# The ICMPv6 ND Tlla (Target Link Layer Address) option [RFC4861].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 2   |     Length    |                               >
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
-# >                           MAC Address                         |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-ICMP6__ND__OPTION__TLLA__LEN = 8
-ICMP6__ND__OPTION__TLLA__STRUCT = "! BB 6s"
-
-
-@dataclass(frozen=True, kw_only=False, slots=True)
-class Icmp6NdOptionTlla(Icmp6NdOption):
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6NdOptionUnknown(Icmp6NdOption):
     """
-    The ICMPv6 ND Tlla option support.
+    The ICMPv6 ND unknown option support class.
     """
 
     type: Icmp6NdOptionType = field(
-        repr=False,
-        init=False,
-        default=Icmp6NdOptionType.TLLA,
+        repr=True,
+        init=True,
+        default=Icmp6NdOptionType.from_int(255),
     )
     len: int = field(
-        repr=False,
+        repr=True,
         init=False,
-        default=ICMP6__ND__OPTION__TLLA__LEN,
     )
 
-    tlla: MacAddress
+    data: bytes
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 ND Tlla option fields.
+        Validate the ICMPv6 unknown option fields.
         """
 
-        # Ensure the 'tlla' field is a MacAddress instance.
-        assert isinstance(
-            self.tlla, MacAddress
-        ), f"The 'tlla' field must be a MacAddress. Got: {type(self.tlla)!r}"
+        # Ensure the 'type' field is a valid Icmp6NdOptionType enum member.
+        assert isinstance(self.type, Icmp6NdOptionType), (
+            f"The 'type' field must be an Icmp6NdOptionType. "
+            f"Got: {type(self.type)!r}"
+        )
+
+        # Ensure the 'type' field is not a known Icmp6NdOptionType.
+        assert int(self.type) not in Icmp6NdOptionType.get_known_values(), (
+            "The 'type' field must not be a known Icmp6NdOptionType. "
+            f"Got: {self.type!r}"
+        )
+
+        # Update the option 'len' field based on the length of the 'data' field.
+        object.__setattr__(self, "len", ICMP6__ND__OPTION__LEN + len(self.data))
+
+        # Ensure the 'len' field is a valid 8-bit unsigned integer.
+        assert is_uint8(self.len), (
+            f"The 'len' field must be an 8-bit unsigned integer. "
+            f"Got: {self.len!r}"
+        )
+
+        # Ensure the 'len' field is 8-byte aligned.
+        assert is_8_byte_alligned(
+            self.len
+        ), f"The 'len' field must be 8-byte aligned. Got: {self.len!r}"
 
     @override
     def __str__(self) -> str:
         """
-        Get the ICMPv6 ND Tlla option log string.
+        Get the unknown ICMPv6 option log string.
         """
 
-        return f"tlla {self.tlla}"
+        return f"unk-{int(self.type)}-{self.len}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Tlla option as memoryview.
+        Get the unknown ICMPv6 option as memoryview.
         """
 
         struct.pack_into(
-            ICMP6__ND__OPTION__TLLA__STRUCT,
+            ICMP6__ND__OPTION__STRUCT,
             buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len >> 3,
-            bytes(self.tlla),
         )
+
+        buffer[ICMP6__ND__OPTION__LEN:] = self.data
 
         return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the integrity of the ICMPv6 ND Tlla option before parsing it.
+        Validate the unknown ICMPv6 option integrity before parsing it.
         """
-
-        # Raise integrity error when the option length value is incorrect.
-        if (value := buffer[1] << 3) != ICMP6__ND__OPTION__TLLA__LEN:
-            raise Icmp6IntegrityError(
-                f"The ICMPv6 ND Tlla option length value must be {ICMP6__ND__OPTION__TLLA__LEN} "
-                f"bytes. Got: {value!r}"
-            )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
-                "The ICMPv6 ND Tlla option length value must be less than or equal to "
+                "The unknown ICMPv6 ND option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -137,21 +141,26 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Tlla option from buffer.
+        Initialize the unknown ICMPv6 option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
-            f"The minimum length of the ICMPv6 ND Tlla option must be "
+            f"The minimum length of the unknown ICMPv6 ND option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Icmp6NdOptionType.TLLA), (
-            f"The ICMPv6 ND Tlla option type must be {Icmp6NdOptionType.TLLA!r}. "
+        # Ensure the option type is not known.
+        assert (
+            value := buffer[0]
+        ) not in Icmp6NdOptionType.get_known_values(), (
+            f"The unknown ICMPv6 ND option type must not be known. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionTlla._validate_integrity(buffer)
+        Icmp6NdOptionUnknown._validate_integrity(buffer)
 
-        return cls(tlla=MacAddress(buffer[2:8]))
+        return cls(
+            type=Icmp6NdOptionType(buffer[0]),
+            data=buffer[ICMP6__ND__OPTION__LEN : buffer[1] << 3],
+        )

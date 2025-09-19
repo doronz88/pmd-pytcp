@@ -213,52 +213,52 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
-from net_proto.protocols.icmp6.message.mld2.icmp6_mld2__multicast_address_record import (
-    Icmp6Mld2MulticastAddressRecord,
-    Icmp6Mld2MulticastAddressRecordType,
-)
-from net_proto.protocols.icmp6.message.mld2.icmp6_mld2_message__report import (
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
     ICMP6__MLD2__REPORT__LEN,
     Icmp6Mld2ReportCode,
     Icmp6Mld2ReportMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message import (
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_record import (
+    Icmp6Mld2MulticastAddressRecord,
+    Icmp6Mld2MulticastAddressRecordType,
+)
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message import (
     Icmp6NdMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertisement import (
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_solicitation import (
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdNeighborSolicitationCode,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertisement import (
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdRouterAdvertisementCode,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_solicitation import (
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdRouterSolicitationCode,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     ICMP6__ND__OPTION__LEN,
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__pi import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__slla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
     Icmp6NdOptionSlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__tlla import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__tlla import (
     Icmp6NdOptionTlla,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_option__unknown import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__unknown import (
     Icmp6NdOptionUnknown,
 )
-from net_proto.protocols.icmp6.message.nd.option.icmp6__nd_options import (
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
 from net_proto.protocols.ip4.ip4__assembler import (

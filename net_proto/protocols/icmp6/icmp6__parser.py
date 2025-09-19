@@ -56,19 +56,19 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
-from net_proto.protocols.icmp6.message.mld2.icmp6_mld2_message__report import (
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
     Icmp6Mld2ReportMessage,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertisement import (
     Icmp6NdMessageNeighborAdvertisement,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__neighbor_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_solicitation import (
     Icmp6NdMessageNeighborSolicitation,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_advertisement import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertisement import (
     Icmp6NdMessageRouterAdvertisement,
 )
-from net_proto.protocols.icmp6.message.nd.icmp6__nd_message__router_solicitation import (
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_solicitation import (
     Icmp6NdMessageRouterSolicitation,
 )
 
