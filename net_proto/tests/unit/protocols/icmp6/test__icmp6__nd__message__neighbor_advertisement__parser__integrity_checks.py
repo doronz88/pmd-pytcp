@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Neighbor Advertisement message parser
 integrity checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_addvertisement__parser__integrity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_advertisement__parser__integrity_checks.py
 
 ver 3.0.4
 """
@@ -115,7 +115,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6NdNeighborAdvertisementParserIntegrityChecks(
+class TestIcmp6NdMessageNeighborAdvertisementParserIntegrityChecks(
     TestCasePacketRxIp6
 ):
     """
@@ -129,7 +129,7 @@ class TestIcmp6NdNeighborAdvertisementParserIntegrityChecks(
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__neighbor_advertisement__parser(
+    def test__icmp6__nd__message__neighbor_advertisement__parser(
         self,
     ) -> None:
         """

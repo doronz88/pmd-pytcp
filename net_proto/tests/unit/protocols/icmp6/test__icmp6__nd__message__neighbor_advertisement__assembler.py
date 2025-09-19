@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Neighbor Advertisement message
 assembler.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_advertisement__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_advertisement__assembler.py
 
 ver 3.0.4
 """
@@ -129,7 +129,7 @@ from net_proto import (
         },
     ]
 )
-class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
+class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     """
     The ICMPv6 ND Neighbor Advertisement message assembler tests.
     """
@@ -150,7 +150,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             )
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__len(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__len(
         self,
     ) -> None:
         """
@@ -163,7 +163,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["__len__"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__str(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__str(
         self,
     ) -> None:
         """
@@ -176,7 +176,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["__str__"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__repr(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__repr(
         self,
     ) -> None:
         """
@@ -189,7 +189,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["__repr__"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__bytes(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__bytes(
         self,
     ) -> None:
         """
@@ -202,7 +202,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["__bytes__"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__type(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__type(
         self,
     ) -> None:
         """
@@ -215,7 +215,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["type"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__code(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__code(
         self,
     ) -> None:
         """
@@ -228,7 +228,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["code"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__cksum(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__cksum(
         self,
     ) -> None:
         """
@@ -241,7 +241,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["cksum"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__flag_r(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_r(
         self,
     ) -> None:
         """
@@ -257,7 +257,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["flag_r"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__flag_s(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_s(
         self,
     ) -> None:
         """
@@ -273,7 +273,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["flag_s"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__flag_o(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_o(
         self,
     ) -> None:
         """
@@ -289,7 +289,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["flag_o"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__target_address(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__target_address(
         self,
     ) -> None:
         """
@@ -305,7 +305,7 @@ class TestIcmp6NdNeighborAdvertisementAssembler(TestCase):
             self._results["target_address"],
         )
 
-    def test__icmp6__nd__neighbor_advertisement__assembler__options(
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__options(
         self,
     ) -> None:
         """

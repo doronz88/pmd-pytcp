@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 ND Neighbor Advertisement message parser.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_advertisement__parser.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_advertisement__parser.py
 
 ver 3.0.4
 """
@@ -110,7 +110,7 @@ class TestIcmp6NdNeighborAdvertisementParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__neighbor_advertisement__parser(
+    def test__icmp6__nd__message__neighbor_advertisement__parser(
         self,
     ) -> None:
         """

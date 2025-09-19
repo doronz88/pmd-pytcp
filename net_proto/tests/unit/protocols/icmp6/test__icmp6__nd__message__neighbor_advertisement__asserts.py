@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Neighbor Advertisement message assembler
 & parser argument asserts.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_advertisement__asserts.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_advertisement__asserts.py
 
 ver 3.0.4
 """
@@ -47,7 +47,7 @@ from net_proto import (
 )
 
 
-class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
+class TestIcmp6NdMessageNeighborAdvertisementAssemblerAsserts(TestCase):
     """
     The ICMPv6 ND Neighbor Advertisement message assembler & parser argument
     constructors assert tests.
@@ -67,7 +67,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             "options": Icmp6NdOptions(),
         }
 
-    def test__icmp6__nd__neighbor_advertisement__code__not_Icmp6NdNeighborAdvertisementCode(
+    def test__icmp6__nd__message__neighbor_advertisement__code__not_Icmp6NdNeighborAdvertisementCode(
         self,
     ) -> None:
         """
@@ -88,7 +88,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_advertisement__cksum__under_min(
+    def test__icmp6__nd__message__neighbor_advertisement__cksum__under_min(
         self,
     ) -> None:
         """
@@ -110,7 +110,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_advertisement__cksum__over_max(
+    def test__icmp6__nd__message__neighbor_advertisement__cksum__over_max(
         self,
     ) -> None:
         """
@@ -132,7 +132,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_advertisement__flag_r__not_boolean(
+    def test__icmp6__nd__message__neighbor_advertisement__flag_r__not_boolean(
         self,
     ) -> None:
         """
@@ -150,7 +150,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             f"The 'flag_r' field must be a boolean. Got: {type(value)!r}",
         )
 
-    def test__icmp6__nd__neighbor_advertisement__flag_s__not_boolean(
+    def test__icmp6__nd__message__neighbor_advertisement__flag_s__not_boolean(
         self,
     ) -> None:
         """
@@ -168,7 +168,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             f"The 'flag_s' field must be a boolean. Got: {type(value)!r}",
         )
 
-    def test__icmp6__nd__neighbor_advertisement__flag_o__not_boolean(
+    def test__icmp6__nd__message__neighbor_advertisement__flag_o__not_boolean(
         self,
     ) -> None:
         """
@@ -186,7 +186,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             f"The 'flag_o' field must be a boolean. Got: {type(value)!r}",
         )
 
-    def test__icmp6__nd__neighbor_advertisement__target_address__not_Ip6Address(
+    def test__icmp6__nd__message__neighbor_advertisement__target_address__not_Ip6Address(
         self,
     ) -> None:
         """
@@ -207,7 +207,7 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_advertisement__options__not_Icmp6NdOptions(
+    def test__icmp6__nd__message__neighbor_advertisement__options__not_Icmp6NdOptions(
         self,
     ) -> None:
         """
@@ -229,13 +229,15 @@ class TestIcmp6NdNeighborAdvertisementAssemblerAsserts(TestCase):
         )
 
 
-class TestIcmp6NdNeighborAdvertisementParserAsserts(TestCase):
+class TestIcmp6NdMessageNeighborAdvertisementParserAsserts(TestCase):
     """
     The ICMPv6 ND Neighbor Advertisement message parser argument constructor
     assert tests.
     """
 
-    def test__icmp6__nd__neighbor_advertisement__wrong_type(self) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__wrong_type(
+        self,
+    ) -> None:
         """
         Ensure the ICMPv6 ND Neighbor Advertisement message parser raises
         an exception when the provided '_bytes' argument contains incorrect
