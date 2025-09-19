@@ -48,6 +48,7 @@ from net_proto import (
     Icmp6NdOptionSlla,
     Icmp6Type,
 )
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -319,4 +320,21 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],
+        )
+
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__assemble(
+        self,
+    ) -> None:
+        """
+        Ensure the ICMPv6 ND Neighbor Advertisement message 'assemble()' method returns
+        a correct value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

@@ -28,7 +28,7 @@
 This module contains tests for the ICMPv6 MLDv2 Report message assembler
 & parser arguments.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__report__asserts.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__asserts.py
 
 ver 3.0.4
 """
@@ -49,7 +49,7 @@ from net_proto import (
 from net_proto.lib.int_checks import UINT_16__MAX, UINT_16__MIN
 
 
-class TestIcmp6MessageMld2ReportAsserts(TestCase):
+class TestIcmp6Mld2MessageReportAsserts(TestCase):
     """
     The ICMPv6 MLDv2 Report message assembler & parser constructor
     argument assert tests.
@@ -68,7 +68,7 @@ class TestIcmp6MessageMld2ReportAsserts(TestCase):
             "records": [],
         }
 
-    def test__icmp6__mld2_report__code__not_Icmp6Mld2ReportCode(
+    def test__icmp6__mld2__message__report__code__not_Icmp6Mld2ReportCode(
         self,
     ) -> None:
         """
@@ -89,7 +89,7 @@ class TestIcmp6MessageMld2ReportAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__mld2__report__cksum__under_min(self) -> None:
+    def test__icmp6__mld2__message__report__cksum__under_min(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message assembler constructor raises
         an exception when the provided 'cksum' argument is lower than the
@@ -109,7 +109,7 @@ class TestIcmp6MessageMld2ReportAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__mld2__report__cksum__over_max(self) -> None:
+    def test__icmp6__mld2__message__report__cksum__over_max(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message assembler constructor raises
         an exception when the provided 'cksum' argument is higher than the
@@ -129,7 +129,7 @@ class TestIcmp6MessageMld2ReportAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__message__mld2__report__records_len__over_max(self) -> None:
+    def test__icmp6__mld2__message__report__records_len__over_max(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message assembler constructor raises
         an exception when the length of the provided 'records' argument is
@@ -163,12 +163,12 @@ class TestIcmp6MessageMld2ReportAsserts(TestCase):
         )
 
 
-class TestIcmp6Mld2ReportParserAsserts(TestCase):
+class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
     """
     The ICMPv6 MLDv2 Report message parser argument constructor assert tests.
     """
 
-    def test__icmp6__mld2__report__wrong_type(self) -> None:
+    def test__icmp6__mld2__message__report__wrong_type(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message parser raises an exception
         when the provided '_bytes' argument contains incorrect 'type' field.

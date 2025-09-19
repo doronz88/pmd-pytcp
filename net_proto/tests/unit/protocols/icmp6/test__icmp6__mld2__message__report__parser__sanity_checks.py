@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 MLDv2 Report message parser sanity checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__report__parser__sanity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__parser__sanity_checks.py
 
 ver 3.0.4
 """
@@ -65,7 +65,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4Mld2ReportParserSanityChecks(TestCasePacketRxIp6):
+class TestIcmp4Mld2MessageReportParserSanityChecks(TestCasePacketRxIp6):
     """
     The ICMPv4 MLDv2 Report message parser sanity checks tests.
     """
@@ -77,7 +77,7 @@ class TestIcmp4Mld2ReportParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__mld2__report__parser(self) -> None:
+    def test__icmp6__mld2__message__report__parser(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report parser raises sanity errors
         on crazy packets.

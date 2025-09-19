@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 ND Router Solicitation message parser.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__message__nd__router_solicitation__parser.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_solicitation__parser.py
 
 ver 3.0.4
 """
@@ -86,7 +86,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6MessageNdRouterSolicitationParser(TestCasePacketRxIp6):
+class TestIcmp6NdMessageRouterSolicitationParser(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Router Solicitation message parser tests.
     """
@@ -97,7 +97,7 @@ class TestIcmp6MessageNdRouterSolicitationParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__nd__router_solicitation__parser(
+    def test__icmp6__nd__message__router_solicitation__parser(
         self,
     ) -> None:
         """

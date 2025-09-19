@@ -27,7 +27,7 @@
 """
 This module contains tests for the ICMPv6 MLDv2 Multicast Address Record assembler.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__address__record__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__multicast_address__record__assembler.py
 
 ver 3.0.4
 """
@@ -381,7 +381,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["__len__"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__str(
+    def test__icmp6__mld2__multicast_address_record__assembler__str(
         self,
     ) -> None:
         """
@@ -394,7 +394,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["__str__"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__repr(
+    def test__icmp6__mld2__multicast_address_record__assembler__repr(
         self,
     ) -> None:
         """
@@ -407,7 +407,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["__repr__"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__bytes(
+    def test__icmp6__mld2__multicast_address_record__assembler__bytes(
         self,
     ) -> None:
         """
@@ -420,7 +420,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["__bytes__"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__type(
+    def test__icmp6__mld2__multicast_address_record__assembler__type(
         self,
     ) -> None:
         """
@@ -433,7 +433,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["type"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__aux_data_len(
+    def test__icmp6__mld2__multicast_address_record__assembler__aux_data_len(
         self,
     ) -> None:
         """
@@ -446,7 +446,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["aux_data_len"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__number_of_sources(
+    def test__icmp6__mld2__multicast_address_record__assembler__number_of_sources(
         self,
     ) -> None:
         """
@@ -459,7 +459,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["number_of_sources"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__multicast_address(
+    def test__icmp6__mld2__multicast_address_record__assembler__multicast_address(
         self,
     ) -> None:
         """
@@ -472,7 +472,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["multicast_address"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__source_addresses(
+    def test__icmp6__mld2__multicast_address_record__assembler__source_addresses(
         self,
     ) -> None:
         """
@@ -485,7 +485,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
             self._results["source_addresses"],
         )
 
-    def test__icmp6__message__mld2__multicast_address_record__assembler__aux_data(
+    def test__icmp6__mld2__multicast_address_record__assembler__aux_data(
         self,
     ) -> None:
         """

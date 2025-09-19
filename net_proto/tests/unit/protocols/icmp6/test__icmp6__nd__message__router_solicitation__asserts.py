@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Router Solicitation message assembler
 & parser argument asserts.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__router_solicitation__asserts.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_solicitation__asserts.py
 
 ver 3.0.4
 """
@@ -47,7 +47,7 @@ from net_proto import (
 )
 
 
-class TestIcmp6NdRouterSolicitationAsserts(TestCase):
+class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
     """
     The ICMPv6 ND Router Solicitation message assembler & parser argument
     constructors assert tests.
@@ -66,7 +66,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
             "options": Icmp6NdOptions(),
         }
 
-    def test__icmp6__nd__router_solicitation__code__not_Icmp6NdRouterSolicitationCode(
+    def test__icmp6__nd__message__router_solicitation__code__not_Icmp6NdRouterSolicitationCode(
         self,
     ) -> None:
         """
@@ -87,7 +87,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_solicitation__cksum__under_min(
+    def test__icmp6__nd__message__router_solicitation__cksum__under_min(
         self,
     ) -> None:
         """
@@ -109,7 +109,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_solicitation__cksum__over_max(
+    def test__icmp6__nd__message__router_solicitation__cksum__over_max(
         self,
     ) -> None:
         """
@@ -131,7 +131,7 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_solicitation__options__not_Icmp6NdOptions(
+    def test__icmp6__nd__message__router_solicitation__options__not_Icmp6NdOptions(
         self,
     ) -> None:
         """
@@ -153,15 +153,15 @@ class TestIcmp6NdRouterSolicitationAsserts(TestCase):
         )
 
 
-class TestIcmp6NdRouterSolicitationParserAsserts(TestCase):
+class TestIcmp6NdMessageRouterSolicitationParserAsserts(TestCase):
     """
     The ICMPv6 ND Router Solicitation message parser argument constructor
     assert tests.
     """
 
-    def test__icmp6__nd__router_solicitation__wrong_type(self) -> None:
+    def test__icmp6__nd__message__router_solicitation__wrong_type(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Soliciataion message parser raises
+        Ensure the ICMPv6 ND Router Solicitation message parser raises
         an exception when the provided '_bytes' argument contains incorrect
         'type' field.
         """

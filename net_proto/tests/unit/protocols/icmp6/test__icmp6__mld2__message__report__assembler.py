@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 MLDv2 Report message assembler.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__message__mld2__report__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__assembler.py
 
 ver 3.0.4
 """
@@ -267,7 +267,7 @@ from net_proto.lib.buffer import Buffer
         },
     ]
 )
-class TestIcmp6MessageMld2ReportAssembler(TestCase):
+class TestIcmp6Mld2MessageReportAssembler(TestCase):
     """
     The ICMPv6 MLDv2 Report message assembler tests.
     """
@@ -286,7 +286,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             icmp6__message=Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
         )
 
-    def test__icmp6__message__mld2__report__assembler__len(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__len(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message '__len__()' method
         returns a correct value.
@@ -297,7 +297,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["__len__"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__str(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__str(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message '__str__()' method
         returns a correct value.
@@ -308,7 +308,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["__str__"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__repr(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__repr(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message '__repr__()' method
         returns a correct value.
@@ -319,7 +319,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["__repr__"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__bytes(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__bytes(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message '__bytes__()' method
         returns a correct value.
@@ -330,7 +330,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["__bytes__"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__type(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__type(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'type' field contains
         a correct value.
@@ -341,7 +341,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["type"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__code(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__code(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'code' field contains
         a correct value.
@@ -352,7 +352,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["code"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__cksum(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__cksum(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'cksum' field contains
         a correct value.
@@ -363,7 +363,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["cksum"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__number_of_records(
+    def test__icmp6__mld2__message__report__assembler__number_of_records(
         self,
     ) -> None:
         """
@@ -378,7 +378,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["number_of_records"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__records(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__records(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'records' property returns
         a correct value.
@@ -391,7 +391,7 @@ class TestIcmp6MessageMld2ReportAssembler(TestCase):
             self._results["records"],
         )
 
-    def test__icmp6__message__mld2__report__assembler__assemble(self) -> None:
+    def test__icmp6__mld2__message__report__assembler__assemble(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'assemble()' method returns
         a correct value.

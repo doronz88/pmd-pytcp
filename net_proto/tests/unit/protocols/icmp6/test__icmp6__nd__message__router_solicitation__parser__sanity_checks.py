@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Router Solicitation message parser sanity
 checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__router_addvertisement__parser__sanity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_addvertisement__parser__sanity_checks.py
 
 ver 3.0.4
 """
@@ -185,7 +185,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdRouterSolicitationParserSanityChecks(TestCasePacketRxIp6):
+class TestIcmp4NdMessageRouterSolicitationParserSanityChecks(
+    TestCasePacketRxIp6
+):
     """
     The ICMPv4 ND Router Solicitation message parser sanity checks tests.
     """
@@ -197,7 +199,7 @@ class TestIcmp4NdRouterSolicitationParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__router_solicitation__parser(self) -> None:
+    def test__icmp6__nd__message__router_solicitation__parser(self) -> None:
         """
         Ensure the ICMPv6 ND Router Solicitation parser raises sanity errors
         on crazy packets.

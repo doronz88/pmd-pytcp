@@ -48,6 +48,7 @@ from net_proto import (
     Icmp6NdRouterAdvertisementCode,
     Icmp6Type,
 )
+from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
@@ -408,4 +409,21 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
                 self._icmp6__assembler.message,
             ).options,
             self._results["options"],
+        )
+
+    def test__icmp6__nd__message__router_advertisement__assembler__assemble(
+        self,
+    ) -> None:
+        """
+        Ensure the ICMPv6 ND Router Advertisement message 'assemble()' method returns
+        a correct value.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            b"".join(buffers),
+            self._results["__bytes__"],
         )

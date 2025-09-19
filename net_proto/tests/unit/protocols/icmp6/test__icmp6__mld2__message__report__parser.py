@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 MLDv2 Report message parser.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__message__mld2__report__parser.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__parser.py
 
 ver 3.0.4
 """
@@ -164,7 +164,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6MessageMld2ReportParser(TestCasePacketRxIp6):
+class TestIcmp6Mld2MessageReportParser(TestCasePacketRxIp6):
     """
     The ICMPv6 MLDv2 Report message parser tests.
     """
@@ -175,7 +175,7 @@ class TestIcmp6MessageMld2ReportParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__message__mld2__report__parser__from_bytes(self) -> None:
+    def test__icmp6__mld2__message__report__parser__from_bytes(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message 'from_bytes()' method
         creates a proper message object.
