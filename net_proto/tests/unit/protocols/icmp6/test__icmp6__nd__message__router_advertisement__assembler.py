@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 ND Router Sdvertisement message assembler.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__router_advertisement__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__assembler.py
 
 ver 3.0.4
 """
@@ -202,7 +202,7 @@ from net_proto import (
         },
     ]
 )
-class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
+class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     """
     The ICMPv6 ND Router Advertisement message assembler tests.
     """
@@ -223,7 +223,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             )
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__len(
+    def test__icmp6__nd__message__router_advertisement__assembler__len(
         self,
     ) -> None:
         """
@@ -236,7 +236,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["__len__"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__str(
+    def test__icmp6__nd__message__router_advertisement__assembler__str(
         self,
     ) -> None:
         """
@@ -249,7 +249,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["__str__"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__repr(
+    def test__icmp6__nd__message__router_advertisement__assembler__repr(
         self,
     ) -> None:
         """
@@ -262,7 +262,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["__repr__"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__bytes(
+    def test__icmp6__nd__message__router_advertisement__assembler__bytes(
         self,
     ) -> None:
         """
@@ -275,7 +275,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["__bytes__"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__type(
+    def test__icmp6__nd__message__router_advertisement__assembler__type(
         self,
     ) -> None:
         """
@@ -288,7 +288,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["type"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__code(
+    def test__icmp6__nd__message__router_advertisement__assembler__code(
         self,
     ) -> None:
         """
@@ -301,7 +301,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["code"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__cksum(
+    def test__icmp6__nd__message__router_advertisement__assembler__cksum(
         self,
     ) -> None:
         """
@@ -314,7 +314,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["cksum"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__flag_m(
+    def test__icmp6__nd__message__router_advertisement__assembler__flag_m(
         self,
     ) -> None:
         """
@@ -330,7 +330,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["flag_m"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__flag_o(
+    def test__icmp6__nd__message__router_advertisement__assembler__flag_o(
         self,
     ) -> None:
         """
@@ -346,7 +346,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["flag_o"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__router_lifetime(
+    def test__icmp6__nd__message__router_advertisement__assembler__router_lifetime(
         self,
     ) -> None:
         """
@@ -362,7 +362,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["router_lifetime"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__reachable_time(
+    def test__icmp6__nd__message__router_advertisement__assembler__reachable_time(
         self,
     ) -> None:
         """
@@ -378,7 +378,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["reachable_time"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__retrans_timer(
+    def test__icmp6__nd__message__router_advertisement__assembler__retrans_timer(
         self,
     ) -> None:
         """
@@ -394,7 +394,7 @@ class TestIcmp6NdRouterAdvertisementAssembler(TestCase):
             self._results["retrans_timer"],
         )
 
-    def test__icmp6__nd__router_advertisement__assembler__options(
+    def test__icmp6__nd__message__router_advertisement__assembler__options(
         self,
     ) -> None:
         """

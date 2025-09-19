@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Router Advertisement message parser sanity
 checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__router_addvertisement__parser__sanity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_addvertisement__parser__sanity_checks.py
 
 ver 3.0.4
 """
@@ -165,7 +165,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdRouterAdvertisementParserSanityChecks(TestCasePacketRxIp6):
+class TestIcmp4NdMessageRouterAdvertisementParserSanityChecks(
+    TestCasePacketRxIp6
+):
     """
     The ICMPv4 ND Router Advertisement message parser sanity checks tests.
     """
@@ -177,7 +179,7 @@ class TestIcmp4NdRouterAdvertisementParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__router_advertisement__parser(self) -> None:
+    def test__icmp6__nd__message__router_advertisement__parser(self) -> None:
         """
         Ensure the ICMPv6 ND Router Advertisement parser raises sanity errors
         on crazy packets.

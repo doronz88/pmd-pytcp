@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Router Advertisement message assembler
 & parser argument asserts.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__router_advertisement__asserts.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__asserts.py
 
 ver 3.0.4
 """
@@ -53,7 +53,7 @@ from net_proto.lib.int_checks import (
 )
 
 
-class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
+class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     """
     The ICMPv6 ND Router Advertisement message assembler & parser argument
     constructors assert tests.
@@ -78,7 +78,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             "options": Icmp6NdOptions(),
         }
 
-    def test__icmp6__nd__router_advertisement__code__not_Icmp6NdRouterAdvertisementCode(
+    def test__icmp6__nd__message__router_advertisement__code__not_Icmp6NdRouterAdvertisementCode(
         self,
     ) -> None:
         """
@@ -99,7 +99,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__cksum__under_min(
+    def test__icmp6__nd__message__router_advertisement__cksum__under_min(
         self,
     ) -> None:
         """
@@ -121,7 +121,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__cksum__over_max(
+    def test__icmp6__nd__message__router_advertisement__cksum__over_max(
         self,
     ) -> None:
         """
@@ -143,7 +143,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__hop__under_min(
+    def test__icmp6__nd__message__router_advertisement__hop__under_min(
         self,
     ) -> None:
         """
@@ -165,7 +165,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__hop__over_max(
+    def test__icmp6__nd__message__router_advertisement__hop__over_max(
         self,
     ) -> None:
         """
@@ -187,7 +187,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__flag_m__not_boolean(
+    def test__icmp6__nd__message__router_advertisement__flag_m__not_boolean(
         self,
     ) -> None:
         """
@@ -205,7 +205,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             f"The 'flag_m' field must be a boolean. Got: {type(value)!r}",
         )
 
-    def test__icmp6__nd__router_advertisement__router_lifetime__under_min(
+    def test__icmp6__nd__message__router_advertisement__router_lifetime__under_min(
         self,
     ) -> None:
         """
@@ -227,7 +227,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__router_lifetime__over_max(
+    def test__icmp6__nd__message__router_advertisement__router_lifetime__over_max(
         self,
     ) -> None:
         """
@@ -249,7 +249,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__reachable_time__under_min(
+    def test__icmp6__nd__message__router_advertisement__reachable_time__under_min(
         self,
     ) -> None:
         """
@@ -271,7 +271,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__reachable_time__over_max(
+    def test__icmp6__nd__message__router_advertisement__reachable_time__over_max(
         self,
     ) -> None:
         """
@@ -293,7 +293,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__retrans_timer__under_min(
+    def test__icmp6__nd__message__router_advertisement__retrans_timer__under_min(
         self,
     ) -> None:
         """
@@ -315,7 +315,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__retrans_timer__over_max(
+    def test__icmp6__nd__message__router_advertisement__retrans_timer__over_max(
         self,
     ) -> None:
         """
@@ -337,7 +337,7 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__router_advertisement__options__not_Icmp6NdOptions(
+    def test__icmp6__nd__message__router_advertisement__options__not_Icmp6NdOptions(
         self,
     ) -> None:
         """
@@ -359,13 +359,15 @@ class TestIcmp6NdRouterAdvertisementAsserts(TestCase):
         )
 
 
-class TestIcmp6NdRouterAdvertisementParserAsserts(TestCase):
+class TestIcmp6NdMessageRouterAdvertisementParserAsserts(TestCase):
     """
     The ICMPv6 ND Router Advertisement message parser argument constructor
     assert tests.
     """
 
-    def test__icmp6__nd__router_advertisement__wrong_type(self) -> None:
+    def test__icmp6__nd__message__router_advertisement__wrong_type(
+        self,
+    ) -> None:
         """
         Ensure the ICMPv6 ND Router Advertisement message parser raises
         an exception when the provided '_bytes' argument contains incorrect

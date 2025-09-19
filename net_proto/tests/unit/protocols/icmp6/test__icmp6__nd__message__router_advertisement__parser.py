@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 ND Router Advertisement message parser.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__message__nd__router_advertisement__parser.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__parser.py
 
 ver 3.0.4
 """
@@ -138,7 +138,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6MessageNdRouterAdvertisementParser(TestCasePacketRxIp6):
+class TestIcmp6NdMessageRouterAdvertisementParser(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Router Advertisement message parser tests.
     """
@@ -150,7 +150,7 @@ class TestIcmp6MessageNdRouterAdvertisementParser(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__router_advertisement__parser(
+    def test__icmp6__nd__message__router_advertisement__parser(
         self,
     ) -> None:
         """
