@@ -27,7 +27,7 @@
 """
 Module contains tests for the ICMPv6 ND Neighbor Solicitation message assembler.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_solicitation__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicitation__assembler.py
 
 ver 3.0.4
 """
@@ -116,7 +116,7 @@ from net_proto import (
         },
     ]
 )
-class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
+class TestIcmp6NdMessageNeighborSolicitationAssembler(TestCase):
     """
     The ICMPv6 ND Neighbor Solicitation message assembler tests.
     """
@@ -137,7 +137,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             )
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__len(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__len(
         self,
     ) -> None:
         """
@@ -150,7 +150,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["__len__"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__str(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__str(
         self,
     ) -> None:
         """
@@ -163,7 +163,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["__str__"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__repr(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__repr(
         self,
     ) -> None:
         """
@@ -176,7 +176,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["__repr__"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__bytes(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__bytes(
         self,
     ) -> None:
         """
@@ -189,7 +189,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["__bytes__"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__type(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__type(
         self,
     ) -> None:
         """
@@ -202,7 +202,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["type"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__code(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__code(
         self,
     ) -> None:
         """
@@ -215,7 +215,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["code"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__cksum(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__cksum(
         self,
     ) -> None:
         """
@@ -228,7 +228,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["cksum"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__target_address(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__target_address(
         self,
     ) -> None:
         """
@@ -244,7 +244,7 @@ class TestIcmp6NdNeighborSolicitationAssembler(TestCase):
             self._results["target_address"],
         )
 
-    def test__icmp6__nd__neighbor_solicitation__assembler__options(
+    def test__icmp6__nd__message__neighbor_solicitation__assembler__options(
         self,
     ) -> None:
         """

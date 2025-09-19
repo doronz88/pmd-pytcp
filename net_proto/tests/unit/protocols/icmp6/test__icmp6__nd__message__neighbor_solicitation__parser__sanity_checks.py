@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Neighbor Solicitation message parser sanity
 checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_addvertisement__parser__sanity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_addvertisement__parser__sanity_checks.py
 
 ver 3.0.4
 """
@@ -263,7 +263,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdNeighborSolicitationParserSanityChecks(TestCasePacketRxIp6):
+class TestIcmp4NdMessageNeighborSolicitationParserSanityChecks(
+    TestCasePacketRxIp6
+):
     """
     The ICMPv6 ND Neighbor Solicitation message parser sanity checks tests.
     """
@@ -275,7 +277,7 @@ class TestIcmp4NdNeighborSolicitationParserSanityChecks(TestCasePacketRxIp6):
 
     _packet_rx: PacketRx
 
-    def test__icmp6__nd__neighbor_solicitation__parser(
+    def test__icmp6__nd__message__neighbor_solicitation__parser(
         self,
     ) -> None:
         """

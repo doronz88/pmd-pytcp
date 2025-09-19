@@ -28,7 +28,7 @@
 Module contains tests for the ICMPv6 ND Neighbor Solicitation message assembler
 & parser argument asserts.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__neighbor_solicitation__asserts.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicitation__asserts.py
 
 ver 3.0.4
 """
@@ -47,7 +47,7 @@ from net_proto import (
 )
 
 
-class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
+class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
     """
     The ICMPv6 ND Neighbor Solicitation message assembler & parser argument
     constructors assert tests.
@@ -67,7 +67,7 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
             "options": Icmp6NdOptions(),
         }
 
-    def test__icmp6__nd__neighbor_solicitation__code__not_Icmp6NdNeighborSolicitationCode(
+    def test__icmp6__nd__message__neighbor_solicitation__code__not_Icmp6NdNeighborSolicitationCode(
         self,
     ) -> None:
         """
@@ -88,7 +88,7 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_solicitation__cksum__under_min(
+    def test__icmp6__nd__message__neighbor_solicitation__cksum__under_min(
         self,
     ) -> None:
         """
@@ -110,7 +110,7 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_solicitation__cksum__over_max(
+    def test__icmp6__nd__message__neighbor_solicitation__cksum__over_max(
         self,
     ) -> None:
         """
@@ -132,7 +132,7 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_solicitation__target_address__not_Ip6Address(
+    def test__icmp6__nd__message__neighbor_solicitation__target_address__not_Ip6Address(
         self,
     ) -> None:
         """
@@ -153,7 +153,7 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
             ),
         )
 
-    def test__icmp6__nd__neighbor_solicitation__options__not_Icmp6NdOptions(
+    def test__icmp6__nd__message__neighbor_solicitation__options__not_Icmp6NdOptions(
         self,
     ) -> None:
         """
@@ -175,13 +175,15 @@ class TestIcmp6NdNeighborSolicitationAsserts(TestCase):
         )
 
 
-class TestIcmp6NdNeighborSolicitationParserAsserts(TestCase):
+class TestIcmp6NdMessageNeighborSolicitationParserAsserts(TestCase):
     """
     The ICMPv6 ND Neighbor Solicitation message parser argument constructor
     assert tests.
     """
 
-    def test__icmp6__nd__neighbor_solicitation__wrong_type(self) -> None:
+    def test__icmp6__nd__message__neighbor_solicitation__wrong_type(
+        self,
+    ) -> None:
         """
         Ensure the ICMPv6 ND Neighbor Solicitation message parser raises
         an exception when the provided '_bytes' argument contains incorrect
