@@ -44,7 +44,7 @@ from net_proto import (
     TcpOptionUnknown,
 )
 from net_proto.lib.int_checks import UINT_8__MAX
-from net_proto.protocols.tcp.options.tcp_option import TCP__OPTION__LEN
+from net_proto.protocols.tcp.options.tcp__option import TCP__OPTION__LEN
 
 
 class TestTcpOptionUnknownAsserts(TestCase):

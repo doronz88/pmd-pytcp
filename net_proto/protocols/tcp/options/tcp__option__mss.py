@@ -25,9 +25,9 @@
 
 
 """
-This module contains the unknown TCP option support code.
+This module contains the TCP Mss (Maximum Segment Size) option support code.
 
-net_proto/protocols/tcp/options/tcp_option__unknown.py
+net_proto/protocols/tcp/options/tcp__option__mss.py
 
 ver 3.0.4
 """
@@ -38,97 +38,97 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.int_checks import is_uint8
-from net_proto.protocols.tcp.options.tcp_option import (
+from net_proto.lib.int_checks import is_uint16
+from net_proto.protocols.tcp.options.tcp__option import (
     TCP__OPTION__LEN,
-    TCP__OPTION__STRUCT,
     TcpOption,
     TcpOptionType,
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
+# The TCP Mss (Maximum Segment Size) option [RFC 793].
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class TcpOptionUnknown(TcpOption):
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |    Type = 1   |   Length = 1  |             Value             |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+TCP__OPTION__MSS__LEN = 4
+TCP__OPTION__MSS__STRUCT = "! BB H"
+
+
+@dataclass(frozen=True, kw_only=False, slots=True)
+class TcpOptionMss(TcpOption):
     """
-    The TCP unknown option support class.
+    The TCP Mss (Maximum Segment Size) option support class.
     """
 
     type: TcpOptionType = field(
-        repr=True,
-        init=True,
-        default=TcpOptionType.from_int(255),
+        repr=False,
+        init=False,
+        default=TcpOptionType.MSS,
     )
     len: int = field(
-        repr=True,
+        repr=False,
         init=False,
+        default=TCP__OPTION__MSS__LEN,
     )
 
-    data: bytes
+    mss: int
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP unknown option fields.
+        Validate the TCP Mss option fields.
         """
 
-        # Ensure the 'type' field is a valid TcpOptionType enum member.
-        assert isinstance(self.type, TcpOptionType), (
-            f"The 'type' field must be a TcpOptionType. "
-            f"Got: {type(self.type)!r}"
-        )
-
-        # Ensure the 'type' field is not a known TcpOptionType.
-        assert int(self.type) not in TcpOptionType.get_known_values(), (
-            "The 'type' field must not be a core TcpOptionType. "
-            f"Got: {self.type!r}"
-        )
-
-        # Update the option 'len' field based on the length of the 'data' field.
-        object.__setattr__(self, "len", TCP__OPTION__LEN + len(self.data))
-
-        # Ensure the 'len' field is a valid 8-bit unsigned integer.
-        assert is_uint8(self.len), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
+        # Ensure the 'mss' field is a 16-bit unsigned integer.
+        assert is_uint16(self.mss), (
+            f"The 'mss' field must be a 16-bit unsigned integer. "
+            f"Got: {self.mss}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the unknown TCP option log string.
+        Get the TCP Mss option log string.
         """
 
-        return f"unk-{int(self.type)}-{self.len}"
+        return f"mss {self.mss}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown TCP option as memoryview.
+        Get the TCP Mss option as memoryview.
         """
 
         struct.pack_into(
-            TCP__OPTION__STRUCT,
+            TCP__OPTION__MSS__STRUCT,
             buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len,
+            self.mss,
         )
-
-        buffer[TCP__OPTION__LEN:] = self.data
 
         return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown TCP option integrity before parsing it.
+        Validate the TCP Mss option integrity before parsing it.
         """
+
+        # Raise integrity error when the option length value is incorrect.
+        if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
+            raise TcpIntegrityError(
+                f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} "
+                f"bytes. Got: {value!r}"
+            )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
-                "The unknown TCP option length value must be less than or equal to "
+                "The TCP Mss option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -136,24 +136,21 @@ class TcpOptionUnknown(TcpOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown TCP option from buffer.
+        Initialize the TCP Mss option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the unknown TCP option must be "
+            f"The minimum length of the TCP Mss option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is not known.
-        assert (value := buffer[0]) not in TcpOptionType.get_known_values(), (
-            f"The unknown TCP option type must not be known. "
+        # Ensure the option type is the expected value.
+        assert (value := buffer[0]) == int(TcpOptionType.MSS), (
+            f"The TCP Mss option type must be {TcpOptionType.MSS!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        return cls(
-            type=TcpOptionType(buffer[0]),
-            data=buffer[TCP__OPTION__LEN : buffer[1]],
-        )
+        return cls(mss=int.from_bytes(buffer[2:4]))

@@ -25,9 +25,9 @@
 
 
 """
-Module contains the IPv4 Eol (End of Option List) option support code.
+This module contains TCP Nop (No Operation) option support code.
 
-net_proto/protocols/tcp/options/ip4_option__eol.py
+net_proto/protocols/tcp/options/tcp__option__nop.py
 
 ver 3.0.4
 """
@@ -37,54 +37,53 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.protocols.ip4.options.ip4_option import Ip4Option, Ip4OptionType
+from net_proto.protocols.tcp.options.tcp__option import TcpOption, TcpOptionType
 
-# The Ip4 Eol (End of Option List) option [RFC 793].
+# The TCP Nop (No Operation) option [RFC 793].
 
 # +-+-+-+-+-+-+-+-+
-# |    Type = 0   |
+# |    Type = 1   |
 # +-+-+-+-+-+-+-+-+
 
-
-IP4__OPTION__EOL__LEN = 1
-IP4__OPTION__EOL__STRUCT = "! B"
+TCP__OPTION__NOP__LEN = 1
+TCP__OPTION__NOP__STRUCT = "! B"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class Ip4OptionEol(Ip4Option):
+class TcpOptionNop(TcpOption):
     """
-    The IPv4 Eol (End of Option List) option support.
+    The TCP Nop (No Operation) option support class.
     """
 
-    type: Ip4OptionType = field(
+    type: TcpOptionType = field(
         repr=False,
         init=False,
-        default=Ip4OptionType.EOL,
+        default=TcpOptionType.NOP,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=IP4__OPTION__EOL__LEN,
+        default=TCP__OPTION__NOP__LEN,
     )
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the IPv4 Eol option fields.
+        Validate the TCP Nop option fields.
         """
 
     @override
     def __str__(self) -> str:
         """
-        Get the the IPv4 Eol option log string.
+        Get the TCP Nop option log string.
         """
 
-        return "eol"
+        return "nop"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 Eol option as memoryview.
+        Get the TCP Nop option as memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))
@@ -93,19 +92,19 @@ class Ip4OptionEol(Ip4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the IPv4 Eol option from buffer.
+        Initialize the TCP Nop option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= IP4__OPTION__EOL__LEN, (
-            f"The minimum length of the IPv4 Eol option must be "
-            f"{IP4__OPTION__EOL__LEN} byte. Got: {value!r}"
+        assert (value := len(buffer)) >= TCP__OPTION__NOP__LEN, (
+            f"The minimum length of the TCP Nop option must be "
+            f"{TCP__OPTION__NOP__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Ip4OptionType.EOL), (
-            f"The IPv4 Eol option type must be {Ip4OptionType.EOL!r}. "
-            f"Got: {Ip4OptionType.from_int(value)!r}"
+        assert (value := buffer[0]) == int(TcpOptionType.NOP), (
+            f"The TCP Nop option type must be {TcpOptionType.NOP!r}. "
+            f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
         return cls()

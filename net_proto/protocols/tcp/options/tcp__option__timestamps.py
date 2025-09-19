@@ -25,9 +25,9 @@
 
 
 """
-This module contains TCP Wscale (Window Scale) option support code.
+This module contains the TCP Timestamps option support code.
 
-net_proto/protocols/tcp/options/tcp_option__wscale.py
+net_proto/protocols/tcp/options/tcp__option__timestamps.py
 
 ver 3.0.4
 """
@@ -38,80 +38,98 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.int_checks import is_uint8
-from net_proto.protocols.tcp.options.tcp_option import (
+from net_proto.lib.int_checks import is_uint32
+from net_proto.protocols.tcp.options.tcp__option import (
     TCP__OPTION__LEN,
     TcpOption,
     TcpOptionType,
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP Wscale option [RFC 1323].
+# The TCP Timestamps option [RFC 1323].
 
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 3   |   Length = 3  |     Value     |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+#                                 |    Type = 1   |   Length = 1  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                             Tsval                             |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                             Tsecr                             |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-TCP__OPTION__WSCALE__LEN = 3
-TCP__OPTION__WSCALE__STRUCT = "! BB B"
-TCP__OPTION__WSCALE__MAX_VALUE = 14
+TCP__OPTION__TIMESTAMPS__LEN = 10
+TCP__OPTION__TIMESTAMPS__STRUCT = "! BB LL"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class TcpOptionWscale(TcpOption):
+class TcpTimestamps:
     """
-    The TCP Wscale (Window Scale) option support class.
+    The TCP Timestamps option values.
+    """
+
+    tsval: int
+    tsecr: int
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class TcpOptionTimestamps(TcpOption):
+    """
+    The TCP Timestamps option support class.
     """
 
     type: TcpOptionType = field(
         repr=False,
         init=False,
-        default=TcpOptionType.WSCALE,
+        default=TcpOptionType.TIMESTAMPS,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=TCP__OPTION__WSCALE__LEN,
+        default=TCP__OPTION__TIMESTAMPS__LEN,
     )
 
-    wscale: int
+    tsval: int
+    tsecr: int
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Wscale option fields.
+        Validate the TCP Timestamps option fields.
         """
 
-        # Ensure that the 'wscale' field is is less than or equal to the allowed maximum.
-        assert (
-            is_uint8(self.wscale)
-            and self.wscale <= TCP__OPTION__WSCALE__MAX_VALUE
-        ), (
-            f"The 'wscale' field must be a 8-bit unsigned integer less than "
-            f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {self.wscale}"
+        # Ensure the 'tsval' field is 32-bit unsigned integer.
+        assert is_uint32(self.tsval), (
+            f"The 'tsval' field must be a 32-bit unsigned integer. "
+            f"Got: {self.tsval}"
+        )
+
+        # Ensure the 'tsecr' field is 32-bit unsigned integer.
+        assert is_uint32(self.tsecr), (
+            f"The 'tsecr' field must be a 32-bit unsigned integer. "
+            f"Got: {self.tsecr}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the TCP Wscale option log string.
+        Get the TCP Timestamps option log string.
         """
 
-        return f"wscale {self.wscale}"
+        return f"timestamps {self.tsval}/{self.tsecr}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Wscale option as memoryview.
+        Get the TCP Timestamps option as memoryview.
         """
 
         struct.pack_into(
-            TCP__OPTION__WSCALE__STRUCT,
+            TCP__OPTION__TIMESTAMPS__STRUCT,
             buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len,
-            self.wscale,
+            self.tsval,
+            self.tsecr,
         )
 
         return memoryview(buffer)
@@ -119,20 +137,20 @@ class TcpOptionWscale(TcpOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the TCP Wscale option integrity before parsing it.
+        Validate the TCP Timestamps option integrity before parsing it.
         """
 
-        # Raise an exception if the TCP Wscale option length value is incorrect.
-        if (value := buffer[1]) != TCP__OPTION__WSCALE__LEN:
+        # Raise integrity error when the option length value is incorrect.
+        if (value := buffer[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
-                f"The TCP Wscale option length value must be {TCP__OPTION__WSCALE__LEN} "
+                f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
-                "The TCP Wscale option length value must be less than or equal to "
+                "The TCP Timestamps option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -140,25 +158,28 @@ class TcpOptionWscale(TcpOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Wscale option from buffer.
+        Initialize the TCP Timestamps option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Wscale option must be "
+            f"The minimum length of the TCP Timestamps option must be "
             f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.WSCALE), (
-            f"The TCP Wscale option type must be {TcpOptionType.WSCALE!r}. "
+        assert (value := buffer[0]) == int(TcpOptionType.TIMESTAMPS), (
+            f"The TCP Timestamps option type must be {TcpOptionType.TIMESTAMPS!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        # Correct the received Wscale option value to maximum allowed
-        # if it exceeds the limit.
-        wscale = min(buffer[2], TCP__OPTION__WSCALE__MAX_VALUE)
+        _, _, tsval, tsecr = struct.unpack_from(
+            TCP__OPTION__TIMESTAMPS__STRUCT, buffer
+        )
 
-        return cls(wscale=wscale)
+        return cls(
+            tsval=tsval,
+            tsecr=tsecr,
+        )

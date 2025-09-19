@@ -27,7 +27,7 @@
 """
 Module contains the IPv4 packet option classes.
 
-net_proto/protocols/ip4/options/ip4_options.py
+net_proto/protocols/ip4/options/ip4__options.py
 
 ver 3.0.4
 """
@@ -40,13 +40,15 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
-from net_proto.protocols.ip4.options.ip4_option import Ip4Option, Ip4OptionType
-from net_proto.protocols.ip4.options.ip4_option__eol import Ip4OptionEol
-from net_proto.protocols.ip4.options.ip4_option__nop import (
+from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
+from net_proto.protocols.ip4.options.ip4__option__eol import Ip4OptionEol
+from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
 )
-from net_proto.protocols.ip4.options.ip4_option__unknown import Ip4OptionUnknown
+from net_proto.protocols.ip4.options.ip4__option__unknown import (
+    Ip4OptionUnknown,
+)
 
 IP4__OPTIONS__MAX_LEN = 40
 

@@ -38,7 +38,7 @@ from typing import override
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
-from net_proto.protocols.tcp.options.tcp_options import (
+from net_proto.protocols.tcp.options.tcp__options import (
     TcpOptions,
     TcpOptionsProperties,
 )

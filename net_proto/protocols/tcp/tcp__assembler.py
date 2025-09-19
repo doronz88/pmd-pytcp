@@ -40,8 +40,8 @@ from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
-from net_proto.protocols.tcp.options.tcp_option__eol import TcpOptionEol
-from net_proto.protocols.tcp.options.tcp_options import (
+from net_proto.protocols.tcp.options.tcp__option__eol import TcpOptionEol
+from net_proto.protocols.tcp.options.tcp__options import (
     TCP__OPTIONS__MAX_LEN,
     TcpOptions,
 )

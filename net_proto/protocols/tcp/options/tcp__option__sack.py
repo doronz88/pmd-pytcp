@@ -27,7 +27,7 @@
 """
 This module contains the TCP Sack (Selective ACK) option support code.
 
-net_proto/protocols/tcp/options/tcp_option__sack.py
+net_proto/protocols/tcp/options/tcp__option__sack.py
 
 ver 3.0.4
 """
@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.protocols.tcp.options.tcp_option import (
+from net_proto.protocols.tcp.options.tcp__option import (
     TCP__OPTION__LEN,
     TcpOption,
     TcpOptionType,

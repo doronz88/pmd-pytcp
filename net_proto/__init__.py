@@ -280,23 +280,23 @@ from net_proto.protocols.ip4.ip4__header import (
     Ip4Header,
 )
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
-from net_proto.protocols.ip4.options.ip4_option import (
+from net_proto.protocols.ip4.options.ip4__option import (
     Ip4Option,
     Ip4OptionType,
 )
-from net_proto.protocols.ip4.options.ip4_option__eol import (
+from net_proto.protocols.ip4.options.ip4__option__eol import (
     IP4__OPTION__EOL__LEN,
     Ip4OptionEol,
 )
-from net_proto.protocols.ip4.options.ip4_option__nop import (
+from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
 )
-from net_proto.protocols.ip4.options.ip4_option__unknown import (
+from net_proto.protocols.ip4.options.ip4__option__unknown import (
     IP4__OPTION__LEN,
     Ip4OptionUnknown,
 )
-from net_proto.protocols.ip4.options.ip4_options import (
+from net_proto.protocols.ip4.options.ip4__options import (
     IP4__OPTIONS__MAX_LEN,
     Ip4Options,
 )
@@ -325,41 +325,43 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
 )
 from net_proto.protocols.ip6_frag.ip6_frag__parser import Ip6FragParser
 from net_proto.protocols.raw.raw__assembler import RawAssembler
-from net_proto.protocols.tcp.options.tcp_option import TCP__OPTION__LEN
-from net_proto.protocols.tcp.options.tcp_option__eol import (
+from net_proto.protocols.tcp.options.tcp__option import TCP__OPTION__LEN
+from net_proto.protocols.tcp.options.tcp__option__eol import (
     TCP__OPTION__EOL__LEN,
     TcpOptionEol,
 )
-from net_proto.protocols.tcp.options.tcp_option__mss import (
+from net_proto.protocols.tcp.options.tcp__option__mss import (
     TCP__OPTION__MSS__LEN,
     TcpOptionMss,
 )
-from net_proto.protocols.tcp.options.tcp_option__nop import (
+from net_proto.protocols.tcp.options.tcp__option__nop import (
     TCP__OPTION__NOP__LEN,
     TcpOptionNop,
 )
-from net_proto.protocols.tcp.options.tcp_option__sack import (
+from net_proto.protocols.tcp.options.tcp__option__sack import (
     TCP__OPTION__SACK__BLOCK_LEN,
     TCP__OPTION__SACK__MAX_BLOCK_NUM,
     TcpOptionSack,
     TcpSackBlock,
 )
-from net_proto.protocols.tcp.options.tcp_option__sackperm import (
+from net_proto.protocols.tcp.options.tcp__option__sackperm import (
     TCP__OPTION__SACKPERM__LEN,
     TcpOptionSackperm,
 )
-from net_proto.protocols.tcp.options.tcp_option__timestamps import (
+from net_proto.protocols.tcp.options.tcp__option__timestamps import (
     TCP__OPTION__TIMESTAMPS__LEN,
     TcpOptionTimestamps,
     TcpTimestamps,
 )
-from net_proto.protocols.tcp.options.tcp_option__unknown import TcpOptionUnknown
-from net_proto.protocols.tcp.options.tcp_option__wscale import (
+from net_proto.protocols.tcp.options.tcp__option__unknown import (
+    TcpOptionUnknown,
+)
+from net_proto.protocols.tcp.options.tcp__option__wscale import (
     TCP__OPTION__WSCALE__LEN,
     TCP__OPTION__WSCALE__MAX_VALUE,
     TcpOptionWscale,
 )
-from net_proto.protocols.tcp.options.tcp_options import (
+from net_proto.protocols.tcp.options.tcp__options import (
     TCP__OPTIONS__MAX_LEN,
     TcpOption,
     TcpOptions,

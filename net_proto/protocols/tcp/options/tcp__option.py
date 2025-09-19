@@ -25,9 +25,9 @@
 
 
 """
-Module contains the IPv4 option support code.
+This module contains the TCP option base class.
 
-net_proto/protocols/ip4/options/ip4_option.py
+net_proto/protocols/tcp/options/tcp__option.py
 
 ver 3.0.4
 """
@@ -37,21 +37,26 @@ from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 
-IP4__OPTION__STRUCT = "! BB"
-IP4__OPTION__LEN = 2
+TCP__OPTION__STRUCT = "! BB"
+TCP__OPTION__LEN = 2
 
 
-class Ip4OptionType(ProtoOptionType):
+class TcpOptionType(ProtoOptionType):
     """
-    IPv4 option types.
+    TCP option types.
     """
 
     EOL = 0
     NOP = 1
+    MSS = 2
+    WSCALE = 3
+    SACKPERM = 4
+    SACK = 5
+    TIMESTAMPS = 8
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Ip4Option(ProtoOption):
+class TcpOption(ProtoOption):
     """
-    The IPv4 option support class.
+    The TCP option support class.
     """

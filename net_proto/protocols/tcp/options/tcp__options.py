@@ -27,7 +27,7 @@
 """
 This module contains the TCP packet options class.
 
-net_proto/protocols/tcp/options/tcp_options.py
+net_proto/protocols/tcp/options/tcp__options.py
 
 ver 3.0.4
 """
@@ -38,26 +38,28 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
-from net_proto.protocols.tcp.options.tcp_option import TcpOption, TcpOptionType
-from net_proto.protocols.tcp.options.tcp_option__eol import TcpOptionEol
-from net_proto.protocols.tcp.options.tcp_option__mss import TcpOptionMss
-from net_proto.protocols.tcp.options.tcp_option__nop import (
+from net_proto.protocols.tcp.options.tcp__option import TcpOption, TcpOptionType
+from net_proto.protocols.tcp.options.tcp__option__eol import TcpOptionEol
+from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
+from net_proto.protocols.tcp.options.tcp__option__nop import (
     TCP__OPTION__NOP__LEN,
     TcpOptionNop,
 )
-from net_proto.protocols.tcp.options.tcp_option__sack import (
+from net_proto.protocols.tcp.options.tcp__option__sack import (
     TcpOptionSack,
     TcpSackBlock,
 )
-from net_proto.protocols.tcp.options.tcp_option__sackperm import (
+from net_proto.protocols.tcp.options.tcp__option__sackperm import (
     TcpOptionSackperm,
 )
-from net_proto.protocols.tcp.options.tcp_option__timestamps import (
+from net_proto.protocols.tcp.options.tcp__option__timestamps import (
     TcpOptionTimestamps,
     TcpTimestamps,
 )
-from net_proto.protocols.tcp.options.tcp_option__unknown import TcpOptionUnknown
-from net_proto.protocols.tcp.options.tcp_option__wscale import TcpOptionWscale
+from net_proto.protocols.tcp.options.tcp__option__unknown import (
+    TcpOptionUnknown,
+)
+from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 from net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TCP__MIN_MSS
 

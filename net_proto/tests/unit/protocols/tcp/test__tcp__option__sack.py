@@ -45,7 +45,7 @@ from net_proto import (
     TcpOptionType,
     TcpSackBlock,
 )
-from net_proto.protocols.tcp.options.tcp_option import TCP__OPTION__LEN
+from net_proto.protocols.tcp.options.tcp__option import TCP__OPTION__LEN
 
 
 class TestTcpOptionSackAsserts(TestCase):

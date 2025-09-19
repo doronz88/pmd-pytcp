@@ -41,7 +41,7 @@ from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
 from net_proto.protocols.ip4.ip4__header import Ip4Header, Ip4HeaderProperties
-from net_proto.protocols.ip4.options.ip4_options import (
+from net_proto.protocols.ip4.options.ip4__options import (
     Ip4Options,
     Ip4OptionsProperties,
 )

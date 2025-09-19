@@ -25,9 +25,9 @@
 
 
 """
-This module contains the TCP Mss (Maximum Segment Size) option support code.
+Module contains the unknown IPv4 option support code.
 
-net_proto/protocols/tcp/options/tcp_option__mss.py
+net_proto/protocols/ip4/options/ip4__option__unknown.py
 
 ver 3.0.4
 """
@@ -38,97 +38,97 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.tcp.options.tcp_option import (
-    TCP__OPTION__LEN,
-    TcpOption,
-    TcpOptionType,
+from net_proto.lib.int_checks import is_uint8
+from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
+from net_proto.protocols.ip4.options.ip4__option import (
+    IP4__OPTION__LEN,
+    IP4__OPTION__STRUCT,
+    Ip4Option,
+    Ip4OptionType,
 )
-from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
-
-# The TCP Mss (Maximum Segment Size) option [RFC 793].
-
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 1   |   Length = 1  |             Value             |
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-TCP__OPTION__MSS__LEN = 4
-TCP__OPTION__MSS__STRUCT = "! BB H"
 
 
-@dataclass(frozen=True, kw_only=False, slots=True)
-class TcpOptionMss(TcpOption):
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Ip4OptionUnknown(Ip4Option):
     """
-    The TCP Mss (Maximum Segment Size) option support class.
+    The IPv4 unknown option support class.
     """
 
-    type: TcpOptionType = field(
-        repr=False,
-        init=False,
-        default=TcpOptionType.MSS,
+    type: Ip4OptionType = field(
+        repr=True,
+        init=True,
+        default=Ip4OptionType.from_int(255),
     )
     len: int = field(
-        repr=False,
+        repr=True,
         init=False,
-        default=TCP__OPTION__MSS__LEN,
     )
 
-    mss: int
+    data: bytes
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Mss option fields.
+        Validate the IPv4 unknown option fields.
         """
 
-        # Ensure the 'mss' field is a 16-bit unsigned integer.
-        assert is_uint16(self.mss), (
-            f"The 'mss' field must be a 16-bit unsigned integer. "
-            f"Got: {self.mss}"
+        # Ensure the 'type' field is a valid Ip4OptionType enum member.
+        assert isinstance(self.type, Ip4OptionType), (
+            f"The 'type' field must be a Ip4OptionType. "
+            f"Got: {type(self.type)!r}"
+        )
+
+        # Ensure the 'type' field is not a known Ip4OptionType.
+        assert int(self.type) not in Ip4OptionType.get_known_values(), (
+            "The 'type' field must not be a known Ip4OptionType. "
+            f"Got: {self.type!r}"
+        )
+
+        # Update the option 'len' field based on the length of the 'data' field.
+        object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
+
+        # Ensure the 'len' field is a valid 8-bit unsigned integer.
+        assert is_uint8(self.len), (
+            f"The 'len' field must be an 8-bit unsigned integer. "
+            f"Got: {self.len!r}"
         )
 
     @override
     def __str__(self) -> str:
         """
-        Get the TCP Mss option log string.
+        Get the unknown IPv4 option log string.
         """
 
-        return f"mss {self.mss}"
+        return f"unk-{int(self.type)}-{self.len}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Mss option as memoryview.
+        Get the unknown IPv4 option as memoryview.
         """
 
         struct.pack_into(
-            TCP__OPTION__MSS__STRUCT,
-            buffer := bytearray(len(self)),
+            IP4__OPTION__STRUCT,
+            buffer := bytearray(self.len),
             0,
             int(self.type),
             self.len,
-            self.mss,
         )
+
+        buffer[IP4__OPTION__LEN:] = self.data
 
         return memoryview(buffer)
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the TCP Mss option integrity before parsing it.
+        Validate the unknown IPv4 option integrity before parsing it.
         """
-
-        # Raise integrity error when the option length value is incorrect.
-        if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
-            raise TcpIntegrityError(
-                f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} "
-                f"bytes. Got: {value!r}"
-            )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
-            raise TcpIntegrityError(
-                "The TCP Mss option length value must be less than or equal to "
+            raise Ip4IntegrityError(
+                "The unknown IPv4 option length must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -136,21 +136,24 @@ class TcpOptionMss(TcpOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Mss option from buffer.
+        Initialize the unknown IPv4 option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Mss option must be "
-            f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+        assert (value := len(buffer)) >= IP4__OPTION__LEN, (
+            f"The minimum length of the unknown IPv4 option must be "
+            f"{IP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.MSS), (
-            f"The TCP Mss option type must be {TcpOptionType.MSS!r}. "
-            f"Got: {TcpOptionType.from_int(value)!r}"
+        # Ensure the option type is not known.
+        assert (value := buffer[0]) not in Ip4OptionType.get_known_values(), (
+            f"The unknown IPv4 option type must not be known. "
+            f"Got: {Ip4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        return cls(mss=int.from_bytes(buffer[2:4]))
+        return cls(
+            type=Ip4OptionType(buffer[0]),
+            data=buffer[IP4__OPTION__LEN : buffer[1]],
+        )

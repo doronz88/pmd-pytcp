@@ -44,7 +44,7 @@ from net_proto import (
     Ip4OptionUnknown,
 )
 from net_proto.lib.int_checks import UINT_8__MAX
-from net_proto.protocols.ip4.options.ip4_option import IP4__OPTION__LEN
+from net_proto.protocols.ip4.options.ip4__option import IP4__OPTION__LEN
 
 
 class TestIp4OptionUnknownAsserts(TestCase):

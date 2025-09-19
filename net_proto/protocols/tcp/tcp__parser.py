@@ -39,7 +39,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
-from net_proto.protocols.tcp.options.tcp_options import TcpOptions
+from net_proto.protocols.tcp.options.tcp__options import TcpOptions
 from net_proto.protocols.tcp.tcp__base import Tcp
 from net_proto.protocols.tcp.tcp__errors import (
     TcpIntegrityError,

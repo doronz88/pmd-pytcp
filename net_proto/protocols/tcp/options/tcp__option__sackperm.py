@@ -25,86 +25,120 @@
 
 
 """
-This module contains TCP Nop (No Operation) option support code.
+This module contains the TCP Sackperm (SACK Permitted) option support code.
 
-net_proto/protocols/tcp/options/tcp_option__nop.py
+net_proto/protocols/tcp/options/tcp__option__sackperm.py
 
 ver 3.0.4
 """
 
 
+import struct
 from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
-from net_proto.protocols.tcp.options.tcp_option import TcpOption, TcpOptionType
+from net_proto.protocols.tcp.options.tcp__option import (
+    TCP__OPTION__LEN,
+    TcpOption,
+    TcpOptionType,
+)
+from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP Nop (No Operation) option [RFC 793].
+# The TCP Sackperm (SACK Permitted) option [RFC 2018].
 
-# +-+-+-+-+-+-+-+-+
-# |    Type = 1   |
-# +-+-+-+-+-+-+-+-+
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |    Type = 4   |   Length = 2  |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-TCP__OPTION__NOP__LEN = 1
-TCP__OPTION__NOP__STRUCT = "! B"
+TCP__OPTION__SACKPERM__LEN = 2
+TCP__OPTION__SACKPERM__STRUCT = "! BB"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
-class TcpOptionNop(TcpOption):
+class TcpOptionSackperm(TcpOption):
     """
-    The TCP Nop (No Operation) option support class.
+    The TCP Sackperm (SACK Permitted) option support class.
     """
 
     type: TcpOptionType = field(
         repr=False,
         init=False,
-        default=TcpOptionType.NOP,
+        default=TcpOptionType.SACKPERM,
     )
     len: int = field(
         repr=False,
         init=False,
-        default=TCP__OPTION__NOP__LEN,
+        default=TCP__OPTION__SACKPERM__LEN,
     )
 
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Nop option fields.
+        Validate the TCP Sackperm option fields.
         """
 
     @override
     def __str__(self) -> str:
         """
-        Get the TCP Nop option log string.
+        Get the TCP Sackperm option log string.
         """
 
-        return "nop"
+        return "sackperm"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Nop option as memoryview.
+        Get the TCP Sackperm option as memoryview.
         """
 
-        return memoryview(bytearray(bytes(self.type)))
+        struct.pack_into(
+            TCP__OPTION__SACKPERM__STRUCT,
+            buffer := bytearray(len(self)),
+            0,
+            self.type.value,
+            self.len,
+        )
+
+        return memoryview(buffer)
+
+    @staticmethod
+    def _validate_integrity(buffer: Buffer, /) -> None:
+        """
+        Validate the TCP Sackperm option integrity before parsing it.
+        """
+
+        # Raise integrity error when the option length value is incorrect.
+        if (value := buffer[1]) != TCP__OPTION__SACKPERM__LEN:
+            raise TcpIntegrityError(
+                f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} "
+                f"bytes. Got: {value!r}"
+            )
+
+        # The Sackperm option has no data, so the length should be exactly 2
+        # and the option length integrity check (II) here wouldn't function
+        # properly as the condition when length field is missing is already
+        # being handled by an assert.
 
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the TCP Nop option from buffer.
+        Initialize the TCP Sackperm option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__NOP__LEN, (
-            f"The minimum length of the TCP Nop option must be "
-            f"{TCP__OPTION__NOP__LEN} byte. Got: {value!r}"
+        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
+            f"The minimum length of the TCP Sackperm option must be "
+            f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.NOP), (
-            f"The TCP Nop option type must be {TcpOptionType.NOP!r}. "
+        assert (value := buffer[0]) == int(TcpOptionType.SACKPERM), (
+            f"The TCP Sackperm option type must be {TcpOptionType.SACKPERM!r}. "
             f"Got: {TcpOptionType.from_int(value)!r}"
         )
+
+        cls._validate_integrity(buffer)
 
         return cls()

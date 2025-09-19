@@ -45,7 +45,7 @@ from net_proto.protocols.ip4.ip4__errors import (
     Ip4SanityError,
 )
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, Ip4Header
-from net_proto.protocols.ip4.options.ip4_options import Ip4Options
+from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 
 
 class Ip4Parser(Ip4[Buffer], ProtoParser):
