@@ -51,7 +51,9 @@ from net_addr import (
     [
         {
             "_description": "Test the IPv4 network: 0.0.0.0/0 (str)",
-            "_args": ["0.0.0.0/0"],
+            "_args": [
+                "0.0.0.0/0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "0.0.0.0/0",
@@ -68,7 +70,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 192.168.1.100/24 (str)",
-            "_args": ["192.168.1.100/24"],
+            "_args": [
+                "192.168.1.100/24",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.0/24",
@@ -85,7 +89,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 192.168.1.100/24 (str str)",
-            "_args": ["192.168.1.100 255.255.255.0"],
+            "_args": [
+                "192.168.1.100 255.255.255.0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.0/24",
@@ -102,7 +108,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 192.168.1.100/24 (Ip4Address, Ip4Mask)",
-            "_args": [(Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0"))],
+            "_args": [
+                (Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0")),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.0/24",
@@ -119,7 +127,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 192.168.1.100/24 (Ip4Network)",
-            "_args": [Ip4Network("192.168.1.100/24")],
+            "_args": [
+                Ip4Network("192.168.1.100/24"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.0/24",
@@ -136,7 +146,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 10.20.30.40/8 (str)",
-            "_args": ["10.20.30.40/8"],
+            "_args": [
+                "10.20.30.40/8",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "10.0.0.0/8",
@@ -153,7 +165,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 172.16.21.40/23 (str)",
-            "_args": ["172.16.21.40/20"],
+            "_args": [
+                "172.16.21.40/20",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "172.16.16.0/20",
@@ -170,7 +184,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 172.16.10.70/31 (str)",
-            "_args": ["172.16.10.70/31"],
+            "_args": [
+                "172.16.10.70/31",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "172.16.10.70/31",
@@ -187,7 +203,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv4 network: 127.0.0.1/32 (str)",
-            "_args": ["127.0.0.1/32"],
+            "_args": [
+                "127.0.0.1/32",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "127.0.0.1/32",
@@ -346,7 +364,9 @@ class TestNetAddrIp4Network(TestCase):
     [
         {
             "_description": "Test the IPv4 network format: '192.168.1.0//24'",
-            "_args": ["192.168.1.0//24"],
+            "_args": [
+                "192.168.1.0//24",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
@@ -357,7 +377,9 @@ class TestNetAddrIp4Network(TestCase):
         },
         {
             "_description": "Test the IPv4 network format: '192.168.1./24'",
-            "_args": ["192.168.1./24"],
+            "_args": [
+                "192.168.1./24",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
@@ -368,7 +390,9 @@ class TestNetAddrIp4Network(TestCase):
         },
         {
             "_description": "Test the IPv4 network format: '192.168.1.0/33'",
-            "_args": ["192.168.1.0/33"],
+            "_args": [
+                "192.168.1.0/33",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
@@ -379,7 +403,9 @@ class TestNetAddrIp4Network(TestCase):
         },
         {
             "_description": "Test the IPv4 network format: '192.168.1.0 128.255.255.255'",
-            "_args": ["192.168.1.0 128.255.255.255"],
+            "_args": [
+                "192.168.1.0 128.255.255.255",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,

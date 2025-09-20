@@ -45,7 +45,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
     [
         {
             "_description": "Test the IPv6 address: :: (str)",
-            "_args": ["::"],
+            "_args": [
+                "::",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "::",
@@ -71,7 +73,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: :: (None)",
-            "_args": [None],
+            "_args": [
+                None,
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "::",
@@ -97,7 +101,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ::1 (str)",
-            "_args": ["::1"],
+            "_args": [
+                "::1",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "::1",
@@ -123,7 +129,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: 2000:: (str)",
-            "_args": ["2000::"],
+            "_args": [
+                "2000::",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2000::",
@@ -149,7 +157,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: 3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff (str)",
-            "_args": ["3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                "3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -177,7 +187,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: fe80:: (str)",
-            "_args": ["fe80::"],
+            "_args": [
+                "fe80::",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "fe80::",
@@ -203,7 +215,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff (str)",
-            "_args": ["febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -231,7 +245,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: fc00:: (str)",
-            "_args": ["fc00::"],
+            "_args": [
+                "fc00::",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "fc00::",
@@ -257,7 +273,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff (str)",
-            "_args": ["fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -285,7 +303,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff00:: (str)",
-            "_args": ["ff00::"],
+            "_args": [
+                "ff00::",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff00::",
@@ -311,7 +331,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1 (str)",
-            "_args": ["ff02::1"],
+            "_args": [
+                "ff02::1",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1",
@@ -337,7 +359,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::2 (str)",
-            "_args": ["ff02::2"],
+            "_args": [
+                "ff02::2",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::2",
@@ -363,7 +387,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (str)",
-            "_args": ["ff02::1:ff00:0"],
+            "_args": [
+                "ff02::1:ff00:0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1:ff00:0",
@@ -389,7 +415,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (str uppercase)",
-            "_args": ["FF02::1:FF00:0"],
+            "_args": [
+                "FF02::1:FF00:0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1:ff00:0",
@@ -415,7 +443,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (Ip6Address)",
-            "_args": [Ip6Address("ff02::1:ff00:0")],
+            "_args": [
+                Ip6Address("ff02::1:ff00:0"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1:ff00:0",
@@ -441,7 +471,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (int)",
-            "_args": [338963523518870617245727861372719464448],
+            "_args": [
+                338963523518870617245727861372719464448,
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1:ff00:0",
@@ -468,7 +500,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (bytes)",
             "_args": [
-                b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"
+                b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -498,7 +530,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
             "_args": [
                 bytearray(
                     b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -528,7 +560,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
             "_args": [
                 memoryview(
                     b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -555,7 +587,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ff02::1:ffff:ffff (str)",
-            "_args": ["ff02::1:ffff:ffff"],
+            "_args": [
+                "ff02::1:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff02::1:ffff:ffff",
@@ -581,7 +615,9 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 address: ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff (str)",
-            "_args": ["ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -840,7 +876,9 @@ class TestNetAddrIp6Address(TestCase):
     [
         {
             "_description": "Test the IPv6 address format: '2000::10000'",
-            "_args": ["2000::10000"],
+            "_args": [
+                "2000::10000",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -851,7 +889,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: '2000:::'",
-            "_args": ["2000:::"],
+            "_args": [
+                "2000:::",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -862,7 +902,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: '2000;:1'",
-            "_args": ["2000;:1"],
+            "_args": [
+                "2000;:1",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -877,7 +919,7 @@ class TestNetAddrIp6Address(TestCase):
                 "b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'"
             ),
             "_args": [
-                b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+                b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -894,7 +936,7 @@ class TestNetAddrIp6Address(TestCase):
                 "b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'"
             ),
             "_args": [
-                b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+                b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
             ],
             "_kwargs": {},
             "_results": {
@@ -907,7 +949,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: -1",
-            "_args": [-1],
+            "_args": [
+                -1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -918,7 +962,9 @@ class TestNetAddrIp6Address(TestCase):
             "_description": (
                 "Test the IPv6 address format: 340282366920938463463374607431768211456"
             ),
-            "_args": [340282366920938463463374607431768211456],
+            "_args": [
+                340282366920938463463374607431768211456,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -929,7 +975,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: Ip4Address()",
-            "_args": [Ip4Address()],
+            "_args": [
+                Ip4Address(),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -938,7 +986,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: {}",
-            "_args": [{}],
+            "_args": [
+                {},
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
@@ -947,7 +997,9 @@ class TestNetAddrIp6Address(TestCase):
         },
         {
             "_description": "Test the IPv6 address format: 1.1",
-            "_args": [1.1],
+            "_args": [
+                1.1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,

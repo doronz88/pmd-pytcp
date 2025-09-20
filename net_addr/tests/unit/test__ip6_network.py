@@ -51,7 +51,9 @@ from net_addr import (
     [
         {
             "_description": "Test the IPv6 network: ::/0 (str)",
-            "_args": ["::/0"],
+            "_args": [
+                "::/0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "::/0",
@@ -67,7 +69,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv6 network: ::/0 (None)",
-            "_args": [None],
+            "_args": [
+                None,
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "::/0",
@@ -83,7 +87,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv6 network: 2001::/96 (Ip6Address, Ip6Mask)",
-            "_args": [(Ip6Address("2001::"), Ip6Mask("/96"))],
+            "_args": [
+                (Ip6Address("2001::"), Ip6Mask("/96")),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2001::/96",
@@ -99,7 +105,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv6 network: 2001:0:aaaa:bbbb:cccc:dddd:eeee:ffff/64 (str)",
-            "_args": ["2001:0:aaaa:bbbb:cccc:dddd:eeee:ffff/64"],
+            "_args": [
+                "2001:0:aaaa:bbbb:cccc:dddd:eeee:ffff/64",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2001:0:aaaa:bbbb::/64",
@@ -115,7 +123,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv6 network: 2002::dddd:cccc:dddd:eeee:ffff/32 (str)",
-            "_args": ["2002::dddd:cccc:dddd:eeee:ffff/32"],
+            "_args": [
+                "2002::dddd:cccc:dddd:eeee:ffff/32",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2002::/32",
@@ -131,7 +141,9 @@ from net_addr import (
         },
         {
             "_description": "Test the IPv6 network: ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 (str)",
-            "_args": ["ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128"],
+            "_args": [
+                "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128",
@@ -281,7 +293,9 @@ class TestNetAddrIp6Network(TestCase):
     [
         {
             "_description": "Test the IPv6 network format: '2001:://64'",
-            "_args": ["2001:://64"],
+            "_args": [
+                "2001:://64",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
@@ -292,7 +306,9 @@ class TestNetAddrIp6Network(TestCase):
         },
         {
             "_description": "Test the IPv6 network format: '2001::64'",
-            "_args": ["2001::64"],
+            "_args": [
+                "2001::64",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
@@ -303,7 +319,9 @@ class TestNetAddrIp6Network(TestCase):
         },
         {
             "_description": "Test the IPv6 network format: '1:2:3:4:5:6:7:8:9/64'",
-            "_args": ["1:2:3:4:5:6:7:8:9/64"],
+            "_args": [
+                "1:2:3:4:5:6:7:8:9/64",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
@@ -314,7 +332,9 @@ class TestNetAddrIp6Network(TestCase):
         },
         {
             "_description": "Test the IPv6 network format: '1:2:3:4:5:6:7:8/129'",
-            "_args": ["1:2:3:4:5:6:7:8/129"],
+            "_args": [
+                "1:2:3:4:5:6:7:8/129",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,

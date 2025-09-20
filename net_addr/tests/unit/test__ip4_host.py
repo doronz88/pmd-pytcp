@@ -56,7 +56,9 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
     [
         {
             "_description": "Test the IPv4 host: 192.168.1.100/24 (str)",
-            "_args": ["192.168.1.100/24"],
+            "_args": [
+                "192.168.1.100/24",
+            ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
                 "origin": Ip4HostOrigin.DHCP,
@@ -78,7 +80,9 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
         },
         {
             "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4Host)",
-            "_args": [Ip4Host("192.168.1.100/24")],
+            "_args": [
+                Ip4Host("192.168.1.100/24"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
@@ -96,7 +100,9 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
         },
         {
             "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4Address, Ip4Mask)",
-            "_args": [(Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0"))],
+            "_args": [
+                (Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0")),
+            ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
                 "origin": Ip4HostOrigin.STATIC,
@@ -118,7 +124,7 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
         {
             "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4Address, Ip4Network)",
             "_args": [
-                (Ip4Address("192.168.1.100"), Ip4Network("192.168.1.0/24"))
+                (Ip4Address("192.168.1.100"), Ip4Network("192.168.1.0/24")),
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
@@ -271,7 +277,7 @@ class TestNetAddrIp4Host(TestCase):
         {
             "_description": "Test the IPv4 host where address is not part of the network.",
             "_args": [
-                (Ip4Address("192.168.1.100"), Ip4Network("192.168.2.0/24"))
+                (Ip4Address("192.168.1.100"), Ip4Network("192.168.2.0/24")),
             ],
             "_kwargs": {},
             "_results": {

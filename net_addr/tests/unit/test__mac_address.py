@@ -45,7 +45,9 @@ from net_addr import MacAddress, MacAddressFormatError
     [
         {
             "_description": "Test the MAC address: 00:00:00:00:00:00 (str)",
-            "_args": ["00:00:00:00:00:00"],
+            "_args": [
+                "00:00:00:00:00:00",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "00:00:00:00:00:00",
@@ -64,7 +66,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 00:00:00:00:00:00 (None)",
-            "_args": [None],
+            "_args": [
+                None,
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "00:00:00:00:00:00",
@@ -83,7 +87,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (str)",
-            "_args": ["02:03:04:aa:bb:cc"],
+            "_args": [
+                "02:03:04:aa:bb:cc",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -102,7 +108,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (str uppercase)",
-            "_args": ["02:03:04:AA:BB:CC"],
+            "_args": [
+                "02:03:04:AA:BB:CC",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -121,7 +129,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (bytes)",
-            "_args": [b"\x02\x03\x04\xaa\xbb\xcc"],
+            "_args": [
+                b"\x02\x03\x04\xaa\xbb\xcc",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -140,7 +150,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (bytearray)",
-            "_args": [bytearray(b"\x02\x03\x04\xaa\xbb\xcc")],
+            "_args": [
+                bytearray(b"\x02\x03\x04\xaa\xbb\xcc"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -159,7 +171,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (memoryview)",
-            "_args": [memoryview(b"\x02\x03\x04\xaa\xbb\xcc")],
+            "_args": [
+                memoryview(b"\x02\x03\x04\xaa\xbb\xcc"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -178,7 +192,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (MacAddress)",
-            "_args": [MacAddress("02:03:04:aa:bb:cc")],
+            "_args": [
+                MacAddress("02:03:04:aa:bb:cc"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -197,7 +213,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (int)",
-            "_args": [2211986455500],
+            "_args": [
+                2211986455500,
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "02:03:04:aa:bb:cc",
@@ -216,7 +234,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 01:00:5e:01:02:03 (str)",
-            "_args": ["01:00:5e:01:02:03"],
+            "_args": [
+                "01:00:5e:01:02:03",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "01:00:5e:01:02:03",
@@ -235,7 +255,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 33:33:00:01:02:03 (str)",
-            "_args": ["33:33:00:01:02:03"],
+            "_args": [
+                "33:33:00:01:02:03",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "33:33:00:01:02:03",
@@ -254,7 +276,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 33:33:00:01:02:03 (str)",
-            "_args": ["33:33:00:01:02:03"],
+            "_args": [
+                "33:33:00:01:02:03",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "33:33:00:01:02:03",
@@ -273,7 +297,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: 33:33:ff:01:02:03 (str)",
-            "_args": ["33:33:ff:01:02:03"],
+            "_args": [
+                "33:33:ff:01:02:03",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "33:33:ff:01:02:03",
@@ -292,7 +318,9 @@ from net_addr import MacAddress, MacAddressFormatError
         },
         {
             "_description": "Test the MAC address: ff:ff:ff:ff:ff:ff (str)",
-            "_args": ["ff:ff:ff:ff:ff:ff"],
+            "_args": [
+                "ff:ff:ff:ff:ff:ff",
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "ff:ff:ff:ff:ff:ff",
@@ -480,7 +508,9 @@ class TestNetAddrMacAddress(TestCase):
     [
         {
             "_description": "Test the MAC address format: '01:23:45:ab:cd'",
-            "_args": ["01:23:45:ab:cd"],
+            "_args": [
+                "01:23:45:ab:cd",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -491,7 +521,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: '01:23:45:ab:cd:ef:01'",
-            "_args": ["01:23:45:ab:cd:ef:01"],
+            "_args": [
+                "01:23:45:ab:cd:ef:01",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -502,7 +534,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: '01:23:45:ab:cd:eg'",
-            "_args": ["01:23:45:ab:cd:eg"],
+            "_args": [
+                "01:23:45:ab:cd:eg",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -513,7 +547,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: b'\x01\x23\x45\xab\xcd'",
-            "_args": [b"\x01\x23\x45\xab\xcd"],
+            "_args": [
+                b"\x01\x23\x45\xab\xcd",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -524,7 +560,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: b'\x01\x23\x45\xab\xcd\xef\x01'",
-            "_args": [b"\x01\x23\x45\xab\xcd\xef\x01"],
+            "_args": [
+                b"\x01\x23\x45\xab\xcd\xef\x01",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -535,7 +573,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: -1",
-            "_args": [-1],
+            "_args": [
+                -1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -544,7 +584,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: 281474976710656",
-            "_args": [281474976710656],
+            "_args": [
+                281474976710656,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -553,7 +595,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: {}",
-            "_args": [{}],
+            "_args": [
+                {},
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
@@ -562,7 +606,9 @@ class TestNetAddrMacAddress(TestCase):
         },
         {
             "_description": "Test the MAC address format: 1.1",
-            "_args": [1.1],
+            "_args": [
+                1.1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,

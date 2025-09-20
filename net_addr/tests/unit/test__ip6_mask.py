@@ -45,7 +45,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
     [
         {
             "_description": "Test the IPv6 mask: '/0' (str)",
-            "_args": ["/0"],
+            "_args": [
+                "/0",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 0,
@@ -61,7 +63,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: None (str)",
-            "_args": [None],
+            "_args": [
+                None,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 0,
@@ -77,7 +81,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/8' (str)",
-            "_args": ["/8"],
+            "_args": [
+                "/8",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 8,
@@ -93,7 +99,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/16' (str)",
-            "_args": ["/16"],
+            "_args": [
+                "/16",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 16,
@@ -109,7 +117,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/16' (Ip6Mask)",
-            "_args": [Ip6Mask("/16")],
+            "_args": [
+                Ip6Mask("/16"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 16,
@@ -125,7 +135,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/16' (Ip6Mask)",
-            "_args": [Ip6Mask("/16")],
+            "_args": [
+                Ip6Mask("/16"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 16,
@@ -142,7 +154,7 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         {
             "_description": "Test the IPv6 mask: '/16' (bytes)",
             "_args": [
-                b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ],
             "_kwargs": {},
             "_results": {
@@ -162,7 +174,7 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
             "_args": [
                 bytearray(
                     b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -182,7 +194,7 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
             "_args": [
                 memoryview(
                     b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                )
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -199,7 +211,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/16' (int)",
-            "_args": [340277174624079928635746076935438991360],
+            "_args": [
+                340277174624079928635746076935438991360,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 16,
@@ -215,7 +229,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/24' (str)",
-            "_args": ["/24"],
+            "_args": [
+                "/24",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 24,
@@ -231,7 +247,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/32' (str)",
-            "_args": ["/32"],
+            "_args": [
+                "/32",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 32,
@@ -247,7 +265,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/40' (str)",
-            "_args": ["/40"],
+            "_args": [
+                "/40",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 40,
@@ -263,7 +283,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/48' (str)",
-            "_args": ["/48"],
+            "_args": [
+                "/48",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 48,
@@ -279,7 +301,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/56' (str)",
-            "_args": ["/56"],
+            "_args": [
+                "/56",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 56,
@@ -295,7 +319,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/64' (str)",
-            "_args": ["/64"],
+            "_args": [
+                "/64",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 64,
@@ -311,7 +337,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/72' (str)",
-            "_args": ["/72"],
+            "_args": [
+                "/72",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 72,
@@ -327,7 +355,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/80' (str)",
-            "_args": ["/80"],
+            "_args": [
+                "/80",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 80,
@@ -343,7 +373,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/88' (str)",
-            "_args": ["/88"],
+            "_args": [
+                "/88",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 88,
@@ -359,7 +391,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/96' (str)",
-            "_args": ["/96"],
+            "_args": [
+                "/96",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 96,
@@ -375,7 +409,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/104' (str)",
-            "_args": ["/104"],
+            "_args": [
+                "/104",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 104,
@@ -391,7 +427,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/112' (str)",
-            "_args": ["/112"],
+            "_args": [
+                "/112",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 112,
@@ -407,7 +445,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/120' (str)",
-            "_args": ["/120"],
+            "_args": [
+                "/120",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 120,
@@ -423,7 +463,9 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         },
         {
             "_description": "Test the IPv6 mask: '/128' (str)",
-            "_args": ["/128"],
+            "_args": [
+                "/128",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 128,
@@ -570,7 +612,9 @@ class TestNetAddrIp6Mask(TestCase):
     [
         {
             "_description": "Test the IPv6 mask format: '64'",
-            "_args": ["64"],
+            "_args": [
+                "64",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -579,7 +623,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask format: '/-1'",
-            "_args": ["/-1"],
+            "_args": [
+                "/-1",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -588,7 +634,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask format: '/129'",
-            "_args": ["/129"],
+            "_args": [
+                "/129",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -597,7 +645,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff'",
-            "_args": [b"ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                b"ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -608,7 +658,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'",
-            "_args": [b"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"],
+            "_args": [
+                b"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -619,7 +671,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask: -1",
-            "_args": [-1],
+            "_args": [
+                -1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -628,7 +682,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask: 340282366920938463463374607431768211456",
-            "_args": [340282366920938463463374607431768211456],
+            "_args": [
+                340282366920938463463374607431768211456,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -639,7 +695,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv6 mask format: Ip4Mask()",
-            "_args": [Ip4Mask()],
+            "_args": [
+                Ip4Mask(),
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -650,7 +708,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv4 mask format: {}",
-            "_args": [{}],
+            "_args": [
+                {},
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
@@ -659,7 +719,9 @@ class TestNetAddrIp6Mask(TestCase):
         },
         {
             "_description": "Test the IPv4 address format: 1.1",
-            "_args": [1.1],
+            "_args": [
+                1.1,
+            ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,

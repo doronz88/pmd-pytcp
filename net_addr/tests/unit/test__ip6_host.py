@@ -56,7 +56,9 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
     [
         {
             "_description": "Test the IPv6 host: 2001:b:c:d:1:2:3:4/64 (str)",
-            "_args": ["2001:b:c:d:1:2:3:4/64"],
+            "_args": [
+                "2001:b:c:d:1:2:3:4/64",
+            ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
                 "origin": Ip6HostOrigin.AUTOCONFIG,
@@ -78,7 +80,9 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
         },
         {
             "_description": "Test the IPv6 host: 2001:b:c:d:1:2:3:4/64 (Ip6Host)",
-            "_args": [Ip6Host("2001:b:c:d:1:2:3:4/64")],
+            "_args": [
+                Ip6Host("2001:b:c:d:1:2:3:4/64"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
@@ -96,7 +100,9 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
         },
         {
             "_description": "Test the IPv6 host: 2001:b:c:d:1:2:3:4/64 (Ip6Address, Ip6Mask)",
-            "_args": [(Ip6Address("2001:b:c:d:1:2:3:4"), Ip6Mask("/64"))],
+            "_args": [
+                (Ip6Address("2001:b:c:d:1:2:3:4"), Ip6Mask("/64")),
+            ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
                 "origin": Ip6HostOrigin.DHCP,
@@ -122,7 +128,7 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 (
                     Ip6Address("2001:b:c:d:1:2:3:4"),
                     Ip6Network("2001:b:c:d::/64"),
-                )
+                ),
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
