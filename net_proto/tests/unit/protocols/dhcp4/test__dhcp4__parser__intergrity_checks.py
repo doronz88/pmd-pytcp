@@ -45,7 +45,9 @@ testcases: list[dict[str, Any]] = [
         "_description": (
             "The packet length is lower than the DHCPv4 minimum header length by 1."
         ),
-        "_args": [b"\x00" * (DHCP4__HEADER__LEN - 1)],
+        "_args": [
+            b"\x00" * (DHCP4__HEADER__LEN - 1),
+        ],
         "_kwargs": {},
         "_results": {
             "error_message": (
@@ -56,7 +58,9 @@ testcases: list[dict[str, Any]] = [
     },
     {
         "_description": "The packet is empty (zero length).",
-        "_args": [b""],
+        "_args": [
+            b"",
+        ],
         "_kwargs": {},
         "_results": {
             "error_message": (

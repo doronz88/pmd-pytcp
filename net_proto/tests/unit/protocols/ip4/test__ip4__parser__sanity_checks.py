@@ -47,7 +47,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The value of the 'ttl' field is 0.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x40\x00\x00\xff\xd8\x24\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -58,7 +58,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The source IP address is a multicast address.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x21\x5e\xe0\x00\x00\x01"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -69,7 +69,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The source IP address is a reserved address.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x11\x5e\xf0\x00\x00\x01"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -80,7 +80,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The source IP address is a limited broadcast.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x01\x60\xff\xff\xff\xff"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -91,7 +91,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The fields 'flag_df' and 'flag_mf' are both set.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x60\x00\xff\xff\xb9\x23\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -102,7 +102,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "The field 'flag_df' is set and value of the 'offset' field is non-zero.",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x41\x00\xff\xff\xd8\x23\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {

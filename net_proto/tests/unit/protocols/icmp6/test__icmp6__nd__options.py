@@ -40,7 +40,6 @@ from testslide import TestCase
 
 from net_addr import MacAddress
 from net_proto import (
-    Icmp6NdOption,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
 )
@@ -51,11 +50,12 @@ from net_proto import (
         {
             "_description": "The ICMPv6 ND options (I).",
             "_args": [
-                Icmp6NdOptionSlla(slla=MacAddress()),
-                Icmp6NdOptionSlla(slla=MacAddress()),
-                Icmp6NdOptionSlla(slla=MacAddress()),
-                Icmp6NdOptionSlla(slla=MacAddress()),
+                Icmp6NdOptionSlla(MacAddress()),
+                Icmp6NdOptionSlla(MacAddress()),
+                Icmp6NdOptionSlla(MacAddress()),
+                Icmp6NdOptionSlla(MacAddress()),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 32,
                 "__str__": (
@@ -83,7 +83,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Icmp6NdOption]
+    _args: list[Any]
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
@@ -91,7 +92,7 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         Initialize an Icmp6NdOptions object with the testcase arguments.
         """
 
-        self._icmp6_nd_options = Icmp6NdOptions(*self._args)
+        self._icmp6_nd_options = Icmp6NdOptions(*self._args, **self._kwargs)
 
     def test__icmp6_nd_options__len(self) -> None:
         """

@@ -39,7 +39,6 @@ from parameterized import parameterized_class  # type: ignore
 from testslide import TestCase
 
 from net_proto import (
-    TcpOption,
     TcpOptionEol,
     TcpOptionMss,
     TcpOptionNop,
@@ -65,6 +64,7 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionEol(),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 4,
                 "__str__": "nop, nop, nop, eol",
@@ -95,6 +95,7 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionEol(),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 40,
                 "__str__": (
@@ -129,6 +130,7 @@ from net_proto import (
                 TcpOptionSackperm(),
                 TcpOptionTimestamps(tsval=123, tsecr=345),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 20,
                 "__str__": (
@@ -162,6 +164,7 @@ from net_proto import (
                 ),
                 TcpOptionTimestamps(tsval=123456, tsecr=654321),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 36,
                 "__str__": "sack [1111-2222, 3333-4444, 5555-6666], timestamps 123456/654321",
@@ -202,6 +205,7 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionNop(),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 40,
                 "__str__": (
@@ -235,7 +239,8 @@ class TestTcpOptionsAssembler(TestCase):
     """
 
     _description: str
-    _args: list[TcpOption]
+    _args: list[Any]
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
@@ -243,7 +248,7 @@ class TestTcpOptionsAssembler(TestCase):
         Initialize the 'TcpOptions' class object with testcase arguments.
         """
 
-        self._tcp_options = TcpOptions(*self._args)
+        self._tcp_options = TcpOptions(*self._args, **self._kwargs)
 
     def test__tcp_options__len(self) -> None:
         """
@@ -438,7 +443,7 @@ class TestTcpOptionsParser(TestCase):
     """
 
     _description: str
-    _args: Any
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 

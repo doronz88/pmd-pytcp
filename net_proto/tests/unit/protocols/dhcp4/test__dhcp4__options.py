@@ -170,7 +170,7 @@ class TestDhcp4OptionsParser(TestCase):
     """
 
     _description: str
-    _args: Any
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 

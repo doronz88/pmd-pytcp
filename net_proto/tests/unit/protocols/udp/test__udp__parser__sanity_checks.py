@@ -44,7 +44,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 testcases: list[dict[str, Any]] = [
     {
         "_description": "The value of the 'sport' field equals 0.",
-        "_args": [b"\x00\x00\xd4\x31\x00\x08\x2b\xc6"],
+        "_args": [
+            b"\x00\x00\xd4\x31\x00\x08\x2b\xc6",
+        ],
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {
@@ -55,7 +57,9 @@ testcases: list[dict[str, Any]] = [
     },
     {
         "_description": "The value of the 'dport' field equals 0.",
-        "_args": [b"\x30\x39\x00\x00\x00\x08\xcf\xbe"],
+        "_args": [
+            b"\x30\x39\x00\x00\x00\x08\xcf\xbe",
+        ],
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {

@@ -46,7 +46,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The value of the 'sport' field equals 0.",
         "_args": [
             b"\x00\x00\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x10\x2b\x67"
-            b"\x0d\x97\x00\x00"
+            b"\x0d\x97\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -58,7 +58,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The value of the 'dport' field equals 0.",
         "_args": [
             b"\x30\x39\x00\x00\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x10\x2b\x67"
-            b"\xb1\x8f\x00\x00"
+            b"\xb1\x8f\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -70,7 +70,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The SYN and FIN flags are set simultaneously.",
         "_args": [
             b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x13\x2b\x67"
-            b"\xdd\x5a\x00\x00"
+            b"\xdd\x5a\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -82,7 +82,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The SYN and RST flags are set simultaneously.",
         "_args": [
             b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x16\x2b\x67"
-            b"\xdd\x57\x00\x00"
+            b"\xdd\x57\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -94,7 +94,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The FIN and RST flags are set simultaneously.",
         "_args": [
             b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x15\x2b\x67"
-            b"\xdd\x58\x00\x00"
+            b"\xdd\x58\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -106,7 +106,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "The ACK flag must be set when FIN flag is set.",
         "_args": [
             b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x50\x01\x2b\x67"
-            b"\xdd\x6c\x00\x00"
+            b"\xdd\x6c\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},

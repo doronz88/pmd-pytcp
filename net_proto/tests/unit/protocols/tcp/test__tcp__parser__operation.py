@@ -46,7 +46,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "TCP packet with no payload and no options (I).",
         "_args": [
             b"\x30\x39\xd4\x31\x07\x5b\xcd\x15\x3a\xde\x68\xb1\x51\xfa\x2b\x67"
-            b"\xaf\x64\x56\xce"
+            b"\xaf\x64\x56\xce",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -78,7 +78,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "TCP packet with no payload and no options (II).",
         "_args": [
             b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3"
-            b"\x6e\xd5\x00\x00"
+            b"\x6e\xd5\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -110,7 +110,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "TCP packet with no payload and options.",
         "_args": [
             b"\x30\x39\xd4\x31\x00\x00\x00\x00\x00\x00\x00\x00\x70\x04\x2b\x67"
-            b"\x5c\x25\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01"
+            b"\x5c\x25\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -145,7 +145,7 @@ testcases: list[dict[str, Any]] = [
         "_args": [
             b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x60\x00\xff\xff"
             b"\xcf\x26\xff\xff\x01\x01\x01\x01\x30\x31\x32\x33\x34\x35\x36\x37"
-            b"\x38\x39\x41\x42\x43\x44\x45\x46"
+            b"\x38\x39\x41\x42\x43\x44\x45\x46",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -179,7 +179,7 @@ testcases: list[dict[str, Any]] = [
         "_description": "TCP packet with maximum payload size and no options.",
         "_args": [
             b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x51\x58\x15\xb3"
-            b"\xb5\x2d\x00\x00" + b"X" * 65515
+            b"\xb5\x2d\x00\x00" + b"X" * 65515,
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -213,7 +213,7 @@ testcases: list[dict[str, Any]] = [
             b"\x04\x57\x0d\x05\x00\x00\x15\xb3\x00\x00\x1e\x61\xf0\xb8\x00\x00"
             b"\xbd\x39\x27\x0f\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
             b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-            b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01" + b"X" * 65475
+            b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01" + b"X" * 65475,
         ],
         "_kwargs": {},
         "_mocked_values": {},

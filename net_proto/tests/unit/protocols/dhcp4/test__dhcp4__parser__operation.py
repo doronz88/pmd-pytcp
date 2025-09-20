@@ -84,7 +84,7 @@ def _dhcp4_header(
 
     sname = b"\x00" * 64
     file_ = b"\x00" * 128
-    cookie = b"\x63\x82\x53\x63"  # 99,130,83,99
+    cookie = b"\x63\x82\x53\x63"
 
     header = bytes([op, htype, hlen, hops]) + xid + secs + flags
     header += ciaddr + yiaddr + siaddr + giaddr
@@ -133,7 +133,7 @@ testcases: list[dict[str, Any]] = [
                 b"\x35\x01\x03"  # message_type = REQUEST
                 b"\xff"  # End
                 b"\x00\x00\x00"  # ignored
-            )
+            ),
         ],
         "_kwargs": {},
         "_results": {
@@ -170,7 +170,7 @@ testcases: list[dict[str, Any]] = [
             + (
                 b"\x3d\x00"  # client_id empty
                 b"\xff"  # End
-            )
+            ),
         ],
         "_kwargs": {},
         "_results": {

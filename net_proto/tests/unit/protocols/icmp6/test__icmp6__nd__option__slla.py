@@ -81,7 +81,9 @@ class TestIcmp6NdOptionSllaAsserts(TestCase):
     [
         {
             "_description": "The ICMPv6 ND Slla option (I).",
-            "_args": [MacAddress("01:02:03:04:05:06")],
+            "_args": [
+                MacAddress("01:02:03:04:05:06"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 8,

@@ -58,7 +58,9 @@ class TestTcpOptionSackAsserts(TestCase):
         Create the default arguments for the TCP Sack option constructor.
         """
 
-        self._args: list[Any] = [[]]
+        self._args: list[Any] = [
+            [],
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__tcp__option__sack__blocks__too_many(self) -> None:
@@ -84,7 +86,9 @@ class TestTcpOptionSackAsserts(TestCase):
     [
         {
             "_description": "The TCP Sack option (I).",
-            "_args": [[]],
+            "_args": [
+                [],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 2,
@@ -98,7 +102,9 @@ class TestTcpOptionSackAsserts(TestCase):
         },
         {
             "_description": "The TCP Sack option (II).",
-            "_args": [[TcpSackBlock(4294967295, 4294967295)]],
+            "_args": [
+                [TcpSackBlock(4294967295, 4294967295)],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 10,
@@ -120,7 +126,7 @@ class TestTcpOptionSackAsserts(TestCase):
                     TcpSackBlock(1111, 2222),
                     TcpSackBlock(3333, 4444),
                     TcpSackBlock(5555, 6666),
-                ]
+                ],
             ],
             "_kwargs": {},
             "_results": {
@@ -152,7 +158,7 @@ class TestTcpOptionSackAsserts(TestCase):
                     TcpSackBlock(333, 444),
                     TcpSackBlock(555, 666),
                     TcpSackBlock(777, 888),
-                ]
+                ],
             ],
             "_kwargs": {},
             "_results": {

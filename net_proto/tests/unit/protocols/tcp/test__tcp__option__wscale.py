@@ -99,7 +99,9 @@ class TestTcpOptionWscaleAsserts(TestCase):
     [
         {
             "_description": "The TCP Wscale option.",
-            "_args": [14],
+            "_args": [
+                14,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,

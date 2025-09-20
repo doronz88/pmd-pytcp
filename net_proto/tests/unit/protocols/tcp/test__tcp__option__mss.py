@@ -98,7 +98,9 @@ class TestTcpOptionMssAsserts(TestCase):
     [
         {
             "_description": "The TCP Mss option.",
-            "_args": [65535],
+            "_args": [
+                65535,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 4,

@@ -163,7 +163,9 @@ class TestIp4OptionNopAssembler(TestCase):
         },
         {
             "_description": "The IPv4 Nop option minimum length assert.",
-            "_args": [b""],
+            "_args": [
+                b"",
+            ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,

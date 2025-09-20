@@ -54,7 +54,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "IPv4 packet (I)",
             "_args": [
                 b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
+                b"\x32\x3c\x46\x50",
             ],
             "_kwargs": {},
             "_results": {
@@ -91,7 +91,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_args": [
                 b"\x45\x46\x00\x24\x30\x39\x40\x00\xff\xff\x3a\x48\x01\x02\x03\x04"
                 b"\x05\x06\x07\x08\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
-                b"\x43\x44\x45\x46"
+                b"\x43\x44\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -133,7 +133,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 b"\x02\x02\x02\x02\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
                 b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
                 b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-                + b"X" * 65475
+                + b"X" * 65475,
             ],
             "_kwargs": {},
             "_results": {
@@ -175,7 +175,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_args": [
                 b"\x45\x29\x00\x24\xd4\x31\x0f\xa1\x80\xff\x41\xd0\x04\x03\x02\x01"
                 b"\x08\x07\x06\x05\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
-                b"\x43\x44\x45\x46"
+                b"\x43\x44\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
@@ -214,7 +214,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "IPv4 packet (V)",
             "_args": [
                 b"\x45\x46\x05\xce\x30\x39\x20\x00\xff\xff\x54\x9e\x01\x02\x03\x04"
-                b"\x05\x06\x07\x08" + b"X" * 1466
+                b"\x05\x06\x07\x08" + b"X" * 1466,
             ],
             "_kwargs": {},
             "_results": {

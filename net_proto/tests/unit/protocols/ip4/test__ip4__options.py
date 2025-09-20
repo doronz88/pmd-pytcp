@@ -51,6 +51,7 @@ from net_proto import Ip4Option, Ip4OptionEol, Ip4OptionNop, Ip4Options
                 Ip4OptionNop(),
                 Ip4OptionEol(),
             ],
+            "_kwargs": {},
             "_results": {
                 "__len__": 4,
                 "__str__": "nop, nop, nop, eol",
@@ -70,6 +71,7 @@ class TestIp4OptionsAssembler(TestCase):
 
     _description: str
     _args: list[Ip4Option]
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
@@ -77,7 +79,7 @@ class TestIp4OptionsAssembler(TestCase):
         Initialize the 'Ip4Options' class object with testcase arguments.
         """
 
-        self._ip4_options = Ip4Options(*self._args)
+        self._ip4_options = Ip4Options(*self._args, **self._kwargs)
 
     def test__ip4_options__len(self) -> None:
         """
@@ -145,7 +147,7 @@ class TestIp4OptionsParser(TestCase):
     """
 
     _description: str
-    _args: Any
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
