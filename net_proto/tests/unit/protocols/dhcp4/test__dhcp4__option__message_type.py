@@ -56,7 +56,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         Create the default arguments for the DHCPv4 Message Type option constructor.
         """
 
-        self._args: list[Any] = [Dhcp4MessageType.DISCOVER]
+        self._args: list[Any] = [
+            Dhcp4MessageType.DISCOVER,
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__message_type__message_type__not_Dhcp4MessageType(
@@ -82,7 +84,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Message Type option (discover).",
-            "_args": [Dhcp4MessageType.DISCOVER],
+            "_args": [
+                Dhcp4MessageType.DISCOVER,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -96,7 +100,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (offer).",
-            "_args": [Dhcp4MessageType.OFFER],
+            "_args": [
+                Dhcp4MessageType.OFFER,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -110,7 +116,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (request).",
-            "_args": [Dhcp4MessageType.REQUEST],
+            "_args": [
+                Dhcp4MessageType.REQUEST,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -124,7 +132,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (decline).",
-            "_args": [Dhcp4MessageType.DECLINE],
+            "_args": [
+                Dhcp4MessageType.DECLINE,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -138,7 +148,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (ack).",
-            "_args": [Dhcp4MessageType.ACK],
+            "_args": [
+                Dhcp4MessageType.ACK,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -152,7 +164,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (nak).",
-            "_args": [Dhcp4MessageType.NAK],
+            "_args": [
+                Dhcp4MessageType.NAK,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -166,7 +180,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (release).",
-            "_args": [Dhcp4MessageType.RELEASE],
+            "_args": [
+                Dhcp4MessageType.RELEASE,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -180,7 +196,9 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Message Type option (inform).",
-            "_args": [Dhcp4MessageType.INFORM],
+            "_args": [
+                Dhcp4MessageType.INFORM,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,

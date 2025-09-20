@@ -56,7 +56,9 @@ class TestDhcp4OptionReqIpAddrAsserts(TestCase):
         Create the default arguments for the DHCPv4 Requested Ip Address option constructor.
         """
 
-        self._args: list[Any] = [Ip4Address("192.0.2.1")]
+        self._args: list[Any] = [
+            Ip4Address("192.0.2.1"),
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__req_ip_addr__req_ip_addr__not_Ip4Address(
@@ -82,7 +84,9 @@ class TestDhcp4OptionReqIpAddrAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-1).",
-            "_args": [Ip4Address("192.0.2.1")],
+            "_args": [
+                Ip4Address("192.0.2.1"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -94,7 +98,9 @@ class TestDhcp4OptionReqIpAddrAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option (low address).",
-            "_args": [Ip4Address("1.2.3.4")],
+            "_args": [
+                Ip4Address("1.2.3.4"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -106,7 +112,9 @@ class TestDhcp4OptionReqIpAddrAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-3).",
-            "_args": [Ip4Address("203.0.113.10")],
+            "_args": [
+                Ip4Address("203.0.113.10"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -141,7 +149,10 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__req_ip_addr__str(self) -> None:
         """
@@ -149,7 +160,10 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__req_ip_addr__repr(self) -> None:
         """
@@ -157,7 +171,10 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__req_ip_addr__bytes(self) -> None:
         """
@@ -165,7 +182,10 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__req_ip_addr__field(self) -> None:
         """
@@ -173,7 +193,10 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(self._option.req_ip_addr, self._results["req_ip_addr"])
+        self.assertEqual(
+            self._option.req_ip_addr,
+            self._results["req_ip_addr"],
+        )
 
 
 @parameterized_class(

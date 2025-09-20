@@ -56,7 +56,9 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
         Create the default arguments for the DHCPv4 IP Address Lease Time option constructor.
         """
 
-        self._args: list[Any] = [60]
+        self._args: list[Any] = [
+            60,
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__lease_time__lease_time__not_int(self) -> None:
@@ -96,7 +98,9 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 IP Address Lease Time option (zero).",
-            "_args": [0],
+            "_args": [
+                0,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -108,7 +112,9 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one minute).",
-            "_args": [60],
+            "_args": [
+                60,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -120,7 +126,9 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one day).",
-            "_args": [86400],
+            "_args": [
+                86400,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -132,7 +140,9 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (max uint32).",
-            "_args": [4294967295],
+            "_args": [
+                4294967295,
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -167,7 +177,10 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__lease_time__str(self) -> None:
         """
@@ -175,7 +188,10 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__lease_time__repr(self) -> None:
         """
@@ -183,7 +199,10 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__lease_time__bytes(self) -> None:
         """
@@ -191,7 +210,10 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__lease_time__field(self) -> None:
         """
@@ -199,7 +221,10 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(self._option.lease_time, self._results["lease_time"])
+        self.assertEqual(
+            self._option.lease_time,
+            self._results["lease_time"],
+        )
 
 
 @parameterized_class(

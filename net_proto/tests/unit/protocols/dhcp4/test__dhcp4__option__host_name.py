@@ -55,7 +55,9 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
         Create the default arguments for the DHCPv4 Host Name option constructor.
         """
 
-        self._args: list[Any] = ["host"]
+        self._args: list[Any] = [
+            "host",
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__host_name__host_name__not_str(self) -> None:
@@ -79,7 +81,9 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Host Name option (single char).",
-            "_args": ["a"],
+            "_args": [
+                "a",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -91,7 +95,9 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Host Name option (short).",
-            "_args": ["host"],
+            "_args": [
+                "host",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -103,7 +109,9 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Host Name option (alnum-hyphen).",
-            "_args": ["tom-tit-tot-01"],
+            "_args": [
+                "tom-tit-tot-01",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 16,
@@ -115,7 +123,9 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Host Name option (empty).",
-            "_args": [""],
+            "_args": [
+                "",
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 2,
@@ -141,6 +151,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         """
         Initialize the DHCPv4 Host Name option object with testcase arguments.
         """
+
         self._option = Dhcp4OptionHostName(*self._args, **self._kwargs)
 
     def test__dhcp4__option__host_name__len(self) -> None:
@@ -148,35 +159,55 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         Ensure the DHCPv4 Host Name option '__len__()' method returns a correct
         value.
         """
-        self.assertEqual(len(self._option), self._results["__len__"])
+
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__host_name__str(self) -> None:
         """
         Ensure the DHCPv4 Host Name option '__str__()' method returns a correct
         value.
         """
-        self.assertEqual(str(self._option), self._results["__str__"])
+
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__host_name__repr(self) -> None:
         """
         Ensure the DHCPv4 Host Name option '__repr__()' method returns a correct
         value.
         """
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__host_name__bytes(self) -> None:
         """
         Ensure the DHCPv4 Host Name option '__bytes__()' method returns a correct
         value.
         """
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__host_name__host_name(self) -> None:
         """
         Ensure the DHCPv4 Host Name option 'host_name' field contains a correct
         value.
         """
-        self.assertEqual(self._option.host_name, self._results["host_name"])
+
+        self.assertEqual(
+            self._option.host_name,
+            self._results["host_name"],
+        )
 
 
 @parameterized_class(

@@ -56,7 +56,9 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         Create the default arguments for the DHCPv4 Server Identifier option constructor.
         """
 
-        self._args: list[Any] = [Ip4Address("192.0.2.1")]
+        self._args: list[Any] = [
+            Ip4Address("192.0.2.1"),
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__server_id__server_id__not_Ip4Address(self) -> None:
@@ -80,7 +82,9 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-1).",
-            "_args": [Ip4Address("192.0.2.1")],
+            "_args": [
+                Ip4Address("192.0.2.1"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -92,7 +96,9 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option (low address).",
-            "_args": [Ip4Address("1.2.3.4")],
+            "_args": [
+                Ip4Address("1.2.3.4"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -104,7 +110,9 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-3).",
-            "_args": [Ip4Address("203.0.113.10")],
+            "_args": [
+                Ip4Address("203.0.113.10"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -139,7 +147,10 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__server_id__str(self) -> None:
         """
@@ -147,7 +158,10 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__server_id__repr(self) -> None:
         """
@@ -155,7 +169,10 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__server_id__bytes(self) -> None:
         """
@@ -163,7 +180,10 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__server_id__field(self) -> None:
         """
@@ -171,7 +191,10 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(self._option.server_id, self._results["server_id"])
+        self.assertEqual(
+            self._option.server_id,
+            self._results["server_id"],
+        )
 
 
 @parameterized_class(

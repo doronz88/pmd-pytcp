@@ -56,7 +56,9 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         constructor.
         """
 
-        self._args: list[Any] = [[Dhcp4OptionType.HOST_NAME]]
+        self._args: list[Any] = [
+            [Dhcp4OptionType.HOST_NAME],
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__param_req_list__param_req_list__not_list(
@@ -107,7 +109,9 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [[]],
+            "_args": [
+                [],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 2,
@@ -119,7 +123,9 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
-            "_args": [[Dhcp4OptionType.HOST_NAME]],
+            "_args": [
+                [Dhcp4OptionType.HOST_NAME],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 3,
@@ -134,7 +140,7 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         {
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
             "_args": [
-                [Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE]
+                [Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE],
             ],
             "_kwargs": {},
             "_results": {
@@ -177,7 +183,10 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         a correct value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__param_req_list__str(self) -> None:
         """
@@ -185,7 +194,10 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         a correct value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__param_req_list__repr(self) -> None:
         """
@@ -193,7 +205,10 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         returns a correct value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__param_req_list__bytes(self) -> None:
         """
@@ -201,7 +216,10 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         returns a correct value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__param_req_list__field(self) -> None:
         """

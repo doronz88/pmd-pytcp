@@ -56,7 +56,9 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         Create the default arguments for the DHCPv4 Subnet Mask option constructor.
         """
 
-        self._args: list[Any] = [Ip4Mask("255.255.255.0")]
+        self._args: list[Any] = [
+            Ip4Mask("255.255.255.0"),
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__subnet_mask__subnet_mask__not_Ip4Mask(
@@ -82,7 +84,9 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Subnet Mask option (/24).",
-            "_args": [Ip4Mask("255.255.255.0")],
+            "_args": [
+                Ip4Mask("255.255.255.0"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -94,7 +98,9 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Subnet Mask option (/16).",
-            "_args": [Ip4Mask("255.255.0.0")],
+            "_args": [
+                Ip4Mask("255.255.0.0"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -106,7 +112,9 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Subnet Mask option (/8).",
-            "_args": [Ip4Mask("255.0.0.0")],
+            "_args": [
+                Ip4Mask("255.0.0.0"),
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -141,7 +149,10 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__subnet_mask__str(self) -> None:
         """
@@ -149,7 +160,10 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__subnet_mask__repr(self) -> None:
         """
@@ -157,7 +171,10 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__subnet_mask__bytes(self) -> None:
         """
@@ -165,7 +182,10 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__subnet_mask__field(self) -> None:
         """
@@ -173,7 +193,10 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
         value.
         """
 
-        self.assertEqual(self._option.subnet_mask, self._results["subnet_mask"])
+        self.assertEqual(
+            self._option.subnet_mask,
+            self._results["subnet_mask"],
+        )
 
 
 @parameterized_class(

@@ -57,6 +57,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         Create the default arguments for the DHCPv4 unknown option constructor.
         """
 
+        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "type": Dhcp4OptionType.from_int(254),
             "data": b"012345",
@@ -119,7 +120,8 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
     [
         {
             "_description": "The unknown DHCPv4 option.",
-            "_args": {
+            "_args": [],
+            "_kwargs": {
                 "type": Dhcp4OptionType.from_int(254),
                 "data": b"0123456789ABCDEF",
             },
@@ -147,7 +149,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
@@ -155,7 +158,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         Initialize the unknown DHCPv4 option object with testcase arguments.
         """
 
-        self._option = Dhcp4OptionUnknown(**self._args)
+        self._option = Dhcp4OptionUnknown(*self._args, **self._kwargs)
 
     def test__dhcp4__option__unknown__len(self) -> None:
         """
@@ -315,7 +318,7 @@ class TestDhcp4OptionUnknownParser(TestCase):
     """
 
     _description: str
-    _args: Any
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 

@@ -54,7 +54,8 @@ class TestDhcp4OptionEndAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Eond option.",
-            "_args": {},
+            "_args": [],
+            "_kwargs": {},
             "_results": {
                 "__len__": 1,
                 "__str__": "end",
@@ -72,7 +73,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
+    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
@@ -80,7 +82,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
         Initialize the DHCPv4 End option object with testcase arguments.
         """
 
-        self._option = Dhcp4OptionEnd(**self._args)
+        self._option = Dhcp4OptionEnd(*self._args, **self._kwargs)
 
     def test__dhcp4__option__end__len(self) -> None:
         """

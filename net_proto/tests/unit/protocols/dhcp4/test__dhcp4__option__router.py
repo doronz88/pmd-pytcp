@@ -56,7 +56,9 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         Create the default arguments for the DHCPv4 Router option constructor.
         """
 
-        self._args: list[Any] = [[Ip4Address("192.0.2.1")]]
+        self._args: list[Any] = [
+            [Ip4Address("192.0.2.1")],
+        ]
         self._kwargs: dict[str, Any] = {}
 
     def test__dhcp4__option__router__routers__not_list(self) -> None:
@@ -101,7 +103,9 @@ class TestDhcp4OptionRouterAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Router option (empty list).",
-            "_args": [[]],
+            "_args": [
+                [],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 2,
@@ -113,7 +117,9 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Router option (one router).",
-            "_args": [[Ip4Address("192.0.2.1")]],
+            "_args": [
+                [Ip4Address("192.0.2.1")],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,  # 2 + 1*4
@@ -125,7 +131,9 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Router option (two routers).",
-            "_args": [[Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")]],
+            "_args": [
+                [Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 10,  # 2 + 2*4
@@ -142,7 +150,9 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         },
         {
             "_description": "The DHCPv4 Router option (TEST-NET-3 router).",
-            "_args": [[Ip4Address("203.0.113.10")]],
+            "_args": [
+                [Ip4Address("203.0.113.10")],
+            ],
             "_kwargs": {},
             "_results": {
                 "__len__": 6,
@@ -176,35 +186,50 @@ class TestDhcp4OptionRouterAssembler(TestCase):
         Ensure the DHCPv4 Router option '__len__()' method returns a correct value.
         """
 
-        self.assertEqual(len(self._option), self._results["__len__"])
+        self.assertEqual(
+            len(self._option),
+            self._results["__len__"],
+        )
 
     def test__dhcp4__option__router__str(self) -> None:
         """
         Ensure the DHCPv4 Router option '__str__()' method returns a correct value.
         """
 
-        self.assertEqual(str(self._option), self._results["__str__"])
+        self.assertEqual(
+            str(self._option),
+            self._results["__str__"],
+        )
 
     def test__dhcp4__option__router__repr(self) -> None:
         """
         Ensure the DHCPv4 Router option '__repr__()' method returns a correct value.
         """
 
-        self.assertEqual(repr(self._option), self._results["__repr__"])
+        self.assertEqual(
+            repr(self._option),
+            self._results["__repr__"],
+        )
 
     def test__dhcp4__option__router__bytes(self) -> None:
         """
         Ensure the DHCPv4 Router option '__bytes__()' method returns a correct value.
         """
 
-        self.assertEqual(bytes(self._option), self._results["__bytes__"])
+        self.assertEqual(
+            bytes(self._option),
+            self._results["__bytes__"],
+        )
 
     def test__dhcp4__option__router__field(self) -> None:
         """
         Ensure the DHCPv4 Router option 'routers' field contains a correct value.
         """
 
-        self.assertEqual(self._option.routers, self._results["routers"])
+        self.assertEqual(
+            self._option.routers,
+            self._results["routers"],
+        )
 
 
 @parameterized_class(
