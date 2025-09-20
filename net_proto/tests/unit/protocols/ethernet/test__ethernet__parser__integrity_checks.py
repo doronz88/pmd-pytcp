@@ -52,7 +52,9 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": (
                 "The frame length is less than the value of the 'ETHERNET__HEADER__LEN' constant."
             ),
-            "_args": [b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff"],
+            "_args": [
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff",
+            ],
             "_kwargs": {},
             "_results": {
                 "error_message": (

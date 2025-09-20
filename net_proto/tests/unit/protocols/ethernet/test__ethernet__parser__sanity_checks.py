@@ -48,7 +48,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 "The 'type' field value is lowere than the minimum allowed value."
             ),
             "_args": [
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xff"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xff",
             ],
             "_kwargs": {},
             "_results": {

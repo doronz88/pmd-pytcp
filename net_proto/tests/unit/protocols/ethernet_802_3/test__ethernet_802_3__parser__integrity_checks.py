@@ -54,7 +54,9 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 "The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' "
                 "constant."
             ),
-            "_args": [b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00"],
+            "_args": [
+                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00",
+            ],
             "_kwargs": {},
             "_results": {
                 "error_message": (
@@ -69,7 +71,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             ),
             "_args": [
                 b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
-                b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47"
+                b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47",
             ],
             "_kwargs": {},
             "_results": {
@@ -83,7 +85,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_description": "Ethernet 802.3 packet (III).",
             "_args": [
                 b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
-                + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1)
+                + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1),
             ],
             "_kwargs": {},
             "_results": {
