@@ -211,8 +211,8 @@ class PacketHandlerIp4Tx(ABC):
         for tx_status in [
             TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
             TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4,
-            TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_FAIL,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_FAIL,
+            TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS,
+            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP4__TO_TX_RING,
         ]:

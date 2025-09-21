@@ -257,7 +257,7 @@ class TestEthernetPhtx(TestCase):
         )
 
         self.assertEqual(
-            tx_status, TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_FAIL
+            tx_status, TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS
         )
         self.assertEqual(
             self.packet_handler.packet_stats_tx,
@@ -321,7 +321,9 @@ class TestEthernetPhtx(TestCase):
             ip4__dst=self.mns.host_c_ip4_address,
         )
 
-        self.assertEqual(str(tx_status), "DROPED__ETHERNET__DST_NO_GATEWAY_IP4")
+        self.assertEqual(
+            tx_status, TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4
+        )
         self.assertEqual(
             self.packet_handler.packet_stats_tx,
             PacketStatsTx(
@@ -350,7 +352,7 @@ class TestEthernetPhtx(TestCase):
         )
 
         self.assertEqual(
-            tx_status, TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_FAIL
+            tx_status, TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
         )
         self.assertEqual(
             self.packet_handler.packet_stats_tx,
@@ -448,7 +450,7 @@ class TestEthernetPhtx(TestCase):
         )
 
         self.assertEqual(
-            tx_status, TxStatus.DROPED__ETHERNET__DST_ND_CACHE_FAIL
+            tx_status, TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS
         )
         self.assertEqual(
             self.packet_handler.packet_stats_tx,
@@ -544,7 +546,7 @@ class TestEthernetPhtx(TestCase):
         )
 
         self.assertEqual(
-            tx_status, TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_FAIL
+            tx_status, TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
         )
         self.assertEqual(
             self.packet_handler.packet_stats_tx,

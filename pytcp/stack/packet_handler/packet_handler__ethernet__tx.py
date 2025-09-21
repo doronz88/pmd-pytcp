@@ -171,7 +171,7 @@ class PacketHandlerEthernetTx(ABC):
                     self._packet_stats_tx.inc(
                         "ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop"
                     )
-                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_FAIL
+                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC
             # from ICMPv6 ND cache.
@@ -198,7 +198,7 @@ class PacketHandlerEthernetTx(ABC):
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 f"MAC could be obtained from ND cache, dropping</>",
             )
-            return TxStatus.DROPED__ETHERNET__DST_ND_CACHE_FAIL
+            return TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS
 
         # Check if we can obtain destination MAC based on IPv4 header data.
         if isinstance(
@@ -294,7 +294,7 @@ class PacketHandlerEthernetTx(ABC):
                     self._packet_stats_tx.inc(
                         "ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop"
                     )
-                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_FAIL
+                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC from
             # ARP cache, drop otherwise.
@@ -321,7 +321,7 @@ class PacketHandlerEthernetTx(ABC):
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 "MAC could be obtained from ARP cache, dropping</>",
             )
-            return TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_FAIL
+            return TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
         self._packet_stats_tx.inc("ethernet__dst_unspec__drop")

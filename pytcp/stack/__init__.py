@@ -70,7 +70,7 @@ IFF_TAP = 0x0002
 IFF_NO_PI = 0x1000
 
 # PyTCP code metadata.
-PYTCP_VERSION = "ver 3.0.3"
+PYTCP_VERSION = "ver 3.0.4"
 GITHUB_REPO = "https://github.com/ccie18643/PyTCP"
 
 # Interface configuration.

@@ -125,8 +125,8 @@ class PacketHandlerIp6FragTx(ABC):
         for tx_status in [
             TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
             TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP6,
-            TxStatus.DROPED__ETHERNET__DST_ND_CACHE_FAIL,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_FAIL,
+            TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
+            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
         ]:
             if tx_status in ip6_tx_status:

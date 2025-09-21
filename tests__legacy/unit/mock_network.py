@@ -32,7 +32,7 @@
 #
 
 
-from typing import no_type_check
+from typing import Any, no_type_check
 
 from testslide import StrictMock, TestCase
 from pytcp import stack
@@ -115,7 +115,7 @@ class MockNetworkSettings:
         self.router_b_ip6_address = Ip6Address("fe80::2")
 
 
-CONFIG_PATCHES = {
+CONFIG_PATCHES: dict[str, Any] = {
     "LOG__CHANNEL": set(),
     "IP6__SUPPORT": True,
     "IP4__SUPPORT": True,
