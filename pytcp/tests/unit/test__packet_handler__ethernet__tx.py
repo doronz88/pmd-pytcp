@@ -31,7 +31,7 @@
 """
 This module contains unit tests for the Packet Handler Ethernet TX operations.
 
-pytcp/tests/unit/test__packet_handle__ethernet__tx.py
+pytcp/tests/unit/test__packet_handler__ethernet__tx.py
 
 ver 3.0.4
 """
@@ -431,7 +431,7 @@ from pytcp.tests.lib.network_testcase import (
 )
 class TestPacketHandlerEthernetTx(NetworkTestCase):
     """
-    Test the Packet Handler ARP TX operations.
+    Test the Packet Handler Ethernet TX operations.
     """
 
     _description: str
@@ -441,7 +441,7 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
     _expected__tx_status: TxStatus
     _expected__packet_stats_tx: PacketStatsTx
 
-    _frame_tx: bytearray
+    _frames_tx: list[bytes]
 
     def test__packet_handler__ethernet__tx(self) -> None:
         """

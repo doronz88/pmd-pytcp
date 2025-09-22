@@ -79,7 +79,7 @@ class PacketHandlerEthernet8023Tx(ABC):
 
         # Check if packet contains valid source address, fill it out if needed.
         if ethernet_802_3_packet_tx.src.is_unspecified:
-            self._packet_stats_tx.inc("ethernet__src_unspec__fill")
+            self._packet_stats_tx.inc("ethernet_802_3__src_unspec__fill")
             ethernet_802_3_packet_tx.src = self._mac_unicast
             __debug__ and log(
                 "ether",
@@ -96,7 +96,7 @@ class PacketHandlerEthernet8023Tx(ABC):
 
         # Send out packet if it contains valid destination MAC address.
         if not ethernet_802_3_packet_tx.dst.is_unspecified:
-            self._packet_stats_tx.inc("ethernet__dst_spec__send")
+            self._packet_stats_tx.inc("ethernet_802_3__dst_spec__send")
             __debug__ and log(
                 "ether",
                 f"{ethernet_802_3_packet_tx.tracker} - Contains valid destination "
@@ -106,7 +106,7 @@ class PacketHandlerEthernet8023Tx(ABC):
             return TxStatus.PASSED__ETHERNET_802_3__TO_TX_RING
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
-        self._packet_stats_tx.inc("ethernet__dst_unspec__drop")
+        self._packet_stats_tx.inc("ethernet_802_3__dst_unspec__drop")
         __debug__ and log(
             "ether",
             f"{ethernet_802_3_packet_tx.tracker} - <WARN>No valid destination MAC could "

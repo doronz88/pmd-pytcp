@@ -182,6 +182,7 @@ class PacketStatsTx(PacketStats):
     ethernet_802_3__src_unspec__fill: int = 0
     ethernet_802_3__src_spec: int = 0
     ethernet_802_3__dst_spec__send: int = 0
+    ethernet_802_3__dst_unspec__drop: int = 0
 
     arp__pre_assemble: int = 0
     arp__no_proto_support__drop: int = 0
