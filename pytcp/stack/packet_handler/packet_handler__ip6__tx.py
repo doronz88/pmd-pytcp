@@ -234,7 +234,7 @@ class PacketHandlerIp6Tx(ABC):
 
         # If source is unspecified and destination is external pick source from
         # first network that has default gateway set.
-        if ip6__src.is_unspecified:
+        if ip6__src.is_unspecified and ip6__dst.is_unicast:
             for ip6_host in self._ip6_host:
                 if ip6_host.gateway:
                     self._packet_stats_tx.inc(
