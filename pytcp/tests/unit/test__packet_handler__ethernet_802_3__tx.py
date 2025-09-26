@@ -138,9 +138,9 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
     _description: str
     _args: list[Any]
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes]
-    _expected__tx_status: TxStatus
-    _expected__packet_stats_tx: PacketStatsTx
+    _expected__frames_tx: list[bytes] | None
+    _expected__tx_status: TxStatus | None
+    _expected__packet_stats_tx: PacketStatsTx | None
     _expected__error: Exception | None
 
     _frames_tx: list[bytes]

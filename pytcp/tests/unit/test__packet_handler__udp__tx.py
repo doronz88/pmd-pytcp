@@ -272,6 +272,38 @@ from pytcp.tests.lib.network_testcase import (
             ),
             "_expected__error": None,
         },
+        {
+            "_description": "IP UDP packet - IPv4/IPv6 version mismatch",
+            "_args": [],
+            "_kwargs": {
+                "ip__src": STACK__IP4_HOST.address,
+                "ip__dst": HOST_A__IP6_ADDRESS,
+                "udp__sport": 1000,
+                "udp__dport": 2000,
+            },
+            "_expected__frames_tx": None,
+            "_expected__tx_status": None,
+            "_expected__packet_stats_tx": None,
+            "_expected__error": ValueError(
+                "Invalid IP address version combination: 10.0.1.7 -> 2001:db8:0:1::91"
+            ),
+        },
+        {
+            "_description": "IP UDP packet - IPv6/IPv4 version mismatch",
+            "_args": [],
+            "_kwargs": {
+                "ip__src": STACK__IP6_HOST.address,
+                "ip__dst": HOST_A__IP4_ADDRESS,
+                "udp__sport": 1000,
+                "udp__dport": 2000,
+            },
+            "_expected__frames_tx": None,
+            "_expected__tx_status": None,
+            "_expected__packet_stats_tx": None,
+            "_expected__error": ValueError(
+                "Invalid IP address version combination: 2001:db8:0:1::7 -> 10.0.1.91"
+            ),
+        },
     ]
 )
 class TestPacketHandlerUdpTx(NetworkTestCase):
@@ -282,9 +314,9 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
     _description: str
     _args: list[Any]
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes]
-    _expected__tx_status: TxStatus
-    _expected__packet_stats_tx: PacketStatsTx
+    _expected__frames_tx: list[bytes] | None
+    _expected__tx_status: TxStatus | None
+    _expected__packet_stats_tx: PacketStatsTx | None
     _expected__error: Exception | None
 
     _frames_tx: list[bytes]
