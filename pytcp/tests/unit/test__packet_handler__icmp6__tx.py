@@ -148,6 +148,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 Echo Reply",
@@ -198,6 +199,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 Destination Unreachable - Port",
@@ -304,6 +306,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 ND Router Solicitation",
@@ -336,6 +339,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 ND Router Advertisement",
@@ -384,6 +388,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement",
@@ -421,6 +426,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 ND Neighbor Solicitation",
@@ -455,6 +461,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 ND Neighbor Solicitation - DAD variant",
@@ -487,6 +494,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "ICMPv6 MLDv2 Report",
@@ -549,6 +557,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
     ]
 )
@@ -563,6 +572,7 @@ class TestPacketHandlericmp6Tx(NetworkTestCase):
     _expected__frames_tx: list[bytes]
     _expected__tx_status: TxStatus
     _expected__packet_stats_tx: PacketStatsTx
+    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -571,17 +581,24 @@ class TestPacketHandlericmp6Tx(NetworkTestCase):
         Validate that sending ICMPv6 packet works as expected.
         """
 
-        self.assertEqual(
-            self._packet_handler._phtx_icmp6(*self._args, **self._kwargs),
-            self._expected__tx_status,
-        )
+        if self._expected__error is None:
+            self.assertEqual(
+                self._packet_handler._phtx_icmp6(*self._args, **self._kwargs),
+                self._expected__tx_status,
+            )
 
-        self.assertEqual(
-            self._frames_tx,
-            self._expected__frames_tx,
-        )
+            self.assertEqual(
+                self._frames_tx,
+                self._expected__frames_tx,
+            )
 
-        self.assertEqual(
-            self._packet_handler.packet_stats_tx,
-            self._expected__packet_stats_tx,
-        )
+            self.assertEqual(
+                self._packet_handler.packet_stats_tx,
+                self._expected__packet_stats_tx,
+            )
+
+        else:
+            with self.assertRaises(type(self._expected__error)) as error:
+                self._packet_handler._phtx_icmp6(*self._args, **self._kwargs)
+
+            self.assertEqual(str(error.exception), str(self._expected__error))

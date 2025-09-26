@@ -90,6 +90,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to multicast address",
@@ -112,6 +113,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to limited broadcast address",
@@ -134,6 +136,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__limited_broadcast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to local network broadcast address",
@@ -156,6 +159,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__network_broadcast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to local network address",
@@ -178,6 +182,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__network_broadcast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to unicast address on local network - ARP cache miss",
@@ -196,6 +201,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_miss__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to unicast address on external network",
@@ -218,6 +224,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to unicast address on external network - no gateway",
@@ -236,6 +243,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv4 packet to unicast address on external network - gateway ARP cache miss",
@@ -254,6 +262,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to unicast address on local network",
@@ -277,6 +286,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to multicast address",
@@ -300,6 +310,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to unicast address on local network - ND cache miss",
@@ -318,6 +329,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_miss__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to unicast address on external network",
@@ -341,6 +353,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to unicast address on external network - no gateway",
@@ -359,6 +372,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "IPv6 packet to unicast address on external network - gateway ND cache miss",
@@ -377,6 +391,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet packet with specified source MAC address",
@@ -394,6 +409,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_spec=1,
                 ethernet__dst_spec__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet packet with unspecified source MAC address",
@@ -411,6 +427,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_unspec__fill=1,
                 ethernet__dst_spec__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet packet with unspecified destination MAC address",
@@ -426,6 +443,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_spec=1,
                 ethernet__dst_unspec__drop=1,
             ),
+            "_expected__error": None,
         },
     ]
 )
@@ -440,6 +458,7 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
     _expected__frames_tx: list[bytes]
     _expected__tx_status: TxStatus
     _expected__packet_stats_tx: PacketStatsTx
+    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -471,17 +490,24 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
         else:
             tx_handler = self._packet_handler._phtx_ethernet
 
-        self.assertEqual(
-            tx_handler(*self._args, **self._kwargs),
-            self._expected__tx_status,
-        )
+        if self._expected__error is None:
+            self.assertEqual(
+                tx_handler(*self._args, **self._kwargs),
+                self._expected__tx_status,
+            )
 
-        self.assertEqual(
-            self._frames_tx,
-            self._expected__frames_tx,
-        )
+            self.assertEqual(
+                self._frames_tx,
+                self._expected__frames_tx,
+            )
 
-        self.assertEqual(
-            self._packet_handler.packet_stats_tx,
-            self._expected__packet_stats_tx,
-        )
+            self.assertEqual(
+                self._packet_handler.packet_stats_tx,
+                self._expected__packet_stats_tx,
+            )
+
+        else:
+            with self.assertRaises(type(self._expected__error)) as error:
+                self._packet_handler._phtx_ethernet(*self._args, **self._kwargs)
+
+            self.assertEqual(str(error.exception), str(self._expected__error))

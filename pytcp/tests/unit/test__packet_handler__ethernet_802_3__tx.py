@@ -70,6 +70,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet 802.3 packet with unspecified source MAC address",
@@ -87,6 +88,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_unspec__fill=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet 802.3 packet with unspecified destination MAC address",
@@ -102,6 +104,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_unspec__drop=1,
             ),
+            "_expected__error": None,
         },
         {
             "_description": "Ethernet 802.3 packet with payload",
@@ -123,6 +126,7 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
+            "_expected__error": None,
         },
     ]
 )
@@ -137,6 +141,7 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
     _expected__frames_tx: list[bytes]
     _expected__tx_status: TxStatus
     _expected__packet_stats_tx: PacketStatsTx
+    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -145,19 +150,28 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
         Validate that sending Ethernet 802.3 packet works as expected.
         """
 
-        self.assertEqual(
-            self._packet_handler._phtx_ethernet_802_3(
-                *self._args, **self._kwargs
-            ),
-            self._expected__tx_status,
-        )
+        if self._expected__error is None:
+            self.assertEqual(
+                self._packet_handler._phtx_ethernet_802_3(
+                    *self._args, **self._kwargs
+                ),
+                self._expected__tx_status,
+            )
 
-        self.assertEqual(
-            self._frames_tx,
-            self._expected__frames_tx,
-        )
+            self.assertEqual(
+                self._frames_tx,
+                self._expected__frames_tx,
+            )
 
-        self.assertEqual(
-            self._packet_handler.packet_stats_tx,
-            self._expected__packet_stats_tx,
-        )
+            self.assertEqual(
+                self._packet_handler.packet_stats_tx,
+                self._expected__packet_stats_tx,
+            )
+
+        else:
+            with self.assertRaises(type(self._expected__error)) as error:
+                self._packet_handler._phtx_ethernet_802_3(
+                    *self._args, **self._kwargs
+                )
+
+            self.assertEqual(str(error.exception), str(self._expected__error))
