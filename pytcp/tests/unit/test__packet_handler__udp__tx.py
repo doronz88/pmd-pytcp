@@ -55,7 +55,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "IPv4 UDP packet - no payload",
+            "_description": "Ethernet/IPv4/UDP - no payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -82,7 +82,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 UDP packet - payload",
+            "_description": "Ethernet/IPv4/UDP - payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -163,7 +163,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 UDP packet - no payload",
+            "_description": "Ethernet/IPv6/UDP - no payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -191,7 +191,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 UDP packet - payload",
+            "_description": "Ethernet/IPv6/UDP - payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -273,7 +273,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IP UDP packet - IPv4/IPv6 version mismatch",
+            "_description": "UDP - IPv4/IPv6 version mismatch",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -289,7 +289,7 @@ from pytcp.tests.lib.network_testcase import (
             ),
         },
         {
-            "_description": "IP UDP packet - IPv6/IPv4 version mismatch",
+            "_description": "UDP - IPv6/IPv4 version mismatch",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,

@@ -63,7 +63,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "ICMPv4 Echo Request",
+            "_description": "Ethernet/IPv4/ICMPv4 - Echo Request",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -113,7 +113,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "ICMPv4 Echo Reply",
+            "_description": "Ethernet/IPv4/ICMPv4 - Echo Reply",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -163,7 +163,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "ICMPv4 Destination Unreachable - Port",
+            "_description": "Ethernet/IPv4/ICMPv4 - Destination Unreachable, port",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,

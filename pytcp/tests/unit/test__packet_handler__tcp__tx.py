@@ -55,7 +55,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "Ethernet IPv4 TCP packet - no payload",
+            "_description": "Ethernet/IPv4/TCP - no payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -83,7 +83,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - seq",
+            "_description": "Ethernet/IPv4/TCP - seq",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -112,7 +112,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - ack",
+            "_description": "Ethernet/IPv4/TCP - ack",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -141,7 +141,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag ns",
+            "_description": "Ethernet/IPv4/TCP - flag ns",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -171,7 +171,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag cwr",
+            "_description": "Ethernet/IPv4/TCP - flag cwr",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -201,7 +201,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag ece",
+            "_description": "Ethernet/IPv4/TCP - flag ece",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -231,7 +231,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag urg",
+            "_description": "Ethernet/IPv4/TCP - flag urg",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -261,7 +261,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag ack",
+            "_description": "Ethernet/IPv4/TCP - flag ack",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -291,7 +291,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag psh",
+            "_description": "Ethernet/IPv4/TCP - flag psh",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -321,7 +321,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag rst",
+            "_description": "Ethernet/IPv4/TCP - flag rst",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -351,7 +351,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag syn",
+            "_description": "Ethernet/IPv4/TCP - flag syn",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -381,7 +381,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - flag fin",
+            "_description": "Ethernet/IPv4/TCP - flag fin",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -411,7 +411,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - win",
+            "_description": "Ethernet/IPv4/TCP - win",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -440,7 +440,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - urg",
+            "_description": "Ethernet/IPv4/TCP - urg",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -469,7 +469,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - data",
+            "_description": "Ethernet/IPv4/TCP - data",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -551,7 +551,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - option mss",
+            "_description": "Ethernet/IPv4/TCP - option mss",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -581,7 +581,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv4 TCP packet - option wscale",
+            "_description": "Ethernet/IPv4/TCP - option wscale",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -612,7 +612,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - no payload",
+            "_description": "Ethernet/IPv6/TCP - no payload",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -641,7 +641,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - seq",
+            "_description": "Ethernet/IPv6/TCP - seq",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -671,7 +671,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - ack",
+            "_description": "Ethernet/IPv6/TCP - ack",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -701,7 +701,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag ns",
+            "_description": "Ethernet/IPv6/TCP - flag ns",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -732,7 +732,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag cwr",
+            "_description": "Ethernet/IPv6/TCP - flag cwr",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -763,7 +763,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag ece",
+            "_description": "Ethernet/IPv6/TCP - flag ece",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -794,7 +794,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag urg",
+            "_description": "Ethernet/IPv6/TCP - flag urg",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -825,7 +825,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag ack",
+            "_description": "Ethernet/IPv6/TCP - flag ack",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -856,7 +856,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag psh",
+            "_description": "Ethernet/IPv6/TCP - flag psh",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -887,7 +887,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag rst",
+            "_description": "Ethernet/IPv6/TCP - flag rst",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -918,7 +918,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag syn",
+            "_description": "Ethernet/IPv6/TCP - flag syn",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -949,7 +949,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - flag fin",
+            "_description": "Ethernet/IPv6/TCP - flag fin",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -980,7 +980,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - win",
+            "_description": "Ethernet/IPv6/TCP - win",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -1010,7 +1010,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - urg",
+            "_description": "Ethernet/IPv6/TCP - urg",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -1040,7 +1040,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - data",
+            "_description": "Ethernet/IPv6/TCP - data",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -1123,7 +1123,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - option mss",
+            "_description": "Ethernet/IPv6/TCP - option mss",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -1154,7 +1154,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet IPv6 TCP packet - option wscale",
+            "_description": "Ethernet/IPv6/TCP - option wscale",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
@@ -1186,7 +1186,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "TCP packet - IPv4/IPv6 version mismatch",
+            "_description": "TCP - IPv4/IPv6 version mismatch",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
@@ -1203,7 +1203,7 @@ from pytcp.tests.lib.network_testcase import (
             ),
         },
         {
-            "_description": "TCP packet - IPv6/IPv4 version mismatch",
+            "_description": "TCP - IPv6/IPv4 version mismatch",
             "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,

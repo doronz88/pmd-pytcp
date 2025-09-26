@@ -58,7 +58,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "ARP Request",
+            "_description": "Ethernet/ARP - request",
             "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
@@ -87,7 +87,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "ARP Reply",
+            "_description": "Ethernet/ARP - reply",
             "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,

@@ -70,7 +70,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "IPv4 packet to unicast address on local network",
+            "_description": "Ethernet/IPv4 - dst unicast address on local network",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -93,7 +93,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to multicast address",
+            "_description": "Ethernet/IPv4 - dst multicast address",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -116,7 +116,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to limited broadcast address",
+            "_description": "Ethernet/IPv4 - dst limited broadcast address",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -139,7 +139,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to local network broadcast address",
+            "_description": "Ethernet/IPv4 - dst local network broadcast address",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -162,7 +162,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to local network address",
+            "_description": "Ethernet/IPv4 - dst local network address",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -185,7 +185,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to unicast address on local network - ARP cache miss",
+            "_description": "Ethernet/IPv4 - dst unicast address on local network, ARP cache miss",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -204,7 +204,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to unicast address on external network",
+            "_description": "Ethernet/IPv4 - dst unicast address on external network",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -227,7 +227,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to unicast address on external network - no gateway",
+            "_description": "Ethernet/IPv4 - dst unicast address on external network, no gateway",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -246,7 +246,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv4 packet to unicast address on external network - gateway ARP cache miss",
+            "_description": "Ethernet/IPv4 - dst unicast address on external network, gateway ARP cache miss",
             "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
@@ -265,7 +265,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to unicast address on local network",
+            "_description": "Ethernet/IPv6 - dst unicast address on local network",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -289,7 +289,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to multicast address",
+            "_description": "Ethernet/IPv6 - dst multicast address",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -313,7 +313,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to unicast address on local network - ND cache miss",
+            "_description": "Ethernet/IPv6 - dst unicast address on local network, ND cache miss",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -332,7 +332,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to unicast address on external network",
+            "_description": "Ethernet/IPv6 - dst unicast address on external network",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -356,7 +356,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to unicast address on external network - no gateway",
+            "_description": "Ethernet/IPv6 - dst unicast address on external network, no gateway",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -375,7 +375,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "IPv6 packet to unicast address on external network - gateway ND cache miss",
+            "_description": "Ethernet/IPv6 - dst unicast address on external network, gateway ND cache miss",
             "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
@@ -394,7 +394,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet packet with specified source MAC address",
+            "_description": "Ethernet - src specified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
@@ -412,7 +412,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet packet with unspecified source MAC address",
+            "_description": "Ethernet - src unspecified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet__src": MAC__UNSPECIFIED,
@@ -430,7 +430,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet packet with unspecified destination MAC address",
+            "_description": "Ethernet - dst unspecified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,

@@ -55,7 +55,7 @@ from pytcp.tests.lib.network_testcase import (
 @parameterized_class(
     [
         {
-            "_description": "Ethernet 802.3 packet with specified source MAC address",
+            "_description": "Ethernet 802.3 - src specified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
@@ -73,7 +73,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet 802.3 packet with unspecified source MAC address",
+            "_description": "Ethernet 802.3 - src unspecified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": MAC__UNSPECIFIED,
@@ -91,7 +91,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet 802.3 packet with unspecified destination MAC address",
+            "_description": "Ethernet 802.3 - dst unspecified MAC address",
             "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
@@ -107,7 +107,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet 802.3 packet with payload",
+            "_description": "Ethernet 802.3 - payload",
             "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
