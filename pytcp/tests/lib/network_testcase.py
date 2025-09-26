@@ -110,6 +110,7 @@ IP4__MULTICAST__ALL_NODES = Ip4Address("224.0.0.1")
 IP6__UNSPECIFIED = Ip6Address("::")
 IP6__MULTICAST__ALL_NODES = Ip6Address("ff01::1")
 IP6__MULTICAST__ALL_ROUTERS = Ip6Address("ff01::2")
+IP6__MULTICAST__MLD2_ROUTERS = Ip6Address("ff02::16")
 
 
 class NetworkTestCase(TestCase):

@@ -41,6 +41,7 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr.ip6_address import Ip6Address
 from net_proto.protocols.icmp6.message.icmp6__message__destination_unreachable import (
     Icmp6DestinationUnreachableCode,
     Icmp6MessageDestinationUnreachable,
@@ -50,6 +51,13 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_reply import (
 )
 from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
     Icmp6MessageEchoRequest,
+)
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
+    Icmp6Mld2ReportMessage,
+)
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_record import (
+    Icmp6Mld2MulticastAddressRecord,
+    Icmp6Mld2MulticastAddressRecordType,
 )
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertisement import (
     Icmp6NdMessageNeighborAdvertisement,
@@ -81,6 +89,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     IP6__MULTICAST__ALL_NODES,
     IP6__MULTICAST__ALL_ROUTERS,
+    IP6__MULTICAST__MLD2_ROUTERS,
     IP6__UNSPECIFIED,
     STACK__IP6_HOST,
     STACK__MAC_ADDRESS,
@@ -473,6 +482,68 @@ from pytcp.tests.lib.network_testcase import (
                 ip6__pre_assemble=1,
                 ip6__mtu_ok__send=1,
                 ip6__src_unspecified__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": "ICMPv6 MLDv2 Report",
+            "_args": [],
+            "_kwargs": {
+                "ip6__src": STACK__IP6_HOST.address,
+                "ip6__dst": IP6__MULTICAST__MLD2_ROUTERS,
+                "ip6__hop": 1,
+                "icmp6__message": Icmp6Mld2ReportMessage(
+                    records=[
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
+                            multicast_address=Ip6Address("ff02::a"),
+                        ),
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE,
+                            multicast_address=Ip6Address("ff02::b"),
+                        ),
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE,
+                            multicast_address=Ip6Address("ff02::c"),
+                        ),
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
+                            multicast_address=Ip6Address("ff02::d"),
+                        ),
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
+                            multicast_address=Ip6Address("ff02::e"),
+                        ),
+                        Icmp6Mld2MulticastAddressRecord(
+                            type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
+                            multicast_address=Ip6Address("ff02::f"),
+                        ),
+                    ]
+                ),
+            },
+            "_expected__frames_tx": [
+                b"\x33\x33\x00\x00\x00\x16\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x80\x3a\x01\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x16\x8f\x00\x35\x08\x00\x00\x00\x06\x04\x00"
+                b"\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x0a\x03\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x0b\x02\x00\x00\x00\xff\x02\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0c\x01\x00\x00\x00\xff\x02"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0d\x05\x00"
+                b"\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x0e\x05\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x0f"
+            ],
+            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__mld2__report__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
                 ethernet__pre_assemble=1,
                 ethernet__src_unspec__fill=1,
                 ethernet__dst_unspec__ip6_lookup=1,
