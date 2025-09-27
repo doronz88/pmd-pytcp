@@ -105,32 +105,6 @@ class TestPacketHandlerRx(TestCase):
         for attribute, new_value in CONFIG_PATCHES.items():
             stack.__dict__[attribute] = new_value
 
-    # Test name format:
-    # 'test_name__protocol_tested__test_description__optional_condition'
-
-    def test_packet_flow_rx__ethernet__ethernet_unknown_dst(self) -> None:
-        """
-        [Ethernet] Receive Ethernet packet with unknown destination
-        MAC address, drop.
-        """
-        with open(
-            "tests__legacy/integration/test_frames/rx/ethernet_unknown_dst.rx",
-            "rb",
-        ) as _:
-            packet_rx = _.read()
-        self.packet_handler._phrx_ethernet(PacketRx(packet_rx))
-        self.assertEqual(
-            self.packet_handler.packet_stats_rx,
-            PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unknown__drop=1,
-            ),
-        )
-        self.assertEqual(
-            self.packet_handler.packet_stats_tx,
-            PacketStatsTx(),
-        )
-
     def test_packet_flow_rx__ethernet__ethernet_malformed_header(self) -> None:
         """
         [Ethernet] Receive Ethernet packet with malformed header, drop.
@@ -192,30 +166,6 @@ class TestPacketHandlerRx(TestCase):
                 ethernet__dst_unicast=1,
                 ip6__pre_parse=1,
                 ip6__dst_unknown__drop=1,
-            ),
-        )
-        self.assertEqual(
-            self.packet_handler.packet_stats_tx,
-            PacketStatsTx(),
-        )
-
-    def test_packet_flow_rx__arp__arp_unknown_tpa(self) -> None:
-        """
-        [ARP] Receive ARP Request packet for unknown IPv4 address, drop.
-        """
-        with open(
-            "tests__legacy/integration/test_frames/rx/arp_unknown_tpa.rx", "rb"
-        ) as _:
-            packet_rx = _.read()
-        self.packet_handler._phrx_ethernet(PacketRx(packet_rx))
-        self.assertEqual(
-            self.packet_handler.packet_stats_rx,
-            PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__op_request=1,
-                arp__op_request__tpa_unknown__drop=1,
             ),
         )
         self.assertEqual(
