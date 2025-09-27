@@ -57,15 +57,13 @@ lint: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${NET_PROTO_PATH}
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${EXAMPLES_PATH}
 
-test_legacy_unit: venv
-	@echo '<<< TESTSLIDE LEGACY UNIT'
-	@./$(VENV)/bin/testslide tests__legacy/unit/*.py
+test__pytcp__integration: venv
+	@echo '<<< TESTSLIDE PYTCP INTEGRATION'
+	@./$(VENV)/bin/testslide $(shell find 'pytcp/tests/integration' -name '*.py')
 
-test_legacy_integration: venv
+test__legacy__integration: venv
 	@echo '<<< TESTSLIDE LEGACY INTEGRATION'
 	@./$(VENV)/bin/testslide tests__legacy/integration/*.py
-
-test_legacy: test_legacy_unit test_legacy_integration
 
 test__net_addr__unit: venv
 	@echo '<<< TESTSLIDE NET_ADDR UNIT'
@@ -75,9 +73,7 @@ test__net_proto__unit: venv
 	@echo '<<< TESTSLIDE NET_PROTO UNIT'
 	@./$(VENV)/bin/testslide $(shell find 'net_proto/tests/unit' -name '*.py')
 
-test_unit: venv test__net_addr__unit test__net_proto__unit
-
-test: test_unit test_legacy
+test: venv test__net_addr__unit test__net_proto__unit test__pytcp__integration test__legacy__integration
 
 validate: lint test
 
