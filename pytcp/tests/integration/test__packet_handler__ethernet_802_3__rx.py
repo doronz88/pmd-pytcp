@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler Ethernet RX operations.
+This module contains unit tests for the Packet Handler Ethernet 802.3 RX operations.
 
-pytcp/tests/unit/test__packet_handler__ethernet__rx.py
+pytcp/tests/unit/test__packet_handler__ethernet_802_3__rx.py
 
 ver 3.0.4
 """
@@ -50,44 +50,44 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet - dst unknown",
+            "_description": "Ethernet 802.3 - dst unknown",
             "_args": [
                 PacketRx(
-                    b"\x02\x00\x00\x99\x99\x99\x52\x54\x00\xdf\x85\x37\x08\x00"
+                    b"\x02\x00\x00\x99\x99\x99\x52\x54\x00\xdf\x85\x37\x00\x00"
                 ),
             ],
             "_kwargs": {},
             "_expected__frames_tx": [],
             "_expected__tx_status": None,
             "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unknown__drop=1,
+                ethernet_802_3__pre_parse=1,
+                ethernet_802_3__dst_unknown__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
             "_expected__error": None,
         },
         {
-            "_description": "Ethernet - malformed header",
+            "_description": "Ethernet 802.3 - malformed header",
             "_args": [
                 PacketRx(
-                    b"\x02\x00\x00\x77\x77\x77\x52\x54\x00\xdf\x85\x37\x0a"
+                    b"\x02\x00\x00\x77\x77\x77\x52\x54\x00\xdf\x85\x37\x00"
                 ),
             ],
             "_kwargs": {},
             "_expected__frames_tx": [],
             "_expected__tx_status": None,
             "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__failed_parse__drop=1,
+                ethernet_802_3__pre_parse=1,
+                ethernet_802_3__failed_parse__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
             "_expected__error": None,
         },
     ]
 )
-class TestPacketHandlerEthernetRx(NetworkTestCase):
+class TestPacketHandlerEthernet8023Rx(NetworkTestCase):
     """
-    Test the Packet Handler Ethernet RX operations.
+    Test the Packet Handler Ethernet 802.3 RX operations.
     """
 
     _description: str
@@ -101,13 +101,15 @@ class TestPacketHandlerEthernetRx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ethernet__rx(self) -> None:
+    def test__packet_handler__ethernet_802_3__rx(self) -> None:
         """
-        Validate that receiving Ethernet packet works as expected.
+        Validate that receiving Ethernet 802.3 packet works as expected.
         """
 
         if self._expected__error is None:
-            self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
+            self._packet_handler._phrx_ethernet_802_3(
+                *self._args, **self._kwargs
+            )
 
             self.assertEqual(
                 self._frames_tx,
@@ -126,6 +128,8 @@ class TestPacketHandlerEthernetRx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
+                self._packet_handler._phrx_ethernet_802_3(
+                    *self._args, **self._kwargs
+                )
 
             self.assertEqual(str(error.exception), str(self._expected__error))

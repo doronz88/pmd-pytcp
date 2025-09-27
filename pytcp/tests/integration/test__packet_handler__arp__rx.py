@@ -42,7 +42,7 @@ from typing import Any
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx
-from pytcp.lib.packet_stats import PacketStatsTx, PacketStatsRx
+from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
@@ -50,7 +50,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet/ARP - request, unknown TPA, drop",
+            "_description": "Ethernet/ARP - request, unknown TPA",
             "_args": [
                 PacketRx(
                     b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"

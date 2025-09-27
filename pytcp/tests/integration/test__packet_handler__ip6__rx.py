@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler Ethernet RX operations.
+This module contains unit tests for the Packet Handler IPv6 RX operations.
 
-pytcp/tests/unit/test__packet_handler__ethernet__rx.py
+pytcp/tests/unit/test__packet_handler__ip6__rx.py
 
 ver 3.0.4
 """
@@ -50,10 +50,13 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet - dst unknown",
+            "_description": "Ethernet/IPv6 - dst unknown",
             "_args": [
                 PacketRx(
-                    b"\x02\x00\x00\x99\x99\x99\x52\x54\x00\xdf\x85\x37\x08\x00"
+                    b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x86\xdd\x60\x00"
+                    b"\x00\x00\x00\x00\x3b\x40\x26\x03\x90\x00\xe3\x07\x9f\x09\x00\x00"
+                    b"\x00\x00\x00\x00\x1f\xa1\x26\x03\x90\x00\xe3\x07\x9f\x09\x00\x00"
+                    b"\x00\xff\xfe\x55\x55\x55"
                 ),
             ],
             "_kwargs": {},
@@ -61,33 +64,18 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__tx_status": None,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
-                ethernet__dst_unknown__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-            "_expected__error": None,
-        },
-        {
-            "_description": "Ethernet - malformed header",
-            "_args": [
-                PacketRx(
-                    b"\x02\x00\x00\x77\x77\x77\x52\x54\x00\xdf\x85\x37\x0a"
-                ),
-            ],
-            "_kwargs": {},
-            "_expected__frames_tx": [],
-            "_expected__tx_status": None,
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__failed_parse__drop=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unknown__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
             "_expected__error": None,
         },
     ]
 )
-class TestPacketHandlerEthernetRx(NetworkTestCase):
+class TestPacketHandlerIp6Rx(NetworkTestCase):
     """
-    Test the Packet Handler Ethernet RX operations.
+    Test the Packet Handler IPv6 RX operations.
     """
 
     _description: str
@@ -101,9 +89,9 @@ class TestPacketHandlerEthernetRx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ethernet__rx(self) -> None:
+    def test__packet_handler__ip6__rx(self) -> None:
         """
-        Validate that receiving Ethernet packet works as expected.
+        Validate that receiving IPv6 packet works as expected.
         """
 
         if self._expected__error is None:
