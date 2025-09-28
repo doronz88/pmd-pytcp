@@ -139,6 +139,7 @@ class NetworkTestCase(TestCase):
                 "IP4__SUPPORT": True,
                 "INTERFACE__TAP__MTU": 1500,
                 "INTERFACE__TUN__MTU": 1500,
+                "UDP__ECHO_NATIVE": True,
             }
         )
 
