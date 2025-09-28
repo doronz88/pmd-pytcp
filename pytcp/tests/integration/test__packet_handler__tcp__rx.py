@@ -37,12 +37,10 @@ ver 3.0.4
 """
 
 
-from typing import Any
-
 from parameterized import parameterized_class  # type: ignore
 
+from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
 
@@ -53,13 +51,10 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frames_rx: list[bytes]
     _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
     _expected__packet_stats_rx: PacketStatsRx | None
     _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -68,26 +63,20 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
         Validate that receiving TCP packet works as expected.
         """
 
-        if self._expected__error is None:
-            self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
+        for frame_rx in self._frames_rx:
+            self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_rx,
-                self._expected__packet_stats_rx,
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            self._expected__packet_stats_rx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-            )
-
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
-
-            self.assertEqual(str(error.exception), str(self._expected__error))
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+        )

@@ -56,7 +56,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv4/UDP - no payload",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
                 "ip__dst": HOST_A__IP4_ADDRESS,
@@ -83,7 +82,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4/UDP - payload",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
                 "ip__dst": HOST_A__IP4_ADDRESS,
@@ -164,7 +162,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/UDP - no payload",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
                 "ip__dst": HOST_A__IP6_ADDRESS,
@@ -192,7 +189,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/UDP - payload",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
                 "ip__dst": HOST_A__IP6_ADDRESS,
@@ -274,7 +270,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "UDP - IPv4/IPv6 version mismatch",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP4_HOST.address,
                 "ip__dst": HOST_A__IP6_ADDRESS,
@@ -290,7 +285,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "UDP - IPv6/IPv4 version mismatch",
-            "_args": [],
             "_kwargs": {
                 "ip__src": STACK__IP6_HOST.address,
                 "ip__dst": HOST_A__IP4_ADDRESS,
@@ -312,7 +306,6 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -328,7 +321,7 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_udp(*self._args, **self._kwargs),
+                self._packet_handler._phtx_udp(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -344,6 +337,6 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_udp(*self._args, **self._kwargs)
+                self._packet_handler._phtx_udp(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

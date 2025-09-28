@@ -56,7 +56,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet 802.3 - src specified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
@@ -74,7 +73,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet 802.3 - src unspecified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": MAC__UNSPECIFIED,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
@@ -92,7 +90,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet 802.3 - dst unspecified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
                 "ethernet_802_3__dst": MAC__UNSPECIFIED,
@@ -108,7 +105,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet 802.3 - payload",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
@@ -136,7 +132,6 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -152,9 +147,7 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_ethernet_802_3(
-                    *self._args, **self._kwargs
-                ),
+                self._packet_handler._phtx_ethernet_802_3(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -170,8 +163,6 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ethernet_802_3(
-                    *self._args, **self._kwargs
-                )
+                self._packet_handler._phtx_ethernet_802_3(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

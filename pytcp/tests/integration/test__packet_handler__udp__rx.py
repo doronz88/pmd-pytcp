@@ -37,13 +37,10 @@ ver 3.0.4
 """
 
 
-from typing import Any
-
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
 
@@ -51,16 +48,13 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
     [
         {
             "_description": "Ethernet/IPv4/UDP to closed port",
-            "_args": [
-                PacketRx(
-                    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
-                    b"\x00\x3f\x00\x01\x00\x00\x40\x11\x64\x4c\x0a\x00\x01\x5b\x0a\x00"
-                    b"\x01\x07\x03\xe8\x07\xd0\x00\x2b\xa2\x10\x54\x65\x73\x74\x20\x55"
-                    b"\x44\x50\x20\x70\x61\x63\x6b\x65\x74\x20\x73\x65\x6e\x74\x20\x74"
-                    b"\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72\x74",
-                ),
+            "_frames_rx": [
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x3f\x00\x01\x00\x00\x40\x11\x64\x4c\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\xe8\x07\xd0\x00\x2b\xa2\x10\x54\x65\x73\x74\x20\x55"
+                b"\x44\x50\x20\x70\x61\x63\x6b\x65\x74\x20\x73\x65\x6e\x74\x20\x74"
+                b"\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72\x74",
             ],
-            "_kwargs": {},
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x5b\x00\x00\x00\x00\x40\x01\x64\x41\x0a\x00\x01\x07\x0a\x00"
@@ -70,7 +64,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x61\x63\x6b\x65\x74\x20\x73\x65\x6e\x74\x20\x74\x6f\x20\x63\x6c"
                 b"\x6f\x73\x65\x64\x20\x70\x6f\x72\x74",
             ],
-            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_unicast=1,
@@ -89,22 +82,18 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/UDP to closed port",
-            "_args": [
-                PacketRx(
-                    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
-                    b"\x00\x00\x00\x2b\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                    b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                    b"\x00\x00\x00\x00\x00\x07\x03\xe8\x07\xd0\x00\x2b\x5c\x66\x54\x65"
-                    b"\x73\x74\x20\x55\x44\x50\x20\x70\x61\x63\x6b\x65\x74\x20\x73\x65"
-                    b"\x6e\x74\x20\x74\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72"
-                    b"\x74",
-                ),
+            "_frames_rx": [
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x2b\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x03\xe8\x07\xd0\x00\x2b\x5c\x66\x54\x65"
+                b"\x73\x74\x20\x55\x44\x50\x20\x70\x61\x63\x6b\x65\x74\x20\x73\x65"
+                b"\x6e\x74\x20\x74\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72"
+                b"\x74",
             ],
-            "_kwargs": {},
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x5b\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -117,7 +106,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x6e\x74\x20\x74\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72"
                 b"\x74",
             ],
-            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_unicast=1,
@@ -136,26 +124,21 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4/UDP Echo",
-            "_args": [
-                PacketRx(
-                    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
-                    b"\x00\x27\x00\x01\x00\x00\x40\x11\x64\x64\x0a\x00\x01\x5b\x0a\x00"
-                    b"\x01\x07\x15\x97\x00\x07\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
-                    b"\x74\x20\x54\x6f\x74",
-                ),
+            "_frames_rx": [
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x27\x00\x01\x00\x00\x40\x11\x64\x64\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x15\x97\x00\x07\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
+                b"\x74\x20\x54\x6f\x74",
             ],
-            "_kwargs": {},
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x27\x00\x00\x00\x00\x40\x11\x64\x65\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x15\x97\x00\x07\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
                 b"\x74\x20\x54\x6f\x74",
             ],
-            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_unicast=1,
@@ -174,20 +157,16 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/UDP Echo",
-            "_args": [
-                PacketRx(
-                    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
-                    b"\x00\x00\x00\x13\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                    b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                    b"\x00\x00\x00\x00\x00\x07\x15\x97\x00\x07\x00\x13\x3b\x95\x54\x6f"
-                    b"\x6d\x20\x54\x69\x74\x20\x54\x6f\x74",
-                ),
+            "_frames_rx": [
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x13\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x15\x97\x00\x07\x00\x13\x3b\x95\x54\x6f"
+                b"\x6d\x20\x54\x69\x74\x20\x54\x6f\x74",
             ],
-            "_kwargs": {},
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x13\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -195,7 +174,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x00\x00\x00\x00\x00\x91\x15\x97\x00\x07\x00\x13\x3b\x95\x54\x6f"
                 b"\x6d\x20\x54\x69\x74\x20\x54\x6f\x74",
             ],
-            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_unicast=1,
@@ -214,7 +192,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
     ]
 )
@@ -224,13 +201,10 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frames_rx: list[bytes]
     _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
     _expected__packet_stats_rx: PacketStatsRx | None
     _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -239,26 +213,20 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
         Validate that receiving UDP packet works as expected.
         """
 
-        if self._expected__error is None:
-            self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
+        for frame_rx in self._frames_rx:
+            self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_rx,
-                self._expected__packet_stats_rx,
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            self._expected__packet_stats_rx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-            )
-
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
-
-            self.assertEqual(str(error.exception), str(self._expected__error))
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+        )

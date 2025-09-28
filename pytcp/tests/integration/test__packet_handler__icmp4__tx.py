@@ -64,7 +64,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv4/ICMPv4 - Echo Request",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -114,7 +113,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4/ICMPv4 - Echo Reply",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -164,7 +162,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4/ICMPv4 - Destination Unreachable, port",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -233,7 +230,6 @@ class TestPacketHandlerIcmp4Tx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -249,7 +245,7 @@ class TestPacketHandlerIcmp4Tx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_icmp4(*self._args, **self._kwargs),
+                self._packet_handler._phtx_icmp4(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -265,6 +261,6 @@ class TestPacketHandlerIcmp4Tx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_icmp4(*self._args, **self._kwargs)
+                self._packet_handler._phtx_icmp4(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

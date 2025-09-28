@@ -59,7 +59,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv6 - src valid, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -83,7 +82,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src not owned drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": HOST_B__IP6_ADDRESS,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -98,7 +96,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src multicast replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__MULTICAST__ALL_NODES,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -123,7 +120,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src multicast drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__MULTICAST__ALL_NODES,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -138,7 +134,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -163,7 +158,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified replace, dst unicast external network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -188,7 +182,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -203,7 +196,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src valid, dst unspecified drop",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__UNSPECIFIED,
@@ -218,7 +210,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - src valid, dst unicast local network, mtu exceed fragmentation",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -697,7 +688,6 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -723,7 +713,7 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_ip6(*self._args, **self._kwargs),
+                self._packet_handler._phtx_ip6(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -739,6 +729,6 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ip6(*self._args, **self._kwargs)
+                self._packet_handler._phtx_ip6(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

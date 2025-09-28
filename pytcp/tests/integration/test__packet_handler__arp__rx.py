@@ -37,13 +37,10 @@ ver 3.0.4
 """
 
 
-from typing import Any
-
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
 
@@ -51,16 +48,12 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
     [
         {
             "_description": "Ethernet/ARP - request, unknown TPA",
-            "_args": [
-                PacketRx(
-                    b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
-                    b"\x08\x00\x06\x04\x00\x01\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
-                    b"\x00\x00\x00\x00\x00\x00\xc0\xa8\x09\x37",
-                ),
+            "_frames_rx": [
+                b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
+                b"\x00\x00\x00\x00\x00\x00\xc0\xa8\x09\x37",
             ],
-            "_kwargs": {},
             "_expected__frames_tx": [],
-            "_expected__tx_status": None,
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_broadcast=1,
@@ -69,7 +62,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__op_request__tpa_unknown__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
-            "_expected__error": None,
         },
     ]
 )
@@ -79,13 +71,10 @@ class TestPacketHandlerArpRx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frames_rx: list[bytes]
     _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
     _expected__packet_stats_rx: PacketStatsRx | None
     _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
 
     _frames_tx: list[bytes]
 
@@ -94,26 +83,20 @@ class TestPacketHandlerArpRx(NetworkTestCase):
         Validate that receiving ARP packet works as expected.
         """
 
-        if self._expected__error is None:
-            self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
+        for frame_rx in self._frames_rx:
+            self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_rx,
-                self._expected__packet_stats_rx,
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            self._expected__packet_stats_rx,
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-            )
-
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phrx_ethernet(*self._args, **self._kwargs)
-
-            self.assertEqual(str(error.exception), str(self._expected__error))
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+        )

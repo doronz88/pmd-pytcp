@@ -60,7 +60,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv4 - src valid, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -83,7 +82,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src not owned drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": HOST_B__IP4_ADDRESS,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -98,7 +96,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src multicast replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__MULTICAST__ALL_NODES,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -122,7 +119,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src multicast drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__MULTICAST__ALL_NODES,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -137,7 +133,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src limited broadcast replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__BROADCAST__LIMITED,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -161,7 +156,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src limited broadcast drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__BROADCAST__LIMITED,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -176,7 +170,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src network broadcast replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.network.broadcast,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -200,7 +193,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src unspecified replace, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__UNSPECIFIED,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -224,7 +216,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src unspecified replace, dst unicast external network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__UNSPECIFIED,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -248,7 +239,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src unspecified drop, dst unicast local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": IP4__UNSPECIFIED,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -263,7 +253,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src valid, dst unspecified drop",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": IP4__UNSPECIFIED,
@@ -278,7 +267,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - src valid, dst unicast local network, mtu exceed fragmentation",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -746,7 +734,6 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -772,7 +759,7 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_ip4(*self._args, **self._kwargs),
+                self._packet_handler._phtx_ip4(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -788,6 +775,6 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ip4(*self._args, **self._kwargs)
+                self._packet_handler._phtx_ip4(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

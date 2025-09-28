@@ -71,7 +71,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv4 - dst unicast address on local network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -94,7 +93,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst multicast address",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": IP4__MULTICAST__ALL_NODES,
@@ -117,7 +115,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst limited broadcast address",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": IP4__BROADCAST__LIMITED,
@@ -140,7 +137,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst local network broadcast address",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": STACK__IP4_HOST.network.broadcast,
@@ -163,7 +159,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst local network address",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": STACK__IP4_HOST.network.address,
@@ -186,7 +181,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on local network, ARP cache miss",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_B__IP4_ADDRESS,
@@ -205,7 +199,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -228,7 +221,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network, no gateway",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -247,7 +239,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network, gateway ARP cache miss",
-            "_args": [],
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -266,7 +257,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on local network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -290,7 +280,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst multicast address",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__ALL_NODES,
@@ -314,7 +303,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on local network, ND cache miss",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_B__IP6_ADDRESS,
@@ -333,7 +321,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -357,7 +344,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network, no gateway",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -376,7 +362,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network, gateway ND cache miss",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -395,7 +380,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet - src specified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
@@ -413,7 +397,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet - src unspecified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": MAC__UNSPECIFIED,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
@@ -431,7 +414,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet - dst unspecified MAC address",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": MAC__UNSPECIFIED,
@@ -453,7 +435,6 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -492,7 +473,7 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                tx_handler(*self._args, **self._kwargs),
+                tx_handler(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -508,6 +489,6 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ethernet(*self._args, **self._kwargs)
+                self._packet_handler._phtx_ethernet(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

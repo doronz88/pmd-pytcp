@@ -101,7 +101,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv6/ICMPv6 - Echo Request",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -152,7 +151,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - Echo Reply",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -203,7 +201,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - Destination Unreachable, port",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -310,7 +307,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Router Solicitation",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__ALL_ROUTERS,
@@ -343,7 +339,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Router Advertisement",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__ALL_NODES,
@@ -392,7 +387,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Advertisement",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -430,7 +424,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS.solicited_node_multicast,
@@ -465,7 +458,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation, DAD variant",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": STACK__IP6_HOST.address.solicited_node_multicast,
@@ -498,7 +490,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - MLDv2 Report",
-            "_args": [],
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__MLD2_ROUTERS,
@@ -567,7 +558,6 @@ class TestPacketHandlerIcmp6Tx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -583,7 +573,7 @@ class TestPacketHandlerIcmp6Tx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_icmp6(*self._args, **self._kwargs),
+                self._packet_handler._phtx_icmp6(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -599,6 +589,6 @@ class TestPacketHandlerIcmp6Tx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_icmp6(*self._args, **self._kwargs)
+                self._packet_handler._phtx_icmp6(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))

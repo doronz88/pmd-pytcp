@@ -59,7 +59,6 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/ARP - request",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": MAC__BROADCAST,
@@ -86,7 +85,6 @@ from pytcp.tests.lib.network_testcase import (
         },
         {
             "_description": "Ethernet/ARP - reply",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
@@ -119,7 +117,6 @@ class TestPacketHandlerArpTx(NetworkTestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _expected__frames_tx: list[bytes] | None
     _expected__tx_status: TxStatus | None
@@ -135,7 +132,7 @@ class TestPacketHandlerArpTx(NetworkTestCase):
 
         if self._expected__error is None:
             self.assertEqual(
-                self._packet_handler._phtx_arp(*self._args, **self._kwargs),
+                self._packet_handler._phtx_arp(**self._kwargs),
                 self._expected__tx_status,
             )
 
@@ -151,6 +148,6 @@ class TestPacketHandlerArpTx(NetworkTestCase):
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_arp(*self._args, **self._kwargs)
+                self._packet_handler._phtx_arp(**self._kwargs)
 
             self.assertEqual(str(error.exception), str(self._expected__error))
