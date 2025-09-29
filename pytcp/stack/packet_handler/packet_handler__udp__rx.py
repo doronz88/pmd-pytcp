@@ -169,8 +169,8 @@ class PacketHandlerUdpRx(ABC):
             self._phtx_udp(
                 ip__src=packet_rx.ip.dst,
                 ip__dst=packet_rx.ip.src,
-                udp__sport=packet_rx.udp.sport,
-                udp__dport=packet_rx.udp.dport,
+                udp__sport=packet_rx.udp.dport,
+                udp__dport=packet_rx.udp.sport,
                 udp__payload=packet_rx.udp.payload,
             )
             return

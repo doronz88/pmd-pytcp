@@ -79,7 +79,7 @@ class PacketHandlerIp6Rx(ABC):
 
         except PacketValidationError as error:
             self._packet_stats_rx.inc("ip6__failed_parse__drop")
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <rb>{error}</>")
+            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return
 
         __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6}")

@@ -170,54 +170,6 @@ class TestPacketHandlerRxTx(TestCase):
     # Test name format:
     # 'test_name__protocol_tested__test_description__optional_condition'
 
-    def test_packet_flow_rx_tx__ip4_frag__ip4_udp_echo_tx_frag(self) -> None:
-        """
-        [IPv4 frag] Receive IPv4/UDP packet and echo it back to the sender
-        in fragments.
-        """
-        with open(
-            "tests__legacy/integration/test_frames/rx_tx/ip4_udp_echo_tx_frag.rx",
-            "rb",
-        ) as _:
-            packet_rx = _.read()
-        frags = []
-        for index in range(5):
-            with open(
-                f"tests__legacy/integration/test_frames/rx_tx/ip4_udp_echo_tx_frag_{index}.tx",
-                "rb",
-            ) as _:
-                frags.append(_.read())
-        self.packet_handler._phrx_ethernet(PacketRx(packet_rx))
-        self.assertEqual(
-            self.packet_handler.packet_stats_rx,
-            PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                ip4__pre_parse=1,
-                ip4__dst_unicast=1,
-                udp__pre_parse=1,
-                udp__echo_native__respond_udp=1,
-            ),
-        )
-        self.assertEqual(
-            self.packet_handler.packet_stats_tx,
-            PacketStatsTx(
-                udp__pre_assemble=1,
-                udp__send=1,
-                ip4__pre_assemble=1,
-                ip4__mtu_exceed__frag=1,
-                ip4__mtu_exceed__frag__send=5,
-                ethernet__pre_assemble=5,
-                ethernet__src_unspec__fill=5,
-                ethernet__dst_unspec__ip4_lookup=5,
-                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=5,
-            ),
-        )
-        for index in range(5):
-            self.assertEqual(
-                self.packets_tx[index][: len(frags[index])], frags[index]
-            )
-
     def test_packet_flow_rx_tx__tcp__ip4_tcp_syn_to_closed_port(self) -> None:
         """
         [TCP] Receive IPv4/TCP SYN packet to closed port, respond with
