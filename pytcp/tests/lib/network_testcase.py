@@ -134,7 +134,7 @@ class NetworkTestCase(TestCase):
         # Patch the PyTCP stack settings to values suitable for unit tests.
         stack.__dict__.update(
             {
-                "LOG__CHANNEL": set(),
+                # "LOG__CHANNEL": set(),
                 "IP6__SUPPORT": True,
                 "IP4__SUPPORT": True,
                 "INTERFACE__TAP__MTU": 1500,
@@ -195,6 +195,11 @@ class NetworkTestCase(TestCase):
         ).for_call(
             ip4_address=STACK__IP4_GATEWAY
         ).to_return_value(STACK__IP4_GATEWAY_MAC_ADDRESS)
+
+        self.mock_callable(
+            target=mock_ArpCache,
+            method="add_entry",
+        ).to_return_value(None)
 
         # Mock the NdCache so we can get predictable responses.
         mock_NdCache = cast(NdCache, StrictMock(template=NdCache))

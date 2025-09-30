@@ -63,6 +63,34 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
+        {
+            "_description": "Ethernet/ARP - request for stack MAC address",
+            "_frames_rx": [
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                b"\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_request=1,
+                arp__op_request__tpa_stack__respond=1,
+                arp__op_request__update_arp_cache=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                arp__pre_assemble=1,
+                arp__op_reply__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_spec=1,
+                ethernet__dst_spec__send=1,
+            ),
+        },
     ]
 )
 class TestPacketHandlerArpRx(NetworkTestCase):
