@@ -61,10 +61,6 @@ test__pytcp__integration: venv
 	@echo '<<< TESTSLIDE PYTCP INTEGRATION'
 	@./$(VENV)/bin/testslide $(shell find 'pytcp/tests/integration' -name '*.py')
 
-test__legacy__integration: venv
-	@echo '<<< TESTSLIDE LEGACY INTEGRATION'
-	@./$(VENV)/bin/testslide tests__legacy/integration/*.py
-
 test__net_addr__unit: venv
 	@echo '<<< TESTSLIDE NET_ADDR UNIT'
 	@./$(VENV)/bin/testslide $(shell find 'net_addr/tests/unit' -name '*.py')
@@ -73,7 +69,7 @@ test__net_proto__unit: venv
 	@echo '<<< TESTSLIDE NET_PROTO UNIT'
 	@./$(VENV)/bin/testslide $(shell find 'net_proto/tests/unit' -name '*.py')
 
-test: venv test__net_addr__unit test__net_proto__unit test__pytcp__integration test__legacy__integration
+test: venv test__net_addr__unit test__net_proto__unit test__pytcp__integration
 
 validate: lint test
 

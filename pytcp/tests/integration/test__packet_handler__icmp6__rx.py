@@ -87,6 +87,212 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
         },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst), "
+                "respond with Neighbor Advertisement"
+            ),
+            "_frames_rx": [
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x87\x00\xeb\x45\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x01\x01"
+                b"\x02\x00\x00\x00\x00\x91",
+            ],
+            "_expected__frames_tx": [
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x88\x00\xa9\xcf\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x02\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_solicitation=1,
+                icmp6__nd_neighbor_solicitation__update_nd_cache=1,
+                icmp6__nd_neighbor_solicitation__target_stack__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_advertisement__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst, no SLLA), "
+                "respond with Neighbor Advertisement"
+            ),
+            "_frames_rx": [
+                b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x07\x87\x00\x1e\x95\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
+            ],
+            "_expected__frames_tx": [
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x88\x00\xa9\xcf\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x02\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_solicitation=1,
+                icmp6__nd_neighbor_solicitation__target_stack__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_advertisement__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (multicast dst), "
+                "respond with Neighbor Advertisement"
+            ),
+            "_frames_rx": [
+                b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x07\x87\x00\x1a\xfb\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x01\x01"
+                b"\x02\x00\x00\x00\x00\x91",
+            ],
+            "_expected__frames_tx": [
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x88\x00\xa9\xcf\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x02\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_solicitation=1,
+                icmp6__nd_neighbor_solicitation__update_nd_cache=1,
+                icmp6__nd_neighbor_solicitation__target_stack__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_advertisement__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (multicast dst, no SLLA), "
+                "respond with Neighbor Advertisement"
+            ),
+            "_frames_rx": [
+                b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x07\x87\x00\x1e\x95\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
+            ],
+            "_expected__frames_tx": [
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x88\x00\xa9\xcf\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x02\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_solicitation=1,
+                icmp6__nd_neighbor_solicitation__update_nd_cache=0,
+                icmp6__nd_neighbor_solicitation__target_stack__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_advertisement__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (DAD), "
+                "respond with Neighbor Advertisement"
+            ),
+            "_frames_rx": [
+                b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x07\x87\x00\x4c\xe0\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
+            ],
+            "_expected__frames_tx": [
+                b"\x33\x33\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x01\x88\x00\xf9\x16\x20\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07\x02\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_solicitation=1,
+                icmp6__nd_neighbor_solicitation__dad=1,
+                icmp6__nd_neighbor_solicitation__target_stack__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_advertisement__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
     ]
 )
 class TestPacketHandlerIcmp6Rx(NetworkTestCase):

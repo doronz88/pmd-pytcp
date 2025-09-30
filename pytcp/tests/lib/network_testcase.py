@@ -134,7 +134,7 @@ class NetworkTestCase(TestCase):
         # Patch the PyTCP stack settings to values suitable for unit tests.
         stack.__dict__.update(
             {
-                # "LOG__CHANNEL": set(),
+                "LOG__CHANNEL": set(),
                 "IP6__SUPPORT": True,
                 "IP4__SUPPORT": True,
                 "INTERFACE__TAP__MTU": 1500,
@@ -230,6 +230,11 @@ class NetworkTestCase(TestCase):
             method="find_entry",
         ).for_call(
             ip6_address=ROUTER_B__IP6_ADDRESS
+        ).to_return_value(None)
+
+        self.mock_callable(
+            target=mock_NdCache,
+            method="add_entry",
         ).to_return_value(None)
 
         # Prepare PacketHandler object to be used with the tests.
