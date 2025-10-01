@@ -128,19 +128,25 @@ class PacketHandlerArpRx(ABC):
             return
 
         # Check if the request is for one of our IP addresses,
-        # if so the craft ARP reply packet and send it out.
         if packet_rx.arp.tpa in self._ip4_unicast:
-            self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
-            self._phtx_arp(
-                ethernet__src=self._mac_unicast,
-                ethernet__dst=packet_rx.arp.sha,
-                arp__oper=ArpOperation.REPLY,
-                arp__sha=self._mac_unicast,
-                arp__spa=packet_rx.arp.tpa,
-                arp__tha=packet_rx.arp.sha,
-                arp__tpa=packet_rx.arp.spa,
-                echo_tracker=packet_rx.tracker,
-            )
+
+            # If SPA is unspecified then this is ARP probe (RFC 5227),
+            # do not reply to it, just learn the sender MAC-IP mapping.
+            if packet_rx.arp.spa.is_unspecified:
+                self._packet_stats_rx.inc("arp__op_request__probe__drop")
+            # If SPA is set then craft ARP reply packet and send it out.
+            else:
+                self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
+                self._phtx_arp(
+                    ethernet__src=self._mac_unicast,
+                    ethernet__dst=packet_rx.arp.sha,
+                    arp__oper=ArpOperation.REPLY,
+                    arp__sha=self._mac_unicast,
+                    arp__spa=packet_rx.arp.tpa,
+                    arp__tha=packet_rx.arp.sha,
+                    arp__tpa=packet_rx.arp.spa,
+                    echo_tracker=packet_rx.tracker,
+                )
 
             # Update ARP cache with the mapping learned from the received
             # ARP request that was destined to this stack.

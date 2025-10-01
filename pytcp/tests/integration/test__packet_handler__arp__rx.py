@@ -342,6 +342,41 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
+        {
+            "_description": "Ethernet/ARP - probe request (SPA=0.0.0.0) for stack IP, broadcasted — no reply",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4) — PROBE (DAD/announcement style request)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 0.0.0.0            (PROBE)
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.7           (our IP)
+                #
+                # Summary: Broadcast ARP probe (RFC 5227) — “Is 10.0.1.7 in use?” Learn sender MAC, NO reply.
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_request=1,
+                arp__op_request__probe__drop=1,
+                arp__op_request__update_arp_cache_direct=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerArpRx(NetworkTestCase):
