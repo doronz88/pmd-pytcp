@@ -136,7 +136,7 @@ class PacketHandlerArpRx(ABC):
                 self._packet_stats_rx.inc("arp__op_request__probe__drop")
                 __debug__ and log(
                     "arp",
-                    f"{packet_rx.tracker} - <INFO>Dropping the ARP probe for TPA "
+                    f"{packet_rx.tracker} - <INFO>Dropping the ARP Probe for TPA "
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
             # If SPA is set then craft ARP reply packet and send it out.
@@ -144,7 +144,7 @@ class PacketHandlerArpRx(ABC):
                 self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
                 __debug__ and log(
                     "arp",
-                    f"{packet_rx.tracker} - <INFO>Replying to ARP request for TPA "
+                    f"{packet_rx.tracker} - <INFO>Replying to ARP Request for TPA "
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
                 self._phtx_arp(
@@ -199,7 +199,7 @@ class PacketHandlerArpRx(ABC):
         self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
         __debug__ and log(
             "arp",
-            f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
+            f"{packet_rx.tracker} - <INFO>Dropping ARP Request for unknown TPA "
             f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
         )
 
