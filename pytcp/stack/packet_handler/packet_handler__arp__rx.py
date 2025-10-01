@@ -72,6 +72,15 @@ class PacketHandlerArpRx(ABC):
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
 
+        def _send_arp_reply(
+            self,
+            *,
+            arp__spa: Ip4Address,
+            arp__tha: MacAddress,
+            arp__tpa: Ip4Address,
+            tracker: Tracker | None = None,
+        ) -> None: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -149,15 +158,11 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
 
-            self._phtx_arp(
-                ethernet__src=self._mac_unicast,
-                ethernet__dst=packet_rx.arp.sha,
-                arp__oper=ArpOperation.REPLY,
-                arp__sha=self._mac_unicast,
+            self._send_arp_reply(
                 arp__spa=packet_rx.arp.tpa,
                 arp__tha=packet_rx.arp.sha,
                 arp__tpa=packet_rx.arp.spa,
-                echo_tracker=packet_rx.tracker,
+                tracker=packet_rx.tracker,
             )
 
         # Drop packet if the request TPA does not match one of the stack's IP addresses.
@@ -169,7 +174,8 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
             )
 
-        # If request SPA matches on of our subnets then update ARP cache.
+        # If request SPA matches on of our subnets then update ARP cache with
+        # the SPA<->SHA mapping.
         if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
             self._packet_stats_rx.inc("arp__op_request__update_arp_cache")
             stack.arp_cache.add_entry(
@@ -183,6 +189,7 @@ class PacketHandlerArpRx(ABC):
         """
 
         self._packet_stats_rx.inc("arp__op_reply")
+
         # Check for ARP reply that is response to our ARP probe, this indicates
         # the IP address we trying to claim is in use.
         if packet_rx.ethernet.dst == self._mac_unicast:

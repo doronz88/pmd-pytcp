@@ -200,6 +200,41 @@ class PacketHandlerArpTx(ABC):
                 f"tx_status: {tx_status}",
             )
 
+    def _send_arp_reply(
+        self,
+        *,
+        arp__spa: Ip4Address,
+        arp__tha: MacAddress,
+        arp__tpa: Ip4Address,
+        tracker: Tracker | None = None,
+    ) -> None:
+        """
+        Send out ARP reply to respond to ARP request.
+        """
+
+        tx_status = self._phtx_arp(
+            ethernet__src=self._mac_unicast,
+            ethernet__dst=arp__tha,
+            arp__oper=ArpOperation.REPLY,
+            arp__sha=self._mac_unicast,
+            arp__spa=arp__spa,
+            arp__tha=arp__tha,
+            arp__tpa=arp__tpa,
+            echo_tracker=tracker,
+        )
+
+        if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
+            __debug__ and log(
+                "stack",
+                f"Sent out ARP Reply for {arp__tpa}",
+            )
+        else:
+            __debug__ and log(
+                "stack",
+                f"Failed to send out ARP Reply for {arp__tpa}, "
+                f"tx_status: {tx_status}",
+            )
+
     def send_arp_request(self, *, arp__tpa: Ip4Address) -> None:
         """
         Enqueue ARP request packet with TX ring.
