@@ -276,6 +276,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/ARP - gratuitous ARP received (SPA == TPA, broadcast)",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.145
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.145
+                #
+                # Summary: Broadcast Gratuitous ARP (reply flavor) — “10.0.1.145 is at 02:00:00:00:00:91.”
+                #          (TPA = SPA, THA all zeros)
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x91"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x91",
@@ -293,6 +311,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/ARP - bogon request (SHA=00:00:00:00:00:00), drop",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 00:00:00:00:00:00   # ARP Probe (SHA = 0)
+                #   Sender IP       : 0.0.0.0             # ARP Probe (SPA = 0.0.0.0)
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.7
+                #
+                # Summary: ARP Probe for 10.0.1.7 from host with Ethernet MAC 02:00:00:00:00:91.
+                #          Per RFC 5227, this is a probe (SHA=0, SPA=0.0.0.0); receivers should not reply.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
