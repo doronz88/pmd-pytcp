@@ -274,7 +274,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/ARP - gratuitous ARP received (SPA == TPA, broadcast)",
+            "_description": "Ethernet/ARP - gratuitous ARP received, SPA == TPA, broadcast",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)

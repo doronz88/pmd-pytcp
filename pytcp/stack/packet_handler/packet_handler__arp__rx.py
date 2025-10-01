@@ -134,9 +134,19 @@ class PacketHandlerArpRx(ABC):
             # do not reply to it, just learn the sender MAC-IP mapping.
             if packet_rx.arp.spa.is_unspecified:
                 self._packet_stats_rx.inc("arp__op_request__probe__drop")
+                __debug__ and log(
+                    "arp",
+                    f"{packet_rx.tracker} - <INFO>Dropping the ARP probe for TPA "
+                    f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
+                )
             # If SPA is set then craft ARP reply packet and send it out.
             else:
                 self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
+                __debug__ and log(
+                    "arp",
+                    f"{packet_rx.tracker} - <INFO>Replying to ARP request for TPA "
+                    f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
+                )
                 self._phtx_arp(
                     ethernet__src=self._mac_unicast,
                     ethernet__dst=packet_rx.arp.sha,
@@ -187,6 +197,11 @@ class PacketHandlerArpRx(ABC):
 
         # Drop packet if TPA does not match one of the stack's IP addresses.
         self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
+        __debug__ and log(
+            "arp",
+            f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
+            f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
+        )
 
     def __phrx_arp__reply(self, packet_rx: PacketRx) -> None:
         """
@@ -218,9 +233,9 @@ class PacketHandlerArpRx(ABC):
             self._packet_stats_rx.inc("arp__op_reply__update_arp_cache_direct")
             __debug__ and log(
                 "arp",
-                f"{packet_rx.tracker} - Adding/refreshing ARP cache entry "
+                f"{packet_rx.tracker} - <INFO>Adding/refreshing ARP cache entry "
                 f"from direct reply - {packet_rx.arp.spa} "
-                f"-> {packet_rx.arp.sha}",
+                f"-> {packet_rx.arp.sha}</>",
             )
             stack.arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
@@ -239,9 +254,9 @@ class PacketHandlerArpRx(ABC):
             )
             __debug__ and log(
                 "arp",
-                f"{packet_rx.tracker} - Adding/refreshing ARP cache entry "
+                f"{packet_rx.tracker} - <INFO>Adding/refreshing ARP cache entry "
                 f"from gratuitous reply - {packet_rx.arp.spa} "
-                f"-> {packet_rx.arp.sha}",
+                f"-> {packet_rx.arp.sha}</>",
             )
             stack.arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
