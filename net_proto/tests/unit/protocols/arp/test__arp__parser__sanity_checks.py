@@ -54,6 +54,17 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 "error_message": "The 'oper' field value must be one of [1, 2], got 0.",
             },
         },
+        {
+            "_description": "The SHA address is unspecified.",
+            "_args": [
+                b"\x00\x01\x08\x00\x06\x04\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error_message": "The 'sha' field value must not be the unspecified MAC address."
+            },
+        },
     ]
 )
 class TestArpParserSanityChecks(TestCasePacketRx):

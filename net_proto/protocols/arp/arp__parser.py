@@ -129,3 +129,8 @@ class ArpParser(Arp, ProtoParser):
                 "The 'oper' field value must be one of "
                 f"{ArpOperation.get_known_values()}, got {int(self._header.oper)}."
             )
+
+        if self._header.sha.is_unspecified:
+            raise ArpSanityError(
+                "The 'sha' field value must not be the unspecified MAC address."
+            )
