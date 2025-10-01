@@ -145,7 +145,9 @@ class PacketHandlerArpRx(ABC):
             # Update ARP cache with the mapping learned from the received
             # ARP request that was destined to this stack.
             if stack.ARP__CACHE__UPDATE_FROM_DIRECT_REQUEST:
-                self._packet_stats_rx.inc("arp__op_request__update_arp_cache")
+                self._packet_stats_rx.inc(
+                    "arp__op_request__update_arp_cache_direct"
+                )
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>Adding/refreshing "
