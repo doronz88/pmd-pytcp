@@ -84,7 +84,7 @@ class PacketStatsRx(PacketStats):
     arp__op_request__update_arp_cache_direct: int = 0
     arp__op_reply: int = 0
     arp__op_reply__ip_conflict: int = 0
-    arp__op_reply__update_arp_cache: int = 0
+    arp__op_reply__update_arp_cache_direct: int = 0
     arp__op_reply__update_arp_cache_gratuitous: int = 0
 
     ip4__pre_parse: int = 0

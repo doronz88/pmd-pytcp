@@ -209,7 +209,7 @@ class PacketHandlerArpRx(ABC):
 
         # Update ARP cache with mapping received as direct ARP reply.
         if packet_rx.ethernet.dst == self._mac_unicast:
-            self._packet_stats_rx.inc("arp__op_reply__update_arp_cache")
+            self._packet_stats_rx.inc("arp__op_reply__update_arp_cache_direct")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - Adding/refreshing ARP cache entry "
