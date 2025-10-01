@@ -226,12 +226,12 @@ class PacketHandlerArpTx(ABC):
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
             __debug__ and log(
                 "stack",
-                f"Sent out ARP Reply for {arp__tpa}",
+                f"Sent out ARP Reply for {arp__spa} to {arp__tpa}",
             )
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out ARP Reply for {arp__tpa}, "
+                f"Failed to send out ARP Reply for {arp__spa} to {arp__tpa}, "
                 f"tx_status: {tx_status}",
             )
 
