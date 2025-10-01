@@ -134,7 +134,7 @@ class NetworkTestCase(TestCase):
         # Patch the PyTCP stack settings to values suitable for unit tests.
         stack.__dict__.update(
             {
-                # "LOG__CHANNEL": set(),
+                "LOG__CHANNEL": set(),
                 "IP6__SUPPORT": True,
                 "IP4__SUPPORT": True,
                 "INTERFACE__TAP__MTU": 1500,
