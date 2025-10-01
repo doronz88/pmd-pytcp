@@ -81,6 +81,8 @@ class PacketHandlerArpRx(ABC):
             tracker: Tracker | None = None,
         ) -> None: ...
 
+        def _send_gratitous_arp(self, *, ip4_unicast: Ip4Address) -> None: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -126,15 +128,28 @@ class PacketHandlerArpRx(ABC):
 
         self._packet_stats_rx.inc("arp__op_request")
 
-        # Check if request contains our IP address in SPA field,
-        # this indicates IP address conflict.
+        # Check if request contains our IP address in SPA field.
+        # This indicates IP address conflict.
         if packet_rx.arp.spa in self._ip4_unicast:
+            # Exception is made when SHA matches our MAC address, this is
+            # likely our own ARP probe that we sent out earlier that somehow
+            # made its way back to us.
+            if packet_rx.arp.sha == self._mac_unicast:
+                self._packet_stats_rx.inc("arp__op_request__own_packet__drop")
+                __debug__ and log(
+                    "arp",
+                    f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
+                    f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}, dropping.</>",
+                )
+                return
+
             self._packet_stats_rx.inc("arp__op_request__ip_conflict")
             __debug__ and log(
                 "arp",
-                f"{packet_rx.tracker} - <WARN>IP ({packet_rx.arp.spa}) "
+                f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
+            self._send_gratitous_arp(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Check if the request TPA is for one of our IP addresses.
@@ -158,6 +173,7 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
 
+            # Send ARP reply packet to requester.
             self._send_arp_reply(
                 arp__spa=packet_rx.arp.tpa,
                 arp__tha=packet_rx.arp.sha,

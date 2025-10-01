@@ -78,6 +78,7 @@ class PacketStatsRx(PacketStats):
     arp__op_unknown__drop: int = 0
     arp__op_request: int = 0
     arp__op_request__ip_conflict: int = 0
+    arp__op_request__own_packet__drop: int = 0
     arp__op_request__probe__respond: int = 0
     arp__op_request__tpa_stack__respond: int = 0
     arp__op_request__tpa_unknown__drop: int = 0
