@@ -76,8 +76,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_broadcast=1,
                 arp__pre_parse=1,
                 arp__op_request=1,
-                arp__op_request__update_arp_cache_other=1,
                 arp__op_request__tpa_unknown__drop=1,
+                arp__op_request__update_arp_cache=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
@@ -167,7 +167,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__pre_parse=1,
                 arp__op_request=1,
                 arp__op_request__tpa_stack__respond=1,
-                arp__op_request__update_arp_cache_direct=1,
+                arp__op_request__update_arp_cache=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(
                 arp__pre_assemble=1,
@@ -229,7 +229,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__pre_parse=1,
                 arp__op_request=1,
                 arp__op_request__tpa_stack__respond=1,
-                arp__op_request__update_arp_cache_direct=1,
+                arp__op_request__update_arp_cache=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(
                 arp__pre_assemble=1,
@@ -322,13 +322,12 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Protocol type   : 0x0800 (IPv4)
                 #   HLEN / PLEN     : 6 / 4
                 #   Operation       : 1 (Request)
-                #   Sender MAC      : 00:00:00:00:00:00   # ARP Probe (SHA = 0)
-                #   Sender IP       : 0.0.0.0             # ARP Probe (SPA = 0.0.0.0)
+                #   Sender MAC      : 00:00:00:00:00:00
+                #   Sender IP       : 0.0.0.0
                 #   Target MAC      : 00:00:00:00:00:00
                 #   Target IP       : 10.0.1.7
                 #
-                # Summary: ARP Probe for 10.0.1.7 from host with Ethernet MAC 02:00:00:00:00:91.
-                #          Per RFC 5227, this is a probe (SHA=0, SPA=0.0.0.0); receivers should not reply.
+                # Summary: SHA is 00:00:00:00:00:00 — drop packet.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
@@ -366,16 +365,42 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
             ],
-            "_expected__frames_tx": [],
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 10.0.1.7
+                #   Target MAC      : 02:00:00:00:00:91
+                #   Target IP       : 0.0.0.0
+                #
+                # Summary: Unicast ARP reply from 10.0.1.7 → 02:00:00:00:00:91, TPA unspecified.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                b"\x02\x00\x00\x00\x00\x91\x00\x00\x00\x00",
+            ],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_broadcast=1,
                 arp__pre_parse=1,
                 arp__op_request=1,
-                arp__op_request__probe__drop=1,
-                arp__op_request__update_arp_cache_direct=1,
+                arp__op_request__probe__respond=1,
             ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                arp__pre_assemble=1,
+                arp__op_reply__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_spec=1,
+                ethernet__dst_spec__send=1,
+            ),
         },
     ]
 )
