@@ -53,6 +53,7 @@ class PacketHandlerArpRx(ABC):
         from pytcp.lib.tx_status import TxStatus
 
         _mac_unicast: MacAddress
+        _ip4_host: list[Ip4Host]
         _packet_stats_rx: PacketStatsRx
         _ip4_host_candidate: list[Ip4Host]
 
@@ -156,6 +157,25 @@ class PacketHandlerArpRx(ABC):
                     mac_address=packet_rx.arp.sha,
                 )
             return
+
+        # If request is not for one of our IP addresses, check if sender IP is
+        # on local subnet, and if so record the sender IP-MAC mapping in
+        # ARP cache.
+        if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
+            if stack.ARP__CACHE__UPDATE_FROM_OTHER_REQUEST:
+                self._packet_stats_rx.inc(
+                    "arp__op_request__update_arp_cache_other"
+                )
+                __debug__ and log(
+                    "arp",
+                    f"{packet_rx.tracker} - <INFO>Adding/refreshing ARP "
+                    "cache entry from unknown request "
+                    f"- {packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
+                )
+                stack.arp_cache.add_entry(
+                    ip4_address=packet_rx.arp.spa,
+                    mac_address=packet_rx.arp.sha,
+                )
 
         # Drop packet if TPA does not match one of the stack's IP addresses.
         self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")

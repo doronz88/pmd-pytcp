@@ -69,6 +69,23 @@ from pytcp.tests.lib.network_testcase import (
                 "arp__tpa": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 10.0.1.7
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.91
+                #
+                # Summary: Broadcast ARP request — “Who has 10.0.1.91? Tell 10.0.1.7.”
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b",
@@ -95,6 +112,23 @@ from pytcp.tests.lib.network_testcase import (
                 "arp__tpa": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 10.0.1.7
+                #   Target MAC      : 02:00:00:00:00:91
+                #   Target IP       : 10.0.1.91
+                #
+                # Summary: Unicast ARP reply — “10.0.1.7 is at 02:00:00:00:00:07.”
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
                 b"\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b",

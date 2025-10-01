@@ -47,8 +47,60 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet/ARP - request, unknown TPA",
+            "_description": "Ethernet/ARP - request, unknown TPA on local network",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.92
+                #
+                # Summary: Broadcast ARP request — “Who has 10.0.1.92? Tell 10.0.1.91.”
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5c",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_request=1,
+                arp__op_request__update_arp_cache_other=1,
+                arp__op_request__tpa_unknown__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/ARP - request, unknown TPA on another network",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 52:54:00:df:85:37
+                #   Sender IP       : 192.168.9.102
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 192.168.9.55
+                #
+                # Summary: Broadcast ARP request — “Who has 192.168.9.55? Tell 192.168.9.102.”
                 b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
                 b"\x00\x00\x00\x00\x00\x00\xc0\xa8\x09\x37",
@@ -66,11 +118,45 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/ARP - request for stack MAC address",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.7
+                #
+                # Summary: Broadcast ARP request — “Who has 10.0.1.7? Tell 10.0.1.91.”
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 10.0.1.7
+                #   Target MAC      : 02:00:00:00:00:91
+                #   Target IP       : 10.0.1.91
+                #
+                # Summary: Unicast ARP reply — “10.0.1.7 is at 02:00:00:00:00:07.”
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
                 b"\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b",
