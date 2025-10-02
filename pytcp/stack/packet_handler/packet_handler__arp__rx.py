@@ -128,22 +128,26 @@ class PacketHandlerArpRx(ABC):
 
         self._packet_stats_rx.inc("arp__op_request")
 
-        # Check if request contains our IP address in SPA field.
-        # This indicates IP address conflict.
-        if packet_rx.arp.spa in self._ip4_unicast:
-            # Exception is made when SHA matches our MAC address, this is
-            # likely our own ARP probe that we sent out earlier that somehow
-            # made its way back to us.
-            if packet_rx.arp.sha == self._mac_unicast:
-                self._packet_stats_rx.inc("arp__op_request__own_packet__drop")
-                __debug__ and log(
-                    "arp",
-                    f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
-                    f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}, dropping.</>",
-                )
-                return
+        # Drop any ARP request if it is originated from us and looped for whatever.
+        if (
+            packet_rx.arp.spa in self._ip4_unicast
+            and packet_rx.arp.sha == self._mac_unicast
+        ):
+            self._packet_stats_rx.inc("arp__op_request__looped__drop")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
+                f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}, dropping.</>",
+            )
+            return
 
-            self._packet_stats_rx.inc("arp__op_request__ip_conflict")
+        # Defend against IP address conflict if we got ARP request from another host
+        # that is trying to claim one of our IP addresses.
+        if (
+            packet_rx.arp.spa in self._ip4_unicast
+            and packet_rx.arp.sha != self._mac_unicast
+        ):
+            self._packet_stats_rx.inc("arp__op_request__ip_conflict__defend")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
@@ -205,6 +209,34 @@ class PacketHandlerArpRx(ABC):
         """
 
         self._packet_stats_rx.inc("arp__op_reply")
+
+        # Drop any ARP reply if it is originated from us and looped for whatever.
+        if (
+            packet_rx.arp.spa in self._ip4_unicast
+            and packet_rx.arp.sha == self._mac_unicast
+        ):
+            self._packet_stats_rx.inc("arp__op_reply__looped__drop")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <WARN>IP Received our own ARP reply for "
+                f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}, dropping.</>",
+            )
+            return
+
+        # Defend against IP address conflict if we got ARP reply from another host
+        # that is trying to claim one of our IP addresses.
+        if (
+            packet_rx.arp.spa in self._ip4_unicast
+            and packet_rx.arp.sha != self._mac_unicast
+        ):
+            self._packet_stats_rx.inc("arp__op_reply__ip_conflict__defend")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
+                f"conflict detected with host at {packet_rx.arp.sha}</>",
+            )
+            self._send_gratitous_arp(ip4_unicast=packet_rx.arp.spa)
+            return
 
         # Check for ARP reply that is response to our ARP probe, this indicates
         # the IP address we trying to claim is in use.
