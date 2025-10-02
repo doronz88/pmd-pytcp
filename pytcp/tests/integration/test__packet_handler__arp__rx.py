@@ -240,76 +240,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - reply received, update ARP cache",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:07
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.91
-                #   Target MAC      : 02:00:00:00:00:07
-                #   Target IP       : 10.0.1.7
-                #
-                # Summary: Unicast ARP reply — “10.0.1.91 is at 02:00:00:00:00:91.”
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
-                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                arp__pre_parse=1,
-                arp__op_reply=1,
-                arp__op_reply__update_arp_cache_direct=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": "Ethernet/ARP - gratuitous ARP received, SPA == TPA, broadcast",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.145
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.145
-                #
-                # Summary: Broadcast Gratuitous ARP (reply flavor) — “10.0.1.145 is at 02:00:00:00:00:91.”
-                #          (TPA = SPA, THA all zeros)
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x91"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x91",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__op_reply=1,
-                arp__op_reply__update_arp_cache_gratuitous=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": "Ethernet/ARP - bogon request (SHA=00:00:00:00:00:00), drop",
+            "_description": "Ethernet/ARP - request (SHA=00:00:00:00:00:00), drop",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -342,7 +273,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/ARP - probe request (SPA=0.0.0.0) for stack IP, broadcasted",
+            "_description": "Ethernet/ARP - request probe (SPA=0.0.0.0) for stack IP, broadcasted",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -403,7 +334,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - conflict: request with SPA == our IP → send gratuitous ARP (defense)",
+            "_description": "Ethernet/ARP - request with SPA == our IP → send gratuitous ARP as defense",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -465,7 +396,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - looped back: frame sourced from our own MAC, drop",
+            "_description": "Ethernet/ARP - request looped back: frame sourced from our own MAC, drop",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -500,7 +431,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/ARP - SHA/Ethernet-src mismatch, drop",
+            "_description": "Ethernet/ARP - request, SHA/Ethernet-src mismatch, drop",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -530,6 +461,75 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_broadcast=1,
                 arp__pre_parse=1,
                 arp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/ARP - reply, update ARP cache",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 02:00:00:00:00:07
+                #   Target IP       : 10.0.1.7
+                #
+                # Summary: Unicast ARP reply — “10.0.1.91 is at 02:00:00:00:00:91.”
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__update_arp_cache_direct=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/ARP - reply, gratuitous ARP, SPA == TPA, broadcast",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.145
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.145
+                #
+                # Summary: Broadcast Gratuitous ARP (reply flavor) — “10.0.1.145 is at 02:00:00:00:00:91.”
+                #          (TPA = SPA, THA all zeros)
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x91"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x91",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__update_arp_cache_gratuitous=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
