@@ -151,6 +151,18 @@ class ArpParser(Arp, ProtoParser):
                 "broadcast MAC address."
             )
 
+        if self._header.spa.is_limited_broadcast:
+            raise ArpSanityError(
+                f"The 'spa' field value {self._header.spa} must not be a "
+                "limited broadcast IPv4 address."
+            )
+
+        if self._header.spa.is_multicast:
+            raise ArpSanityError(
+                f"The 'spa' field value {self._header.spa} must not be a "
+                "multicast IPv4 address."
+            )
+
         if self._ethernet__src is not None:
             if self._header.sha != self._ethernet__src:
                 raise ArpSanityError(
