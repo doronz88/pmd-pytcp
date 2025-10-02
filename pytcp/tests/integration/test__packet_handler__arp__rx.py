@@ -570,6 +570,40 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
+            "_description": "Ethernet/ARP - reply with unspecified SHA, drop",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 00:00:00:00:00:00   # unspecified / all zeros
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC (SHA): 00:00:00:00:00:00   # invalid, must be unicast
+                #   Sender IP (SPA) : 10.0.1.91
+                #   Target MAC (THA): 02:00:00:00:00:07
+                #   Target IP (TPA) : 10.0.1.7
+                #
+                # Summary: Unicast ARP reply claiming “10.0.1.91 is at 00:00:00:00:00:00.”
+                #          Invalid — SHA is unspecified.
+                b"\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                arp__pre_parse=1,
+                arp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
             "_description": "Ethernet/ARP - reply with multicast SHA, drop",
             "_frames_rx": [
                 # Ethernet II
@@ -594,6 +628,40 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #          (and often non-unicast Ethernet source).
                 b"\x02\x00\x00\x00\x00\x07\x01\x00\x5e\x00\x00\x01\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x01\x00\x5e\x00\x00\x01\x0a\x00\x01\x5b"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                arp__pre_parse=1,
+                arp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/ARP - reply with broadcast SHA, drop",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : ff:ff:ff:ff:ff:ff   # broadcast (invalid as a host source)
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC (SHA): ff:ff:ff:ff:ff:ff   # broadcast, not valid for ARP reply
+                #   Sender IP (SPA) : 10.0.1.91
+                #   Target MAC (THA): 02:00:00:00:00:07
+                #   Target IP (TPA) : 10.0.1.7
+                #
+                # Summary: Unicast ARP reply claiming “10.0.1.91 is at ff:ff:ff:ff:ff:ff.”
+                #          Invalid — SHA is broadcast, must be unicast.
+                b"\x02\x00\x00\x00\x00\x07\xff\xff\xff\xff\xff\xff\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\xff\xff\xff\xff\xff\xff\x0a\x00\x01\x5b"
                 b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
             "_expected__frames_tx": [],
