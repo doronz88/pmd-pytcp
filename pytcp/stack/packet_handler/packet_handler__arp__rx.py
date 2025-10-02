@@ -227,18 +227,12 @@ class PacketHandlerArpRx(ABC):
 
         # Update ARP cache with mapping received as direct ARP reply.
         if packet_rx.ethernet.dst == self._mac_unicast:
-            self._packet_stats_rx.inc("arp__op_reply__update_arp_cache_direct")
+            self._packet_stats_rx.inc("arp__op_reply__direct")
             __debug__ and log(
                 "arp",
-                f"{packet_rx.tracker} - <INFO>Adding/refreshing ARP cache entry "
-                f"from direct reply - {packet_rx.arp.spa} "
-                f"-> {packet_rx.arp.sha}</>",
+                f"{packet_rx.tracker} - <INFO>Received direct ARP reply, "
+                f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
-            stack.arp_cache.add_entry(
-                ip4_address=packet_rx.arp.spa,
-                mac_address=packet_rx.arp.sha,
-            )
-            return
 
         # Update ARP cache with mapping received as gratuitous ARP reply.
         if (
@@ -246,17 +240,18 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.arp.spa == packet_rx.arp.tpa
             and stack.ARP__CACHE__UPDATE_FROM_GRATUITIOUS_REPLY
         ):
-            self._packet_stats_rx.inc(
-                "arp__op_reply__update_arp_cache_gratuitous"
-            )
+            self._packet_stats_rx.inc("arp__op_reply__gratuitous")
             __debug__ and log(
                 "arp",
-                f"{packet_rx.tracker} - <INFO>Adding/refreshing ARP cache entry "
-                f"from gratuitous reply - {packet_rx.arp.spa} "
-                f"-> {packet_rx.arp.sha}</>",
+                f"{packet_rx.tracker} - <INFO>Received gratuitous ARP reply, "
+                f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
+
+        # If request SPA matches on of our subnets then update ARP cache with
+        # the SPA<->SHA mapping.
+        if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
+            self._packet_stats_rx.inc("arp__op_reply__update_arp_cache")
             stack.arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
                 mac_address=packet_rx.arp.sha,
             )
-            return
