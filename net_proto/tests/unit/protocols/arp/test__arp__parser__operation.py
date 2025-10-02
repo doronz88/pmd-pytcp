@@ -47,34 +47,34 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "ARP Request.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                b"\x00\x01\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00"
+                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
             "_kwargs": {},
             "_results": {
                 "header": ArpHeader(
                     oper=ArpOperation.REQUEST,
-                    sha=MacAddress("01:02:03:04:05:06"),
-                    spa=Ip4Address("11.22.33.44"),
-                    tha=MacAddress("0a:0b:0c:0d:0e:0f"),
-                    tpa=Ip4Address("101.102.103.104"),
+                    sha=MacAddress("02:00:00:00:00:91"),
+                    spa=Ip4Address("10.0.1.91"),
+                    tha=MacAddress("00:00:00:00:00:07"),
+                    tpa=Ip4Address("10.0.1.7"),
                 ),
             },
         },
         {
             "_description": "ARP Reply.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\xa1\xb2\xc3\xd4\xe5\xf6\x05\x05"
-                b"\x05\x05\x7a\x7b\x7c\x7d\x7e\x7f\x07\x07\x07\x07",
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00"
+                b"\x01\x07\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b",
             ],
             "_kwargs": {},
             "_results": {
                 "header": ArpHeader(
                     oper=ArpOperation.REPLY,
-                    sha=MacAddress("a1:b2:c3:d4:e5:f6"),
-                    spa=Ip4Address("5.5.5.5"),
-                    tha=MacAddress("7a:7b:7c:7d:7e:7f"),
-                    tpa=Ip4Address("7.7.7.7"),
+                    sha=MacAddress("02:00:00:00:00:07"),
+                    spa=Ip4Address("10.0.1.7"),
+                    tha=MacAddress("02:00:00:00:00:91"),
+                    tpa=Ip4Address("10.0.1.91"),
                 ),
             },
         },

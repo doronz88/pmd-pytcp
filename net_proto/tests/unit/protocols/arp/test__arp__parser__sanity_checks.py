@@ -49,8 +49,8 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'prlen' field is incorrect.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x00\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                b"\x00\x01\x08\x00\x06\x04\x00\x00\x02\x00\x00\x00\x00\x91\x0a\x00"
+                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
             "_kwargs": {},
             "_results": {
@@ -65,19 +65,44 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": "The 'sha' field value must not be the unspecified MAC address."
+                "error_message": "The 'sha' field value 00:00:00:00:00:00 must not be a "
+                "unspecified MAC address."
+            },
+        },
+        {
+            "_description": "The SHA address is multicast.",
+            "_args": [
+                b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x00\x5e\x00\x00\x01\x0a\x00"
+                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error_message": "The 'sha' field value 01:00:5e:00:00:01 must not be a "
+                "multicast MAC address."
+            },
+        },
+        {
+            "_description": "The SHA address is broadcast.",
+            "_args": [
+                b"\x00\x01\x08\x00\x06\x04\x00\x01\xff\xff\xff\xff\xff\xff\x0a\x00"
+                b"\x01\x5b\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error_message": "The 'sha' field value ff:ff:ff:ff:ff:ff must not be a "
+                "broadcast MAC address."
             },
         },
         {
             "_description": "The SHA address doesn't match the Ethernet source address.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\xa1\xb2\xc3\xd4\xe5\xf6\x05\x05"
-                b"\x05\x05\x7a\x7b\x7c\x7d\x7e\x7f\x07\x07\x07\x07",
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00"
+                b"\x01\x5b\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": "The 'sha' field value a1:b2:c3:d4:e5:f6 does not match the "
-                "Ethernet frame 'src' field value 11:22:33:44:55:66."
+                "error_message": "The 'sha' field value 02:00:00:00:00:91 does not match the "
+                "Ethernet frame 'src' field value 02:00:00:00:00:07."
             },
         },
     ]
@@ -103,7 +128,7 @@ class TestArpParserSanityChecks(TestCasePacketRx):
             self._packet_rx.ethernet = cast(
                 EthernetParser,
                 EthernetAssembler(
-                    ethernet__src=MacAddress("11:22:33:44:55:66"),
+                    ethernet__src=MacAddress("02:00:00:00:00:07"),
                 ),
             )
 

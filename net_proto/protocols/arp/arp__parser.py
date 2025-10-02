@@ -135,7 +135,20 @@ class ArpParser(Arp, ProtoParser):
 
         if self._header.sha.is_unspecified:
             raise ArpSanityError(
-                "The 'sha' field value must not be the unspecified MAC address."
+                f"The 'sha' field value {self._header.sha} must not be a "
+                "unspecified MAC address."
+            )
+
+        if self._header.sha.is_multicast:
+            raise ArpSanityError(
+                f"The 'sha' field value {self._header.sha} must not be a "
+                "multicast MAC address."
+            )
+
+        if self._header.sha.is_broadcast:
+            raise ArpSanityError(
+                f"The 'sha' field value {self._header.sha} must not be a "
+                "broadcast MAC address."
             )
 
         if self._ethernet__src is not None:
