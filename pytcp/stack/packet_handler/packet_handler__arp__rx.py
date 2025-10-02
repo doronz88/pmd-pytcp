@@ -157,8 +157,15 @@ class PacketHandlerArpRx(ABC):
             return
 
         # Check if the request TPA is for one of our IP addresses.
-        if packet_rx.arp.tpa in self._ip4_unicast:
+        if packet_rx.arp.tpa not in self._ip4_unicast:
+            self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
+                f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
+            )
 
+        else:
             # If SPA is unspecified then this is ARP probe (RFC 5227).
             if packet_rx.arp.spa.is_unspecified:
                 self._packet_stats_rx.inc("arp__op_request__probe__respond")
@@ -183,15 +190,6 @@ class PacketHandlerArpRx(ABC):
                 arp__tha=packet_rx.arp.sha,
                 arp__tpa=packet_rx.arp.spa,
                 tracker=packet_rx.tracker,
-            )
-
-        # Drop packet if the request TPA does not match one of the stack's IP addresses.
-        else:
-            self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
-            __debug__ and log(
-                "arp",
-                f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
-                f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
             )
 
         # If request SPA matches on of our subnets then update ARP cache with
