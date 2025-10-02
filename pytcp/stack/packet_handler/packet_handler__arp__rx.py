@@ -257,7 +257,7 @@ class PacketHandlerArpRx(ABC):
                 stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
                 return
 
-        # Update ARP cache with mapping received as direct ARP reply.
+        # Note receiving packet as direct ARP reply.
         if packet_rx.ethernet.dst == self._mac_unicast:
             self._packet_stats_rx.inc("arp__op_reply__direct")
             __debug__ and log(
@@ -266,7 +266,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
 
-        # Update ARP cache with mapping received as gratuitous ARP reply.
+        # Note receiving packet as gratuitous ARP reply.
         if (
             packet_rx.ethernet.dst.is_broadcast
             and packet_rx.arp.spa == packet_rx.arp.tpa
@@ -278,11 +278,8 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
 
-        # If SHA is unicast and SPA matches on of our subnets then update ARP cache with
-        # the SPA<->SHA mapping.
-        if packet_rx.arp.sha.is_unicast and any(
-            packet_rx.arp.spa in host.network for host in self._ip4_host
-        ):
+        # If SPA matches on of our subnets then update ARP cache with the SPA<->SHA mapping.
+        if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
             self._packet_stats_rx.inc("arp__op_reply__update_arp_cache")
             stack.arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
