@@ -33,11 +33,14 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from typing import Any, cast
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr.mac_address import MacAddress
 from net_proto import ArpParser, ArpSanityError, PacketRx
+from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
+from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 
 
@@ -65,6 +68,18 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 "error_message": "The 'sha' field value must not be the unspecified MAC address."
             },
         },
+        {
+            "_description": "The SHA address doesn't match the Ethernet source address.",
+            "_args": [
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\xa1\xb2\xc3\xd4\xe5\xf6\x05\x05"
+                b"\x05\x05\x7a\x7b\x7c\x7d\x7e\x7f\x07\x07\x07\x07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error_message": "The 'sha' field value a1:b2:c3:d4:e5:f6 does not match the "
+                "Ethernet frame 'src' field value 11:22:33:44:55:66."
+            },
+        },
     ]
 )
 class TestArpParserSanityChecks(TestCasePacketRx):
@@ -83,6 +98,14 @@ class TestArpParserSanityChecks(TestCasePacketRx):
         """
         Ensure the ARP packet parser raises sanity errors on crazy packets.
         """
+
+        if "Ethernet source address." in self._description:
+            self._packet_rx.ethernet = cast(
+                EthernetParser,
+                EthernetAssembler(
+                    ethernet__src=MacAddress("11:22:33:44:55:66"),
+                ),
+            )
 
         with self.assertRaises(ArpSanityError) as error:
             ArpParser(self._packet_rx)

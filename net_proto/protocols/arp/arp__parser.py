@@ -64,6 +64,9 @@ class ArpParser(Arp, ProtoParser):
         """
 
         self._frame = packet_rx.frame
+        self._ethernet__src = (
+            packet_rx.ethernet.src if hasattr(packet_rx, "ethernet") else None
+        )
 
         self._validate_integrity()
         self._parse()
@@ -134,3 +137,10 @@ class ArpParser(Arp, ProtoParser):
             raise ArpSanityError(
                 "The 'sha' field value must not be the unspecified MAC address."
             )
+
+        if self._ethernet__src is not None:
+            if self._header.sha != self._ethernet__src:
+                raise ArpSanityError(
+                    f"The 'sha' field value {self._header.sha} does not match the "
+                    f"Ethernet frame 'src' field value {self._ethernet__src}."
+                )
