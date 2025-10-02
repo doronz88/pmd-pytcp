@@ -238,7 +238,6 @@ class PacketHandlerArpRx(ABC):
         if (
             packet_rx.ethernet.dst.is_broadcast
             and packet_rx.arp.spa == packet_rx.arp.tpa
-            and stack.ARP__CACHE__UPDATE_FROM_GRATUITIOUS_REPLY
         ):
             self._packet_stats_rx.inc("arp__op_reply__gratuitous")
             __debug__ and log(
