@@ -270,9 +270,7 @@ from pytcp.tests.lib.network_testcase import (
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
-                "ip4__payload": RawAssembler(
-                    raw__payload=b"01234567890ABCDEF" * 400
-                ),
+                "ip4__payload": RawAssembler(raw__payload=b"01234567890ABCDEF" * 400),
             },
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"

@@ -169,10 +169,7 @@ class TestIp4OptionEolAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the IPv4 Eol option must be 1 "
-                    "byte. Got: 0"
-                ),
+                "error_message": ("The minimum length of the IPv4 Eol option must be 1 " "byte. Got: 0"),
             },
         },
         {
@@ -184,8 +181,7 @@ class TestIp4OptionEolAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The IPv4 Eol option type must be {Ip4OptionType.EOL!r}. "
-                    f"Got: {Ip4OptionType.from_int(255)!r}"
+                    f"The IPv4 Eol option type must be {Ip4OptionType.EOL!r}. " f"Got: {Ip4OptionType.from_int(255)!r}"
                 ),
             },
         },

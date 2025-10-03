@@ -166,9 +166,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
                 "__repr__": "Ip6Address('3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')",
                 "__bytes__": b"\x3f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
                 "__int__": 85070591730234615865843651857942052863,
-                "__hash__": hash(
-                    "Ip6Address('3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
-                ),
+                "__hash__": hash("Ip6Address('3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"),
                 "version": IpVersion.IP6,
                 "unspecified": Ip6Address(),
                 "is_ip4": False,
@@ -224,9 +222,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
                 "__repr__": "Ip6Address('febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff')",
                 "__bytes__": b"\xfe\xbf\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
                 "__int__": 338620831926207318622244848606417780735,
-                "__hash__": hash(
-                    "Ip6Address('febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
-                ),
+                "__hash__": hash("Ip6Address('febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"),
                 "version": IpVersion.IP6,
                 "unspecified": Ip6Address(),
                 "is_ip4": False,
@@ -282,9 +278,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
                 "__repr__": "Ip6Address('fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')",
                 "__bytes__": b"\xfd\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
                 "__int__": 337623910929368631717566993311207522303,
-                "__hash__": hash(
-                    "Ip6Address('fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
-                ),
+                "__hash__": hash("Ip6Address('fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"),
                 "version": IpVersion.IP6,
                 "unspecified": Ip6Address(),
                 "is_ip4": False,
@@ -528,9 +522,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (bytearray)",
             "_args": [
-                bytearray(
-                    b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"
-                ),
+                bytearray(b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"),
             ],
             "_kwargs": {},
             "_results": {
@@ -558,9 +550,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
         {
             "_description": "Test the IPv6 address: ff02::1:ff00:0 (memoryview)",
             "_args": [
-                memoryview(
-                    b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"
-                ),
+                memoryview(b"\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00\x00\x00"),
             ],
             "_kwargs": {},
             "_results": {
@@ -624,9 +614,7 @@ from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
                 "__repr__": "Ip6Address('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')",
                 "__bytes__": b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
                 "__int__": 340282366920938463463374607431768211455,
-                "__hash__": hash(
-                    "Ip6Address('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
-                ),
+                "__hash__": hash("Ip6Address('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"),
                 "version": IpVersion.IP6,
                 "unspecified": Ip6Address(),
                 "is_ip4": False,
@@ -712,8 +700,7 @@ class TestNetAddrIp6Address(TestCase):
         )
 
         self.assertFalse(
-            self._ip6_address
-            == Ip6Address((int(self._ip6_address) + 1) & 0xFF_FF_FF_FF),
+            self._ip6_address == Ip6Address((int(self._ip6_address) + 1) & 0xFF_FF_FF_FF),
         )
 
         self.assertFalse(
@@ -882,9 +869,7 @@ class TestNetAddrIp6Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
-                "error_message": (
-                    "The IPv6 address format is invalid: '2000::10000'"
-                ),
+                "error_message": ("The IPv6 address format is invalid: '2000::10000'"),
             },
         },
         {
@@ -895,9 +880,7 @@ class TestNetAddrIp6Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
-                "error_message": (
-                    "The IPv6 address format is invalid: '2000:::'"
-                ),
+                "error_message": ("The IPv6 address format is invalid: '2000:::'"),
             },
         },
         {
@@ -908,15 +891,12 @@ class TestNetAddrIp6Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
-                "error_message": (
-                    "The IPv6 address format is invalid: '2000;:1'"
-                ),
+                "error_message": ("The IPv6 address format is invalid: '2000;:1'"),
             },
         },
         {
             "_description": (
-                "Test the IPv6 address format: "
-                "b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'"
+                "Test the IPv6 address format: " "b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'"
             ),
             "_args": [
                 b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff",
@@ -959,18 +939,14 @@ class TestNetAddrIp6Address(TestCase):
             },
         },
         {
-            "_description": (
-                "Test the IPv6 address format: 340282366920938463463374607431768211456"
-            ),
+            "_description": ("Test the IPv6 address format: 340282366920938463463374607431768211456"),
             "_args": [
                 340282366920938463463374607431768211456,
             ],
             "_kwargs": {},
             "_results": {
                 "error": Ip6AddressFormatError,
-                "error_message": (
-                    "The IPv6 address format is invalid: 340282366920938463463374607431768211456"
-                ),
+                "error_message": ("The IPv6 address format is invalid: 340282366920938463463374607431768211456"),
             },
         },
         {

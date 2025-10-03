@@ -153,10 +153,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                         Icmp6Mld2MulticastAddressRecord(
                             type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                             multicast_address=Ip6Address("ff02::4"),
-                            aux_data=(
-                                b"0123456789ABCDEF0123456789ABCDEF"
-                                b"0123456789ABCDEF0123456789ABCDEF"
-                            ),
+                            aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
                         ),
                     ],
                 ),

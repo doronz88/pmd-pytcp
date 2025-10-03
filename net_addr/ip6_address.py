@@ -68,9 +68,7 @@ class Ip6Address(IpAddress):
 
     def __init__(
         self,
-        address: (
-            Self | str | bytes | bytearray | memoryview | int | None
-        ) = None,
+        address: Self | str | bytes | bytearray | memoryview | int | None = None,
         /,
     ) -> None:
         """
@@ -94,9 +92,7 @@ class Ip6Address(IpAddress):
         if isinstance(address, str):
             if re.search(IP6__REGEX, address):
                 try:
-                    self._address = int.from_bytes(
-                        socket.inet_pton(socket.AF_INET6, address)
-                    )
+                    self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, address))
                     return
                 except OSError:
                     pass
@@ -131,13 +127,10 @@ class Ip6Address(IpAddress):
         """
 
         assert self.is_multicast, (
-            "The IPv6 address must be a multicast address to get a multicast "
-            f"MAC address. Got: {self}"
+            "The IPv6 address must be a multicast address to get a multicast " f"MAC address. Got: {self}"
         )
 
-        return MacAddress(
-            int(MacAddress(0x3333_0000_0000)) | self._address & 0x0000_FFFF_FFFF
-        )
+        return MacAddress(int(MacAddress(0x3333_0000_0000)) | self._address & 0x0000_FFFF_FFFF)
 
     @property
     def solicited_node_multicast(self) -> Self:
@@ -152,10 +145,7 @@ class Ip6Address(IpAddress):
 
         cls = type(self)
 
-        return cls(
-            self._address & 0x0000_0000_0000_0000_0000_0000_00FF_FFFF
-            | int(cls("ff02::1:ff00:0"))
-        )
+        return cls(self._address & 0x0000_0000_0000_0000_0000_0000_00FF_FFFF | int(cls("ff02::1:ff00:0")))
 
     @property
     @override
@@ -165,8 +155,7 @@ class Ip6Address(IpAddress):
         """
 
         return (
-            self._address & 0xE000_0000_0000_0000_0000_0000_0000_0000
-            == 0x2000_0000_0000_0000_0000_0000_0000_0000
+            self._address & 0xE000_0000_0000_0000_0000_0000_0000_0000 == 0x2000_0000_0000_0000_0000_0000_0000_0000
         )  # 2000::/3
 
     @property
@@ -177,8 +166,7 @@ class Ip6Address(IpAddress):
         """
 
         return (
-            self._address & 0xFFC0_0000_0000_0000_0000_0000_0000_0000
-            == 0xFE80_0000_0000_0000_0000_0000_0000_0000
+            self._address & 0xFFC0_0000_0000_0000_0000_0000_0000_0000 == 0xFE80_0000_0000_0000_0000_0000_0000_0000
         )  # fe80::/10
 
     @property
@@ -198,8 +186,7 @@ class Ip6Address(IpAddress):
         """
 
         return (
-            self._address & 0xFF00_0000_0000_0000_0000_0000_0000_0000
-            == 0xFF00_0000_0000_0000_0000_0000_0000_0000
+            self._address & 0xFF00_0000_0000_0000_0000_0000_0000_0000 == 0xFF00_0000_0000_0000_0000_0000_0000_0000
         )  # ff00::/8
 
     @property
@@ -208,9 +195,7 @@ class Ip6Address(IpAddress):
         Check if address is IPv6 all nodes multicast address.
         """
 
-        return (
-            self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0001
-        )  # ff02::1/128
+        return self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0001  # ff02::1/128
 
     @property
     def is_multicast__all_routers(self) -> bool:
@@ -218,9 +203,7 @@ class Ip6Address(IpAddress):
         Check if address is IPv6 all routers multicast address.
         """
 
-        return (
-            self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0002
-        )  # ff02::2/128
+        return self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0002  # ff02::2/128
 
     @property
     def is_multicast__solicited_node(self) -> bool:
@@ -229,8 +212,7 @@ class Ip6Address(IpAddress):
         """
 
         return (
-            self._address & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FF00_0000
-            == 0xFF02_0000_0000_0000_0000_0001_FF00_0000
+            self._address & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FF00_0000 == 0xFF02_0000_0000_0000_0000_0001_FF00_0000
         )  # ff02::1:ff00:0/104
 
     @property
@@ -241,6 +223,5 @@ class Ip6Address(IpAddress):
         """
 
         return (
-            self._address & 0xFE00_0000_0000_0000_0000_0000_0000_0000
-            == 0xFC00_0000_0000_0000_0000_0000_0000_0000
+            self._address & 0xFE00_0000_0000_0000_0000_0000_0000_0000 == 0xFC00_0000_0000_0000_0000_0000_0000_0000
         )  # fc00::/7

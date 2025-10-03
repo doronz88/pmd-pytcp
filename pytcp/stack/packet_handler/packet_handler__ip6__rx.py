@@ -72,13 +72,13 @@ class PacketHandlerIp6Rx(ABC):
         Handle inbound IPv6 packets.
         """
 
-        self._packet_stats_rx.inc("ip6__pre_parse")
+        self._packet_stats_rx.ip6__pre_parse += 1
 
         try:
             Ip6Parser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.inc("ip6__failed_parse__drop")
+            self._packet_stats_rx.ip6__failed_parse__drop += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return
 
@@ -87,19 +87,18 @@ class PacketHandlerIp6Rx(ABC):
         # Check if received packet has been sent to us directly or by unicast
         # or multicast.
         if packet_rx.ip6.dst not in {*self._ip6_unicast, *self._ip6_multicast}:
-            self._packet_stats_rx.inc("ip6__dst_unknown__drop")
+            self._packet_stats_rx.ip6__dst_unknown__drop += 1
             __debug__ and log(
                 "ip6",
-                f"{packet_rx.tracker} - IP packet not destined for this stack, "
-                "dropping",
+                f"{packet_rx.tracker} - IP packet not destined for this stack, " "dropping",
             )
             return
 
         if packet_rx.ip6.dst in self._ip6_unicast:
-            self._packet_stats_rx.inc("ip6__dst_unicast")
+            self._packet_stats_rx.ip6__dst_unicast += 1
 
         if packet_rx.ip6.dst in self._ip6_multicast:
-            self._packet_stats_rx.inc("ip6__dst_multicast")
+            self._packet_stats_rx.ip6__dst_multicast += 1
 
         # Create RawMetadata object and try to find matching RAW socket.
         packet_rx_md = RawMetadata(
@@ -107,19 +106,16 @@ class PacketHandlerIp6Rx(ABC):
             ip__local_address=packet_rx.ip.dst,
             ip__remote_address=packet_rx.ip.src,
             ip__proto=packet_rx.ip6.next,
-            raw__data=bytes(
-                packet_rx.ip6.payload_bytes
-            ),  # memoryview: conversion for end-user interface.
+            raw__data=bytes(packet_rx.ip6.payload_bytes),  # memoryview: conversion for end-user interface.
             tracker=packet_rx.tracker,
         )
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.inc("raw__socket_match")
+                self._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "ip6",
-                    f"{packet_rx_md.tracker} - <INFO>Found matching listening "
-                    f"socket [{socket}]</>",
+                    f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
                 socket.process_raw_packet(packet_rx_md)
                 return
@@ -134,9 +130,8 @@ class PacketHandlerIp6Rx(ABC):
             case IpProto.TCP:
                 self._phrx_tcp(packet_rx)
             case _:
-                self._packet_stats_rx.inc("ip6__no_proto_support__drop")
+                self._packet_stats_rx.ip6__no_proto_support__drop += 1
                 __debug__ and log(
                     "ip6",
-                    f"{packet_rx.tracker} - Unsupported protocol "
-                    f"{packet_rx.ip6.next}, dropping.",
+                    f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip6.next}, dropping.",
                 )

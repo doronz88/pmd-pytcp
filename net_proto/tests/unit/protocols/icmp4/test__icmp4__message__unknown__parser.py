@@ -51,10 +51,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMPv4 unknown message.",
-            "_args": [
-                b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
-                b"\x43\x44\x45\x46"
-            ],
+            "_args": [b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42" b"\x43\x44\x45\x46"],
             "_kwargs": {},
             "_results": {
                 "message": Icmp4MessageUnknown(

@@ -94,33 +94,20 @@ class Icmp4MessageEchoRequest(Icmp4Message):
         """
 
         assert isinstance(self.code, Icmp4EchoRequestCode), (
-            f"The 'code' field must be an Icmp4EchoRequestCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp4EchoRequestCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
-        assert is_uint16(self.id), (
-            f"The 'id' field must be a 16-bit unsigned integer. "
-            f"Got: {self.id!r}"
-        )
+        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {self.id!r}"
 
-        assert is_uint16(self.seq), (
-            f"The 'seq' field must be a 16-bit unsigned integer. "
-            f"Got: {self.seq!r}"
-        )
+        assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {self.seq!r}"
 
         assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be bytes or memoryview. "
-            f"Got: {type(self.data)!r}."
+            f"The 'data' field must be bytes or memoryview. " f"Got: {type(self.data)!r}."
         )
 
-        assert (
-            len(self.data) <= IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN
-        ), (
+        assert len(self.data) <= IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN, (
             f"The 'data' field length must be a 16-bit unsigned integer less than "
             f"or equal to {IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN}. "
             f"Got: {len(self.data)!r}"
@@ -207,9 +194,7 @@ class Icmp4MessageEchoRequest(Icmp4Message):
         Initialize the ICMPv4 Echo Request message from buffer.
         """
 
-        type, code, cksum, id, seq = struct.unpack(
-            ICMP4__ECHO_REQUEST__STRUCT, buffer[:ICMP4__ECHO_REQUEST__LEN]
-        )
+        type, code, cksum, id, seq = struct.unpack(ICMP4__ECHO_REQUEST__STRUCT, buffer[:ICMP4__ECHO_REQUEST__LEN])
 
         assert (received_type := Icmp4Type.from_int(type)) == (
             valid_type := Icmp4Type.ECHO_REQUEST

@@ -97,6 +97,5 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         """
 
         raise NotImplementedError(
-            "The 'assemble()' method is not implemented for L7 protocols. "
-            "Use Sockets instead."
+            "The 'assemble()' method is not implemented for L7 protocols. " "Use Sockets instead."
         )

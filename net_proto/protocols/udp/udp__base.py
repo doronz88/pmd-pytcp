@@ -77,10 +77,7 @@ class Udp(Proto, UdpHeaderProperties):
         Get the UDP packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"payload={self._payload!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, " f"payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

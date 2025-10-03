@@ -63,8 +63,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "Ethernet header (II).",
             "_args": [
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
-                + b"X" * 1500,
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500,
             ],
             "_kwargs": {},
             "_results": {

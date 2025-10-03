@@ -1090,8 +1090,7 @@ class TestNetAddrIp4Address(TestCase):
         )
 
         self.assertFalse(
-            self._ip4_address
-            == Ip4Address((int(self._ip4_address) + 1) & 0xFF_FF_FF_FF),
+            self._ip4_address == Ip4Address((int(self._ip4_address) + 1) & 0xFF_FF_FF_FF),
         )
 
         self.assertFalse(
@@ -1271,9 +1270,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    "The IPv4 address format is invalid: '10.10.10.256'"
-                ),
+                "error_message": ("The IPv4 address format is invalid: '10.10.10.256'"),
             },
         },
         {
@@ -1284,9 +1281,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    "The IPv4 address format is invalid: '10.10..10'"
-                ),
+                "error_message": ("The IPv4 address format is invalid: '10.10..10'"),
             },
         },
         {
@@ -1297,9 +1292,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    "The IPv4 address format is invalid: '10.10.10,10'"
-                ),
+                "error_message": ("The IPv4 address format is invalid: '10.10.10,10'"),
             },
         },
         {
@@ -1310,9 +1303,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    r"The IPv4 address format is invalid: b'\xff\xff\xff'"
-                ),
+                "error_message": (r"The IPv4 address format is invalid: b'\xff\xff\xff'"),
             },
         },
         {
@@ -1323,9 +1314,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    r"The IPv4 address format is invalid: b'\xff\xff\xff\xff\xff'"
-                ),
+                "error_message": (r"The IPv4 address format is invalid: b'\xff\xff\xff\xff\xff'"),
             },
         },
         {
@@ -1347,9 +1336,7 @@ class TestNetAddrIp4Address(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4AddressFormatError,
-                "error_message": (
-                    "The IPv4 address format is invalid: 4294967296"
-                ),
+                "error_message": ("The IPv4 address format is invalid: 4294967296"),
             },
         },
         {

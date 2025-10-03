@@ -1163,9 +1163,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__frames_tx": None,
             "_expected__tx_status": None,
             "_expected__packet_stats_tx": None,
-            "_expected__error": ValueError(
-                "Invalid IP address version combination: 10.0.1.7 -> 2001:db8:0:1::91"
-            ),
+            "_expected__error": ValueError("Invalid IP address version combination: 10.0.1.7 -> 2001:db8:0:1::91"),
         },
         {
             "_description": "TCP - IPv6/IPv4 version mismatch",
@@ -1179,9 +1177,7 @@ from pytcp.tests.lib.network_testcase import (
             "_expected__frames_tx": None,
             "_expected__tx_status": None,
             "_expected__packet_stats_tx": None,
-            "_expected__error": ValueError(
-                "Invalid IP address version combination: 2001:db8:0:1::7 -> 10.0.1.91"
-            ),
+            "_expected__error": ValueError("Invalid IP address version combination: 2001:db8:0:1::7 -> 10.0.1.91"),
         },
     ]
 )

@@ -84,8 +84,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'code' field must be an Icmp4DestinationUnreachableCode. "
-            f"Got: {type(value)!r}",
+            f"The 'code' field must be an Icmp4DestinationUnreachableCode. " f"Got: {type(value)!r}",
         )
 
     def test__icmp4__message__destination_unreachable__frag_no_mtu(
@@ -98,9 +97,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         provided.
         """
 
-        self._kwargs["code"] = (
-            Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
-        )
+        self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = None
 
         with self.assertRaises(AssertionError) as error:
@@ -108,8 +105,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'mtu' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'mtu' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__destination_unreachable__no_frag_mtu(
@@ -127,9 +123,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         for code in Icmp4DestinationUnreachableCode:
             if code != Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
                 with self.assertRaises(AssertionError) as error:
-                    Icmp4MessageDestinationUnreachable(
-                        *self._args, **self._kwargs
-                    )
+                    Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
 
                 self.assertEqual(
                     str(error.exception),
@@ -152,8 +146,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__destination_unreachable__cksum__over_max(
@@ -172,8 +165,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__destination_unreachable__mtu__under_min(
@@ -185,9 +177,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         is lower than the minimum supported value.
         """
 
-        self._kwargs["code"] = (
-            Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
-        )
+        self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
@@ -195,8 +185,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'mtu' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'mtu' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__destination_unreachable__mtu__over_max(
@@ -208,9 +197,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         is higher than the maximum supported value.
         """
 
-        self._kwargs["code"] = (
-            Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
-        )
+        self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
@@ -218,8 +205,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'mtu' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'mtu' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__destination_unreachable__data_len__over_max(
@@ -259,14 +245,9 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable.from_buffer(
-                b"\xff\x00\xff\x00\x00\x00\x00\x00"
-            )
+            Icmp4MessageDestinationUnreachable.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp4Type.DESTINATION_UNREACHABLE: 3>. "
-                "Got: <Icmp4Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp4Type.DESTINATION_UNREACHABLE: 3>. " "Got: <Icmp4Type.UNKNOWN_255: 255>"),
         )

@@ -45,8 +45,7 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "TCP packet with no payload and no options (I).",
         "_args": [
-            b"\x30\x39\xd4\x31\x07\x5b\xcd\x15\x3a\xde\x68\xb1\x51\xfa\x2b\x67"
-            b"\xaf\x64\x56\xce",
+            b"\x30\x39\xd4\x31\x07\x5b\xcd\x15\x3a\xde\x68\xb1\x51\xfa\x2b\x67" b"\xaf\x64\x56\xce",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -77,8 +76,7 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "TCP packet with no payload and no options (II).",
         "_args": [
-            b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3"
-            b"\x6e\xd5\x00\x00",
+            b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3" b"\x6e\xd5\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -178,8 +176,7 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "TCP packet with maximum payload size and no options.",
         "_args": [
-            b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x51\x58\x15\xb3"
-            b"\xb5\x2d\x00\x00" + b"X" * 65515,
+            b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x51\x58\x15\xb3" b"\xb5\x2d\x00\x00" + b"X" * 65515,
         ],
         "_kwargs": {},
         "_mocked_values": {},

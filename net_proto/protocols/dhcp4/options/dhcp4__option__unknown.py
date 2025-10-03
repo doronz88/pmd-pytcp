@@ -74,14 +74,12 @@ class Dhcp4OptionUnknown(Dhcp4Option):
 
         # Ensure the 'type' field is a valid Dhcp4OptionType enum member.
         assert isinstance(self.type, Dhcp4OptionType), (
-            f"The 'type' field must be a Dhcp4OptionType. "
-            f"Got: {type(self.type)!r}"
+            f"The 'type' field must be a Dhcp4OptionType. " f"Got: {type(self.type)!r}"
         )
 
         # Ensure the 'type' field is not a known Dhcp4OptionType.
         assert int(self.type) not in Dhcp4OptionType.get_known_values(), (
-            "The 'type' field must not be a known Dhcp4OptionType. "
-            f"Got: {self.type!r}"
+            "The 'type' field must not be a known Dhcp4OptionType. " f"Got: {self.type!r}"
         )
 
         # Update the option 'len' field based on the length of the 'data' field.
@@ -89,8 +87,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
 
         # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(self.len - DHCP4__OPTION__LEN), (
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {self.len!r}"
+            f"The 'len' field must be an 8-bit unsigned integer. " f"Got: {self.len!r}"
         )
 
     @override
@@ -141,14 +138,12 @@ class Dhcp4OptionUnknown(Dhcp4Option):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the unknown DHCPv4 option must be "
-            f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the unknown DHCPv4 option must be " f"{DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is not known.
         assert (value := buffer[0]) not in Dhcp4OptionType.get_known_values(), (
-            f"The unknown DHCPv4 option type must not be known. "
-            f"Got: {Dhcp4OptionType.from_int(value)!r}"
+            f"The unknown DHCPv4 option type must not be known. " f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
         Dhcp4OptionUnknown._validate_integrity(buffer)

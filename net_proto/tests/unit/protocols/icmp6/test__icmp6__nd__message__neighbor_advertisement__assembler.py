@@ -65,10 +65,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 24,
-                "__str__": (
-                    "ICMPv6 ND Neighbor Advertisement, flags R-O, target 2001:db8::1, "
-                    "len 24 (24+0)"
-                ),
+                "__str__": ("ICMPv6 ND Neighbor Advertisement, flags R-O, target 2001:db8::1, " "len 24 (24+0)"),
                 "__repr__": (
                     "Icmp6NdMessageNeighborAdvertisement(code=<Icmp6NdNeighborAdvertisementCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), flag_r=True, "
@@ -96,9 +93,7 @@ from net_proto.lib.buffer import Buffer
                 "flag_s": True,
                 "flag_o": False,
                 "target_address": Ip6Address("2001:db8::2"),
-                "options": Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))
-                ),
+                "options": Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))),
             },
             "_results": {
                 "__len__": 32,
@@ -123,9 +118,7 @@ from net_proto.lib.buffer import Buffer
                 "flag_s": True,
                 "flag_o": False,
                 "target_address": Ip6Address("2001:db8::2"),
-                "options": Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))
-                ),
+                "options": Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))),
             },
         },
     ]
@@ -146,9 +139,7 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
-                *self._args, **self._kwargs
-            )
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
         )
 
     def test__icmp6__nd__message__neighbor_advertisement__assembler__len(

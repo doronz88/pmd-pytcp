@@ -83,13 +83,10 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
             len(ip4__options) <= IP4__OPTIONS__MAX_LEN
         ), f"The IPv4 options length must be less than or equal to {IP4__OPTIONS__MAX_LEN}."
 
-        assert is_4_byte_alligned(
-            len(ip4__options)
-        ), "The IPv4 options length must be 4-byte aligned."
+        assert is_4_byte_alligned(len(ip4__options)), "The IPv4 options length must be 4-byte aligned."
 
         assert (
-            Ip4OptionEol() not in ip4__options
-            or ip4__options[-1] == Ip4OptionEol()
+            Ip4OptionEol() not in ip4__options or ip4__options[-1] == Ip4OptionEol()
         ), "The IPv4 EOL option must be the last option."
 
         self._tracker = ip4__payload.tracker
@@ -127,9 +124,7 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
         buffers.append(header)
         buffers.append(options)
 
-        if isinstance(
-            self._payload, (TcpAssembler, UdpAssembler, RawAssembler)
-        ):
+        if isinstance(self._payload, (TcpAssembler, UdpAssembler, RawAssembler)):
             self._payload.pshdr_sum = self.pshdr_sum
 
         self._payload.assemble(buffers)
@@ -173,13 +168,10 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
             len(ip4_frag__options) <= IP4__OPTIONS__MAX_LEN
         ), f"The IPv4 options length must be less than or equal to {IP4__OPTIONS__MAX_LEN}."
 
-        assert is_4_byte_alligned(
-            len(ip4_frag__options)
-        ), "The IPv4 options length must be 4-byte aligned."
+        assert is_4_byte_alligned(len(ip4_frag__options)), "The IPv4 options length must be 4-byte aligned."
 
         assert (
-            Ip4OptionEol() not in ip4_frag__options
-            or ip4_frag__options[-1] == Ip4OptionEol()
+            Ip4OptionEol() not in ip4_frag__options or ip4_frag__options[-1] == Ip4OptionEol()
         ), "The IPv4 EOL option must be the last option."
 
         self._tracker = Tracker(prefix="TX")

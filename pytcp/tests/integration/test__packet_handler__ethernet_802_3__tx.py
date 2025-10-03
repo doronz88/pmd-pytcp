@@ -77,9 +77,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__src": MAC__UNSPECIFIED,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
             },
-            "_expected__frames_tx": [
-                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x00"
-            ],
+            "_expected__frames_tx": [b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x00"],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET_802_3__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet_802_3__pre_assemble=1,
@@ -108,9 +106,7 @@ from pytcp.tests.lib.network_testcase import (
             "_kwargs": {
                 "ethernet_802_3__src": STACK__MAC_ADDRESS,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
-                "ethernet_802_3__payload": RawAssembler(
-                    raw__payload=bytes(range(16))
-                ),
+                "ethernet_802_3__payload": RawAssembler(raw__payload=bytes(range(16))),
             },
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x10\x00\x01"

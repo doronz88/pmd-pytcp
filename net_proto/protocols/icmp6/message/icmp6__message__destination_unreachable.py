@@ -108,19 +108,12 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
         """
 
         assert isinstance(self.code, Icmp6DestinationUnreachableCode), (
-            f"The 'code' field must be an Icmp6DestinationUnreachableCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp6DestinationUnreachableCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum}"
 
-        assert (
-            len(self.data)
-            <= IP6__PAYLOAD__MAX_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN
-        ), (
+        assert len(self.data) <= IP6__PAYLOAD__MAX_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN, (
             "The 'data' field length must be a 16-bit unsigned integer less than or "
             f"equal to {IP6__PAYLOAD__MAX_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN}. "
             f"Got: {len(self.data)}"
@@ -130,11 +123,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
         object.__setattr__(
             self,
             "data",
-            self.data[
-                : IP6__MIN_MTU
-                - IP6__HEADER__LEN
-                - ICMP6__DESTINATION_UNREACHABLE__LEN
-            ],
+            self.data[: IP6__MIN_MTU - IP6__HEADER__LEN - ICMP6__DESTINATION_UNREACHABLE__LEN],
         )
 
     @override
@@ -189,9 +178,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 Destination Unreachable message sanity after
         parsing it.
@@ -227,11 +214,8 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
             buffer[:ICMP6__DESTINATION_UNREACHABLE__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.DESTINATION_UNREACHABLE
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.DESTINATION_UNREACHABLE), (
+            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
         )
 
         return cls(

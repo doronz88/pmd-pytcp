@@ -129,8 +129,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp6__message__unknown__data__not_bytes(self) -> None:
@@ -146,8 +145,7 @@ class TestIcmp6MessageUnknownAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'data' field must be a bytes or memoryview. "
-            f"Got: {type(value)!r}",
+            f"The 'data' field must be a bytes or memoryview. " f"Got: {type(value)!r}",
         )
 
 
@@ -175,8 +173,5 @@ class TestIcmp6MessageUnknownParserAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                (
-                    "The 'type' field must not be known. "
-                    f"Got: {Icmp6Type.from_int(type)!r}"
-                ),
+                ("The 'type' field must not be known. " f"Got: {Icmp6Type.from_int(type)!r}"),
             )

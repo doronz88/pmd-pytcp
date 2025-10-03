@@ -55,10 +55,7 @@ from net_proto import Ip4Option, Ip4OptionEol, Ip4OptionNop, Ip4Options
             "_results": {
                 "__len__": 4,
                 "__str__": "nop, nop, nop, eol",
-                "__repr__": (
-                    "Ip4Options(options=[Ip4OptionNop(), Ip4OptionNop(), "
-                    "Ip4OptionNop(), Ip4OptionEol()])"
-                ),
+                "__repr__": ("Ip4Options(options=[Ip4OptionNop(), Ip4OptionNop(), " "Ip4OptionNop(), Ip4OptionEol()])"),
                 "__bytes__": b"\x01\x01\x01\x00",
             },
         },

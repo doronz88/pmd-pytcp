@@ -116,15 +116,11 @@ class ArpCache(Subsystem):
                 continue
 
             # If entry age is over maximum age then discard the entry.
-            if (
-                int(time.time()) - self._arp_cache[ip4_address].create_time
-                > stack.ARP__CACHE__ENTRY_MAX_AGE
-            ):
+            if int(time.time()) - self._arp_cache[ip4_address].create_time > stack.ARP__CACHE__ENTRY_MAX_AGE:
                 mac_address = self._arp_cache.pop(ip4_address).mac_address
                 __debug__ and log(
                     "arp-c",
-                    f"Discarded expir ARP Cache entry - {ip4_address} -> "
-                    f"{mac_address}",
+                    f"Discarded expir ARP Cache entry - {ip4_address} -> " f"{mac_address}",
                 )
 
             # If entry age is close to maximum age but the entry has been
@@ -132,8 +128,7 @@ class ArpCache(Subsystem):
             # to refresh it.
             elif (
                 int(time.time()) - self._arp_cache[ip4_address].create_time
-                > stack.ARP__CACHE__ENTRY_MAX_AGE
-                - stack.ARP__CACHE__ENTRY_REFRESH_TIME
+                > stack.ARP__CACHE__ENTRY_MAX_AGE - stack.ARP__CACHE__ENTRY_REFRESH_TIME
             ) and self._arp_cache[ip4_address].hit_count:
                 self._arp_cache[ip4_address].hit_count__reset()
                 assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
@@ -160,8 +155,7 @@ class ArpCache(Subsystem):
 
         __debug__ and log(
             "arp-c",
-            f"<INFO>Adding/refreshing ARP Cache entry - {ip4_address} -> "
-            f"{mac_address}</>",
+            f"<INFO>Adding/refreshing ARP Cache entry - {ip4_address} -> " f"{mac_address}</>",
         )
 
         self._arp_cache[ip4_address] = CacheEntry(mac_address=mac_address)

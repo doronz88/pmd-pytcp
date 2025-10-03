@@ -235,8 +235,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
         {
             "_description": "The DHCPv4 Host Name option (alnum-hyphen).",
             "_args": [
-                b"\x0c\x0e\x74\x6f\x6d\x2d\x74\x69\x74\x2d\x74\x6f\x74\x2d\x30\x31"
-                + b"ZH0PA",
+                b"\x0c\x0e\x74\x6f\x6d\x2d\x74\x69\x74\x2d\x74\x6f\x74\x2d\x30\x31" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -261,10 +260,7 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Host Name option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 Host Name option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -314,9 +310,7 @@ class TestDhcp4OptionHostNameParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionHostName.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionHostName.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

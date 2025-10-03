@@ -78,9 +78,7 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             try:
                 address, mask = network.split("/")
                 self._mask = Ip6Mask("/" + mask)
-                self._address = Ip6Address(
-                    int(Ip6Address(address)) & int(self._mask)
-                )
+                self._address = Ip6Address(int(Ip6Address(address)) & int(self._mask))
                 return
             except (ValueError, Ip6AddressFormatError, Ip6MaskFormatError):
                 pass
@@ -99,7 +97,4 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         Last address in the network.
         """
 
-        return Ip6Address(
-            int(self._address)
-            + (~int(self._mask) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-        )
+        return Ip6Address(int(self._address) + (~int(self._mask) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))

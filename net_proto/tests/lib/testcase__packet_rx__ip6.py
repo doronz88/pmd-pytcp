@@ -60,9 +60,7 @@ class TestCasePacketRxIp6(TestCase):
 
         self._packet_rx = PacketRx(*self._args, **self._kwargs)
 
-        self._packet_rx.ip = self._packet_rx.ip6 = cast(
-            Ip6Parser, StrictMock(template=Ip6Parser)
-        )
+        self._packet_rx.ip = self._packet_rx.ip6 = cast(Ip6Parser, StrictMock(template=Ip6Parser))
         self.patch_attribute(
             target=self._packet_rx.ip6,
             attribute="dlen",

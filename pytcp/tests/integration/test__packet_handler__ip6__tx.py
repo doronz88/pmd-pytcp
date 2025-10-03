@@ -213,9 +213,7 @@ from pytcp.tests.lib.network_testcase import (
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
-                "ip6__payload": RawAssembler(
-                    raw__payload=b"01234567890ABCDEF" * 400
-                ),
+                "ip6__payload": RawAssembler(raw__payload=b"01234567890ABCDEF" * 400),
             },
             "_expected__frames_tx": [
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"

@@ -61,10 +61,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 8,
                 "__str__": "ICMPv6 MLDv2 Report",
-                "__repr__": (
-                    "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
-                    "cksum=0, records=[])"
-                ),
+                "__repr__": ("Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, " "cksum=0, records=[])"),
                 "__bytes__": b"\x8f\x00\x70\xff\x00\x00\x00\x00",
                 "type": Icmp6Type.MLD2__REPORT,
                 "code": Icmp6Mld2ReportCode.DEFAULT,
@@ -161,10 +158,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                         multicast_address=Ip6Address("ff02::4"),
-                        aux_data=(
-                            b"0123456789ABCDEF0123456789ABCDEF"
-                            b"0123456789ABCDEF0123456789ABCDEF"
-                        ),
+                        aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
                     ),
                 ],
             },
@@ -257,10 +251,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                         multicast_address=Ip6Address("ff02::4"),
-                        aux_data=(
-                            b"0123456789ABCDEF0123456789ABCDEF"
-                            b"0123456789ABCDEF0123456789ABCDEF"
-                        ),
+                        aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
                     ),
                 ],
             },
@@ -282,9 +273,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         The ICMPv6 MLDv2 message assembler tests.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
-        )
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2ReportMessage(*self._args, **self._kwargs))
 
     def test__icmp6__mld2__message__report__assembler__len(self) -> None:
         """
@@ -372,9 +361,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(
-                Icmp6Mld2ReportMessage, self._icmp6__assembler.message
-            ).number_of_records,
+            cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).number_of_records,
             self._results["number_of_records"],
         )
 
@@ -385,9 +372,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(
-                Icmp6Mld2ReportMessage, self._icmp6__assembler.message
-            ).records,
+            cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).records,
             self._results["records"],
         )
 

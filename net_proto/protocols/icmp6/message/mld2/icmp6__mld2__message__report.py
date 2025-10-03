@@ -115,21 +115,14 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         """
 
         assert isinstance(self.code, Icmp6Mld2ReportCode), (
-            f"The 'code' field must be an Icmp6Mld2ReportCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp6Mld2ReportCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum}"
 
         assert (records_len := sum(len(record) for record in self.records)) <= (
             records_len_max := IP6__PAYLOAD__MAX_LEN - ICMP6__MLD2__REPORT__LEN
-        ), (
-            f"The 'records' field length must be less than or equal to {records_len_max}. "
-            f"Got: {records_len}"
-        )
+        ), (f"The 'records' field length must be less than or equal to {records_len_max}. " f"Got: {records_len}")
 
     @override
     def __len__(self) -> int:
@@ -137,9 +130,7 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         Get the ICMPv6 MLD2 Report message length.
         """
 
-        return ICMP6__MLD2__REPORT__LEN + sum(
-            len(record) for record in self.records
-        )
+        return ICMP6__MLD2__REPORT__LEN + sum(len(record) for record in self.records)
 
     @override
     def __str__(self) -> str:
@@ -208,17 +199,14 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 MLDv2 Report message sanity after parsing it.
         """
 
         if not (ip6__hop == 1):
             raise Icmp6SanityError(
-                "MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. "
-                f"Got: {ip6__hop!r}",
+                "MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. " f"Got: {ip6__hop!r}",
             )
 
     @override
@@ -238,10 +226,7 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
 
         record_offset = ICMP6__MLD2__REPORT__LEN
         for _ in range(int.from_bytes(frame[6:8])):
-            if not (
-                record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
-                <= ip6__dlen
-            ):
+            if not (record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN <= ip6__dlen):
                 raise Icmp6IntegrityError(
                     "The condition 'record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_"
                     f"RECORD__LEN <= ip6__dlen' is not met. Got: {record_offset=}, "
@@ -251,14 +236,12 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
             record_offset += (
                 ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
                 + (frame[record_offset + 1] << 2)
-                + int.from_bytes(frame[record_offset + 2 : record_offset + 4])
-                * IP6__ADDRESS_LEN
+                + int.from_bytes(frame[record_offset + 2 : record_offset + 4]) * IP6__ADDRESS_LEN
             )
 
         if not (record_offset == ip6__dlen):
             raise Icmp6IntegrityError(
-                "The condition 'record_offset == ip6__dlen' is not met. "
-                f"Got: {record_offset=}, {ip6__dlen=}"
+                "The condition 'record_offset == ip6__dlen' is not met. " f"Got: {record_offset=}, {ip6__dlen=}"
             )
 
     @override
@@ -273,11 +256,8 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         )
         record_bytes = buffer[ICMP6__MLD2__REPORT__LEN:]
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.MLD2__REPORT
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.MLD2__REPORT), (
+            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
         )
 
         records: list[Icmp6Mld2MulticastAddressRecord] = []

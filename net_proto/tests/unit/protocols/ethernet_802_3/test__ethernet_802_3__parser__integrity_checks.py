@@ -51,8 +51,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
     [
         {
             "_description": (
-                "The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' "
-                "constant."
+                "The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' " "constant."
             ),
             "_args": [
                 b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00",
@@ -66,9 +65,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             },
         },
         {
-            "_description": (
-                "The 'dlen' field value is different than the actual payload length."
-            ),
+            "_description": ("The 'dlen' field value is different than the actual payload length."),
             "_args": [
                 b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
                 b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47",

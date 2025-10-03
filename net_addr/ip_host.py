@@ -84,9 +84,7 @@ class IpHost[
         """
 
         return other is self or (
-            isinstance(other, type(self))
-            and self._address == other._address
-            and self._network == other._network
+            isinstance(other, type(self)) and self._address == other._address and self._network == other._network
         )
 
     __hash__ = Base.__hash__

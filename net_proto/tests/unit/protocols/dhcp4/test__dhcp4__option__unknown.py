@@ -95,8 +95,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                "The 'type' field must not be a known Dhcp4OptionType. "
-                f"Got: {value!r}",
+                "The 'type' field must not be a known Dhcp4OptionType. " f"Got: {value!r}",
             )
 
     def test__dhcp4__option__unknown__len__8bit_integer(self) -> None:
@@ -111,8 +110,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {UINT_8__MAX + DHCP4__OPTION__LEN + 1}",
+            f"The 'len' field must be an 8-bit unsigned integer. " f"Got: {UINT_8__MAX + DHCP4__OPTION__LEN + 1}",
         )
 
 
@@ -129,13 +127,9 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                 "__len__": 18,
                 "__str__": "unk-254-18",
                 "__repr__": (
-                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, "
-                    "len=18, data=b'0123456789ABCDEF')"
+                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, " "len=18, data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": (
-                    b"\xfe\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                "__bytes__": (b"\xfe\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46"),
                 "type": Dhcp4OptionType.from_int(254),
                 "len": 18,
                 "data": b"0123456789ABCDEF",
@@ -240,8 +234,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown DHCPv4 option.",
             "_args": [
-                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46" + b"ZH0PA",
+                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -259,47 +252,37 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the unknown DHCPv4 option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the unknown DHCPv4 option must be 2 " "bytes. Got: 1"),
             },
         },
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (End) assert.",
             "_args": [
-                b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The unknown DHCPv4 option type must not be known. "
-                    "Got: <Dhcp4OptionType.END: 255>"
+                    "The unknown DHCPv4 option type must not be known. " "Got: <Dhcp4OptionType.END: 255>"
                 ),
             },
         },
         {
             "_description": "The unknown DHCPv4 option incorrect 'type' field (Pad) assert.",
             "_args": [
-                b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown DHCPv4 option type must not be known. "
-                    f"Got: {Dhcp4OptionType.PAD!r}"
-                ),
+                "error_message": ("The unknown DHCPv4 option type must not be known. " f"Got: {Dhcp4OptionType.PAD!r}"),
             },
         },
         {
             "_description": "The unknown DHCPv4 option length integrity check (II).",
             "_args": [
-                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45",
+                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45",
             ],
             "_kwargs": {},
             "_results": {

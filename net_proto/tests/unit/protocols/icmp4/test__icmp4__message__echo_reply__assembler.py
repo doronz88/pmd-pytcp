@@ -110,16 +110,12 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 65515,
-                "__str__": (
-                    "ICMPv4 Echo Reply, id 11111, seq 22222, len 65515 (8+65507)"
-                ),
+                "__str__": ("ICMPv4 Echo Reply, id 11111, seq 22222, len 65515 (8+65507)"),
                 "__repr__": (
                     "Icmp4MessageEchoReply(code=<Icmp4EchoReplyCode.DEFAULT: 0>, "
                     f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65507}')"
                 ),
-                "__bytes__": (
-                    b"\x00\x00\x26\xcb\x2b\x67\x56\xce" + b"X" * 65507
-                ),
+                "__bytes__": (b"\x00\x00\x26\xcb\x2b\x67\x56\xce" + b"X" * 65507),
                 "type": Icmp4Type.ECHO_REPLY,
                 "code": Icmp4EchoReplyCode.DEFAULT,
                 "cksum": 0,
@@ -146,9 +142,7 @@ class TestIcmp4MessageEchoReplyAssembler(TestCase):
         with testcase arguments.
         """
 
-        self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4MessageEchoReply(*self._args, **self._kwargs)
-        )
+        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageEchoReply(*self._args, **self._kwargs))
 
     def test__icmp4__message__echo_reply__assembler__len(self) -> None:
         """

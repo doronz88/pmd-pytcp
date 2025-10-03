@@ -82,9 +82,7 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
                 except ValueError:
                     address, mask = network.split(" ")
                 self._mask = Ip4Mask(mask)
-                self._address = Ip4Address(
-                    int(Ip4Address(address)) & int(self._mask)
-                )
+                self._address = Ip4Address(int(Ip4Address(address)) & int(self._mask))
                 return
             except (ValueError, Ip4AddressFormatError, Ip4MaskFormatError):
                 pass

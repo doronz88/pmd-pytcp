@@ -89,9 +89,7 @@ class IcmpEchoClient(Client):
         super().__init__()
 
     @staticmethod
-    def _parse_icmp_echo_reply_message(
-        *, data: bytes
-    ) -> tuple[int, int, bytes]:
+    def _parse_icmp_echo_reply_message(*, data: bytes) -> tuple[int, int, bytes]:
         """
         Parse ICMP Echo Reply message.
         """
@@ -169,9 +167,7 @@ class IcmpEchoClient(Client):
                 )
                 message_count = min(message_count, message_count - 1)
 
-                if self._event__stop_subsystem.wait(
-                    timeout=self._message_delay
-                ):
+                if self._event__stop_subsystem.wait(timeout=self._message_delay):
                     break
 
             self._client_socket.close()
@@ -197,9 +193,7 @@ class IcmpEchoClient(Client):
                     if data := self._client_socket.recv(
                         timeout=1,
                     ):
-                        identifier, sequence, payload = (
-                            self._parse_icmp_echo_reply_message(data=data)
-                        )
+                        identifier, sequence, payload = self._parse_icmp_echo_reply_message(data=data)
                         self._log(
                             f"Received {len(payload)} bytes from '{self._remote_ip_address}', "
                             f"id {identifier}, seq {sequence}."

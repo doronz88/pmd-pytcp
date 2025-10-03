@@ -102,18 +102,13 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         """
 
         assert isinstance(self.code, Icmp6NdRouterSolicitationCode), (
-            f"The 'code' field must be an Icmp6NdRouterSolicitationCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp6NdRouterSolicitationCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
         assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. "
-            f"Got: {type(self.options)!r}"
+            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
         )
 
     @override
@@ -170,9 +165,7 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 ND Router Solicitation message sanity after
         parsing it.
@@ -180,8 +173,7 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
 
         if not (ip6__hop == 255):
             raise Icmp6SanityError(
-                "ND Router Solicitation - [RFC 4861] The 'ip6__hop' field "
-                f"must be 255. Got: {ip6__hop!r}",
+                "ND Router Solicitation - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
             )
 
         if not (ip6__src.is_unicast or ip6__src.is_unspecified):
@@ -238,19 +230,14 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
             buffer[:ICMP6__ND__ROUTER_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.ND__ROUTER_SOLICITATION
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__ROUTER_SOLICITATION), (
+            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
         )
 
         return cls(
             code=Icmp6NdRouterSolicitationCode(code),
             cksum=cksum,
-            options=Icmp6NdOptions.from_buffer(
-                buffer[ICMP6__ND__ROUTER_SOLICITATION__LEN:]
-            ),
+            options=Icmp6NdOptions.from_buffer(buffer[ICMP6__ND__ROUTER_SOLICITATION__LEN:]),
         )
 
     @override

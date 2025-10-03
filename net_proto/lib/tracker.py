@@ -99,10 +99,7 @@ class Tracker:
         if self._echo_tracker is None:
             return f"Tracker(serial='{self._serial}')"
 
-        return (
-            f"Tracker(serial='{self._serial}', "
-            f"echo_tracker={self._echo_tracker})"
-        )
+        return f"Tracker(serial='{self._serial}', " f"echo_tracker={self._echo_tracker})"
 
     @property
     def echo_tracker(self) -> Tracker | None:
@@ -127,8 +124,6 @@ class Tracker:
         """
 
         if self._echo_tracker:
-            return (
-                f" {(time.time() - self._echo_tracker.timestamp) * 1000:.3f}ms"
-            )
+            return f" {(time.time() - self._echo_tracker.timestamp) * 1000:.3f}ms"
 
         return ""

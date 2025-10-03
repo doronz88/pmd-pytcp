@@ -89,8 +89,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst), "
-                "respond with Neighbor Advertisement"
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst), " "respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
@@ -254,8 +253,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (DAD), "
-                "respond with Neighbor Advertisement"
+                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (DAD), " "respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"

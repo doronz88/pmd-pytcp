@@ -401,9 +401,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet__src": MAC__UNSPECIFIED,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
             },
-            "_expected__frames_tx": [
-                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff"
-            ],
+            "_expected__frames_tx": [b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff"],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet__pre_assemble=1,
@@ -455,10 +453,7 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
             STACK__IP4_HOST.gateway = None
             STACK__IP6_HOST.gateway = None
 
-        if (
-            "gateway ARP cache miss" in self._description
-            or "gateway ND cache miss" in self._description
-        ):
+        if "gateway ARP cache miss" in self._description or "gateway ND cache miss" in self._description:
             STACK__IP4_HOST.gateway = HOST_B__IP4_ADDRESS
             STACK__IP6_HOST.gateway = HOST_B__IP6_ADDRESS
 

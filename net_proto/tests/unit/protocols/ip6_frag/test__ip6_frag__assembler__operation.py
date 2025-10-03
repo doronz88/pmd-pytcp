@@ -87,9 +87,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 24,
-                "__str__": (
-                    "IPv6_FRAG id 4294967295, MF, offset 3208, next Raw, len 24 (8+16)"
-                ),
+                "__str__": ("IPv6_FRAG id 4294967295, MF, offset 3208, next Raw, len 24 (8+16)"),
                 "__repr__": (
                     "Ip6FragAssembler(header=Ip6FragHeader(next=<IpProto.RAW: 255>, offset=3208, "
                     "flag_mf=True, id=4294967295), payload=b'0123456789ABCDEF')"
@@ -123,9 +121,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 1430,
-                "__str__": (
-                    "IPv6_FRAG id 7777777, offset 65528, next Raw, len 1430 (8+1422)"
-                ),
+                "__str__": ("IPv6_FRAG id 7777777, offset 65528, next Raw, len 1430 (8+1422)"),
                 "__repr__": (
                     "Ip6FragAssembler(header=Ip6FragHeader(next=<IpProto.RAW: 255>, offset=65528, "
                     f"flag_mf=False, id=7777777), payload=b'{"X" * 1422}')"
@@ -162,9 +158,7 @@ class TestIp6FragAssemblerOperation(TestCase):
         arguments.
         """
 
-        self._ip6_frag__assembler = Ip6FragAssembler(
-            *self._args, **self._kwargs
-        )
+        self._ip6_frag__assembler = Ip6FragAssembler(*self._args, **self._kwargs)
 
     def test__ip6_frag__assembler__len(self) -> None:
         """

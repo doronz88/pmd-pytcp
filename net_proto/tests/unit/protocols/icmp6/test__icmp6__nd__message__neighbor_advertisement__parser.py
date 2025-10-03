@@ -53,8 +53,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, no options.",
             "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,

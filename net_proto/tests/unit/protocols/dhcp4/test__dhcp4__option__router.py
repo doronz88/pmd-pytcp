@@ -94,8 +94,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'routers' field must be a list of Ip4Address elements. "
-            f"Got: {[type(item) for item in value]!r}",
+            "The 'routers' field must be a list of Ip4Address elements. " f"Got: {[type(item) for item in value]!r}",
         )
 
 
@@ -138,9 +137,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
             "_results": {
                 "__len__": 10,  # 2 + 2*4
                 "__str__": "router ['192.0.2.1', '198.51.100.5']",
-                "__repr__": (
-                    "Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])"
-                ),
+                "__repr__": ("Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])"),
                 "__bytes__": b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05",
                 "routers": [
                     Ip4Address("192.0.2.1"),
@@ -277,10 +274,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Router option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 Router option must be 2 " "bytes. Got: 1"),
             },
         },
         {

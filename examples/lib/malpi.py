@@ -81,6 +81,4 @@ malpa: bytes = (
 )
 
 
-malpi: bytes = b"".join(
-    [_ + __ + b"\n" for _, __ in zip(malpka.split(b"\n"), malpa.split(b"\n"))]
-)
+malpi: bytes = b"".join([_ + __ + b"\n" for _, __ in zip(malpka.split(b"\n"), malpa.split(b"\n"))])

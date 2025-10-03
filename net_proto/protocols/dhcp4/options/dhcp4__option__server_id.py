@@ -86,8 +86,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
 
         # Ensure that the 'server_id' field is an Ip4Address instance.
         assert isinstance(self.server_id, Ip4Address), (
-            f"The 'server_id' field must be an Ip4Address. "
-            f"Got: {type(self.server_id)!r}"
+            f"The 'server_id' field must be an Ip4Address. " f"Got: {type(self.server_id)!r}"
         )
 
     @override
@@ -122,9 +121,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
         """
 
         # Raise integrity error if the option length value is incorrect.
-        if (
-            value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__SERVER_ID__LEN:
+        if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__SERVER_ID__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Server Identifier option length value must be "
                 f"{DHCP4__OPTION__SERVER_ID__LEN} bytes. Got: {value!r}"

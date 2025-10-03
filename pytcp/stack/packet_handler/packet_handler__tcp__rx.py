@@ -89,13 +89,13 @@ class PacketHandlerTcpRx(ABC):
         Handle inbound TCP packets.
         """
 
-        self._packet_stats_rx.inc("tcp__pre_parse")
+        self._packet_stats_rx.tcp__pre_parse += 1
 
         try:
             TcpParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.inc("tcp__failed_parse__drop")
+            self._packet_stats_rx.tcp__failed_parse__drop += 1
             __debug__ and log(
                 "tcp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -130,16 +130,11 @@ class PacketHandlerTcpRx(ABC):
         )
 
         # Check if incoming packet matches active TCP socket.
-        if tcp_socket := cast(
-            TcpSocket, stack.sockets.get(packet_rx_md.socket_id, None)
-        ):
-            self._packet_stats_rx.inc(
-                "tcp__socket_match_active__forward_to_socket"
-            )
+        if tcp_socket := cast(TcpSocket, stack.sockets.get(packet_rx_md.socket_id, None)):
+            self._packet_stats_rx.tcp__socket_match_active__forward_to_socket += 1
             __debug__ and log(
                 "tcp",
-                f"{packet_rx_md.tracker} - <INFO>TCP packet is part of active "
-                f"socket [{tcp_socket}]</>",
+                f"{packet_rx_md.tracker} - <INFO>TCP packet is part of active " f"socket [{tcp_socket}]</>",
             )
             tcp_socket.process_tcp_packet(packet_rx_md)
             return
@@ -153,20 +148,15 @@ class PacketHandlerTcpRx(ABC):
                 packet_rx_md.tcp__flag_rst,
             }
         ):
-            for (
-                tcp_listening_socket_pattern
-            ) in packet_rx_md.listening_socket_ids:
+            for tcp_listening_socket_pattern in packet_rx_md.listening_socket_ids:
                 if tcp_socket := cast(
                     TcpSocket,
                     stack.sockets.get(tcp_listening_socket_pattern, None),
                 ):
-                    self._packet_stats_rx.inc(
-                        "tcp__socket_match_listening__forward_to_socket"
-                    )
+                    self._packet_stats_rx.tcp__socket_match_listening__forward_to_socket += 1
                     __debug__ and log(
                         "tcp",
-                        f"{packet_rx_md.tracker} - <INFO>TCP packet matches "
-                        f"listening socket [{tcp_socket}]</>",
+                        f"{packet_rx_md.tracker} - <INFO>TCP packet matches " f"listening socket [{tcp_socket}]</>",
                     )
                     tcp_socket.process_tcp_packet(packet_rx_md)
                     return
@@ -174,7 +164,7 @@ class PacketHandlerTcpRx(ABC):
         # In case packet doesn't match any active or listening socket
         # and it carries RST flag then drop it silently.
         if packet_rx_md.tcp__flag_rst:
-            self._packet_stats_rx.inc("tcp__no_socket_match__rst__drop")
+            self._packet_stats_rx.tcp__no_socket_match__rst__drop += 1
             __debug__ and log(
                 "tcp",
                 f"{packet_rx.tracker} - TCP RST packet from {packet_rx.ip.src} to "
@@ -184,7 +174,7 @@ class PacketHandlerTcpRx(ABC):
 
         # In case packet doesn't match any session send RST packet
         # in response to it.
-        self._packet_stats_rx.inc("tcp__no_socket_match__respond_rst")
+        self._packet_stats_rx.tcp__no_socket_match__respond_rst += 1
         __debug__ and log(
             "tcp",
             f"{packet_rx.tracker} - TCP packet from {packet_rx.ip.src} to "
@@ -197,10 +187,7 @@ class PacketHandlerTcpRx(ABC):
             tcp__sport=packet_rx.tcp.dport,
             tcp__dport=packet_rx.tcp.sport,
             tcp__seq=0,
-            tcp__ack=packet_rx.tcp.seq
-            + packet_rx.tcp.flag_syn
-            + packet_rx.tcp.flag_fin
-            + len(packet_rx.tcp.payload),
+            tcp__ack=packet_rx.tcp.seq + packet_rx.tcp.flag_syn + packet_rx.tcp.flag_fin + len(packet_rx.tcp.payload),
             tcp__flag_rst=True,
             tcp__flag_ack=True,
             echo_tracker=packet_rx.tracker,

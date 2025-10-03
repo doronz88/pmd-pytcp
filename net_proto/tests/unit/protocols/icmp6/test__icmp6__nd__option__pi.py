@@ -129,8 +129,7 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {value}",
+            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. " f"Got: {value}",
         )
 
     def test__icmp6__nd__option__pi__valid_lifetime__over_max(self) -> None:
@@ -146,8 +145,7 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {value}",
+            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. " f"Got: {value}",
         )
 
     def test__icmp6__nd__option__pi__preferred_lifetime__under_min(
@@ -166,8 +164,7 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {value}",
+            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. " f"Got: {value}",
         )
 
     def test__icmp6__nd__option__pi__preferred_lifetime__over_max(self) -> None:
@@ -183,8 +180,7 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {value}",
+            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. " f"Got: {value}",
         )
 
     def test__icmp6__nd__option__pi__prefix__not_Ip6Network(self) -> None:
@@ -220,8 +216,7 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
             "_results": {
                 "__len__": 32,
                 "__str__": (
-                    "prefix_info (prefix 2001:db8::/64, flags L-R, valid_lifetime "
-                    "4294967295, preferred_lifetime 0)"
+                    "prefix_info (prefix 2001:db8::/64, flags L-R, valid_lifetime " "4294967295, preferred_lifetime 0)"
                 ),
                 "__repr__": (
                     "Icmp6NdOptionPi(flag_l=True, flag_a=False, flag_r=True, "
@@ -410,8 +405,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_description": "The ICMPv6 ND Pi option .",
             "_args": [
                 b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                + b"ZH0PA",
+                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -429,8 +423,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_description": "The ICMPv6 ND Pi option (I).",
             "_args": [
                 b"\x03\x04\x40\xa0\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                + b"ZH0PA",
+                b"\x20\x01\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -448,8 +441,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_description": "The ICMPv6 ND Pi option (II).",
             "_args": [
                 b"\x03\x04\x80\x40\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00"
-                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd"
-                + b"ZH0PA",
+                b"\x20\x07\x0d\xb8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xab\xcd" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -471,9 +463,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the ICMPv6 ND Pi option must be 2 bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the ICMPv6 ND Pi option must be 2 bytes. Got: 1"),
             },
         },
         {
@@ -501,8 +491,7 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length value must be "
-                    "32 bytes. Got: 40"
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Pi option length value must be " "32 bytes. Got: 40"
                 ),
             },
         },

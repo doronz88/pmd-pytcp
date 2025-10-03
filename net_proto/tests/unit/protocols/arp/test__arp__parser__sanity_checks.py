@@ -65,8 +65,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": "The 'sha' field value 00:00:00:00:00:00 must not be a "
-                "unspecified MAC address."
+                "error_message": "The 'sha' field value 00:00:00:00:00:00 must not be a " "unspecified MAC address."
             },
         },
         {
@@ -77,8 +76,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": "The 'sha' field value 01:00:5e:00:00:01 must not be a "
-                "multicast MAC address."
+                "error_message": "The 'sha' field value 01:00:5e:00:00:01 must not be a " "multicast MAC address."
             },
         },
         {
@@ -89,8 +87,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": "The 'sha' field value ff:ff:ff:ff:ff:ff must not be a "
-                "broadcast MAC address."
+                "error_message": "The 'sha' field value ff:ff:ff:ff:ff:ff must not be a " "broadcast MAC address."
             },
         },
         {
@@ -112,10 +109,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 b"\x00\x01\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
             "_kwargs": {},
-            "_results": {
-                "error_message": "The 'spa' field value 224.0.0.1 must not be a "
-                "multicast IPv4 address."
-            },
+            "_results": {"error_message": "The 'spa' field value 224.0.0.1 must not be a " "multicast IPv4 address."},
         },
         {
             "_description": "The SPA address is broadcast.",

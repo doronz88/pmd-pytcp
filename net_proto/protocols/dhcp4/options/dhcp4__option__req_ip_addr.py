@@ -86,8 +86,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
 
         # Ensure that the 'req_ip_addr' field is Ip4Address instance.
         assert isinstance(self.req_ip_addr, Ip4Address), (
-            f"The 'req_ip_addr' field must be an Ip4Address. "
-            f"Got: {type(self.req_ip_addr)!r}"
+            f"The 'req_ip_addr' field must be an Ip4Address. " f"Got: {type(self.req_ip_addr)!r}"
         )
 
     @override
@@ -122,9 +121,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (
-            value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
+        if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Requested Ip Address option length value must be "
                 f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"

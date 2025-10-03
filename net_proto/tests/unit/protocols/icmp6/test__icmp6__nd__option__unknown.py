@@ -99,8 +99,7 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                "The 'type' field must not be a known Icmp6NdOptionType. "
-                f"Got: {value!r}",
+                "The 'type' field must not be a known Icmp6NdOptionType. " f"Got: {value!r}",
             )
 
     def test__icmp6__nd__option__unknown__len__8bit_integer(self) -> None:
@@ -147,12 +146,9 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
                 "__len__": 16,
                 "__str__": "unk-255-16",
                 "__repr__": (
-                    f"Icmp6NdOptionUnknown(type={Icmp6NdOptionType.from_int(255)!r}, "
-                    "len=16, data=b'0123456789ABCD')"
+                    f"Icmp6NdOptionUnknown(type={Icmp6NdOptionType.from_int(255)!r}, " "len=16, data=b'0123456789ABCD')"
                 ),
-                "__bytes__": (
-                    b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                ),
+                "__bytes__": (b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"),
                 "type": Icmp6NdOptionType.from_int(255),
                 "len": 16,
                 "data": b"0123456789ABCD",
@@ -257,8 +253,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown ICMPv6 ND option.",
             "_args": [
-                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                + b"ZH0PA",
+                b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -276,10 +271,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the unknown ICMPv6 ND option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the unknown ICMPv6 ND option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -291,8 +283,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The unknown ICMPv6 ND option type must not be known. "
-                    f"Got: {Icmp6NdOptionType.SLLA!r}"
+                    "The unknown ICMPv6 ND option type must not be known. " f"Got: {Icmp6NdOptionType.SLLA!r}"
                 ),
             },
         },
@@ -305,8 +296,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The unknown ICMPv6 ND option type must not be known. "
-                    f"Got: {Icmp6NdOptionType.TLLA!r}"
+                    "The unknown ICMPv6 ND option type must not be known. " f"Got: {Icmp6NdOptionType.TLLA!r}"
                 ),
             },
         },
@@ -319,8 +309,7 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The unknown ICMPv6 ND option type must not be known. "
-                    f"Got: {Icmp6NdOptionType.PI!r}"
+                    "The unknown ICMPv6 ND option type must not be known. " f"Got: {Icmp6NdOptionType.PI!r}"
                 ),
             },
         },
@@ -358,9 +347,7 @@ class TestIcmp4NdOptionUnknownParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Icmp6NdOptionUnknown.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Icmp6NdOptionUnknown.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

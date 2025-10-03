@@ -153,15 +153,13 @@ class TcpOptions(ProtoOptions):
 
             if (value := frame[offset + 1]) < 2:
                 raise TcpIntegrityError(
-                    f"The TCP option length must be greater than 1. "
-                    f"Got: {value!r}.",
+                    f"The TCP option length must be greater than 1. " f"Got: {value!r}.",
                 )
 
             offset += frame[offset + 1]
             if offset > hlen:
                 raise TcpIntegrityError(
-                    f"The TCP option length must not extend past the header "
-                    f"length. Got: {offset=}, {hlen=}",
+                    f"The TCP option length must not extend past the header " f"length. Got: {offset=}, {hlen=}",
                 )
 
     @override
@@ -186,19 +184,13 @@ class TcpOptions(ProtoOptions):
                 case TcpOptionType.WSCALE:
                     options.append(TcpOptionWscale.from_buffer(buffer[offset:]))
                 case TcpOptionType.SACKPERM:
-                    options.append(
-                        TcpOptionSackperm.from_buffer(buffer[offset:])
-                    )
+                    options.append(TcpOptionSackperm.from_buffer(buffer[offset:]))
                 case TcpOptionType.SACK:
                     options.append(TcpOptionSack.from_buffer(buffer[offset:]))
                 case TcpOptionType.TIMESTAMPS:
-                    options.append(
-                        TcpOptionTimestamps.from_buffer(buffer[offset:])
-                    )
+                    options.append(TcpOptionTimestamps.from_buffer(buffer[offset:]))
                 case _:
-                    options.append(
-                        TcpOptionUnknown.from_buffer(buffer[offset:])
-                    )
+                    options.append(TcpOptionUnknown.from_buffer(buffer[offset:]))
 
             offset += options[-1].len
 

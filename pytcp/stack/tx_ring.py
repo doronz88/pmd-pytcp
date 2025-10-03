@@ -66,17 +66,9 @@ class TxRing(Subsystem):
     _mtu: int
     _queue_max_size: int
 
-    _tx_ring: queue.Queue[
-        EthernetAssembler
-        | Ethernet8023Assembler
-        | Ip6Assembler
-        | Ip4Assembler
-        | Ip4FragAssembler
-    ]
+    _tx_ring: queue.Queue[EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler]
 
-    def __init__(
-        self, *, fd: int, mtu: int, queue_max_size: int = 1000
-    ) -> None:
+    def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
         """
         Initialize access to TX file descriptor and the outbound queue.
         """
@@ -85,9 +77,7 @@ class TxRing(Subsystem):
         self._mtu = mtu
         self._queue_max_size = queue_max_size
 
-        super().__init__(
-            info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}"
-        )
+        super().__init__(info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}")
 
         self._tx_ring = queue.Queue(maxsize=queue_max_size)
 
@@ -98,9 +88,7 @@ class TxRing(Subsystem):
         """
 
         try:
-            packet_tx = self._tx_ring.get(
-                block=True, timeout=SUBSYSTEM_SLEEP_TIME__SEC
-            )
+            packet_tx = self._tx_ring.get(block=True, timeout=SUBSYSTEM_SLEEP_TIME__SEC)
         except queue.Empty:
             return
 
@@ -121,16 +109,14 @@ class TxRing(Subsystem):
         else:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - <CRIT>Unknown packet type: "
-                f"{type(packet_tx)!r}</>",
+                f"{packet_tx.tracker} - <CRIT>Unknown packet type: " f"{type(packet_tx)!r}</>",
             )
             return
 
         if (packet_tx_len := len(packet_tx)) > mtu:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - Unable to send frame, frame"
-                f"len ({packet_tx_len}) > mtu ({mtu})",
+                f"{packet_tx.tracker} - Unable to send frame, frame" f"len ({packet_tx_len}) > mtu ({mtu})",
             )
             return
 
@@ -141,8 +127,7 @@ class TxRing(Subsystem):
         except OSError as error:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - <CRIT>Unable to send frame, "
-                f"OSError: {error}</>",
+                f"{packet_tx.tracker} - <CRIT>Unable to send frame, " f"OSError: {error}</>",
             )
             return
 
@@ -155,13 +140,7 @@ class TxRing(Subsystem):
 
     def enqueue(
         self,
-        packet_tx: (
-            EthernetAssembler
-            | Ethernet8023Assembler
-            | Ip6Assembler
-            | Ip4Assembler
-            | Ip4FragAssembler
-        ),
+        packet_tx: EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler,
     ) -> None:
         """
         Enqueue outbound packet into TX Ring.

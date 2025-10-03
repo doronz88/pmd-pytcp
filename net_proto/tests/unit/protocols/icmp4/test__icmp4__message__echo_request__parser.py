@@ -58,8 +58,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         {
             "_description": "ICMPv4 Echo Request message, non-empty data.",
             "_args": [
-                b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
-                b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_results": {
                 "message": Icmp4MessageEchoRequest(

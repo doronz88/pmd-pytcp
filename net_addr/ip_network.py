@@ -45,9 +45,7 @@ from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip_address import IpAddress
 
 
-class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](
-    Base, Ip, ABC
-):
+class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, ABC):
     """
     IP network support base class.
     """
@@ -75,9 +73,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](
         """
 
         return other is self or (
-            isinstance(other, type(self))
-            and self._address == other._address
-            and self._mask == other._mask
+            isinstance(other, type(self)) and self._address == other._address and self._mask == other._mask
         )
 
     __hash__ = Base.__hash__
@@ -91,14 +87,10 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](
         from .ip6_host import Ip6Host
 
         if isinstance(other, (Ip6Address, Ip4Address)):
-            return self._version == other.version and int(self.address) <= int(
-                other
-            ) <= int(self.last)
+            return self._version == other.version and int(self.address) <= int(other) <= int(self.last)
 
         if isinstance(other, (Ip4Host, Ip6Host)):
-            return self._version == other.version and int(self.address) <= int(
-                other.address
-            ) <= int(self.last)
+            return self._version == other.version and int(self.address) <= int(other.address) <= int(self.last)
 
         return False
 

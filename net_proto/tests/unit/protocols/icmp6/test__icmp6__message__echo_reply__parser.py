@@ -63,8 +63,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMP6 Echo Reply message, non-empty data.",
             "_args": [
-                b"\x81\x00\xab\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
-                b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                b"\x81\x00\xab\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_mocked_values": {},
             "_results": {

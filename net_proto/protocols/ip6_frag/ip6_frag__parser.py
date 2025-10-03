@@ -86,9 +86,7 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
         """
 
         self._header = Ip6FragHeader.from_buffer(self._frame)
-        self._payload = self._frame[
-            len(self._header) : len(self._header) + self._ip6__dlen
-        ]
+        self._payload = self._frame[len(self._header) : len(self._header) + self._ip6__dlen]
 
     @override
     def _validate_sanity(self) -> None:

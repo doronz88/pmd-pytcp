@@ -66,13 +66,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
 
     def __init__(
         self,
-        host: (
-            Self
-            | tuple[Ip4Address, Ip4Network]
-            | tuple[Ip4Address, Ip4Mask]
-            | tuple[Ip4Address, None]
-            | str
-        ),
+        host: Self | tuple[Ip4Address, Ip4Network] | tuple[Ip4Address, Ip4Mask] | tuple[Ip4Address, None] | str,
         /,
         *,
         gateway: Ip4Address | None = None,
@@ -116,15 +110,9 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
                 pass
 
         if isinstance(host, Ip4Host):
-            assert (
-                gateway is None
-            ), f"Gateway cannot be set when copying host. Got: {gateway!r}"
-            assert (
-                origin is None
-            ), f"Origin cannot be set when copying host. Got: {origin!r}"
-            assert (
-                expiration_time is None
-            ), f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
+            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
+            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
+            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway

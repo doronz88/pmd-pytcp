@@ -67,8 +67,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
             "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00"
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
             ],
             "_mocked_values": {
                 "ip6__dlen": 24,
@@ -88,8 +87,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "condition not met."
             ),
             "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00"
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
             ],
             "_mocked_values": {
                 "ip6__dlen": 23,
@@ -105,8 +103,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
             "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {},
             "_results": {
@@ -115,9 +112,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6NdMessageNeighborSolicitationMessageParserIntegrityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp6NdMessageNeighborSolicitationMessageParserIntegrityChecks(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Neighbor Solicitation message parser integrity checks tests.
     """

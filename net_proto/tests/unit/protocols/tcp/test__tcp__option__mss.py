@@ -226,10 +226,7 @@ class TestTcpOptionMssAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Mss option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the TCP Mss option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -241,8 +238,7 @@ class TestTcpOptionMssAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The TCP Mss option type must be {TcpOptionType.MSS!r}. "
-                    f"Got: {TcpOptionType.from_int(255)!r}"
+                    f"The TCP Mss option type must be {TcpOptionType.MSS!r}. " f"Got: {TcpOptionType.from_int(255)!r}"
                 ),
             },
         },
@@ -254,10 +250,7 @@ class TestTcpOptionMssAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": TcpIntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Mss option length value must be "
-                    "4 bytes. Got: 3"
-                ),
+                "error_message": ("[INTEGRITY ERROR][TCP] The TCP Mss option length value must be " "4 bytes. Got: 3"),
             },
         },
         {

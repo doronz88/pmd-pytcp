@@ -97,16 +97,10 @@ class TcpOptionTimestamps(TcpOption):
         """
 
         # Ensure the 'tsval' field is 32-bit unsigned integer.
-        assert is_uint32(self.tsval), (
-            f"The 'tsval' field must be a 32-bit unsigned integer. "
-            f"Got: {self.tsval}"
-        )
+        assert is_uint32(self.tsval), f"The 'tsval' field must be a 32-bit unsigned integer. " f"Got: {self.tsval}"
 
         # Ensure the 'tsecr' field is 32-bit unsigned integer.
-        assert is_uint32(self.tsecr), (
-            f"The 'tsecr' field must be a 32-bit unsigned integer. "
-            f"Got: {self.tsecr}"
-        )
+        assert is_uint32(self.tsecr), f"The 'tsecr' field must be a 32-bit unsigned integer. " f"Got: {self.tsecr}"
 
     @override
     def __str__(self) -> str:
@@ -163,8 +157,7 @@ class TcpOptionTimestamps(TcpOption):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Timestamps option must be "
-            f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the TCP Timestamps option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
@@ -175,9 +168,7 @@ class TcpOptionTimestamps(TcpOption):
 
         cls._validate_integrity(buffer)
 
-        _, _, tsval, tsecr = struct.unpack_from(
-            TCP__OPTION__TIMESTAMPS__STRUCT, buffer
-        )
+        _, _, tsval, tsecr = struct.unpack_from(TCP__OPTION__TIMESTAMPS__STRUCT, buffer)
 
         return cls(
             tsval=tsval,

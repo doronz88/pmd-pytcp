@@ -64,9 +64,7 @@ class ArpParser(Arp, ProtoParser):
         """
 
         self._frame = packet_rx.frame
-        self._ethernet__src = (
-            packet_rx.ethernet.src if hasattr(packet_rx, "ethernet") else None
-        )
+        self._ethernet__src = packet_rx.ethernet.src if hasattr(packet_rx, "ethernet") else None
 
         self._validate_integrity()
         self._parse()
@@ -83,35 +81,24 @@ class ArpParser(Arp, ProtoParser):
 
         if len(self._frame) < ARP__HEADER__LEN:
             raise ArpIntegrityError(
-                f"The minimum packet length must be {ARP__HEADER__LEN} "
-                f"bytes, got {len(self._frame)} bytes."
+                f"The minimum packet length must be {ARP__HEADER__LEN} " f"bytes, got {len(self._frame)} bytes."
             )
 
-        if (
-            hrtype := ArpHardwareType.from_bytes(self._frame[0:2])
-        ) != ArpHardwareType.ETHERNET:
+        if (hrtype := ArpHardwareType.from_bytes(self._frame[0:2])) != ArpHardwareType.ETHERNET:
             raise ArpIntegrityError(
-                f"The 'hrtype' field value must be {ArpHardwareType.ETHERNET!r}. "
-                f"Got: {hrtype!r}."
+                f"The 'hrtype' field value must be {ArpHardwareType.ETHERNET!r}. " f"Got: {hrtype!r}."
             )
 
         if (prtype := EtherType.from_bytes(self._frame[2:4])) != EtherType.IP4:
-            raise ArpIntegrityError(
-                f"The 'prtype' field value must be {EtherType.IP4!r}. "
-                f"Got: {prtype!r}."
-            )
+            raise ArpIntegrityError(f"The 'prtype' field value must be {EtherType.IP4!r}. " f"Got: {prtype!r}.")
 
         if (hrlen := self._frame[4]) != ARP__HARDWARE_LEN__ETHERNET:
             raise ArpIntegrityError(
-                f"The 'hrlen' field value must be {ARP__HARDWARE_LEN__ETHERNET}, "
-                f"got {hrlen!r}."
+                f"The 'hrlen' field value must be {ARP__HARDWARE_LEN__ETHERNET}, " f"got {hrlen!r}."
             )
 
         if (prlen := self._frame[5]) != ARP__PROTOCOL_LEN__IP4:
-            raise ArpIntegrityError(
-                f"The 'prlen' field value must be {ARP__PROTOCOL_LEN__IP4}, "
-                f"got {prlen!r}."
-            )
+            raise ArpIntegrityError(f"The 'prlen' field value must be {ARP__PROTOCOL_LEN__IP4}, " f"got {prlen!r}.")
 
     @override
     def _parse(self) -> None:
@@ -134,22 +121,13 @@ class ArpParser(Arp, ProtoParser):
             )
 
         if self._header.sha.is_unspecified:
-            raise ArpSanityError(
-                f"The 'sha' field value {self._header.sha} must not be a "
-                "unspecified MAC address."
-            )
+            raise ArpSanityError(f"The 'sha' field value {self._header.sha} must not be a " "unspecified MAC address.")
 
         if self._header.sha.is_multicast:
-            raise ArpSanityError(
-                f"The 'sha' field value {self._header.sha} must not be a "
-                "multicast MAC address."
-            )
+            raise ArpSanityError(f"The 'sha' field value {self._header.sha} must not be a " "multicast MAC address.")
 
         if self._header.sha.is_broadcast:
-            raise ArpSanityError(
-                f"The 'sha' field value {self._header.sha} must not be a "
-                "broadcast MAC address."
-            )
+            raise ArpSanityError(f"The 'sha' field value {self._header.sha} must not be a " "broadcast MAC address.")
 
         if self._header.oper == ArpOperation.REPLY:
             if self._header.spa.is_unspecified:
@@ -159,15 +137,11 @@ class ArpParser(Arp, ProtoParser):
                 )
 
         if self._header.spa.is_multicast:
-            raise ArpSanityError(
-                f"The 'spa' field value {self._header.spa} must not be a "
-                "multicast IPv4 address."
-            )
+            raise ArpSanityError(f"The 'spa' field value {self._header.spa} must not be a " "multicast IPv4 address.")
 
         if self._header.spa.is_limited_broadcast:
             raise ArpSanityError(
-                f"The 'spa' field value {self._header.spa} must not be a "
-                "limited broadcast IPv4 address."
+                f"The 'spa' field value {self._header.spa} must not be a " "limited broadcast IPv4 address."
             )
 
         if self._ethernet__src is not None:

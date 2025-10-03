@@ -36,23 +36,14 @@ ver 3.0.4
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class PacketStats:
     """
     Base class for packet statistics data store.
     """
 
-    def inc(self, field: str, /) -> None:
-        """
-        Increment the specified field by the given value.
-        """
 
-        assert hasattr(self, field)
-
-        object.__setattr__(self, field, getattr(self, field) + 1)
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class PacketStatsRx(PacketStats):
     """
     Data store for the RX packet handler statistics.
@@ -159,7 +150,7 @@ class PacketStatsRx(PacketStats):
     raw__socket_match: int = 0
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class PacketStatsTx(PacketStats):
     """
     Data store for the TX packet handler statistics.

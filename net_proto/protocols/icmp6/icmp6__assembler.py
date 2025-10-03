@@ -70,6 +70,4 @@ class Icmp6Assembler(Icmp6, ProtoAssembler):
 
         self._message.assemble(buffers)
 
-        cast(bytearray, buffers[-2])[2:4] = inet_cksum(
-            *buffers[-2:], init=self.pshdr_sum
-        ).to_bytes(2)
+        cast(bytearray, buffers[-2])[2:4] = inet_cksum(*buffers[-2:], init=self.pshdr_sum).to_bytes(2)

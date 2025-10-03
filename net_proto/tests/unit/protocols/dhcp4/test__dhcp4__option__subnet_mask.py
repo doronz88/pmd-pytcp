@@ -208,9 +208,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionSubnetMask(
-                    subnet_mask=Ip4Mask("255.255.255.0")
-                ),
+                "option": Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.255.255.0")),
             },
         },
         {
@@ -220,9 +218,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionSubnetMask(
-                    subnet_mask=Ip4Mask("255.255.0.0")
-                ),
+                "option": Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.255.0.0")),
             },
         },
         {
@@ -232,9 +228,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionSubnetMask(
-                    subnet_mask=Ip4Mask("255.0.0.0")
-                ),
+                "option": Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.0.0.0")),
             },
         },
         {
@@ -245,10 +239,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Subnet Mask option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 Subnet Mask option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -274,8 +265,7 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
             "_results": {
                 "error": Dhcp4IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Subnet Mask option length value must be "
-                    "6 bytes. Got: 5"
+                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Subnet Mask option length value must be " "6 bytes. Got: 5"
                 ),
             },
         },
@@ -312,9 +302,7 @@ class TestDhcp4OptionSubnetMaskParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionSubnetMask.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionSubnetMask.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

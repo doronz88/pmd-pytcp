@@ -84,8 +84,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'code' field must be an Icmp4EchoReplyCode. "
-            f"Got: {type(value)!r}",
+            f"The 'code' field must be an Icmp4EchoReplyCode. " f"Got: {type(value)!r}",
         )
 
     def test__icmp4__message__echo_reply__cksum__under_min(self) -> None:
@@ -102,8 +101,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__cksum__over_max(self) -> None:
@@ -120,8 +118,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__id__under_min(self) -> None:
@@ -138,8 +135,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'id' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__id__over_max(self) -> None:
@@ -156,8 +152,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'id' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__seq__under_min(self) -> None:
@@ -174,8 +169,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'seq' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__seq__over_max(self) -> None:
@@ -192,8 +186,7 @@ class TestIcmp4MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'seq' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__echo_reply__data_len__over_max(self) -> None:
@@ -229,14 +222,9 @@ class TestIcmp4MessageEchoReplyParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoReply.from_buffer(
-                b"\xff\x00\xff\x00\x00\x00\x00\x00"
-            )
+            Icmp4MessageEchoReply.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp4Type.ECHO_REPLY: 0>. "
-                "Got: <Icmp4Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp4Type.ECHO_REPLY: 0>. " "Got: <Icmp4Type.UNKNOWN_255: 255>"),
         )

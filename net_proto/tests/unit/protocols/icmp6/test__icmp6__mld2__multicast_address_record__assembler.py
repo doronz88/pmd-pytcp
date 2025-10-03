@@ -48,9 +48,7 @@ from net_proto import (
 @parameterized_class(
     [
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Mode Is Include)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Mode Is Include)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
@@ -64,10 +62,7 @@ from net_proto import (
                     "S_INCLUDE: 1>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], aux"
                     "_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x01\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x01\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -77,9 +72,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Mode Is Exclude)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Mode Is Exclude)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE,
@@ -93,10 +86,7 @@ from net_proto import (
                     "S_EXCLUDE: 2>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], aux"
                     "_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x02\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x02\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -106,9 +96,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Change To Include)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Change To Include)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE,
@@ -122,10 +110,7 @@ from net_proto import (
                     "_TO_INCLUDE: 3>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], a"
                     "ux_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x03\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x03\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -135,9 +120,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Change To Exclude)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Change To Exclude)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
@@ -151,10 +134,7 @@ from net_proto import (
                     "_TO_EXCLUDE: 4>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], a"
                     "ux_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x04\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x04\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -164,9 +144,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Allow New Sources)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Allow New Sources)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
@@ -180,10 +158,7 @@ from net_proto import (
                     "NEW_SOURCES: 5>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], a"
                     "ux_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x05\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x05\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -193,9 +168,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record (Block Old Sources)."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record (Block Old Sources)."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
@@ -209,10 +182,7 @@ from net_proto import (
                     "OLD_SOURCES: 6>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], a"
                     "ux_data=b'')"
                 ),
-                "__bytes__": (
-                    b"\x06\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                    b"\x00\x00\x00\x01"
-                ),
+                "__bytes__": (b"\x06\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x01"),
                 "type": Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                 "aux_data_len": 0,
                 "number_of_sources": 0,
@@ -222,9 +192,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record, multiple sources, no aux data."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record, multiple sources, no aux data."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
@@ -238,8 +206,7 @@ from net_proto import (
             "_results": {
                 "__len__": 68,
                 "__str__": (
-                    "[type 'Mode Is Include', addr ff02::1, sources (2001:db8::1, 2001:db8::2, 2001:d"
-                    "b8::3)]"
+                    "[type 'Mode Is Include', addr ff02::1, sources (2001:db8::1, 2001:db8::2, 2001:d" "b8::3)]"
                 ),
                 "__repr__": (
                     "Icmp6Mld2MulticastAddressRecord(type=<Icmp6Mld2MulticastAddressRecordType.MODE_I"
@@ -267,9 +234,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record, no sources, aux data."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record, no sources, aux data."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
@@ -278,9 +243,7 @@ from net_proto import (
             },
             "_results": {
                 "__len__": 36,
-                "__str__": (
-                    "[type 'Mode Is Include', addr ff02::1, aux data b'0123456789ABCDEF']"
-                ),
+                "__str__": ("[type 'Mode Is Include', addr ff02::1, aux data b'0123456789ABCDEF']"),
                 "__repr__": (
                     "Icmp6Mld2MulticastAddressRecord(type=<Icmp6Mld2MulticastAddressRecordType.MODE_I"
                     "S_INCLUDE: 1>, multicast_address=Ip6Address('ff02::1'), source_addresses=[], aux"
@@ -300,9 +263,7 @@ from net_proto import (
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 Multicast Address Record, multiple sources, aux data."
-            ),
+            "_description": ("ICMPv6 MLDv2 Multicast Address Record, multiple sources, aux data."),
             "_args": [],
             "_kwargs": {
                 "type": Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
@@ -364,9 +325,7 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
         object with testcase arguments.
         """
 
-        self._icmp6__mld2__multicast_address_record = (
-            Icmp6Mld2MulticastAddressRecord(*self._args, **self._kwargs)
-        )
+        self._icmp6__mld2__multicast_address_record = Icmp6Mld2MulticastAddressRecord(*self._args, **self._kwargs)
 
     def test__icmp6__mld2__multicast_address_record__assembler__len(
         self,

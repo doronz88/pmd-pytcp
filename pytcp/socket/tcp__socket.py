@@ -165,29 +165,18 @@ class TcpSocket(socket):
                 else Ip4Address(remote_address[0])
             )
         except (Ip6AddressFormatError, Ip4AddressFormatError) as error:
-            raise gaierror(
-                "[Errno -2] Name or service not known - "
-                "[Malformed remote IP address]"
-            ) from error
+            raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]") from error
 
         if remote_ip_address.is_unspecified:
-            raise ConnectionRefusedError(
-                "[Errno 111] Connection refused - "
-                "[Unspecified remote IP address]"
-            )
+            raise ConnectionRefusedError("[Errno 111] Connection refused - " "[Unspecified remote IP address]")
 
         local_ip_address = self._local_ip_address
 
         if local_ip_address.is_unspecified:
-            local_ip_address = pick_local_ip_address(
-                remote_ip_address=remote_ip_address
-            )
+            local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
 
             if local_ip_address.is_unspecified:
-                raise gaierror(
-                    "[Errno -2] Name or service not known - "
-                    "[Malformed remote IP address]"
-                )
+                raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]")
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
 
@@ -206,49 +195,36 @@ class TcpSocket(socket):
 
         # Check if "bound" already.
         if self._local_port in range(1, 65536):
-            raise OSError(
-                "[Errno 22] Invalid argument - "
-                "[Socket bound to specific port already]"
-            )
+            raise OSError("[Errno 22] Invalid argument - " "[Socket bound to specific port already]")
 
         local_ip_address: Ip6Address | Ip4Address
 
         match self._address_family:
             case AddressFamily.INET6:
                 try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(
-                        stack.packet_handler.ip6_unicast
-                    ) | {Ip6Address()}:
+                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.packet_handler.ip6_unicast) | {
+                        Ip6Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip6AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
             case AddressFamily.INET4:
                 try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(
-                        stack.packet_handler.ip4_unicast
-                    ) | {Ip4Address()}:
+                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.packet_handler.ip4_unicast) | {
+                        Ip4Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip4AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
         # Sanity check on local port number
         if address[1] not in range(0, 65536):
-            raise OverflowError(
-                "bind(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("bind(): port must be 0-65535. - [Port out of range]")
 
         # Confirm or pick local port number
         if (local_port := address[1]) > 0:
@@ -258,10 +234,7 @@ class TcpSocket(socket):
                 address_family=self._address_family,
                 socket_type=self._socket_type,
             ):
-                raise OSError(
-                    "[Errno 98] Address already in use - "
-                    "[Local address already in use]"
-                )
+                raise OSError("[Errno 98] Address already in use - " "[Local address already in use]")
         else:
             local_port = pick_local_port()
 
@@ -285,9 +258,7 @@ class TcpSocket(socket):
         # Sanity check on remote port number (0 is a valid remote port in
         # BSD socket implementation).
         if (remote_port := address[1]) not in range(0, 65536):
-            raise OverflowError(
-                "connect(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("connect(): port must be 0-65535. - [Port out of range]")
 
         # Assigning local port makes socket "bound" if not "bound" already.
         if (local_port := self._local_port) not in range(1, 65536):
@@ -314,22 +285,18 @@ class TcpSocket(socket):
             socket=self,
         )
 
-        __debug__ and log(
-            "socket", f"<g>[{self}]</> - Socket attempting connection"
-        )
+        __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
         try:
             self._tcp_session.connect()
         except TcpSessionError as error:
             if str(error) == "Connection refused":
                 raise ConnectionRefusedError(
-                    "[Errno 111] Connection refused - "
-                    "[Received RST packet from remote host]"
+                    "[Errno 111] Connection refused - " "[Received RST packet from remote host]"
                 ) from error
             if str(error) == "Connection timeout":
                 raise TimeoutError(
-                    "[Errno 110] Connection timed out - "
-                    "[No valid response received from remote host]"
+                    "[Errno 110] Connection timed out - " "[No valid response received from remote host]"
                 ) from error
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
@@ -349,24 +316,19 @@ class TcpSocket(socket):
 
         __debug__ and log(
             "socket",
-            f"<g>[{self}]</> - Socket starting to listen for inbound "
-            "connections",
+            f"<g>[{self}]</> - Socket starting to listen for inbound " "connections",
         )
 
         stack.sockets[self.socket_id] = self
         self._tcp_session.listen()
 
-    def accept(
-        self, *, timeout: float | None = None
-    ) -> tuple[socket, tuple[str, int]]:
+    def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
         """
         Wait for the established inbound connection, once available return
         it's socket.
         """
 
-        __debug__ and log(
-            "socket", f"<g>[{self}]</> - Waiting for inbound connection"
-        )
+        __debug__ and log("socket", f"<g>[{self}]</> - Waiting for inbound connection")
 
         if not self._event_tcp_session_established.acquire(timeout=timeout):
             raise TimeoutError("TCP Socket - Accept operation timed out.")
@@ -396,9 +358,7 @@ class TcpSocket(socket):
         try:
             bytes_sent = self._tcp_session.send(data=data)
         except TcpSessionError as error:
-            raise BrokenPipeError(
-                f"[Errno 32] Broken pipe - [{error}]"
-            ) from error
+            raise BrokenPipeError(f"[Errno 32] Broken pipe - [{error}]") from error
 
         __debug__ and log(
             "socket",
@@ -406,9 +366,7 @@ class TcpSocket(socket):
         )
         return bytes_sent
 
-    def recv(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> bytes:
+    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Receive data from socket.
         """
@@ -416,9 +374,7 @@ class TcpSocket(socket):
         assert self._tcp_session is not None
 
         try:
-            if data_rx := self._tcp_session.receive(
-                byte_count=bufsize, timeout=timeout
-            ):
+            if data_rx := self._tcp_session.receive(byte_count=bufsize, timeout=timeout):
                 __debug__ and log(
                     "socket",
                     f"<g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -426,15 +382,12 @@ class TcpSocket(socket):
             else:
                 __debug__ and log(
                     "socket",
-                    f"<g>[{self}]</> - Received empty data byte string, remote "
-                    "end closed connection",
+                    f"<g>[{self}]</> - Received empty data byte string, remote " "end closed connection",
                 )
             return data_rx
 
         except TimeoutError as error:
-            raise TimeoutError(
-                "TCP Socket - Receive operation timed out."
-            ) from error
+            raise TimeoutError("TCP Socket - Receive operation timed out.") from error
 
     def close(self) -> None:
         """

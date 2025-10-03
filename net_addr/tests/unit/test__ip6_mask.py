@@ -172,9 +172,7 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         {
             "_description": "Test the IPv6 mask: '/16' (bytearray)",
             "_args": [
-                bytearray(
-                    b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                ),
+                bytearray(b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"),
             ],
             "_kwargs": {},
             "_results": {
@@ -192,9 +190,7 @@ from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
         {
             "_description": "Test the IPv6 mask: '/16' (memoryview)",
             "_args": [
-                memoryview(
-                    b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                ),
+                memoryview(b"\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"),
             ],
             "_kwargs": {},
             "_results": {
@@ -651,9 +647,7 @@ class TestNetAddrIp6Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
-                "error_message": (
-                    "The IPv6 mask format is invalid: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff'"
-                ),
+                "error_message": ("The IPv6 mask format is invalid: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff'"),
             },
         },
         {
@@ -664,9 +658,7 @@ class TestNetAddrIp6Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
-                "error_message": (
-                    "The IPv6 mask format is invalid: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'"
-                ),
+                "error_message": ("The IPv6 mask format is invalid: b'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'"),
             },
         },
         {
@@ -688,9 +680,7 @@ class TestNetAddrIp6Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
-                "error_message": (
-                    "The IPv6 mask format is invalid: 340282366920938463463374607431768211456"
-                ),
+                "error_message": ("The IPv6 mask format is invalid: 340282366920938463463374607431768211456"),
             },
         },
         {
@@ -701,9 +691,7 @@ class TestNetAddrIp6Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6MaskFormatError,
-                "error_message": (
-                    "The IPv6 mask format is invalid: Ip4Mask('/0')"
-                ),
+                "error_message": ("The IPv6 mask format is invalid: Ip4Mask('/0')"),
             },
         },
         {

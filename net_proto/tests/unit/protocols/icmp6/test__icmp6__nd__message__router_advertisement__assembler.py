@@ -77,9 +77,7 @@ from net_proto.lib.buffer import Buffer
                     "flag_m=True, flag_o=True, router_lifetime=65535, reachable_time=4294967295, "
                     "retrans_timer=4294967295)"
                 ),
-                "__bytes__": (
-                    b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-                ),
+                "__bytes__": (b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"),
                 "type": Icmp6Type.ND__ROUTER_ADVERTISEMENT,
                 "code": Icmp6NdRouterAdvertisementCode.DEFAULT,
                 "cksum": 0,
@@ -219,9 +217,7 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageRouterAdvertisement(
-                *self._args, **self._kwargs
-            )
+            icmp6__message=Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
         )
 
     def test__icmp6__nd__message__router_advertisement__assembler__len(

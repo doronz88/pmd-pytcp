@@ -71,25 +71,13 @@ class UdpHeader(ProtoStruct):
         Ensure integrity of the UDP header fields.
         """
 
-        assert is_uint16(self.sport), (
-            f"The 'sport' field must be a 16-bit unsigned integer. "
-            f"Got: {self.sport!r}"
-        )
+        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. " f"Got: {self.sport!r}"
 
-        assert is_uint16(self.dport), (
-            f"The 'dport' field must be a 16-bit unsigned integer. "
-            f"Got: {self.dport!r}"
-        )
+        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. " f"Got: {self.dport!r}"
 
-        assert is_uint16(self.plen), (
-            f"The 'plen' field must be a 16-bit unsigned integer. "
-            f"Got: {self.plen!r}"
-        )
+        assert is_uint16(self.plen), f"The 'plen' field must be a 16-bit unsigned integer. " f"Got: {self.plen!r}"
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
     @override
     def __len__(self) -> int:
@@ -124,9 +112,7 @@ class UdpHeader(ProtoStruct):
         Initialize UDP header from buffer.
         """
 
-        sport, dport, plen, cksum = struct.unpack(
-            UDP__HEADER__STRUCT, buffer[:UDP__HEADER__LEN]
-        )
+        sport, dport, plen, cksum = struct.unpack(UDP__HEADER__STRUCT, buffer[:UDP__HEADER__LEN])
 
         return cls(
             sport=sport,

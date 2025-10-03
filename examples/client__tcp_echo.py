@@ -105,15 +105,11 @@ class TcpEchoClient(Client):
                 )
                 message_count = min(message_count, message_count - 1)
 
-                if self._event__stop_subsystem.wait(
-                    timeout=self._message_delay
-                ):
+                if self._event__stop_subsystem.wait(timeout=self._message_delay):
                     break
 
             client_socket.close()
-            self._log(
-                f"Closed the connection to {self._remote_ip_address}, port {self._remote_port}."
-            )
+            self._log(f"Closed the connection to {self._remote_ip_address}, port {self._remote_port}.")
 
             self._event__stop_subsystem.set()
             self._log("Stopped the sender thread.")
@@ -132,9 +128,7 @@ class TcpEchoClient(Client):
                     if message_payload := self._client_socket.recv(
                         timeout=1,
                     ):
-                        self._log(
-                            f"Received {len(message_payload)} bytes from '{self._remote_ip_address}'."
-                        )
+                        self._log(f"Received {len(message_payload)} bytes from '{self._remote_ip_address}'.")
                 except TimeoutError:
                     pass
 

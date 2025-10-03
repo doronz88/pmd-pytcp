@@ -88,9 +88,7 @@ class TestIcmp6NdOptionTllaAsserts(TestCase):
             "_results": {
                 "__len__": 8,
                 "__str__": "tlla 01:02:03:04:05:06",
-                "__repr__": (
-                    "Icmp6NdOptionTlla(tlla=MacAddress('01:02:03:04:05:06'))"
-                ),
+                "__repr__": ("Icmp6NdOptionTlla(tlla=MacAddress('01:02:03:04:05:06'))"),
                 "__bytes__": b"\x02\x01\x01\x02\x03\x04\x05\x06",
                 "type": Icmp6NdOptionType.TLLA,
                 "len": 8,
@@ -200,9 +198,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Icmp6NdOptionTlla(
-                    tlla=MacAddress("01:02:03:04:05:06")
-                ),
+                "option": Icmp6NdOptionTlla(tlla=MacAddress("01:02:03:04:05:06")),
             },
         },
         {
@@ -213,10 +209,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the ICMPv6 ND Tlla option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the ICMPv6 ND Tlla option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -242,8 +235,7 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Tlla option length value "
-                    "must be 8 bytes. Got: 16"
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Tlla option length value " "must be 8 bytes. Got: 16"
                 ),
             },
         },

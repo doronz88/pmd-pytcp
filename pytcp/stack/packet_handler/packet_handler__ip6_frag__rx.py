@@ -65,12 +65,12 @@ class PacketHandlerIp6FragRx(ABC):
         Handle inbound IPv6 fragment extension header.
         """
 
-        self._packet_stats_rx.inc("ip6_frag__pre_parse")
+        self._packet_stats_rx.ip6_frag__pre_parse += 1
 
         Ip6FragParser(packet_rx)
 
         if packet_rx.parse_failed:
-            self._packet_stats_rx.inc("ip6_frag__failed_parse")
+            self._packet_stats_rx.ip6_frag__failed_parse += 1
             __debug__ and log(
                 "ip6",
                 f"{packet_rx.tracker} - <CRIT>{packet_rx.parse_failed}</>",
@@ -80,7 +80,7 @@ class PacketHandlerIp6FragRx(ABC):
         __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6_frag}")
 
         if defragmented_packet_rx := self.__defragment_ip6_packet(packet_rx):
-            self._packet_stats_rx.inc("ip6_frag__defrag")
+            self._packet_stats_rx.ip6_frag__defrag += 1
             self._phrx_ip6(
                 defragmented_packet_rx,
             )
@@ -94,8 +94,7 @@ class PacketHandlerIp6FragRx(ABC):
         self._ip6_frag_flows = {
             flow: self._ip6_frag_flows[flow]
             for flow in self._ip6_frag_flows
-            if self._ip6_frag_flows[flow].timestamp - time()
-            < stack.IP6__FRAG_FLOW_TIMEOUT
+            if self._ip6_frag_flows[flow].timestamp - time() < stack.IP6__FRAG_FLOW_TIMEOUT
         }
 
         __debug__ and log(
@@ -114,15 +113,11 @@ class PacketHandlerIp6FragRx(ABC):
 
         # Update flow db.
         if flow_id in self._ip6_frag_flows:
-            self._ip6_frag_flows[flow_id].payload[
-                packet_rx.ip6_frag.offset
-            ] = packet_rx.ip6_frag.payload_bytes
+            self._ip6_frag_flows[flow_id].payload[packet_rx.ip6_frag.offset] = packet_rx.ip6_frag.payload_bytes
         else:
             self._ip6_frag_flows[flow_id] = IpFragData(
                 header=packet_rx.ip6.header_bytes,
-                payload={
-                    packet_rx.ip6_frag.offset: packet_rx.ip6_frag.payload_bytes
-                },
+                payload={packet_rx.ip6_frag.offset: packet_rx.ip6_frag.payload_bytes},
             )
         if not packet_rx.ip6_frag.flag_mf:
             self._ip6_frag_flows[flow_id].received_last_frag()
@@ -134,9 +129,7 @@ class PacketHandlerIp6FragRx(ABC):
         for offset in sorted(self._ip6_frag_flows[flow_id].payload):
             if offset > payload_len:
                 return None
-            payload_len = offset + len(
-                self._ip6_frag_flows[flow_id].payload[offset]
-            )
+            payload_len = offset + len(self._ip6_frag_flows[flow_id].payload[offset])
 
         # Defragment packet.
         header = bytearray(self._ip6_frag_flows[flow_id].header)
@@ -146,9 +139,7 @@ class PacketHandlerIp6FragRx(ABC):
                 f"{len(self._ip6_frag_flows[flow_id].payload[offset])}s",
                 payload,
                 offset,
-                bytes(
-                    self._ip6_frag_flows[flow_id].payload[offset]
-                ),  # NOTE: conversion: memoryview -> bytes
+                bytes(self._ip6_frag_flows[flow_id].payload[offset]),  # NOTE: conversion: memoryview -> bytes
             )
         del self._ip6_frag_flows[flow_id]
         struct.pack_into("!H", header, 4, len(payload))
@@ -156,7 +147,6 @@ class PacketHandlerIp6FragRx(ABC):
         packet_rx = PacketRx(bytes(header) + payload)
         __debug__ and log(
             "ip6",
-            f"{packet_rx.tracker} - Defragmented IPv6 packet, "
-            f"payload len {len(payload)} bytes",
+            f"{packet_rx.tracker} - Defragmented IPv6 packet, " f"payload len {len(payload)} bytes",
         )
         return packet_rx

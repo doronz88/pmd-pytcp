@@ -153,9 +153,7 @@ sockets: dict[SocketId, socket] = {}
 arp_probe_unicast_conflict: set[Ip4Address] = set()
 
 
-def initialize_interface__tap(
-    interface_name: str, *, mac_address: MacAddress | None = None
-) -> dict[str, Any]:
+def initialize_interface__tap(interface_name: str, *, mac_address: MacAddress | None = None) -> dict[str, Any]:
     """
     Initialize the TAP interface.
     """
@@ -256,18 +254,10 @@ def init(
     mtu: int = 1500,
     mac_address: MacAddress | None = None,
     ip4_support: bool = True,
-    ip4_host: Ip4Host | None = (
-        None
-        if IP4_ADDRESS is None
-        else Ip4Host(IP4_ADDRESS, gateway=IP4_GATEWAY)
-    ),
+    ip4_host: Ip4Host | None = (None if IP4_ADDRESS is None else Ip4Host(IP4_ADDRESS, gateway=IP4_GATEWAY)),
     ip4_dhcp: bool = True if IP4_ADDRESS is None else False,
     ip6_support: bool = True,
-    ip6_host: Ip6Host | None = (
-        None
-        if IP6_ADDRESS is None
-        else Ip6Host(IP6_ADDRESS, gateway=IP6_GATEWAY)
-    ),
+    ip6_host: Ip6Host | None = (None if IP6_ADDRESS is None else Ip6Host(IP6_ADDRESS, gateway=IP6_GATEWAY)),
     ip6_gua_autoconfig: bool = True if IP6_ADDRESS is None else False,
     ip6_lla_autoconfig: bool = True,
 ) -> None:
@@ -291,9 +281,7 @@ def init(
 
     match layer:
         case InterfaceLayer.L2:
-            assert (
-                mac_address is not None
-            ), "MAC address must be provided for Layer 2 (TAP) interface."
+            assert mac_address is not None, "MAC address must be provided for Layer 2 (TAP) interface."
             arp_cache = ArpCache()
             packet_handler = PacketHandlerL2(
                 mac_address=mac_address,
@@ -307,9 +295,7 @@ def init(
                 ip6_lla_autoconfig=ip6_lla_autoconfig,
             )
         case InterfaceLayer.L3:
-            assert (
-                mac_address is None
-            ), "MAC address must NOT be provided for Layer 3 (TUN) interface."
+            assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
             packet_handler = PacketHandlerL3(
                 interface_mtu=mtu,
                 ip4_support=ip4_support,
@@ -327,9 +313,7 @@ def start() -> None:
     Start stack components.
     """
 
-    assert (
-        stack_initialized
-    ), "Stack not initialized. Call 'stack.init()' first."
+    assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
     timer.start()
     if hasattr(packet_handler, "arp_cache"):
@@ -345,9 +329,7 @@ def stop() -> None:
     Stop stack components.
     """
 
-    assert (
-        stack_initialized
-    ), "Stack not initialized. Call 'stack.init()' first."
+    assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
     packet_handler.stop()
     rx_ring.stop()

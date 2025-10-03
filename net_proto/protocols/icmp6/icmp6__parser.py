@@ -112,53 +112,33 @@ class Icmp6Parser(Icmp6, ProtoParser):
 
         match Icmp6Type.from_int(self._frame[0]):
             case Icmp6Type.DESTINATION_UNREACHABLE:
-                Icmp6MessageDestinationUnreachable.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6MessageDestinationUnreachable.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ECHO_REQUEST:
-                Icmp6MessageEchoRequest.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6MessageEchoRequest.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ECHO_REPLY:
-                Icmp6MessageEchoReply.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6MessageEchoReply.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ND__ROUTER_SOLICITATION:
-                Icmp6NdMessageRouterSolicitation.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6NdMessageRouterSolicitation.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                Icmp6NdMessageRouterAdvertisement.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6NdMessageRouterAdvertisement.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                Icmp6NdMessageNeighborSolicitation.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6NdMessageNeighborSolicitation.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                Icmp6NdMessageNeighborAdvertisement.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6NdMessageNeighborAdvertisement.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.MLD2__REPORT:
-                Icmp6Mld2ReportMessage.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6Mld2ReportMessage.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case _:
-                Icmp6MessageUnknown.validate_integrity(
-                    frame=self._frame, ip6__dlen=self._ip6__dlen
-                )
+                Icmp6MessageUnknown.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
-        if inet_cksum(
-            self._frame[: self._ip6__dlen], init=self._ip6__pshdr_sum
-        ):
+        if inet_cksum(self._frame[: self._ip6__dlen], init=self._ip6__pshdr_sum):
             raise Icmp6IntegrityError(
                 "The packet checksum must be valid.",
             )

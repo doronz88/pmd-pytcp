@@ -291,9 +291,7 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6MessageDestinationUnreachable(
-                *self._args, **self._kwargs
-            )
+            icmp6__message=Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
         )
 
     def test__icmp6__message__destination_unreachable__assembler__len(

@@ -87,10 +87,7 @@ def log(
                 f"{message}"
             )
         else:
-            output = (
-                f" <g>{(time.time() - START_TIME):07.02f}</> | "
-                f"<b>{channel.upper():7}</> | {message}"
-            )
+            output = f" <g>{(time.time() - START_TIME):07.02f}</> | " f"<b>{channel.upper():7}</> | {message}"
 
         for key, value in STYLES.items():
             output = output.replace(key, value)

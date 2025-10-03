@@ -186,9 +186,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv4 broadcast addresses.
         """
 
-        ip4_broadcast = [
-            ip4_host.network.broadcast for ip4_host in self._ip4_host
-        ]
+        ip4_broadcast = [ip4_host.network.broadcast for ip4_host in self._ip4_host]
         ip4_broadcast.append(Ip4Address(0xFFFFFFFF))
 
         return ip4_broadcast
@@ -530,10 +528,7 @@ class PacketHandlerL2(
         from pytcp.stack import rx_ring
 
         if (packet_rx := rx_ring.dequeue()) is not None:
-            if (
-                int.from_bytes(packet_rx.frame[12:14])
-                <= ETHERNET_802_3__PACKET__MAX_LEN
-            ):
+            if int.from_bytes(packet_rx.frame[12:14]) <= ETHERNET_802_3__PACKET__MAX_LEN:
                 self._phrx_ethernet_802_3(packet_rx)
             else:
                 self._phrx_ethernet(packet_rx)
@@ -550,12 +545,8 @@ class PacketHandlerL2(
 
         self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
 
-        self._assign_ip6_multicast(
-            ip6_multicast=ip6_unicast_candidate.solicited_node_multicast
-        )
-        self._send_icmp6_nd_dad_message(
-            ip6_unicast_candidate=ip6_unicast_candidate
-        )
+        self._assign_ip6_multicast(ip6_multicast=ip6_unicast_candidate.solicited_node_multicast)
+        self._send_icmp6_nd_dad_message(ip6_unicast_candidate=ip6_unicast_candidate)
 
         if event := self._icmp6_nd_dad__event.acquire(timeout=1):
             __debug__ and log(
@@ -567,14 +558,11 @@ class PacketHandlerL2(
         else:
             __debug__ and log(
                 "stack",
-                "ICMPv6 ND DAD - No duplicate address detected for "
-                f"{ip6_unicast_candidate}",
+                "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
             )
 
         self._icmp6_nd_dad__ip6_unicast_candidate = None
-        self._remove_ip6_multicast(
-            ip6_unicast_candidate.solicited_node_multicast
-        )
+        self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
         return not event
 
     @override
@@ -589,9 +577,7 @@ class PacketHandlerL2(
                 ip6_unicast_candidate=ip6_host.address,
             ):
                 self._assign_ip6_host(ip6_host=ip6_host)
-                __debug__ and log(
-                    "stack", f"Successfully claimed IPv6 address {ip6_host}"
-                )
+                __debug__ and log("stack", f"Successfully claimed IPv6 address {ip6_host}")
             else:
                 __debug__ and log(
                     "stack",
@@ -621,8 +607,7 @@ class PacketHandlerL2(
         if not self._ip6_host:
             __debug__ and log(
                 "stack",
-                "<WARN>Unable to assign any IPv6 link local address, "
-                "disabling IPv6 protocol</>",
+                "<WARN>Unable to assign any IPv6 link local address, " "disabling IPv6 protocol</>",
             )
             self._ip6_support = False
             return
@@ -641,8 +626,7 @@ class PacketHandlerL2(
             for prefix, gateway in list(self._icmp6_ra__prefixes):
                 __debug__ and log(
                     "stack",
-                    f"Attempting IPv6 address auto configuration for RA "
-                    f"prefix {prefix}",
+                    f"Attempting IPv6 address auto configuration for RA " f"prefix {prefix}",
                 )
                 ip6_address = Ip6Host.from_eui64(
                     mac_address=self._mac_unicast,
@@ -662,22 +646,15 @@ class PacketHandlerL2(
         # acquire one using DHCP.
         if not self._ip4_host_candidate:
             if self._ip4_dhcp:
-                if ip4_host := Dhcp4Client(
-                    mac_address=self._mac_unicast
-                ).fetch():
+                if ip4_host := Dhcp4Client(mac_address=self._mac_unicast).fetch():
                     self._ip4_host_candidate.append(ip4_host)
 
         # Perform Duplicate Address Detection.
         for _ in range(3):
-            for ip4_unicast in [
-                ip4_host_candidate.address
-                for ip4_host_candidate in self._ip4_host_candidate
-            ]:
+            for ip4_unicast in [ip4_host_candidate.address for ip4_host_candidate in self._ip4_host_candidate]:
                 if ip4_unicast not in self._arp_probe__unicast_conflict:
                     self._send_arp_probe(ip4_unicast=ip4_unicast)
-                    __debug__ and log(
-                        "stack", f"Sent out ARP Probe for {ip4_unicast}"
-                    )
+                    __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
             time.sleep(random.uniform(1, 2))
 
         for ip4_unicast in self._arp_probe__unicast_conflict:
@@ -703,8 +680,7 @@ class PacketHandlerL2(
         if not self._ip4_host:
             __debug__ and log(
                 "stack",
-                "<WARN>Unable to assign any IPv4 address, disabling IPv4 "
-                "protocol</>",
+                "<WARN>Unable to assign any IPv4 address, disabling IPv4 " "protocol</>",
             )
             self._ip4_support = False
 
@@ -764,8 +740,7 @@ class PacketHandlerL2(
         if __debug__:
             log(
                 "stack",
-                "<INFO>Stack listening on unicast MAC address: "
-                f"{self._mac_unicast}</>",
+                "<INFO>Stack listening on unicast MAC address: " f"{self._mac_unicast}</>",
             )
             log(
                 "stack",
@@ -774,8 +749,7 @@ class PacketHandlerL2(
             )
             log(
                 "stack",
-                "<INFO>Stack listening on broadcast MAC address: "
-                f"{self._mac_broadcast}</>",
+                "<INFO>Stack listening on broadcast MAC address: " f"{self._mac_broadcast}</>",
             )
 
         self._ip_configuration_in_progress.release(2)
@@ -826,8 +800,7 @@ class PacketHandlerL3(
                 case _:
                     __debug__ and log(
                         "stack",
-                        f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} "
-                        "received, dropping packet</>",
+                        f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
                     )
 
     @override
@@ -846,8 +819,7 @@ class PacketHandlerL3(
         if not self._ip6_host:
             __debug__ and log(
                 "stack",
-                "<WARN>Unable to assign any IPv6 address, disabling IPv6 "
-                "protocol</>",
+                "<WARN>Unable to assign any IPv6 address, disabling IPv6 " "protocol</>",
             )
             self._ip6_support = False
 
@@ -865,8 +837,7 @@ class PacketHandlerL3(
         if not self._ip4_host:
             __debug__ and log(
                 "stack",
-                "<WARN>Unable to assign any IPv4 address, disabling IPv4 "
-                "protocol</>",
+                "<WARN>Unable to assign any IPv4 address, disabling IPv4 " "protocol</>",
             )
             self._ip4_support = False
 

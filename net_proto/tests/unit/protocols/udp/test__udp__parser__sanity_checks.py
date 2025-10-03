@@ -50,9 +50,7 @@ testcases: list[dict[str, Any]] = [
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {
-            "error_message": (
-                "The 'sport' field must be greater than 0. Got: 0"
-            ),
+            "error_message": ("The 'sport' field must be greater than 0. Got: 0"),
         },
     },
     {
@@ -63,9 +61,7 @@ testcases: list[dict[str, Any]] = [
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {
-            "error_message": (
-                "The 'dport' field must be greater than 0. Got: 0"
-            ),
+            "error_message": ("The 'dport' field must be greater than 0. Got: 0"),
         },
     },
 ]

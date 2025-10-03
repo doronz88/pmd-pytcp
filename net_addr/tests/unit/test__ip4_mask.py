@@ -434,9 +434,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    "The IPv4 mask format is invalid: '255.255.255.256'"
-                ),
+                "error_message": ("The IPv4 mask format is invalid: '255.255.255.256'"),
             },
         },
         {
@@ -447,9 +445,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    "The IPv4 mask format is invalid: '255.255.255,255'"
-                ),
+                "error_message": ("The IPv4 mask format is invalid: '255.255.255,255'"),
             },
         },
         {
@@ -460,9 +456,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    "The IPv4 mask format is invalid: '255.254.255.255'"
-                ),
+                "error_message": ("The IPv4 mask format is invalid: '255.254.255.255'"),
             },
         },
         {
@@ -473,9 +467,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    r"The IPv4 mask format is invalid: b'\xff\xff\xff'"
-                ),
+                "error_message": (r"The IPv4 mask format is invalid: b'\xff\xff\xff'"),
             },
         },
         {
@@ -486,9 +478,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    r"The IPv4 mask format is invalid: b'\xff\xff\xff\xff\xff'"
-                ),
+                "error_message": (r"The IPv4 mask format is invalid: b'\xff\xff\xff\xff\xff'"),
             },
         },
         {
@@ -510,9 +500,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    "The IPv4 mask format is invalid: 4294967296"
-                ),
+                "error_message": ("The IPv4 mask format is invalid: 4294967296"),
             },
         },
         {
@@ -523,9 +511,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (
-                    "The IPv4 mask format is invalid: Ip6Mask('/0')"
-                ),
+                "error_message": ("The IPv4 mask format is invalid: Ip6Mask('/0')"),
             },
         },
         {

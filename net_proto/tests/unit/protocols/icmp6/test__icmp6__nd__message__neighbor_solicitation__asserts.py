@@ -82,10 +82,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'code' field must be an Icmp6NdNeighborSolicitationCode. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'code' field must be an Icmp6NdNeighborSolicitationCode. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__nd__message__neighbor_solicitation__cksum__under_min(
@@ -104,10 +101,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__neighbor_solicitation__cksum__over_max(
@@ -126,10 +120,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__neighbor_solicitation__target_address__not_Ip6Address(
@@ -147,10 +138,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'target_address' field must be an Ip6Address. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'target_address' field must be an Ip6Address. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__nd__message__neighbor_solicitation__options__not_Icmp6NdOptions(
@@ -168,10 +156,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'options' field must be an Icmp6NdOptions. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'options' field must be an Icmp6NdOptions. " f"Got: {type(value)!r}"),
         )
 
 
@@ -192,8 +177,7 @@ class TestIcmp6NdMessageNeighborSolicitationParserAsserts(TestCase):
 
         with self.assertRaises(AssertionError) as error:
             Icmp6NdMessageNeighborSolicitation.from_buffer(
-                b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x00",
+                b"\xff\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x00",
             )
 
         self.assertEqual(

@@ -156,8 +156,7 @@ def cli(
             )
         case _:
             click.secho(
-                f"Invalid interface type '{stack__interface[:3]}'. "
-                "Only 'tap' and 'tun' interfaces are supported.",
+                f"Invalid interface type '{stack__interface[:3]}'. " "Only 'tap' and 'tun' interfaces are supported.",
                 fg="red",
             )
             ctx.exit(1)
@@ -183,19 +182,12 @@ def cli(
         stack.start()
         for subsystem in subsystems:
             if stack__ip6_support:
-                subsystem.stack_ip6_address = (
-                    stack__ip6_host.address if stack__ip6_host else Ip6Address()
-                )
+                subsystem.stack_ip6_address = stack__ip6_host.address if stack__ip6_host else Ip6Address()
             if stack__ip4_support:
-                subsystem.stack_ip4_address = (
-                    stack__ip4_host.address if stack__ip4_host else Ip4Address()
-                )
+                subsystem.stack_ip4_address = stack__ip4_host.address if stack__ip4_host else Ip4Address()
             subsystem.start()
 
-        while (
-            any(subsystem.is_alive for subsystem in subsystems if subsystem)
-            or not subsystems
-        ):
+        while any(subsystem.is_alive for subsystem in subsystems if subsystem) or not subsystems:
             time.sleep(1)
 
     except KeyboardInterrupt:

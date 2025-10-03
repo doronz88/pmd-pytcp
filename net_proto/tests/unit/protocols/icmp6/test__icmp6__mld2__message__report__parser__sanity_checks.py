@@ -50,9 +50,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__hop": 64,
             },
             "_results": {
-                "error_message": (
-                    "MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. Got: 64"
-                ),
+                "error_message": ("MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. Got: 64"),
             },
         },
         {

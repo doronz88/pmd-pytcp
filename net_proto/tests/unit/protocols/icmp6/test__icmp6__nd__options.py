@@ -59,8 +59,7 @@ from net_proto import (
             "_results": {
                 "__len__": 32,
                 "__str__": (
-                    "slla 00:00:00:00:00:00, slla 00:00:00:00:00:00, "
-                    "slla 00:00:00:00:00:00, slla 00:00:00:00:00:00"
+                    "slla 00:00:00:00:00:00, slla 00:00:00:00:00:00, " "slla 00:00:00:00:00:00, slla 00:00:00:00:00:00"
                 ),
                 "__repr__": (
                     "Icmp6NdOptions(options=[Icmp6NdOptionSlla(slla=MacAddress("
@@ -171,9 +170,7 @@ class TestIcmp6NdOptionsParser(TestCase):
         object.
         """
 
-        icmp6_nd_options = Icmp6NdOptions.from_buffer(
-            *self._args, **self._kwargs
-        )
+        icmp6_nd_options = Icmp6NdOptions.from_buffer(*self._args, **self._kwargs)
 
         self.assertEqual(
             icmp6_nd_options,

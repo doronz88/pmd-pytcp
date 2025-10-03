@@ -94,9 +94,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         init=False,
         default=Icmp6Type.ND__ROUTER_ADVERTISEMENT,
     )
-    code: Icmp6NdRouterAdvertisementCode = (
-        Icmp6NdRouterAdvertisementCode.DEFAULT
-    )
+    code: Icmp6NdRouterAdvertisementCode = Icmp6NdRouterAdvertisementCode.DEFAULT
     cksum: int = 0
 
     hop: int
@@ -114,48 +112,31 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         """
 
         assert isinstance(self.code, Icmp6NdRouterAdvertisementCode), (
-            f"The 'code' field must be an Icmp6NdRouterAdvertisementCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp6NdRouterAdvertisementCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
-        assert is_uint8(self.hop), (
-            f"The 'hop' field must be a 8-bit unsigned integer. "
-            f"Got: {self.hop!r}"
-        )
+        assert is_uint8(self.hop), f"The 'hop' field must be a 8-bit unsigned integer. " f"Got: {self.hop!r}"
 
-        assert isinstance(self.flag_m, bool), (
-            f"The 'flag_m' field must be a boolean. "
-            f"Got: {type(self.flag_m)!r}"
-        )
+        assert isinstance(self.flag_m, bool), f"The 'flag_m' field must be a boolean. " f"Got: {type(self.flag_m)!r}"
 
-        assert isinstance(self.flag_o, bool), (
-            f"The 'flag_o' field must be a boolean. "
-            f"Got: {type(self.flag_o)!r}"
-        )
+        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. " f"Got: {type(self.flag_o)!r}"
 
         assert is_uint16(self.router_lifetime), (
-            f"The 'router_lifetime' field must be a 16-bit unsigned integer. "
-            f"Got: {self.router_lifetime!r}"
+            f"The 'router_lifetime' field must be a 16-bit unsigned integer. " f"Got: {self.router_lifetime!r}"
         )
 
         assert is_uint32(self.reachable_time), (
-            f"The 'reachable_time' field must be a 32-bit unsigned integer. "
-            f"Got: {self.reachable_time!r}"
+            f"The 'reachable_time' field must be a 32-bit unsigned integer. " f"Got: {self.reachable_time!r}"
         )
 
         assert is_uint32(self.retrans_timer), (
-            f"The 'retrans_timer' field must be a 32-bit unsigned integer. "
-            f"Got: {self.retrans_timer!r}"
+            f"The 'retrans_timer' field must be a 32-bit unsigned integer. " f"Got: {self.retrans_timer!r}"
         )
 
         assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. "
-            f"Got: {type(self.options)!r}"
+            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
         )
 
     @override
@@ -219,9 +200,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 ND Router Advertisement message sanity after
         parsing it.
@@ -229,8 +208,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
 
         if not (ip6__hop == 255):
             raise Icmp6SanityError(
-                "ND Router Advertisement - [RFC 4861] The 'ip6__hop' field "
-                f"must be 255. Got: {ip6__hop!r}",
+                "ND Router Advertisement - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
             )
 
         if not (ip6__src.is_link_local):
@@ -255,9 +233,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         before parsing it.
         """
 
-        if not (
-            ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)
-        ):
+        if not (ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)):
             raise Icmp6IntegrityError(
                 "The condition 'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen "
                 f"<= len(frame)' must be met. Got: {ICMP6__ND__ROUTER_ADVERTISEMENT__LEN=}, "
@@ -290,11 +266,8 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             buffer[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT), (
+            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
         )
 
         return cls(
@@ -306,9 +279,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             router_lifetime=router_lifetime,
             reachable_time=reachable_time,
             retrans_timer=retrans_timer,
-            options=Icmp6NdOptions.from_buffer(
-                buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]
-            ),
+            options=Icmp6NdOptions.from_buffer(buffer[ICMP6__ND__ROUTER_ADVERTISEMENT__LEN:]),
         )
 
     @override

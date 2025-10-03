@@ -66,24 +66,14 @@ class Icmp6MessageUnknown(Icmp6Message):
         Validate the ICMPv6 unknown message fields.
         """
 
-        assert isinstance(self.type, Icmp6Type), (
-            f"The 'type' field must be an Icmp6Type. "
-            f"Got: {type(self.type)!r}"
-        )
+        assert isinstance(self.type, Icmp6Type), f"The 'type' field must be an Icmp6Type. " f"Got: {type(self.type)!r}"
 
-        assert isinstance(self.code, Icmp6Code), (
-            f"The 'code' field must be an Icmp6Code. "
-            f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(self.code, Icmp6Code), f"The 'code' field must be an Icmp6Code. " f"Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
         assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be a bytes or memoryview. "
-            f"Got: {type(self.data)!r}"
+            f"The 'data' field must be a bytes or memoryview. " f"Got: {type(self.data)!r}"
         )
 
     @override
@@ -138,9 +128,7 @@ class Icmp6MessageUnknown(Icmp6Message):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 unknown message sanity after parsing it.
         """
@@ -163,13 +151,10 @@ class Icmp6MessageUnknown(Icmp6Message):
         Initialize the ICMPv6 unknown message from bytes.
         """
 
-        type, code, cksum = struct.unpack(
-            ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN]
-        )
+        type, code, cksum = struct.unpack(ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN])
 
         assert (received_type := type) not in Icmp6Type.get_known_values(), (
-            "The 'type' field must not be known. "
-            f"Got: {Icmp6Type.from_int(received_type)!r}"
+            "The 'type' field must not be known. " f"Got: {Icmp6Type.from_int(received_type)!r}"
         )
 
         return cls(

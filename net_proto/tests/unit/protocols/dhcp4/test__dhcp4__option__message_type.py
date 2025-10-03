@@ -91,9 +91,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Discover",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DISCOVER: 1>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DISCOVER: 1>)"),
                 "__bytes__": b"\x35\x01\x01",
                 "message_type": Dhcp4MessageType.DISCOVER,
             },
@@ -107,9 +105,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Offer",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.OFFER: 2>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.OFFER: 2>)"),
                 "__bytes__": b"\x35\x01\x02",
                 "message_type": Dhcp4MessageType.OFFER,
             },
@@ -123,9 +119,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Request",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.REQUEST: 3>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.REQUEST: 3>)"),
                 "__bytes__": b"\x35\x01\x03",
                 "message_type": Dhcp4MessageType.REQUEST,
             },
@@ -139,9 +133,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Decline",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DECLINE: 4>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.DECLINE: 4>)"),
                 "__bytes__": b"\x35\x01\x04",
                 "message_type": Dhcp4MessageType.DECLINE,
             },
@@ -155,9 +147,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Ack",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.ACK: 5>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.ACK: 5>)"),
                 "__bytes__": b"\x35\x01\x05",
                 "message_type": Dhcp4MessageType.ACK,
             },
@@ -171,9 +161,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Nak",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.NAK: 6>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.NAK: 6>)"),
                 "__bytes__": b"\x35\x01\x06",
                 "message_type": Dhcp4MessageType.NAK,
             },
@@ -187,9 +175,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Release",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.RELEASE: 7>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.RELEASE: 7>)"),
                 "__bytes__": b"\x35\x01\x07",
                 "message_type": Dhcp4MessageType.RELEASE,
             },
@@ -203,9 +189,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "message_type Inform",
-                "__repr__": (
-                    "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.INFORM: 8>)"
-                ),
+                "__repr__": ("Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.INFORM: 8>)"),
                 "__bytes__": b"\x35\x01\x08",
                 "message_type": Dhcp4MessageType.INFORM,
             },
@@ -294,9 +278,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.DISCOVER
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
             },
         },
         {
@@ -306,9 +288,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.OFFER
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.OFFER),
             },
         },
         {
@@ -318,9 +298,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.REQUEST
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.REQUEST),
             },
         },
         {
@@ -330,9 +308,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.DECLINE
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DECLINE),
             },
         },
         {
@@ -342,9 +318,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.ACK
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.ACK),
             },
         },
         {
@@ -354,9 +328,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.NAK
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.NAK),
             },
         },
         {
@@ -366,9 +338,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.RELEASE
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.RELEASE),
             },
         },
         {
@@ -378,9 +348,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionMessageType(
-                    message_type=Dhcp4MessageType.INFORM
-                ),
+                "option": Dhcp4OptionMessageType(message_type=Dhcp4MessageType.INFORM),
             },
         },
         {
@@ -391,10 +359,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Message Type option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 Message Type option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -420,8 +385,7 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
             "_results": {
                 "error": Dhcp4IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Message Type option length value must be "
-                    "3 bytes. Got: 2"
+                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Message Type option length value must be " "3 bytes. Got: 2"
                 ),
             },
         },
@@ -458,9 +422,7 @@ class TestDhcp4OptionMessageTypeParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionMessageType.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionMessageType.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

@@ -86,19 +86,19 @@ class PacketHandlerArpTx(ABC):
         Handle outbound ARP packets.
         """
 
-        self._packet_stats_tx.inc("arp__pre_assemble")
+        self._packet_stats_tx.arp__pre_assemble += 1
 
         # Check if IPv4 protocol support is enabled, if not then silently
         # drop the packet.
         if not self._ip4_support:
-            self._packet_stats_tx.inc("arp__no_proto_support__drop")
+            self._packet_stats_tx.arp__no_proto_support__drop += 1
             return TxStatus.DROPED__ARP__NO_PROTOCOL_SUPPORT
 
         match arp__oper:
             case ArpOperation.REQUEST:
-                self._packet_stats_tx.inc("arp__op_request__send")
+                self._packet_stats_tx.arp__op_request__send += 1
             case ArpOperation.REPLY:
-                self._packet_stats_tx.inc("arp__op_reply__send")
+                self._packet_stats_tx.arp__op_reply__send += 1
             case _:
                 raise ValueError(f"Invalid ARP operation: {arp__oper}")
 
@@ -142,8 +142,7 @@ class PacketHandlerArpTx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out ARP Announcement for {ip4_unicast}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out ARP Announcement for {ip4_unicast}, " f"tx_status: {tx_status}",
             )
 
     def _send_gratuitous_arp(self, *, ip4_unicast: Ip4Address) -> None:
@@ -169,8 +168,7 @@ class PacketHandlerArpTx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out Gratitous ARP for {ip4_unicast}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out Gratitous ARP for {ip4_unicast}, " f"tx_status: {tx_status}",
             )
 
     def _send_arp_probe(self, *, ip4_unicast: Ip4Address) -> None:
@@ -196,8 +194,7 @@ class PacketHandlerArpTx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out ARP probe for {ip4_unicast}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out ARP probe for {ip4_unicast}, " f"tx_status: {tx_status}",
             )
 
     def _send_arp_reply(
@@ -231,8 +228,7 @@ class PacketHandlerArpTx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out ARP Reply for {arp__spa} to {arp__tpa}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out ARP Reply for {arp__spa} to {arp__tpa}, " f"tx_status: {tx_status}",
             )
 
     def send_arp_request(self, *, arp__tpa: Ip4Address) -> None:
@@ -245,9 +241,7 @@ class PacketHandlerArpTx(ABC):
             ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
             arp__oper=ArpOperation.REQUEST,
             arp__sha=self._mac_unicast,
-            arp__spa=(
-                self._ip4_unicast[0] if self._ip4_unicast else Ip4Address()
-            ),
+            arp__spa=(self._ip4_unicast[0] if self._ip4_unicast else Ip4Address()),
             arp__tha=MacAddress(),
             arp__tpa=arp__tpa,
         )
@@ -260,6 +254,5 @@ class PacketHandlerArpTx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                f"Failed to send out ARP Request for {arp__tpa}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out ARP Request for {arp__tpa}, " f"tx_status: {tx_status}",
             )

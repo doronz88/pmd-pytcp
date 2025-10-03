@@ -116,15 +116,11 @@ class NdCache(Subsystem):
                 continue
 
             # If entry age is over maximum age then discard the entry.
-            if (
-                int(time.time()) - self._nd_cache[ip6_address].create_time
-                > stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE
-            ):
+            if int(time.time()) - self._nd_cache[ip6_address].create_time > stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE:
                 mac_address = self._nd_cache.pop(ip6_address).mac_address
                 __debug__ and log(
                     "nd-c",
-                    "Discarded expir ICMPv6 ND Cache entry - "
-                    f"{ip6_address} -> {mac_address}",
+                    "Discarded expir ICMPv6 ND Cache entry - " f"{ip6_address} -> {mac_address}",
                 )
 
             # If entry age is close to maximum age but the entry has been
@@ -132,13 +128,10 @@ class NdCache(Subsystem):
             # to refresh it.
             elif (
                 int(time.time()) - self._nd_cache[ip6_address].create_time
-                > stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE
-                - stack.ICMP6__ND__CACHE__ENTRY_REFRESH_TIME
+                > stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE - stack.ICMP6__ND__CACHE__ENTRY_REFRESH_TIME
             ) and self._nd_cache[ip6_address].hit_count:
                 self._nd_cache[ip6_address].hit_count__reset()
-                stack.packet_handler.send_icmp6_neighbor_solicitation(
-                    icmp6_ns_target_address=ip6_address
-                )
+                stack.packet_handler.send_icmp6_neighbor_solicitation(icmp6_ns_target_address=ip6_address)
                 __debug__ and log(
                     "nd-c",
                     f"Trying to refresh expiring ICMPv6 ND Cache entry for "
@@ -161,8 +154,7 @@ class NdCache(Subsystem):
 
         __debug__ and log(
             "nd-c",
-            f"<INFO>Adding/refreshing ARP cache entry from direct reply - "
-            f"{ip6_address} -> {mac_address}</>",
+            f"<INFO>Adding/refreshing ARP cache entry from direct reply - " f"{ip6_address} -> {mac_address}</>",
         )
 
         self._nd_cache[ip6_address] = CacheEntry(mac_address=mac_address)
@@ -184,11 +176,8 @@ class NdCache(Subsystem):
 
         __debug__ and log(
             "nd-c",
-            f"Unable to find entry for {ip6_address}, sending ICMPv6 "
-            "Neighbor Solicitation message",
+            f"Unable to find entry for {ip6_address}, sending ICMPv6 " "Neighbor Solicitation message",
         )
-        stack.packet_handler.send_icmp6_neighbor_solicitation(
-            icmp6_ns_target_address=ip6_address
-        )
+        stack.packet_handler.send_icmp6_neighbor_solicitation(icmp6_ns_target_address=ip6_address)
 
         return None

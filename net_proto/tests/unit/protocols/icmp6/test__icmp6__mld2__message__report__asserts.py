@@ -83,10 +83,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'code' field must be an Icmp6Mld2ReportCode. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'code' field must be an Icmp6Mld2ReportCode. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__mld2__message__report__cksum__under_min(self) -> None:
@@ -103,10 +100,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__mld2__message__report__cksum__over_max(self) -> None:
@@ -123,10 +117,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__mld2__message__report__records_len__over_max(self) -> None:
@@ -142,11 +133,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         multicast_address_report = Icmp6Mld2MulticastAddressRecord(
             type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
             multicast_address=Ip6Address("ff02::1"),
-            aux_data=b"X"
-            * (
-                records_len
-                - 20  # 20 is the length of the record except aux_data.
-            ),
+            aux_data=b"X" * (records_len - 20),  # 20 is the length of the record except aux_data.
         )
 
         self._kwargs["records"] = [multicast_address_report]
@@ -156,10 +143,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'records' field length must be less than or equal "
-                f"to {records_len_max}. Got: {records_len}"
-            ),
+            ("The 'records' field length must be less than or equal " f"to {records_len_max}. Got: {records_len}"),
         )
 
 
@@ -175,14 +159,9 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage.from_buffer(
-                b"\xff\x00\xff\x00\x00\x00\x00\x00"
-            )
+            Icmp6Mld2ReportMessage.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp6Type.MLD2__REPORT: 143>. "
-                "Got: <Icmp6Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp6Type.MLD2__REPORT: 143>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )

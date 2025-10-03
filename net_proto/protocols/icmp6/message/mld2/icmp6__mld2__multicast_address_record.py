@@ -129,19 +129,16 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         """
 
         assert self.multicast_address.is_multicast, (
-            f"The 'multicast_address' field must be a multicast address. "
-            f"Got: {self.multicast_address!r}"
+            f"The 'multicast_address' field must be a multicast address. " f"Got: {self.multicast_address!r}"
         )
 
         for address in self.source_addresses:
             assert address.is_unicast, (
-                f"The 'source_addresses' field must contain only unicast addresses. "
-                f"Got: {address!r}"
+                f"The 'source_addresses' field must contain only unicast addresses. " f"Got: {address!r}"
             )
 
         assert is_4_byte_alligned(len(self.aux_data)), (
-            f"The 'aux_data' field must be 4-byte aligned. "
-            f"Got: {len(self.aux_data)!r}"
+            f"The 'aux_data' field must be 4-byte aligned. " f"Got: {len(self.aux_data)!r}"
         )
 
     @override
@@ -151,9 +148,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         """
 
         return (
-            ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
-            + IP6__ADDRESS_LEN * self.number_of_sources
-            + self.aux_data_len
+            ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN + IP6__ADDRESS_LEN * self.number_of_sources + self.aux_data_len
         )
 
     @override
@@ -233,32 +228,24 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         Initialize the ICMPv6 MLDv2 Multicast Address Record from bytes.
         """
 
-        type, aux_data_len, number_of_sources, multicast_address = (
-            struct.unpack(
-                ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
-                buffer[0:ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN],
-            )
+        type, aux_data_len, number_of_sources, multicast_address = struct.unpack(
+            ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
+            buffer[0:ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN],
         )
 
         source_addresses = [
             Ip6Address(
                 buffer[
                     ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
-                    + IP6__ADDRESS_LEN
-                    * n : ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
+                    + IP6__ADDRESS_LEN * n : ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
                     + IP6__ADDRESS_LEN * (n + 1)
                 ]
             )
             for n in range(number_of_sources)
         ]
 
-        aux_data_offset = (
-            ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
-            + IP6__ADDRESS_LEN * number_of_sources
-        )
-        aux_data = buffer[
-            aux_data_offset : aux_data_offset + (aux_data_len << 2)
-        ]
+        aux_data_offset = ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN + IP6__ADDRESS_LEN * number_of_sources
+        aux_data = buffer[aux_data_offset : aux_data_offset + (aux_data_len << 2)]
 
         return cls(
             type=Icmp6Mld2MulticastAddressRecordType.from_int(type),

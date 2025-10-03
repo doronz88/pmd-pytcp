@@ -174,10 +174,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Sackperm option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the TCP Sackperm option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -203,8 +200,7 @@ class TestTcpOptionSackpermAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length value must be "
-                    "2 bytes. Got: 1"
+                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length value must be " "2 bytes. Got: 1"
                 ),
             },
         },

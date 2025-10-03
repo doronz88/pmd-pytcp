@@ -125,15 +125,13 @@ class Icmp6NdOptions(ProtoOptions):
         while offset < plen:
             if (value := frame[offset + 1] << 3) < 8:
                 raise Icmp6IntegrityError(
-                    f"The ICMPv6 ND option length must be greater than or equal to 8."
-                    f"Got: {value!r}.",
+                    f"The ICMPv6 ND option length must be greater than or equal to 8." f"Got: {value!r}.",
                 )
 
             offset += frame[offset + 1] << 3
             if offset > plen:
                 raise Icmp6IntegrityError(
-                    f"The ICMPv6 ND option length must not extend past the header "
-                    f"length. Got: {offset=}, {plen=}",
+                    f"The ICMPv6 ND option length must not extend past the header " f"length. Got: {offset=}, {plen=}",
                 )
 
     @override
@@ -149,19 +147,13 @@ class Icmp6NdOptions(ProtoOptions):
         while offset < len(buffer):
             match Icmp6NdOptionType.from_bytes(buffer[offset : offset + 1]):
                 case Icmp6NdOptionType.SLLA:
-                    options.append(
-                        Icmp6NdOptionSlla.from_buffer(buffer[offset:])
-                    )
+                    options.append(Icmp6NdOptionSlla.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.TLLA:
-                    options.append(
-                        Icmp6NdOptionTlla.from_buffer(buffer[offset:])
-                    )
+                    options.append(Icmp6NdOptionTlla.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.PI:
                     options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
                 case _:
-                    options.append(
-                        Icmp6NdOptionUnknown.from_buffer(buffer[offset:])
-                    )
+                    options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
 
             offset += options[-1].len
 

@@ -228,8 +228,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         {
             "_description": "ICMPv4 Destination Unreachable message, non-empty payload.",
             "_args": [
-                b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
-                b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
@@ -278,11 +277,7 @@ class TestIcmp4MessageDestinationUnreachableParser(TestCasePacketRxIp4):
         object.__setattr__(
             icmp4_parser.message,
             "data",
-            bytes(
-                cast(
-                    Icmp4MessageDestinationUnreachable, icmp4_parser.message
-                ).data
-            ),
+            bytes(cast(Icmp4MessageDestinationUnreachable, icmp4_parser.message).data),
         )
 
         self.assertEqual(

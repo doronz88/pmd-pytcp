@@ -80,10 +80,7 @@ class Ip6Frag(Proto, Ip6FragHeaderProperties):
         Get the IPv6 Frag packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"payload={self._payload!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, " f"payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

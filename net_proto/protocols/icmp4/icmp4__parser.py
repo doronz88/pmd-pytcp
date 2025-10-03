@@ -84,9 +84,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
         Validate integrity of the ICMPv4 packet before parsing it.
         """
 
-        if not (
-            ICMP4__HEADER__LEN <= self._ip4__payload_len <= len(self._frame)
-        ):
+        if not (ICMP4__HEADER__LEN <= self._ip4__payload_len <= len(self._frame)):
             raise Icmp4IntegrityError(
                 "The condition 'ICMP4__HEADER__LEN <= self._ip4__payload_len <= "
                 f"len(self._frame)' must be met. Got: {ICMP4__HEADER__LEN=}, "
@@ -95,9 +93,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
 
         match Icmp4Type.from_int(self._frame[0]):
             case Icmp4Type.ECHO_REPLY:
-                Icmp4MessageEchoReply.validate_integrity(
-                    frame=self._frame, ip4__payload_len=self._ip4__payload_len
-                )
+                Icmp4MessageEchoReply.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
 
             case Icmp4Type.DESTINATION_UNREACHABLE:
                 Icmp4MessageDestinationUnreachable.validate_integrity(
@@ -105,14 +101,10 @@ class Icmp4Parser(Icmp4, ProtoParser):
                 )
 
             case Icmp4Type.ECHO_REQUEST:
-                Icmp4MessageEchoRequest.validate_integrity(
-                    frame=self._frame, ip4__payload_len=self._ip4__payload_len
-                )
+                Icmp4MessageEchoRequest.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
 
             case _:
-                Icmp4MessageUnknown.validate_integrity(
-                    frame=self._frame, ip4__payload_len=self._ip4__payload_len
-                )
+                Icmp4MessageUnknown.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
 
         if inet_cksum(self._frame[: self._ip4__payload_len]):
             raise Icmp4IntegrityError(
@@ -130,9 +122,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
                 self._message = Icmp4MessageEchoReply.from_buffer(self._frame)
 
             case Icmp4Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp4MessageDestinationUnreachable.from_buffer(
-                    self._frame
-                )
+                self._message = Icmp4MessageDestinationUnreachable.from_buffer(self._frame)
 
             case Icmp4Type.ECHO_REQUEST:
                 self._message = Icmp4MessageEchoRequest.from_buffer(self._frame)

@@ -185,9 +185,7 @@ class TcpOptionSack(TcpOption):
             )
 
         # Raise integrity error when the option length doesn't align properly with block size.
-        if (
-            value := buffer[1] - TCP__OPTION__LEN
-        ) % TCP__OPTION__SACK__BLOCK_LEN:
+        if (value := buffer[1] - TCP__OPTION__LEN) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
                 "The TCP Sack option blocks length value must be a multiple of "
                 f"{TCP__OPTION__SACK__BLOCK_LEN}. Got: {value!r}"
@@ -202,14 +200,12 @@ class TcpOptionSack(TcpOption):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Sack option must be "
-            f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the TCP Sack option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(TcpOptionType.SACK), (
-            f"The TCP Sack option type must be {TcpOptionType.SACK!r}. "
-            f"Got: {TcpOptionType.from_int(value)!r}"
+            f"The TCP Sack option type must be {TcpOptionType.SACK!r}. " f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
@@ -217,17 +213,9 @@ class TcpOptionSack(TcpOption):
         return cls(
             blocks=[
                 TcpSackBlock(
-                    left=int.from_bytes(
-                        buffer[
-                            offset : offset + TCP__OPTION__SACK__BLOCK_LEN // 2
-                        ]
-                    ),
+                    left=int.from_bytes(buffer[offset : offset + TCP__OPTION__SACK__BLOCK_LEN // 2]),
                     right=int.from_bytes(
-                        buffer[
-                            offset
-                            + TCP__OPTION__SACK__BLOCK_LEN // 2 : offset
-                            + TCP__OPTION__SACK__BLOCK_LEN
-                        ]
+                        buffer[offset + TCP__OPTION__SACK__BLOCK_LEN // 2 : offset + TCP__OPTION__SACK__BLOCK_LEN]
                     ),
                 )
                 for offset in range(

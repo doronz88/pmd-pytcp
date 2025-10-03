@@ -71,8 +71,7 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
 
         if len(self._frame) < DHCP4__HEADER__LEN:
             raise Dhcp4IntegrityError(
-                "The minimum packet length must be "
-                f"{DHCP4__HEADER__LEN} bytes, got {len(self._frame)} bytes."
+                "The minimum packet length must be " f"{DHCP4__HEADER__LEN} bytes, got {len(self._frame)} bytes."
             )
 
     @override
@@ -82,9 +81,7 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         """
 
         self._header = Dhcp4Header.from_buffer(self._frame)
-        self._options = Dhcp4Options.from_buffer(
-            self._frame[len(self._header) :]
-        )
+        self._options = Dhcp4Options.from_buffer(self._frame[len(self._header) :])
 
     @override
     def _validate_sanity(self) -> None:

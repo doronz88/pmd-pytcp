@@ -65,20 +65,11 @@ class Icmp4MessageUnknown(Icmp4Message):
         Validate the ICMPv4 unknown message fields.
         """
 
-        assert isinstance(self.type, Icmp4Type), (
-            f"The 'type' field must be an Icmp4Type. "
-            f"Got: {type(self.type)!r}"
-        )
+        assert isinstance(self.type, Icmp4Type), f"The 'type' field must be an Icmp4Type. " f"Got: {type(self.type)!r}"
 
-        assert isinstance(self.code, Icmp4Code), (
-            f"The 'code' field must be an Icmp4Code. "
-            f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(self.code, Icmp4Code), f"The 'code' field must be an Icmp4Code. " f"Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
         assert isinstance(
             self.data, (bytes, bytearray, memoryview)
@@ -158,13 +149,10 @@ class Icmp4MessageUnknown(Icmp4Message):
         Initialize the ICMPv4 unknown message from buffer.
         """
 
-        type, code, cksum = struct.unpack(
-            ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN]
-        )
+        type, code, cksum = struct.unpack(ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN])
 
         assert (received_type := type) not in Icmp4Type.get_known_values(), (
-            "The 'type' field must not be known. "
-            f"Got: {Icmp4Type.from_int(received_type)!r}"
+            "The 'type' field must not be known. " f"Got: {Icmp4Type.from_int(received_type)!r}"
         )
 
         return cls(

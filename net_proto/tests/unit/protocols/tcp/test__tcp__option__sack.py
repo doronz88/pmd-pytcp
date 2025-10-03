@@ -77,8 +77,7 @@ class TestTcpOptionSackAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} "
-            f"elements. Got: {value}",
+            f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value}",
         )
 
 
@@ -109,10 +108,7 @@ class TestTcpOptionSackAsserts(TestCase):
             "_results": {
                 "__len__": 10,
                 "__str__": "sack [4294967295-4294967295]",
-                "__repr__": (
-                    "TcpOptionSack(blocks=[TcpSackBlock(left=4294967295, "
-                    "right=4294967295)])"
-                ),
+                "__repr__": ("TcpOptionSack(blocks=[TcpSackBlock(left=4294967295, " "right=4294967295)])"),
                 "__bytes__": b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff",
                 "type": TcpOptionType.SACK,
                 "length": TCP__OPTION__LEN + 8 * 1,
@@ -348,10 +344,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Sack option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the TCP Sack option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -363,8 +356,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The TCP Sack option type must be {TcpOptionType.SACK!r}. "
-                    f"Got: {TcpOptionType.from_int(255)!r}"
+                    f"The TCP Sack option type must be {TcpOptionType.SACK!r}. " f"Got: {TcpOptionType.from_int(255)!r}"
                 ),
             },
         },
@@ -392,8 +384,7 @@ class TestTcpOptionSackAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sack option blocks length value "
-                    "must be a multiple of 8. Got: 9"
+                    "[INTEGRITY ERROR][TCP] The TCP Sack option blocks length value " "must be a multiple of 8. Got: 9"
                 ),
             },
         },

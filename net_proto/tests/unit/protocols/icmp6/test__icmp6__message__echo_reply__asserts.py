@@ -83,10 +83,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'code' field must be an Icmp6EchoReplyCode. "
-                f"Got: {type(value)!r}"
-            ),
+            (f"The 'code' field must be an Icmp6EchoReplyCode. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__message__echo_reply__cksum__under_min(self) -> None:
@@ -103,10 +100,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__cksum__over_max(self) -> None:
@@ -123,10 +117,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__id__under_min(self) -> None:
@@ -143,10 +134,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'id' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__id__over_max(self) -> None:
@@ -163,10 +151,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'id' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__seq__under_min(self) -> None:
@@ -183,10 +168,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'seq' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__seq__over_max(self) -> None:
@@ -203,10 +185,7 @@ class TestIcmp6MessageEchoReplyAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                f"The 'seq' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            (f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__message__echo_reply__data_len__over_max(self) -> None:
@@ -242,14 +221,9 @@ class TestIcmp6MessageEchoReplyParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageEchoReply.from_buffer(
-                b"\xff\x00\xff\x00\x00\x00\x00\x00"
-            )
+            Icmp6MessageEchoReply.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp6Type.ECHO_REPLY: 129>. "
-                "Got: <Icmp6Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp6Type.ECHO_REPLY: 129>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )

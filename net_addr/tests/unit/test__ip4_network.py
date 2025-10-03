@@ -273,9 +273,7 @@ class TestNetAddrIp4Network(TestCase):
                 self._ip4_network
                 == Ip4Network(
                     (
-                        Ip4Address(
-                            (int(self._ip4_network.address) - 1) & 0xFF_FF_FF_FF
-                        ),
+                        Ip4Address((int(self._ip4_network.address) - 1) & 0xFF_FF_FF_FF),
                         self._ip4_network.mask,
                     ),
                 ),
@@ -370,9 +368,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": (
-                    "The IPv4 network format is invalid: '192.168.1.0//24'"
-                ),
+                "error_message": ("The IPv4 network format is invalid: '192.168.1.0//24'"),
             },
         },
         {
@@ -383,9 +379,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": (
-                    "The IPv4 network format is invalid: '192.168.1./24'"
-                ),
+                "error_message": ("The IPv4 network format is invalid: '192.168.1./24'"),
             },
         },
         {
@@ -396,9 +390,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": (
-                    "The IPv4 network format is invalid: '192.168.1.0/33'"
-                ),
+                "error_message": ("The IPv4 network format is invalid: '192.168.1.0/33'"),
             },
         },
         {
@@ -409,9 +401,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": (
-                    "The IPv4 network format is invalid: '192.168.1.0 128.255.255.255'"
-                ),
+                "error_message": ("The IPv4 network format is invalid: '192.168.1.0 128.255.255.255'"),
             },
         },
     ]

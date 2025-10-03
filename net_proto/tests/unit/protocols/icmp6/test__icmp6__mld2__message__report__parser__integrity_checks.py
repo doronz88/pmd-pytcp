@@ -45,10 +45,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 @parameterized_class(
     [
         {
-            "_description": (
-                "ICMPv6 MLDv2 message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
-            ),
+            "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."),
             "_args": [b"\x8f\x00\x70"],
             "_mocked_values": {
                 "ip6__dlen": 3,
@@ -63,8 +60,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 MLDv2 Report message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 MLDv2 Report message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
             "_args": [b"\x8f\x00\x70\xff\x00\x00\x00"],
             "_mocked_values": {
@@ -79,10 +75,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 message, "
-                "the 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen' condition not met."
-            ),
+            "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen' condition not met."),
             "_args": [b"\x8f\x00\x70\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__dlen": 7,
@@ -116,9 +109,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "ICMPv6 MLDv2 message, the 'record_offset == ip6__dlen' condition not met."
-            ),
+            "_description": ("ICMPv6 MLDv2 message, the 'record_offset == ip6__dlen' condition not met."),
             "_args": [
                 b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
@@ -130,8 +121,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
             "_results": {
                 "error_message": (
-                    "The condition 'record_offset == ip6__dlen' is not met. "
-                    "Got: record_offset=60, ip6__dlen=59"
+                    "The condition 'record_offset == ip6__dlen' is not met. " "Got: record_offset=60, ip6__dlen=59"
                 ),
             },
         },

@@ -73,25 +73,15 @@ class Ip6FragHeader(ProtoStruct):
         Validate the IPv6 Frag header fields.
         """
 
-        assert isinstance(
-            self.next, IpProto
-        ), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
+        assert isinstance(self.next, IpProto), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
 
-        assert is_uint13(
-            self.offset
-        ), f"The 'offset' field must be a 13-bit unsigned integer. Got: {self.offset!r}"
+        assert is_uint13(self.offset), f"The 'offset' field must be a 13-bit unsigned integer. Got: {self.offset!r}"
 
-        assert is_8_byte_alligned(
-            self.offset
-        ), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
+        assert is_8_byte_alligned(self.offset), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
 
-        assert isinstance(
-            self.flag_mf, bool
-        ), f"The 'flag_mf' field must be a boolean. Got: {type(self.flag_mf)!r}"
+        assert isinstance(self.flag_mf, bool), f"The 'flag_mf' field must be a boolean. Got: {type(self.flag_mf)!r}"
 
-        assert is_uint32(
-            self.id
-        ), f"The 'id' field must be a 32-bit unsigned integer. Got: {self.id!r}"
+        assert is_uint32(self.id), f"The 'id' field must be a 32-bit unsigned integer. Got: {self.id!r}"
 
     @override
     def __len__(self) -> int:
@@ -126,9 +116,7 @@ class Ip6FragHeader(ProtoStruct):
         Initialize the IPv6 Frag header from buffer.
         """
 
-        next, _, offset__flag_mf, id = struct.unpack(
-            IP6_FRAG__HEADER__STRUCT, buffer[:IP6_FRAG__HEADER__LEN]
-        )
+        next, _, offset__flag_mf, id = struct.unpack(IP6_FRAG__HEADER__STRUCT, buffer[:IP6_FRAG__HEADER__LEN])
 
         return cls(
             next=IpProto.from_int(next),

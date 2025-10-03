@@ -127,10 +127,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=3,
                 ethernet__dst_unicast=3,
-                ip6__pre_parse=3
-                + 1,  # For the IPv6 frag implementation packet once reasembled
-                ip6__dst_unicast=3
-                + 1,  # is put again through the IPv6 parser for processing
+                ip6__pre_parse=3 + 1,  # For the IPv6 frag implementation packet once reasembled
+                ip6__dst_unicast=3 + 1,  # is put again through the IPv6 parser for processing
                 ip6_frag__pre_parse=3,
                 ip6_frag__defrag=1,
                 udp__pre_parse=1,
@@ -266,12 +264,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=7 + 3,
                 ethernet__dst_unicast=7 + 3,
-                ip6__pre_parse=7
-                + 3
-                + 2,  # For the IPv6 frag implementation packets once reasembled
-                ip6__dst_unicast=7
-                + 3
-                + 2,  # are put again through the IPv6 parser for processing
+                ip6__pre_parse=7 + 3 + 2,  # For the IPv6 frag implementation packets once reasembled
+                ip6__dst_unicast=7 + 3 + 2,  # are put again through the IPv6 parser for processing
                 ip6_frag__pre_parse=7 + 3,
                 ip6_frag__defrag=1 + 1,
                 udp__pre_parse=1 + 1,
@@ -1093,10 +1087,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=5,
                 ethernet__dst_unicast=5,
-                ip6__pre_parse=5
-                + 1,  # For the IPv6 frag implementation packet once reasembled
-                ip6__dst_unicast=5
-                + 1,  # is put again through the IPv6 parser for processing
+                ip6__pre_parse=5 + 1,  # For the IPv6 frag implementation packet once reasembled
+                ip6__dst_unicast=5 + 1,  # is put again through the IPv6 parser for processing
                 ip6_frag__pre_parse=5,
                 ip6_frag__defrag=1,
                 udp__pre_parse=1,

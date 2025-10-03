@@ -147,8 +147,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMPv6 Destination Unreachable message, non-empty payload.",
             "_args": [
-                b"\x01\x04\x30\x25\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
-                b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                b"\x01\x04\x30\x25\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "mocked_values": {},
             "_results": {
@@ -199,11 +198,7 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCasePacketRxIp6):
         object.__setattr__(
             icmp6_parser.message,
             "data",
-            bytes(
-                cast(
-                    Icmp6MessageDestinationUnreachable, icmp6_parser.message
-                ).data
-            ),
+            bytes(cast(Icmp6MessageDestinationUnreachable, icmp6_parser.message).data),
         )
 
         self.assertEqual(

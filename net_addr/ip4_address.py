@@ -49,10 +49,7 @@ if TYPE_CHECKING:
 
 IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
-IP4__REGEX = (
-    r"((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}"
-    r"(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])"
-)
+IP4__REGEX = r"((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}" r"(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])"
 
 
 class Ip4Address(IpAddress):
@@ -66,9 +63,7 @@ class Ip4Address(IpAddress):
 
     def __init__(
         self,
-        address: (
-            Self | str | bytes | bytearray | memoryview | int | None
-        ) = None,
+        address: Self | str | bytes | bytearray | memoryview | int | None = None,
         /,
     ) -> None:
         """
@@ -127,13 +122,10 @@ class Ip4Address(IpAddress):
         """
 
         assert self.is_multicast, (
-            "The IPv4 address must be a multicast address to get a multicast "
-            f"MAC address. Got: {self}"
+            "The IPv4 address must be a multicast address to get a multicast " f"MAC address. Got: {self}"
         )
 
-        return MacAddress(
-            int(MacAddress(0x0100_5E00_0000)) | self._address & 0x0000_007F_FFFF
-        )
+        return MacAddress(int(MacAddress(0x0100_5E00_0000)) | self._address & 0x0000_007F_FFFF)
 
     @property
     @override
@@ -160,9 +152,7 @@ class Ip4Address(IpAddress):
         """
         Check if the IPv4 address is a link local address.
         """
-        return (
-            self._address & 0xFF_FF_00_00 == 0xA9_FE_00_00
-        )  # 169.254.0.0 - 169.254.255.255
+        return self._address & 0xFF_FF_00_00 == 0xA9_FE_00_00  # 169.254.0.0 - 169.254.255.255
 
     @property
     @override
@@ -171,9 +161,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a loopback address.
         """
 
-        return (
-            self._address & 0xFF_00_00_00 == 0x7F_00_00_00
-        )  # 127.0.0.0 - 127.255.255.255
+        return self._address & 0xFF_00_00_00 == 0x7F_00_00_00  # 127.0.0.0 - 127.255.255.255
 
     @property
     @override
@@ -182,9 +170,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a multicast address.
         """
 
-        return (
-            self._address & 0xF0_00_00_00 == 0xE0_00_00_00
-        )  # 224.0.0.0 - 239.255.255.255
+        return self._address & 0xF0_00_00_00 == 0xE0_00_00_00  # 224.0.0.0 - 239.255.255.255
 
     @property
     @override
@@ -194,12 +180,9 @@ class Ip4Address(IpAddress):
         """
 
         return (
-            self._address & 0xFF_00_00_00
-            == 0x0A_00_00_00  # 10.0.0.0 - 10.255.255.255
-            or self._address & 0xFF_F0_00_00
-            == 0xAC_10_00_00  # 172.16.0.0 - 172.31.255.255
-            or self._address & 0xFF_FF_00_00
-            == 0xC0_A8_00_00  # 192.168.0.0 - 192.168.255.255
+            self._address & 0xFF_00_00_00 == 0x0A_00_00_00  # 10.0.0.0 - 10.255.255.255
+            or self._address & 0xFF_F0_00_00 == 0xAC_10_00_00  # 172.16.0.0 - 172.31.255.255
+            or self._address & 0xFF_FF_00_00 == 0xC0_A8_00_00  # 192.168.0.0 - 192.168.255.255
         )
 
     @property
@@ -236,9 +219,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a Class A address.
         """
 
-        return (
-            self._address & 0x80_00_00_00 == 0x00_00_00_00
-        )  # 0.0.0.0 - 127.255.255.255
+        return self._address & 0x80_00_00_00 == 0x00_00_00_00  # 0.0.0.0 - 127.255.255.255
 
     @property
     def is_class_b(self) -> bool:
@@ -246,9 +227,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a Class B address.
         """
 
-        return (
-            self._address & 0xC0_00_00_00 == 0x80_00_00_00
-        )  # 128.0.0.0 - 191.255.255.255
+        return self._address & 0xC0_00_00_00 == 0x80_00_00_00  # 128.0.0.0 - 191.255.255.255
 
     @property
     def is_class_c(self) -> bool:
@@ -256,9 +235,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a Class C address.
         """
 
-        return (
-            self._address & 0xE0_00_00_00 == 0xC0_00_00_00
-        )  # 192.0.0.0 - 223.255.255.255
+        return self._address & 0xE0_00_00_00 == 0xC0_00_00_00  # 192.0.0.0 - 223.255.255.255
 
     @property
     def is_class_d(self) -> bool:
@@ -266,9 +243,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a Class D address.
         """
 
-        return (
-            self._address & 0xF0_00_00_00 == 0xE0_00_00_00
-        )  # 224.0.0.0 - 239.255.255.255
+        return self._address & 0xF0_00_00_00 == 0xE0_00_00_00  # 224.0.0.0 - 239.255.255.255
 
     @property
     def is_class_e(self) -> bool:
@@ -276,9 +251,7 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a Class E address.
         """
 
-        return (
-            self._address & 0xF0_00_00_00 == 0xF0_00_00_00
-        )  # 240.0.0.0 - 255.255.255.255
+        return self._address & 0xF0_00_00_00 == 0xF0_00_00_00  # 240.0.0.0 - 255.255.255.255
 
     @property
     def classful_mask(self) -> Ip4Mask:

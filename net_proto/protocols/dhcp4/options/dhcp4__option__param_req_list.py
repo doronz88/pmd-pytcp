@@ -87,17 +87,13 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         ), f"The 'param_req_list' field must be a list. Got: {type(self.param_req_list)!r}"
 
         # Ensure that each element of the 'param_req_list' field is a Dhcp4OptionType instance.
-        assert all(
-            isinstance(item, Dhcp4OptionType) for item in self.param_req_list
-        ), (
+        assert all(isinstance(item, Dhcp4OptionType) for item in self.param_req_list), (
             f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
             f"Got: {[type(element) for element in self.param_req_list]!r}"
         )
 
         # Update the option 'len' field based on the length of the 'param_req_list' field.
-        object.__setattr__(
-            self, "len", DHCP4__OPTION__LEN + len(self.param_req_list)
-        )
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.param_req_list))
 
     @override
     def __str__(self) -> str:
@@ -114,8 +110,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         """
 
         struct.pack_into(
-            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT
-            + f"{len(self.param_req_list)}s",
+            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT + f"{len(self.param_req_list)}s",
             buffer := bytearray(len(self)),
             0,
             int(self.type),
@@ -166,9 +161,4 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
 
         cls._validate_integrity(buffer)
 
-        return cls(
-            [
-                Dhcp4OptionType.from_int(option)
-                for option in buffer[2 : 2 + buffer[1]]
-            ]
-        )
+        return cls([Dhcp4OptionType.from_int(option) for option in buffer[2 : 2 + buffer[1]]])

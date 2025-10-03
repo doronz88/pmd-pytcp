@@ -69,8 +69,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 20,
                 "__str__": (
-                    "TCP 12345 > 54321, NCEUAPS, seq 123456789, ack 987654321, "
-                    "win 11111, urg 22222, len 20 (20+0+0)"
+                    "TCP 12345 > 54321, NCEUAPS, seq 123456789, ack 987654321, " "win 11111, urg 22222, len 20 (20+0+0)"
                 ),
                 "__repr__": (
                     "TcpAssembler(header=TcpHeader(sport=12345, dport=54321, "
@@ -79,10 +78,7 @@ from net_proto.lib.buffer import Buffer
                     "flag_syn=True, flag_fin=False, win=11111, cksum=0, urg=22222), "
                     "options=TcpOptions(options=[]), payload=b'')"
                 ),
-                "__bytes__": (
-                    b"\x30\x39\xd4\x31\x07\x5b\xcd\x15\x3a\xde\x68\xb1\x51\xfa\x2b\x67"
-                    b"\xaf\x64\x56\xce"
-                ),
+                "__bytes__": (b"\x30\x39\xd4\x31\x07\x5b\xcd\x15\x3a\xde\x68\xb1\x51\xfa\x2b\x67" b"\xaf\x64\x56\xce"),
                 "sport": 12345,
                 "dport": 54321,
                 "seq": 123456789,
@@ -147,10 +143,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 20,
-                "__str__": (
-                    "TCP 1111 > 2222, AF, seq 3333, ack 4444, "
-                    "win 5555, len 20 (20+0+0)"
-                ),
+                "__str__": ("TCP 1111 > 2222, AF, seq 3333, ack 4444, " "win 5555, len 20 (20+0+0)"),
                 "__repr__": (
                     "TcpAssembler(header=TcpHeader(sport=1111, dport=2222, "
                     "seq=3333, ack=4444, hlen=20, flag_ns=False, flag_cwr=False, "
@@ -158,10 +151,7 @@ from net_proto.lib.buffer import Buffer
                     "flag_syn=False, flag_fin=True, win=5555, cksum=0, urg=0), "
                     "options=TcpOptions(options=[]), payload=b'')"
                 ),
-                "__bytes__": (
-                    b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3"
-                    b"\x6e\xd5\x00\x00"
-                ),
+                "__bytes__": (b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3" b"\x6e\xd5\x00\x00"),
                 "sport": 1111,
                 "dport": 2222,
                 "seq": 3333,
@@ -395,10 +385,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 65535,
-                "__str__": (
-                    "TCP 1111 > 2222, NEAP, seq 3333, ack 4444, "
-                    "win 5555, len 65535 (20+0+65515)"
-                ),
+                "__str__": ("TCP 1111 > 2222, NEAP, seq 3333, ack 4444, " "win 5555, len 65535 (20+0+65515)"),
                 "__repr__": (
                     "TcpAssembler(header=TcpHeader(sport=1111, dport=2222, "
                     "seq=3333, ack=4444, hlen=20, flag_ns=True, flag_cwr=False, "
@@ -507,8 +494,7 @@ from net_proto.lib.buffer import Buffer
                     b"\x04\x57\x0d\x05\x00\x00\x15\xb3\x00\x00\x1e\x61\xf0\xb8\x00\x00"
                     b"\xbd\x39\x27\x0f\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
                     b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-                    b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-                    + b"X" * 65475
+                    b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01" + b"X" * 65475
                 ),
                 "sport": 1111,
                 "dport": 3333,

@@ -69,7 +69,7 @@ class PacketHandlerEthernet8023Tx(ABC):
         Handle outbound Ethernet 802.3 packets.
         """
 
-        self._packet_stats_tx.inc("ethernet_802_3__pre_assemble")
+        self._packet_stats_tx.ethernet_802_3__pre_assemble += 1
 
         ethernet_802_3_packet_tx = Ethernet8023Assembler(
             ethernet_802_3__src=ethernet_802_3__src,
@@ -79,38 +79,34 @@ class PacketHandlerEthernet8023Tx(ABC):
 
         # Check if packet contains valid source address, fill it out if needed.
         if ethernet_802_3_packet_tx.src.is_unspecified:
-            self._packet_stats_tx.inc("ethernet_802_3__src_unspec__fill")
+            self._packet_stats_tx.ethernet_802_3__src_unspec__fill += 1
             ethernet_802_3_packet_tx.src = self._mac_unicast
             __debug__ and log(
                 "ether",
-                f"{ethernet_802_3_packet_tx.tracker} - Set source to stack MAC "
-                f"{ethernet_802_3_packet_tx.src}",
+                f"{ethernet_802_3_packet_tx.tracker} - Set source to stack MAC " f"{ethernet_802_3_packet_tx.src}",
             )
         else:
-            self._packet_stats_tx.inc("ethernet_802_3__src_spec")
+            self._packet_stats_tx.ethernet_802_3__src_spec += 1
             __debug__ and log(
                 "ether",
-                f"{ethernet_802_3_packet_tx.tracker} - Source MAC specified to "
-                f"{ethernet_802_3_packet_tx.src}",
+                f"{ethernet_802_3_packet_tx.tracker} - Source MAC specified to " f"{ethernet_802_3_packet_tx.src}",
             )
 
         # Send out packet if it contains valid destination MAC address.
         if not ethernet_802_3_packet_tx.dst.is_unspecified:
-            self._packet_stats_tx.inc("ethernet_802_3__dst_spec__send")
+            self._packet_stats_tx.ethernet_802_3__dst_spec__send += 1
             __debug__ and log(
                 "ether",
-                f"{ethernet_802_3_packet_tx.tracker} - Contains valid destination "
-                "MAC address",
+                f"{ethernet_802_3_packet_tx.tracker} - Contains valid destination " "MAC address",
             )
             self.__send_out_packet(ethernet_802_3_packet_tx)
             return TxStatus.PASSED__ETHERNET_802_3__TO_TX_RING
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
-        self._packet_stats_tx.inc("ethernet_802_3__dst_unspec__drop")
+        self._packet_stats_tx.ethernet_802_3__dst_unspec__drop += 1
         __debug__ and log(
             "ether",
-            f"{ethernet_802_3_packet_tx.tracker} - <WARN>No valid destination MAC could "
-            "be obtained, dropping</>",
+            f"{ethernet_802_3_packet_tx.tracker} - <WARN>No valid destination MAC could " "be obtained, dropping</>",
         )
         return TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL
 

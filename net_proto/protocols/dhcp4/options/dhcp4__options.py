@@ -86,9 +86,7 @@ from net_proto.protocols.ip4.ip4__defaults import IP4__MIN_MTU
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
 from net_proto.protocols.udp.udp__header import UDP__HEADER__LEN
 
-DHCP4__OPTIONS__MAX_LEN = (
-    IP4__MIN_MTU - IP4__HEADER__LEN - UDP__HEADER__LEN - DHCP4__HEADER__LEN
-)
+DHCP4__OPTIONS__MAX_LEN = IP4__MIN_MTU - IP4__HEADER__LEN - UDP__HEADER__LEN - DHCP4__HEADER__LEN
 
 
 class Dhcp4Options(ProtoOptions):
@@ -202,15 +200,13 @@ class Dhcp4Options(ProtoOptions):
 
             if (value := frame[offset + 1]) < 2:
                 raise Dhcp4IntegrityError(
-                    f"The DHCPv4 option length must be greater than 1. "
-                    f"Got: {value!r}.",
+                    f"The DHCPv4 option length must be greater than 1. " f"Got: {value!r}.",
                 )
 
             offset += frame[offset + 1]
             if offset > hlen:
                 raise Dhcp4IntegrityError(
-                    f"The DHCPv4 option length must not extend past the header "
-                    f"length. Got: {offset=}, {hlen=}",
+                    f"The DHCPv4 option length must not extend past the header " f"length. Got: {offset=}, {hlen=}",
                 )
 
     @override
@@ -231,45 +227,25 @@ class Dhcp4Options(ProtoOptions):
                 case Dhcp4OptionType.PAD:
                     options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.CLIENT_ID:
-                    options.append(
-                        Dhcp4OptionClientId.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionClientId.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.HOST_NAME:
-                    options.append(
-                        Dhcp4OptionHostName.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionHostName.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.LEASE_TIME:
-                    options.append(
-                        Dhcp4OptionLeaseTime.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionLeaseTime.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.MESSAGE_TYPE:
-                    options.append(
-                        Dhcp4OptionMessageType.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionMessageType.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.PARAM_REQ_LIST:
-                    options.append(
-                        Dhcp4OptionParamReqList.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionParamReqList.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.REQ_IP_ADDR:
-                    options.append(
-                        Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.ROUTER:
-                    options.append(
-                        Dhcp4OptionRouter.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionRouter.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.SERVER_ID:
-                    options.append(
-                        Dhcp4OptionServerId.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionServerId.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.SUBNET_MASK:
-                    options.append(
-                        Dhcp4OptionSubnetMask.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionSubnetMask.from_buffer(buffer[offset:]))
                 case _:
-                    options.append(
-                        Dhcp4OptionUnknown.from_buffer(buffer[offset:])
-                    )
+                    options.append(Dhcp4OptionUnknown.from_buffer(buffer[offset:]))
 
             offset += options[-1].len
 

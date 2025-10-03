@@ -107,36 +107,24 @@ class Client(Subsystem):
         )
 
         if self._protocol_name == "ICMP":
-            self._local_port = int(
-                IPPROTO_ICMP6
-                if self._remote_ip_address.version == IpVersion.IP6
-                else IPPROTO_ICMP4
-            )
+            self._local_port = int(IPPROTO_ICMP6 if self._remote_ip_address.version == IpVersion.IP6 else IPPROTO_ICMP4)
             self._remote_port = 0
 
         try:
             client_socket.bind((str(self._local_ip_address), self._local_port))
-            self._log(
-                f"Bound socket to {self._local_ip_address}, port {self._local_port}."
-            )
+            self._log(f"Bound socket to {self._local_ip_address}, port {self._local_port}.")
         except OSError as error:
             self._log(
-                f"Unable to bind socket to {self._local_ip_address}, port {self._local_port}. "
-                f"Error: {error!r}.",
+                f"Unable to bind socket to {self._local_ip_address}, port {self._local_port}. " f"Error: {error!r}.",
             )
             raise error
 
         try:
-            client_socket.connect(
-                (str(self._remote_ip_address), self._remote_port)
-            )
-            self._log(
-                f"Connection opened to {self._remote_ip_address}, port {self._remote_port}."
-            )
+            client_socket.connect((str(self._remote_ip_address), self._remote_port))
+            self._log(f"Connection opened to {self._remote_ip_address}, port {self._remote_port}.")
         except OSError as error:
             self._log(
-                f"Connection to {self._remote_ip_address}, port {self._remote_port} failed. "
-                f"Error: {error!r}."
+                f"Connection to {self._remote_ip_address}, port {self._remote_port} failed. " f"Error: {error!r}."
             )
             raise error
 

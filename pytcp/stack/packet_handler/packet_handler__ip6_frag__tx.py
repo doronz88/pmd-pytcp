@@ -83,22 +83,15 @@ class PacketHandlerIp6FragTx(ABC):
         Handle outbound IPv6 fagment extension header.
         """
 
-        self._packet_stats_tx.inc("ip6_frag__pre_assemble")
+        self._packet_stats_tx.ip6_frag__pre_assemble += 1
 
-        if isinstance(
-            ip6_packet_tx.payload, (TcpAssembler, UdpAssembler, Icmp6Assembler)
-        ):
+        if isinstance(ip6_packet_tx.payload, (TcpAssembler, UdpAssembler, Icmp6Assembler)):
             ip6_packet_tx.payload.pshdr_sum = ip6_packet_tx.pshdr_sum
 
         payload = bytearray(bytes(ip6_packet_tx.payload))
 
-        payload_mtu = (
-            self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN
-        ) & 0b1111111111111000
-        data_frags = [
-            payload[_ : payload_mtu + _]
-            for _ in range(0, len(payload), payload_mtu)
-        ]
+        payload_mtu = (self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN) & 0b1111111111111000
+        data_frags = [payload[_ : payload_mtu + _] for _ in range(0, len(payload), payload_mtu)]
         offset = 0
         self._ip6_id += 1
         ip6_tx_status: set[TxStatus] = set()
@@ -112,7 +105,7 @@ class PacketHandlerIp6FragTx(ABC):
             )
             __debug__ and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")
             offset += len(data_frag)
-            self._packet_stats_tx.inc("ip6_frag__send")
+            self._packet_stats_tx.ip6_frag__send += 1
             ip6_tx_status.add(
                 self._phtx_ip6(
                     ip6__src=ip6_packet_tx.src,

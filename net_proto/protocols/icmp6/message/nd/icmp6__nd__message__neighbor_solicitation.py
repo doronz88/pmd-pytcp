@@ -99,9 +99,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         init=False,
         default=Icmp6Type.ND__NEIGHBOR_SOLICITATION,
     )
-    code: Icmp6NdNeighborSolicitationCode = (
-        Icmp6NdNeighborSolicitationCode.DEFAULT
-    )
+    code: Icmp6NdNeighborSolicitationCode = Icmp6NdNeighborSolicitationCode.DEFAULT
     cksum: int = 0
 
     target_address: Ip6Address
@@ -114,23 +112,17 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         """
 
         assert isinstance(self.code, Icmp6NdNeighborSolicitationCode), (
-            f"The 'code' field must be an Icmp6NdNeighborSolicitationCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp6NdNeighborSolicitationCode. " f"Got: {type(self.code)!r}"
         )
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum!r}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
 
         assert isinstance(self.target_address, Ip6Address), (
-            f"The 'target_address' field must be an Ip6Address. "
-            f"Got: {type(self.target_address)!r}"
+            f"The 'target_address' field must be an Ip6Address. " f"Got: {type(self.target_address)!r}"
         )
 
         assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. "
-            f"Got: {type(self.options)!r}"
+            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
         )
 
     @override
@@ -189,9 +181,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         return buffer
 
     @override
-    def validate_sanity(
-        self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address
-    ) -> None:
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Validate the ICMPv6 ND Neighbor Solicitation message sanity after
         parsing it.
@@ -199,8 +189,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
 
         if not (ip6__hop == 255):
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__hop' field "
-                f"must be 255. Got: {ip6__hop!r}",
+                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
             )
 
         if not (ip6__src.is_unicast or ip6__src.is_unspecified):
@@ -246,9 +235,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         before parsing it.
         """
 
-        if not (
-            ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen <= len(frame)
-        ):
+        if not (ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen <= len(frame)):
             raise Icmp6IntegrityError(
                 "The condition 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen "
                 f"<= len(frame)' must be met. Got: {ICMP6__ND__NEIGHBOR_SOLICITATION__LEN=}, "
@@ -272,20 +259,15 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
             buffer[:ICMP6__ND__NEIGHBOR_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
-            valid_type := Icmp6Type.ND__NEIGHBOR_SOLICITATION
-        ), (
-            f"The 'type' field must be {valid_type!r}. "
-            f"Got: {received_type!r}"
+        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__NEIGHBOR_SOLICITATION), (
+            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
         )
 
         return cls(
             code=Icmp6NdNeighborSolicitationCode(code),
             cksum=cksum,
             target_address=Ip6Address(target_address),
-            options=Icmp6NdOptions.from_buffer(
-                buffer[ICMP6__ND__NEIGHBOR_SOLICITATION__LEN:]
-            ),
+            options=Icmp6NdOptions.from_buffer(buffer[ICMP6__ND__NEIGHBOR_SOLICITATION__LEN:]),
         )
 
     @override

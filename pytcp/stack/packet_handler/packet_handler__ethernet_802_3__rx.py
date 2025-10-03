@@ -65,22 +65,20 @@ class PacketHandlerEthernet8023Rx(ABC):
         Handle inbound Ethernet 802.3 packets.
         """
 
-        self._packet_stats_rx.inc("ethernet_802_3__pre_parse")
+        self._packet_stats_rx.ethernet_802_3__pre_parse += 1
 
         try:
             Ethernet8023Parser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.inc("ethernet_802_3__failed_parse__drop")
+            self._packet_stats_rx.ethernet_802_3__failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log(
-            "ether", f"{packet_rx.tracker} - {packet_rx.ethernet_802_3}"
-        )
+        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet_802_3}")
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet_802_3.dst not in {
@@ -88,19 +86,18 @@ class PacketHandlerEthernet8023Rx(ABC):
             *self._mac_multicast,
             self._mac_broadcast,
         }:
-            self._packet_stats_rx.inc("ethernet_802_3__dst_unknown__drop")
+            self._packet_stats_rx.ethernet_802_3__dst_unknown__drop += 1
             __debug__ and log(
                 "ether",
-                f"{packet_rx.tracker} - Ethernet 802.3 packet not destined for this "
-                "stack, dropping",
+                f"{packet_rx.tracker} - Ethernet 802.3 packet not destined for this " "stack, dropping",
             )
             return
 
         if packet_rx.ethernet_802_3.dst == self._mac_unicast:
-            self._packet_stats_rx.inc("ethernet__dst_unicast")
+            self._packet_stats_rx.ethernet__dst_unicast += 1
 
         if packet_rx.ethernet_802_3.dst in self._mac_multicast:
-            self._packet_stats_rx.inc("ethernet__dst_multicast")
+            self._packet_stats_rx.ethernet__dst_multicast += 1
 
         if packet_rx.ethernet_802_3.dst == self._mac_broadcast:
-            self._packet_stats_rx.inc("ethernet__dst_broadcast")
+            self._packet_stats_rx.ethernet__dst_broadcast += 1

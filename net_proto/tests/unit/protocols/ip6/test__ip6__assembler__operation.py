@@ -48,12 +48,8 @@ from net_proto.lib.buffer import Buffer
             "_description": "IPv6 packet (I).",
             "_args": [],
             "_kwargs": {
-                "ip6__src": Ip6Address(
-                    "1001:2002:3003:4004:5005:6006:7007:8008"
-                ),
-                "ip6__dst": Ip6Address(
-                    "a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b"
-                ),
+                "ip6__src": Ip6Address("1001:2002:3003:4004:5005:6006:7007:8008"),
+                "ip6__dst": Ip6Address("a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b"),
                 "ip6__hop": 1,
                 "ip6__dscp": 0,
                 "ip6__ecn": 0,
@@ -104,12 +100,8 @@ from net_proto.lib.buffer import Buffer
             "_description": "IPv6 packet (II).",
             "_args": [],
             "_kwargs": {
-                "ip6__src": Ip6Address(
-                    "1111:2222:3333:4444:5555:6666:7777:8888"
-                ),
-                "ip6__dst": Ip6Address(
-                    "8888:7777:6666:5555:4444:3333:2222:1111"
-                ),
+                "ip6__src": Ip6Address("1111:2222:3333:4444:5555:6666:7777:8888"),
+                "ip6__dst": Ip6Address("8888:7777:6666:5555:4444:3333:2222:1111"),
                 "ip6__hop": 255,
                 "ip6__dscp": 38,
                 "ip6__ecn": 2,
@@ -161,12 +153,8 @@ from net_proto.lib.buffer import Buffer
             "_description": "IPv6 packet (III).",
             "_args": [],
             "_kwargs": {
-                "ip6__src": Ip6Address(
-                    "1111:2222:3333:4444:5555:6666:7777:8888"
-                ),
-                "ip6__dst": Ip6Address(
-                    "8888:7777:6666:5555:4444:3333:2222:1111"
-                ),
+                "ip6__src": Ip6Address("1111:2222:3333:4444:5555:6666:7777:8888"),
+                "ip6__dst": Ip6Address("8888:7777:6666:5555:4444:3333:2222:1111"),
                 "ip6__hop": 128,
                 "ip6__dscp": 63,
                 "ip6__ecn": 3,

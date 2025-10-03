@@ -114,9 +114,7 @@ class Ip4HostSanityError(IpHostFormatError):
     """
 
     def __init__(self, message: Any, /):
-        super().__init__(
-            f"The IPv4 address doesn't belong to the provided network: {message!r}"
-        )
+        super().__init__(f"The IPv4 address doesn't belong to the provided network: {message!r}")
 
 
 class Ip4HostGatewayError(IpHostGatewayError):
@@ -170,9 +168,7 @@ class Ip6HostSanityError(IpHostFormatError):
     """
 
     def __init__(self, message: Any, /):
-        super().__init__(
-            f"The IPv6 address doesn't belong to the provided network: {message!r}"
-        )
+        super().__init__(f"The IPv6 address doesn't belong to the provided network: {message!r}")
 
 
 class Ip6HostGatewayError(IpHostGatewayError):

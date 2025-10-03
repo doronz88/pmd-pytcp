@@ -93,10 +93,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'code' field must be an Icmp6NdRouterAdvertisementCode. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'code' field must be an Icmp6NdRouterAdvertisementCode. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__cksum__under_min(
@@ -115,10 +112,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__cksum__over_max(
@@ -137,10 +131,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__hop__under_min(
@@ -159,10 +150,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'hop' field must be a 8-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'hop' field must be a 8-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__hop__over_max(
@@ -181,10 +169,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'hop' field must be a 8-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'hop' field must be a 8-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__flag_m__not_boolean(
@@ -221,10 +206,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'router_lifetime' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'router_lifetime' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__router_lifetime__over_max(
@@ -243,10 +225,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'router_lifetime' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'router_lifetime' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__reachable_time__under_min(
@@ -265,10 +244,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'reachable_time' field must be a 32-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'reachable_time' field must be a 32-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__reachable_time__over_max(
@@ -287,10 +263,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'reachable_time' field must be a 32-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'reachable_time' field must be a 32-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__retrans_timer__under_min(
@@ -309,10 +282,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'retrans_timer' field must be a 32-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'retrans_timer' field must be a 32-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__retrans_timer__over_max(
@@ -331,10 +301,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'retrans_timer' field must be a 32-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'retrans_timer' field must be a 32-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_advertisement__options__not_Icmp6NdOptions(
@@ -352,10 +319,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'options' field must be an Icmp6NdOptions. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'options' field must be an Icmp6NdOptions. " f"Got: {type(value)!r}"),
         )
 
 

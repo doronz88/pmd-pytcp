@@ -86,13 +86,10 @@ class TcpAssembler(Tcp, ProtoAssembler):
             len(tcp__options) <= TCP__OPTIONS__MAX_LEN
         ), f"The TCP options length must be less than or equal to {TCP__OPTIONS__MAX_LEN}."
 
-        assert is_4_byte_alligned(
-            len(tcp__options)
-        ), "The TCP options length must be 4-byte aligned."
+        assert is_4_byte_alligned(len(tcp__options)), "The TCP options length must be 4-byte aligned."
 
         assert (
-            TcpOptionEol() not in tcp__options
-            or tcp__options[-1] == TcpOptionEol()
+            TcpOptionEol() not in tcp__options or tcp__options[-1] == TcpOptionEol()
         ), "The TCP EOL option must be the last option."
 
         self._tracker: Tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
@@ -129,9 +126,7 @@ class TcpAssembler(Tcp, ProtoAssembler):
 
         header = bytearray(self._header)
         options = bytearray(self._options)
-        header[16:18] = inet_cksum(
-            header, options, self._payload, init=self.pshdr_sum
-        ).to_bytes(2)
+        header[16:18] = inet_cksum(header, options, self._payload, init=self.pshdr_sum).to_bytes(2)
 
         buffers.append(header)
         buffers.append(options)

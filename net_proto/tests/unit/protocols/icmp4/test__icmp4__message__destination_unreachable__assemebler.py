@@ -143,10 +143,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 8,
-                "__str__": (
-                    "ICMPv4 Destination Unreachable - Fragmentation Needed, mtu 1200, "
-                    "len 8 (8+0)"
-                ),
+                "__str__": ("ICMPv4 Destination Unreachable - Fragmentation Needed, mtu 1200, " "len 8 (8+0)"),
                 "__repr__": (
                     "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".FRAGMENTATION_NEEDED: 4>, cksum=0, mtu=1200, data=b'')"
@@ -336,9 +333,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 8,
-                "__str__": (
-                    "ICMPv4 Destination Unreachable - Communication Prohibited, len 8 (8+0)"
-                ),
+                "__str__": ("ICMPv4 Destination Unreachable - Communication Prohibited, len 8 (8+0)"),
                 "__repr__": (
                     "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".COMMUNICATION_PROHIBITED: 13>, cksum=0, mtu=None, data=b'')"
@@ -456,9 +451,7 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
 
         self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4MessageDestinationUnreachable(
-                *self._args, **self._kwargs
-            )
+            icmp4__message=Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
         )
 
     def test__icmp4__message__destination_unreachable__assembler__len(

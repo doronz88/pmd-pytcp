@@ -44,8 +44,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 testcases: list[dict[str, Any]] = [
     {
         "_description": (
-            "The value of the 'ip__payload_len' variable is lower than the "
-            "value of the 'UDP_HEADER_LEN' constant."
+            "The value of the 'ip__payload_len' variable is lower than the " "value of the 'UDP_HEADER_LEN' constant."
         ),
         "_args": [
             b"\x30\x39\xd4\x31\x00\x08\xfb\x8c",
@@ -64,9 +63,7 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the 'ip__payload_len' variable is higher than the frame length."
-        ),
+        "_description": ("The value of the 'ip__payload_len' variable is higher than the frame length."),
         "_args": [
             b"\x30\x39\xd4\x31\x00\x08\xfb\x8c",
         ],
@@ -84,9 +81,7 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the header 'plen' field is lower than the header length."
-        ),
+        "_description": ("The value of the header 'plen' field is lower than the header length."),
         "_args": [
             b"\x30\x39\xd4\x31\x00\x07\xfb\x8c",
         ],
@@ -101,10 +96,7 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the  header 'plen' field is different than the 'ip__payload_len' "
-            "variable."
-        ),
+        "_description": ("The value of the  header 'plen' field is different than the 'ip__payload_len' " "variable."),
         "_args": [
             b"\x30\x39\xd4\x31\x00\x08\xfb\x8c\00\00",
         ],
@@ -124,8 +116,7 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "Packet has incorrect checksum.",
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x18\xab\xcd\x30\x31\x32\x33\x34\x35\x36\x37"
-            b"\x38\x39\x41\x42\x43\x44\x45\x46",
+            b"\x30\x39\xd4\x31\x00\x18\xab\xcd\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46",
         ],
         "_kwargs": {},
         "_mocked_values": {},

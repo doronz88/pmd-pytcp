@@ -169,10 +169,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 End option must be 1 "
-                    "byte. Got: 0"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 End option must be 1 " "byte. Got: 0"),
             },
         },
         {

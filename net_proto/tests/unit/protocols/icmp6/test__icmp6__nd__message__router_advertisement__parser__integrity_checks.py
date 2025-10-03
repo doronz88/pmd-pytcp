@@ -66,9 +66,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 ND Router Advertisement message, "
                 "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [
-                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__dlen": 16,
             },
@@ -86,9 +84,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "the 'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= self._ip6__dlen' "
                 "condition not met."
             ),
-            "_args": [
-                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__dlen": 15,
             },
@@ -102,9 +98,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
-            "_args": [
-                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -112,9 +106,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Router Advertisement message parser integrity checks tests.
     """

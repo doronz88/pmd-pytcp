@@ -215,10 +215,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Wscale option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the TCP Wscale option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -244,8 +241,7 @@ class TestTcpOptionWscaleAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Wscale option length value must be "
-                    "3 bytes. Got: 2"
+                    "[INTEGRITY ERROR][TCP] The TCP Wscale option length value must be " "3 bytes. Got: 2"
                 ),
             },
         },

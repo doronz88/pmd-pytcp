@@ -148,9 +148,7 @@ from net_addr import (
             "_results": {
                 "__str__": "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128",
                 "__repr__": "Ip6Network('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128')",
-                "__hash__": hash(
-                    "Ip6Network('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128')"
-                ),
+                "__hash__": hash("Ip6Network('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -212,10 +210,7 @@ class TestNetAddrIp6Network(TestCase):
                 self._ip6_network
                 == Ip6Network(
                     (
-                        Ip6Address(
-                            (int(self._ip6_network.address) - 1)
-                            & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF
-                        ),
+                        Ip6Address((int(self._ip6_network.address) - 1) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
                         self._ip6_network.mask,
                     ),
                 ),
@@ -299,9 +294,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": (
-                    "The IPv6 network format is invalid: '2001:://64'"
-                ),
+                "error_message": ("The IPv6 network format is invalid: '2001:://64'"),
             },
         },
         {
@@ -312,9 +305,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": (
-                    "The IPv6 network format is invalid: '2001::64'"
-                ),
+                "error_message": ("The IPv6 network format is invalid: '2001::64'"),
             },
         },
         {
@@ -325,9 +316,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": (
-                    "The IPv6 network format is invalid: '1:2:3:4:5:6:7:8:9/64'"
-                ),
+                "error_message": ("The IPv6 network format is invalid: '1:2:3:4:5:6:7:8:9/64'"),
             },
         },
         {
@@ -338,9 +327,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": (
-                    "The IPv6 network format is invalid: '1:2:3:4:5:6:7:8/129'"
-                ),
+                "error_message": ("The IPv6 network format is invalid: '1:2:3:4:5:6:7:8/129'"),
             },
         },
     ]

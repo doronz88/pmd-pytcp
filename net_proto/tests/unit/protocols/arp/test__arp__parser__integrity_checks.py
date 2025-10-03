@@ -44,9 +44,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 @parameterized_class(
     [
         {
-            "_description": (
-                "The frame length is less than the value of the 'ARP__HEADER__LEN' constant."
-            ),
+            "_description": ("The frame length is less than the value of the 'ARP__HEADER__LEN' constant."),
             "_args": [
                 b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67",
@@ -54,8 +52,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_kwargs": {},
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ARP__HEADER__LEN} "
-                    f"bytes, got {ARP__HEADER__LEN - 1} bytes."
+                    f"The minimum packet length must be {ARP__HEADER__LEN} " f"bytes, got {ARP__HEADER__LEN - 1} bytes."
                 ),
             },
         },
@@ -82,8 +79,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             "_kwargs": {},
             "_results": {
                 "error_message": (
-                    "The 'prtype' field value must be <EtherType.IP4: 2048>. "
-                    "Got: <EtherType.UNKNOWN_0: 0>."
+                    "The 'prtype' field value must be <EtherType.IP4: 2048>. " "Got: <EtherType.UNKNOWN_0: 0>."
                 ),
             },
         },

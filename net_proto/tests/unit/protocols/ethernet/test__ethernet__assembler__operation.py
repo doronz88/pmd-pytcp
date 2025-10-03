@@ -51,15 +51,11 @@ from net_proto.lib.buffer import Buffer
             "_kwargs": {
                 "ethernet__src": MacAddress("77:88:99:aa:bb:cc"),
                 "ethernet__dst": MacAddress("11:22:33:44:55:66"),
-                "ethernet__payload": RawAssembler(
-                    raw__payload=b"0123456789ABCDEF"
-                ),
+                "ethernet__payload": RawAssembler(raw__payload=b"0123456789ABCDEF"),
             },
             "_results": {
                 "__len__": 30,
-                "__str__": (
-                    "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)"
-                ),
+                "__str__": ("ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)"),
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('11:22:33:44:55:66'), "
                     "src=MacAddress('77:88:99:aa:bb:cc'), type=<EtherType.RAW: 65535>), "
@@ -90,18 +86,13 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 1514,
-                "__str__": (
-                    "ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)"
-                ),
+                "__str__": ("ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)"),
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('a1:b2:c3:d4:e5:f6'), "
                     "src=MacAddress('11:12:13:14:15:16'), type=<EtherType.RAW: 65535>), "
                     f"payload=RawAssembler(raw__payload=b'{"X" * 1500}'))"
                 ),
-                "__bytes__": (
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
-                    + b"X" * 1500
-                ),
+                "__bytes__": (b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "src": MacAddress("11:12:13:14:15:16"),
                 "type": EtherType.RAW,
@@ -130,9 +121,7 @@ class TestEthernetAssemblerOperation(TestCase):
         Initialize the Ethernet packet assembler object with testcase arguments.
         """
 
-        self._ethernet__assembler = EthernetAssembler(
-            *self._args, **self._kwargs
-        )
+        self._ethernet__assembler = EthernetAssembler(*self._args, **self._kwargs)
 
     def test__ehternet__assembler__len(self) -> None:
         """

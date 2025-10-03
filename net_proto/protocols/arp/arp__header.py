@@ -114,21 +114,13 @@ class ArpHeader(ProtoStruct):
             self.oper, ArpOperation
         ), f"The 'oper' field must be an ArpOperation. Got: {type(self.oper)!r}"
 
-        assert isinstance(
-            self.sha, MacAddress
-        ), f"The 'sha' field must be a MacAddress. Got: {type(self.sha)!r}"
+        assert isinstance(self.sha, MacAddress), f"The 'sha' field must be a MacAddress. Got: {type(self.sha)!r}"
 
-        assert isinstance(
-            self.spa, Ip4Address
-        ), f"The 'spa' field must be an Ip4Address. Got: {type(self.spa)!r}"
+        assert isinstance(self.spa, Ip4Address), f"The 'spa' field must be an Ip4Address. Got: {type(self.spa)!r}"
 
-        assert isinstance(
-            self.tha, MacAddress
-        ), f"The 'tha' field must be a MacAddress. Got: {type(self.tha)!r}"
+        assert isinstance(self.tha, MacAddress), f"The 'tha' field must be a MacAddress. Got: {type(self.tha)!r}"
 
-        assert isinstance(
-            self.tpa, Ip4Address
-        ), f"The 'tpa' field must be an Ip4Address. Got: {type(self.tpa)!r}"
+        assert isinstance(self.tpa, Ip4Address), f"The 'tpa' field must be an Ip4Address. Got: {type(self.tpa)!r}"
 
     @override
     def __len__(self) -> int:
@@ -168,9 +160,7 @@ class ArpHeader(ProtoStruct):
         Initialize the ARP header from buffer.
         """
 
-        _, _, _, _, oper, sha, spa, tha, tpa = struct.unpack(
-            ARP__HEADER__STRUCT, buffer[:ARP__HEADER__LEN]
-        )
+        _, _, _, _, oper, sha, spa, tha, tpa = struct.unpack(ARP__HEADER__STRUCT, buffer[:ARP__HEADER__LEN])
 
         return cls(
             oper=ArpOperation.from_int(oper),

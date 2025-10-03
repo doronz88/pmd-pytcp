@@ -85,9 +85,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
         ), f"The 'client_id' field must be bytes. Got: {type(self.client_id)!r}"
 
         # Update the option 'len' field based on the length of the 'client_id' field.
-        object.__setattr__(
-            self, "len", DHCP4__OPTION__LEN + len(self.client_id)
-        )
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.client_id))
 
     @override
     def __str__(self) -> str:
@@ -148,6 +146,4 @@ class Dhcp4OptionClientId(Dhcp4Option):
 
         cls._validate_integrity(buffer)
 
-        return cls(
-            bytes(buffer[2 : 2 + buffer[1]])
-        )  # Note: Conversion: memoryview -> bytes
+        return cls(bytes(buffer[2 : 2 + buffer[1]]))  # Note: Conversion: memoryview -> bytes

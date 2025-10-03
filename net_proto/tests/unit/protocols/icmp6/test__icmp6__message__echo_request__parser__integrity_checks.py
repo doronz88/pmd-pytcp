@@ -46,8 +46,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": (
-                "ICMPv6 Echo Request message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 Echo Request message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
             "_args": [b"\x80\x00\xfb"],
             "_mocked_values": {
@@ -63,8 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 Echo Request message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 Echo Request message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
             "_args": [b"\x80\x00\xfb\x94\x30\x39\xd4"],
             "_mocked_values": {
@@ -80,8 +78,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 Echo Request message, "
-                "the 'ICMP6__ECHO_REQUEST__LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 Echo Request message, " "the 'ICMP6__ECHO_REQUEST__LEN <= self._ip6__dlen' condition not met."
             ),
             "_args": [b"\x80\x00\xfb\x94\x30\x39\xd4"],
             "_mocked_values": {

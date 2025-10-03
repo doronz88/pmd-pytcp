@@ -108,37 +108,21 @@ class Ip6Header(ProtoStruct):
         Ensure integrity of the Ip6 header fields.
         """
 
-        assert is_uint6(
-            self.dscp
-        ), f"The 'dscp' field must be a 6-bit unsigned integer. Got: {self.dscp!r}"
+        assert is_uint6(self.dscp), f"The 'dscp' field must be a 6-bit unsigned integer. Got: {self.dscp!r}"
 
-        assert is_uint2(
-            self.ecn
-        ), f"The 'ecn' field must be a 2-bit unsigned integer. Got: {self.ecn!r}"
+        assert is_uint2(self.ecn), f"The 'ecn' field must be a 2-bit unsigned integer. Got: {self.ecn!r}"
 
-        assert is_uint20(
-            self.flow
-        ), f"The 'flow' field must be a 20-bit unsigned integer. Got: {self.flow!r}"
+        assert is_uint20(self.flow), f"The 'flow' field must be a 20-bit unsigned integer. Got: {self.flow!r}"
 
-        assert is_uint16(
-            self.dlen
-        ), f"The 'dlen' field must be a 16-bit unsigned integer. Got: {self.dlen!r}"
+        assert is_uint16(self.dlen), f"The 'dlen' field must be a 16-bit unsigned integer. Got: {self.dlen!r}"
 
-        assert isinstance(
-            self.next, IpProto
-        ), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
+        assert isinstance(self.next, IpProto), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
 
-        assert is_uint8(
-            self.hop
-        ), f"The 'hop' field must be an 8-bit unsigned integer. Got: {self.hop!r}"
+        assert is_uint8(self.hop), f"The 'hop' field must be an 8-bit unsigned integer. Got: {self.hop!r}"
 
-        assert isinstance(
-            self.src, Ip6Address
-        ), f"The 'src' field must be an Ip6Address. Got: {type(self.src)!r}"
+        assert isinstance(self.src, Ip6Address), f"The 'src' field must be an Ip6Address. Got: {type(self.src)!r}"
 
-        assert isinstance(
-            self.dst, Ip6Address
-        ), f"The 'dst' field must be an Ip6Address. Got: {type(self.dst)!r}"
+        assert isinstance(self.dst, Ip6Address), f"The 'dst' field must be an Ip6Address. Got: {type(self.dst)!r}"
 
     @override
     def __len__(self) -> int:
@@ -175,9 +159,7 @@ class Ip6Header(ProtoStruct):
         Initialize the IPv6 header from buffer.
         """
 
-        ver__dscp__ecn__flow, dlen, next, hop, src, dst = struct.unpack(
-            IP6__HEADER__STRUCT, buffer[:IP6__HEADER__LEN]
-        )
+        ver__dscp__ecn__flow, dlen, next, hop, src, dst = struct.unpack(IP6__HEADER__STRUCT, buffer[:IP6__HEADER__LEN])
 
         return cls(
             dscp=(ver__dscp__ecn__flow >> 22) & 0b00111111,

@@ -86,8 +86,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
 
         # Ensure the 'lease_time' field is 32-bit unsigned integer.
         assert is_uint32(self.lease_time), (
-            f"The 'lease_time' field must be a 32-bit unsigned integer. "
-            f"Got: {self.lease_time}"
+            f"The 'lease_time' field must be a 32-bit unsigned integer. " f"Got: {self.lease_time}"
         )
 
     @override
@@ -122,9 +121,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (
-            value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__LEASE_TIME__LEN:
+        if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__LEASE_TIME__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 IP Address Lease Time option length value must be "
                 f"{DHCP4__OPTION__LEASE_TIME__LEN} bytes. Got: {value!r}"

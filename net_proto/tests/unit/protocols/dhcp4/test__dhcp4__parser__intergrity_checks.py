@@ -42,17 +42,14 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
 
 testcases: list[dict[str, Any]] = [
     {
-        "_description": (
-            "The packet length is lower than the DHCPv4 minimum header length by 1."
-        ),
+        "_description": ("The packet length is lower than the DHCPv4 minimum header length by 1."),
         "_args": [
             b"\x00" * (DHCP4__HEADER__LEN - 1),
         ],
         "_kwargs": {},
         "_results": {
             "error_message": (
-                f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, "
-                f"got {DHCP4__HEADER__LEN - 1} bytes."
+                f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, " f"got {DHCP4__HEADER__LEN - 1} bytes."
             ),
         },
     },
@@ -63,10 +60,7 @@ testcases: list[dict[str, Any]] = [
         ],
         "_kwargs": {},
         "_results": {
-            "error_message": (
-                f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, "
-                "got 0 bytes."
-            ),
+            "error_message": (f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, " "got 0 bytes."),
         },
     },
 ]

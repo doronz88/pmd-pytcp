@@ -85,9 +85,7 @@ class IpMask(Base, Ip, ABC):
         Compare the IP mask with another object.
         """
 
-        return other is self or (
-            isinstance(other, type(self)) and self._mask == other._mask
-        )
+        return other is self or (isinstance(other, type(self)) and self._mask == other._mask)
 
     __hash__ = Base.__hash__
 

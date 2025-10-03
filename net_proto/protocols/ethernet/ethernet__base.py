@@ -49,9 +49,7 @@ from net_proto.protocols.ip4.ip4__assembler import (
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 
-type EthernetPayload = (
-    ArpAssembler | Ip4Assembler | Ip4FragAssembler | Ip6Assembler | RawAssembler
-)
+type EthernetPayload = (ArpAssembler | Ip4Assembler | Ip4FragAssembler | Ip6Assembler | RawAssembler)
 
 
 class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):

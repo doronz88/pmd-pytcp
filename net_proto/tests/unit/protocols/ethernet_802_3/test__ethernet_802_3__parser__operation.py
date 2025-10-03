@@ -68,8 +68,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "Ethernet 802.3 packet (II).",
             "_args": [
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
-                + b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN,
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc" + b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN,
             ],
             "_kwargs": {},
             "_results": {

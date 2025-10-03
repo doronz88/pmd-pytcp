@@ -112,8 +112,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__unknown__cksum__over_max(self) -> None:
@@ -130,8 +129,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__icmp4__message__unknown__data__not_bytes(self) -> None:
@@ -147,8 +145,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'data' field must be a bytes, bytearray or memoryview. "
-            f"Got: {type(value)!r}",
+            f"The 'data' field must be a bytes, bytearray or memoryview. " f"Got: {type(value)!r}",
         )
 
 
@@ -176,8 +173,5 @@ class TestIcmp4MessageUnknownParserAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                (
-                    "The 'type' field must not be known. "
-                    f"Got: {Icmp4Type.from_int(type)!r}"
-                ),
+                ("The 'type' field must not be known. " f"Got: {Icmp4Type.from_int(type)!r}"),
             )

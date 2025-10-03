@@ -88,9 +88,7 @@ class Service(Subsystem):
 
         try:
             service_socket.bind((str(self._local_ip_address), self._local_port))
-            self._log(
-                f"Socket created, bound to {self._local_ip_address}, port {self._local_port}."
-            )
+            self._log(f"Socket created, bound to {self._local_ip_address}, port {self._local_port}.")
 
         except OSError as error:
             self._log(f"The bind() call failed - {error!r}.")

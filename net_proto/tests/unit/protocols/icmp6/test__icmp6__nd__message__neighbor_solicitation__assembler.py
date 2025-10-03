@@ -61,10 +61,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 24,
-                "__str__": (
-                    "ICMP6 ND Neighbor Solicitation, target 2001:db8::1, "
-                    "len 24 (24+0)"
-                ),
+                "__str__": ("ICMP6 ND Neighbor Solicitation, target 2001:db8::1, " "len 24 (24+0)"),
                 "__repr__": (
                     "Icmp6NdMessageNeighborSolicitation(code=<Icmp6NdNeighborSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), target_address"
@@ -86,9 +83,7 @@ from net_proto.lib.buffer import Buffer
             "_args": [],
             "_kwargs": {
                 "target_address": Ip6Address("2001:db8::2"),
-                "options": Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))
-                ),
+                "options": Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))),
             },
             "_results": {
                 "__len__": 32,
@@ -110,9 +105,7 @@ from net_proto.lib.buffer import Buffer
                 "code": Icmp6NdNeighborSolicitationCode.DEFAULT,
                 "cksum": 0,
                 "target_address": Ip6Address("2001:db8::2"),
-                "options": Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))
-                ),
+                "options": Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))),
             },
         },
     ]
@@ -133,9 +126,7 @@ class TestIcmp6NdMessageNeighborSolicitationAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                *self._args, **self._kwargs
-            )
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
         )
 
     def test__icmp6__nd__message__neighbor_solicitation__assembler__len(

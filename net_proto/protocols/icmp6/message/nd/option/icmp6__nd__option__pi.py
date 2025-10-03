@@ -116,39 +116,27 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         """
 
         # Ensure the 'flag_l' field is a boolean.
-        assert isinstance(self.flag_l, bool), (
-            f"The 'flag_l' field must be a boolean. "
-            f"Got: {type(self.flag_l)!r}"
-        )
+        assert isinstance(self.flag_l, bool), f"The 'flag_l' field must be a boolean. " f"Got: {type(self.flag_l)!r}"
 
         # Ensure the 'flag_a' field is a boolean.
-        assert isinstance(self.flag_a, bool), (
-            f"The 'flag_a' field must be a boolean. "
-            f"Got: {type(self.flag_a)!r}"
-        )
+        assert isinstance(self.flag_a, bool), f"The 'flag_a' field must be a boolean. " f"Got: {type(self.flag_a)!r}"
 
         # Ensure the 'flag_r' field is a boolean.
-        assert isinstance(self.flag_r, bool), (
-            f"The 'flag_r' field must be a boolean. "
-            f"Got: {type(self.flag_r)!r}"
-        )
+        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. " f"Got: {type(self.flag_r)!r}"
 
         # Ensure the 'valid_lifetime' field is a 32-bit unsigned integer.
         assert is_uint32(self.valid_lifetime), (
-            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {self.valid_lifetime!r}"
+            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. " f"Got: {self.valid_lifetime!r}"
         )
 
         # Ensure the 'preferred_lifetime' field is a 32-bit unsigned integer.
         assert is_uint32(self.preferred_lifetime), (
-            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. "
-            f"Got: {self.preferred_lifetime!r}"
+            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. " f"Got: {self.preferred_lifetime!r}"
         )
 
         # Ensure the 'prefix' field is an Ip6Network instance.
         assert isinstance(self.prefix, Ip6Network), (
-            f"The 'prefix' field must be an Ip6Network. "
-            f"Got: {type(self.prefix)!r}"
+            f"The 'prefix' field must be an Ip6Network. " f"Got: {type(self.prefix)!r}"
         )
 
     @override
@@ -179,10 +167,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             int(self.type),
             self.len >> 3,
             len(self.prefix.mask),
-            (self.flag_l << 7)
-            | (self.flag_a << 6)
-            | (self.flag_r << 5)
-            | (0 & 0b00011111),
+            (self.flag_l << 7) | (self.flag_a << 6) | (self.flag_r << 5) | (0 & 0b00011111),
             self.valid_lifetime,
             self.preferred_lifetime,
             0,
@@ -200,8 +185,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
             raise Icmp6IntegrityError(
-                f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} "
-                f"bytes. Got: {value!r}"
+                f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} " f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
@@ -220,8 +204,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
-            f"The minimum length of the ICMPv6 ND Pi option must be "
-            f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the ICMPv6 ND Pi option must be " f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
@@ -241,9 +224,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             preferred_lifetime,
             _,
             prefix,
-        ) = struct.unpack(
-            ICMP6__ND__OPTION__PI__STRUCT, buffer[:ICMP6__ND__OPTION__PI__LEN]
-        )
+        ) = struct.unpack(ICMP6__ND__OPTION__PI__STRUCT, buffer[:ICMP6__ND__OPTION__PI__LEN])
 
         return cls(
             flag_l=bool(flags & 0b10000000),

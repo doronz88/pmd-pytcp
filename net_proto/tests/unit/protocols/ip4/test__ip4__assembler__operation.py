@@ -70,8 +70,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 20,
                 "__str__": (
-                    "IPv4 10.20.30.40 > 50.60.70.80, proto Raw, id 65535, DF, offset 0, "
-                    "ttl 255, len 20 (20+0+0)"
+                    "IPv4 10.20.30.40 > 50.60.70.80, proto Raw, id 65535, DF, offset 0, " "ttl 255, len 20 (20+0+0)"
                 ),
                 "__repr__": (
                     "Ip4Assembler(header=Ip4Header(hlen=20, dscp=63, ecn=3, plen=20, "
@@ -79,10 +78,7 @@ from net_proto.lib.buffer import Buffer
                     "cksum=0, src=Ip4Address('10.20.30.40'), dst=Ip4Address('50.60.70.80')), "
                     "options=Ip4Options(options=[]), payload=RawAssembler(raw__payload=b''))"
                 ),
-                "__bytes__": (
-                    b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23\x0a\x14\x1e\x28"
-                    b"\x32\x3c\x46\x50"
-                ),
+                "__bytes__": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
                 "ver": IpVersion.IP4,
                 "hlen": 20,
                 "dscp": 63,
@@ -132,9 +128,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 36,
-                "__str__": (
-                    "IPv4 1.2.3.4 > 5.6.7.8, proto Raw, id 12345, DF, offset 0, ttl 255, len 36 (20+0+16)"
-                ),
+                "__str__": ("IPv4 1.2.3.4 > 5.6.7.8, proto Raw, id 12345, DF, offset 0, ttl 255, len 36 (20+0+16)"),
                 "__repr__": (
                     "Ip4Assembler(header=Ip4Header(hlen=20, dscp=17, ecn=2, plen=36, "
                     "id=12345, flag_df=True, flag_mf=False, offset=0, ttl=255, proto=<IpProto.RAW: 255>, "
@@ -223,8 +217,7 @@ from net_proto.lib.buffer import Buffer
                     b"\x4f\x20\xff\xff\x52\xdc\x00\x00\x40\xff\x02\xea\x01\x01\x01\x01"
                     b"\x02\x02\x02\x02\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
                     b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-                    b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-                    + b"X" * 65475
+                    b"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01" + b"X" * 65475
                 ),
                 "ver": IpVersion.IP4,
                 "hlen": 60,
@@ -542,20 +535,12 @@ class TestIp4AssemblerOperation(TestCase):
                 "ip4_frag__flag_mf": False,
                 "ip4_frag__offset": 32008,
                 "ip4_frag__options": Ip4Options(),
-                "ip4_frag__payload": RawAssembler(
-                    raw__payload=b"0123456789ABCDEF"
-                ),
+                "ip4_frag__payload": RawAssembler(raw__payload=b"0123456789ABCDEF"),
             },
-            "_header_bytes": (
-                b"\x45\x29\x00\x24\xd4\x31\x0f\xa1\x80\xff\x00\x00\x04\x03\x02\x01"
-                b"\x08\x07\x06\x05"
-            ),
+            "_header_bytes": (b"\x45\x29\x00\x24\xd4\x31\x0f\xa1\x80\xff\x00\x00\x04\x03\x02\x01" b"\x08\x07\x06\x05"),
             "_results": {
                 "__len__": 36,
-                "__str__": (
-                    "IPv4 4.3.2.1 > 8.7.6.5, proto Raw, id 54321, offset 32008, "
-                    "ttl 128, len 36 (20+0+16)"
-                ),
+                "__str__": ("IPv4 4.3.2.1 > 8.7.6.5, proto Raw, id 54321, offset 32008, " "ttl 128, len 36 (20+0+16)"),
                 "__repr__": (
                     "Ip4FragAssembler(header=Ip4Header(hlen=20, dscp=10, ecn=1, plen=36, "
                     "id=54321, flag_df=False, flag_mf=False, offset=32008, ttl=128, proto=<IpProto"
@@ -615,15 +600,11 @@ class TestIp4AssemblerOperation(TestCase):
                 "ip4_frag__options": Ip4Options(),
                 "ip4_frag__payload": RawAssembler(raw__payload=b"X" * 1466),
             },
-            "_header_bytes": (
-                b"\x45\x46\x05\xce\x30\x39\x20\x00\xff\xff\x00\x00\x01\x02\x03\x04"
-                b"\x05\x06\x07\x08"
-            ),
+            "_header_bytes": (b"\x45\x46\x05\xce\x30\x39\x20\x00\xff\xff\x00\x00\x01\x02\x03\x04" b"\x05\x06\x07\x08"),
             "_results": {
                 "__len__": 1486,
                 "__str__": (
-                    "IPv4 1.2.3.4 > 5.6.7.8, proto Raw, id 12345, MF, offset 0, ttl 255, "
-                    "len 1486 (20+0+1466)"
+                    "IPv4 1.2.3.4 > 5.6.7.8, proto Raw, id 12345, MF, offset 0, ttl 255, " "len 1486 (20+0+1466)"
                 ),
                 "__repr__": (
                     "Ip4FragAssembler(header=Ip4Header(hlen=20, dscp=17, ecn=2, plen=1486, "

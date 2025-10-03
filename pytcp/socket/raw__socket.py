@@ -119,20 +119,12 @@ class RawSocket(socket):
                 else Ip4Address(remote_address[0])
             )
         except (Ip6AddressFormatError, Ip4AddressFormatError) as error:
-            raise gaierror(
-                "[Errno -2] Name or service not known - "
-                "[Malformed remote IP address]"
-            ) from error
+            raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]") from error
 
         if self._local_ip_address.is_unspecified:
-            local_ip_address = pick_local_ip_address(
-                remote_ip_address=remote_ip_address
-            )
+            local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
             if local_ip_address.is_unspecified:
-                raise gaierror(
-                    "[Errno -2] Name or service not known - "
-                    "[Malformed remote IP address]"
-                )
+                raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]")
         else:
             local_ip_address = self._local_ip_address
 
@@ -151,33 +143,25 @@ class RawSocket(socket):
         match self._address_family:
             case AddressFamily.INET6:
                 try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(
-                        stack.packet_handler.ip6_unicast
-                    ) | {Ip6Address()}:
+                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.packet_handler.ip6_unicast) | {
+                        Ip6Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip6AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
             case AddressFamily.INET4:
                 try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(
-                        stack.packet_handler.ip4_unicast
-                    ) | {Ip4Address()}:
+                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.packet_handler.ip4_unicast) | {
+                        Ip4Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip4AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
         stack.sockets.pop(self.socket_id, None)
         self._local_ip_address = local_ip_address
@@ -196,9 +180,7 @@ class RawSocket(socket):
         # Sanity check on remote port number (0 is a valid remote port in
         # BSD socket implementation).
         if (remote_port := address[1]) not in range(0, 65536):
-            raise OverflowError(
-                "connect(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("connect(): port must be 0-65535. - [Port out of range]")
 
         # Set local and remote ip addresses aproprietely
         local_ip_address, remote_ip_address = self._get_ip_addresses(
@@ -221,36 +203,25 @@ class RawSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified:
-            raise OSError(
-                "[Errno 89] Destination address require - "
-                "[Socket has no destination address set]"
-            )
+            raise OSError("[Errno 89] Destination address require - " "[Socket has no destination address set]")
 
         match self._address_family:
             case AddressFamily.INET6:
                 tx_status = stack.packet_handler.send_ip6_packet(
                     ip6__local_address=cast(Ip6Address, self._local_ip_address),
-                    ip6__remote_address=cast(
-                        Ip6Address, self._remote_ip_address
-                    ),
+                    ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
                     ip6__next=self._ip_proto,
                     ip6__payload=data,
                 )
             case AddressFamily.INET4:
                 tx_status = stack.packet_handler.send_ip4_packet(
                     ip4__local_address=cast(Ip4Address, self._local_ip_address),
-                    ip4__remote_address=cast(
-                        Ip4Address, self._remote_ip_address
-                    ),
+                    ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
                     ip4__proto=self._ip_proto,
                     ip4__payload=data,
                 )
 
-        sent_data_len = (
-            len(data)
-            if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING
-            else 0
-        )
+        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
 
         __debug__ and log(
             "socket",
@@ -285,11 +256,7 @@ class RawSocket(socket):
                     ip4__payload=data,
                 )
 
-        sent_data_len = (
-            len(data)
-            if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING
-            else 0
-        )
+        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
 
         __debug__ and log(
             "socket",
@@ -298,9 +265,7 @@ class RawSocket(socket):
 
         return sent_data_len
 
-    def recv(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> bytes:
+    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
         """
@@ -317,9 +282,7 @@ class RawSocket(socket):
 
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
-    def recvfrom(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> tuple[bytes, tuple[str, int]]:
+    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
         """
@@ -330,13 +293,10 @@ class RawSocket(socket):
             packet_rx_md = self._packet_rx_md.pop(0)
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - Received "
-                f"{len(packet_rx_md.raw__data)} bytes of data",
+                f"<B><g>[{self}]</> - Received " f"{len(packet_rx_md.raw__data)} bytes of data",
             )
             return (
-                bytes(
-                    packet_rx_md.raw__data
-                ),  # Note: Conversion: memoryview -> bytes
+                bytes(packet_rx_md.raw__data),  # Note: Conversion: memoryview -> bytes
                 (
                     str(packet_rx_md.ip__remote_address),
                     0,

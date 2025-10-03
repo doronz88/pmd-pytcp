@@ -169,10 +169,7 @@ class TestTcpOptionEolAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Eol option must be 1 "
-                    "byte. Got: 0"
-                ),
+                "error_message": ("The minimum length of the TCP Eol option must be 1 " "byte. Got: 0"),
             },
         },
         {
@@ -184,8 +181,7 @@ class TestTcpOptionEolAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The TCP Eol option type must be {TcpOptionType.EOL!r}. "
-                    f"Got: {TcpOptionType.from_int(255)!r}"
+                    f"The TCP Eol option type must be {TcpOptionType.EOL!r}. " f"Got: {TcpOptionType.from_int(255)!r}"
                 ),
             },
         },

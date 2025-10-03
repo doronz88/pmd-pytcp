@@ -142,9 +142,7 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         with testcase arguments.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6MessageEchoRequest(*self._args, **self._kwargs)
-        )
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageEchoRequest(*self._args, **self._kwargs))
 
     def test__icmp6__message__echo_request__assembler__len(self) -> None:
         """

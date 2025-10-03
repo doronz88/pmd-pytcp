@@ -107,7 +107,7 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound ICMPv6 packets.
         """
 
-        self._packet_stats_rx.inc("icmp6__pre_parse")
+        self._packet_stats_rx.icmp6__pre_parse += 1
 
         try:
             Icmp6Parser(packet_rx)
@@ -117,7 +117,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 "icmp6",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
-            self._packet_stats_rx.inc("icmp6__failed_parse__drop")
+            self._packet_stats_rx.icmp6__failed_parse__drop += 1
             return
 
         __debug__ and log("icmp6", f"{packet_rx.tracker} - {packet_rx.icmp6}")
@@ -142,18 +142,14 @@ class PacketHandlerIcmp6Rx(ABC):
             case _:
                 self.__phrx_icmp6__unknown(packet_rx)
 
-    def __phrx_icmp6__destination_unreachable(
-        self, packet_rx: PacketRx
-    ) -> None:
+    def __phrx_icmp6__destination_unreachable(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 Port Unreachbale packets.
         """
 
-        assert isinstance(
-            packet_rx.icmp6.message, Icmp6MessageDestinationUnreachable
-        )
+        assert isinstance(packet_rx.icmp6.message, Icmp6MessageDestinationUnreachable)
 
-        self._packet_stats_rx.inc("icmp6__destination_unreachable")
+        self._packet_stats_rx.icmp6__destination_unreachable += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Unreachable packet "
@@ -164,23 +160,15 @@ class PacketHandlerIcmp6Rx(ABC):
         # information from it.
         # TODO - This will not work in case of IPv6 extension headers present.
         frame = packet_rx.icmp6.message.data
-        if (
-            len(frame) >= IP6__HEADER__LEN + UDP__HEADER__LEN
-            and frame[0] >> 4 == 6
-            and frame[6] == int(IpProto.UDP)
-        ):
+        if len(frame) >= IP6__HEADER__LEN + UDP__HEADER__LEN and frame[0] >> 4 == 6 and frame[6] == int(IpProto.UDP):
             # Create UdpMetadata object and try to find matching UDP socket.
             udp_offset = IP6__HEADER__LEN
             packet = UdpMetadata(
                 ip__ver=IpVersion.IP6,
                 ip__local_address=Ip6Address(frame[8:24]),
                 ip__remote_address=Ip6Address(frame[24:40]),
-                udp__local_port=struct.unpack(
-                    "!H", frame[udp_offset + 0 : udp_offset + 2]
-                )[0],
-                udp__remote_port=struct.unpack(
-                    "!H", frame[udp_offset + 2 : udp_offset + 4]
-                )[0],
+                udp__local_port=struct.unpack("!H", frame[udp_offset + 0 : udp_offset + 2])[0],
+                udp__remote_port=struct.unpack("!H", frame[udp_offset + 2 : udp_offset + 4])[0],
             )
 
             for socket_id in packet.socket_ids:
@@ -204,15 +192,13 @@ class PacketHandlerIcmp6Rx(ABC):
 
             __debug__ and log(
                 "icmp6",
-                f"{packet_rx.tracker} - Unreachable data doesn't match "
-                "any UDP socket",
+                f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
             )
             return
 
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Unreachable data doesn't pass basic "
-            "IPv4/UDP integrity check",
+            f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
         )
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:
@@ -222,7 +208,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoRequest)
 
-        self._packet_stats_rx.inc("icmp6__echo_request__respond_echo_reply")
+        self._packet_stats_rx.icmp6__echo_request__respond_echo_reply += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Received ICMPv6 Echo Request "
@@ -248,11 +234,10 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoReply)
 
-        self._packet_stats_rx.inc("icmp6__echo_reply")
+        self._packet_stats_rx.icmp6__echo_reply += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received ICMPv6 Echo Reply packet "
-            f"from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received ICMPv6 Echo Reply packet " f"from {packet_rx.ip6.src}",
         )
 
         # Ensure that ICMP message type is memoryview.
@@ -271,11 +256,10 @@ class PacketHandlerIcmp6Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.inc("raw__socket_match")
+                self._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "raw",
-                    f"{packet_rx_md.tracker} - <INFO>Found matching listening "
-                    f"socket [{socket}]</>",
+                    f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
                 socket.process_raw_packet(packet_rx_md)
                 return
@@ -285,53 +269,38 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound ICMPv6 ND Router Solicitation packets.
         """
 
-        assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdMessageRouterSolicitation
-        )
+        assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterSolicitation)
 
-        self._packet_stats_rx.inc("icmp6__nd_router_solicitation")
+        self._packet_stats_rx.icmp6__nd_router_solicitation += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received ICMPv6 Router Solicitation "
-            f"packet from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received ICMPv6 Router Solicitation " f"packet from {packet_rx.ip6.src}",
         )
 
-    def __phrx_icmp6__nd_router_advertisement(
-        self, packet_rx: PacketRx
-    ) -> None:
+    def __phrx_icmp6__nd_router_advertisement(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 ND Router Advertisement packets.
         """
 
-        assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement
-        )
+        assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement)
 
-        self._packet_stats_rx.inc("icmp6__nd_router_advertisement")
+        self._packet_stats_rx.icmp6__nd_router_advertisement += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received ICMPv6 Router Advertisement "
-            f"packet from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received ICMPv6 Router Advertisement " f"packet from {packet_rx.ip6.src}",
         )
         # Make note of prefixes that can be used for address autoconfiguration.
-        self._icmp6_ra__prefixes = [
-            (option.prefix, packet_rx.ip6.src)
-            for option in packet_rx.icmp6.message.option_pi
-        ]
+        self._icmp6_ra__prefixes = [(option.prefix, packet_rx.ip6.src) for option in packet_rx.icmp6.message.option_pi]
         self._icmp6_ra__event.release()
 
-    def __phrx_icmp6__nd_neighbor_solicitation(
-        self, packet_rx: PacketRx
-    ) -> None:
+    def __phrx_icmp6__nd_neighbor_solicitation(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 ND Neighbor Solicitation packets.
         """
 
-        assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdMessageNeighborSolicitation
-        )
+        assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborSolicitation)
 
-        self._packet_stats_rx.inc("icmp6__nd_neighbor_solicitation")
+        self._packet_stats_rx.icmp6__nd_neighbor_solicitation += 1
         # Check if request is for one of stack's IPv6 unicast addresses.
         if packet_rx.icmp6.message.target_address not in self.ip6_unicast:
             __debug__ and log(
@@ -341,9 +310,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 "not matching any of stack's IPv6 unicast addresses, "
                 "dropping",
             )
-            self._packet_stats_rx.inc(
-                "icmp6__nd_neighbor_solicitation__target_unknown__drop"
-            )
+            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_unknown__drop += 1
             return
 
         __debug__ and log(
@@ -356,15 +323,10 @@ class PacketHandlerIcmp6Rx(ABC):
         # Update ICMPv6 ND cache if valid IPv6 source is set and the ND option
         # SLLA is present.
         if (
-            not (
-                packet_rx.ip6.src.is_unspecified
-                or packet_rx.ip6.src.is_multicast
-            )
+            not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast)
             and packet_rx.icmp6.message.option_slla
         ):
-            self._packet_stats_rx.inc(
-                "icmp6__nd_neighbor_solicitation__update_nd_cache"
-            )
+            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
             stack.nd_cache.add_entry(
                 ip6_address=packet_rx.ip6.src,
                 mac_address=packet_rx.icmp6.message.option_slla,
@@ -373,12 +335,10 @@ class PacketHandlerIcmp6Rx(ABC):
         # Determine if request is part of DAD request by examining its source
         # address (absence of slla is already tested by sanity check).
         if ip6_nd_dad := packet_rx.ip6.src.is_unspecified:
-            self._packet_stats_rx.inc("icmp6__nd_neighbor_solicitation__dad")
+            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad += 1
 
         # Send response.
-        self._packet_stats_rx.inc(
-            "icmp6__nd_neighbor_solicitation__target_stack__respond"
-        )
+        self._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_stack__respond += 1
         self._phtx_icmp6(
             ip6__src=packet_rx.icmp6.message.target_address,
             ip6__dst=(
@@ -397,18 +357,14 @@ class PacketHandlerIcmp6Rx(ABC):
         )
         return
 
-    def __phrx_icmp6__nd_neighbor_advertisement(
-        self, packet_rx: PacketRx
-    ) -> None:
+    def __phrx_icmp6__nd_neighbor_advertisement(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 ND Neighbor Advertisement packets.
         """
 
-        assert isinstance(
-            packet_rx.icmp6.message, Icmp6NdMessageNeighborAdvertisement
-        )
+        assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborAdvertisement)
 
-        self._packet_stats_rx.inc("icmp6__nd_neighbor_advertisement")
+        self._packet_stats_rx.icmp6__nd_neighbor_advertisement += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Neighbor Advertisement "
@@ -417,22 +373,15 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         # Run ND Duplicate Address Detection check.
-        if (
-            packet_rx.icmp6.message.target_address
-            == self._icmp6_nd_dad__ip6_unicast_candidate
-        ):
-            self._packet_stats_rx.inc(
-                "icmp6__nd_neighbor_advertisement__run_dad"
-            )
+        if packet_rx.icmp6.message.target_address == self._icmp6_nd_dad__ip6_unicast_candidate:
+            self._packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad += 1
             self._icmp6_nd_dad__tlla = packet_rx.icmp6.message.option_tlla
             self._icmp6_nd_dad__event.release()
             return
 
         # Update ICMPv6 ND cache.
         if packet_rx.icmp6.message.option_tlla:
-            self._packet_stats_rx.inc(
-                "icmp6__nd_neighbor_advertisement__update_nd_cache"
-            )
+            self._packet_stats_rx.icmp6__nd_neighbor_advertisement__update_nd_cache += 1
             stack.nd_cache.add_entry(
                 ip6_address=packet_rx.icmp6.message.target_address,
                 mac_address=packet_rx.icmp6.message.option_tlla,
@@ -444,11 +393,10 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound ICMPv6 MLDv2 Report packets.
         """
 
-        self._packet_stats_rx.inc("icmp6__mld2_report")
+        self._packet_stats_rx.icmp6__mld2_report += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet "
-            f"from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet " f"from {packet_rx.ip6.src}",
         )
 
     def __phrx_icmp6__unknown(self, packet_rx: PacketRx) -> None:
@@ -456,9 +404,8 @@ class PacketHandlerIcmp6Rx(ABC):
         Handle inbound unknown ICMPv6 packets.
         """
 
-        self._packet_stats_rx.inc("icmp6__unknown")
+        self._packet_stats_rx.icmp6__unknown += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received unknown ICMPv6 packet "
-            f"from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received unknown ICMPv6 packet " f"from {packet_rx.ip6.src}",
         )

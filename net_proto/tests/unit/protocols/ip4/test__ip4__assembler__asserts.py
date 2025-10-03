@@ -99,9 +99,7 @@ class TestIp4AssemblerAsserts(TestCase):
                 )
             )
 
-        self.assertEqual(
-            str(error.exception), "The IPv4 EOL option must be the last option."
-        )
+        self.assertEqual(str(error.exception), "The IPv4 EOL option must be the last option.")
 
 
 class TestIp4FragAssemblerAsserts(TestCase):
@@ -155,6 +153,4 @@ class TestIp4FragAssemblerAsserts(TestCase):
                 )
             )
 
-        self.assertEqual(
-            str(error.exception), "The IPv4 EOL option must be the last option."
-        )
+        self.assertEqual(str(error.exception), "The IPv4 EOL option must be the last option.")

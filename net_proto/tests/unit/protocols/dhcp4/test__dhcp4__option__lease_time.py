@@ -278,8 +278,7 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The minimum length of the DHCPv4 IP Address Lease Time option must be 2 "
-                    "bytes. Got: 1"
+                    "The minimum length of the DHCPv4 IP Address Lease Time option must be 2 " "bytes. Got: 1"
                 ),
             },
         },
@@ -344,9 +343,7 @@ class TestDhcp4OptionLeaseTimeParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionLeaseTime.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionLeaseTime.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

@@ -75,9 +75,7 @@ class Dhcp4Client:
     Class supporting DHCPv4 client operation.
     """
 
-    def __init__(
-        self, *, mac_address: MacAddress, timeout__sec: int = 5
-    ) -> None:
+    def __init__(self, *, mac_address: MacAddress, timeout__sec: int = 5) -> None:
         """
         Class constructor.
         """
@@ -120,14 +118,10 @@ class Dhcp4Client:
 
         # Wait for DHCP Offer.
         try:
-            dhcp4_packet_rx = Dhcp4Parser(
-                client_socket.recv__mv(timeout=self._timeout__sec)
-            )
+            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
-            __debug__ and log(
-                "dhcp4", "<WARN>Didn't receive DHCP Offer message - timeout</>"
-            )
+            __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP Offer message - timeout</>")
             client_socket.close()
             return None
 
@@ -167,14 +161,10 @@ class Dhcp4Client:
 
         # Wait for the DHCP Ack packet from server.
         try:
-            dhcp4_packet_rx = Dhcp4Parser(
-                client_socket.recv__mv(timeout=self._timeout__sec)
-            )
+            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
-            __debug__ and log(
-                "dhcp4", "<WARN>Didn't receive DHCP ACK message - timeout</>"
-            )
+            __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP ACK message - timeout</>")
             client_socket.close()
             return None
 

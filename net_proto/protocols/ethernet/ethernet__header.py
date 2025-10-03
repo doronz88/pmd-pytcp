@@ -76,17 +76,11 @@ class EthernetHeader(ProtoStruct):
         Ensure integrity of the Ethernet header fields.
         """
 
-        assert isinstance(
-            self.dst, MacAddress
-        ), f"The 'dst' field must be a MacAddress. Got: {type(self.dst)!r}"
+        assert isinstance(self.dst, MacAddress), f"The 'dst' field must be a MacAddress. Got: {type(self.dst)!r}"
 
-        assert isinstance(
-            self.src, MacAddress
-        ), f"The 'src' field must be a MacAddress. Got: {type(self.src)!r}"
+        assert isinstance(self.src, MacAddress), f"The 'src' field must be a MacAddress. Got: {type(self.src)!r}"
 
-        assert isinstance(
-            self.type, EtherType
-        ), f"The 'type' field must be an EtherType. Got: {type(self.type)!r}"
+        assert isinstance(self.type, EtherType), f"The 'type' field must be an EtherType. Got: {type(self.type)!r}"
 
     @override
     def __len__(self) -> int:
@@ -120,9 +114,7 @@ class EthernetHeader(ProtoStruct):
         Initialize the Ethernet header from buffer.
         """
 
-        dst, src, type = struct.unpack(
-            ETHERNET__HEADER__STRUCT, buffer[:ETHERNET__HEADER__LEN]
-        )
+        dst, src, type = struct.unpack(ETHERNET__HEADER__STRUCT, buffer[:ETHERNET__HEADER__LEN])
 
         return cls(
             dst=MacAddress(dst),

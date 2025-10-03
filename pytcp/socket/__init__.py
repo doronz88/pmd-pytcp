@@ -144,9 +144,7 @@ class socket(ABC):
                 case (AddressFamily.INET4, SocketType.RAW, _):
                     return cls.__new__(RawSocket)
                 case _:
-                    raise ValueError(
-                        f"Invalid socket {family=}, {type=}, {protocol=} combination."
-                    )
+                    raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
 
         return super().__new__(cls)
 
@@ -364,9 +362,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def accept(
-        self, *, timeout: float | None = None
-    ) -> tuple[socket, tuple[str, int]]:
+    def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
         """
         The 'accept()' socket API placeholder.
         """

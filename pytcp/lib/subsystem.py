@@ -56,10 +56,7 @@ class Subsystem(ABC):
 
         __debug__ and log(
             "stack",
-            (
-                f"Initializing {self._subsystem_name}"
-                + (f" [{info}]" if info else "")
-            ),
+            (f"Initializing {self._subsystem_name}" + (f" [{info}]" if info else "")),
         )
 
         self._event__stop_subsystem = threading.Event()

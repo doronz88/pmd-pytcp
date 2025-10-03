@@ -169,10 +169,7 @@ class TestIp4OptionNopAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the IPv4 Nop option must be 1 "
-                    "byte. Got: 0"
-                ),
+                "error_message": ("The minimum length of the IPv4 Nop option must be 1 " "byte. Got: 0"),
             },
         },
         {
@@ -184,8 +181,7 @@ class TestIp4OptionNopAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. "
-                    f"Got: {Ip4OptionType.from_int(255)!r}"
+                    f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. " f"Got: {Ip4OptionType.from_int(255)!r}"
                 ),
             },
         },

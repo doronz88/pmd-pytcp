@@ -59,9 +59,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 ETHERNET_802_3__HEADER__LEN = 14
 ETHERNET_802_3__HEADER__STRUCT = "! 6s 6s H"
 ETHERNET_802_3__PACKET__MAX_LEN = 1514
-ETHERNET_802_3__PAYLOAD__MAX_LEN = (
-    ETHERNET_802_3__PACKET__MAX_LEN - ETHERNET_802_3__HEADER__LEN
-)
+ETHERNET_802_3__PAYLOAD__MAX_LEN = ETHERNET_802_3__PACKET__MAX_LEN - ETHERNET_802_3__HEADER__LEN
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -80,18 +78,11 @@ class Ethernet8023Header(ProtoStruct):
         Ensure integrity of the Ethernet 802.3 header fields.
         """
 
-        assert isinstance(
-            self.dst, MacAddress
-        ), f"The 'dst' field must be a MacAddress. Got: {type(self.dst)!r}"
+        assert isinstance(self.dst, MacAddress), f"The 'dst' field must be a MacAddress. Got: {type(self.dst)!r}"
 
-        assert isinstance(
-            self.src, MacAddress
-        ), f"The 'src' field must be a MacAddress. Got: {type(self.src)!r}"
+        assert isinstance(self.src, MacAddress), f"The 'src' field must be a MacAddress. Got: {type(self.src)!r}"
 
-        assert (
-            is_uint16(self.dlen)
-            and self.dlen <= ETHERNET_802_3__PAYLOAD__MAX_LEN
-        ), (
+        assert is_uint16(self.dlen) and self.dlen <= ETHERNET_802_3__PAYLOAD__MAX_LEN, (
             "The 'dlen' field must be a 16-bit unsigned integer lower than or "
             f"equal to {ETHERNET_802_3__PAYLOAD__MAX_LEN}. Got: {self.dlen!r}"
         )
@@ -128,9 +119,7 @@ class Ethernet8023Header(ProtoStruct):
         Initialize the Ethernet 802.3 header from buffer.
         """
 
-        dst, src, dlen = struct.unpack(
-            ETHERNET_802_3__HEADER__STRUCT, buffer[:ETHERNET_802_3__HEADER__LEN]
-        )
+        dst, src, dlen = struct.unpack(ETHERNET_802_3__HEADER__STRUCT, buffer[:ETHERNET_802_3__HEADER__LEN])
 
         return cls(
             dst=MacAddress(dst),

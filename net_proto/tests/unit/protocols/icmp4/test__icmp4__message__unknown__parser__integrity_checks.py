@@ -45,8 +45,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": (
-                "ICMPv4 Unknown message, "
-                "the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
+                "ICMPv4 Unknown message, " "the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
             ),
             "_args": [b"\xff\x00\xfb"],
             "_kwargs": {},
@@ -63,8 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": (
-                "ICMPv4 unknown message, "
-                "the 'self._ip4_payload_len <= len(self._frame)' condition not met."
+                "ICMPv4 unknown message, " "the 'self._ip4_payload_len <= len(self._frame)' condition not met."
             ),
             "_args": [b"\xff\x00\xfb\x94\x30\x39\xd4"],
             "_kwargs": {},

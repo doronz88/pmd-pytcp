@@ -46,12 +46,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 @parameterized_class(
     [
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It's 64."
-            ),
+            "_description": ("The value of the 'ip6__hop' field must be 255. It's 64."),
             "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 64,
@@ -60,18 +57,14 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
             "_results": {
                 "error_message": (
-                    "ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field must "
-                    "be 255. Got: 64"
+                    "ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field must " "be 255. Got: 64"
                 ),
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It's 255."
-            ),
+            "_description": ("The value of the 'ip6__hop' field must be 255. It's 255."),
             "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -81,13 +74,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' field must be unicast. "
-                "It's multicast."
-            ),
+            "_description": ("The value of the 'ip6__src' field must be unicast. " "It's multicast."),
             "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -102,13 +91,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' field must be unicast. "
-                "It's unicast."
-            ),
+            "_description": ("The value of the 'ip6__src' field must be unicast. " "It's unicast."),
             "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -123,8 +108,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "It's all-routers unicast."
             ),
             "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -141,12 +125,10 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. "
-                "It's unicast."
+                "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. " "It's unicast."
             ),
             "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -161,8 +143,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "It's all-nodes multicast."
             ),
             "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -172,13 +153,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": (
-                "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. "
-                "It's unicast."
-            ),
+            "_description": ("The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. " "It's unicast."),
             "_args": [
-                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -195,12 +172,10 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. "
-                "It's all-nodes multicast."
+                "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. " "It's all-nodes multicast."
             ),
             "_args": [
-                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -211,9 +186,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdMessageNeighborAdvertisementParserSanityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp4NdMessageNeighborAdvertisementParserSanityChecks(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Neighbor Advertisement message parser sanity checks tests.
     """

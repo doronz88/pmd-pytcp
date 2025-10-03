@@ -60,15 +60,11 @@ class TestCasePacketRxIp4(TestCase):
 
         self._packet_rx = PacketRx(*self._args, **self._kwargs)
 
-        self._packet_rx.ip = self._packet_rx.ip4 = cast(
-            Ip4Parser, StrictMock(template=Ip4Parser)
-        )
+        self._packet_rx.ip = self._packet_rx.ip4 = cast(Ip4Parser, StrictMock(template=Ip4Parser))
         self.patch_attribute(
             target=self._packet_rx.ip4,
             attribute="payload_len",
-            new_value=self._mocked_values.get(
-                "ip4__payload_len", len(self._args[0])
-            ),
+            new_value=self._mocked_values.get("ip4__payload_len", len(self._args[0])),
         )
         self.patch_attribute(
             target=self._packet_rx.ip4,

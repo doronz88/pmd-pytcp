@@ -81,10 +81,7 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'code' field must be an Icmp6NdRouterSolicitationCode. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'code' field must be an Icmp6NdRouterSolicitationCode. " f"Got: {type(value)!r}"),
         )
 
     def test__icmp6__nd__message__router_solicitation__cksum__under_min(
@@ -103,10 +100,7 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_solicitation__cksum__over_max(
@@ -125,10 +119,7 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'cksum' field must be a 16-bit unsigned integer. "
-                f"Got: {value!r}"
-            ),
+            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
         )
 
     def test__icmp6__nd__message__router_solicitation__options__not_Icmp6NdOptions(
@@ -146,10 +137,7 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'options' field must be an Icmp6NdOptions. "
-                f"Got: {type(value)!r}"
-            ),
+            ("The 'options' field must be an Icmp6NdOptions. " f"Got: {type(value)!r}"),
         )
 
 
@@ -167,14 +155,9 @@ class TestIcmp6NdMessageRouterSolicitationParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageRouterSolicitation.from_buffer(
-                b"\xff\x00\x00\xff\x00\x00\x00\x00"
-            )
+            Icmp6NdMessageRouterSolicitation.from_buffer(b"\xff\x00\x00\xff\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp6Type.ND__ROUTER_SOLICITATION: "
-                "133>. Got: <Icmp6Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp6Type.ND__ROUTER_SOLICITATION: " "133>. Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )

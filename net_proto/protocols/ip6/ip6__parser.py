@@ -83,10 +83,7 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
                 "The 'ver' must be 6.",
             )
 
-        if (
-            int.from_bytes(self._frame[4:6])
-            != len(self._frame) - IP6__HEADER__LEN
-        ):
+        if int.from_bytes(self._frame[4:6]) != len(self._frame) - IP6__HEADER__LEN:
             raise Ip6IntegrityError(
                 "The wrong packet length (II).",
             )
@@ -98,9 +95,7 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
         """
 
         self._header = Ip6Header.from_buffer(self._frame)
-        self._payload = self._frame[
-            len(self._header) : len(self._header) + self._header.dlen
-        ]
+        self._payload = self._frame[len(self._header) : len(self._header) + self._header.dlen]
 
     @override
     def _validate_sanity(self) -> None:

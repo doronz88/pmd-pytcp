@@ -81,9 +81,7 @@ class PacketHandlerIp6Tx(ABC):
             ethernet__payload: EthernetPayload = RawAssembler(),
         ) -> TxStatus: ...
 
-        def _phtx_ip6_frag(
-            self, *, ip6_packet_tx: Ip6Assembler
-        ) -> TxStatus: ...
+        def _phtx_ip6_frag(self, *, ip6_packet_tx: Ip6Assembler) -> TxStatus: ...
 
         # pylint: disable=missing-function-docstring
 
@@ -102,14 +100,14 @@ class PacketHandlerIp6Tx(ABC):
         Handle outbound IP packets.
         """
 
-        self._packet_stats_tx.inc("ip6__pre_assemble")
+        self._packet_stats_tx.ip6__pre_assemble += 1
 
         assert 0 < ip6__hop < 256
 
         # Check if IPv6 protocol support is enabled, if not then silently
         # drop the packet.
         if not self._ip6_support:
-            self._packet_stats_tx.inc("ip6__no_proto_support__drop")
+            self._packet_stats_tx.ip6__no_proto_support__drop += 1
             return TxStatus.DROPED__IP6__NO_PROTOCOL_SUPPORT
 
         # Validate source address.
@@ -142,10 +140,8 @@ class PacketHandlerIp6Tx(ABC):
         # Check if IP packet can be sent out without fragmentation,
         # if so send it out.
         if len(ip6_packet_tx) <= self._interface_mtu:
-            self._packet_stats_tx.inc("ip6__mtu_ok__send")
-            __debug__ and log(
-                "ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}"
-            )
+            self._packet_stats_tx.ip6__mtu_ok__send += 1
+            __debug__ and log("ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}")
             match self._interface_layer:
                 case InterfaceLayer.L2:
                     return self._phtx_ethernet(
@@ -158,11 +154,10 @@ class PacketHandlerIp6Tx(ABC):
                     return TxStatus.PASSED__IP6__TO_TX_RING
 
         # Fragment packet and send out.
-        self._packet_stats_tx.inc("ip6__mtu_exceed__frag")
+        self._packet_stats_tx.ip6__mtu_exceed__frag += 1
         __debug__ and log(
             "ip6",
-            f"{ip6_packet_tx.tracker} - IPv6 packet len "
-            f"{len(ip6_packet_tx)} bytes, fragmentation needed",
+            f"{ip6_packet_tx.tracker} - IPv6 packet len " f"{len(ip6_packet_tx)} bytes, fragmentation needed",
         )
         return self._phtx_ip6_frag(ip6_packet_tx=ip6_packet_tx)
 
@@ -187,7 +182,7 @@ class PacketHandlerIp6Tx(ABC):
             *self._ip6_multicast,
             Ip6Address(),
         }:
-            self._packet_stats_tx.inc("ip6__src_not_owned__drop")
+            self._packet_stats_tx.ip6__src_not_owned__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, stack "
@@ -199,7 +194,7 @@ class PacketHandlerIp6Tx(ABC):
         # local address of the stack.
         if ip6__src in self._ip6_multicast:
             if self._ip6_unicast:
-                self._packet_stats_tx.inc("ip6__src_multicast__replace")
+                self._packet_stats_tx.ip6__src_multicast__replace += 1
                 ip6__src = self._ip6_unicast[0]
                 __debug__ and log(
                     "ip6",
@@ -207,7 +202,7 @@ class PacketHandlerIp6Tx(ABC):
                     f"source with stack link local IPv6 address {ip6__src}",
                 )
                 return ip6__src
-            self._packet_stats_tx.inc("ip6__src_multicast__drop")
+            self._packet_stats_tx.ip6__src_multicast__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, no stack "
@@ -220,9 +215,7 @@ class PacketHandlerIp6Tx(ABC):
         if ip6__src.is_unspecified:
             for ip6_host in self._ip6_host:
                 if ip6__dst in ip6_host.network:
-                    self._packet_stats_tx.inc(
-                        "ip6__src_network_unspecified__replace_local"
-                    )
+                    self._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
                     ip6__src = ip6_host.address
                     __debug__ and log(
                         "ip6",
@@ -237,9 +230,7 @@ class PacketHandlerIp6Tx(ABC):
         if ip6__src.is_unspecified and ip6__dst.is_unicast:
             for ip6_host in self._ip6_host:
                 if ip6_host.gateway:
-                    self._packet_stats_tx.inc(
-                        "ip6__src_network_unspecified__replace_external"
-                    )
+                    self._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
                     ip6__src = ip6_host.address
                     __debug__ and log(
                         "ip6",
@@ -256,11 +247,10 @@ class PacketHandlerIp6Tx(ABC):
             and isinstance(ip6__payload.message, Icmp6NdMessage)
             and not ip6__payload.message.options
         ):
-            self._packet_stats_tx.inc("ip6__src_unspecified__send")
+            self._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(
                 "ip6",
-                f"{tracker} - Packet source is unspecified, ICMPv6 ND DAD "
-                "packet, sending",
+                f"{tracker} - Packet source is unspecified, ICMPv6 ND DAD " "packet, sending",
             )
             return ip6__src
 
@@ -270,21 +260,19 @@ class PacketHandlerIp6Tx(ABC):
             and isinstance(ip6__payload, Icmp6)
             and isinstance(ip6__payload.message, Icmp6Mld2ReportMessage)
         ):
-            self._packet_stats_tx.inc("ip6__src_unspecified__send")
+            self._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(
                 "ip6",
-                f"{tracker} - Packet source is unspecified, ICMPv6 MLDv2 "
-                "report, sending",
+                f"{tracker} - Packet source is unspecified, ICMPv6 MLDv2 " "report, sending",
             )
             return ip6__src
 
         # If src is unspecified and stack can't replace it.
         if ip6__src.is_unspecified:
-            self._packet_stats_tx.inc("ip6__src_unspecified__drop")
+            self._packet_stats_tx.ip6__src_unspecified__drop += 1
             __debug__ and log(
                 "ip6",
-                f"{tracker} - <WARN>Packet source is unspecified, unable to "
-                "replace with valid source, dropping</>",
+                f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
             )
             return TxStatus.DROPED__IP6__SRC_UNSPECIFIED
 
@@ -303,11 +291,10 @@ class PacketHandlerIp6Tx(ABC):
 
         # Drop packet if the destination address is unspecified.
         if ip6__dst.is_unspecified:
-            self._packet_stats_tx.inc("ip6__dst_unspecified__drop")
+            self._packet_stats_tx.ip6__dst_unspecified__drop += 1
             __debug__ and log(
                 "ip6",
-                f"{tracker} - <WARN>Destination address is unspecified, "
-                "dropping</>",
+                f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
             )
             return TxStatus.DROPED__IP6__DST_UNSPECIFIED
 

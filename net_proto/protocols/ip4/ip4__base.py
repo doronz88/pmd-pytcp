@@ -52,9 +52,7 @@ from net_proto.protocols.udp.udp__assembler import UdpAssembler
 type Ip4Payload = (Icmp4Assembler | TcpAssembler | UdpAssembler | RawAssembler)
 
 
-class Ip4[P: (Ip4Payload, Buffer)](
-    Proto, Ip4HeaderProperties, Ip4OptionsProperties
-):
+class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsProperties):
     """
     The IPv4 protocol base.
     """
@@ -95,8 +93,7 @@ class Ip4[P: (Ip4Payload, Buffer)](
         """
 
         return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"options={self._options!r}, payload={self._payload!r})"
+            f"{type(self).__name__}(header={self._header!r}, " f"options={self._options!r}, payload={self._payload!r})"
         )
 
     @override
@@ -105,9 +102,7 @@ class Ip4[P: (Ip4Payload, Buffer)](
         Get the IPv4 packet as memoryview.
         """
 
-        if isinstance(
-            self._payload, (TcpAssembler, UdpAssembler, RawAssembler)
-        ):
+        if isinstance(self._payload, (TcpAssembler, UdpAssembler, RawAssembler)):
             self._payload.pshdr_sum = self.pshdr_sum
 
         buffer = bytearray(self._header)

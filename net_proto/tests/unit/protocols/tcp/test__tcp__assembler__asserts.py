@@ -103,6 +103,4 @@ class TestTcpAssemblerAsserts(TestCase):
                 )
             )
 
-        self.assertEqual(
-            str(error.exception), "The TCP EOL option must be the last option."
-        )
+        self.assertEqual(str(error.exception), "The TCP EOL option must be the last option.")

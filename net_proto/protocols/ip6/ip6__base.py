@@ -45,13 +45,7 @@ from net_proto.protocols.raw.raw__assembler import RawAssembler
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from net_proto.protocols.udp.udp__assembler import UdpAssembler
 
-type Ip6Payload = (
-    Ip6FragAssembler
-    | Icmp6Assembler
-    | TcpAssembler
-    | UdpAssembler
-    | RawAssembler
-)
+type Ip6Payload = (Ip6FragAssembler | Icmp6Assembler | TcpAssembler | UdpAssembler | RawAssembler)
 
 
 class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
@@ -89,10 +83,7 @@ class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
         Get the IPv6 packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"payload={self._payload!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, " f"payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

@@ -49,9 +49,7 @@ class MacAddress(Address):
 
     def __init__(
         self,
-        address: (
-            Self | str | bytes | bytearray | memoryview | int | None
-        ) = None,
+        address: Self | str | bytes | bytearray | memoryview | int | None = None,
         /,
     ) -> None:
         """
@@ -73,13 +71,9 @@ class MacAddress(Address):
                 return
 
         if isinstance(address, str):
-            if re.search(
-                r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", address.strip()
-            ):
+            if re.search(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", address.strip()):
                 self._address = int.from_bytes(
-                    bytes.fromhex(
-                        re.sub(r":|-|\.", "", address.lower().strip())
-                    ),
+                    bytes.fromhex(re.sub(r":|-|\.", "", address.lower().strip())),
                 )
                 return
 
@@ -111,9 +105,7 @@ class MacAddress(Address):
         Check if MAC address is unicast.
         """
 
-        return (
-            (self._address & 0x0100_0000_0000) == 0x0000_0000_0000
-        ) and not self.is_unspecified
+        return ((self._address & 0x0100_0000_0000) == 0x0000_0000_0000) and not self.is_unspecified
 
     @property
     def is_multicast(self) -> bool:
@@ -121,9 +113,7 @@ class MacAddress(Address):
         Check if MAC address is multicast.
         """
 
-        return (
-            (self._address & 0x0100_0000_0000) == 0x0100_0000_0000
-        ) and not self.is_broadcast
+        return ((self._address & 0x0100_0000_0000) == 0x0100_0000_0000) and not self.is_broadcast
 
     @property
     def is_multicast__ip4(self) -> bool:

@@ -109,11 +109,7 @@ class TimerTask:
         self._method(*self._args, **self._kwargs)
 
         if self._repeat_count:
-            self._remaining_delay = (
-                self._delay * (1 << self._delay_exp_factor)
-                if self._delay_exp
-                else self._delay
-            )
+            self._remaining_delay = self._delay * (1 << self._delay_exp_factor) if self._delay_exp else self._delay
             self._delay_exp_factor += 1
             if self._repeat_count > 0:
                 self._repeat_count -= 1
@@ -154,9 +150,7 @@ class Timer(Subsystem):
             self._timers[name] -= 1
 
         # Cleanup expired timers
-        self._timers = {
-            name: timeout for name, timeout in self._timers.items() if timeout
-        }
+        self._timers = {name: timeout for name, timeout in self._timers.items() if timeout}
 
         # Tick registered methods
         for task in self._tasks:
@@ -202,9 +196,7 @@ class Timer(Subsystem):
         Register delay timer.
         """
 
-        __debug__ and log(
-            "timer", f"<r>Registering timer: {name}, timeout={timeout}</>"
-        )
+        __debug__ and log("timer", f"<r>Registering timer: {name}, timeout={timeout}</>")
 
         self._timers[name] = timeout
 

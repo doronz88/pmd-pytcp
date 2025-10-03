@@ -95,8 +95,7 @@ class TestIp4OptionUnknownAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                "The 'type' field must not be a known Ip4OptionType. "
-                f"Got: {value!r}",
+                "The 'type' field must not be a known Ip4OptionType. " f"Got: {value!r}",
             )
 
     def test__ip4__option__unknown__len__8bit_integer(self) -> None:
@@ -128,11 +127,9 @@ class TestIp4OptionUnknownAsserts(TestCase):
                 "__len__": 18,
                 "__str__": "unk-255-18",
                 "__repr__": (
-                    f"Ip4OptionUnknown(type={Ip4OptionType.from_int(255)!r}, "
-                    "len=18, data=b'0123456789ABCDEF')"
+                    f"Ip4OptionUnknown(type={Ip4OptionType.from_int(255)!r}, " "len=18, data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                "__bytes__": b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
                 "type": Ip4OptionType.from_int(255),
                 "len": 18,
                 "data": b"0123456789ABCDEF",
@@ -237,8 +234,7 @@ class TestIp4OptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown IPv4 option.",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46" + b"ZH0PA",
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -256,47 +252,35 @@ class TestIp4OptionUnknownAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the unknown IPv4 option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the unknown IPv4 option must be 2 " "bytes. Got: 1"),
             },
         },
         {
             "_description": "The unknown IPv4 option incorrect 'type' field (Eol) assert.",
             "_args": [
-                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown IPv4 option type must not be known. "
-                    "Got: <Ip4OptionType.EOL: 0>"
-                ),
+                "error_message": ("The unknown IPv4 option type must not be known. " "Got: <Ip4OptionType.EOL: 0>"),
             },
         },
         {
             "_description": "The unknown IPv4 option incorrect 'type' field (Nop) assert.",
             "_args": [
-                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown IPv4 option type must not be known. "
-                    f"Got: {Ip4OptionType.NOP!r}"
-                ),
+                "error_message": ("The unknown IPv4 option type must not be known. " f"Got: {Ip4OptionType.NOP!r}"),
             },
         },
         {
             "_description": "The unknown IPv4 option length integrity check (II).",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45",
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45",
             ],
             "_kwargs": {},
             "_results": {

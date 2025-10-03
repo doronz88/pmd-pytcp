@@ -81,10 +81,7 @@ class Dhcp4(Proto, Dhcp4HeaderProperties, Dhcp4OptionsProperties):
         Get the DHCPv4 packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"options={self._options!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, " f"options={self._options!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

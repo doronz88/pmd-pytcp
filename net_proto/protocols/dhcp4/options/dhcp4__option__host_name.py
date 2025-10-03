@@ -80,14 +80,10 @@ class Dhcp4OptionHostName(Dhcp4Option):
         """
 
         # Ensure that the 'host_name' field is str.
-        assert isinstance(
-            self.host_name, str
-        ), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
+        assert isinstance(self.host_name, str), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
 
         # Update the option 'len' field based on the length of the 'host_name' field.
-        object.__setattr__(
-            self, "len", DHCP4__OPTION__LEN + len(self.host_name)
-        )
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.host_name))
 
     @override
     def __str__(self) -> str:
@@ -136,8 +132,7 @@ class Dhcp4OptionHostName(Dhcp4Option):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Host Name option must "
-            f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the DHCPv4 Host Name option must " f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
@@ -148,10 +143,4 @@ class Dhcp4OptionHostName(Dhcp4Option):
 
         cls._validate_integrity(buffer)
 
-        return cls(
-            (
-                bytes(
-                    buffer[2 : 2 + buffer[1]]
-                )  # Note: Conversion: memoryview -> bytes
-            ).decode("utf-8")
-        )
+        return cls((bytes(buffer[2 : 2 + buffer[1]])).decode("utf-8"))  # Note: Conversion: memoryview -> bytes

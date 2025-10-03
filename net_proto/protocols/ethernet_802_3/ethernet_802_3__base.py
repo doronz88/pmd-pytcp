@@ -46,9 +46,7 @@ from net_proto.protocols.raw.raw__assembler import RawAssembler
 type Ethernet8023Payload = RawAssembler
 
 
-class Ethernet8023[P: (RawAssembler, Buffer)](
-    Proto, EthernetHeader8023Properties
-):
+class Ethernet8023[P: (RawAssembler, Buffer)](Proto, EthernetHeader8023Properties):
     """
     The Ethernet 802.3 protocol base.
     """

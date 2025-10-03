@@ -44,14 +44,8 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 @parameterized_class(
     [
         {
-            "_description": (
-                "The length of the frame is lower than the value of the "
-                "'IP4_HEADER_LEN' constant."
-            ),
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x73\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46"
-            ],
+            "_description": ("The length of the frame is lower than the value of the " "'IP4_HEADER_LEN' constant."),
+            "_args": [b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x73\x0a\x14\x1e\x28" b"\x32\x3c\x46"],
             "_kwargs": {},
             "_results": {
                 "error_message": "The wrong packet length (I).",
@@ -59,10 +53,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": ("The value of the 'ver' field is incorrect."),
-            "_args": [
-                b"\x55\xff\x00\x14\xff\xff\x40\x00\xff\xff\xc9\x23\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
-            ],
+            "_args": [b"\x55\xff\x00\x14\xff\xff\x40\x00\xff\xff\xc9\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"],
             "_kwargs": {},
             "_results": {
                 "error_message": "Value of the 'ver' field must be set to 4.",
@@ -70,39 +61,25 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": (
-                "The value of the 'hlen' field is lower than the value of the "
-                "'IP4_HEADER_LEN' constant."
+                "The value of the 'hlen' field is lower than the value of the " "'IP4_HEADER_LEN' constant."
             ),
-            "_args": [
-                b"\x44\xff\x00\x14\xff\xff\x40\x00\xff\xff\xda\x23\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
-            ],
+            "_args": [b"\x44\xff\x00\x14\xff\xff\x40\x00\xff\xff\xda\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"],
             "_kwargs": {},
             "_results": {
                 "error_message": "The wrong packet length (II).",
             },
         },
         {
-            "_description": (
-                "The value of the 'plen' field is lower than the value of the 'hlen' field."
-            ),
-            "_args": [
-                b"\x45\xff\x00\x13\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
-            ],
+            "_description": ("The value of the 'plen' field is lower than the value of the 'hlen' field."),
+            "_args": [b"\x45\xff\x00\x13\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"],
             "_kwargs": {},
             "_results": {
                 "error_message": "The wrong packet length (II).",
             },
         },
         {
-            "_description": (
-                "The value of the 'hlen' & 'plen' fields ar higher than the length of the frame."
-            ),
-            "_args": [
-                b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd8\x1f\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
-            ],
+            "_description": ("The value of the 'hlen' & 'plen' fields ar higher than the length of the frame."),
+            "_args": [b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd8\x1f\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"],
             "_kwargs": {},
             "_results": {
                 "error_message": "The wrong packet length (II).",
@@ -110,44 +87,34 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "The value of the 'cksum' field is invalid.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50"
-            ],
+            "_args": [b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"],
             "_results": {
                 "error_message": "The wrong packet checksum.",
             },
         },
         {
             "_description": (
-                "The value of the option 'len' field (1) is lower than the minimum "
-                "acceptable value (2)."
+                "The value of the option 'len' field (1) is lower than the minimum " "acceptable value (2)."
             ),
             "_args": [
-                b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd9\x1d\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50\xff\x01\x00\x00"
+                b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd9\x1d\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50\xff\x01\x00\x00"
             ],
             "_kwargs": {},
             "_results": {
-                "error_message": (
-                    "The IPv4 option length must be greater than 1. Got: 1."
-                ),
+                "error_message": ("The IPv4 option length must be greater than 1. Got: 1."),
             },
         },
         {
             "_description": (
-                "The value of the option 'len' field (5 vs 3) is extends past the value "
-                "of the 'hlen' header field."
+                "The value of the option 'len' field (5 vs 3) is extends past the value " "of the 'hlen' header field."
             ),
             "_args": [
-                b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd9\x19\x0a\x14\x1e\x28"
-                b"\x32\x3c\x46\x50\xff\x05\x00\x00"
+                b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd9\x19\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50\xff\x05\x00\x00"
             ],
             "_kwargs": {},
             "_results": {
                 "error_message": (
-                    "The IPv4 option length must not extend past the header "
-                    "length. Got: offset=25, hlen=24"
+                    "The IPv4 option length must not extend past the header " "length. Got: offset=25, hlen=24"
                 ),
             },
         },

@@ -44,12 +44,10 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 testcases: list[dict[str, Any]] = [
     {
         "_description": (
-            "The value of the 'ip__payload_len' variable is lower than the "
-            "value of the 'TCP_HEADER_LEN' constant."
+            "The value of the 'ip__payload_len' variable is lower than the " "value of the 'TCP_HEADER_LEN' constant."
         ),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67"
-            b"\xcb\x5b\x00\x00\x01\x01\x01\x01",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67" b"\xcb\x5b\x00\x00\x01\x01\x01\x01",
         ],
         "_kwargs": {},
         "_mocked_values": {
@@ -65,12 +63,9 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the 'ip__payload_len' variable is higher than the frame length."
-        ),
+        "_description": ("The value of the 'ip__payload_len' variable is higher than the frame length."),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67"
-            b"\xcb\x5b\x00\x00\x01\x01\x01\x01",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67" b"\xcb\x5b\x00\x00\x01\x01\x01\x01",
         ],
         "_kwargs": {},
         "_mocked_values": {
@@ -86,12 +81,9 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the header 'hlen' field (19) is lower than the 'TCP_HEADER_LEN'."
-        ),
+        "_description": ("The value of the header 'hlen' field (19) is lower than the 'TCP_HEADER_LEN'."),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x4c\x10\x2b\x67"
-            b"\xdf\x5b\x00\x00\x01\x01\x01\x01",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x4c\x10\x2b\x67" b"\xdf\x5b\x00\x00\x01\x01\x01\x01",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -105,12 +97,10 @@ testcases: list[dict[str, Any]] = [
     },
     {
         "_description": (
-            "The value of the header 'hlen' field (28) is higher than the value "
-            "of the 'ip__payload_len' variable."
+            "The value of the header 'hlen' field (28) is higher than the value " "of the 'ip__payload_len' variable."
         ),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x70\x10\x2b\x67"
-            b"\xbb\x5b\x00\x00\x01\x01\x01\x01",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x70\x10\x2b\x67" b"\xbb\x5b\x00\x00\x01\x01\x01\x01",
         ],
         "_kwargs": {},
         "_mocked_values": {},
@@ -136,37 +126,28 @@ testcases: list[dict[str, Any]] = [
         },
     },
     {
-        "_description": (
-            "The value of the option 'len' field (1) is lower than the minimum "
-            "acceptable value (2)."
-        ),
+        "_description": ("The value of the option 'len' field (1) is lower than the minimum " "acceptable value (2)."),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67"
-            b"\xce\x5b\x00\x00\xff\x01\x00\x00",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67" b"\xce\x5b\x00\x00\xff\x01\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {
-            "error_message": (
-                "The TCP option length must be greater than 1. Got: 1."
-            ),
+            "error_message": ("The TCP option length must be greater than 1. Got: 1."),
         },
     },
     {
         "_description": (
-            "The value of the option 'len' field (5 vs 3) extends past the value "
-            "of the 'hlen' header field."
+            "The value of the option 'len' field (5 vs 3) extends past the value " "of the 'hlen' header field."
         ),
         "_args": [
-            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67"
-            b"\xce\x57\x00\x00\xff\x05\x00\x00",
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67" b"\xce\x57\x00\x00\xff\x05\x00\x00",
         ],
         "_kwargs": {},
         "_mocked_values": {},
         "_results": {
             "error_message": (
-                "The TCP option length must not extend past the header length. "
-                "Got: offset=25, hlen=24"
+                "The TCP option length must not extend past the header length. " "Got: offset=25, hlen=24"
             ),
         },
     },

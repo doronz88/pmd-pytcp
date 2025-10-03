@@ -45,8 +45,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": (
-                "The length of the frame is lower than the value of the "
-                "'IP6_EXT_FRAG__HEADER__LEN' constant."
+                "The length of the frame is lower than the value of the " "'IP6_EXT_FRAG__HEADER__LEN' constant."
             ),
             "_args": [b"\xff\x00\x00\x00\x00\x00\x00"],
             "_kwargs": {},

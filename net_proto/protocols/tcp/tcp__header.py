@@ -67,9 +67,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 
 TCP__HEADER__LEN = 20
 TCP__HEADER__STRUCT = "! HH L L HH HH"
-TCP__MIN_MSS = (
-    536  # The minimum recommended value of the  Maximum Segment Size (RFC 879).
-)
+TCP__MIN_MSS = 536  # The minimum recommended value of the  Maximum Segment Size (RFC 879).
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -102,77 +100,41 @@ class TcpHeader(ProtoStruct):
         Ensure integrity of the TCP header fields.
         """
 
-        assert is_uint16(
-            self.sport
-        ), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport}"
+        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport}"
 
-        assert is_uint16(
-            self.dport
-        ), f"The 'dport' field must be a 16-bit unsigned integer. Got: {self.dport}"
+        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. Got: {self.dport}"
 
-        assert is_uint32(
-            self.seq
-        ), f"The 'seq' field must be a 32-bit unsigned integer. Got: {self.seq!r}"
+        assert is_uint32(self.seq), f"The 'seq' field must be a 32-bit unsigned integer. Got: {self.seq!r}"
 
-        assert is_uint32(
-            self.ack
-        ), f"The 'ack' field must be a 32-bit unsigned integer. Got: {self.ack!r}"
+        assert is_uint32(self.ack), f"The 'ack' field must be a 32-bit unsigned integer. Got: {self.ack!r}"
 
-        assert is_uint6(
-            self.hlen
-        ), f"The 'hlen' field must be a 6-bit unsigned integer. Got: {self.hlen!r}"
+        assert is_uint6(self.hlen), f"The 'hlen' field must be a 6-bit unsigned integer. Got: {self.hlen!r}"
 
-        assert is_4_byte_alligned(
-            self.hlen
-        ), f"The 'hlen' field must be 4-byte aligned. Got: {self.hlen!r}"
+        assert is_4_byte_alligned(self.hlen), f"The 'hlen' field must be 4-byte aligned. Got: {self.hlen!r}"
 
-        assert isinstance(
-            self.flag_ns, bool
-        ), f"The 'flag_ns' field must be a boolean. Got: {type(self.flag_ns)!r}"
+        assert isinstance(self.flag_ns, bool), f"The 'flag_ns' field must be a boolean. Got: {type(self.flag_ns)!r}"
 
-        assert isinstance(
-            self.flag_cwr, bool
-        ), f"The 'flag_cwr' field must be a boolean. Got: {type(self.flag_cwr)!r}"
+        assert isinstance(self.flag_cwr, bool), f"The 'flag_cwr' field must be a boolean. Got: {type(self.flag_cwr)!r}"
 
-        assert isinstance(
-            self.flag_ece, bool
-        ), f"The 'flag_ece' field must be a boolean. Got: {type(self.flag_ece)!r}"
+        assert isinstance(self.flag_ece, bool), f"The 'flag_ece' field must be a boolean. Got: {type(self.flag_ece)!r}"
 
-        assert isinstance(
-            self.flag_urg, bool
-        ), f"The 'flag_urg' field must be a boolean. Got: {type(self.flag_urg)!r}"
+        assert isinstance(self.flag_urg, bool), f"The 'flag_urg' field must be a boolean. Got: {type(self.flag_urg)!r}"
 
-        assert isinstance(
-            self.flag_ack, bool
-        ), f"The 'flag_ack' field must be a boolean. Got: {type(self.flag_ack)!r}"
+        assert isinstance(self.flag_ack, bool), f"The 'flag_ack' field must be a boolean. Got: {type(self.flag_ack)!r}"
 
-        assert isinstance(
-            self.flag_psh, bool
-        ), f"The 'flag_psh' field must be a boolean. Got: {type(self.flag_psh)!r}"
+        assert isinstance(self.flag_psh, bool), f"The 'flag_psh' field must be a boolean. Got: {type(self.flag_psh)!r}"
 
-        assert isinstance(
-            self.flag_rst, bool
-        ), f"The 'flag_rst' field must be a boolean. Got: {type(self.flag_rst)!r}"
+        assert isinstance(self.flag_rst, bool), f"The 'flag_rst' field must be a boolean. Got: {type(self.flag_rst)!r}"
 
-        assert isinstance(
-            self.flag_syn, bool
-        ), f"The 'flag_syn' field must be a boolean. Got: {type(self.flag_syn)!r}"
+        assert isinstance(self.flag_syn, bool), f"The 'flag_syn' field must be a boolean. Got: {type(self.flag_syn)!r}"
 
-        assert isinstance(
-            self.flag_fin, bool
-        ), f"The 'flag_fin' field must be a boolean. Got: {type(self.flag_fin)!r}"
+        assert isinstance(self.flag_fin, bool), f"The 'flag_fin' field must be a boolean. Got: {type(self.flag_fin)!r}"
 
-        assert is_uint16(
-            self.win
-        ), f"The 'win' field must be a 16-bit unsigned integer. Got: {self.win!r}"
+        assert is_uint16(self.win), f"The 'win' field must be a 16-bit unsigned integer. Got: {self.win!r}"
 
-        assert is_uint16(
-            self.cksum
-        ), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert is_uint16(
-            self.urg
-        ), f"The 'urg' field must be a 16-bit unsigned integer. Got: {self.urg!r}"
+        assert is_uint16(self.urg), f"The 'urg' field must be a 16-bit unsigned integer. Got: {self.urg!r}"
 
     @override
     def __len__(self) -> int:

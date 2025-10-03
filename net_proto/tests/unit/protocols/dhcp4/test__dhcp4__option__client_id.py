@@ -215,9 +215,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionClientId(
-                    client_id=b"\xaa\xbb\xcc\xdd\xee\xff"
-                ),
+                "option": Dhcp4OptionClientId(client_id=b"\xaa\xbb\xcc\xdd\xee\xff"),
             },
         },
         {
@@ -227,9 +225,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionClientId(
-                    client_id=b"\x01\xde\xad\xbe\xef\x00\x01"
-                ),
+                "option": Dhcp4OptionClientId(client_id=b"\x01\xde\xad\xbe\xef\x00\x01"),
             },
         },
         {
@@ -241,8 +237,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The minimum length of the DHCPv4 Client Identifier option must be 2 "
-                    "bytes. Got: 1"
+                    "The minimum length of the DHCPv4 Client Identifier option must be 2 " "bytes. Got: 1"
                 ),
             },
         },
@@ -293,9 +288,7 @@ class TestDhcp4OptionClientIdParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionClientId.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionClientId.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

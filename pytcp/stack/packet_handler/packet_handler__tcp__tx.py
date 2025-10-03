@@ -119,7 +119,7 @@ class PacketHandlerTcpTx(ABC):
         Handle outbound TCP packets.
         """
 
-        self._packet_stats_tx.inc("tcp__pre_assemble")
+        self._packet_stats_tx.tcp__pre_assemble += 1
 
         # TODO: This code does not seem to be correct,
         # need to ba able to stack options.
@@ -127,12 +127,12 @@ class PacketHandlerTcpTx(ABC):
         options = TcpOptions()
 
         if tcp__mss:
-            self._packet_stats_tx.inc("tcp__opt_mss")
+            self._packet_stats_tx.tcp__opt_mss += 1
             options = TcpOptions(TcpOptionMss(mss=tcp__mss))
 
         if tcp__wscale:
-            self._packet_stats_tx.inc("tcp__opt_nop")
-            self._packet_stats_tx.inc("tcp__opt_wscale")
+            self._packet_stats_tx.tcp__opt_nop += 1
+            self._packet_stats_tx.tcp__opt_wscale += 1
             options = TcpOptions(
                 TcpOptionNop(),
                 TcpOptionWscale(wscale=tcp__wscale),
@@ -160,53 +160,51 @@ class PacketHandlerTcpTx(ABC):
         )
 
         if tcp__flag_ns:
-            self._packet_stats_tx.inc("tcp__flag_ns")
+            self._packet_stats_tx.tcp__flag_ns += 1
 
         if tcp__flag_cwr:
-            self._packet_stats_tx.inc("tcp__flag_cwr")
+            self._packet_stats_tx.tcp__flag_cwr += 1
 
         if tcp__flag_ece:
-            self._packet_stats_tx.inc("tcp__flag_ece")
+            self._packet_stats_tx.tcp__flag_ece += 1
 
         if tcp__flag_urg:
-            self._packet_stats_tx.inc("tcp__flag_urg")
+            self._packet_stats_tx.tcp__flag_urg += 1
 
         if tcp__flag_ack:
-            self._packet_stats_tx.inc("tcp__flag_ack")
+            self._packet_stats_tx.tcp__flag_ack += 1
 
         if tcp__flag_psh:
-            self._packet_stats_tx.inc("tcp__flag_psh")
+            self._packet_stats_tx.tcp__flag_psh += 1
 
         if tcp__flag_rst:
-            self._packet_stats_tx.inc("tcp__flag_rst")
+            self._packet_stats_tx.tcp__flag_rst += 1
 
         if tcp__flag_syn:
-            self._packet_stats_tx.inc("tcp__flag_syn")
+            self._packet_stats_tx.tcp__flag_syn += 1
 
         if tcp__flag_fin:
-            self._packet_stats_tx.inc("tcp__flag_fin")
+            self._packet_stats_tx.tcp__flag_fin += 1
 
         __debug__ and log("tcp", f"{tcp_packet_tx.tracker} - {tcp_packet_tx}")
 
         match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
             case True, True, False, False:
-                self._packet_stats_tx.inc("tcp__send")
+                self._packet_stats_tx.tcp__send += 1
                 return self._phtx_ip6(
                     ip6__src=cast(Ip6Address, ip__src),
                     ip6__dst=cast(Ip6Address, ip__dst),
                     ip6__payload=tcp_packet_tx,
                 )
             case False, False, True, True:
-                self._packet_stats_tx.inc("tcp__send")
+                self._packet_stats_tx.tcp__send += 1
                 return self._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
                     ip4__payload=tcp_packet_tx,
                 )
             case _:
-                raise ValueError(
-                    f"Invalid IP address version combination: {ip__src} -> {ip__dst}"
-                )
+                raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
 
     def send_tcp_packet(
         self,

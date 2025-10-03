@@ -85,21 +85,14 @@ class TcpParser(Tcp, ProtoParser):
             )
 
         hlen = (self._frame[12] & 0b11110000) >> 2
-        if (
-            not TCP__HEADER__LEN
-            <= hlen
-            <= self._ip__payload_len
-            <= len(self._frame)
-        ):
+        if not TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= len(self._frame):
             raise TcpIntegrityError(
                 "The condition 'TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= "
                 f"len(self._frame)' must be met. Got: {TCP__HEADER__LEN=}, {hlen=}, "
                 f"{self._ip__payload_len=}, {len(self._frame)=}"
             )
 
-        if inet_cksum(
-            self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum
-        ):
+        if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise TcpIntegrityError(
                 "The packet checksum must be valid.",
             )
@@ -114,9 +107,7 @@ class TcpParser(Tcp, ProtoParser):
 
         self._header = TcpHeader.from_buffer(self._frame)
 
-        self._options = TcpOptions.from_buffer(
-            self._frame[len(self._header) : self._header.hlen]
-        )
+        self._options = TcpOptions.from_buffer(self._frame[len(self._header) : self._header.hlen])
 
         self._payload = self._frame[self._header.hlen : self._ip__payload_len]
 

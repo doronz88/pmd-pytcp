@@ -141,9 +141,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
             "_results": {
                 "__len__": 10,
                 "__str__": "timestamps 4294967295/4294967295",
-                "__repr__": (
-                    "TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295)"
-                ),
+                "__repr__": ("TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295)"),
                 "__bytes__": b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff",
                 "type": TcpOptionType.TIMESTAMPS,
                 "len": TCP__OPTION__TIMESTAMPS__LEN,
@@ -161,9 +159,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
             "_results": {
                 "__len__": 10,
                 "__str__": "timestamps 1111111111/2222222222",
-                "__repr__": (
-                    "TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222)"
-                ),
+                "__repr__": ("TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222)"),
                 "__bytes__": b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e",
                 "type": TcpOptionType.TIMESTAMPS,
                 "len": TCP__OPTION__TIMESTAMPS__LEN,
@@ -284,9 +280,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": TcpOptionTimestamps(
-                    tsval=4294967295, tsecr=4294967295
-                ),
+                "option": TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295),
             },
         },
         {
@@ -296,9 +290,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": TcpOptionTimestamps(
-                    tsval=1111111111, tsecr=2222222222
-                ),
+                "option": TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222),
             },
         },
         {
@@ -309,10 +301,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Timestamps option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the TCP Timestamps option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -338,8 +327,7 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value "
-                    "must be 10 bytes. Got: 9"
+                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value " "must be 10 bytes. Got: 9"
                 ),
             },
         },
@@ -377,9 +365,7 @@ class TestTcpOptionTimestampsParser(TestCase):
         """
 
         if "option" in self._results:
-            option = TcpOptionTimestamps.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = TcpOptionTimestamps.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

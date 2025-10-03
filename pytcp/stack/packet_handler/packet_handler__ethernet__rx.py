@@ -68,22 +68,20 @@ class PacketHandlerEthernetRx(ABC):
         Handle inbound Ethernet packets.
         """
 
-        self._packet_stats_rx.inc("ethernet__pre_parse")
+        self._packet_stats_rx.ethernet__pre_parse += 1
 
         try:
             EthernetParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.inc("ethernet__failed_parse__drop")
+            self._packet_stats_rx.ethernet__failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log(
-            "ether", f"{packet_rx.tracker} - {packet_rx.ethernet}"
-        )
+        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet}")
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet.dst not in {
@@ -91,22 +89,21 @@ class PacketHandlerEthernetRx(ABC):
             *self._mac_multicast,
             self._mac_broadcast,
         }:
-            self._packet_stats_rx.inc("ethernet__dst_unknown__drop")
+            self._packet_stats_rx.ethernet__dst_unknown__drop += 1
             __debug__ and log(
                 "ether",
-                f"{packet_rx.tracker} - Ethernet packet not destined for this "
-                "stack, dropping",
+                f"{packet_rx.tracker} - Ethernet packet not destined for this " "stack, dropping",
             )
             return
 
         if packet_rx.ethernet.dst == self._mac_unicast:
-            self._packet_stats_rx.inc("ethernet__dst_unicast")
+            self._packet_stats_rx.ethernet__dst_unicast += 1
 
         if packet_rx.ethernet.dst in self._mac_multicast:
-            self._packet_stats_rx.inc("ethernet__dst_multicast")
+            self._packet_stats_rx.ethernet__dst_multicast += 1
 
         if packet_rx.ethernet.dst == self._mac_broadcast:
-            self._packet_stats_rx.inc("ethernet__dst_broadcast")
+            self._packet_stats_rx.ethernet__dst_broadcast += 1
 
         match packet_rx.ethernet.type:
             case EtherType.ARP if self._ip4_support:
@@ -116,9 +113,8 @@ class PacketHandlerEthernetRx(ABC):
             case EtherType.IP6 if self._ip6_support:
                 self._phrx_ip6(packet_rx)
             case _:
-                self._packet_stats_rx.inc("ethernet__no_proto_support__drop")
+                self._packet_stats_rx.ethernet__no_proto_support__drop += 1
                 __debug__ and log(
                     "ether",
-                    f"{packet_rx.tracker} - Unsupported protocol "
-                    f"{packet_rx.ethernet.type}, dropping.",
+                    f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
                 )

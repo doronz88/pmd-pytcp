@@ -82,10 +82,7 @@ class TcpOptionMss(TcpOption):
         """
 
         # Ensure the 'mss' field is a 16-bit unsigned integer.
-        assert is_uint16(self.mss), (
-            f"The 'mss' field must be a 16-bit unsigned integer. "
-            f"Got: {self.mss}"
-        )
+        assert is_uint16(self.mss), f"The 'mss' field must be a 16-bit unsigned integer. " f"Got: {self.mss}"
 
     @override
     def __str__(self) -> str:
@@ -121,8 +118,7 @@ class TcpOptionMss(TcpOption):
         # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
             raise TcpIntegrityError(
-                f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} "
-                f"bytes. Got: {value!r}"
+                f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} " f"bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
@@ -141,14 +137,12 @@ class TcpOptionMss(TcpOption):
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Mss option must be "
-            f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+            f"The minimum length of the TCP Mss option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(TcpOptionType.MSS), (
-            f"The TCP Mss option type must be {TcpOptionType.MSS!r}. "
-            f"Got: {TcpOptionType.from_int(value)!r}"
+            f"The TCP Mss option type must be {TcpOptionType.MSS!r}. " f"Got: {TcpOptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)

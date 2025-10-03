@@ -90,9 +90,7 @@ def _dhcp4_header(
     header += ciaddr + yiaddr + siaddr + giaddr
     header += chaddr + sname + file_ + cookie
 
-    assert (
-        len(header) == DHCP4__HEADER__LEN
-    ), f"Got header len {len(header)}, expected {DHCP4__HEADER__LEN}"
+    assert len(header) == DHCP4__HEADER__LEN, f"Got header len {len(header)}, expected {DHCP4__HEADER__LEN}"
 
     return header
 
@@ -104,9 +102,7 @@ testcases: list[dict[str, Any]] = [
     {
         "_description": "DHCPv4 packet with only Message Type (DISCOVER) and End.",
         "_args": [
-            DHCP4_HEADER
-            + b"\x35\x01\x01"  # message_type = DISCOVER
-            + b"\xff",  # End
+            DHCP4_HEADER + b"\x35\x01\x01" + b"\xff",  # message_type = DISCOVER  # End
         ],
         "_kwargs": {},
         "_results": {

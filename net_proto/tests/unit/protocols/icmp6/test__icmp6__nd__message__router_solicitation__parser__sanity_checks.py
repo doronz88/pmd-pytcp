@@ -46,9 +46,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 @parameterized_class(
     [
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It is 64."
-            ),
+            "_description": ("The value of the 'ip6__hop' field must be 255. It is 64."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 64,
@@ -56,16 +54,11 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ip6__dst": Ip6Address("ff02::2"),
             },
             "_results": {
-                "error_message": (
-                    "ND Router Solicitation - [RFC 4861] The 'ip6__hop' field "
-                    "must be 255. Got: 64"
-                ),
+                "error_message": ("ND Router Solicitation - [RFC 4861] The 'ip6__hop' field " "must be 255. Got: 64"),
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It is 255."
-            ),
+            "_description": ("The value of the 'ip6__hop' field must be 255. It is 255."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -75,10 +68,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' must be unicast or unspecified. "
-                "It's multicast."
-            ),
+            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's multicast."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -93,10 +83,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' must be unicast or unspecified. "
-                "It's unicast."
-            ),
+            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's unicast."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -106,10 +93,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' must be unicast or unspecified. "
-                "It's unspecified."
-            ),
+            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's unspecified."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -119,10 +103,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": (
-                "The value of the 'ip6__dst' must be all-routers multicast. "
-                "It's unicast."
-            ),
+            "_description": ("The value of the 'ip6__dst' must be all-routers multicast. " "It's unicast."),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
                 "ip6__hop": 255,
@@ -138,8 +119,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The value of the 'ip6__dst' must be all-routers multicast. "
-                "It's all-routers multicast."
+                "The value of the 'ip6__dst' must be all-routers multicast. " "It's all-routers multicast."
             ),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
@@ -151,12 +131,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. "
-                "It's not present."
+                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. " "It's not present."
             ),
-            "_args": [
-                b"\x85\x00\x13\x65\x00\x00\x00\x00\x01\x01\x00\x11\x22\x33\x44\x55"
-            ],
+            "_args": [b"\x85\x00\x13\x65\x00\x00\x00\x00\x01\x01\x00\x11\x22\x33\x44\x55"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("::"),
@@ -172,8 +149,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. "
-                "It's not present."
+                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. " "It's not present."
             ),
             "_args": [b"\x85\x00\x7a\xff\x00\x00\x00\x00"],
             "_mocked_values": {
@@ -185,9 +161,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdMessageRouterSolicitationParserSanityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp4NdMessageRouterSolicitationParserSanityChecks(TestCasePacketRxIp6):
     """
     The ICMPv4 ND Router Solicitation message parser sanity checks tests.
     """

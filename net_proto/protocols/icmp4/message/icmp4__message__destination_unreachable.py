@@ -142,30 +142,20 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         """
 
         assert isinstance(self.code, Icmp4DestinationUnreachableCode), (
-            f"The 'code' field must be an Icmp4DestinationUnreachableCode. "
-            f"Got: {type(self.code)!r}"
+            f"The 'code' field must be an Icmp4DestinationUnreachableCode. " f"Got: {type(self.code)!r}"
         )
 
         if self.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
             assert self.mtu is not None and is_uint16(self.mtu), (
-                f"The 'mtu' field must be a 16-bit unsigned integer. "
-                f"Got: {self.mtu}"
+                f"The 'mtu' field must be a 16-bit unsigned integer. " f"Got: {self.mtu}"
             )
 
         if self.code != Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
-            assert (
-                self.mtu is None
-            ), f"The 'mtu' field must not be set. Got: {self.mtu}"
+            assert self.mtu is None, f"The 'mtu' field must not be set. Got: {self.mtu}"
 
-        assert is_uint16(self.cksum), (
-            f"The 'cksum' field must be a 16-bit unsigned integer. "
-            f"Got: {self.cksum}"
-        )
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum}"
 
-        assert (
-            len(self.data)
-            <= IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN
-        ), (
+        assert len(self.data) <= IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN, (
             "The 'data' field length must be a 16-bit unsigned integer less than or "
             f"equal to {IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN}. "
             f"Got: {len(self.data)}"
@@ -175,11 +165,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         object.__setattr__(
             self,
             "data",
-            self.data[
-                : IP4__MIN_MTU
-                - IP4__HEADER__LEN
-                - ICMP4__DESTINATION_UNREACHABLE__LEN
-            ],
+            self.data[: IP4__MIN_MTU - IP4__HEADER__LEN - ICMP4__DESTINATION_UNREACHABLE__LEN],
         )
 
     @override
@@ -269,11 +255,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Validate the ICMPv4 Destination Unreachable message integrity before parsing it.
         """
 
-        if not (
-            ICMP4__DESTINATION_UNREACHABLE__LEN
-            <= ip4__payload_len
-            <= len(frame)
-        ):
+        if not (ICMP4__DESTINATION_UNREACHABLE__LEN <= ip4__payload_len <= len(frame)):
             raise Icmp4IntegrityError(
                 "The condition 'ICMP4__DESTINATION_UNREACHABLE__LEN <= "
                 "ip4__payload_len <= len(frame)' must be met. Got: "

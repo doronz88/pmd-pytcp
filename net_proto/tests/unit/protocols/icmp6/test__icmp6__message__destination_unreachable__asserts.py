@@ -82,8 +82,7 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'code' field must be an Icmp6DestinationUnreachableCode. "
-            f"Got: {type(value)!r}",
+            f"The 'code' field must be an Icmp6DestinationUnreachableCode. " f"Got: {type(value)!r}",
         )
 
     def test__icmp6__message__destination_unreachable__cksum__under_min(
@@ -161,14 +160,9 @@ class TestIcmp6MessageDestinationUnreachableParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable.from_buffer(
-                b"\xff\x00\xff\x00\x00\x00\x00\x00"
-            )
+            Icmp6MessageDestinationUnreachable.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
 
         self.assertEqual(
             str(error.exception),
-            (
-                "The 'type' field must be <Icmp6Type.DESTINATION_UNREACHABLE: 1>. "
-                "Got: <Icmp6Type.UNKNOWN_255: 255>"
-            ),
+            ("The 'type' field must be <Icmp6Type.DESTINATION_UNREACHABLE: 1>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )

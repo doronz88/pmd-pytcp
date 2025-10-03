@@ -98,52 +98,37 @@ class PacketHandlerIcmp6Tx(ABC):
         Handle outbound ICMPv6 packets.
         """
 
-        self._packet_stats_tx.inc("icmp6__pre_assemble")
+        self._packet_stats_tx.icmp6__pre_assemble += 1
 
         icmp6_packet_tx = Icmp6Assembler(
             icmp6__message=icmp6__message,
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log(
-            "icmp6", f"{icmp6_packet_tx.tracker} - {icmp6_packet_tx}"
-        )
+        __debug__ and log("icmp6", f"{icmp6_packet_tx.tracker} - {icmp6_packet_tx}")
 
         match icmp6__message.type, icmp6__message.code:
             case Icmp6Type.ECHO_REPLY, _:
-                self._packet_stats_tx.inc("icmp6__echo_reply__send")
+                self._packet_stats_tx.icmp6__echo_reply__send += 1
             case Icmp6Type.ECHO_REQUEST, _:
-                self._packet_stats_tx.inc("icmp6__echo_request__send")
+                self._packet_stats_tx.icmp6__echo_request__send += 1
             case (
                 Icmp6Type.DESTINATION_UNREACHABLE,
                 Icmp6DestinationUnreachableCode.PORT,
             ):
-                self._packet_stats_tx.inc(
-                    "icmp6__destination_unreachable__port__send"
-                )
+                self._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
             case Icmp6Type.ND__ROUTER_SOLICITATION, _:
-                self._packet_stats_tx.inc(
-                    "icmp6__nd__router_solicitation__send"
-                )
+                self._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT, _:
-                self._packet_stats_tx.inc(
-                    "icmp6__nd__router_advertisement__send"
-                )
+                self._packet_stats_tx.icmp6__nd__router_advertisement__send += 1
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION, _:
-                self._packet_stats_tx.inc(
-                    "icmp6__nd__neighbor_solicitation__send"
-                )
+                self._packet_stats_tx.icmp6__nd__neighbor_solicitation__send += 1
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT, _:
-                self._packet_stats_tx.inc(
-                    "icmp6__nd__neighbor_advertisement__send"
-                )
+                self._packet_stats_tx.icmp6__nd__neighbor_advertisement__send += 1
             case Icmp6Type.MLD2__REPORT, _:
-                self._packet_stats_tx.inc("icmp6__mld2__report__send")
+                self._packet_stats_tx.icmp6__mld2__report__send += 1
             case _:
-                raise ValueError(
-                    f"Unsupported ICMPv6 type {icmp6__message.type}, "
-                    f"code {icmp6__message.code}."
-                )
+                raise ValueError(f"Unsupported ICMPv6 type {icmp6__message.type}, " f"code {icmp6__message.code}.")
 
         return self._phtx_ip6(
             ip6__src=ip6__src,
@@ -152,9 +137,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__payload=icmp6_packet_tx,
         )
 
-    def _send_icmp6_nd_dad_message(
-        self, *, ip6_unicast_candidate: Ip6Address
-    ) -> None:
+    def _send_icmp6_nd_dad_message(self, *, ip6_unicast_candidate: Ip6Address) -> None:
         """
         Send out ICMPv6 ND Duplicate Address Detection message.
         """
@@ -180,8 +163,7 @@ class PacketHandlerIcmp6Tx(ABC):
         else:
             __debug__ and log(
                 "stack",
-                "Failed to send out ICMPv6 ND DAD message for "
-                f"{ip6_unicast_candidate}, tx_status: {tx_status}",
+                "Failed to send out ICMPv6 ND DAD message for " f"{ip6_unicast_candidate}, tx_status: {tx_status}",
             )
 
     def _send_icmp6_multicast_listener_report(self) -> None:
@@ -201,14 +183,10 @@ class PacketHandlerIcmp6Tx(ABC):
             if multicast_address not in {Ip6Address("ff02::1")}
         }:
             tx_status = self._phtx_icmp6(
-                ip6__src=(
-                    self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()
-                ),
+                ip6__src=(self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()),
                 ip6__dst=Ip6Address("ff02::16"),
                 ip6__hop=1,
-                icmp6__message=Icmp6Mld2ReportMessage(
-                    records=list(icmp6_mlr2_multicast_address_record)
-                ),
+                icmp6__message=Icmp6Mld2ReportMessage(records=list(icmp6_mlr2_multicast_address_record)),
             )
 
             if tx_status in {
@@ -255,9 +233,7 @@ class PacketHandlerIcmp6Tx(ABC):
                 f"Failed to send out ICMPv6 ND Router Solicitation, {tx_status}",
             )
 
-    def send_icmp6_neighbor_solicitation(
-        self, *, icmp6_ns_target_address: Ip6Address
-    ) -> None:
+    def send_icmp6_neighbor_solicitation(self, *, icmp6_ns_target_address: Ip6Address) -> None:
         """
         Enqueue ICMPv6 Neighbor Solicitation packet with TX ring.
         """
@@ -275,9 +251,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__hop=255,
             icmp6__message=Icmp6NdMessageNeighborSolicitation(
                 target_address=icmp6_ns_target_address,
-                options=Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=self._mac_unicast)
-                ),
+                options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
             ),
         )
 
@@ -285,9 +259,7 @@ class PacketHandlerIcmp6Tx(ABC):
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP6__TO_TX_RING,
         }:
-            __debug__ and log(
-                "stack", "Sent out ICMPv6 ND Neighbor Solicitation"
-            )
+            __debug__ and log("stack", "Sent out ICMPv6 ND Neighbor Solicitation")
         else:
             __debug__ and log(
                 "stack",

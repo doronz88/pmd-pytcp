@@ -82,10 +82,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 16,
-                "__str__": (
-                    "ICMPv6 ND Router Solicitation, opts [slla 00:11:22:33:44:55], "
-                    "len 16 (8+8)"
-                ),
+                "__str__": ("ICMPv6 ND Router Solicitation, opts [slla 00:11:22:33:44:55], " "len 16 (8+8)"),
                 "__repr__": (
                     "Icmp6NdMessageRouterSolicitation(code=<Icmp6NdRouterSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
@@ -118,9 +115,7 @@ class TestIcmp6NdMessageRouterSolicitationAssembler(TestCase):
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageRouterSolicitation(
-                *self._args, **self._kwargs
-            )
+            icmp6__message=Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
         )
 
     def test__icmp6__nd__message__router_solicitation__assembler__len(

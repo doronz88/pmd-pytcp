@@ -86,7 +86,7 @@ class PacketHandlerIcmp4Rx(ABC):
         Handle inbound ICMPv4 packets.
         """
 
-        self._packet_stats_rx.inc("icmp4__pre_parse")
+        self._packet_stats_rx.icmp4__pre_parse += 1
 
         try:
             Icmp4Parser(packet_rx)
@@ -96,7 +96,7 @@ class PacketHandlerIcmp4Rx(ABC):
                 "icmp4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
-            self._packet_stats_rx.inc("icmp4__failed_parse__drop")
+            self._packet_stats_rx.icmp4__failed_parse__drop += 1
             return
 
         __debug__ and log("icmp4", f"{packet_rx.tracker} - {packet_rx.icmp4}")
@@ -120,10 +120,9 @@ class PacketHandlerIcmp4Rx(ABC):
 
         __debug__ and log(
             "icmp4",
-            f"{packet_rx.tracker} - Received ICMPv4 Echo Reply packet "
-            f"from {packet_rx.ip4.src}",
+            f"{packet_rx.tracker} - Received ICMPv4 Echo Reply packet " f"from {packet_rx.ip4.src}",
         )
-        self._packet_stats_rx.inc("icmp4__echo_reply")
+        self._packet_stats_rx.icmp4__echo_reply += 1
 
         # Ensure that ICMP message type is memoryview.
         assert isinstance(
@@ -141,36 +140,31 @@ class PacketHandlerIcmp4Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.inc("raw__socket_match")
+                self._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "raw",
-                    f"{packet_rx_md.tracker} - <INFO>Found matching listening "
-                    f"socket [{socket}]</>",
+                    f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
                 socket.process_raw_packet(packet_rx_md)
                 return
 
         return
 
-    def __phrx_icmp4__destination_unreachable(
-        self, packet_rx: PacketRx
-    ) -> None:
+    def __phrx_icmp4__destination_unreachable(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv4 Port Unreachable packets.
         """
 
         # TODO: The proper support for MTU Exceeded ICMPv4 message needs to be added.
 
-        assert isinstance(
-            packet_rx.icmp4.message, Icmp4MessageDestinationUnreachable
-        )
+        assert isinstance(packet_rx.icmp4.message, Icmp4MessageDestinationUnreachable)
 
         __debug__ and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Destination Unreachable packet "
             f"from {packet_rx.ip4.src}, will try to match UDP socket",
         )
-        self._packet_stats_rx.inc("icmp4__destination_unreachable")
+        self._packet_stats_rx.icmp4__destination_unreachable += 1
 
         # Quick and dirty way to validate received data and pull useful
         # information from it.
@@ -188,18 +182,12 @@ class PacketHandlerIcmp4Rx(ABC):
                 ip__ver=IpVersion.IP4,
                 ip__local_address=Ip4Address(frame[12:16]),
                 ip__remote_address=Ip4Address(frame[16:20]),
-                udp__local_port=struct.unpack(
-                    "!H", frame[udp_offset + 0 : udp_offset + 2]
-                )[0],
-                udp__remote_port=struct.unpack(
-                    "!H", frame[udp_offset + 2 : udp_offset + 4]
-                )[0],
+                udp__local_port=struct.unpack("!H", frame[udp_offset + 0 : udp_offset + 2])[0],
+                udp__remote_port=struct.unpack("!H", frame[udp_offset + 2 : udp_offset + 4])[0],
             )
 
             for socket_id in packet.socket_ids:
-                if socket := cast(
-                    UdpSocket, stack.sockets.get(socket_id, None)
-                ):
+                if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
                     __debug__ and log(
                         "icmp4",
                         f"{packet_rx.tracker} - <INFO>Found matching "
@@ -211,15 +199,13 @@ class PacketHandlerIcmp4Rx(ABC):
 
             __debug__ and log(
                 "icmp4",
-                f"{packet_rx.tracker} - Unreachable data doesn't match "
-                "any UDP socket",
+                f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
             )
             return
 
         __debug__ and log(
             "icmp4",
-            f"{packet_rx.tracker} - Unreachable data doesn't pass basic "
-            "IPv4/UDP integrity check",
+            f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
         )
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
@@ -234,7 +220,7 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Received ICMPv4 Echo Request "
             f"packet from {packet_rx.ip4.src}, sending reply</>",
         )
-        self._packet_stats_rx.inc("icmp4__echo_request__respond_echo_reply")
+        self._packet_stats_rx.icmp4__echo_request__respond_echo_reply += 1
 
         self._phtx_icmp4(
             ip4__src=packet_rx.ip4.dst,
@@ -254,7 +240,6 @@ class PacketHandlerIcmp4Rx(ABC):
 
         __debug__ and log(
             "icmp4",
-            f"{packet_rx.tracker} - Received unknown ICMPv4 packet "
-            f"from {packet_rx.ip4.src}",
+            f"{packet_rx.tracker} - Received unknown ICMPv4 packet " f"from {packet_rx.ip4.src}",
         )
-        self._packet_stats_rx.inc("icmp4__unknown")
+        self._packet_stats_rx.icmp4__unknown += 1

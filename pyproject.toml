@@ -38,12 +38,12 @@ requires-python = ">=3.12"
 "Bug Tracker" = "https://github.com/ccie18643/PyTCP/issues"
 
 [tool.black]
-line-length = 80
+line-length = 120
 
 [tool.isort]
 profile = "black"
 src_paths = ["pytcp", "examples", "net_addr", "net_proto"]
-line_length = 80
+line_length = 120
 honor_noqa = true
 
 [tool.codespell]

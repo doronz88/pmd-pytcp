@@ -105,9 +105,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6MessageDestinationUnreachableParserIntegrityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp6MessageDestinationUnreachableParserIntegrityChecks(TestCasePacketRxIp6):
     """
     The ICMPv6 Destination Unreachable message parser integrity checks tests.
     """

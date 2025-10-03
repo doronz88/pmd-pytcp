@@ -102,14 +102,14 @@ class PacketHandlerIp4Tx(ABC):
         Handle outbound IP packets.
         """
 
-        self._packet_stats_tx.inc("ip4__pre_assemble")
+        self._packet_stats_tx.ip4__pre_assemble += 1
 
         assert 0 < ip4__ttl < 256
 
         # Check if IPv4 protocol support is enabled, if not then silently drop
         # the packet.
         if not self._ip4_support:
-            self._packet_stats_tx.inc("ip4__no_proto_support__drop")
+            self._packet_stats_tx.ip4__no_proto_support__drop += 1
             return TxStatus.DROPED__IP4__NO_PROTOCOL_SUPPORT
 
         # Validate source address.
@@ -141,10 +141,8 @@ class PacketHandlerIp4Tx(ABC):
 
         # Send packet out if it's size doesn't exceed mtu.
         if len(ip4_packet_tx) <= self._interface_mtu:
-            self._packet_stats_tx.inc("ip4__mtu_ok__send")
-            __debug__ and log(
-                "ip4", f"{ip4_packet_tx.tracker} - {ip4_packet_tx}"
-            )
+            self._packet_stats_tx.ip4__mtu_ok__send += 1
+            __debug__ and log("ip4", f"{ip4_packet_tx.tracker} - {ip4_packet_tx}")
             match self._interface_layer:
                 case InterfaceLayer.L2:
                     return self._phtx_ethernet(
@@ -157,11 +155,10 @@ class PacketHandlerIp4Tx(ABC):
                     return TxStatus.PASSED__IP4__TO_TX_RING
 
         # Fragment packet and send out.
-        self._packet_stats_tx.inc("ip4__mtu_exceed__frag")
+        self._packet_stats_tx.ip4__mtu_exceed__frag += 1
         __debug__ and log(
             "ip4",
-            f"{ip4_packet_tx.tracker} - IPv4 packet len {len(ip4_packet_tx)} "
-            "bytes, fragmentation needed",
+            f"{ip4_packet_tx.tracker} - IPv4 packet len {len(ip4_packet_tx)} " "bytes, fragmentation needed",
         )
 
         if isinstance(ip4_packet_tx.payload, (TcpAssembler, UdpAssembler)):
@@ -169,13 +166,8 @@ class PacketHandlerIp4Tx(ABC):
 
         payload = bytearray(bytes(ip4_packet_tx.payload))
 
-        payload_mtu = (
-            self._interface_mtu - ip4_packet_tx.hlen
-        ) & 0b1111111111111000
-        payload_frags = [
-            payload[_ : payload_mtu + _]
-            for _ in range(0, len(payload), payload_mtu)
-        ]
+        payload_mtu = (self._interface_mtu - ip4_packet_tx.hlen) & 0b1111111111111000
+        payload_frags = [payload[_ : payload_mtu + _] for _ in range(0, len(payload), payload_mtu)]
         offset = 0
         self._ip4_id += 1
         outbound_tx_status: set[TxStatus] = set()
@@ -192,7 +184,7 @@ class PacketHandlerIp4Tx(ABC):
             )
             __debug__ and log("ip4", f"{ip4_frag_tx.tracker} - {ip4_frag_tx}")
             offset += len(payload_frag)
-            self._packet_stats_tx.inc("ip4__mtu_exceed__frag__send")
+            self._packet_stats_tx.ip4__mtu_exceed__frag__send += 1
 
             match self._interface_layer:
                 case InterfaceLayer.L2:
@@ -243,7 +235,7 @@ class PacketHandlerIp4Tx(ABC):
             *self._ip4_broadcast,
             Ip4Address(),
         }:
-            self._packet_stats_tx.inc("ip4__src_not_owned__drop")
+            self._packet_stats_tx.ip4__src_not_owned__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, stack "
@@ -255,7 +247,7 @@ class PacketHandlerIp4Tx(ABC):
         # primary address of the stack.
         if ip4__src in self._ip4_multicast:
             if self._ip4_unicast:
-                self._packet_stats_tx.inc("ip4__src_multicast__replace")
+                self._packet_stats_tx.ip4__src_multicast__replace += 1
                 ip4__src = self._ip4_unicast[0]
                 __debug__ and log(
                     "ip4",
@@ -263,7 +255,7 @@ class PacketHandlerIp4Tx(ABC):
                     f"source with stack primary IPv4 address {ip4__src}",
                 )
                 return ip4__src
-            self._packet_stats_tx.inc("ip4__src_multicast__drop")
+            self._packet_stats_tx.ip4__src_multicast__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, no stack "
@@ -275,7 +267,7 @@ class PacketHandlerIp4Tx(ABC):
         # with primary address of the stack.
         if ip4__src.is_limited_broadcast:
             if self._ip4_unicast:
-                self._packet_stats_tx.inc("ip4__src_limited_broadcast__replace")
+                self._packet_stats_tx.ip4__src_limited_broadcast__replace += 1
                 ip4__src = self._ip4_unicast[0]
                 __debug__ and log(
                     "ip4",
@@ -284,7 +276,7 @@ class PacketHandlerIp4Tx(ABC):
                     f"address {ip4__src}",
                 )
                 return ip4__src
-            self._packet_stats_tx.inc("ip4__src_limited_broadcast__drop")
+            self._packet_stats_tx.ip4__src_limited_broadcast__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, no stack "
@@ -295,13 +287,9 @@ class PacketHandlerIp4Tx(ABC):
         # If packet is a response to network broadcast then replace source address
         # with first stack address that belongs to appropriate subnet.
         if ip4__src in self._ip4_broadcast:
-            ip4_src_list = [
-                ip4_host.address
-                for ip4_host in self._ip4_host
-                if ip4_host.network.broadcast == ip4__src
-            ]
+            ip4_src_list = [ip4_host.address for ip4_host in self._ip4_host if ip4_host.network.broadcast == ip4__src]
             if ip4_src_list:
-                self._packet_stats_tx.inc("ip4__src_network_broadcast__replace")
+                self._packet_stats_tx.ip4__src_network_broadcast__replace += 1
                 ip4__src = ip4_src_list[0]
                 __debug__ and log(
                     "ip4",
@@ -315,9 +303,7 @@ class PacketHandlerIp4Tx(ABC):
         if ip4__src.is_unspecified:
             for ip4_host in self._ip4_host:
                 if ip4__dst in ip4_host.network:
-                    self._packet_stats_tx.inc(
-                        "ip4__src_network_unspecified__replace_local"
-                    )
+                    self._packet_stats_tx.ip4__src_network_unspecified__replace_local += 1
                     ip4__src = ip4_host.address
                     __debug__ and log(
                         "ip4",
@@ -332,9 +318,7 @@ class PacketHandlerIp4Tx(ABC):
         if ip4__src.is_unspecified:
             for ip4_host in self._ip4_host:
                 if ip4_host.gateway:
-                    self._packet_stats_tx.inc(
-                        "ip4__src_network_unspecified__replace_external"
-                    )
+                    self._packet_stats_tx.ip4__src_network_unspecified__replace_external += 1
                     ip4__src = ip4_host.address
                     __debug__ and log(
                         "ip4",
@@ -351,21 +335,19 @@ class PacketHandlerIp4Tx(ABC):
             and ip4__payload.sport == 68
             and ip4__payload.dport == 67
         ):
-            self._packet_stats_tx.inc("ip4__src_unspecified__send")
+            self._packet_stats_tx.ip4__src_unspecified__send += 1
             __debug__ and log(
                 "ip4",
-                f"{tracker} - Packet source is unspecified, DHCPv4 packet, "
-                "sending",
+                f"{tracker} - Packet source is unspecified, DHCPv4 packet, " "sending",
             )
             return ip4__src
 
         # If src is unspecified and stack can't replace it.
         if ip4__src.is_unspecified:
-            self._packet_stats_tx.inc("ip4__src_unspecified__drop")
+            self._packet_stats_tx.ip4__src_unspecified__drop += 1
             __debug__ and log(
                 "ip4",
-                f"{tracker} - <WARN>Packet source is unspecified, unable to "
-                "replace with valid source, dropping</>",
+                f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
             )
             return TxStatus.DROPED__IP4__SRC_UNSPECIFIED
 
@@ -384,11 +366,10 @@ class PacketHandlerIp4Tx(ABC):
 
         # Drop packet if the destination address is unspecified.
         if ip4__dst.is_unspecified:
-            self._packet_stats_tx.inc("ip4__dst_unspecified__drop")
+            self._packet_stats_tx.ip4__dst_unspecified__drop += 1
             __debug__ and log(
                 "ip4",
-                f"{tracker} - <WARN>Destination address is unspecified, "
-                "dropping</>",
+                f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
             )
             return TxStatus.DROPED__IP4__DST_UNSPECIFIED
 

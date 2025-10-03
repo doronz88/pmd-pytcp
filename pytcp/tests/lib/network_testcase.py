@@ -247,9 +247,7 @@ class NetworkTestCase(TestCase):
             interface_mtu=1500,
         )
 
-        self._packet_handler._mac_multicast = [
-            STACK__IP6_HOST.address.solicited_node_multicast.multicast_mac
-        ]
+        self._packet_handler._mac_multicast = [STACK__IP6_HOST.address.solicited_node_multicast.multicast_mac]
         self._packet_handler._ip4_host = [STACK__IP4_HOST]
         self._packet_handler._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
         self._packet_handler._ip6_host = [STACK__IP6_HOST]

@@ -84,9 +84,7 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         """
 
         # Ensure the 'slla' field is a MacAddress instance.
-        assert isinstance(
-            self.slla, MacAddress
-        ), f"The 'slla' field must be a MacAddress. Got: {type(self.slla)!r}"
+        assert isinstance(self.slla, MacAddress), f"The 'slla' field must be a MacAddress. Got: {type(self.slla)!r}"
 
     @override
     def __str__(self) -> str:

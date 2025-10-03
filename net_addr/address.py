@@ -69,11 +69,7 @@ class Address(Base, ABC):
         Compare the network address with another object.
         """
 
-        return (
-            other is self
-            or isinstance(other, type(self))
-            and self._address == other._address
-        )
+        return other is self or isinstance(other, type(self)) and self._address == other._address
 
     __hash__ = Base.__hash__
 

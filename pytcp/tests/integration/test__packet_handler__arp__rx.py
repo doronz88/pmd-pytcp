@@ -921,8 +921,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/ARP - reply to our probe: SPA matches candidate IP we are probing, "
-                "conflict detected"
+                "Ethernet/ARP - reply to our probe: SPA matches candidate IP we are probing, " "conflict detected"
             ),
             "_frames_rx": [
                 # Ethernet II

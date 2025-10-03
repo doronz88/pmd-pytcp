@@ -56,8 +56,7 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "UDP 65535 > 65535, len 8 (8+0)",
                 "__repr__": (
-                    "UdpAssembler(header=UdpHeader(sport=65535, dport=65535, "
-                    "plen=8, cksum=0), payload=b'')"
+                    "UdpAssembler(header=UdpHeader(sport=65535, dport=65535, " "plen=8, cksum=0), payload=b'')"
                 ),
                 "__bytes__": b"\xff\xff\xff\xff\x00\x08\xff\xf7",
                 "sport": 65535,

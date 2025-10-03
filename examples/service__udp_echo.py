@@ -80,10 +80,7 @@ class UdpEchoService(UdpService):
                 message, remote_address = socket.recvfrom(timeout=1)
 
                 if message:
-                    self._log(
-                        f"Received {len(message)} bytes from "
-                        f"{remote_address[0]}, port {remote_address[1]}."
-                    )
+                    self._log(f"Received {len(message)} bytes from " f"{remote_address[0]}, port {remote_address[1]}.")
 
                     if b"malpka" in message.strip().lower():
                         message = malpka
@@ -94,10 +91,7 @@ class UdpEchoService(UdpService):
 
                     socket.sendto(message, remote_address)
 
-                    self._log(
-                        f"Sent {len(message)} bytes back to "
-                        f"{remote_address[0]}, port {remote_address[1]}."
-                    )
+                    self._log(f"Sent {len(message)} bytes back to " f"{remote_address[0]}, port {remote_address[1]}.")
 
             except TimeoutError:
                 continue
@@ -125,19 +119,11 @@ def cli(
         stack_cli,
         subsystems=[
             UdpEchoService(
-                local_ip_address=(
-                    kwargs["stack__ip6_host"].address
-                    if kwargs["stack__ip6_host"]
-                    else Ip6Address()
-                ),
+                local_ip_address=(kwargs["stack__ip6_host"].address if kwargs["stack__ip6_host"] else Ip6Address()),
                 local_port=local_port,
             ),
             UdpEchoService(
-                local_ip_address=(
-                    kwargs["stack__ip4_host"].address
-                    if kwargs["stack__ip4_host"]
-                    else Ip4Address()
-                ),
+                local_ip_address=(kwargs["stack__ip4_host"].address if kwargs["stack__ip4_host"] else Ip4Address()),
                 local_port=local_port,
             ),
         ],

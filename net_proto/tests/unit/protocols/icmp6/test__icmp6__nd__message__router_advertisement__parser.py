@@ -53,9 +53,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": "ICMPv6 ND Router Advertisement message, no options.",
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -77,8 +75,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMPv6 ND Router Advertisement message, Slla option present.",
             "_args": [
-                b"\x86\x00\xcd\x0c\x40\x00\x00\x7b\x00\x00\x01\xc8\x00\x00\x03\x15"
-                b"\x01\x01\x00\x11\x22\x33\x44\x55"
+                b"\x86\x00\xcd\x0c\x40\x00\x00\x7b\x00\x00\x01\xc8\x00\x00\x03\x15" b"\x01\x01\x00\x11\x22\x33\x44\x55"
             ],
             "_mocked_values": {
                 "ip6__hop": 255,

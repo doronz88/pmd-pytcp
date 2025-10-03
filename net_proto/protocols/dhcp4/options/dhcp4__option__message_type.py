@@ -84,8 +84,7 @@ class Dhcp4OptionMessageType(Dhcp4Option):
 
         # Ensure the 'message_type' field is Dhcp4MessageType.
         assert isinstance(self.message_type, Dhcp4MessageType), (
-            f"The 'message_type' field must be a Dhcp4MessageType. "
-            f"Got: {type(self.message_type)!r}"
+            f"The 'message_type' field must be a Dhcp4MessageType. " f"Got: {type(self.message_type)!r}"
         )
 
     @override
@@ -120,9 +119,7 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (
-            value := DHCP4__OPTION__LEN + buffer[1]
-        ) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
+        if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__MESSAGE_TYPE__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Message Type option length value must be "
                 f"{DHCP4__OPTION__MESSAGE_TYPE__LEN} bytes. Got: {value!r}"

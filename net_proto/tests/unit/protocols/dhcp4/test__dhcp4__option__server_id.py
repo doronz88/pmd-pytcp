@@ -237,10 +237,7 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Subnet Mask option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the DHCPv4 Subnet Mask option must be 2 " "bytes. Got: 1"),
             },
         },
         {
@@ -304,9 +301,7 @@ class TestDhcp4OptionServerIdParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionServerId.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionServerId.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

@@ -110,57 +110,33 @@ class Ip4Header(ProtoStruct):
             is_uint6(self.hlen) and self.hlen >= IP4__HEADER__LEN
         ), f"The 'hlen' field must be a 4-bit unsigned integer greater than or equal to 20. Got: {self.hlen!r}"
 
-        assert is_uint6(
-            self.dscp
-        ), f"The 'dscp' field must be a 6-bit unsigned integer. Got: {self.dscp!r}"
+        assert is_uint6(self.dscp), f"The 'dscp' field must be a 6-bit unsigned integer. Got: {self.dscp!r}"
 
-        assert is_uint2(
-            self.ecn
-        ), f"The 'ecn' field must be a 2-bit unsigned integer. Got: {self.ecn!r}"
+        assert is_uint2(self.ecn), f"The 'ecn' field must be a 2-bit unsigned integer. Got: {self.ecn!r}"
 
         assert (
             is_uint16(self.plen) and self.plen >= IP4__HEADER__LEN
         ), f"The 'plen' field must be a 16-bit unsigned integer greater than or equal to 20. Got: {self.plen!r}"
 
-        assert is_uint16(
-            self.id
-        ), f"The 'id' field must be a 16-bit unsigned integer. Got: {self.id!r}"
+        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. Got: {self.id!r}"
 
-        assert isinstance(
-            self.flag_df, bool
-        ), f"The 'flag_df' field must be a boolean. Got: {type(self.flag_df)!r}"
+        assert isinstance(self.flag_df, bool), f"The 'flag_df' field must be a boolean. Got: {type(self.flag_df)!r}"
 
-        assert isinstance(
-            self.flag_mf, bool
-        ), f"The 'flag_mf' field must be a boolean. Got: {type(self.flag_mf)!r}"
+        assert isinstance(self.flag_mf, bool), f"The 'flag_mf' field must be a boolean. Got: {type(self.flag_mf)!r}"
 
-        assert is_uint13(
-            self.offset
-        ), f"The 'offset' field must be a 13-bit unsigned integer. Got: {self.offset!r}"
+        assert is_uint13(self.offset), f"The 'offset' field must be a 13-bit unsigned integer. Got: {self.offset!r}"
 
-        assert is_8_byte_alligned(
-            self.offset
-        ), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
+        assert is_8_byte_alligned(self.offset), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
 
-        assert is_uint8(
-            self.ttl
-        ), f"The 'ttl' field must be an 8-bit unsigned integer. Got: {self.ttl!r}"
+        assert is_uint8(self.ttl), f"The 'ttl' field must be an 8-bit unsigned integer. Got: {self.ttl!r}"
 
-        assert isinstance(
-            self.proto, IpProto
-        ), f"The 'proto' field must be an IpProto. Got: {type(self.proto)!r}"
+        assert isinstance(self.proto, IpProto), f"The 'proto' field must be an IpProto. Got: {type(self.proto)!r}"
 
-        assert is_uint16(
-            self.cksum
-        ), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert isinstance(
-            self.src, Ip4Address
-        ), f"The 'src' field must be an Ip4Address. Got: {type(self.src)!r}"
+        assert isinstance(self.src, Ip4Address), f"The 'src' field must be an Ip4Address. Got: {type(self.src)!r}"
 
-        assert isinstance(
-            self.dst, Ip4Address
-        ), f"The 'dst' field must be an Ip4Address. Got: {type(self.dst)!r}"
+        assert isinstance(self.dst, Ip4Address), f"The 'dst' field must be an Ip4Address. Got: {type(self.dst)!r}"
 
     @override
     def __len__(self) -> int:

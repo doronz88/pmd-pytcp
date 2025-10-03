@@ -46,8 +46,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": (
-                "ICMPv6 unknown message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6_payload_len' condition not met."
+                "ICMPv6 unknown message, " "the 'ICMP6_HEADER_LEN <= self._ip6_payload_len' condition not met."
             ),
             "_args": [b"\x81\x00\xfb"],
             "_kwargs": {},
@@ -63,10 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "ICMPv6 unknown message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
-            ),
+            "_description": ("ICMPv6 unknown message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."),
             "_args": [b"\x81\x00\xfb\x94\x30\x39\xd4"],
             "_kwargs": {},
             "_mocked_values": {

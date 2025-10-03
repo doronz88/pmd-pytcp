@@ -44,10 +44,7 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 @parameterized_class(
     [
         {
-            "_description": (
-                "The length of the frame is lower than the value of the "
-                "'IP6__HEADER__LEN' constant."
-            ),
+            "_description": ("The length of the frame is lower than the value of the " "'IP6__HEADER__LEN' constant."),
             "_kwargs": {},
             "_args": [
                 b"\x60\x00\x00\x00\x00\x00\xff\x01\x10\x01\x20\x02\x30\x03\x40\x04"

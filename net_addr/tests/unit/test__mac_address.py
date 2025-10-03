@@ -406,8 +406,7 @@ class TestNetAddrMacAddress(TestCase):
         )
 
         self.assertFalse(
-            self._mac_address
-            == MacAddress((int(self._mac_address) + 1) & 0xFFFF_FFFF_FFFF),
+            self._mac_address == MacAddress((int(self._mac_address) + 1) & 0xFFFF_FFFF_FFFF),
         )
 
         self.assertFalse(
@@ -514,9 +513,7 @@ class TestNetAddrMacAddress(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
-                "error_message": (
-                    "The MAC address format is invalid: '01:23:45:ab:cd'"
-                ),
+                "error_message": ("The MAC address format is invalid: '01:23:45:ab:cd'"),
             },
         },
         {
@@ -527,9 +524,7 @@ class TestNetAddrMacAddress(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
-                "error_message": (
-                    "The MAC address format is invalid: '01:23:45:ab:cd:ef:01'"
-                ),
+                "error_message": ("The MAC address format is invalid: '01:23:45:ab:cd:ef:01'"),
             },
         },
         {
@@ -540,9 +535,7 @@ class TestNetAddrMacAddress(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
-                "error_message": (
-                    "The MAC address format is invalid: '01:23:45:ab:cd:eg'"
-                ),
+                "error_message": ("The MAC address format is invalid: '01:23:45:ab:cd:eg'"),
             },
         },
         {
@@ -553,9 +546,7 @@ class TestNetAddrMacAddress(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
-                "error_message": (
-                    r"The MAC address format is invalid: b'\x01#E\xab\xcd'"
-                ),
+                "error_message": (r"The MAC address format is invalid: b'\x01#E\xab\xcd'"),
             },
         },
         {
@@ -566,9 +557,7 @@ class TestNetAddrMacAddress(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": MacAddressFormatError,
-                "error_message": (
-                    r"The MAC address format is invalid: b'\x01#E\xab\xcd\xef\x01'"
-                ),
+                "error_message": (r"The MAC address format is invalid: b'\x01#E\xab\xcd\xef\x01'"),
             },
         },
         {

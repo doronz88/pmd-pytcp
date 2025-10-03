@@ -46,31 +46,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 @parameterized_class(
     [
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It is 64."
-            ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_description": ("The value of the 'ip6__hop' field must be 255. It is 64."),
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 64,
                 "ip6__src": Ip6Address("fe80::1"),
                 "ip6__dst": Ip6Address("2001:db8::1"),
             },
             "_results": {
-                "error_message": (
-                    "ND Router Advertisement - [RFC 4861] The 'ip6__hop' field "
-                    "must be 255. Got: 64"
-                ),
+                "error_message": ("ND Router Advertisement - [RFC 4861] The 'ip6__hop' field " "must be 255. Got: 64"),
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__hop' field must be 255. It is 255."
-            ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_description": ("The value of the 'ip6__hop' field must be 255. It is 255."),
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -80,12 +69,9 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The value of the 'ip6__src' field must be link-local address. "
-                "It is global unicast address."
+                "The value of the 'ip6__src' field must be link-local address. " "It is global unicast address."
             ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -99,13 +85,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": (
-                "The value of the 'ip6__src' field must be link-local address. "
-                "It is link-local."
-            ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_description": ("The value of the 'ip6__src' field must be link-local address. " "It is link-local."),
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -118,9 +99,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "The value of the 'ip6__dst' field must be unicast or all-nodes multicast "
                 "address. It is unspecified address."
             ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -138,9 +117,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "The value of the 'ip6__dst' field must be unicast or all-nodes multicast "
                 "address. It is unicast address."
             ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -153,9 +130,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "The value of the 'ip6__dst' field must be unicast or all-nodes multicast "
                 "address. It is all-nodes multicast address."
             ),
-            "_args": [
-                b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-            ],
+            "_args": [b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("fe80::1"),
@@ -165,9 +140,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp4NdMessageRouterAdvertisementParserSanityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp4NdMessageRouterAdvertisementParserSanityChecks(TestCasePacketRxIp6):
     """
     The ICMPv4 ND Router Advertisement message parser sanity checks tests.
     """

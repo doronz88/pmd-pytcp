@@ -106,9 +106,7 @@ class Subsystem(ABC):
             bold=True,
         )
 
-    def _get_subsystem_socket(
-        self, *, ip_version: IpVersion, protocol_name: str
-    ) -> socket:
+    def _get_subsystem_socket(self, *, ip_version: IpVersion, protocol_name: str) -> socket:
         """
         Create and bind the subsystem socket.
         """
@@ -123,13 +121,9 @@ class Subsystem(ABC):
             case IpVersion.IP4, "UDP":
                 subsystem_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
             case IpVersion.IP6, "ICMP":
-                subsystem_socket = socket(
-                    family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_ICMP6
-                )
+                subsystem_socket = socket(family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_ICMP6)
             case IpVersion.IP4, "ICMP":
-                subsystem_socket = socket(
-                    family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_ICMP4
-                )
+                subsystem_socket = socket(family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_ICMP4)
             case _:
                 raise ValueError("Invalid IP versions or protocol combination.")
 

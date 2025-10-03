@@ -159,10 +159,7 @@ def pick_local_port() -> int:
     if len(available_ephemeral_ports):
         return available_ephemeral_ports.pop()
 
-    raise OSError(
-        "[Errno 98] Address already in use - [Unable to find free "
-        "local ephemeral port]"
-    )
+    raise OSError("[Errno 98] Address already in use - [Unable to find free " "local ephemeral port]")
 
 
 def is_address_in_use(
@@ -180,10 +177,7 @@ def is_address_in_use(
     from pytcp.socket.udp__socket import UdpSocket
 
     for opened_socket in stack.sockets.values():
-        if (
-            opened_socket.family == address_family
-            and opened_socket.type == socket_type
-        ):
+        if opened_socket.family == address_family and opened_socket.type == socket_type:
             opened_socket = cast(TcpSocket | UdpSocket, opened_socket)
             if (
                 opened_socket.local_ip_address.is_unspecified

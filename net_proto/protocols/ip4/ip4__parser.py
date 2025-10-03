@@ -108,9 +108,7 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
 
         self._header = Ip4Header.from_buffer(self._frame)
 
-        self._options = Ip4Options.from_buffer(
-            self._frame[len(self._header) : self._header.hlen]
-        )
+        self._options = Ip4Options.from_buffer(self._frame[len(self._header) : self._header.hlen])
 
         self._payload = self._frame[self._header.hlen : self._header.plen]
 
@@ -172,6 +170,4 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
         Get the whole IPv4 packet bytes.
         """
 
-        return self._frame[
-            : len(self._header) + len(self._options) + len(self._payload)
-        ]
+        return self._frame[: len(self._header) + len(self._options) + len(self._payload)]

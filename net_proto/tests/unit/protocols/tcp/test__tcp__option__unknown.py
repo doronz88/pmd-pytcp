@@ -95,8 +95,7 @@ class TestTcpOptionUnknownAsserts(TestCase):
 
             self.assertEqual(
                 str(error.exception),
-                "The 'type' field must not be a core TcpOptionType. "
-                f"Got: {value!r}",
+                "The 'type' field must not be a core TcpOptionType. " f"Got: {value!r}",
             )
 
     def test__tcp__option__unknown__len__8bit_integer(self) -> None:
@@ -128,13 +127,9 @@ class TestTcpOptionUnknownAsserts(TestCase):
                 "__len__": 18,
                 "__str__": "unk-255-18",
                 "__repr__": (
-                    f"TcpOptionUnknown(type={TcpOptionType.from_int(255)!r}, "
-                    "len=18, data=b'0123456789ABCDEF')"
+                    f"TcpOptionUnknown(type={TcpOptionType.from_int(255)!r}, " "len=18, data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": (
-                    b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                    b"\x45\x46"
-                ),
+                "__bytes__": (b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46"),
                 "type": TcpOptionType.from_int(255),
                 "len": 18,
                 "data": b"0123456789ABCDEF",
@@ -239,8 +234,7 @@ class TestTcpOptionUnknownAssembler(TestCase):
         {
             "_description": "The unknown TCP option.",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46" + b"ZH0PA",
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46" + b"ZH0PA",
             ],
             "_kwargs": {},
             "_results": {
@@ -258,122 +252,92 @@ class TestTcpOptionUnknownAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the unknown TCP option must be 2 "
-                    "bytes. Got: 1"
-                ),
+                "error_message": ("The minimum length of the unknown TCP option must be 2 " "bytes. Got: 1"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Eol) assert.",
             "_args": [
-                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    "Got: <TcpOptionType.EOL: 0>"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " "Got: <TcpOptionType.EOL: 0>"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Nop) assert.",
             "_args": [
-                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.NOP!r}"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " f"Got: {TcpOptionType.NOP!r}"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Mss) assert.",
             "_args": [
-                b"\x02\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x02\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.MSS!r}"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " f"Got: {TcpOptionType.MSS!r}"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Wscale) assert.",
             "_args": [
-                b"\x03\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x03\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.WSCALE!r}"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " f"Got: {TcpOptionType.WSCALE!r}"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Sackperm) assert.",
             "_args": [
-                b"\x04\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x04\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.SACKPERM!r}"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " f"Got: {TcpOptionType.SACKPERM!r}"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Sack) assert.",
             "_args": [
-                b"\x05\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x05\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.SACK!r}"
-                ),
+                "error_message": ("The unknown TCP option type must not be known. " f"Got: {TcpOptionType.SACK!r}"),
             },
         },
         {
             "_description": "The unknown TCP option incorrect 'type' field (Timestamps) assert.",
             "_args": [
-                b"\x08\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45\x46",
+                b"\x08\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
             ],
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The unknown TCP option type must not be known. "
-                    f"Got: {TcpOptionType.TIMESTAMPS!r}"
+                    "The unknown TCP option type must not be known. " f"Got: {TcpOptionType.TIMESTAMPS!r}"
                 ),
             },
         },
         {
             "_description": "The unknown TCP option length integrity check (II).",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
-                b"\x45",
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45",
             ],
             "_kwargs": {},
             "_results": {

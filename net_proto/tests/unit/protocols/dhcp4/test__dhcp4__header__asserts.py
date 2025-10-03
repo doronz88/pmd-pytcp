@@ -107,8 +107,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'hops' field must be an 8-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'hops' field must be an 8-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__hops__over_max(self) -> None:
@@ -124,8 +123,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'hops' field must be an 8-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'hops' field must be an 8-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__xid__under_min(self) -> None:
@@ -141,8 +139,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'xid' field must be a 32-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'xid' field must be a 32-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__xid__over_max(self) -> None:
@@ -158,8 +155,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'xid' field must be a 32-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'xid' field must be a 32-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__secs__under_min(self) -> None:
@@ -175,8 +171,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'secs' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'secs' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__secs__over_max(self) -> None:
@@ -192,8 +187,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'secs' field must be a 16-bit unsigned integer. "
-            f"Got: {value!r}",
+            "The 'secs' field must be a 16-bit unsigned integer. " f"Got: {value!r}",
         )
 
     def test__dhcp4__header__flag_b__not_boolean(self) -> None:
@@ -315,17 +309,14 @@ class TestDhcp4HeaderAsserts(TestCase):
         value.
         """
 
-        self._kwargs["sname"] = value = "X" * (
-            DHCP4__HEADER__SNAME__MAX_LEN + 1
-        )
+        self._kwargs["sname"] = value = "X" * (DHCP4__HEADER__SNAME__MAX_LEN + 1)
 
         with self.assertRaises(AssertionError) as error:
             Dhcp4Header(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            "The 'sname' field length must less or equal to "
-            f"{DHCP4__HEADER__SNAME__MAX_LEN!r}. Got: {len(value)!r}",
+            "The 'sname' field length must less or equal to " f"{DHCP4__HEADER__SNAME__MAX_LEN!r}. Got: {len(value)!r}",
         )
 
     def test__dhcp4__header__file__not_string(self) -> None:
@@ -358,6 +349,5 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The 'file' field length must less or equal to "
-            f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
+            "The 'file' field length must less or equal to " f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
         )

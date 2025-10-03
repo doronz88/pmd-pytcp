@@ -67,8 +67,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 28,
                 "__str__": (
-                    "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > "
-                    "101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28"
+                    "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > " "101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28"
                 ),
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REQUEST: 1>, "
@@ -110,10 +109,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 28,
-                "__str__": (
-                    "ARP Reply 5.5.5.5 / a1:b2:c3:d4:e5:f6 > "
-                    "7.7.7.7 / 7a:7b:7c:7d:7e:7f, len 28"
-                ),
+                "__str__": ("ARP Reply 5.5.5.5 / a1:b2:c3:d4:e5:f6 > " "7.7.7.7 / 7a:7b:7c:7d:7e:7f, len 28"),
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REPLY: 2>, "
                     "sha=MacAddress('a1:b2:c3:d4:e5:f6'), spa=Ip4Address('5.5.5.5'), "

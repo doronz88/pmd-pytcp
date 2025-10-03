@@ -76,10 +76,7 @@ class TcpEchoService(TcpService):
 
         remote_ip_address, remote_port = socket.getpeername()
 
-        self._log(
-            f"Sending first message to {remote_ip_address}, "
-            f"port {remote_port}."
-        )
+        self._log(f"Sending first message to {remote_ip_address}, " f"port {remote_port}.")
         socket.send(b"***CLIENT OPEN / SERVICE OPEN***\n")
 
         while not self._event__stop_subsystem.is_set():
@@ -89,33 +86,21 @@ class TcpEchoService(TcpService):
                 continue
 
             if not message:
-                self._log(
-                    f"Connection to {remote_ip_address}, port {remote_port} has been closed by peer."
-                )
-                self._log(
-                    f"Sending last message to {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Connection to {remote_ip_address}, port {remote_port} has been closed by peer.")
+                self._log(f"Sending last message to {remote_ip_address}, port {remote_port}.")
                 socket.send(b"***CLIENT CLOSED, SERVICE CLOSING***\n")
-                self._log(
-                    f"Closing connection to {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Closing connection to {remote_ip_address}, port {remote_port}.")
                 socket.close()
                 break
 
             if message.strip().lower() in {b"quit", b"close", b"bye", b"exit"}:
-                self._log(
-                    f"Sending last message to {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Sending last message to {remote_ip_address}, port {remote_port}.")
                 socket.send(b"***CLIENT OPEN, SERVICE CLOSING***\n")
-                self._log(
-                    f"Closing connection to {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Closing connection to {remote_ip_address}, port {remote_port}.")
                 socket.close()
                 continue
 
-            self._log(
-                f"Received {len(message)} bytes from {remote_ip_address}, port {remote_port}."
-            )
+            self._log(f"Received {len(message)} bytes from {remote_ip_address}, port {remote_port}.")
 
             if b"malpka" in message.strip().lower():
                 message = malpka
@@ -127,9 +112,7 @@ class TcpEchoService(TcpService):
                 message = malpi
 
             if socket.send(message):
-                self._log(
-                    f"Sent {len(message)} bytes back to {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Sent {len(message)} bytes back to {remote_ip_address}, port {remote_port}.")
 
 
 @click.command()
@@ -154,19 +137,11 @@ def cli(
         stack_cli,
         subsystems=[
             TcpEchoService(
-                local_ip_address=(
-                    kwargs["stack__ip6_host"].address
-                    if kwargs["stack__ip6_host"]
-                    else Ip6Address()
-                ),
+                local_ip_address=(kwargs["stack__ip6_host"].address if kwargs["stack__ip6_host"] else Ip6Address()),
                 local_port=local_port,
             ),
             TcpEchoService(
-                local_ip_address=(
-                    kwargs["stack__ip4_host"].address
-                    if kwargs["stack__ip4_host"]
-                    else Ip4Address()
-                ),
+                local_ip_address=(kwargs["stack__ip4_host"].address if kwargs["stack__ip4_host"] else Ip4Address()),
                 local_port=local_port,
             ),
         ],

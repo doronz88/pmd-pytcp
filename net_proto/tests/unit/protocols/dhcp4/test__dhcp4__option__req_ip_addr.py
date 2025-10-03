@@ -208,9 +208,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(
-                    req_ip_addr=Ip4Address("192.0.2.1")
-                ),
+                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("192.0.2.1")),
             },
         },
         {
@@ -220,9 +218,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(
-                    req_ip_addr=Ip4Address("1.2.3.4")
-                ),
+                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("1.2.3.4")),
             },
         },
         {
@@ -232,9 +228,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(
-                    req_ip_addr=Ip4Address("203.0.113.10")
-                ),
+                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("203.0.113.10")),
             },
         },
         {
@@ -246,8 +240,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The minimum length of the DHCPv4 Requested Ip Address option must be 2 "
-                    "bytes. Got: 1"
+                    "The minimum length of the DHCPv4 Requested Ip Address option must be 2 " "bytes. Got: 1"
                 ),
             },
         },
@@ -312,9 +305,7 @@ class TestDhcp4OptionReqIpAddrParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionReqIpAddr.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionReqIpAddr.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

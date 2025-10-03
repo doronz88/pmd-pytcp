@@ -59,9 +59,7 @@ class RxRing(Subsystem):
     _rx_ring: queue.Queue[PacketRx]
     _selector: selectors.DefaultSelector
 
-    def __init__(
-        self, *, fd: int, mtu: int, queue_max_size: int = 1000
-    ) -> None:
+    def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
         """
         Initialize access to RX file descriptor and the inbound queue.
         """
@@ -70,9 +68,7 @@ class RxRing(Subsystem):
         self._mtu = mtu
         self._queue_max_size = queue_max_size
 
-        super().__init__(
-            info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}"
-        )
+        super().__init__(info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}")
 
         self._rx_ring = queue.Queue(maxsize=queue_max_size)
         self._selector = selectors.DefaultSelector()
@@ -90,8 +86,7 @@ class RxRing(Subsystem):
         packet_rx = PacketRx(os.read(self._fd, 2048))
         __debug__ and log(
             "rx-ring",
-            f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, "
-            f"{len(packet_rx.frame)} bytes",
+            f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
         )
 
         try:
@@ -108,8 +103,6 @@ class RxRing(Subsystem):
         """
 
         try:
-            return self._rx_ring.get(
-                block=True, timeout=SUBSYSTEM_SLEEP_TIME__SEC
-            )
+            return self._rx_ring.get(block=True, timeout=SUBSYSTEM_SLEEP_TIME__SEC)
         except queue.Empty:
             return None

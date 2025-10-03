@@ -169,10 +169,7 @@ class TestTcpOptionNopAssembler(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the TCP Nop option must be 1 "
-                    "byte. Got: 0"
-                ),
+                "error_message": ("The minimum length of the TCP Nop option must be 1 " "byte. Got: 0"),
             },
         },
         {
@@ -184,8 +181,7 @@ class TestTcpOptionNopAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    f"The TCP Nop option type must be {TcpOptionType.NOP!r}. "
-                    f"Got: {TcpOptionType.from_int(255)!r}"
+                    f"The TCP Nop option type must be {TcpOptionType.NOP!r}. " f"Got: {TcpOptionType.from_int(255)!r}"
                 ),
             },
         },

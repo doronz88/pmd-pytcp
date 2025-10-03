@@ -86,17 +86,11 @@ class Raw(Proto):
         buffer = bytearray(self._payload)
 
         # Automatically calculate checksum if IpProto is ICMPv6 packet and checksum is not set.
-        if (
-            self._ip_proto == IpProto.ICMP6
-            and self._payload[2:4] == b"\x00\x00"
-        ):
+        if self._ip_proto == IpProto.ICMP6 and self._payload[2:4] == b"\x00\x00":
             buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
         # Automatically calculate checksum if IpProto is ICMPv4 packet and checksum is not set.
-        if (
-            self._ip_proto == IpProto.ICMP4
-            and self._payload[2:4] == b"\x00\x00"
-        ):
+        if self._ip_proto == IpProto.ICMP4 and self._payload[2:4] == b"\x00\x00":
             buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
         return memoryview(buffer)

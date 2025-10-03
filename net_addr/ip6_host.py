@@ -66,12 +66,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
 
     def __init__(
         self,
-        host: (
-            Self
-            | tuple[Ip6Address, Ip6Network]
-            | tuple[Ip6Address, Ip6Mask]
-            | str
-        ),
+        host: Self | tuple[Ip6Address, Ip6Network] | tuple[Ip6Address, Ip6Mask] | str,
         /,
         *,
         gateway: Ip6Address | None = None,
@@ -112,15 +107,9 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
                 pass
 
         if isinstance(host, Ip6Host):
-            assert (
-                gateway is None
-            ), f"Gateway cannot be set when copying host. Got: {gateway!r}"
-            assert (
-                origin is None
-            ), f"Origin cannot be set when copying host. Got: {origin!r}"
-            assert (
-                expiration_time is None
-            ), f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
+            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
+            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
+            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway
@@ -145,22 +134,17 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             raise Ip6HostGatewayError(address)
 
     @classmethod
-    def from_eui64(
-        cls, *, mac_address: MacAddress, ip6_network: Ip6Network
-    ) -> Self:
+    def from_eui64(cls, *, mac_address: MacAddress, ip6_network: Ip6Network) -> Self:
         """
         Create IPv6 EUI64 host address.
         """
 
         assert len(ip6_network.mask) == 64, (
-            "The IPv6 EUI64 network address mask must be /64. "
-            f"Got: {ip6_network.mask}"
+            "The IPv6 EUI64 network address mask must be /64. " f"Got: {ip6_network.mask}"
         )
 
         interface_id = (
-            ((int(mac_address) & 0xFFFFFF000000) << 16)
-            | int(mac_address) & 0xFFFFFF
-            | 0xFFFE000000
+            ((int(mac_address) & 0xFFFFFF000000) << 16) | int(mac_address) & 0xFFFFFF | 0xFFFE000000
         ) ^ 0x0200000000000000
 
         return cls(

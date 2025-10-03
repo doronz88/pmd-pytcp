@@ -82,33 +82,28 @@ class PacketHandlerIcmp4Tx(ABC):
         Handle outbound ICMPv4 packets.
         """
 
-        self._packet_stats_tx.inc("icmp4__pre_assemble")
+        self._packet_stats_tx.icmp4__pre_assemble += 1
 
         icmp4_packet_tx = Icmp4Assembler(
             icmp4__message=icmp4__message,
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log(
-            "icmp4", f"{icmp4_packet_tx.tracker} - {icmp4_packet_tx}"
-        )
+        __debug__ and log("icmp4", f"{icmp4_packet_tx.tracker} - {icmp4_packet_tx}")
 
         match icmp4__message.type, icmp4__message.code:
             case Icmp4Type.ECHO_REPLY, _:
-                self._packet_stats_tx.inc("icmp4__echo_reply__send")
+                self._packet_stats_tx.icmp4__echo_reply__send += 1
             case (
                 Icmp4Type.DESTINATION_UNREACHABLE,
                 Icmp4DestinationUnreachableCode.PORT,
             ):
-                self._packet_stats_tx.inc(
-                    "icmp4__destination_unreachable__port__send"
-                )
+                self._packet_stats_tx.icmp4__destination_unreachable__port__send += 1
             case Icmp4Type.ECHO_REQUEST, _:
-                self._packet_stats_tx.inc("icmp4__echo_request__send")
+                self._packet_stats_tx.icmp4__echo_request__send += 1
             case _:
                 raise ValueError(
-                    f"Unsupported ICMPv4 message type {icmp4__message.type}, "
-                    f"code {icmp4__message.code}."
+                    f"Unsupported ICMPv4 message type {icmp4__message.type}, " f"code {icmp4__message.code}."
                 )
 
         return self._phtx_ip4(

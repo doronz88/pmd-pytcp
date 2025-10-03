@@ -130,9 +130,7 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "param_req_list ['HOST_NAME']",
-                "__repr__": (
-                    "Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.HOST_NAME: 12>])"
-                ),
+                "__repr__": ("Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.HOST_NAME: 12>])"),
                 "__bytes__": b"\x37\x01\x0c",
                 "param_req_list": [Dhcp4OptionType.HOST_NAME],
             },
@@ -227,9 +225,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
         contains a correct value.
         """
 
-        self.assertEqual(
-            self._option.param_req_list, self._results["param_req_list"]
-        )
+        self.assertEqual(self._option.param_req_list, self._results["param_req_list"])
 
 
 @parameterized_class(
@@ -251,9 +247,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "option": Dhcp4OptionParamReqList(
-                    param_req_list=[Dhcp4OptionType.HOST_NAME]
-                ),
+                "option": Dhcp4OptionParamReqList(param_req_list=[Dhcp4OptionType.HOST_NAME]),
             },
         },
         {
@@ -280,8 +274,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
             "_results": {
                 "error": AssertionError,
                 "error_message": (
-                    "The minimum length of the DHCPv4 Parameter Request List option must be 2 "
-                    "bytes. Got: 1"
+                    "The minimum length of the DHCPv4 Parameter Request List option must be 2 " "bytes. Got: 1"
                 ),
             },
         },
@@ -332,9 +325,7 @@ class TestDhcp4OptionParamReqListParser(TestCase):
         """
 
         if "option" in self._results:
-            option = Dhcp4OptionParamReqList.from_buffer(
-                *self._args, **self._kwargs
-            )
+            option = Dhcp4OptionParamReqList.from_buffer(*self._args, **self._kwargs)
 
             self.assertEqual(
                 option,

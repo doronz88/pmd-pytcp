@@ -61,23 +61,17 @@ class TcpService(Service):
 
             while not self._event__stop_subsystem.is_set():
                 try:
-                    connected_socket, (remote_ip_address, remote_port) = (
-                        listening_socket.accept(timeout=1)
-                    )
+                    connected_socket, (remote_ip_address, remote_port) = listening_socket.accept(timeout=1)
                 except TimeoutError:
                     continue
 
-                self._log(
-                    f"Inbound connection received from {remote_ip_address}, port {remote_port}."
-                )
+                self._log(f"Inbound connection received from {remote_ip_address}, port {remote_port}.")
                 threading.Thread(
                     target=self._thread__service__connection_handler,
                     kwargs={"connected_socket": connected_socket},
                 ).start()
 
-    def _thread__service__connection_handler(
-        self, *, connected_socket: socket
-    ) -> None:
+    def _thread__service__connection_handler(self, *, connected_socket: socket) -> None:
         """
         Inbound connection handler.
         """

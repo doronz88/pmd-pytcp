@@ -108,8 +108,7 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
         """
 
         return (
-            f"{type(self).__name__}(header={self._header!r}, "
-            f"options={self._options!r}, payload={self._payload!r})"
+            f"{type(self).__name__}(header={self._header!r}, " f"options={self._options!r}, payload={self._payload!r})"
         )
 
     @override

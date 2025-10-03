@@ -58,15 +58,11 @@ from net_proto.lib.buffer import Buffer
             "_kwargs": {
                 "ethernet_802_3__src": MacAddress("77:88:99:aa:bb:cc"),
                 "ethernet_802_3__dst": MacAddress("11:22:33:44:55:66"),
-                "ethernet_802_3__payload": RawAssembler(
-                    raw__payload=b"0123456789ABCDEF"
-                ),
+                "ethernet_802_3__payload": RawAssembler(raw__payload=b"0123456789ABCDEF"),
             },
             "_results": {
                 "__len__": 30,
-                "__str__": (
-                    "ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 16, len 30 (14+16)"
-                ),
+                "__str__": ("ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 16, len 30 (14+16)"),
                 "__repr__": (
                     "Ethernet8023Assembler(header=Ethernet8023Header(dst=MacAddress('11:22:33:44:55:66'), "
                     "src=MacAddress('77:88:99:aa:bb:cc'), dlen=16), "
@@ -94,9 +90,7 @@ from net_proto.lib.buffer import Buffer
             "_kwargs": {
                 "ethernet_802_3__dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "ethernet_802_3__src": MacAddress("11:12:13:14:15:16"),
-                "ethernet_802_3__payload": RawAssembler(
-                    raw__payload=b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN
-                ),
+                "ethernet_802_3__payload": RawAssembler(raw__payload=b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN),
             },
             "_results": {
                 "__len__": ETHERNET_802_3__PACKET__MAX_LEN,
@@ -123,9 +117,7 @@ from net_proto.lib.buffer import Buffer
                     src=MacAddress("11:12:13:14:15:16"),
                     dlen=ETHERNET_802_3__PAYLOAD__MAX_LEN,
                 ),
-                "payload": RawAssembler(
-                    raw__payload=b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN
-                ),
+                "payload": RawAssembler(raw__payload=b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN),
             },
         },
     ]
@@ -145,9 +137,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
         Set up the test environment.
         """
 
-        self._ethernet_802_3__assembler = Ethernet8023Assembler(
-            *self._args, **self._kwargs
-        )
+        self._ethernet_802_3__assembler = Ethernet8023Assembler(*self._args, **self._kwargs)
 
     def test__ehternet_802_3__assembler__len(self) -> None:
         """

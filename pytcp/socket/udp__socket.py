@@ -119,10 +119,7 @@ class UdpSocket(socket):
                 else Ip4Address(remote_address[0])
             )
         except (Ip6AddressFormatError, Ip4AddressFormatError) as error:
-            raise gaierror(
-                "[Errno -2] Name or service not known - "
-                "[Malformed remote IP address]"
-            ) from error
+            raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]") from error
 
         if remote_ip_address.is_unspecified:
             self._unreachable = True
@@ -130,26 +127,17 @@ class UdpSocket(socket):
         local_ip_address = self._local_ip_address
 
         if local_ip_address.is_unspecified:
-            local_ip_address = pick_local_ip_address(
-                remote_ip_address=remote_ip_address
-            )
+            local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
 
             if local_ip_address.is_unspecified and not (
                 (
-                    self._address_family == AddressFamily.INET4
-                    and self._local_port == 68
-                    and remote_address[1] == 67
+                    self._address_family == AddressFamily.INET4 and self._local_port == 68 and remote_address[1] == 67
                 )  # The DHCPv4 client operation.
                 or (
-                    self._address_family == AddressFamily.INET6
-                    and self._local_port == 546
-                    and remote_address[1] == 547
+                    self._address_family == AddressFamily.INET6 and self._local_port == 546 and remote_address[1] == 547
                 )  # The DHCPv6 client operation.
             ):
-                raise gaierror(
-                    "[Errno -2] Name or service not known - "
-                    "[Malformed remote IP address]"
-                )
+                raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]")
 
         return (local_ip_address, remote_ip_address)  # type: ignore[return-value]
 
@@ -168,49 +156,36 @@ class UdpSocket(socket):
 
         # Check if "bound" already.
         if self._local_port in range(1, 65536):
-            raise OSError(
-                "[Errno 22] Invalid argument - "
-                "[Socket bound to specific port already]"
-            )
+            raise OSError("[Errno 22] Invalid argument - " "[Socket bound to specific port already]")
 
         local_ip_address: Ip4Address | Ip6Address
 
         match self._address_family:
             case AddressFamily.INET6:
                 try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(
-                        stack.packet_handler.ip6_unicast
-                    ) | {Ip6Address()}:
+                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.packet_handler.ip6_unicast) | {
+                        Ip6Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip6AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
             case AddressFamily.INET4:
                 try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(
-                        stack.packet_handler.ip4_unicast
-                    ) | {Ip4Address()}:
+                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.packet_handler.ip4_unicast) | {
+                        Ip4Address()
+                    }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - "
-                            "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
                         )
                 except Ip4AddressFormatError as error:
-                    raise gaierror(
-                        "[Errno -2] Name or service not known - "
-                        "[Malformed local IP address]"
-                    ) from error
+                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
 
         # Sanity check on local port number.
         if address[1] not in range(0, 65536):
-            raise OverflowError(
-                "bind(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("bind(): port must be 0-65535. - [Port out of range]")
 
         # Confirm or pick local port number.
         if (local_port := address[1]) > 0:
@@ -220,10 +195,7 @@ class UdpSocket(socket):
                 address_family=self._address_family,
                 socket_type=self._socket_type,
             ):
-                raise OSError(
-                    "[Errno 98] Address already in use - "
-                    "[Local address already in use]"
-                )
+                raise OSError("[Errno 98] Address already in use - " "[Local address already in use]")
         else:
             local_port = pick_local_port()
 
@@ -247,9 +219,7 @@ class UdpSocket(socket):
         # Sanity check on remote port number (0 is a valid remote port in
         # BSD socket implementation).
         if (remote_port := address[1]) not in range(0, 65536):
-            raise OverflowError(
-                "connect(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("connect(): port must be 0-65535. - [Port out of range]")
 
         # Assigning local port makes socket "bound" if not "bound" already.
         if (local_port := self._local_port) not in range(1, 65536):
@@ -277,17 +247,11 @@ class UdpSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified or self._remote_port == 0:
-            raise OSError(
-                "[Errno 89] Destination address require - "
-                "[Socket has no destination address set]"
-            )
+            raise OSError("[Errno 89] Destination address require - " "[Socket has no destination address set]")
 
         if self._unreachable:
             self._unreachable = False
-            raise ConnectionRefusedError(
-                "[Errno 111] Connection refused - "
-                "[Remote host sent ICMP Unreachable]"
-            )
+            raise ConnectionRefusedError("[Errno 111] Connection refused - " "[Remote host sent ICMP Unreachable]")
 
         tx_status = stack.packet_handler.send_udp_packet(
             ip__local_address=self._local_ip_address,
@@ -297,11 +261,7 @@ class UdpSocket(socket):
             udp__payload=data,
         )
 
-        sent_data_len = (
-            len(data)
-            if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING
-            else 0
-        )
+        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
 
         __debug__ and log(
             "socket",
@@ -321,9 +281,7 @@ class UdpSocket(socket):
         # Sanity check on remote port number (0 is a valid remote port in
         # BSD socket implementation).
         if (remote_port := address[1]) not in range(0, 65536):
-            raise OverflowError(
-                "sendto(): port must be 0-65535. - [Port out of range]"
-            )
+            raise OverflowError("sendto(): port must be 0-65535. - [Port out of range]")
 
         # Assigning local port makes socket "bound" if not "bound" already.
         if self._local_port not in range(1, 65536):
@@ -344,11 +302,7 @@ class UdpSocket(socket):
             udp__payload=data,
         )
 
-        sent_data_len = (
-            len(data)
-            if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING
-            else 0
-        )
+        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
 
         __debug__ and log(
             "socket",
@@ -357,18 +311,14 @@ class UdpSocket(socket):
 
         return sent_data_len
 
-    def recv(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> bytes:
+    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
         """
 
         return bytes(self.recv__mv(bufsize=bufsize, timeout=timeout))
 
-    def recv__mv(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> memoryview:
+    def recv__mv(self, bufsize: int | None = None, timeout: float | None = None) -> memoryview:
         """
         Read data from socket as memoryview.
         """
@@ -377,10 +327,7 @@ class UdpSocket(socket):
 
         if self._unreachable:
             self._unreachable = False
-            raise ConnectionRefusedError(
-                "[Errno 111] Connection refused - "
-                "[Remote host sent ICMP Unreachable]"
-            )
+            raise ConnectionRefusedError("[Errno 111] Connection refused - " "[Remote host sent ICMP Unreachable]")
 
         if self._packet_rx_md_ready.acquire(timeout=timeout):
             data_rx = self._packet_rx_md.pop(0).udp__data
@@ -392,16 +339,12 @@ class UdpSocket(socket):
 
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
-    def recvfrom(
-        self, bufsize: int | None = None, timeout: float | None = None
-    ) -> tuple[bytes, tuple[str, int]]:
+    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
         """
 
-        _bytes, (remote_ip, remote_port) = self.recvfrom__vm(
-            bufsize=bufsize, timeout=timeout
-        )
+        _bytes, (remote_ip, remote_port) = self.recvfrom__vm(bufsize=bufsize, timeout=timeout)
 
         return bytes(_bytes), (remote_ip, remote_port)
 
@@ -418,8 +361,7 @@ class UdpSocket(socket):
             packet_rx_md = self._packet_rx_md.pop(0)
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - <lg>Received</> "
-                f"{len(packet_rx_md.udp__data)} bytes of data",
+                f"<B><g>[{self}]</> - <lg>Received</> " f"{len(packet_rx_md.udp__data)} bytes of data",
             )
             return (
                 packet_rx_md.udp__data,

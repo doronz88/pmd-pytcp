@@ -46,8 +46,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": (
-                "ICMPv6 ND Router Solicitation message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 ND Router Solicitation message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
             "_args": [b"\x85\x00\x00"],
             "_mocked_values": {
@@ -63,8 +62,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 ND Router Solicitation message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 ND Router Solicitation message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
             "_args": [b"\x85\x00\x00\x00\x00\x00\x00"],
             "_mocked_values": {
@@ -106,9 +104,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6NdMessageRouterSolicitationParserIntegrityChecks(
-    TestCasePacketRxIp6
-):
+class TestIcmp6NdMessageRouterSolicitationParserIntegrityChecks(TestCasePacketRxIp6):
     """
     The ICMPv6 ND Router Solicitation message parser integrity checks tests.
     """

@@ -68,10 +68,7 @@ from net_proto import (
             "_results": {
                 "__len__": 4,
                 "__str__": "nop, nop, nop, eol",
-                "__repr__": (
-                    "TcpOptions(options=[TcpOptionNop(), TcpOptionNop(), "
-                    "TcpOptionNop(), TcpOptionEol()])"
-                ),
+                "__repr__": ("TcpOptions(options=[TcpOptionNop(), TcpOptionNop(), " "TcpOptionNop(), TcpOptionEol()])"),
                 "__bytes__": b"\x01\x01\x01\x00",
                 "mss": None,
                 "wscale": None,
@@ -99,8 +96,7 @@ from net_proto import (
             "_results": {
                 "__len__": 40,
                 "__str__": (
-                    "mss 1460, wscale 7, sackperm, timestamps 1111111111/2222222222, "
-                    "nop, unk-255-18, nop, eol"
+                    "mss 1460, wscale 7, sackperm, timestamps 1111111111/2222222222, " "nop, unk-255-18, nop, eol"
                 ),
                 "__repr__": (
                     "TcpOptions(options=[TcpOptionMss(mss=1460), TcpOptionWscale(wscale=7), "
@@ -133,18 +129,13 @@ from net_proto import (
             "_kwargs": {},
             "_results": {
                 "__len__": 20,
-                "__str__": (
-                    "mss 1200, wscale 5, nop, sackperm, timestamps 123/345"
-                ),
+                "__str__": ("mss 1200, wscale 5, nop, sackperm, timestamps 123/345"),
                 "__repr__": (
                     "TcpOptions(options=[TcpOptionMss(mss=1200), TcpOptionWscale(wscale=5), "
                     "TcpOptionNop(), TcpOptionSackperm(), TcpOptionTimestamps(tsval=123, "
                     "tsecr=345)])"
                 ),
-                "__bytes__": (
-                    b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b"
-                    b"\x00\x00\x01\x59"
-                ),
+                "__bytes__": (b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b" b"\x00\x00\x01\x59"),
                 "mss": 1200,
                 "wscale": 5,
                 "sackperm": True,
@@ -385,8 +376,7 @@ class TestTcpOptionsAssembler(TestCase):
         {
             "_description": "The TCP options (III).",
             "_args": [
-                b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b"
-                b"\x00\x00\x01\x59",
+                b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b" b"\x00\x00\x01\x59",
             ],
             "_kwargs": {},
             "_results": {
