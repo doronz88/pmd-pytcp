@@ -208,7 +208,7 @@ class PacketHandlerArpRx(ABC):
                 )
 
             # Note receiving regular ARP request.
-            if packet_rx.arp.spa.is_unicast:
+            elif packet_rx.arp.spa.is_unicast:
                 self._packet_stats_rx.inc("arp__op_request__tpa_stack")
                 __debug__ and log(
                     "arp",
@@ -271,25 +271,22 @@ class PacketHandlerArpRx(ABC):
 
         # Check for ARP reply that is response to our ARP probe, this indicates
         # the IP address we trying to claim is in use.
-        if packet_rx.arp.tha == self._mac_unicast:
-            if (
-                packet_rx.arp.spa
-                in [_.address for _ in self._ip4_host_candidate]
-                and packet_rx.arp.tha == self._mac_unicast
-                and packet_rx.arp.tpa.is_unspecified
-            ):
-                self._packet_stats_rx.inc("arp__op_reply__ip_conflict")
-                __debug__ and log(
-                    "arp",
-                    f"{packet_rx.tracker} - <WARN>ARP probe detected "
-                    f"conflict for IP {packet_rx.arp.spa} with host at "
-                    f"{packet_rx.arp.sha}</>",
-                )
-                stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
-                return
+        if (
+            packet_rx.arp.spa in [_.address for _ in self._ip4_host_candidate]
+            and packet_rx.ethernet.dst == packet_rx.arp.tha == self._mac_unicast
+            and packet_rx.arp.tpa.is_unspecified
+        ):
+            self._packet_stats_rx.inc("arp__op_reply__ip_conflict")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <WARN>ARP probe detected "
+                f"conflict for IP {packet_rx.arp.spa} with host at "
+                f"{packet_rx.arp.sha}</>",
+            )
+            stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
 
         # Note receiving packet as direct ARP reply.
-        if packet_rx.ethernet.dst == self._mac_unicast:
+        elif packet_rx.ethernet.dst == self._mac_unicast:
             self._packet_stats_rx.inc("arp__op_reply__direct")
             __debug__ and log(
                 "arp",
@@ -298,7 +295,7 @@ class PacketHandlerArpRx(ABC):
             )
 
         # Note receiving packet as gratuitous ARP reply.
-        if (
+        elif (
             packet_rx.ethernet.dst.is_broadcast
             and packet_rx.arp.spa == packet_rx.arp.tpa
         ):
