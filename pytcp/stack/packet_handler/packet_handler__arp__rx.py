@@ -156,7 +156,7 @@ class PacketHandlerArpRx(ABC):
             self._send_gratitous_arp(ip4_unicast=packet_rx.arp.spa)
             return
 
-        # Check if the request TPA is for one of our IP addresses.
+        # Check if the request TPA is for one of our IP addresses or not.
         if packet_rx.arp.tpa not in self._ip4_unicast:
             self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
             __debug__ and log(
@@ -166,7 +166,7 @@ class PacketHandlerArpRx(ABC):
             )
 
         else:
-            # If SPA is unspecified then this is ARP probe (RFC 5227).
+            # Note receiving ARP probe (RFC 5227).
             if packet_rx.arp.spa.is_unspecified:
                 self._packet_stats_rx.inc("arp__op_request__probe__respond")
                 __debug__ and log(
@@ -175,8 +175,8 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
 
-            # If SPA is set then its regular ARP request.
-            else:
+            # Note receiving regular ARP request.
+            if packet_rx.arp.spa.is_unicast:
                 self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
                 __debug__ and log(
                     "arp",
