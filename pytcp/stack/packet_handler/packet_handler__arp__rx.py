@@ -132,11 +132,15 @@ class PacketHandlerArpRx(ABC):
         # Also ensure we update cache only if the packet is either direct or broadcast to
         # avoid updating cache with packets not intended for us in case interface is in
         # promiscuous mode.
-        if any(
-            packet_rx.arp.spa in host.network for host in self._ip4_host
-        ) and (
-            packet_rx.ethernet.dst == self._mac_unicast
-            or packet_rx.ethernet.dst.is_broadcast
+        # Finally, do not update cache if SPA matches one of our IP addresses to avoid
+        # updating cache with our own IP address that could be spoofed by an attacker.
+        if (
+            any(packet_rx.arp.spa in host.network for host in self._ip4_host)
+            and (
+                packet_rx.ethernet.dst == self._mac_unicast
+                or packet_rx.ethernet.dst.is_broadcast
+            )
+            and packet_rx.arp.spa not in self._ip4_unicast
         ):
             self._packet_stats_rx.inc(counter_name)
             stack.arp_cache.add_entry(
@@ -156,7 +160,7 @@ class PacketHandlerArpRx(ABC):
             packet_rx.arp.spa in self._ip4_unicast
             or packet_rx.arp.spa.is_unspecified
         ) and packet_rx.arp.sha == self._mac_unicast:
-            self._packet_stats_rx.inc("arp__op_request__looped")
+            self._packet_stats_rx.inc("arp__op_request__looped__drop")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
@@ -187,6 +191,22 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.arp.tha.is_unspecified
         ):
             self._packet_stats_rx.inc("arp__op_request__gratuitous")
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <INFO>Received gratuitous ARP request, "
+                f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
+            )
+
+            # If we’re probing this address, mark conflict too.
+            if packet_rx.arp.spa in {
+                c.address for c in self._ip4_host_candidate
+            }:
+                self._packet_stats_rx.inc(
+                    "arp__op_request__probe_conflict__gratuitous"
+                )
+                stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+                # Recommended during DAD: Don't learn ARP here.
+                return
 
         # Note receiving ARP request not for our IP address.
         elif packet_rx.arp.tpa not in self._ip4_unicast:
@@ -305,6 +325,16 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <INFO>Received gratuitous ARP reply, "
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
+
+            if packet_rx.arp.spa in {
+                c.address for c in self._ip4_host_candidate
+            }:
+                self._packet_stats_rx.inc(
+                    "arp__op_reply__probe_conflict__gratuitous"
+                )
+                stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+                # Recommended during DAD: Don't learn ARP here.
+                return
 
         self.__update_arp_cache(
             packet_rx=packet_rx, counter_name="arp__op_reply__update_arp_cache"

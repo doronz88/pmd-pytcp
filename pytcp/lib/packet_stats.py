@@ -78,7 +78,8 @@ class PacketStatsRx(PacketStats):
     arp__op_unknown__drop: int = 0
     arp__op_request: int = 0
     arp__op_request__ip_conflict__defend: int = 0
-    arp__op_request__looped: int = 0
+    arp__op_request__probe_conflict__gratuitous: int = 0
+    arp__op_request__looped__drop: int = 0
     arp__op_request__probe: int = 0
     arp__op_request__tpa_stack: int = 0
     arp__op_request__tpa_unknown: int = 0
@@ -87,6 +88,7 @@ class PacketStatsRx(PacketStats):
     arp__op_request__update_arp_cache: int = 0
     arp__op_reply: int = 0
     arp__op_reply__ip_conflict__defend: int = 0
+    arp__op_reply__probe_conflict__gratuitous: int = 0
     arp__op_reply__looped__drop: int = 0
     arp__op_reply__direct: int = 0
     arp__op_reply__gratuitous: int = 0

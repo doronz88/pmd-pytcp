@@ -80,6 +80,10 @@ from pytcp.stack.tx_ring import TxRing
 #             |------ [HOST B] (not working nd cache resolution)
 #
 
+# Set the PyTCP stack candidate addressing for DAD tests.
+STACK__IP4_HOST__CANDIDATE = Ip4Host("10.0.1.5/24")
+STACK__IP6_HOST__CANDIDATE = Ip6Host("2001:db8:0:1::5/64")
+
 # Set the PyTCP stack addressing.
 STACK__MAC_ADDRESS = MacAddress("02:00:00:00:00:07")
 STACK__IP4_HOST = Ip4Host("10.0.1.7/24")
@@ -253,6 +257,8 @@ class NetworkTestCase(TestCase):
             IP6__MULTICAST__ALL_NODES,
             STACK__IP6_HOST.address.solicited_node_multicast,
         ]
+        self._packet_handler._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
+        self._packet_handler._ip6_host_candidate = [STACK__IP6_HOST__CANDIDATE]
 
         # Initialize the list holding the frames "sent" by mock TxRing.
         self._frames_tx = []
