@@ -388,7 +388,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_broadcast=1,
                 arp__pre_parse=1,
                 arp__op_request=1,
-                arp__op_request__ip_conflict__defend=1,
+                arp__op_request__conflict__defend=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(
                 arp__pre_assemble=1,
@@ -835,7 +835,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unicast=1,
                 arp__pre_parse=1,
                 arp__op_reply=1,
-                arp__op_reply__ip_conflict__defend=1,
+                arp__op_reply__conflict__defend=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(
                 arp__pre_assemble=1,
@@ -953,7 +953,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unicast=1,
                 arp__pre_parse=1,
                 arp__op_reply=1,
-                arp__op_reply__probe_ip_conflict=1,
+                arp__op_reply__probe_conflict=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },

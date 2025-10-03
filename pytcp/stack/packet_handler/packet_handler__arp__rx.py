@@ -174,7 +174,7 @@ class PacketHandlerArpRx(ABC):
             packet_rx.arp.spa in self._ip4_unicast
             and packet_rx.arp.sha != self._mac_unicast
         ):
-            self._packet_stats_rx.inc("arp__op_request__ip_conflict__defend")
+            self._packet_stats_rx.inc("arp__op_request__conflict__defend")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
@@ -280,7 +280,7 @@ class PacketHandlerArpRx(ABC):
             packet_rx.arp.spa in self._ip4_unicast
             and packet_rx.arp.sha != self._mac_unicast
         ):
-            self._packet_stats_rx.inc("arp__op_reply__ip_conflict__defend")
+            self._packet_stats_rx.inc("arp__op_reply__conflict__defend")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
@@ -296,7 +296,7 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.ethernet.dst == packet_rx.arp.tha == self._mac_unicast
             and packet_rx.arp.tpa.is_unspecified
         ):
-            self._packet_stats_rx.inc("arp__op_reply__probe_ip_conflict")
+            self._packet_stats_rx.inc("arp__op_reply__probe_conflict")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>ARP probe detected "
