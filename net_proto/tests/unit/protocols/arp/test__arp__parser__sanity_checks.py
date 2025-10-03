@@ -94,6 +94,18 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             },
         },
         {
+            "_description": "The SPA field is unspecified in ARP Reply.",
+            "_args": [
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x00\x00"
+                b"\x00\x00\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error_message": "The 'spa' field value 0.0.0.0 must not be a "
+                "unspecified IPv4 address for an ARP Reply."
+            },
+        },
+        {
             "_description": "The SPA address is multicast.",
             "_args": [
                 b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\xe0\x00"
