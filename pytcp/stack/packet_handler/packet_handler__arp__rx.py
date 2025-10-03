@@ -320,6 +320,7 @@ class PacketHandlerArpRx(ABC):
         elif (
             packet_rx.ethernet.dst.is_broadcast
             and packet_rx.arp.spa == packet_rx.arp.tpa
+            and packet_rx.arp.tha.is_unspecified
         ):
             self._packet_stats_rx.inc("arp__op_reply__gratuitous")
             __debug__ and log(
