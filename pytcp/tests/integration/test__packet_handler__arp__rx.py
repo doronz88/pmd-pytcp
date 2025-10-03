@@ -919,6 +919,44 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
+        {
+            "_description": (
+                "Ethernet/ARP - reply to our probe: SPA matches candidate IP we are probing, "
+                "conflict detected"
+            ),
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC, we sent probe)
+                #   Source MAC      : 02:00:00:00:00:91 (foreign host)
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.5   (candidate IP we’re probing)
+                #   Target MAC      : 02:00:00:00:00:07 (our MAC)
+                #   Target IP       : 0.0.0.0   (unspecified, per ARP probe reply)
+                #
+                # Summary: Foreign host responds to our ARP probe with a unicast ARP reply,
+                # claiming the candidate IP. This indicates conflict → we must not claim it.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
+                b"\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__probe_ip_conflict=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerArpRx(NetworkTestCase):

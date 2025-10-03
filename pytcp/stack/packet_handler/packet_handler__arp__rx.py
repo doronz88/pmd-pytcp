@@ -296,7 +296,7 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.ethernet.dst == packet_rx.arp.tha == self._mac_unicast
             and packet_rx.arp.tpa.is_unspecified
         ):
-            self._packet_stats_rx.inc("arp__op_reply__ip_conflict")
+            self._packet_stats_rx.inc("arp__op_reply__probe_ip_conflict")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>ARP probe detected "
@@ -304,9 +304,11 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.sha}</>",
             )
             stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+            # Recommended during DAD: Don't learn ARP here.
+            return
 
         # Note receiving packet as direct ARP reply.
-        elif packet_rx.ethernet.dst == self._mac_unicast:
+        if packet_rx.ethernet.dst == self._mac_unicast:
             self._packet_stats_rx.inc("arp__op_reply__direct")
             __debug__ and log(
                 "arp",
