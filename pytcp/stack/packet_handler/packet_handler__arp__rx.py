@@ -81,7 +81,7 @@ class PacketHandlerArpRx(ABC):
             tracker: Tracker | None = None,
         ) -> None: ...
 
-        def _send_gratitous_arp(self, *, ip4_unicast: Ip4Address) -> None: ...
+        def _send_gratuitous_arp(self, *, ip4_unicast: Ip4Address) -> None: ...
 
         # pylint: disable=missing-function-docstring
 
@@ -153,7 +153,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._send_gratitous_arp(ip4_unicast=packet_rx.arp.spa)
+            self._send_gratuitous_arp(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Check if the request TPA is for one of our IP addresses or not.
@@ -233,12 +233,12 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._send_gratitous_arp(ip4_unicast=packet_rx.arp.spa)
+            self._send_gratuitous_arp(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Check for ARP reply that is response to our ARP probe, this indicates
         # the IP address we trying to claim is in use.
-        if packet_rx.ethernet.dst == self._mac_unicast:
+        if packet_rx.arp.tha == self._mac_unicast:
             if (
                 packet_rx.arp.spa
                 in [_.address for _ in self._ip4_host_candidate]

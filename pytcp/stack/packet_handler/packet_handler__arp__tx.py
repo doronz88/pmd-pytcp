@@ -146,7 +146,7 @@ class PacketHandlerArpTx(ABC):
                 f"tx_status: {tx_status}",
             )
 
-    def _send_gratitous_arp(self, *, ip4_unicast: Ip4Address) -> None:
+    def _send_gratuitous_arp(self, *, ip4_unicast: Ip4Address) -> None:
         """
         Send out gratitous arp.
         """
