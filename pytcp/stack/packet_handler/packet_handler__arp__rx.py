@@ -121,6 +121,29 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.arp.oper}, dropping.",
                 )
 
+    def __update_arp_cache(
+        self, *, packet_rx: PacketRx, counter_name: str
+    ) -> None:
+        """
+        Update ARP cache with the SPA<->SHA mapping if the packet is intended for us.
+        """
+
+        # If SPA matches on of our subnets then update ARP cache with the SPA<->SHA mapping.
+        # Also ensure we update cache only if the packet is either direct or broadcast to
+        # avoid updating cache with packets not intended for us in case interface is in
+        # promiscuous mode.
+        if any(
+            packet_rx.arp.spa in host.network for host in self._ip4_host
+        ) and (
+            packet_rx.ethernet.dst == self._mac_unicast
+            or packet_rx.ethernet.dst.is_broadcast
+        ):
+            self._packet_stats_rx.inc(counter_name)
+            stack.arp_cache.add_entry(
+                ip4_address=packet_rx.arp.spa,
+                mac_address=packet_rx.arp.sha,
+            )
+
     def __phrx_arp__request(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ARP request packets.
@@ -133,7 +156,7 @@ class PacketHandlerArpRx(ABC):
             packet_rx.arp.spa in self._ip4_unicast
             or packet_rx.arp.spa.is_unspecified
         ) and packet_rx.arp.sha == self._mac_unicast:
-            self._packet_stats_rx.inc("arp__op_request__looped__drop")
+            self._packet_stats_rx.inc("arp__op_request__looped")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
@@ -156,9 +179,18 @@ class PacketHandlerArpRx(ABC):
             self._send_gratuitous_arp(ip4_unicast=packet_rx.arp.spa)
             return
 
-        # Check if the request TPA is for one of our IP addresses or not.
-        if packet_rx.arp.tpa not in self._ip4_unicast:
-            self._packet_stats_rx.inc("arp__op_request__tpa_unknown__drop")
+        # Note receiving gratuitous ARP request.
+        if (
+            packet_rx.ethernet.dst.is_broadcast
+            and packet_rx.arp.spa.is_unicast
+            and packet_rx.arp.spa == packet_rx.arp.tpa
+            and packet_rx.arp.tha.is_unspecified
+        ):
+            self._packet_stats_rx.inc("arp__op_request__gratuitous")
+
+        # Note receiving ARP request not for our IP address.
+        elif packet_rx.arp.tpa not in self._ip4_unicast:
+            self._packet_stats_rx.inc("arp__op_request__tpa_unknown")
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
@@ -168,7 +200,7 @@ class PacketHandlerArpRx(ABC):
         else:
             # Note receiving ARP probe (RFC 5227).
             if packet_rx.arp.spa.is_unspecified:
-                self._packet_stats_rx.inc("arp__op_request__probe__respond")
+                self._packet_stats_rx.inc("arp__op_request__probe")
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>Replying to the ARP probe for TPA "
@@ -177,7 +209,7 @@ class PacketHandlerArpRx(ABC):
 
             # Note receiving regular ARP request.
             if packet_rx.arp.spa.is_unicast:
-                self._packet_stats_rx.inc("arp__op_request__tpa_stack__respond")
+                self._packet_stats_rx.inc("arp__op_request__tpa_stack")
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>Replying to ARP request for TPA "
@@ -185,21 +217,22 @@ class PacketHandlerArpRx(ABC):
                 )
 
             # Send ARP reply packet to requester.
-            self._send_arp_reply(
-                arp__spa=packet_rx.arp.tpa,
-                arp__tha=packet_rx.arp.sha,
-                arp__tpa=packet_rx.arp.spa,
-                tracker=packet_rx.tracker,
-            )
+            if (
+                packet_rx.ethernet.dst.is_broadcast
+                or packet_rx.ethernet.dst == self._mac_unicast
+            ):
+                self._packet_stats_rx.inc("arp__op_request__respond")
+                self._send_arp_reply(
+                    arp__spa=packet_rx.arp.tpa,
+                    arp__tha=packet_rx.arp.sha,
+                    arp__tpa=packet_rx.arp.spa,
+                    tracker=packet_rx.tracker,
+                )
 
-        # If request SPA matches on of our subnets then update ARP cache with
-        # the SPA<->SHA mapping.
-        if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
-            self._packet_stats_rx.inc("arp__op_request__update_arp_cache")
-            stack.arp_cache.add_entry(
-                ip4_address=packet_rx.arp.spa,
-                mac_address=packet_rx.arp.sha,
-            )
+        self.__update_arp_cache(
+            packet_rx=packet_rx,
+            counter_name="arp__op_request__update_arp_cache",
+        )
 
     def __phrx_arp__reply(self, packet_rx: PacketRx) -> None:
         """
@@ -276,10 +309,6 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
 
-        # If SPA matches on of our subnets then update ARP cache with the SPA<->SHA mapping.
-        if any(packet_rx.arp.spa in host.network for host in self._ip4_host):
-            self._packet_stats_rx.inc("arp__op_reply__update_arp_cache")
-            stack.arp_cache.add_entry(
-                ip4_address=packet_rx.arp.spa,
-                mac_address=packet_rx.arp.sha,
-            )
+        self.__update_arp_cache(
+            packet_rx=packet_rx, counter_name="arp__op_reply__update_arp_cache"
+        )
