@@ -131,8 +131,8 @@ class PacketHandlerArpRx(ABC):
         # Drop any ARP request if it is originated from us and looped for whatever.
         if (
             packet_rx.arp.spa in self._ip4_unicast
-            and packet_rx.arp.sha == self._mac_unicast
-        ):
+            or packet_rx.arp.spa.is_unspecified
+        ) and packet_rx.arp.sha == self._mac_unicast:
             self._packet_stats_rx.inc("arp__op_request__looped__drop")
             __debug__ and log(
                 "arp",

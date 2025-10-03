@@ -431,6 +431,40 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
+            "_description": "Ethernet/ARP - probe looped back: frame sourced from our own MAC, drop",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 0.0.0.0  (ARP Probe)
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.91
+                #
+                # Summary: Broadcast ARP Probe — “Who has 10.0.1.91? Tell 0.0.0.0 (02:00:00:00:00:07).”
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_request=1,
+                arp__op_request__looped__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
             "_description": "Ethernet/ARP - request, SHA/Ethernet-src mismatch, drop",
             "_frames_rx": [
                 # Ethernet II
