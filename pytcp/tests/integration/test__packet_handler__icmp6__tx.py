@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler ICMPv6 TX operations.
+This module contains integration tests for the Packet Handler ICMPv6 TX operations.
 
-pytcp/tests/unit/test__packet_handler__icmp6__tx.py
+pytcp/tests/integration/test__packet_handler__icmp6__tx.py
 
 ver 3.0.4
 """
@@ -111,6 +111,28 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 344 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0148 (328 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6
+                #   Type/Code       : 128 / 0 (Echo Request)
+                #   Checksum        : 0xf53e
+                #   Identifier      : 12345
+                #   Sequence        : 54320
+                #   Payload         : 320 bytes ("0123456789ABCDEF" * 20)
+                #
+                # Summary: ICMPv6 echo request with large payload headed to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x01\x48\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -161,6 +183,28 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 344 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0148 (328 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6
+                #   Type/Code       : 129 / 0 (Echo Reply)
+                #   Checksum        : 0xf43e
+                #   Identifier      : 12345
+                #   Sequence        : 54320
+                #   Payload         : 320 bytes mirrored from the request
+                #
+                # Summary: ICMPv6 echo reply returning the same payload to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x01\x48\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -210,6 +254,26 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 1266 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x04d8 (1240 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6
+                #   Type/Code       : 1 / 4 (Destination Unreachable - Port)
+                #   Checksum        : 0x6741
+                #   Payload         : 1232 bytes (original datagram excerpt)
+                #
+                # Summary: ICMPv6 destination unreachable (port) with a large quoted packet body.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x04\xd8\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -318,6 +382,25 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:02 (all-routers multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 118 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0010 (16 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::2 (all routers)
+                #
+                # ICMPv6 Router Solicitation
+                #   Options        : Source Link-Layer (02:00:00:00:00:07)
+                #   Checksum       : 0x4ae7
+                #
+                # Summary: Router solicitation advertising our MAC to local routers.
                 b"\x33\x33\x00\x00\x00\x02\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x10\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -364,6 +447,30 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:01 (all-nodes multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 170 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0038 (56 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::1 (all nodes)
+                #
+                # ICMPv6 Router Advertisement
+                #   Checksum        : 0x61b9
+                #   Hop Limit       : 64
+                #   Flags           : M=1, O=1
+                #   Router Lifetime : 1800 s
+                #   Reachable Time  : 900 ms
+                #   Retrans Timer   : 300 ms
+                #   Options         : SLLA + Prefix Information (2001:db8:0:1::/64)
+                #
+                # Summary: Router advertisement broadcasting stack parameters to local hosts.
                 b"\x33\x33\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x38\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -402,6 +509,26 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 118 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x60000000 (Solicited + Override)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : TLLA (02:00:00:00:00:07)
+                #
+                # Summary: Neighbor advertisement conveying our MAC and target address to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -436,6 +563,26 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:91 (solicited-node multicast for host A)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 118 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::1:ff00:91
+                #
+                # ICMPv6 Neighbor Solicitation
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::91
+                #   Options        : SLLA (02:00:00:00:00:07)
+                #
+                # Summary: Neighbor solicitation probing host A for its MAC address.
                 b"\x33\x33\xff\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -468,6 +615,26 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 94 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : ::
+                #   Destination IP : ff02::1:ff00:7
+                #
+                # ICMPv6 Neighbor Solicitation (DAD)
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : none
+                #
+                # Summary: DAD neighbor solicitation emitted with unspecified source.
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x3a\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -524,6 +691,28 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:16 (MLDv2 routers multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 150 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0080 (128 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 1
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::16 (MLDv2 routers)
+                #
+                # ICMPv6 MLDv2 Report
+                #   Record Count    : 6
+                #   Records         : {CHANGE_TO_EXCLUDE ff02::a, CHANGE_TO_INCLUDE ff02::b,
+                #                     MODE_IS_EXCLUDE ff02::c, MODE_IS_INCLUDE ff02::d,
+                #                     ALLOW_NEW_SOURCES ff02::e, ALLOW_NEW_SOURCES ff02::f}
+                #   Checksum        : 0x3508
+                #
+                # Summary: MLDv2 report advertising multicast memberships to routers.
                 b"\x33\x33\x00\x00\x00\x16\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x80\x3a\x01\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
