@@ -116,6 +116,39 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
+            "_description": "Ethernet/ARP - unsupported ARP operation, drop",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 3 (unsupported)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 02:00:00:00:00:07
+                #   Target IP       : 10.0.1.7
+                #
+                # Summary: Broadcast ARP frame with an unsupported operation code; parser rejects it.
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x03\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
             "_description": "Ethernet/ARP - request for stack MAC, broadcasted",
             "_frames_rx": [
                 # Ethernet II
@@ -240,6 +273,37 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__src_spec=1,
                 ethernet__dst_spec__send=1,
             ),
+        },
+        {
+            "_description": "Ethernet/ARP - request for stack IP, unicast to foreign MAC (ignore)",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:99 (foreign unicast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.7 (our IP)
+                #
+                # Summary: Unicast ARP request toward another host, dropped at Ethernet because dst ≠ our MAC.
+                b"\x02\x00\x00\x00\x00\x99\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unknown__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
             "_description": "Ethernet/ARP - request (SHA=00:00:00:00:00:00), drop",
