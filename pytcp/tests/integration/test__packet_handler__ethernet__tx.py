@@ -549,10 +549,10 @@ from pytcp.tests.lib.network_testcase import (
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0xffff (experimental)
-                #   Frame length    : 16 bytes
+                #   Frame length    : 14 bytes
                 #
                 # Payload
-                #   Bytes           : ffff (placeholder payload from test harness)
+                #   Bytes           : none (header-only frame used for the test)
                 #
                 # Summary: Raw Ethernet frame with caller-provided MAC addresses forwarded unchanged.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff",
@@ -576,10 +576,10 @@ from pytcp.tests.lib.network_testcase import (
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07 (stack filled)
                 #   Ethertype       : 0xffff (experimental)
-                #   Frame length    : 16 bytes
+                #   Frame length    : 14 bytes
                 #
                 # Payload
-                #   Bytes           : ffff (placeholder payload from test harness)
+                #   Bytes           : none (header-only frame used for the test)
                 #
                 # Summary: Raw Ethernet frame with unspecified source automatically filled in before transmit.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff",
