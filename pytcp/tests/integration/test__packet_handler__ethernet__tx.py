@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler Ethernet TX operations.
+This module contains integration tests for the Packet Handler Ethernet TX operations.
 
-pytcp/tests/unit/test__packet_handler__ethernet__tx.py
+pytcp/tests/integration/test__packet_handler__ethernet__tx.py
 
 ver 3.0.4
 """
@@ -76,6 +76,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Minimal IPv4 header-only packet to host A resolved via ARP cache hit on the local LAN.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b",
@@ -98,6 +117,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": IP4__MULTICAST__ALL_NODES,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 01:00:5e:00:00:01 (IPv4 multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x8ee3
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 224.0.0.1
+                #
+                # Summary: IPv4 header-only multicast packet mapped to the all-nodes MAC address.
                 b"\x01\x00\x5e\x00\x00\x01\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x8e\xe3\x0a\x00\x01\x07\xe0\x00"
                 b"\x00\x01",
@@ -120,6 +158,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": IP4__BROADCAST__LIMITED,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x6ee5
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 255.255.255.255
+                #
+                # Summary: IPv4 limited broadcast emitted with Ethernet broadcast destination.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x6e\xe5\x0a\x00\x01\x07\xff\xff"
                 b"\xff\xff",
@@ -142,6 +199,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": STACK__IP4_HOST.network.broadcast,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x62e6
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.255
+                #
+                # Summary: IPv4 subnet broadcast mapped to Ethernet broadcast for the local LAN.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x62\xe6\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\xff",
@@ -164,6 +240,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": STACK__IP4_HOST.network.address,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x63e5
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.0
+                #
+                # Summary: IPv4 packet aimed at the subnet network address, emitted as an Ethernet broadcast per stack rules.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\xe5\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x00",
@@ -204,6 +299,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_C__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:01 (default gateway)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x62b3
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.2.50
+                #
+                # Summary: IPv4 packet for an external host forwarded to the gateway MAC from cache.
                 b"\x02\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x62\xb3\x0a\x00\x01\x07\x0a\x00"
                 b"\x02\x32",
@@ -262,6 +376,21 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0 bytes
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # Summary: Minimal IPv6 packet to a local host delivered via ND cache hit.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -285,6 +414,21 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": IP6__MULTICAST__ALL_NODES,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:01 (IPv6 multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0 bytes
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::1
+                #
+                # Summary: IPv6 all-nodes multicast mapped to the corresponding Ethernet multicast MAC.
                 b"\x33\x33\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -326,6 +470,21 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_C__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:01 (IPv6 gateway)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0 bytes
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:2::50
+                #
+                # Summary: IPv6 packet for an external peer, forwarded to the gateway MAC cached in ND.
                 b"\x02\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x02\x00\x00"
@@ -385,6 +544,16 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0xffff (experimental)
+                #   Frame length    : 16 bytes
+                #
+                # Payload
+                #   Bytes           : ffff (placeholder payload from test harness)
+                #
+                # Summary: Raw Ethernet frame with caller-provided MAC addresses forwarded unchanged.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff",
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
@@ -401,7 +570,19 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet__src": MAC__UNSPECIFIED,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
             },
-            "_expected__frames_tx": [b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff"],
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (stack filled)
+                #   Ethertype       : 0xffff (experimental)
+                #   Frame length    : 16 bytes
+                #
+                # Payload
+                #   Bytes           : ffff (placeholder payload from test harness)
+                #
+                # Summary: Raw Ethernet frame with unspecified source automatically filled in before transmit.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\xff\xff",
+            ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet__pre_assemble=1,
