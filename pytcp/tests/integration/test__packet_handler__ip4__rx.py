@@ -295,7 +295,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Duplicate transmission of fragment A5 covering payload bytes 112–139 to emulate replay conditions.
+                # Summary: Duplicate transmission of fragment A5 covering payload bytes 112–139
+                # to emulate replay conditions.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x30\x42\xc7\x00\x0e\x40\x11\x21\x87\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
