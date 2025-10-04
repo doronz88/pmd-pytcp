@@ -65,6 +65,25 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Minimal IPv4 header-only datagram sent to host A on the local LAN.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -101,6 +120,26 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (multicast source replaced)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7 (multicast replaced)
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Multicast source was rewritten to the stack address before emitting the
+                #          minimal IPv4 datagram toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -138,6 +177,26 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (limited broadcast replaced)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7 (broadcast replaced)
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Limited-broadcast source harmonised to the stack address before sending the
+                #          minimal IPv4 frame toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -175,6 +234,26 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (network broadcast replaced)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7 (network broadcast replaced)
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Network-broadcast source corrected to the stack address before emitting the
+                #          IPv4 header-only packet to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -198,6 +277,26 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (unspecified source filled)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7 (unspecified replaced)
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Unspecified source address normalised to the stack host before sending the
+                #          IPv4 header-only packet toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -221,6 +320,26 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_C__IP4_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:01 (gateway)
+                #   Source MAC      : 02:00:00:00:00:07 (unspecified source filled)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0014 (20 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x62b3
+                #   Source IP       : 10.0.1.7 (unspecified replaced)
+                #   Destination IP  : 10.0.2.50
+                #
+                # Summary: Minimal IPv4 datagram forwarded via the gateway MAC after filling in the
+                #          unspecified source address.
                 b"\x02\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x62\xb3\x0a\x00\x01\x07\x0a\x00"
                 b"\x02\x32"
@@ -273,6 +392,23 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__payload": RawAssembler(raw__payload=b"01234567890ABCDEF" * 400),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1514 bytes
+                #
+                # IPv4 (fragment 1)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x2000 (MF set, offset 0x000)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x3dc1
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Payload: RawAssembler bytes 0–1479 (reserved protocol, no UDP header).
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\x00\x40\xff\x3d\xc1\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43"
@@ -368,6 +504,23 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38"
                 b"\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37"
                 b"\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1514 bytes
+                #
+                # IPv4 (fragment 2)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x20b9 (MF set, offset 0x0b9)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x3d08
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Payload: RawAssembler bytes 1480–2959.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\xb9\x40\xff\x3d\x08\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44"
@@ -463,6 +616,23 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
                 b"\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38"
                 b"\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1514 bytes
+                #
+                # IPv4 (fragment 3)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x2172 (MF set, offset 0x172)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x3c4f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Payload: RawAssembler bytes 2960–4439.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x21\x72\x40\xff\x3c\x4f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45"
@@ -558,6 +728,23 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30"
                 b"\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
                 b"\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1514 bytes
+                #
+                # IPv4 (fragment 4)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x222b (MF set, offset 0x22b)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x3b96
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Payload: RawAssembler bytes 4440–5919.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x22\x2b\x40\xff\x3b\x96\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46"
@@ -653,6 +840,23 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41"
                 b"\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30"
                 b"\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 914 bytes
+                #
+                # IPv4 (fragment 5)
+                #   Total Length    : 0x0384 (900 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x02e4 (offset 0x2e4, final fragment)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x5d35
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Payload: RawAssembler bytes 5920–6799 completing the datagram.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x03\x84\x00\x01\x02\xe4\x40\xff\x5d\x35\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30"
