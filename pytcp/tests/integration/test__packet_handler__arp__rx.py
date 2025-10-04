@@ -993,7 +993,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07 (our MAC, we sent probe)
                 #   Source MAC      : 02:00:00:00:00:91 (foreign host)
                 #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
+                #   Frame length    : 44 bytes
                 #
                 # ARP (Ethernet/IPv4)
                 #   Hardware type   : 1 (Ethernet)
