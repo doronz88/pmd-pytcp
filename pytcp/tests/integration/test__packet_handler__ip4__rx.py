@@ -88,7 +88,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 52 bytes
+                #   Frame length    : 66 bytes
                 #
                 # IPv4 (fragment A1)
                 #   Total Length    : 0x0034 (52 bytes)
@@ -113,7 +113,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 140 bytes
+                #   Frame length    : 154 bytes
                 #
                 # IPv4 (fragment B2)
                 #   Total Length    : 0x008c (140 bytes)
@@ -124,7 +124,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Payload: mid-stream UDP data continuing from fragment A1.
+                # Payload: mid-stream UDP data continuing from fragment B1.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x8c\x05\x5a\x20\x09\x40\x11\x3e\x9d\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x34\x96\x1a\xee\x1b\x2a\xf5\xce\x48\xe1\x33\x57\xcd\x29"
@@ -139,7 +139,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 52 bytes
+                #   Frame length    : 66 bytes
                 #
                 # IPv4 (fragment A1 repeat)
                 #   Total Length    : 0x0034 (52 bytes)
@@ -165,7 +165,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 36 bytes
+                #   Frame length    : 50 bytes
                 #
                 # IPv4 (fragment A4)
                 #   Total Length    : 0x0024 (36 bytes)
@@ -177,7 +177,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Fourth IPv4 fragment of flow A covering payload bytes 96–131.
+                # Summary: Fourth IPv4 fragment of flow A covering payload bytes 96–111.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x24\x42\xc7\x20\x0c\x40\x11\x01\x95\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a"
@@ -186,7 +186,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 116 bytes
+                #   Frame length    : 130 bytes
                 #
                 # IPv4 (fragment B3)
                 #   Total Length    : 0x0074 (116 bytes)
@@ -198,7 +198,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Final IPv4 fragment of flow B finishing payload bytes 192–307.
+                # Summary: Final IPv4 fragment of flow B finishing payload bytes 192–287.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x74\x05\x5a\x00\x18\x40\x11\x5e\xa6\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\xda\x0a\x47\x3a\x41\xff\x8a\x09\x38\xff\x31\x87\xcc\x99"
@@ -212,7 +212,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 60 bytes
+                #   Frame length    : 74 bytes
                 #
                 # IPv4 (fragment A2)
                 #   Total Length    : 0x003c (60 bytes)
@@ -224,7 +224,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Second IPv4 fragment of flow A carrying payload bytes 32–59.
+                # Summary: Second IPv4 fragment of flow A carrying payload bytes 32–71.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x3c\x42\xc7\x20\x04\x40\x11\x01\x85\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
@@ -234,7 +234,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 92 bytes
+                #   Frame length    : 106 bytes
                 #
                 # IPv4 (fragment B1)
                 #   Total Length    : 0x005c (92 bytes)
@@ -262,7 +262,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 48 bytes
+                #   Frame length    : 62 bytes
                 #
                 # IPv4 (fragment A5)
                 #   Total Length    : 0x0030 (48 bytes)
@@ -274,7 +274,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Final IPv4 fragment of flow A delivering payload bytes 592–639.
+                # Summary: Final IPv4 fragment of flow A delivering payload bytes 112–139.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x30\x42\xc7\x00\x0e\x40\x11\x21\x87\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
@@ -283,7 +283,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 48 bytes
+                #   Frame length    : 62 bytes
                 #
                 # IPv4 (fragment A5 repeat)
                 #   Total Length    : 0x0030 (48 bytes)
@@ -295,7 +295,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Source IP       : 10.0.1.91
                 #   Destination IP  : 10.0.1.7
                 #
-                # Summary: Duplicate transmission of fragment A5 to emulate replay conditions.
+                # Summary: Duplicate transmission of fragment A5 covering payload bytes 112–139 to emulate replay conditions.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x30\x42\xc7\x00\x0e\x40\x11\x21\x87\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
@@ -304,7 +304,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 44 bytes
+                #   Frame length    : 58 bytes
                 #
                 # IPv4 (fragment A3)
                 #   Total Length    : 0x002c (44 bytes)
@@ -327,7 +327,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 308 bytes
+                #   Frame length    : 322 bytes
                 #
                 # IPv4
                 #   Total Length    : 0x0134 (308 bytes)
@@ -370,7 +370,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 160 bytes
+                #   Frame length    : 174 bytes
                 #
                 # IPv4
                 #   Total Length    : 0x00a0 (160 bytes)
@@ -428,7 +428,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment A1)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -544,7 +544,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment A2)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -656,7 +656,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment A3)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -768,7 +768,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment A4)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -880,7 +880,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 143 bytes
+                #   Frame length    : 157 bytes
                 #
                 # IPv4 (fragment A5)
                 #   Total Length    : 0x008f (143 bytes)
@@ -909,7 +909,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment 1)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -1021,7 +1021,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment R2)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -1133,7 +1133,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4 (fragment R3)
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -1245,7 +1245,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 1500 bytes
+                #   Frame length    : 1514 bytes
                 #
                 # IPv4
                 #   Total Length    : 0x05dc (1500 bytes)
@@ -1357,7 +1357,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 143 bytes
+                #   Frame length    : 157 bytes
                 #
                 # IPv4 (fragment R5)
                 #   Total Length    : 0x008f (143 bytes)
