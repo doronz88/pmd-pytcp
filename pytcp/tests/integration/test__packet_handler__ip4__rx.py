@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv4 RX operations.
+This module contains integration tests for the Packet Handler IPv4 RX operations.
 
-pytcp/tests/unit/test__packet_handler__ip4__rx.py
+pytcp/tests/integration/test__packet_handler__ip4__rx.py
 
 ver 3.0.4
 """
@@ -47,8 +47,27 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet/IPv4 - dst unknown",
+            "_description": "Ethernet/IPv4 - IPv4 dst unknown",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 20 bytes
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 0
+                #   Header Checksum : 0xe6fb
+                #   Source IP       : 192.168.9.102
+                #   Destination IP  : 192.168.9.55 (unknown)
+                #
+                # Summary: IPv4 packet for an unknown destination host; drop expected.
                 b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x08\x00\x45\x00"
                 b"\x00\x14\x00\x01\x00\x00\x40\x00\xe6\xfb\xc0\xa8\x09\x66\xc0\xa8"
                 b"\x09\x37",
@@ -65,11 +84,47 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv4/UDP Echo - two frag flows into two packets response",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 52 bytes
+                #
+                # IPv4 (fragment A1)
+                #   Total Length    : 0x0034 (52 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2000 (MF set, offset 0)
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x0191
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Src/Dst Port    : 5527/7
+                #   Length          : 0x008c (140 bytes, fragmented)
+                #
+                # Summary: First IPv4 fragment carrying the UDP header and leading payload bytes.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x34\x42\xc7\x20\x00\x40\x11\x01\x91\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x15\x97\x00\x07\x00\x8c\x61\xf3\x54\x6f\x6d\x20\x54\x69"
                 b"\x74\x20\x54\x6f\x74\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a"
-                b"\x0b\x0c",  # A1
+                b"\x0b\x0c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 140 bytes
+                #
+                # IPv4 (fragment B2)
+                #   Total Length    : 0x008c (140 bytes)
+                #   Identification  : 0x055a
+                #   Flags / Offset  : 0x2009 (MF set, offset 0x009)
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3e9d
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Payload: mid-stream UDP data continuing from fragment A1.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x8c\x05\x5a\x20\x09\x40\x11\x3e\x9d\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x34\x96\x1a\xee\x1b\x2a\xf5\xce\x48\xe1\x33\x57\xcd\x29"
@@ -79,16 +134,71 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x57\x72\x8a\x03\x0c\xb6\x3b\x21\x40\x2d\x7b\x94\x82\xb6\xaf\xe6"
                 b"\x4f\xb9\xf3\xb5\x95\x05\xf5\x44\xc7\xd5\x58\x11\x12\x1c\x0f\x23"
                 b"\x4a\xa1\x04\xdf\xb1\xe2\x27\x38\x47\x14\x3e\x3f\xba\xf6\x73\x87"
-                b"\x0e\x01\x27\x2d\x57\xaa\xf0\x9a\xa2\x88",  # B2
+                b"\x0e\x01\x27\x2d\x57\xaa\xf0\x9a\xa2\x88",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 52 bytes
+                #
+                # IPv4 (fragment A1 repeat)
+                #   Total Length    : 0x0034 (52 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2000 (MF set, offset 0x000)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x0191
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Src/Dst Port    : 5527/7
+                #   Length          : 0x008c (140 bytes, fragmented)
+                #
+                # Summary: Replay of fragment A1 used to verify duplicate handling.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x34\x42\xc7\x20\x00\x40\x11\x01\x91\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x15\x97\x00\x07\x00\x8c\x61\xf3\x54\x6f\x6d\x20\x54\x69"
                 b"\x74\x20\x54\x6f\x74\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a"
-                b"\x0b\x0c",  # A1
+                b"\x0b\x0c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 36 bytes
+                #
+                # IPv4 (fragment A4)
+                #   Total Length    : 0x0024 (36 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x200c (MF set, offset 0x00c)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x0195
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Fourth IPv4 fragment of flow A covering payload bytes 96–131.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x24\x42\xc7\x20\x0c\x40\x11\x01\x95\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a"
-                b"\x5b\x5c",  # A4
+                b"\x5b\x5c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 116 bytes
+                #
+                # IPv4 (fragment B3)
+                #   Total Length    : 0x0074 (116 bytes)
+                #   Identification  : 0x055a
+                #   Flags / Offset  : 0x0018 (MF clear, offset 0x018)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x5ea6
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Final IPv4 fragment of flow B finishing payload bytes 192–307.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x74\x05\x5a\x00\x18\x40\x11\x5e\xa6\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\xda\x0a\x47\x3a\x41\xff\x8a\x09\x38\xff\x31\x87\xcc\x99"
@@ -97,33 +207,144 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\xb5\x0f\xaf\x6d\x35\x73\xd9\x85\x54\xa5\x2d\xf5\xa0\x83\xf7\x29"
                 b"\xd9\xc6\x75\x65\x3f\x08\xe9\xd8\x98\x82\xdc\x68\x2a\x82\x58\x8a"
                 b"\xf7\x29\xca\x92\x09\x08\xf2\xa0\xc1\xec\xa8\x2f\x06\xbf\x17\x0b"
-                b"\x0d\xcb",  # B3
+                b"\x0d\xcb",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 60 bytes
+                #
+                # IPv4 (fragment A2)
+                #   Total Length    : 0x003c (60 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2004 (MF set, offset 0x004)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x0185
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Second IPv4 fragment of flow A carrying payload bytes 32–59.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x3c\x42\xc7\x20\x04\x40\x11\x01\x85\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
                 b"\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a"
-                b"\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34",  # A2
+                b"\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 92 bytes
+                #
+                # IPv4 (fragment B1)
+                #   Total Length    : 0x005c (92 bytes)
+                #   Identification  : 0x055a
+                #   Flags / Offset  : 0x2000 (MF set, offset 0x000)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3ed6
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Src/Dst Port    : 5683/7
+                #   Length          : 0x0120 (288 bytes, fragmented)
+                #
+                # Summary: Initial IPv4 fragment of flow B containing the UDP header and beginning payload bytes.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x5c\x05\x5a\x20\x00\x40\x11\x3e\xd6\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x16\x33\x00\x07\x01\x20\xd2\x08\x68\x9f\xeb\xe7\x33\x72"
                 b"\x16\x14\x21\x94\xd1\xaa\x8c\x7b\x0d\x75\x7e\x16\xc5\x74\xca\xfb"
                 b"\x49\x8a\xe5\xb2\xee\xd8\xd3\xac\xf0\xbb\x5d\x1d\x5d\xc4\xf3\x94"
                 b"\x6e\xa8\x78\xeb\xef\xe3\x48\x14\x8f\x5e\x70\x97\x33\xc2\x9e\x80"
-                b"\xd8\x3f\x78\x2d\x58\x9a\xc3\xf1\x56\xc4",  # B1
+                b"\xd8\x3f\x78\x2d\x58\x9a\xc3\xf1\x56\xc4",
+                # Ethernet II (fragment A5)
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 48 bytes
+                #
+                # IPv4 (fragment A5)
+                #   Total Length    : 0x0030 (48 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x000e (MF clear, offset 0x00e)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x2187
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Final IPv4 fragment of flow A delivering payload bytes 592–639.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x30\x42\xc7\x00\x0e\x40\x11\x21\x87\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
-                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",  # A5
+                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 48 bytes
+                #
+                # IPv4 (fragment A5 repeat)
+                #   Total Length    : 0x0030 (48 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x000e (MF clear, offset 0x00e)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x2187
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Duplicate transmission of fragment A5 to emulate replay conditions.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x30\x42\xc7\x00\x0e\x40\x11\x21\x87\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
-                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",  # A5
+                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 44 bytes
+                #
+                # IPv4 (fragment A3)
+                #   Total Length    : 0x002c (44 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2009 (MF set, offset 0x009)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x0190
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Third IPv4 fragment of flow A covering payload bytes 72–95.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x2c\x42\xc7\x20\x09\x40\x11\x01\x90\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f\x40\x41\x42"
-                b"\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c",  # A3
+                b"\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 308 bytes
+                #
+                # IPv4
+                #   Total Length    : 0x0134 (308 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x6358
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # UDP
+                #   Src/Dst Port    : 7/5527
+                #   Length          : 0x0120 (288 bytes)
+                #   Checksum        : 0xd208
+                #
+                # Summary: UDP echo response (flow B) containing merged fragments B1–B3 prior to fragmentation.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x01\x34\x00\x00\x00\x00\x40\x11\x63\x58\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x07\x16\x33\x01\x20\xd2\x08\x68\x9f\xeb\xe7\x33\x72"
@@ -144,7 +365,29 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\xb5\x0f\xaf\x6d\x35\x73\xd9\x85\x54\xa5\x2d\xf5\xa0\x83\xf7\x29"
                 b"\xd9\xc6\x75\x65\x3f\x08\xe9\xd8\x98\x82\xdc\x68\x2a\x82\x58\x8a"
                 b"\xf7\x29\xca\x92\x09\x08\xf2\xa0\xc1\xec\xa8\x2f\x06\xbf\x17\x0b"
-                b"\x0d\xcb",  # B1 + B2 + B3
+                b"\x0d\xcb",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 160 bytes
+                #
+                # IPv4
+                #   Total Length    : 0x00a0 (160 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000 (no fragmentation)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x63ec
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # UDP
+                #   Src/Dst Port    : 7/5527
+                #   Length          : 0x008c (140 bytes)
+                #   Checksum        : 0x61f3
+                #
+                # Summary: UDP echo response (flow A) containing merged fragments A1–A5 prior to fragmentation.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\xa0\x00\x00\x00\x00\x40\x11\x63\xec\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x07\x15\x97\x00\x8c\x61\xf3\x54\x6f\x6d\x20\x54\x69"
@@ -155,7 +398,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a"
                 b"\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a"
                 b"\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
-                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",  # A1 + A2 + A3 + A4 + A5
+                b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78",
             ],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=7 + 3,
@@ -181,6 +424,27 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv4/UDP Echo - single frag flow into multiple frag response",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment A1)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2000 (MF set, offset 0x000)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0xfbe8
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Src/Dst Port    : 5527/7
+                #   Length          : 0x179b (fragmented)
+                #
+                # Summary: First IPv4 fragment of flow A carrying the UDP header and initial payload slice.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x05\xdc\x42\xc7\x20\x00\x40\x11\xfb\xe8\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x15\x97\x00\x07\x17\x9b\x76\x0b\x54\x6f\x6d\x20\x54\x69"
@@ -275,7 +539,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a"
                 b"\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a"
                 b"\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa"
-                b"\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4",  # 1
+                b"\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment A2)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x20b9 (MF set, offset 0x0b9)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0xfb2f
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Second IPv4 fragment of flow A carrying payload bytes 1480–2959.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x05\xdc\x42\xc7\x20\xb9\x40\x11\xfb\x2f\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2"
@@ -370,7 +651,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52"
                 b"\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61\x62"
                 b"\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f\x70\x71\x72"
-                b"\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c",  # 2
+                b"\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment A3)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x2172 (MF set, offset 0x172)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0xfa76
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Third IPv4 fragment of flow A carrying payload bytes 2960–4439.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x05\xdc\x42\xc7\x21\x72\x40\x11\xfa\x76\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a"
@@ -465,7 +763,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
                 b"\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a"
                 b"\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a"
-                b"\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44",  # 3
+                b"\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment A4)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x222b (MF set, offset 0x22b)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0xf9bd
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Fourth IPv4 fragment of flow A covering payload bytes 4440–5919.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x05\xdc\x42\xc7\x22\x2b\x40\x11\xf9\xbd\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52"
@@ -560,7 +875,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2"
                 b"\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2"
                 b"\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff\x00\x01\x02"
-                b"\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c",  # 4
+                b"\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 143 bytes
+                #
+                # IPv4 (fragment A5)
+                #   Total Length    : 0x008f (143 bytes)
+                #   Identification  : 0x42c7
+                #   Flags / Offset  : 0x02e4 (offset 0x2e4, final fragment)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x1e52
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # Summary: Final IPv4 fragment of flow A delivering payload bytes 5920–6042.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x8f\x42\xc7\x02\xe4\x40\x11\x1e\x52\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
@@ -570,9 +902,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a"
                 b"\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
                 b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a"
-                b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87",  # 5
+                b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment 1)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x2000 (MF set, offset 0x000)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3df6
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: First outbound IPv4 fragment (response) with the UDP header and initial payload slice.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\x00\x40\x11\x3e\xaf\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x07\x15\x97\x17\x9b\x76\x0b\x54\x6f\x6d\x20\x54\x69"
@@ -667,7 +1016,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a"
                 b"\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a"
                 b"\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa"
-                b"\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4",  # 1
+                b"\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment R2)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x20b9 (MF set, offset 0x0b9)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3d3d
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Second outbound IPv4 fragment covering response payload bytes 1480–2959.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\xb9\x40\x11\x3d\xf6\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2"
@@ -762,7 +1128,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52"
                 b"\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61\x62"
                 b"\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f\x70\x71\x72"
-                b"\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c",  # 2
+                b"\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4 (fragment R3)
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x2172 (MF set, offset 0x172)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3c84
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Third outbound IPv4 fragment with response payload bytes 2960–4439.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x21\x72\x40\x11\x3d\x3d\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a"
@@ -857,7 +1240,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
                 b"\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a"
                 b"\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a"
-                b"\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44",  # 3
+                b"\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44",
+                # Ethernet II (fragment R4)
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 1500 bytes
+                #
+                # IPv4
+                #   Total Length    : 0x05dc (1500 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x222b (MF set, offset 0x22b)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x3c84
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Fourth outbound IPv4 fragment transporting response payload bytes 4440–5919.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x22\x2b\x40\x11\x3c\x84\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52"
@@ -952,7 +1352,24 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2"
                 b"\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2"
                 b"\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff\x00\x01\x02"
-                b"\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c",  # 4
+                b"\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 143 bytes
+                #
+                # IPv4 (fragment R5)
+                #   Total Length    : 0x008f (143 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x02e4 (offset 0x2e4, final fragment)
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x6118
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Final outbound IPv4 fragment completing response payload bytes 5920–6042.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x8f\x00\x01\x02\xe4\x40\x11\x61\x18\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a"
@@ -962,7 +1379,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a"
                 b"\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a"
                 b"\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a"
-                b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87",  # 5
+                b"\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87",
             ],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=5,
