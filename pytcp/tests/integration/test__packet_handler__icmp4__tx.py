@@ -78,7 +78,7 @@ from pytcp.tests.lib.network_testcase import (
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 348 bytes
+                #   Frame length    : 362 bytes
                 #
                 # IPv4
                 #   Version / IHL    : 4 / 5
@@ -153,7 +153,7 @@ from pytcp.tests.lib.network_testcase import (
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 348 bytes
+                #   Frame length    : 362 bytes
                 #
                 # IPv4
                 #   Version / IHL    : 4 / 5
