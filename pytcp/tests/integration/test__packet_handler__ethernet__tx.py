@@ -258,7 +258,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.0
                 #
-                # Summary: IPv4 packet aimed at the subnet network address, emitted as an Ethernet broadcast per stack rules.
+                # Summary: IPv4 packet aimed at the subnet network address, emitted as an Ethernet
+                #          broadcast per stack rules.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\xe5\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x00",
