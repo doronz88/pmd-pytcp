@@ -49,6 +49,13 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet - dst unknown",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:99:99:99 (not in our table)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 14 bytes
+                #
+                # Summary: IPv4 frame to an unknown unicast MAC; the Ethernet layer drops it.
                 b"\x02\x00\x00\x99\x99\x99\x52\x54\x00\xdf\x85\x37\x08\x00",
             ],
             "_expected__frames_tx": [],
@@ -61,6 +68,12 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet - malformed header",
             "_frames_rx": [
+                # Ethernet II (truncated)
+                #   Destination MAC : 02:00:00:77:77:77
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Captured length : 13 bytes (shorter than mandatory 14-byte header)
+                #
+                # Summary: Short Ethernet header without an Ethertype field; parsing fails.
                 b"\x02\x00\x00\x77\x77\x77\x52\x54\x00\xdf\x85\x37\x0a",
             ],
             "_expected__frames_tx": [],
