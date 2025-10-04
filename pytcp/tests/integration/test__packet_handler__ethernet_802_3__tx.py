@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler Ethernet 802.3 TX operations.
+This module contains integration tests for the Packet Handler Ethernet 802.3 TX operations.
 
-pytcp/tests/unit/test__packet_handler__ethernet_802_3__tx.py
+pytcp/tests/integration/test__packet_handler__ethernet_802_3__tx.py
 
 ver 3.0.4
 """
@@ -61,6 +61,12 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet 802.3
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Length          : 0x0000 (header-only frame)
+                #
+                # Summary: Raw 802.3 frame transmitted with caller-specified MAC addresses.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x00",
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET_802_3__TO_TX_RING,
@@ -77,7 +83,15 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__src": MAC__UNSPECIFIED,
                 "ethernet_802_3__dst": HOST_A__MAC_ADDRESS,
             },
-            "_expected__frames_tx": [b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x00"],
+            "_expected__frames_tx": [
+                # Ethernet 802.3
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (filled by stack)
+                #   Length          : 0x0000 (header-only frame)
+                #
+                # Summary: Source MAC unspecified; stack fills in before transmitting the 802.3 header.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x00",
+            ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET_802_3__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet_802_3__pre_assemble=1,
@@ -109,6 +123,15 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__payload": RawAssembler(raw__payload=bytes(range(16))),
             },
             "_expected__frames_tx": [
+                # Ethernet 802.3
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Length          : 0x0010 (16 bytes of payload)
+                #
+                # Payload
+                #   Bytes           : 00..0f (RawAssembler content)
+                #
+                # Summary: 802.3 frame with a 16-byte LLC payload assembled by RawAssembler.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x00\x10\x00\x01"
                 b"\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
             ],

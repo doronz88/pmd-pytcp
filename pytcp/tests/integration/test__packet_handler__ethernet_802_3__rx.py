@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler Ethernet 802.3 RX operations.
+This module contains integration tests for the Packet Handler Ethernet 802.3 RX operations.
 
-pytcp/tests/unit/test__packet_handler__ethernet_802_3__rx.py
+pytcp/tests/integration/test__packet_handler__ethernet_802_3__rx.py
 
 ver 3.0.4
 """
@@ -49,6 +49,12 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet 802.3 - dst unknown",
             "_frames_rx": [
+                # Ethernet 802.3
+                #   Destination MAC : 02:00:00:99:99:99 (foreign)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Length          : 0x0000 (invalid/treated as LLC length)
+                #
+                # Summary: Frame addressed to an unknown MAC; stack drops before further processing.
                 b"\x02\x00\x00\x99\x99\x99\x52\x54\x00\xdf\x85\x37\x00\x00",
             ],
             "_expected__frames_tx": [],
@@ -61,6 +67,12 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet 802.3 - malformed header",
             "_frames_rx": [
+                # Ethernet 802.3
+                #   Destination MAC : 02:00:00:77:77:77 (foreign)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Length          : <missing byte> (frame too short)
+                #
+                # Summary: Malformed Ethernet 802.3 header (length field truncated) triggers parse drop.
                 b"\x02\x00\x00\x77\x77\x77\x52\x54\x00\xdf\x85\x37\x00",
             ],
             "_expected__frames_tx": [],
