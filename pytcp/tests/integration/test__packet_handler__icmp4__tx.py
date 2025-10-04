@@ -227,7 +227,7 @@ from pytcp.tests.lib.network_testcase import (
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x0800 (IPv4)
-                #   Frame length    : 580 bytes
+                #   Frame length    : 590 bytes
                 #
                 # IPv4
                 #   Version / IHL    : 4 / 5
@@ -245,7 +245,7 @@ from pytcp.tests.lib.network_testcase import (
                 #   Type/Code       : 3 / 3 (Destination Unreachable - Port)
                 #   Checksum        : 0x2211
                 #   Unused          : 0
-                #   Payload         : 560 bytes (original datagram excerpt)
+                #   Payload         : 552 bytes (original datagram excerpt)
                 #
                 # Summary: ICMPv4 destination-unreachable dispatched with sizable payload snapshot.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
