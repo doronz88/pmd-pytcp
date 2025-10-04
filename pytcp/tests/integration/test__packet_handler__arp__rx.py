@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler ARP RX operations.
+This module contains integration tests for the Packet Handler ARP RX operations.
 
-pytcp/tests/unit/test__packet_handler__arp__rx.py
+pytcp/tests/integration/test__packet_handler__arp__rx.py
 
 ver 3.0.4
 """
@@ -131,13 +131,13 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Operation       : 3 (unsupported)
                 #   Sender MAC      : 02:00:00:00:00:91
                 #   Sender IP       : 10.0.1.91
-                #   Target MAC      : 02:00:00:00:00:07
+                #   Target MAC      : 00:00:00:00:00:00
                 #   Target IP       : 10.0.1.7
                 #
                 # Summary: Broadcast ARP frame with an unsupported operation code; parser rejects it.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x03\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
-                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
             ],
             "_expected__frames_tx": [],
             "_expected__packet_stats_rx": PacketStatsRx(
@@ -290,10 +290,10 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Operation       : 1 (Request)
                 #   Sender MAC      : 02:00:00:00:00:91
                 #   Sender IP       : 10.0.1.91
-                #   Target MAC      : 00:00:00:00:00:00
+                #   Target MAC      : 00:00:00:00:00:00   (unspecified, as in broadcast-style request)
                 #   Target IP       : 10.0.1.7 (our IP)
                 #
-                # Summary: Unicast ARP request toward another host, dropped at Ethernet because dst ≠ our MAC.
+                # Summary: Broadcast-form ARP request delivered to a foreign unicast MAC; Ethernet drops it before ARP.
                 b"\x02\x00\x00\x00\x00\x99\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
@@ -379,7 +379,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target MAC      : 02:00:00:00:00:91
                 #   Target IP       : 0.0.0.0
                 #
-                # Summary: Unicast ARP reply from 10.0.1.7 → 02:00:00:00:00:91, TPA unspecified.
+                # Summary: Unicast ARP reply from 10.0.1.7 -> 02:00:00:00:00:91, TPA unspecified.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
                 b"\x02\x00\x00\x00\x00\x91\x00\x00\x00\x00",
@@ -401,7 +401,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - request with SPA == our IP → send gratuitous ARP as defense",
+            "_description": "Ethernet/ARP - request with SPA == our IP -> send gratuitous ARP as defense",
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
@@ -585,6 +585,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP       : 10.0.1.91   (same as SPA)
                 #
                 # Summary: Gratuitous ARP Request — “Who has 10.0.1.91? Tell 10.0.1.91.” (announcement)
+                #          We do not answer, but we still learn the SPA -> SHA mapping.
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b",
@@ -623,7 +624,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP       : 10.0.1.5   (same as SPA)
                 #
                 # Summary: Gratuitous ARP Request — “Who has 10.0.1.5? Tell 10.0.1.5.”
-                #          (Announcement of an address we’re probing → conflict)
+                #          (Announcement of an address we’re probing -> conflict)
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x05",
@@ -967,7 +968,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP       : 10.0.1.5   (same as SPA)
                 #
                 # Summary: Gratuitous ARP Reply — “10.0.1.5 is at 02:00:00:00:00:91.”
-                #          (Announcement of an address we’re probing → conflict)
+                #          (Announcement of an address we’re probing -> conflict)
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
                 b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x05",
@@ -1005,7 +1006,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP       : 0.0.0.0   (unspecified, per ARP probe reply)
                 #
                 # Summary: Foreign host responds to our ARP probe with a unicast ARP reply,
-                # claiming the candidate IP. This indicates conflict → we must not claim it.
+                # claiming the candidate IP. This indicates conflict -> we must not claim it.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
                 b"\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00",
