@@ -53,7 +53,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07 (our MAC)
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x86DD (IPv6)
-                #   Frame length    : 118 bytes
+                #   Frame length    : 126 bytes
                 #
                 # IPv6
                 #   Version / Traffic Class / Flow Label : 0x60000000
@@ -85,7 +85,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:91
                 #   Source MAC      : 02:00:00:00:00:07
                 #   Ethertype       : 0x86DD (IPv6)
-                #   Frame length    : 118 bytes
+                #   Frame length    : 126 bytes
                 #
                 # IPv6
                 #   Version / Traffic Class / Flow Label : 0x60000000
@@ -140,7 +140,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 02:00:00:00:00:07 (our MAC)
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x86DD (IPv6)
-                #   Frame length    : 102 bytes
+                #   Frame length    : 78 bytes
                 #
                 # IPv6
                 #   Version / Traffic Class / Flow Label : 0x60000000
@@ -302,7 +302,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x86DD (IPv6)
-                #   Frame length    : 94 bytes
+                #   Frame length    : 86 bytes
                 #
                 # IPv6
                 #   Version / Traffic Class / Flow Label : 0x60000000
@@ -384,7 +384,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
                 #   Source MAC      : 02:00:00:00:00:91
                 #   Ethertype       : 0x86DD (IPv6)
-                #   Frame length    : 86 bytes
+                #   Frame length    : 78 bytes
                 #
                 # IPv6
                 #   Version / Traffic Class / Flow Label : 0x60000000
