@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler ICMPv4 TX operations.
+This module contains integration tests for the Packet Handler ICMPv4 TX operations.
 
-pytcp/tests/unit/test__packet_handler__icmp4__tx.py
+pytcp/tests/integration/test__packet_handler__icmp4__tx.py
 
 ver 3.0.4
 """
@@ -74,6 +74,32 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 348 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x015c (348 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0x6340
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # ICMPv4
+                #   Type/Code       : 8 / 0 (Echo Request)
+                #   Checksum        : 0xcacd
+                #   Identifier      : 12345
+                #   Sequence        : 54320
+                #   Payload         : 320 bytes ("0123456789ABCDEF" * 20)
+                #
+                # Summary: ICMPv4 echo request emitted with large payload toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x01\x5c\x00\x00\x00\x00\x40\x01\x63\x40\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x08\x00\xca\xcd\x30\x39\xd4\x30\x30\x31\x32\x33\x34\x35"
@@ -123,6 +149,32 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 348 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x015c (348 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0x6340
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # ICMPv4
+                #   Type/Code       : 0 / 0 (Echo Reply)
+                #   Checksum        : 0xd2cd
+                #   Identifier      : 12345
+                #   Sequence        : 54320
+                #   Payload         : 320 bytes mirrored from the request
+                #
+                # Summary: ICMPv4 echo reply with matching payload returned to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x01\x5c\x00\x00\x00\x00\x40\x01\x63\x40\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x00\xd2\xcd\x30\x39\xd4\x30\x30\x31\x32\x33\x34\x35"
@@ -171,6 +223,31 @@ from pytcp.tests.lib.network_testcase import (
                 ),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 580 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0240 (576 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0x625c
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # ICMPv4
+                #   Type/Code       : 3 / 3 (Destination Unreachable - Port)
+                #   Checksum        : 0x2211
+                #   Unused          : 0
+                #   Payload         : 560 bytes (original datagram excerpt)
+                #
+                # Summary: ICMPv4 destination-unreachable dispatched with sizable payload snapshot.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x02\x40\x00\x00\x00\x00\x40\x01\x62\x5c\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\x03\x22\x11\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35"

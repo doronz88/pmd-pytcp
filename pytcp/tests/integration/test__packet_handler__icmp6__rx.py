@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler ICMPv6 RX operations.
+This module contains integration tests for the Packet Handler ICMPv6 RX operations.
 
-pytcp/tests/unit/test__packet_handler__icmp6__rx.py
+pytcp/tests/integration/test__packet_handler__icmp6__rx.py
 
 ver 3.0.4
 """
@@ -47,8 +47,30 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 @parameterized_class(
     [
         {
-            "_description": "Ethernet/IPv4/ICMPv6 Echo Request",
+            "_description": "Ethernet/IPv6/ICMPv6 Echo Request",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 118 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0048 (72 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : 2001:db8:0:1::7
+                #
+                # ICMPv6
+                #   Type/Code       : 128 / 0 (Echo Request)
+                #   Checksum        : 0x04ef
+                #   Identifier      : 0x0007
+                #   Sequence        : 0x000a
+                #   Payload         : 64 bytes (timestamp + pattern)
+                #
+                # Summary: ICMPv6 echo request targeting the stack; expect an echo reply.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x48\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -59,6 +81,28 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 118 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0048 (72 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6
+                #   Type/Code       : 129 / 0 (Echo Reply)
+                #   Checksum        : 0x03ef
+                #   Identifier      : 0x0007
+                #   Sequence        : 0x000a
+                #   Payload         : 64 bytes mirrored from request
+                #
+                # Summary: ICMPv6 echo reply from the stack sent back to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x48\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -89,9 +133,29 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst), " "respond with Neighbor Advertisement"
+                "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation (unicast dst), respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 102 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : 2001:db8:0:1::7
+                #
+                # ICMPv6 Neighbor Solicitation
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Source Link-Layer (02:00:00:00:00:91)
+                #
+                # Summary: Unicast NS asking for our address.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -100,6 +164,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x02\x00\x00\x00\x00\x91",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x60000000 (Solicited + Override)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Target Link-Layer (02:00:00:00:00:07)
+                #
+                # Summary: Solicited neighbor advertisement sent to the unicast requester.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -130,10 +214,30 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (unicast dst, no SLLA), "
+                "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation (unicast dst, no SLLA), "
                 "respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : ff02::1:ff00:7
+                #
+                # ICMPv6 Neighbor Solicitation
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : none (no SLLA)
+                #
+                # Summary: Multicast NS without source LLA option.
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -141,6 +245,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x60000000 (Solicited + Override)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Target Link-Layer (02:00:00:00:00:07)
+                #
+                # Summary: Neighbor advertisement responding despite missing SLLA.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -170,10 +294,30 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (multicast dst), "
+                "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation (multicast dst), "
                 "respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 94 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : ff02::1:ff00:7
+                #
+                # ICMPv6 Neighbor Solicitation
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Source Link-Layer (02:00:00:00:00:91)
+                #
+                # Summary: Multicast NS asking for our address.
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -182,6 +326,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x02\x00\x00\x00\x00\x91",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x60000000 (Solicited + Override)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Target Link-Layer (02:00:00:00:00:07)
+                #
+                # Summary: Neighbor advertisement reply to multicast solicitation.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -212,10 +376,30 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (multicast dst, no SLLA), "
+                "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation (multicast dst, no SLLA), "
                 "respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : ff02::1:ff00:7
+                #
+                # ICMPv6 Neighbor Solicitation
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : none (no SLLA)
+                #
+                # Summary: Multicast NS without source LLA option.
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -223,6 +407,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x60000000 (Solicited + Override)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Target Link-Layer (02:00:00:00:00:07)
+                #
+                # Summary: Neighbor advertisement responding despite missing SLLA.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -253,9 +457,29 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
         {
             "_description": (
-                "Ethernet/IPv4/ICMPv6 - ND Neighbor Solicitation (DAD), " "respond with Neighbor Advertisement"
+                "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation (DAD), respond with Neighbor Advertisement"
             ),
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : :: (unspecified)
+                #   Destination IP : ff02::1:ff00:7
+                #
+                # ICMPv6 Neighbor Solicitation (DAD)
+                #   Flags          : 0x00000000
+                #   Target         : 2001:db8:0:1::7 (candidate address)
+                #   Options        : none
+                #
+                # Summary: Duplicate Address Detection probe for our IPv6 address.
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x3a\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -263,6 +487,26 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:01 (all-nodes multicast)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86DD (IPv6)
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 0x60000000
+                #   Payload Length : 0x0020 (32 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 255
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : ff02::1 (all-nodes)
+                #
+                # ICMPv6 Neighbor Advertisement
+                #   Flags          : 0x20000000 (Override only)
+                #   Target         : 2001:db8:0:1::7
+                #   Options        : Target Link-Layer (02:00:00:00:00:07)
+                #
+                # Summary: Gratuitous neighbor advertisement defending our address during DAD.
                 b"\x33\x33\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
