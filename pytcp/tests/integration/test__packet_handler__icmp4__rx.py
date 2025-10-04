@@ -29,9 +29,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler ICMPv4 RX operations.
+This module contains integration tests for the Packet Handler ICMPv4 RX operations.
 
-pytcp/tests/unit/test__packet_handler__icmp4__rx.py
+pytcp/tests/integration/test__packet_handler__icmp4__rx.py
 
 ver 3.0.4
 """
@@ -49,6 +49,32 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv4/ICMPv4 Echo Request",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 106 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x005c (92 bytes)
+                #   Identification  : 0x3a2f
+                #   Flags / Offset  : 0x4000 (DF set)
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0xea10
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # ICMPv4
+                #   Type/Code       : 8 / 0 (Echo Request)
+                #   Checksum        : 0xd97d
+                #   Identifier      : 0x0007
+                #   Sequence        : 0x000a
+                #   Payload         : 64 bytes (timestamp + pattern)
+                #
+                # Summary: Echo request from host A to the stack; expect an echo reply.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x5c\x3a\x2f\x40\x00\x40\x01\xea\x10\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x08\x00\xd9\x7d\x00\x07\x00\x0a\x88\x9f\xba\x60\x00\x00"
@@ -58,13 +84,39 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 106 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x005c (92 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0x6440
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # ICMPv4
+                #   Type/Code       : 0 / 0 (Echo Reply)
+                #   Checksum        : 0xe17d
+                #   Identifier      : 0x0007
+                #   Sequence        : 0x000a
+                #   Payload         : 64 bytes mirrored from request
+                #
+                # Summary: Echo reply to host A matching the request payload and identifiers.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x5c\x00\x00\x00\x00\x40\x01\x64\x40\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x00\xe1\x7d\x00\x07\x00\x0a\x88\x9f\xba\x60\x00\x00"
                 b"\x00\x00\x29\xad\x06\x00\x00\x00\x00\x00\x10\x11\x12\x13\x14\x15"
                 b"\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25"
                 b"\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35"
-                b"\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f"
+                b"\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f",
             ],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
