@@ -63,6 +63,22 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0000 (0 bytes)
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # Summary: Minimal IPv6 header-only datagram sent by the stack host to
+                #          host A on the local LAN.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -100,6 +116,22 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (multicast source replaced)
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0000 (0 bytes)
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7 (multicast replaced)
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # Summary: Multicast source address normalised to the stack host before
+                #          emitting the minimal IPv6 datagram toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -138,6 +170,22 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07 (unspecified source filled)
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0000 (0 bytes)
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7 (unspecified replaced)
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # Summary: Unspecified source address substituted with the stack host before
+                #          dispatching the header-only IPv6 frame to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -162,6 +210,22 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_C__IP6_ADDRESS,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:01 (gateway)
+                #   Source MAC      : 02:00:00:00:00:07 (unspecified source filled)
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 54 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0000 (0 bytes)
+                #   Next Header    : 255 (Reserved)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7 (unspecified replaced)
+                #   Destination IP : 2001:db8:0:2::50
+                #
+                # Summary: Header-only IPv6 datagram forwarded via the gateway MAC toward
+                #          external host 2001:db8:0:2::50.
                 b"\x02\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x00\xff\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x02\x00\x00"

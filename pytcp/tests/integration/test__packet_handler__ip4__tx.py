@@ -83,7 +83,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Summary: Minimal IPv4 header-only datagram sent to host A on the local LAN.
+                # Summary: Minimal IPv4 header-only datagram sent by the stack host
+                #          to host A on the local LAN.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -138,8 +139,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7 (multicast replaced)
                 #   Destination IP  : 10.0.1.91
                 #
-                # Summary: Multicast source was rewritten to the stack address before emitting the
-                #          minimal IPv4 datagram toward host A.
+                # Summary: Multicast source rewritten to 10.0.1.7 before unicast delivery
+                #          of the minimal IPv4 frame to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -195,8 +196,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7 (broadcast replaced)
                 #   Destination IP  : 10.0.1.91
                 #
-                # Summary: Limited-broadcast source harmonised to the stack address before sending the
-                #          minimal IPv4 frame toward host A.
+                # Summary: Limited broadcast source normalised to 10.0.1.7 before sending
+                #          the header-only IPv4 packet toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -252,8 +253,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7 (network broadcast replaced)
                 #   Destination IP  : 10.0.1.91
                 #
-                # Summary: Network-broadcast source corrected to the stack address before emitting the
-                #          IPv4 header-only packet to host A.
+                # Summary: Network broadcast source converted to the stack host prior to
+                #          emitting the minimal IPv4 datagram to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -295,8 +296,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7 (unspecified replaced)
                 #   Destination IP  : 10.0.1.91
                 #
-                # Summary: Unspecified source address normalised to the stack host before sending the
-                #          IPv4 header-only packet toward host A.
+                # Summary: Unspecified source field populated with 10.0.1.7 before
+                #          transmitting the minimal IPv4 frame to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b"
@@ -338,8 +339,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7 (unspecified replaced)
                 #   Destination IP  : 10.0.2.50
                 #
-                # Summary: Minimal IPv4 datagram forwarded via the gateway MAC after filling in the
-                #          unspecified source address.
+                # Summary: Header-only IPv4 datagram forwarded toward host C via the
+                #          gateway after supplying 10.0.1.7 as the source address.
                 b"\x02\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x14\x00\x00\x00\x00\x40\xff\x62\xb3\x0a\x00\x01\x07\x0a\x00"
                 b"\x02\x32"
@@ -408,7 +409,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Payload: RawAssembler bytes 0–1479 (reserved protocol, no UDP header).
+                # Summary: Fragment 1 (bytes 0–1479) begins the reserved-protocol payload
+                #          delivery to host A with MF set.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\x00\x40\xff\x3d\xc1\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43"
@@ -520,7 +522,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Payload: RawAssembler bytes 1480–2959.
+                # Summary: Fragment 2 (bytes 1480–2959) continues the reserved-protocol
+                #          payload stream toward host A with MF still set.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x20\xb9\x40\xff\x3d\x08\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44"
@@ -632,7 +635,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Payload: RawAssembler bytes 2960–4439.
+                # Summary: Fragment 3 (bytes 2960–4439) keeps MF asserted while extending
+                #          the payload stream destined for host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x21\x72\x40\xff\x3c\x4f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45"
@@ -744,7 +748,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Payload: RawAssembler bytes 4440–5919.
+                # Summary: Fragment 4 (bytes 4440–5919) transports the penultimate slice
+                #          of payload toward host A with MF still set.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x05\xdc\x00\x01\x22\x2b\x40\xff\x3b\x96\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46"
@@ -856,7 +861,8 @@ from pytcp.tests.lib.network_testcase import (
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 10.0.1.91
                 #
-                # Payload: RawAssembler bytes 5920–6799 completing the datagram.
+                # Summary: Fragment 5 (bytes 5920–6799) clears MF and delivers the final
+                #          portion required for host A to reassemble the payload.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x03\x84\x00\x01\x02\xe4\x40\xff\x5d\x35\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30"

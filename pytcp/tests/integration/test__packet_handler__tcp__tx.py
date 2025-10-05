@@ -63,6 +63,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__dport": 2000,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dcb
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Bare TCP segment with no flags or payload emitted from
+                #          10.0.1.7:1000 toward 10.0.1.91:2000.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x00"
@@ -91,6 +121,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__seq": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00003039 (12345)
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x5d92
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Same minimal TCP header but with the initial sequence number
+                #          preloaded to 12345 before transmitting to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x30\x39\x00\x00\x00\x00\x50\x00"
@@ -119,6 +179,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__ack": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00003039 (12345)
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x5d92
+                #   Urgent Pointer  : 0
+                #
+                # Summary: TCP header with an acknowledgement value of 12345 but no
+                #          control flags asserted, sent to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x30\x39\x50\x00"
@@ -147,6 +237,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ns": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : NS
+                #   Window          : 0x0000
+                #   Checksum        : 0x8ccb
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Demonstrates the TCP NS flag being set on the otherwise
+                #          empty segment bound for 10.0.1.91:2000.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x51\x00"
@@ -176,6 +296,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_cwr": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : CWR
+                #   Window          : 0x0000
+                #   Checksum        : 0x8d4b
+                #   Urgent Pointer  : 0
+                #
+                # Summary: TCP segment with the Congestion Window Reduced flag asserted,
+                #          otherwise mirroring the default empty template.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x80"
@@ -205,6 +355,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ece": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : ECE
+                #   Window          : 0x0000
+                #   Checksum        : 0x8d8b
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Sends a TCP header with the ECN-Echo flag asserted to
+                #          demonstrate ECN handling in the transmit path.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x40"
@@ -234,6 +414,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_urg": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : URG
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dab
+                #   Urgent Pointer  : 0
+                #
+                # Summary: URG flag asserted without urgent data, producing a control
+                #          segment from 10.0.1.7:1000 to host A's port 2000.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x20"
@@ -263,6 +473,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ack": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : ACK
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dbb
+                #   Urgent Pointer  : 0
+                #
+                # Summary: ACK-only control segment emitted from 10.0.1.7:1000 with no
+                #          payload or acknowledgement data.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x10"
@@ -292,6 +532,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_psh": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : PSH
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dc3
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Push flag set to illustrate how the stack constructs a
+                #          PSH-only TCP segment with no payload.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x08"
@@ -321,6 +591,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_rst": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : RST
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dc7
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Reset-only probe constructed by the TX path to test RST flag
+                #          serialization toward 10.0.1.91:2000.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x04"
@@ -350,6 +650,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_syn": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : SYN
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dc9
+                #   Urgent Pointer  : 0
+                #
+                # Summary: SYN-only probe used to validate outbound connection setup
+                #          handling on the IPv4 path.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x02"
@@ -379,6 +709,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_fin": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : FIN
+                #   Window          : 0x0000
+                #   Checksum        : 0x8dca
+                #   Urgent Pointer  : 0
+                #
+                # Summary: FIN control bit exercised while keeping the rest of the TCP
+                #          header at its baseline values.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x01"
@@ -408,6 +768,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__win": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x3039 (12345)
+                #   Checksum        : 0x5d92
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Example showing a non-zero advertised window (12345) on an
+                #          otherwise empty TCP header.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x00"
@@ -436,6 +826,36 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__urg": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 54 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0028 (40 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646f
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x5d92
+                #   Urgent Pointer  : 0x3039 (12345)
+                #
+                # Summary: Exercises the urgent pointer field (set to 12345) without
+                #          raising the URG control bit.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x28\x00\x00\x00\x00\x40\x06\x64\x6f\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x00"
@@ -464,6 +884,37 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__payload": b"01234567890ABCDEF" * 50,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 904 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x037a (890 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x611d
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0xa897
+                #   Urgent Pointer  : 0
+                #   Payload         : 850 bytes (ASCII sequence "01234567890ABCDEF" repeated)
+                #
+                # Summary: Large TCP payload example pushing 850 bytes of repeating ASCII
+                #          data from 10.0.1.7:1000 toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x03\x7a\x00\x00\x00\x00\x40\x06\x61\x1d\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x50\x00"
@@ -545,6 +996,37 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__mss": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 58 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x002c (44 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646b
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x4b8a
+                #   Urgent Pointer  : 0
+                #   Options         : MSS (kind 2, len 4, value 12345)
+                #
+                # Summary: Advertises an MSS of 12345 through the TCP options field while
+                #          keeping the payload empty.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x2c\x00\x00\x00\x00\x40\x06\x64\x6b\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x60\x00"
@@ -574,10 +1056,41 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__wscale": 14,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 58 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x002c (44 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 6 (TCP)
+                #   Header Checksum : 0x646b
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x7986
+                #   Urgent Pointer  : 0
+                #   Options         : NOP, Window Scale (value 14)
+                #
+                # Summary: 4-byte TCP options block demonstrating Window Scale 14 with a
+                #          leading NOP pad.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x2c\x00\x00\x00\x00\x40\x06\x64\x6b\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x60\x00"
-                b"\x00\x00\x79\xb6\x00\x00\x01\x03\x03\x0e"
+                b"\x00\x00\x79\x86\x00\x00\x01\x03\x03\x0e"
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(
@@ -603,6 +1116,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__dport": 2000,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x4821
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Baseline IPv6 TCP segment with empty payload transmitted from
+                #          the stack host to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -632,6 +1171,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__seq": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00003039 (12345)
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x17e8
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 variant of the minimal TCP header with a preset sequence
+                #          number of 12345.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -661,6 +1226,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__ack": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00003039 (12345)
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x17e8
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 TCP segment demonstrating a non-zero acknowledgement value
+                #          with all control flags cleared.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -690,6 +1281,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ns": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : NS
+                #   Window          : 0x0000
+                #   Checksum        : 0x4721
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 control segment with the TCP NS flag asserted.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -720,6 +1336,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_cwr": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : CWR
+                #   Window          : 0x0000
+                #   Checksum        : 0x47a1
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 test frame toggling the Congestion Window Reduced flag.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -750,6 +1391,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ece": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : ECE
+                #   Window          : 0x0000
+                #   Checksum        : 0x47e1
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 TCP header with the ECN Echo flag asserted.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -780,6 +1446,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_urg": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : URG
+                #   Window          : 0x0000
+                #   Checksum        : 0x4801
+                #   Urgent Pointer  : 0
+                #
+                # Summary: URG flag set on the IPv6 path without accompanying urgent
+                #          data.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -810,6 +1502,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_ack": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : ACK
+                #   Window          : 0x0000
+                #   Checksum        : 0x4811
+                #   Urgent Pointer  : 0
+                #
+                # Summary: ACK control bit toggled on the IPv6 transmit path.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -840,6 +1557,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_psh": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : PSH
+                #   Window          : 0x0000
+                #   Checksum        : 0x4819
+                #   Urgent Pointer  : 0
+                #
+                # Summary: Push flag engaged for IPv6 testing with no accompanying data.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -870,6 +1612,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_rst": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : RST
+                #   Window          : 0x0000
+                #   Checksum        : 0x481d
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 reset segment used to verify outbound RST handling.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -900,6 +1667,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_syn": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : SYN
+                #   Window          : 0x0000
+                #   Checksum        : 0x481f
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 SYN probe equivalent to the IPv4 case above.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -930,6 +1722,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__flag_fin": True,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : FIN
+                #   Window          : 0x0000
+                #   Checksum        : 0x4820
+                #   Urgent Pointer  : 0
+                #
+                # Summary: FIN flag example for IPv6 mirroring the earlier IPv4 scenario.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -960,6 +1777,31 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__win": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x3039 (12345)
+                #   Checksum        : 0x17e8
+                #   Urgent Pointer  : 0
+                #
+                # Summary: IPv6 TCP header advertising a receive window of 12345.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -989,6 +1831,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__urg": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 74 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0014 (20 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x17e8
+                #   Urgent Pointer  : 0x3039 (12345)
+                #
+                # Summary: Populates the urgent pointer field in an IPv6 TCP header while
+                #          leaving the URG flag clear.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x14\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -1018,6 +1886,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__payload": b"01234567890ABCDEF" * 50,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 924 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0366 (870 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x62ed
+                #   Urgent Pointer  : 0
+                #   Payload         : 850 bytes ("01234567890ABCDEF" repeated)
+                #
+                # Summary: High-volume IPv6 TCP payload example mirroring the IPv4 case.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x03\x66\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -1100,6 +1994,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__mss": 12345,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 78 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x05e0
+                #   Urgent Pointer  : 0
+                #   Options         : MSS (kind 2, len 4, value 12345)
+                #
+                # Summary: IPv6 counterpart illustrating MSS negotiation via TCP options.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -1130,6 +2050,32 @@ from pytcp.tests.lib.network_testcase import (
                 "tcp__wscale": 14,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 78 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0018 (24 bytes)
+                #   Next Header    : 6 (TCP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # TCP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Sequence Number : 0x00000000
+                #   Acknowledgement : 0x00000000
+                #   Flags           : none set
+                #   Window          : 0x0000
+                #   Checksum        : 0x340c
+                #   Urgent Pointer  : 0
+                #   Options         : NOP, Window Scale (value 14)
+                #
+                # Summary: Demonstrates IPv6 TCP option encoding for window scaling.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x18\x06\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"

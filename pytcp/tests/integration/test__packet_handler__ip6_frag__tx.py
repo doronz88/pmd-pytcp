@@ -61,6 +61,28 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__payload": RawAssembler(raw__payload=b"01234567890ABCDEF" * 400),
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 1510 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x05b0 (1456 bytes)
+                #   Next Header    : 44 (Fragment)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # IPv6 Fragment Header (fragment F1)
+                #   Next Header    : 255 (No Next Header)
+                #   Fragment Offset: 0
+                #   M Flag         : 1 (more fragments follow)
+                #   Identification : 0x00000001
+                #
+                # Summary: First fragment launched by the stack host, covering payload bytes
+                #          0–1447 as it begins delivery of the 6.8 KB raw payload to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x05\xb0\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -156,6 +178,28 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44"
                 b"\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43"
                 b"\x44\x45\x46\x30\x31\x32",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 1510 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x05b0 (1456 bytes)
+                #   Next Header    : 44 (Fragment)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # IPv6 Fragment Header (fragment F2)
+                #   Next Header    : 255 (No Next Header)
+                #   Fragment Offset: 181
+                #   M Flag         : 1 (more fragments follow)
+                #   Identification : 0x00000001
+                #
+                # Summary: Second fragment carries payload bytes 1448–2895 of the raw data
+                #          stream toward host A, keeping the fragmented flow active.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x05\xb0\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -251,6 +295,28 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30"
                 b"\x31\x32\x33\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46"
                 b"\x30\x31\x32\x33\x34\x35",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 1510 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x05b0 (1456 bytes)
+                #   Next Header    : 44 (Fragment)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # IPv6 Fragment Header (fragment F3)
+                #   Next Header    : 255 (No Next Header)
+                #   Fragment Offset: 362
+                #   M Flag         : 1 (more fragments follow)
+                #   Identification : 0x00000001
+                #
+                # Summary: Mid-sequence fragment transports payload bytes 2896–4343, extending
+                #          the five-frame IPv6 transmission toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x05\xb0\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -346,6 +412,28 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33"
                 b"\x34\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32"
                 b"\x33\x34\x35\x36\x37\x38",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 1510 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x05b0 (1456 bytes)
+                #   Next Header    : 44 (Fragment)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # IPv6 Fragment Header (fragment F4)
+                #   Next Header    : 255 (No Next Header)
+                #   Fragment Offset: 543
+                #   M Flag         : 1 (more fragments follow)
+                #   Identification : 0x00000001
+                #
+                # Summary: Penultimate fragment keeps MF set while moving payload bytes
+                #          4344–5791 of the raw stream toward host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x05\xb0\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -441,6 +529,28 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36"
                 b"\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35"
                 b"\x36\x37\x38\x39\x30\x41",
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 1070 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x03f8 (1016 bytes)
+                #   Next Header    : 44 (Fragment)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # IPv6 Fragment Header (fragment F5)
+                #   Next Header    : 255 (No Next Header)
+                #   Fragment Offset: 724
+                #   M Flag         : 0 (no more fragments)
+                #   Identification : 0x00000001
+                #
+                # Summary: Final fragment clears MF and delivers payload bytes 5792–6799 so
+                #          host A can complete reassembly of the raw payload.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x03\xf8\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
