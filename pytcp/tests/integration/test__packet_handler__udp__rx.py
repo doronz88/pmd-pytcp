@@ -49,6 +49,32 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv4/UDP to closed port",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 77 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x003f (63 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x644c
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x002b (43 bytes)
+                #   Checksum        : 0xa210
+                #   Payload         : "Test UDP packet sent to closed port"
+                #
+                # Summary: UDP datagram from host A to an unopened port on the stack.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x3f\x00\x01\x00\x00\x40\x11\x64\x4c\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x03\xe8\x07\xd0\x00\x2b\xa2\x10\x54\x65\x73\x74\x20\x55"
@@ -56,6 +82,32 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x6f\x20\x63\x6c\x6f\x73\x65\x64\x20\x70\x6f\x72\x74",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 105 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x005b (91 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 1 (ICMP)
+                #   Header Checksum : 0x6441
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # ICMPv4
+                #   Type / Code     : 3 / 3 (Destination Unreachable - Port Unreachable)
+                #   Checksum        : 0x139b
+                #   Unused          : 0x00000000
+                #   Quoted IP Header: Original IPv4 header + first 8 bytes of UDP payload
+                #
+                # Summary: ICMPv4 Port Unreachable generated in response to the closed-port
+                #          UDP probe.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x5b\x00\x00\x00\x00\x40\x01\x64\x41\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\x03\x13\x9b\x00\x00\x00\x00\x45\x00\x00\x3f\x00\x01"
@@ -86,6 +138,28 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv6/UDP to closed port",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 97 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x002b (43 bytes)
+                #   Next Header    : 17 (UDP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : 2001:db8:0:1::7
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x002b (43 bytes)
+                #   Checksum        : 0x5c66
+                #   Payload         : "Test UDP packet sent to closed port"
+                #
+                # Summary: IPv6 UDP probe targeting an unopened port.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x2b\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -95,6 +169,27 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x74",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 145 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x005b (91 bytes)
+                #   Next Header    : 58 (ICMPv6)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # ICMPv6
+                #   Type / Code     : 1 / 4 (Destination Unreachable - Port Unreachable)
+                #   Checksum        : 0x312b
+                #   Assembled Data  : Original IPv6 header + first 8 bytes of UDP payload
+                #
+                # Summary: ICMPv6 Port Unreachable response quoting the triggering UDP
+                #          packet.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x5b\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -128,12 +223,64 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv4/UDP Echo",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 53 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0027 (39 bytes)
+                #   Identification  : 0x0001
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x6464
+                #   Source IP       : 10.0.1.91
+                #   Destination IP  : 10.0.1.7
+                #
+                # UDP
+                #   Source Port     : 5527
+                #   Destination Port: 7 (Echo)
+                #   Length          : 0x0013 (19 bytes)
+                #   Checksum        : 0x813f
+                #   Payload         : "Tom Tit Tot"
+                #
+                # Summary: UDP echo request arriving from host A.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x27\x00\x01\x00\x00\x40\x11\x64\x64\x0a\x00\x01\x5b\x0a\x00"
                 b"\x01\x07\x15\x97\x00\x07\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
                 b"\x74\x20\x54\x6f\x74",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 53 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x0027 (39 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x6465
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # UDP
+                #   Source Port     : 7
+                #   Destination Port: 5527
+                #   Length          : 0x0013 (19 bytes)
+                #   Checksum        : 0x813f
+                #   Payload         : "Tom Tit Tot"
+                #
+                # Summary: UDP echo reply mirroring the original payload back to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x27\x00\x00\x00\x00\x40\x11\x64\x65\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x07\x15\x97\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
@@ -161,6 +308,28 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         {
             "_description": "Ethernet/IPv6/UDP Echo",
             "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 73 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0013 (19 bytes)
+                #   Next Header    : 17 (UDP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::91
+                #   Destination IP : 2001:db8:0:1::7
+                #
+                # UDP
+                #   Source Port     : 5527
+                #   Destination Port: 7
+                #   Length          : 0x0013 (19 bytes)
+                #   Checksum        : 0x3b95
+                #   Payload         : "Tom Tit Tot"
+                #
+                # Summary: IPv6 UDP echo request from host A.
                 b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x13\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -168,6 +337,28 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x6d\x20\x54\x69\x74\x20\x54\x6f\x74",
             ],
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 73 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0013 (19 bytes)
+                #   Next Header    : 17 (UDP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # UDP
+                #   Source Port     : 7
+                #   Destination Port: 5527
+                #   Length          : 0x0013 (19 bytes)
+                #   Checksum        : 0x3b95
+                #   Payload         : "Tom Tit Tot"
+                #
+                # Summary: IPv6 UDP echo reply returning the payload to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x13\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"

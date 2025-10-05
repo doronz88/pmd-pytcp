@@ -63,6 +63,32 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__dport": 2000,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 42 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x001c (28 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x6470
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x0008 (8 bytes)
+                #   Checksum        : 0xddc4
+                #
+                # Summary: Minimal UDP datagram with no payload transmitted from the stack
+                #          host to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x1c\x00\x00\x00\x00\x40\x11\x64\x70\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x08\xdd\xc4"
@@ -90,6 +116,33 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__payload": b"01234567890ABCDEF" * 50,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 892 bytes
+                #
+                # IPv4
+                #   Version / IHL    : 4 / 5
+                #   DSCP / ECN      : 0x00
+                #   Total Length    : 0x036e (878 bytes)
+                #   Identification  : 0x0000
+                #   Flags / Offset  : 0x0000
+                #   TTL             : 64
+                #   Protocol        : 17 (UDP)
+                #   Header Checksum : 0x611e
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x035a (858 bytes)
+                #   Checksum        : 0xf53e
+                #   Payload         : 850 bytes ("01234567890ABCDEF" repeated)
+                #
+                # Summary: Large IPv4 UDP payload example, carrying the generated raw data
+                #          towards host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x03\x6e\x00\x00\x00\x00\x40\x11\x61\x1e\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x03\x5a\xf5\x3e\x30\x31\x32\x33\x34\x35"
@@ -169,6 +222,27 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__dport": 2000,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 62 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x0008 (8 bytes)
+                #   Next Header    : 17 (UDP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x0008
+                #   Checksum        : 0x981a
+                #
+                # Summary: Minimal IPv6 UDP datagram with no payload sent to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x08\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
@@ -197,6 +271,29 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__payload": b"01234567890ABCDEF" * 50,
             },
             "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 912 bytes
+                #
+                # IPv6
+                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
+                #   Payload Length : 0x035a (858 bytes)
+                #   Next Header    : 17 (UDP)
+                #   Hop Limit      : 64
+                #   Source IP      : 2001:db8:0:1::7
+                #   Destination IP : 2001:db8:0:1::91
+                #
+                # UDP
+                #   Source Port     : 1000
+                #   Destination Port: 2000
+                #   Length          : 0x035a (858 bytes)
+                #   Checksum        : 0xaf94
+                #   Payload         : 850 bytes ("01234567890ABCDEF" repeated)
+                #
+                # Summary: IPv6 UDP payload counterpart matching the IPv4 large-payload
+                #          scenario.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
                 b"\x00\x00\x03\x5a\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
