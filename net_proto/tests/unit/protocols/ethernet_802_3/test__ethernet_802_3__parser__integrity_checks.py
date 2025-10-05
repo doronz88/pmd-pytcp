@@ -54,7 +54,16 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                 "The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' " "constant."
             ),
             "_args": [
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00",
+                (
+                    # Ethernet 802.3
+                    #   Destination MAC : 11:22:33:44:55:66
+                    #   Source MAC      : 77:88:99:aa:bb:cc
+                    #   Length          : 0x0000 (truncated header)
+                    #   Frame length    : 13 bytes (< 14-byte header minimum)
+                    #
+                    #   Summary         : Header cut short by one byte.
+                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -65,10 +74,19 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
             },
         },
         {
-            "_description": ("The 'dlen' field value is different than the actual payload length."),
+            "_description": "The 'dlen' field value is different than the actual payload length.",
             "_args": [
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
-                b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47",
+                (
+                    # Ethernet 802.3
+                    #   Destination MAC : 11:22:33:44:55:66
+                    #   Source MAC      : 77:88:99:aa:bb:cc
+                    #   Length          : 0x0010 (16 bytes)
+                    #   Payload bytes   : 17
+                    #
+                    #   Summary         : Declared length 16 bytes but frame carries 17-byte payload.
+                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
+                    b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -81,8 +99,17 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "Ethernet 802.3 packet (III).",
             "_args": [
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
-                + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1),
+                (
+                    # Ethernet 802.3
+                    #   Destination MAC : a1:b2:c3:d4:e5:f6
+                    #   Source MAC      : 11:12:13:14:15:16
+                    #   Length          : 0x05dd (1501 bytes)
+                    #   Payload bytes   : 1501 (> 1500 maximum)
+                    #
+                    #   Summary         : Frame exceeds Ethernet 802.3 maximum payload size.
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
+                    + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1)
+                ),
             ],
             "_kwargs": {},
             "_results": {
