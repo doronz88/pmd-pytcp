@@ -75,6 +75,17 @@ from net_proto.lib.buffer import Buffer
                     "tha=MacAddress('0a:0b:0c:0d:0e:0f'), tpa=Ip4Address('101.102.103.104')))"
                 ),
                 "__bytes__": (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103.104
+                    #
+                    #   Summary       : Unicast ARP request — "Who has 101.102.103.104? Tell 11.22.33.44."
                     b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
                     b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
                 ),
@@ -116,6 +127,17 @@ from net_proto.lib.buffer import Buffer
                     "tha=MacAddress('7a:7b:7c:7d:7e:7f'), tpa=Ip4Address('7.7.7.7')))"
                 ),
                 "__bytes__": (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : a1:b2:c3:d4:e5:f6
+                    #   Sender IP     : 5.5.5.5
+                    #   Target MAC    : 7a:7b:7c:7d:7e:7f
+                    #   Target IP     : 7.7.7.7
+                    #
+                    #   Summary       : Unicast ARP reply — "5.5.5.5 is at a1:b2:c3:d4:e5:f6."
                     b"\x00\x01\x08\x00\x06\x04\x00\x02\xa1\xb2\xc3\xd4\xe5\xf6\x05\x05"
                     b"\x05\x05\x7a\x7b\x7c\x7d\x7e\x7f\x07\x07\x07\x07"
                 ),

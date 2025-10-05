@@ -49,8 +49,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'prlen' field is incorrect.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x00\x02\x00\x00\x00\x00\x91\x0a\x00"
-                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 0 (invalid)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 10.0.1.91
+                    #   Target MAC    : 00:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : Malformed ARP header with undefined operation code 0.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x00\x02\x00\x00\x00\x00\x91\x0a\x00"
+                    b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -60,8 +73,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SHA address is unspecified.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 00:00:00:00:00:00
+                    #   Sender IP     : 0.0.0.0
+                    #   Target MAC    : 00:00:00:00:00:00
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Request with unspecified sender MAC address.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"
+                    b"\x00\x00\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -71,8 +97,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SHA address is multicast.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x00\x5e\x00\x00\x01\x0a\x00"
-                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:00:5e:00:00:01
+                    #   Sender IP     : 10.0.1.91
+                    #   Target MAC    : 00:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Request sent from multicast MAC address.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x00\x5e\x00\x00\x01\x0a\x00"
+                    b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -82,8 +121,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SHA address is broadcast.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\xff\xff\xff\xff\xff\xff\x0a\x00"
-                b"\x01\x5b\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : ff:ff:ff:ff:ff:ff
+                    #   Sender IP     : 10.0.1.91
+                    #   Target MAC    : 00:00:00:00:00:00
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Request claiming broadcast MAC as sender.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x01\xff\xff\xff\xff\xff\xff\x0a\x00"
+                    b"\x01\x5b\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -93,8 +145,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SPA field is unspecified in ARP Reply.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x00\x00"
-                b"\x00\x00\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 0.0.0.0
+                    #   Target MAC    : 02:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Reply advertising unspecified sender IPv4 address.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x00\x00"
+                    b"\x00\x00\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -105,8 +170,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SPA address is multicast.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\xe0\x00"
-                b"\x00\x01\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 224.0.0.1
+                    #   Target MAC    : 02:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Reply advertising multicast sender IPv4 address.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\xe0\x00"
+                    b"\x00\x01\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {"error_message": "The 'spa' field value 224.0.0.1 must not be a " "multicast IPv4 address."},
@@ -114,8 +192,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SPA address is broadcast.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\xff\xff"
-                b"\xff\xff\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 255.255.255.255
+                    #   Target MAC    : 02:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Reply claiming limited broadcast sender IP address.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\xff\xff"
+                    b"\xff\xff\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -126,8 +217,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The SHA address doesn't match the Ethernet source address.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00"
-                b"\x01\x5b\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 10.0.1.91
+                    #   Target MAC    : 02:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : ARP Reply with sender MAC differing from Ethernet frame source.
+                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00"
+                    b"\x01\x5b\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {

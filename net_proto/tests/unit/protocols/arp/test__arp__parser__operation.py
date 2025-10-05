@@ -47,8 +47,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "ARP Request.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00"
-                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 02:00:00:00:00:91
+                    #   Sender IP     : 10.0.1.91
+                    #   Target MAC    : 00:00:00:00:00:07
+                    #   Target IP     : 10.0.1.7
+                    #
+                    #   Summary       : Unicast ARP request — "Who has 10.0.1.7? Tell 10.0.1.91."
+                    b"\x00\x01\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00"
+                    b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -64,8 +77,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "ARP Reply.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00"
-                b"\x01\x07\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 2 (Reply)
+                    #   Sender MAC    : 02:00:00:00:00:07
+                    #   Sender IP     : 10.0.1.7
+                    #   Target MAC    : 02:00:00:00:00:91
+                    #   Target IP     : 10.0.1.91
+                    #
+                    #   Summary       : Unicast ARP reply — "10.0.1.7 is at 02:00:00:00:00:07."
+                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00"
+                    b"\x01\x07\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                ),
             ],
             "_kwargs": {},
             "_results": {

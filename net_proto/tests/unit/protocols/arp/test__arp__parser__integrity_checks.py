@@ -46,8 +46,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": ("The frame length is less than the value of the 'ARP__HEADER__LEN' constant."),
             "_args": [
-                b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103 (truncated; missing one octet)
+                    #
+                    #   Summary       : Header cut short at 27 bytes (< 28-byte minimum).
+                    b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
+                    b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -59,8 +72,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'hrtype' field is incorrect.",
             "_args": [
-                b"\x00\x00\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 0 (unknown)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103.104
+                    #
+                    #   Summary       : Invalid hardware type triggers integrity error.
+                    b"\x00\x00\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
+                    b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -73,8 +99,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'prtype' field is incorrect.",
             "_args": [
-                b"\x00\x01\x00\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0000 (unknown)
+                    #   HLEN / PLEN   : 6 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103.104
+                    #
+                    #   Summary       : Invalid protocol type triggers integrity error.
+                    b"\x00\x01\x00\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
+                    b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -86,8 +125,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'hrlen' field is incorrect.",
             "_args": [
-                b"\x00\x01\x08\x00\x00\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 0 / 4
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103.104
+                    #
+                    #   Summary       : Hardware length field cleared (0) instead of 6.
+                    b"\x00\x01\x08\x00\x00\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
+                    b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
+                ),
             ],
             "_kwargs": {},
             "_results": {
@@ -97,8 +149,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": "The value of the 'prlen' field is incorrect.",
             "_args": [
-                b"\x00\x01\x08\x00\x06\x00\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
-                b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68",
+                (
+                    # ARP (Ethernet/IPv4)
+                    #   Hardware type : 1 (Ethernet)
+                    #   Protocol type : 0x0800 (IPv4)
+                    #   HLEN / PLEN   : 6 / 0
+                    #   Operation     : 1 (Request)
+                    #   Sender MAC    : 01:02:03:04:05:06
+                    #   Sender IP     : 11.22.33.44
+                    #   Target MAC    : 0a:0b:0c:0d:0e:0f
+                    #   Target IP     : 101.102.103.104
+                    #
+                    #   Summary       : Protocol length field cleared (0) instead of 4.
+                    b"\x00\x01\x08\x00\x06\x00\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
+                    b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
+                ),
             ],
             "_kwargs": {},
             "_results": {
