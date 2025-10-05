@@ -62,6 +62,13 @@ from net_proto.lib.buffer import Buffer
                     "payload=RawAssembler(raw__payload=b'0123456789ABCDEF'))"
                 ),
                 "__bytes__": (
+                    # Ethernet II
+                    #   Destination MAC : 11:22:33:44:55:66
+                    #   Source MAC      : 77:88:99:aa:bb:cc
+                    #   Ethertype       : 0xffff (Raw)
+                    #   Payload length  : 16 bytes
+                    #
+                    #   Summary         : Unicast Ethernet II frame carrying 16-byte Raw payload.
                     b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xff\xff\x30\x31"
                     b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -92,7 +99,16 @@ from net_proto.lib.buffer import Buffer
                     "src=MacAddress('11:12:13:14:15:16'), type=<EtherType.RAW: 65535>), "
                     f"payload=RawAssembler(raw__payload=b'{"X" * 1500}'))"
                 ),
-                "__bytes__": (b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500),
+                "__bytes__": (
+                    # Ethernet II
+                    #   Destination MAC : a1:b2:c3:d4:e5:f6
+                    #   Source MAC      : 11:12:13:14:15:16
+                    #   Ethertype       : 0xffff (Raw)
+                    #   Payload length  : 1500 bytes
+                    #
+                    #   Summary         : Unicast Ethernet II frame carrying 1500-byte Raw payload.
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500
+                ),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "src": MacAddress("11:12:13:14:15:16"),
                 "type": EtherType.RAW,

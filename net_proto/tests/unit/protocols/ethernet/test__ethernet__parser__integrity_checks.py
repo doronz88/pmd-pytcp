@@ -51,7 +51,16 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         {
             "_description": ("The frame length is less than the value of the 'ETHERNET__HEADER__LEN' constant."),
             "_args": [
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff",
+                (
+                    # Ethernet II
+                    #   Destination MAC : a1:b2:c3:d4:e5:f6
+                    #   Source MAC      : 11:12:13:14:15:16
+                    #   Ethertype       : 0xffff (Raw)
+                    #   Frame length    : 13 bytes (< 14-byte header minimum)
+                    #
+                    #   Summary         : Truncated frame missing one byte of the Ethernet header.
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff"
+                ),
             ],
             "_kwargs": {},
             "_results": {
