@@ -49,7 +49,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": "ICMP6 Echo Reply message, empty data.",
-            "_args": [b"\x81\x00\x7a\x94\x30\x39\xd4\x31"],
+            "_args": [
+                # ICMPv6 Echo Reply
+                #   Type     : 129 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x7a94
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Echo reply matching request ID 12345/seq 54321, empty payload.
+                b"\x81\x00\x7a\x94\x30\x39\xd4\x31"
+            ],
             "_mocked_values": {},
             "_results": {
                 "message": Icmp6MessageEchoReply(
@@ -63,7 +74,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMP6 Echo Reply message, non-empty data.",
             "_args": [
-                b"\x81\x00\xab\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                # ICMPv6 Echo Reply
+                #   Type     : 129 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xabbd
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 16 bytes ("0123456789ABCDEF")
+                #
+                #   Summary  : Echo reply carrying 16-byte payload from original request.
+                b"\x81\x00\xab\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
+                b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_mocked_values": {},
             "_results": {
@@ -77,7 +98,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMP6 Echo Reply message, maximum length of data.",
-            "_args": [b"\x81\x00\x32\x57\x2b\x67\x56\xce" + b"X" * 65527],
+            "_args": [
+                # ICMPv6 Echo Reply
+                #   Type     : 129 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x3257
+                #   Identifier: 11111
+                #   Sequence : 22222
+                #   Data len : 65527 bytes ("X" * 65527)
+                #
+                #   Summary  : Echo reply at maximum IPv6 payload size (65527 bytes).
+                b"\x81\x00\x32\x57\x2b\x67\x56\xce"
+                + b"X" * 65527
+            ],
             "_mocked_values": {},
             "_results": {
                 "message": Icmp6MessageEchoReply(

@@ -64,7 +64,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.NO_ROUTE: 0>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x00\xfe\xff\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 0 (No Route)
+                    #   Checksum : 0xfeff
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : IPv6 host indicates no route to destination.
+                    b"\x01\x00\xfe\xff\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
                 "cksum": 0,
@@ -86,7 +95,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.PROHIBITED: 1>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x01\xfe\xfe\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 1 (Administratively Prohibited)
+                    #   Checksum : 0xfefe
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Traffic administratively prohibited to destination.
+                    b"\x01\x01\xfe\xfe\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.PROHIBITED,
                 "cksum": 0,
@@ -108,7 +126,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.SCOPE: 2>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x02\xfe\xfd\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 2 (Beyond Scope)
+                    #   Checksum : 0xfefd
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Destination beyond scope of source address.
+                    b"\x01\x02\xfe\xfd\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.SCOPE,
                 "cksum": 0,
@@ -130,7 +157,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.ADDRESS: 3>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x03\xfe\xfc\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 3 (Address Unreachable)
+                    #   Checksum : 0xfefc
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Destination address unreachable for the source.
+                    b"\x01\x03\xfe\xfc\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.ADDRESS,
                 "cksum": 0,
@@ -152,7 +188,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x04\xfe\xfb\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 4 (Port Unreachable)
+                    #   Checksum : 0xfefb
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Target transport port unreachable.
+                    b"\x01\x04\xfe\xfb\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "cksum": 0,
@@ -174,7 +219,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.FAILED_POLICY: 5>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x05\xfe\xfa\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 5 (Source Failed Policy)
+                    #   Checksum : 0xfefa
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Source address failed ingress/egress policy.
+                    b"\x01\x05\xfe\xfa\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.FAILED_POLICY,
                 "cksum": 0,
@@ -196,7 +250,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.REJECT_ROUTE: 6>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x06\xfe\xf9\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 6 (Reject Route)
+                    #   Checksum : 0xfef9
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Router rejects route to destination.
+                    b"\x01\x06\xfe\xf9\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.REJECT_ROUTE,
                 "cksum": 0,
@@ -218,7 +281,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER: 7>, cksum=0, "
                     "data=b'')"
                 ),
-                "__bytes__": b"\x01\x07\xfe\xf8\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 7 (Error in Source Routing Header)
+                    #   Checksum : 0xfef8
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Error processing IPv6 source routing header.
+                    b"\x01\x07\xfe\xf8\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER,
                 "cksum": 0,
@@ -241,6 +313,13 @@ from net_proto.lib.buffer import Buffer
                     "data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 4 (Port Unreachable)
+                    #   Checksum : 0x3025
+                    #   Data len : 16 bytes ("0123456789ABCDEF")
+                    #
+                    #   Summary  : Port unreachable message carrying 16-byte offending payload.
                     b"\x01\x04\x30\x25\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -265,7 +344,16 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
                     f"data=b'{"X" * 1232}')"
                 ),
-                "__bytes__": b"\x01\x04\x6a\x67\x00\x00\x00\x00" + b"X" * 1232,
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 4 (Port Unreachable)
+                    #   Checksum : 0x6a67
+                    #   Data len : 1232 bytes ("X" * 1232)
+                    #
+                    #   Summary  : Port unreachable message with maximum captured payload.
+                    b"\x01\x04\x6a\x67\x00\x00\x00\x00" + b"X" * 1232
+                ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "cksum": 0,

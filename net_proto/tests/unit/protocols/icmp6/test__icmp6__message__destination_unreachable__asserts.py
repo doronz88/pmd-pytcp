@@ -164,5 +164,5 @@ class TestIcmp6MessageDestinationUnreachableParserAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'type' field must be <Icmp6Type.DESTINATION_UNREACHABLE: 1>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
+            "The 'type' field must be <Icmp6Type.DESTINATION_UNREACHABLE: 1>. Got: <Icmp6Type.UNKNOWN_255: 255>",
         )

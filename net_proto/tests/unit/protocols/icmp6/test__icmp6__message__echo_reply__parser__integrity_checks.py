@@ -48,7 +48,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Reply message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [b"\x81\x00\xfb"],
+            "_args": [
+                (
+                    # ICMPv6 Echo Reply
+                    #   Type     : 129 (Echo Reply)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0xfb?? (truncated)
+                    #   Frame len: 3 bytes (< 4-byte minimum header)
+                    #
+                    #   Summary  : Frame shorter than ICMPv6 header length.
+                    b"\x81\x00\xfb"
+                ),
+            ],
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -64,7 +75,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Reply message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [b"\x81\x00\xfb\x94\x30\x39\xd4"],
+            "_args": [
+                (
+                    # ICMPv6 Echo Reply
+                    #   Type     : 129 (Echo Reply)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0xfb94
+                    #   Identifier: 12345 (partial)
+                    #   Sequence : 54321 (truncated)
+                    #   Frame len: 7 bytes (< 8-byte minimum header)
+                    #
+                    #   Summary  : Declared payload exceeds available frame length.
+                    b"\x81\x00\xfb\x94\x30\x39\xd4"
+                ),
+            ],
             "_mocked_values": {
                 "ip6__dlen": 8,
             },
@@ -80,7 +104,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Reply message, " "the 'ICMP6__ECHO_REPLY__LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [b"\x81\x00\xfb\x94\x30\x39\xd4"],
+            "_args": [
+                (
+                    # ICMPv6 Echo Reply
+                    #   Type     : 129 (Echo Reply)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0xfb94
+                    #   Identifier: 12345 (partial)
+                    #   Sequence : 54321 (truncated)
+                    #   Frame len: 7 bytes (< 8-byte minimum message)
+                    #
+                    #   Summary  : Payload shorter than Echo Reply minimum length.
+                    b"\x81\x00\xfb\x94\x30\x39\xd4"
+                ),
+            ],
             "_mocked_values": {
                 "ip6__dlen": 7,
             },
@@ -94,7 +131,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 Echo Request message, invalid checksum.",
-            "_args": [b"\x81\x00\x00\x00\x30\x39\xd4\x31"],
+            "_args": [
+                (
+                    # ICMPv6 Echo Reply
+                    #   Type     : 129 (Echo Reply)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0x0000 (invalid)
+                    #   Identifier: 12345
+                    #   Sequence : 54321
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Header checksum field set to zero (invalid).
+                    b"\x81\x00\x00\x00\x30\x39\xd4\x31"
+                ),
+            ],
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
