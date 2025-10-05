@@ -50,7 +50,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMPv4 Destination Unreachable (Network) message.",
-            "_args": [b"\x03\x00\xfc\xff\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 0 (Network)
+                    #   Checksum : 0xfcff
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Network unreachable notification with empty payload.
+                    b"\x03\x00\xfc\xff\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK,
@@ -61,7 +73,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host) message.",
-            "_args": [b"\x03\x01\xfc\xfe\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 1 (Host)
+                    #   Checksum : 0xfcfe
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Host unreachable notification with empty payload.
+                    b"\x03\x01\xfc\xfe\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST,
@@ -72,7 +96,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Protocol) message.",
-            "_args": [b"\x03\x02\xfc\xfd\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 2 (Protocol)
+                    #   Checksum : 0xfcfd
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Protocol unreachable notification with empty payload.
+                    b"\x03\x02\xfc\xfd\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PROTOCOL,
@@ -83,7 +119,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Port) message.",
-            "_args": [b"\x03\x03\xfc\xfc\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 3 (Port)
+                    #   Checksum : 0xfcfc
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Port unreachable notification with empty payload.
+                    b"\x03\x03\xfc\xfc\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
@@ -94,7 +142,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Fragmentation Needed) message.",
-            "_args": [b"\x03\x04\xf8\x4b\x00\x00\x04\xb0"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 4 (Fragmentation Needed)
+                    #   Checksum : 0xf84b
+                    #   Next-Hop : 0x000004b0 (MTU 1200)
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Fragmentation needed notification with MTU set to 1200.
+                    b"\x03\x04\xf8\x4b\x00\x00\x04\xb0"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
@@ -106,7 +166,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Source Route Failed) message.",
-            "_args": [b"\x03\x05\xfc\xfa\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 5 (Source Route Failed)
+                    #   Checksum : 0xfcfa
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Source route failed notification with empty payload.
+                    b"\x03\x05\xfc\xfa\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_ROUTE_FAILED,
@@ -117,7 +189,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network Unknown) message.",
-            "_args": [b"\x03\x06\xfc\xf9\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 6 (Network Unknown)
+                    #   Checksum : 0xfcf9
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Network unknown notification with empty payload.
+                    b"\x03\x06\xfc\xf9\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_UNKNOWN,
@@ -128,7 +212,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Unknown) message.",
-            "_args": [b"\x03\x07\xfc\xf8\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 7 (Host Unknown)
+                    #   Checksum : 0xfcf8
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Host unknown notification with empty payload.
+                    b"\x03\x07\xfc\xf8\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_UNKNOWN,
@@ -139,7 +235,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Source Host Isolated) message.",
-            "_args": [b"\x03\x08\xfc\xf7\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 8 (Source Host Isolated)
+                    #   Checksum : 0xfcf7
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Source host isolated notification with empty payload.
+                    b"\x03\x08\xfc\xf7\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_HOST_ISOLATED,
@@ -150,7 +258,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network Prohibited) message.",
-            "_args": [b"\x03\x09\xfc\xf6\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 9 (Network Prohibited)
+                    #   Checksum : 0xfcf6
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Network administratively prohibited notification.
+                    b"\x03\x09\xfc\xf6\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_PROHIBITED,
@@ -161,7 +281,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Prohibited) message.",
-            "_args": [b"\x03\x0a\xfc\xf5\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 10 (Host Prohibited)
+                    #   Checksum : 0xfcf5
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Host administratively prohibited notification.
+                    b"\x03\x0a\xfc\xf5\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PROHIBITED,
@@ -172,7 +304,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network TOS) message.",
-            "_args": [b"\x03\x0b\xfc\xf4\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 11 (Network TOS)
+                    #   Checksum : 0xfcf4
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Network TOS unreachable notification with empty payload.
+                    b"\x03\x0b\xfc\xf4\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_TOS,
@@ -183,7 +327,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host TOS) message.",
-            "_args": [b"\x03\x0c\xfc\xf3\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 12 (Host TOS)
+                    #   Checksum : 0xfcf3
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Host TOS unreachable notification with empty payload.
+                    b"\x03\x0c\xfc\xf3\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_TOS,
@@ -194,7 +350,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Communication Prohibited) message.",
-            "_args": [b"\x03\x0d\xfc\xf2\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 13 (Communication Prohibited)
+                    #   Checksum : 0xfcf2
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Communication administratively prohibited notification.
+                    b"\x03\x0d\xfc\xf2\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.COMMUNICATION_PROHIBITED,
@@ -205,7 +373,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Precedence) message.",
-            "_args": [b"\x03\x0e\xfc\xf1\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 14 (Host Precedence)
+                    #   Checksum : 0xfcf1
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Host precedence violation notification with empty payload.
+                    b"\x03\x0e\xfc\xf1\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PRECEDENCE,
@@ -216,7 +396,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Precedence Cutoff) message.",
-            "_args": [b"\x03\x0f\xfc\xf0\x00\x00\x00\x00"],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 15 (Precedence Cutoff)
+                    #   Checksum : 0xfcf0
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Precedence cutoff in effect notification with empty payload.
+                    b"\x03\x0f\xfc\xf0\x00\x00\x00\x00"
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PRECEDENCE_CUTOFF,
@@ -228,7 +420,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         {
             "_description": "ICMPv4 Destination Unreachable message, non-empty payload.",
             "_args": [
-                b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 3 (Port)
+                    #   Checksum : 0x2e26
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 16 bytes ("0123456789ABCDEF")
+                    #
+                    #   Summary  : Port unreachable with 16-byte payload echoing offending packet.
+                    b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
+                    b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                )
             ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
@@ -240,7 +443,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Destination Unreachable message, maximum length payload.",
-            "_args": [b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548],
+            "_args": [
+                (
+                    # ICMPv4 Destination Unreachable
+                    #   Type     : 3 (Destination Unreachable)
+                    #   Code     : 3 (Port)
+                    #   Checksum : 0x6e6e
+                    #   Next-Hop : 0x00000000
+                    #   Data len : 548 bytes (max payload captured)
+                    #
+                    #   Summary  : Port unreachable carrying maximum-length payload fragment.
+                    b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548
+                )
+            ],
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,

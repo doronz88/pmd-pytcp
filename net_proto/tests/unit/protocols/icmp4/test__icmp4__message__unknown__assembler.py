@@ -61,7 +61,17 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp4Code.UNKNOWN_255: 255>, cksum=0, "
                     "data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": (b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42" b"\x43\x44\x45\x46"),
+                "__bytes__": (
+                    # ICMPv4 Unknown Message
+                    #   Type     : 255 (Unknown)
+                    #   Code     : 255 (Unknown)
+                    #   Checksum : 0x3129
+                    #   Data len : 16 bytes ("0123456789ABCDEF")
+                    #
+                    #   Summary  : Vendor-specific or unsupported ICMP message with 16-byte payload.
+                    b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
+                    b"\x43\x44\x45\x46"
+                ),
                 "type": Icmp4Type.from_int(255),
                 "code": Icmp4Code.from_int(255),
                 "cksum": 0,

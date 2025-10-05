@@ -249,5 +249,5 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'type' field must be <Icmp4Type.DESTINATION_UNREACHABLE: 3>. " "Got: <Icmp4Type.UNKNOWN_255: 255>"),
+            "The 'type' field must be <Icmp4Type.DESTINATION_UNREACHABLE: 3>. Got: <Icmp4Type.UNKNOWN_255: 255>",
         )

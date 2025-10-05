@@ -64,7 +64,18 @@ from net_proto.lib.buffer import Buffer
                     "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
                     "cksum=0, id=12345, seq=54321, data=b'')"
                 ),
-                "__bytes__": b"\x08\x00\xf3\x94\x30\x39\xd4\x31",
+                "__bytes__": (
+                    # ICMPv4 Echo Request
+                    #   Type     : 8 (Echo Request)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0xf394
+                    #   Identifier: 12345
+                    #   Sequence : 54321
+                    #   Data len : 0 bytes
+                    #
+                    #   Summary  : Ping request ID 12345/seq 54321 with no payload.
+                    b"\x08\x00\xf3\x94\x30\x39\xd4\x31"
+                ),
                 "type": Icmp4Type.ECHO_REQUEST,
                 "code": Icmp4EchoRequestCode.DEFAULT,
                 "cksum": 0,
@@ -89,6 +100,15 @@ from net_proto.lib.buffer import Buffer
                     "cksum=0, id=12345, seq=54321, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
+                    # ICMPv4 Echo Request
+                    #   Type     : 8 (Echo Request)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0x24be
+                    #   Identifier: 12345
+                    #   Sequence : 54321
+                    #   Data len : 16 bytes ("0123456789ABCDEF")
+                    #
+                    #   Summary  : Ping request ID 12345/seq 54321 carrying 16-byte payload.
                     b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -115,7 +135,18 @@ from net_proto.lib.buffer import Buffer
                     "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
                     f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65507}')"
                 ),
-                "__bytes__": (b"\x08\x00\x1e\xcb\x2b\x67\x56\xce" + b"X" * 65507),
+                "__bytes__": (
+                    # ICMPv4 Echo Request
+                    #   Type     : 8 (Echo Request)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0x1ecb
+                    #   Identifier: 11111
+                    #   Sequence : 22222
+                    #   Data len : 65507 bytes ("X" * 65507)
+                    #
+                    #   Summary  : Ping request at maximum payload size (65507 bytes).
+                    b"\x08\x00\x1e\xcb\x2b\x67\x56\xce" + b"X" * 65507
+                ),
                 "type": Icmp4Type.ECHO_REQUEST,
                 "code": Icmp4EchoRequestCode.DEFAULT,
                 "cksum": 0,
