@@ -267,7 +267,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                     #   Data len : 1232 bytes ("X" * 1232)
                     #
                     #   Summary  : Port unreachable message with maximum captured payload.
-                    b"\x01\x04\x6a\x67\x00\x00\x00\x00" + b"X" * 1232
+                    b"\x01\x04\x6a\x67\x00\x00\x00\x00"
+                    + b"X" * 1232
                 )
             ],
             "mocked_values": {},

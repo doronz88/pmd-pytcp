@@ -352,7 +352,8 @@ from net_proto.lib.buffer import Buffer
                     #   Data len : 1232 bytes ("X" * 1232)
                     #
                     #   Summary  : Port unreachable message with maximum captured payload.
-                    b"\x01\x04\x6a\x67\x00\x00\x00\x00" + b"X" * 1232
+                    b"\x01\x04\x6a\x67\x00\x00\x00\x00"
+                    + b"X" * 1232
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
                 "code": Icmp6DestinationUnreachableCode.PORT,

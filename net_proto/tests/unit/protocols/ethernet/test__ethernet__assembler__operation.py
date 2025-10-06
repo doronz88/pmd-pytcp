@@ -107,7 +107,8 @@ from net_proto.lib.buffer import Buffer
                     #   Payload length  : 1500 bytes
                     #
                     #   Summary         : Unicast Ethernet II frame carrying 1500-byte Raw payload.
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
+                    + b"X" * 1500
                 ),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "src": MacAddress("11:12:13:14:15:16"),

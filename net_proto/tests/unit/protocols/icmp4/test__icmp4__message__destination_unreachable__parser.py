@@ -453,7 +453,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
                     #   Data len : 548 bytes (max payload captured)
                     #
                     #   Summary  : Port unreachable carrying maximum-length payload fragment.
-                    b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548
+                    b"\x03\x03\x6e\x6e\x00\x00\x00\x00"
+                    + b"X" * 548
                 )
             ],
             "_results": {

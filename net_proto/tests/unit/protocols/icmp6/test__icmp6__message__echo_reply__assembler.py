@@ -145,7 +145,8 @@ from net_proto.lib.buffer import Buffer
                     #   Data len : 65527 bytes ("X" * 65527)
                     #
                     #   Summary  : Echo reply at maximum IPv6 payload size (65527 bytes).
-                    b"\x81\x00\x32\x57\x2b\x67\x56\xce" + b"X" * 65527
+                    b"\x81\x00\x32\x57\x2b\x67\x56\xce"
+                    + b"X" * 65527
                 ),
                 "type": Icmp6Type.ECHO_REPLY,
                 "code": Icmp6EchoReplyCode.DEFAULT,

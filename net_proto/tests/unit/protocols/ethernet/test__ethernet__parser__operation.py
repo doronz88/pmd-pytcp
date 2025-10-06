@@ -80,7 +80,8 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
                     #   Payload length  : 1500 bytes
                     #
                     #   Summary         : Unicast Ethernet II frame carrying 1500-byte Raw payload.
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff" + b"X" * 1500
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
+                    + b"X" * 1500
                 ),
             ],
             "_kwargs": {},

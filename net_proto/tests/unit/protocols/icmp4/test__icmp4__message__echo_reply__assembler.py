@@ -145,7 +145,8 @@ from net_proto.lib.buffer import Buffer
                     #   Data len : 65507 bytes ("X" * 65507)
                     #
                     #   Summary  : Echo reply at maximum payload size (65507 bytes).
-                    b"\x00\x00\x26\xcb\x2b\x67\x56\xce" + b"X" * 65507
+                    b"\x00\x00\x26\xcb\x2b\x67\x56\xce"
+                    + b"X" * 65507
                 ),
                 "type": Icmp4Type.ECHO_REPLY,
                 "code": Icmp4EchoReplyCode.DEFAULT,

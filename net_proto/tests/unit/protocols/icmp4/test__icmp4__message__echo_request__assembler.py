@@ -145,7 +145,8 @@ from net_proto.lib.buffer import Buffer
                     #   Data len : 65507 bytes ("X" * 65507)
                     #
                     #   Summary  : Ping request at maximum payload size (65507 bytes).
-                    b"\x08\x00\x1e\xcb\x2b\x67\x56\xce" + b"X" * 65507
+                    b"\x08\x00\x1e\xcb\x2b\x67\x56\xce"
+                    + b"X" * 65507
                 ),
                 "type": Icmp4Type.ECHO_REQUEST,
                 "code": Icmp4EchoRequestCode.DEFAULT,

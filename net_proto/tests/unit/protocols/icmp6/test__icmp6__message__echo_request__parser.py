@@ -50,7 +50,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": "ICMPv6 Echo Request message, empty data.",
-            "_args": [b"\x80\x00\x7b\x94\x30\x39\xd4\x31"],
+            "_args": [
+                # ICMPv6 Echo Request
+                #   Type     : 128 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x7b94 (valid)
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Echo Request with empty data.
+                b"\x80\x00\x7b\x94\x30\x39\xd4\x31"
+            ],
             "_mocked_values": {},
             "_results": {
                 "message": Icmp6MessageEchoRequest(
@@ -64,7 +75,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         {
             "_description": "ICMPv6 Echo Request message, non-empty data.",
             "_args": [
-                b"\x80\x00\xac\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
+                # ICMPv6 Echo Request
+                #   Type     : 128 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xacbd (valid)
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 16 bytes ("0123456789ABCDEF")
+                #
+                #   Summary  : Echo Request with non-empty ASCII data.
+                b"\x80\x00\xac\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
+                b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ],
             "_mocked_values": {},
             "_results": {
@@ -78,7 +99,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 Echo Request message, maximum length of data.",
-            "_args": [b"\x80\x00\x33\x57\x2b\x67\x56\xce" + b"X" * 65527],
+            "_args": [
+                # ICMPv6 Echo Request
+                #   Type     : 128 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x3357 (valid)
+                #   Identifier: 11111
+                #   Sequence : 22222
+                #   Data len : 65527 bytes ("X" repeated)
+                #
+                #   Summary  : Echo Request with maximum-length data field.
+                b"\x80\x00\x33\x57\x2b\x67\x56\xce"
+                + b"X" * 65527
+            ],
             "_mocked_values": {},
             "_results": {
                 "message": Icmp6MessageEchoRequest(

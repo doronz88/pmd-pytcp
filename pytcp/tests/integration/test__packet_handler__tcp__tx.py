@@ -1081,7 +1081,7 @@ from pytcp.tests.lib.network_testcase import (
                 #   Acknowledgement : 0x00000000
                 #   Flags           : none set
                 #   Window          : 0x0000
-                #   Checksum        : 0x7986
+                #   Checksum        : 0x79b6
                 #   Urgent Pointer  : 0
                 #   Options         : NOP, Window Scale (value 14)
                 #
@@ -1090,7 +1090,7 @@ from pytcp.tests.lib.network_testcase import (
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
                 b"\x00\x2c\x00\x00\x00\x00\x40\x06\x64\x6b\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x00\x00\x00\x00\x00\x00\x00\x60\x00"
-                b"\x00\x00\x79\x86\x00\x00\x01\x03\x03\x0e"
+                b"\x00\x00\x79\xb6\x00\x00\x01\x03\x03\x0e"
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
             "_expected__packet_stats_tx": PacketStatsTx(

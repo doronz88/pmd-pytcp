@@ -602,7 +602,8 @@ from net_proto.lib.buffer import Buffer
                     #   Data len : 548 bytes
                     #
                     #   Summary  : Port unreachable carrying maximum-length payload (548 bytes).
-                    b"\x03\x03\x6e\x6e\x00\x00\x00\x00" + b"X" * 548
+                    b"\x03\x03\x6e\x6e\x00\x00\x00\x00"
+                    + b"X" * 548
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
                 "code": Icmp4DestinationUnreachableCode.PORT,
