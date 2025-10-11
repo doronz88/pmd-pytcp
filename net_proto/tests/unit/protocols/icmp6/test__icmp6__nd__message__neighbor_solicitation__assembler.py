@@ -54,7 +54,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 ND Neighbor Solicitation message, no options.",
-            "_args": [],
             "_kwargs": {
                 "target_address": Ip6Address("2001:db8::1"),
                 "options": Icmp6NdOptions(),
@@ -68,6 +67,15 @@ from net_proto.lib.buffer import Buffer
                     "=Ip6Address('2001:db8::1'))"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Neighbor Solicitation
+                    #   Type     : 135 (Neighbor Solicitation)
+                    #   Code     : 0
+                    #   Checksum : 0x4b45
+                    #   Reserved : 0x000000
+                    #   Target   : 2001:db8::1
+                    #   Options  : none
+                    #
+                    #   Summary  : NS probing for 2001:db8::1 without link-layer options.
                     b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x01"
                 ),
@@ -80,7 +88,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 ND Neighbor Solicitation message, Slla option present.",
-            "_args": [],
             "_kwargs": {
                 "target_address": Ip6Address("2001:db8::2"),
                 "options": Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55"))),
@@ -98,6 +105,15 @@ from net_proto.lib.buffer import Buffer
                     "'2001:db8::2'))"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Neighbor Solicitation
+                    #   Type     : 135 (Neighbor Solicitation)
+                    #   Code     : 0
+                    #   Checksum : 0xe3a9
+                    #   Reserved : 0x000000
+                    #   Target   : 2001:db8::2
+                    #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
+                    #
+                    #   Summary  : NS for 2001:db8::2 including source MAC 00:11:22:33:44:55.
                     b"\x87\x00\xe3\xa9\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
                 ),
@@ -116,7 +132,6 @@ class TestIcmp6NdMessageNeighborSolicitationAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -125,9 +140,7 @@ class TestIcmp6NdMessageNeighborSolicitationAssembler(TestCase):
         The ICMPv6 ND Neighbor Solicitation message assembler tests.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
-        )
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6NdMessageNeighborSolicitation(**self._kwargs))
 
     def test__icmp6__nd__message__neighbor_solicitation__assembler__len(
         self,

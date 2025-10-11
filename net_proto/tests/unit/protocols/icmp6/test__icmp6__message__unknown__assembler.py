@@ -51,7 +51,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 unknown message.",
-            "_args": [],
             "_kwargs": {
                 "type": Icmp6Type.from_int(255),
                 "code": Icmp6Code.from_int(255),
@@ -65,7 +64,17 @@ from net_proto.lib.buffer import Buffer
                     "code=<Icmp6Code.UNKNOWN_255: 255>, cksum=0, "
                     "data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": (b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42" b"\x43\x44\x45\x46"),
+                "__bytes__": (
+                    # ICMPv6 Unknown Message
+                    #   Type     : 255 (Unknown)
+                    #   Code     : 255 (Unknown)
+                    #   Checksum : 0x3129
+                    #   Data len : 16 bytes ("0123456789ABCDEF")
+                    #
+                    #   Summary  : Vendor-specific or unsupported ICMPv6 message with 16-byte payload.
+                    b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
+                    b"\x43\x44\x45\x46"
+                ),
                 "type": Icmp6Type.from_int(255),
                 "code": Icmp6Code.from_int(255),
                 "cksum": 0,
@@ -80,7 +89,6 @@ class TestIcmp6MessageUnknownAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -90,7 +98,7 @@ class TestIcmp6MessageUnknownAssembler(TestCase):
         arguments.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageUnknown(*self._args, **self._kwargs))
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageUnknown(**self._kwargs))
 
     def test__icmp6__message__unknown__assembler__len(self) -> None:
         """

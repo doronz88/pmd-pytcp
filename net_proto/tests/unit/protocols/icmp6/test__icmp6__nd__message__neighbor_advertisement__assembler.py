@@ -55,7 +55,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, no options.",
-            "_args": [],
             "_kwargs": {
                 "flag_r": True,
                 "flag_s": False,
@@ -72,6 +71,15 @@ from net_proto.lib.buffer import Buffer
                     "flag_s=False, flag_o=True, target_address=Ip6Address('2001:db8::1'))"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Neighbor Advertisement
+                    #   Type     : 136 (Neighbor Advertisement)
+                    #   Code     : 0
+                    #   Checksum : 0xaa44
+                    #   Flags    : R=1, S=0, O=1 (0xa0)
+                    #   Target   : 2001:db8::1
+                    #   Options  : none
+                    #
+                    #   Summary  : NA asserting router capability for 2001:db8::1 without options.
                     b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x01"
                 ),
@@ -87,7 +95,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, Slla option present.",
-            "_args": [],
             "_kwargs": {
                 "flag_r": False,
                 "flag_s": True,
@@ -108,6 +115,15 @@ from net_proto.lib.buffer import Buffer
                     "flag_o=False, target_address=Ip6Address('2001:db8::2'))"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Neighbor Advertisement
+                    #   Type     : 136 (Neighbor Advertisement)
+                    #   Code     : 0
+                    #   Checksum : 0xa2a9
+                    #   Flags    : R=0, S=1, O=0 (0x40)
+                    #   Target   : 2001:db8::2
+                    #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
+                    #
+                    #   Summary  : Solicited NA for 2001:db8::2 advertising source MAC 00:11:22:33:44:55.
                     b"\x88\x00\xa2\xa9\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
                 ),
@@ -129,7 +145,6 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -138,9 +153,7 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         The ICMPv6 ND Neighbor Advertisement message assembler tests.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageNeighborAdvertisement(*self._args, **self._kwargs)
-        )
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6NdMessageNeighborAdvertisement(**self._kwargs))
 
     def test__icmp6__nd__message__neighbor_advertisement__assembler__len(
         self,

@@ -46,10 +46,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 @parameterized_class(
     [
         {
-            "_description": ("The value of the 'ip6__hop' field must be 255. It's 64."),
-            "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_description": "The value of the 'ip6__hop' field must be 255. It's 64.",
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xaa44
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Router NA for 2001:db8::1 with hop-limit set incorrectly (64).
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 64,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -62,10 +73,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": ("The value of the 'ip6__hop' field must be 255. It's 255."),
-            "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_description": "The value of the 'ip6__hop' field must be 255. It's 255.",
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xaa44
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Same NA payload with correct hop-limit value 255.
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -74,10 +96,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": ("The value of the 'ip6__src' field must be unicast. " "It's multicast."),
-            "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_description": "The value of the 'ip6__src' field must be unicast. " "It's multicast.",
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xaa44
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : NA used to validate source address must not be multicast.
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("ff02::1"),
@@ -91,10 +124,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": ("The value of the 'ip6__src' field must be unicast. " "It's unicast."),
-            "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_description": "The value of the 'ip6__src' field must be unicast. " "It's unicast.",
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xaa44
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : NA satisfying all hop/source sanity requirements.
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -107,9 +151,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. "
                 "It's all-routers unicast."
             ),
-            "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x0a45
+                #   Flags    : 0x40 (R=0, S=1, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Solicited NA used to ensure dst must be unicast or all-nodes multicast.
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -125,11 +180,22 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. " "It's unicast."
+                "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. It's unicast."
             ),
-            "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x0a45
+                #   Flags    : 0x40 (R=0, S=1, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Solicited NA with acceptable destination address.
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -142,9 +208,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "The 'flag_s' is set and 'ip6__dst' must be unicast or all-nodes multicast. "
                 "It's all-nodes multicast."
             ),
-            "_args": [
-                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x0a45
+                #   Flags    : 0x40 (R=0, S=1, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Solicited NA with destination set to all-nodes multicast.
+                b"\x88\x00\x0a\x45\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -153,10 +230,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_results": {},
         },
         {
-            "_description": ("The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. " "It's unicast."),
-            "_args": [
-                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_description": "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. It's unicast.",
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x4a45
+                #   Flags    : 0x00 (R=0, S=0, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Unsolicited NA used to ensure dst must be all-nodes multicast.
+                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -172,11 +260,22 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. " "It's all-nodes multicast."
+                "The 'flag_s' is not set and 'ip6__dst' must be all-nodes multicast. It's all-nodes multicast."
             ),
-            "_args": [
-                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x4a45
+                #   Flags    : 0x00 (R=0, S=0, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Unsolicited NA that fulfils all sanity conditions.
+                b"\x88\x00\x4a\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -192,7 +291,7 @@ class TestIcmp4NdMessageNeighborAdvertisementParserSanityChecks(TestCasePacketRx
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

@@ -45,7 +45,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": "The value of the 'ip6__hop' field must be 1. It's 64.",
-            "_args": [b"\x8f\x00\x70\xff\x00\x00\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143 (MLDv2 Report)
+                #   Code     : 0
+                #   Checksum : 0x70ff
+                #   Record cnt: 0x0000
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Valid MLDv2 report header used to verify hop limit sanity.
+                b"\x8f\x00\x70\xff\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__hop": 64,
             },
@@ -55,7 +65,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "The value of the 'ip6__hop' field must be 1. It's 1.",
-            "_args": [b"\x8f\x00\x70\xff\x00\x00\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143 (MLDv2 Report)
+                #   Code     : 0
+                #   Checksum : 0x70ff
+                #   Record cnt: 0x0000
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Valid MLDv2 report header with correct hop limit (should pass).
+                b"\x8f\x00\x70\xff\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__hop": 1,
             },
@@ -69,7 +89,7 @@ class TestIcmp4Mld2MessageReportParserSanityChecks(TestCasePacketRxIp6):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

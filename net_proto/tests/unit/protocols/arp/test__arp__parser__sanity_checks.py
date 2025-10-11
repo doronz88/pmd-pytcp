@@ -132,23 +132,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "The SPA field is unspecified in ARP Reply.",
-            "_frame_rx": [
-                (
-                    # ARP (Ethernet/IPv4)
-                    #   Hardware type : 1 (Ethernet)
-                    #   Protocol type : 0x0800 (IPv4)
-                    #   HLEN / PLEN   : 6 / 4
-                    #   Operation     : 2 (Reply)
-                    #   Sender MAC    : 02:00:00:00:00:91
-                    #   Sender IP     : 0.0.0.0
-                    #   Target MAC    : 02:00:00:00:00:07
-                    #   Target IP     : 10.0.1.7
-                    #
-                    #   Summary       : ARP Reply advertising unspecified sender IPv4 address.
-                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x00\x00"
-                    b"\x00\x00\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                ),
-            ],
+            "_frame_rx": (
+                # ARP (Ethernet/IPv4)
+                #   Hardware type : 1 (Ethernet)
+                #   Protocol type : 0x0800 (IPv4)
+                #   HLEN / PLEN   : 6 / 4
+                #   Operation     : 2 (Reply)
+                #   Sender MAC    : 02:00:00:00:00:91
+                #   Sender IP     : 0.0.0.0
+                #   Target MAC    : 02:00:00:00:00:07
+                #   Target IP     : 10.0.1.7
+                #
+                #   Summary       : ARP Reply advertising unspecified sender IPv4 address.
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x00\x00"
+                b"\x00\x00\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+            ),
             "_results": {
                 "error_message": "The 'spa' field value 0.0.0.0 must not be a "
                 "unspecified IPv4 address for an ARP Reply.",

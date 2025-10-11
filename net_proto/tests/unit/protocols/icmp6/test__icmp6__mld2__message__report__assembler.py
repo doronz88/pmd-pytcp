@@ -54,7 +54,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 MLDv2 Report message, no records.",
-            "_args": [],
             "_kwargs": {
                 "records": [],
             },
@@ -72,7 +71,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": ("ICMPv6 MLDv2 Report message, single record."),
-            "_args": [],
             "_kwargs": {
                 "records": [
                     Icmp6Mld2MulticastAddressRecord(
@@ -124,7 +122,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 MLDv2 Report message, multiple records.",
-            "_args": [],
             "_kwargs": {
                 "records": [
                     Icmp6Mld2MulticastAddressRecord(
@@ -264,7 +261,6 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -273,7 +269,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         The ICMPv6 MLDv2 message assembler tests.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2ReportMessage(*self._args, **self._kwargs))
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2ReportMessage(**self._kwargs))
 
     def test__icmp6__mld2__message__report__assembler__len(self) -> None:
         """

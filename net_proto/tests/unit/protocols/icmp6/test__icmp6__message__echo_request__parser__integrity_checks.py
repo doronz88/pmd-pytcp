@@ -48,7 +48,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -56,8 +56,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 3 bytes (< 4-byte minimum header)
                 #
                 #   Summary  : Frame shorter than ICMPv6 header length.
-                b"\x80\x00\xfb",
-            ],
+                b"\x80\x00\xfb"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -73,7 +73,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -84,7 +84,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #
                 #   Summary  : Declared payload exceeds available frame length.
                 b"\x80\x00\xfb\x94\x30\x39\xd4",
-            ],
+            ),
             "_mocked_values": {
                 "ip6__dlen": 8,
             },
@@ -100,7 +100,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'ICMP6__ECHO_REQUEST__LEN <= self._ip6__dlen' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -110,8 +110,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 7 bytes (< 8-byte minimum message)
                 #
                 #   Summary  : Payload shorter than Echo Request minimum length.
-                b"\x80\x00\xfb\x94\x30\x39\xd4",
-            ],
+                b"\x80\x00\xfb\x94\x30\x39\xd4"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 7,
             },
@@ -125,20 +125,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 Echo Request message, invalid checksum.",
-            "_frame_rx": [
-                (
-                    # ICMPv6 Echo Request
-                    #   Type     : 128 (Echo Request)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x0000 (invalid)
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Header checksum field set to zero (invalid).
-                    b"\x80\x00\x00\x00\x30\x39\xd4\x31"
-                ),
-            ],
+            "_frame_rx": (
+                # ICMPv6 Echo Request
+                #   Type     : 128 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x0000 (invalid)
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Header checksum field set to zero (invalid).
+                b"\x80\x00\x00\x00\x30\x39\xd4\x31"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -152,7 +150,7 @@ class TestIcmp6MessageEchoRequestParserIntegrityChecks(TestCasePacketRxIp6):
     """
 
     _description: str
-    _frame_rx: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

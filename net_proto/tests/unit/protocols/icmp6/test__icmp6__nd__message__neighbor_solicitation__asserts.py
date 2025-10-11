@@ -59,7 +59,6 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         message constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "code": Icmp6NdNeighborSolicitationCode.DEFAULT,
             "cksum": 0,
@@ -78,7 +77,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6NdNeighborSolicitationCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborSolicitation(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -97,7 +96,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborSolicitation(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -116,7 +115,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborSolicitation(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -134,7 +133,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         self._kwargs["target_address"] = value = "not an Ip6Address"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborSolicitation(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -152,7 +151,7 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdMessageNeighborSolicitation(*self._args, **self._kwargs)
+            Icmp6NdMessageNeighborSolicitation(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

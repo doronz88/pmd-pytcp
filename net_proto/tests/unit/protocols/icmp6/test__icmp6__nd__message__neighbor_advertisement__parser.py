@@ -52,9 +52,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, no options.",
-            "_args": [
-                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xaa44
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : Router NA for 2001:db8::1 received from 2001:db8::1 to ff02::1.
+                b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -73,10 +84,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, Slla option present.",
-            "_args": [
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0xa2a9
+                #   Flags    : 0x40 (R=0, S=1, O=0)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::2
+                #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
+                #
+                #   Summary  : Solicited NA for 2001:db8::2 advertising source MAC 00:11:22:33:44:55.
                 b"\x88\x00\xa2\xa9\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
-            ],
+            ),
             "_mocked_values": {
                 "ip6__hop": 255,
                 "ip6__src": Ip6Address("2001:db8::1"),
@@ -103,7 +124,7 @@ class TestIcmp6NdNeighborAdvertisementParser(TestCasePacketRxIp6):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

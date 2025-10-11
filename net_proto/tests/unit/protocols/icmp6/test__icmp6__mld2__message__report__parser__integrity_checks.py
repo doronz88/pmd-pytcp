@@ -46,7 +46,16 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
     [
         {
             "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."),
-            "_args": [b"\x8f\x00\x70"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143 (MLDv2 Report)
+                #   Code     : 0
+                #   Checksum : 0x70?? (truncated)
+                #   Frame len: 3 bytes (< 4-byte minimum header)
+                #
+                #   Summary  : Frame shorter than ICMPv6 header length.
+                b"\x8f\x00\x70"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -62,7 +71,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 MLDv2 Report message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [b"\x8f\x00\x70\xff\x00\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143
+                #   Code     : 0
+                #   Checksum : 0x70ff
+                #   Record count: 0x0000 (partial)
+                #   Frame len : 7 bytes (< 8-byte minimum header)
+                #
+                #   Summary   : Declared payload exceeds available frame length.
+                b"\x8f\x00\x70\xff\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 8,
             },
@@ -76,7 +95,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen' condition not met."),
-            "_args": [b"\x8f\x00\x70\xff\x00\x00\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143
+                #   Code     : 0
+                #   Checksum : 0x70ff
+                #   Record count: 0x0000 (claims 0 groups)
+                #   Frame len : 8 bytes (minimum header)
+                #
+                #   Summary   : Payload shorter than required MLDv2 report length.
+                b"\x8f\x00\x70\xff\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 7,
             },
@@ -93,12 +122,24 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "'record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN <= ip6__dlen' "
                 "condition not met."
             ),
-            "_args": [
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143
+                #   Code     : 0
+                #   Checksum : 0x1582
+                #   Record cnt: 0x0002 (2 records advertised)
+                #   Record 0 : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x00, Src count 0x0002
+                #              Multicast address ff02::1
+                #   Record 1 : Type 0x20 (illegal/extended), Aux len 0x01, Src count 0x0db8
+                #              Multicast address ::2 (truncated)
+                #   Frame len: 60 bytes (records truncated)
+                #
+                #   Summary  : Multicast address record overruns available payload.
                 b"\x8f\x00\x15\x82\x00\x00\x00\x02\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
-            ],
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": (
@@ -110,12 +151,22 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": ("ICMPv6 MLDv2 message, the 'record_offset == ip6__dlen' condition not met."),
-            "_args": [
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143
+                #   Code     : 0
+                #   Checksum : 0x1583
+                #   Record cnt: 0x0001
+                #   Record    : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x00, Src count 0x0002
+                #               Multicast address ff02::1 with source list 2001:db8::1, 2001:db8::2
+                #   Frame len : 60 bytes
+                #
+                #   Summary   : Recorded offset does not match payload length (truncated data).
                 b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
-            ],
+            ),
             "_mocked_values": {
                 "ip6__dlen": 59,
             },
@@ -127,7 +178,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 MLDv2 Report, invalid checksum.",
-            "_args": [b"\x8f\x00\x00\x00\x00\x00\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 MLDv2 Report
+                #   Type     : 143
+                #   Code     : 0
+                #   Checksum : 0x0000 (invalid)
+                #   Record cnt: 0x0000
+                #   Data len : 0 bytes
+                #
+                #   Summary  : MLDv2 report with checksum cleared to zero.
+                b"\x8f\x00\x00\x00\x00\x00\x00\x00"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -141,7 +202,7 @@ class TestIcmp6Mld2MessageReportParserIntegrityChecks(TestCasePacketRxIp6):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

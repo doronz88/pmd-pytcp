@@ -49,7 +49,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 Destination Unreachable message, "
                 "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 0 (No Route)
@@ -57,8 +57,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 3 bytes (< 4-byte minimum header)
                 #
                 #   Summary  : Frame shorter than ICMPv6 header length.
-                b"\x01\x00\xfb",
-            ],
+                b"\x01\x00\xfb"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -75,7 +75,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 Destination Unreachable message, "
                 "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 0 (No Route)
@@ -84,8 +84,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 7 bytes (< 8-byte minimum header)
                 #
                 #   Summary  : Declared payload exceeds available frame length.
-                b"\x01\x00\xfb\x94\x30\x39\xd4",
-            ],
+                b"\x01\x00\xfb\x94\x30\x39\xd4"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 8,
             },
@@ -102,7 +102,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 Destination Unreachable message, "
                 "the 'ICMP6_DESTINATION_UNREACHABLE_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 0 (No Route)
@@ -111,8 +111,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 7 bytes (< 8-byte minimum message)
                 #
                 #   Summary  : Payload shorter than Destination Unreachable minimum length.
-                b"\x01\x00\xfb\x94\x30\x39\xd4",
-            ],
+                b"\x01\x00\xfb\x94\x30\x39\xd4"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 7,
             },
@@ -126,7 +126,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 Destination Unreachable message, invalid checksum.",
-            "_frame_rx": [
+            "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 0 (No Route)
@@ -135,8 +135,8 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Data len : 0 bytes
                 #
                 #   Summary  : Header checksum field set to zero (invalid).
-                b"\x01\x00\x00\x00\x30\x39\xd4\x31",
-            ],
+                b"\x01\x00\x00\x00\x30\x39\xd4\x31"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",

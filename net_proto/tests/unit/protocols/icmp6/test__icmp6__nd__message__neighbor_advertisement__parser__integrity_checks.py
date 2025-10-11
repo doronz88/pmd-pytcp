@@ -49,7 +49,16 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 ND Neighbor Advertisement message, "
                 "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [b"\x88\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136 (Neighbor Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x0000 (truncated)
+                #   Frame len: 3 bytes (< 4-byte minimum header)
+                #
+                #   Summary  : Frame shorter than ICMPv6 header length.
+                b"\x88\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -66,9 +75,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 ND Neighbor Advertisement message, "
                 "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [
-                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136
+                #   Code     : 0
+                #   Checksum : 0x0000 (placeholder)
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Target   : 2001:db8::
+                #   Frame len: 23 bytes (< 24-byte minimum message)
+                #
+                #   Summary  : Declared payload exceeds available frame length.
+                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 24,
             },
@@ -86,9 +105,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "the 'ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= self._ip6__dlen' "
                 "condition not met."
             ),
-            "_args": [
-                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136
+                #   Code     : 0
+                #   Checksum : 0x0000 (placeholder)
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Target   : 2001:db8::
+                #   Frame len: 23 bytes (< 24-byte minimum message)
+                #
+                #   Summary  : Payload shorter than Neighbor Advertisement minimum length.
+                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 23,
             },
@@ -102,9 +131,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
-            "_args": [
-                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Advertisement
+                #   Type     : 136
+                #   Code     : 0
+                #   Checksum : 0x0000 (invalid)
+                #   Flags    : 0xa0 (R=1, S=0, O=1)
+                #   Target   : 2001:db8::1
+                #   Frame len: 24 bytes
+                #
+                #   Summary  : NA with checksum cleared to zero.
+                b"\x88\x00\x00\x00\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -118,7 +157,7 @@ class TestIcmp6NdMessageNeighborAdvertisementParserIntegrityChecks(TestCasePacke
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

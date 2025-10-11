@@ -61,7 +61,6 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "code": Icmp6Mld2ReportCode.DEFAULT,
             "cksum": 0,
@@ -79,7 +78,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6Mld2ReportCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
+            Icmp6Mld2ReportMessage(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -96,7 +95,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
+            Icmp6Mld2ReportMessage(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -113,7 +112,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
+            Icmp6Mld2ReportMessage(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -139,7 +138,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["records"] = [multicast_address_report]
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(*self._args, **self._kwargs)
+            Icmp6Mld2ReportMessage(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -163,5 +162,5 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'type' field must be <Icmp6Type.MLD2__REPORT: 143>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
+            ("The 'type' field must be <Icmp6Type.MLD2__REPORT: 143>. Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )
