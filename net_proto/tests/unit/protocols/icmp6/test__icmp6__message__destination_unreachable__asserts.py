@@ -60,7 +60,6 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
         message constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
             "cksum": 0,
@@ -78,7 +77,7 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6DestinationUnreachableCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp6MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -97,7 +96,7 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp6MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -116,7 +115,7 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp6MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -136,7 +135,7 @@ class TestIcmp6MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp6MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

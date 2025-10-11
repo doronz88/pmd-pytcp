@@ -45,19 +45,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMPv4 Echo Request message, empty data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Request
-                    #   Type     : 8 (Echo Request)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xf394
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 with no payload.
-                    b"\x08\x00\xf3\x94\x30\x39\xd4\x31"
-                )
+            "_frame_rx": [
+                # ICMPv4 Echo Request
+                #   Type     : 8 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xf394
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Ping request ID 12345/seq 54321 with no payload.
+                b"\x08\x00\xf3\x94\x30\x39\xd4\x31",
             ],
             "_results": {
                 "message": Icmp4MessageEchoRequest(
@@ -70,20 +68,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Echo Request message, non-empty data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Request
-                    #   Type     : 8 (Echo Request)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x24be
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 carrying 16-byte payload.
-                    b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
-                    b"\x38\x39\x41\x42\x43\x44\x45\x46"
-                )
+            "_frame_rx": [
+                # ICMPv4 Echo Request
+                #   Type     : 8 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x24be
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 16 bytes ("0123456789ABCDEF")
+                #
+                #   Summary  : Ping request ID 12345/seq 54321 carrying 16-byte payload.
+                b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
+                b"\x38\x39\x41\x42\x43\x44\x45\x46",
             ],
             "_results": {
                 "message": Icmp4MessageEchoRequest(
@@ -96,20 +92,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMP4 Echo Request message, maximum length of data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Request
-                    #   Type     : 8 (Echo Request)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x1ecb
-                    #   Identifier: 11111
-                    #   Sequence : 22222
-                    #   Data len : 65507 bytes ("X" * 65507)
-                    #
-                    #   Summary  : Ping request at maximum payload size (65507 bytes).
-                    b"\x08\x00\x1e\xcb\x2b\x67\x56\xce"
-                    + b"X" * 65507
-                )
+            "_frame_rx": [
+                # ICMPv4 Echo Request
+                #   Type     : 8 (Echo Request)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x1ecb
+                #   Identifier: 11111
+                #   Sequence : 22222
+                #   Data len : 65507 bytes ("X" * 65507)
+                #
+                #   Summary  : Ping request at maximum payload size (65507 bytes).
+                b"\x08\x00\x1e\xcb\x2b\x67\x56\xce"
+                + b"X" * 65507,
             ],
             "_results": {
                 "message": Icmp4MessageEchoRequest(
@@ -128,7 +122,7 @@ class TestIcmp4MessageEchoRequestParser(TestCasePacketRxIp4):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

@@ -45,20 +45,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMP4 Echo Reply message, empty data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb94
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Echo reply matching request ID 12345/seq 54321, empty payload.
-                    b"\x00\x00\xfb\x94\x30\x39\xd4\x31"
-                )
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb94
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Echo reply matching request ID 12345/seq 54321, empty payload.
+                b"\x00\x00\xfb\x94\x30\x39\xd4\x31"
+            ),
             "_results": {
                 "message": Icmp4MessageEchoReply(
                     cksum=64404,
@@ -70,21 +68,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMP4 Echo Reply message, non-empty data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x2cbe
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Echo reply carrying 16-byte payload from original request.
-                    b"\x00\x00\x2c\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
-                    b"\x38\x39\x41\x42\x43\x44\x45\x46"
-                )
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x2cbe
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 16 bytes ("0123456789ABCDEF")
+                #
+                #   Summary  : Echo reply carrying 16-byte payload from original request.
+                b"\x00\x00\x2c\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
+                b"\x38\x39\x41\x42\x43\x44\x45\x46"
+            ),
             "_results": {
                 "message": Icmp4MessageEchoReply(
                     cksum=11454,
@@ -96,21 +92,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMP4 Echo Reply message, maximum length of data.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x26cb
-                    #   Identifier: 11111
-                    #   Sequence : 22222
-                    #   Data len : 65507 bytes ("X" * 65507)
-                    #
-                    #   Summary  : Echo reply at maximum payload size (65507 bytes).
-                    b"\x00\x00\x26\xcb\x2b\x67\x56\xce"
-                    + b"X" * 65507
-                )
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x26cb
+                #   Identifier: 11111
+                #   Sequence : 22222
+                #   Data len : 65507 bytes ("X" * 65507)
+                #
+                #   Summary  : Echo reply at maximum payload size (65507 bytes).
+                b"\x00\x00\x26\xcb\x2b\x67\x56\xce"
+                + b"X" * 65507
+            ),
             "_results": {
                 "message": Icmp4MessageEchoReply(
                     cksum=9931,
@@ -128,7 +122,7 @@ class TestIcmp4MessageEchoReplyParser(TestCasePacketRxIp4):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_tx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

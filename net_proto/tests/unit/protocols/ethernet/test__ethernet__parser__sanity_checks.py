@@ -44,22 +44,19 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 @parameterized_class(
     [
         {
-            "_description": ("The 'type' field value is lowere than the minimum allowed value."),
-            "_args": [
-                (
-                    # Ethernet II
-                    #   Destination MAC : a1:b2:c3:d4:e5:f6
-                    #   Source MAC      : 11:12:13:14:15:16
-                    #   Ethertype       : 0x05ff (< 0x0600 minimum for Ethernet II)
-                    #   Frame length    : 14 bytes
-                    #
-                    #   Summary         : Ethernet II frame with illegal ethertype value below 0x0600.
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xff"
-                ),
-            ],
-            "_kwargs": {},
+            "_description": "The 'type' field value is lowere than the minimum allowed value.",
+            "_frame_rx": (
+                # Ethernet II
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : 11:12:13:14:15:16
+                #   Ethertype       : 0x05ff (< 0x0600 minimum for Ethernet II)
+                #   Frame length    : 14 bytes
+                #
+                #   Summary         : Ethernet II frame with illegal ethertype value below 0x0600.
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xff"
+            ),
             "_results": {
-                "error_message": ("The minimum 'type' field value must be 0x0600, got 0x05ff."),
+                "error_message": "The minimum 'type' field value must be 0x0600, got 0x05ff.",
             },
         },
     ]
@@ -70,8 +67,7 @@ class TestEthernetParserSanityChecks(TestCasePacketRx):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

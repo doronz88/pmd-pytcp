@@ -47,7 +47,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "Ethernet packet with Raw payload (I).",
-            "_args": [],
             "_kwargs": {
                 "ethernet__src": MacAddress("77:88:99:aa:bb:cc"),
                 "ethernet__dst": MacAddress("11:22:33:44:55:66"),
@@ -55,7 +54,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 30,
-                "__str__": ("ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)"),
+                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)",
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('11:22:33:44:55:66'), "
                     "src=MacAddress('77:88:99:aa:bb:cc'), type=<EtherType.RAW: 65535>), "
@@ -85,7 +84,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "Ethernet packet with Raw payload (II).",
-            "_args": [],
             "_kwargs": {
                 "ethernet__dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "ethernet__src": MacAddress("11:12:13:14:15:16"),
@@ -93,7 +91,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 1514,
-                "__str__": ("ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)"),
+                "__str__": "ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)",
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('a1:b2:c3:d4:e5:f6'), "
                     "src=MacAddress('11:12:13:14:15:16'), type=<EtherType.RAW: 65535>), "
@@ -129,7 +127,6 @@ class TestEthernetAssemblerOperation(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -138,12 +135,11 @@ class TestEthernetAssemblerOperation(TestCase):
         Initialize the Ethernet packet assembler object with testcase arguments.
         """
 
-        self._ethernet__assembler = EthernetAssembler(*self._args, **self._kwargs)
+        self._ethernet__assembler = EthernetAssembler(**self._kwargs)
 
-    def test__ehternet__assembler__len(self) -> None:
+    def test__ethernet__assembler__len(self) -> None:
         """
-        Ensure the Ethernet packet assembler '__len__()' method returns a correct
-        value.
+        Ensure the Ethernet packet assembler '__len__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -153,8 +149,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__str(self) -> None:
         """
-        Ensure the Ethernet packet assembler '__str__()' method returns a correct
-        value.
+        Ensure the Ethernet packet assembler '__str__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -164,8 +159,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__repr(self) -> None:
         """
-        Ensure the Ethernet packet assembler '__repr__()' method returns a correct
-        value.
+        Ensure the Ethernet packet assembler '__repr__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -175,8 +169,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__bytes(self) -> None:
         """
-        Ensure the Ethernet packet assembler '__bytes__()' method returns a correct
-        value.
+        Ensure the Ethernet packet assembler '__bytes__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -186,8 +179,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__dst(self) -> None:
         """
-        Ensure the Ethernet packet assembler 'dst' property returns a correct
-        value.
+        Ensure the Ethernet packet assembler 'dst' property returns a correct value.
         """
 
         self.assertEqual(
@@ -197,8 +189,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__src(self) -> None:
         """
-        Ensure the Ethernet packet assembler 'src' property returns a correct
-        value.
+        Ensure the Ethernet packet assembler 'src' property returns a correct value.
         """
 
         self.assertEqual(
@@ -208,8 +199,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__type(self) -> None:
         """
-        Ensure the Ethernet packet assembler 'type' property returns a correct
-        value.
+        Ensure the Ethernet packet assembler 'type' property returns a correct value.
         """
 
         self.assertEqual(
@@ -219,8 +209,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__header(self) -> None:
         """
-        Ensure the Ethernet packet assembler 'header' property returns a correct
-        value.
+        Ensure the Ethernet packet assembler 'header' property returns a correct value.
         """
 
         self.assertEqual(
@@ -230,8 +219,7 @@ class TestEthernetAssemblerOperation(TestCase):
 
     def test__ethernet__assembler__payload(self) -> None:
         """
-        Ensure the Ethernet packet assembler 'payload' property returns a correct
-        value.
+        Ensure the Ethernet packet assembler 'payload' property returns a correct value.
         """
 
         self.assertEqual(
@@ -243,8 +231,7 @@ class TestEthernetAssemblerOperation(TestCase):
         self,
     ) -> None:
         """
-        Ensure the Ethernet packet assembler 'assemble()' method returns
-        a correct value.
+        Ensure the Ethernet packet assembler 'assemble()' method returns a correct value.
         """
 
         buffers: list[Buffer] = []

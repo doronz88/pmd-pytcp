@@ -45,20 +45,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": (
-                "ICMPv4 Echo Reply message, " "the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
+                "ICMPv4 Echo Reply message, the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
             ),
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb?? (truncated)
-                    #   Frame len: 3 bytes (< 4-byte minimum header)
-                    #
-                    #   Summary  : Frame shorter than ICMP header length.
-                    b"\x00\x00\xfb"
-                ),
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb?? (truncated)
+                #   Frame len: 3 bytes (< 4-byte minimum header)
+                #
+                #   Summary  : Frame shorter than ICMP header length.
+                b"\x00\x00\xfb"
+            ),
             "_mocked_values": {
                 "ip4__payload_len": 3,
             },
@@ -72,22 +70,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": (
-                "ICMPv4 Echo Reply message, " "the 'self._ip4_payload_len <= len(self._frame)' condition not met."
+                "ICMPv4 Echo Reply message, the 'self._ip4_payload_len <= len(self._frame)' condition not met."
             ),
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb94
-                    #   Identifier: 12345 (partial)
-                    #   Sequence : 54321 (truncated)
-                    #   Frame len: 7 bytes (< 8-byte minimum header)
-                    #
-                    #   Summary  : Declared payload exceeds available frame length.
-                    b"\x00\x00\xfb\x94\x30\x39\xd4"
-                ),
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb94
+                #   Identifier: 12345 (partial)
+                #   Sequence : 54321 (truncated)
+                #   Frame len: 7 bytes (< 8-byte minimum header)
+                #
+                #   Summary  : Declared payload exceeds available frame length.
+                b"\x00\x00\xfb\x94\x30\x39\xd4"
+            ),
             "_mocked_values": {
                 "ip4__payload_len": 8,
             },
@@ -101,22 +97,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": (
-                "ICMPv4 Echo Reply message, " "the 'ICMP4_ECHO_REPLY_LEN <= self._ip4_payload_len' condition not met."
+                "ICMPv4 Echo Reply message, the 'ICMP4_ECHO_REPLY_LEN <= self._ip4_payload_len' condition not met."
             ),
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb94
-                    #   Identifier: 12345 (partial)
-                    #   Sequence : 54321 (truncated)
-                    #   Frame len: 7 bytes (< 8-byte minimum message)
-                    #
-                    #   Summary  : Payload shorter than Echo Reply fixed header.
-                    b"\x00\x00\xfb\x94\x30\x39\xd4"
-                ),
-            ],
+            "_frame_tx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb94
+                #   Identifier: 12345 (partial)
+                #   Sequence : 54321 (truncated)
+                #   Frame len: 7 bytes (< 8-byte minimum message)
+                #
+                #   Summary  : Payload shorter than Echo Reply fixed header.
+                b"\x00\x00\xfb\x94\x30\x39\xd4"
+            ),
             "_mocked_values": {
                 "ip4__payload_len": 7,
             },
@@ -130,20 +124,18 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 Echo Reply message, invalid checksum.",
-            "_args": [
-                (
-                    # ICMPv4 Echo Reply
-                    #   Type     : 0 (Echo Reply)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x0000 (invalid)
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Header checksum field set to zero (invalid).
-                    b"\x00\x00\x00\x00\x30\x39\xd4\x31"
-                ),
-            ],
+            "_frame_rx": (
+                # ICMPv4 Echo Reply
+                #   Type     : 0 (Echo Reply)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x0000 (invalid)
+                #   Identifier: 12345
+                #   Sequence : 54321
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Header checksum field set to zero (invalid).
+                b"\x00\x00\x00\x00\x30\x39\xd4\x31"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -157,7 +149,7 @@ class TestIcmp4MessageEchoReplyParserIntegrityChecks(TestCasePacketRxIp4):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_tx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

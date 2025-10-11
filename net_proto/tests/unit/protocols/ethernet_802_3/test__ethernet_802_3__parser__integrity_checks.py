@@ -50,22 +50,17 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 @parameterized_class(
     [
         {
-            "_description": (
-                "The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' " "constant."
+            "_description": ("The frame length is less than the value of the 'ETHERNET_802_3__HEADER__LEN' constant."),
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : 11:22:33:44:55:66
+                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Length          : 0x0000 (truncated header)
+                #   Frame length    : 13 bytes (< 14-byte header minimum)
+                #
+                #   Summary         : Header cut short by one byte.
+                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00"
             ),
-            "_args": [
-                (
-                    # Ethernet 802.3
-                    #   Destination MAC : 11:22:33:44:55:66
-                    #   Source MAC      : 77:88:99:aa:bb:cc
-                    #   Length          : 0x0000 (truncated header)
-                    #   Frame length    : 13 bytes (< 14-byte header minimum)
-                    #
-                    #   Summary         : Header cut short by one byte.
-                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00"
-                ),
-            ],
-            "_kwargs": {},
             "_results": {
                 "error_message": (
                     f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} "
@@ -75,20 +70,17 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "The 'dlen' field value is different than the actual payload length.",
-            "_args": [
-                (
-                    # Ethernet 802.3
-                    #   Destination MAC : 11:22:33:44:55:66
-                    #   Source MAC      : 77:88:99:aa:bb:cc
-                    #   Length          : 0x0010 (16 bytes)
-                    #   Payload bytes   : 17
-                    #
-                    #   Summary         : Declared length 16 bytes but frame carries 17-byte payload.
-                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
-                    b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47"
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : 11:22:33:44:55:66
+                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Length          : 0x0010 (16 bytes)
+                #   Payload bytes   : 17
+                #
+                #   Summary         : Declared length 16 bytes but frame carries 17-byte payload.
+                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
+                b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47"
+            ),
             "_results": {
                 "error_message": (
                     f"Inconsistent payload length (16 bytes) in the Ethernet 802.3 header. "
@@ -98,20 +90,17 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "Ethernet 802.3 packet (III).",
-            "_args": [
-                (
-                    # Ethernet 802.3
-                    #   Destination MAC : a1:b2:c3:d4:e5:f6
-                    #   Source MAC      : 11:12:13:14:15:16
-                    #   Length          : 0x05dd (1501 bytes)
-                    #   Payload bytes   : 1501 (> 1500 maximum)
-                    #
-                    #   Summary         : Frame exceeds Ethernet 802.3 maximum payload size.
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
-                    + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1)
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : 11:12:13:14:15:16
+                #   Length          : 0x05dd (1501 bytes)
+                #   Payload bytes   : 1501 (> 1500 maximum)
+                #
+                #   Summary         : Frame exceeds Ethernet 802.3 maximum payload size.
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
+                + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1)
+            ),
             "_results": {
                 "error_message": (
                     f"Payload length ({ETHERNET_802_3__PAYLOAD__MAX_LEN + 1} bytes) exceeds the "
@@ -127,16 +116,14 @@ class TestEthernet8023ParserIntegrityChecks(TestCasePacketRx):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx
 
     def test__ethernet_802_3__parser(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet parser raises integrity error on malformed
-        packets.
+        Ensure the Ethernet 802.3 packet parser raises integrity error on malformed packets.
         """
 
         with self.assertRaises(Ethernet8023IntegrityError) as error:
@@ -144,5 +131,5 @@ class TestEthernet8023ParserIntegrityChecks(TestCasePacketRx):
 
         self.assertEqual(
             str(error.exception),
-            f"[INTEGRITY ERROR][Ethernet 802.3] {self._results["error_message"]}",
+            f"[INTEGRITY ERROR][Ethernet 802.3] {self._results['error_message']}",
         )

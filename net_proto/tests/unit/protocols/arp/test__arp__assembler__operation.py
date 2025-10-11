@@ -56,7 +56,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ARP Request.",
-            "_args": [],
             "_kwargs": {
                 "arp__oper": ArpOperation.REQUEST,
                 "arp__sha": MacAddress("01:02:03:04:05:06"),
@@ -67,7 +66,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 28,
                 "__str__": (
-                    "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > " "101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28"
+                    "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > 101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28"
                 ),
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REQUEST: 1>, "
@@ -110,7 +109,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ARP Reply.",
-            "_args": [],
             "_kwargs": {
                 "arp__oper": ArpOperation.REPLY,
                 "arp__sha": MacAddress("a1:b2:c3:d4:e5:f6"),
@@ -120,7 +118,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 28,
-                "__str__": ("ARP Reply 5.5.5.5 / a1:b2:c3:d4:e5:f6 > " "7.7.7.7 / 7a:7b:7c:7d:7e:7f, len 28"),
+                "__str__": "ARP Reply 5.5.5.5 / a1:b2:c3:d4:e5:f6 > 7.7.7.7 / 7a:7b:7c:7d:7e:7f, len 28",
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REPLY: 2>, "
                     "sha=MacAddress('a1:b2:c3:d4:e5:f6'), spa=Ip4Address('5.5.5.5'), "
@@ -168,7 +166,6 @@ class TestArpAssemblerPackets(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -177,12 +174,11 @@ class TestArpAssemblerPackets(TestCase):
         Initialize the ARP packet assembler object with testcase arguments.
         """
 
-        self._arp__assembler = ArpAssembler(*self._args, **self._kwargs)
+        self._arp__assembler = ArpAssembler(**self._kwargs)
 
     def test__arp__assembler__len(self) -> None:
         """
-        Ensure the ARP packet assembler '__len__()' method returns a correct
-        value.
+        Ensure the ARP packet assembler '__len__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -192,8 +188,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__str(self) -> None:
         """
-        Ensure the ARP packet assembler '__str__()' method returns a correct
-        value.
+        Ensure the ARP packet assembler '__str__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -203,8 +198,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__repr(self) -> None:
         """
-        Ensure the ARP packet assembler '__repr__()' method returns a correct
-        value.
+        Ensure the ARP packet assembler '__repr__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -214,8 +208,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__bytes(self) -> None:
         """
-        Ensure the ARP packet assembler '__bytes__()' method returns a correct
-        value.
+        Ensure the ARP packet assembler '__bytes__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -225,8 +218,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__hrlen(self) -> None:
         """
-        Ensure the ARP packet assembler 'hrlen' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'hrlen' property returns a correct value.
         """
 
         self.assertEqual(
@@ -236,8 +228,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__prlen(self) -> None:
         """
-        Ensure the ARP packet assembler 'prlen' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'prlen' property returns a correct value.
         """
 
         self.assertEqual(
@@ -247,8 +238,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__oper(self) -> None:
         """
-        Ensure the ARP packet assembler 'oper' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'oper' property returns a correct value.
         """
 
         self.assertEqual(
@@ -258,8 +248,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__sha(self) -> None:
         """
-        Ensure the ARP packet assembler 'sha' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'sha' property returns a correct value.
         """
 
         self.assertEqual(
@@ -269,8 +258,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__spa(self) -> None:
         """
-        Ensure the ARP packet assembler 'spa' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'spa' property returns a correct value.
         """
 
         self.assertEqual(
@@ -280,8 +268,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__tha(self) -> None:
         """
-        Ensure the ARP packet assembler 'tha' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'tha' property returns a correct value.
         """
 
         self.assertEqual(
@@ -291,8 +278,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__tpa(self) -> None:
         """
-        Ensure the ARP packet assembler 'tpa' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'tpa' property returns a correct value.
         """
 
         self.assertEqual(
@@ -302,8 +288,7 @@ class TestArpAssemblerPackets(TestCase):
 
     def test__arp__assembler__header(self) -> None:
         """
-        Ensure the ARP packet assembler 'header' property returns a correct
-        value.
+        Ensure the ARP packet assembler 'header' property returns a correct value.
         """
 
         self.assertEqual(
@@ -315,8 +300,7 @@ class TestArpAssemblerPackets(TestCase):
         self,
     ) -> None:
         """
-        Ensure the Arp packet assembler 'assemble()' method returns
-        a correct value.
+        Ensure the Arp packet assembler 'assemble()' method returns a correct value.
         """
 
         buffers: list[Buffer] = []
@@ -336,8 +320,7 @@ class TestArpAssemblerMisc(TestCase):
 
     def test__arp__assembler__echo_tracker(self) -> None:
         """
-        Ensure the ARP packet assembler 'tracker' property returns
-        a correct value.
+        Ensure the ARP packet assembler 'tracker' property returns a correct value.
         """
 
         echo_tracker = Tracker(prefix="RX")

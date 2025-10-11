@@ -55,7 +55,6 @@ class TestEthernet8023HeaderAsserts(TestCase):
         Create the default arguments for the Ethernet 802.3 header constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "dst": MacAddress(),
             "src": MacAddress(),
@@ -64,14 +63,14 @@ class TestEthernet8023HeaderAsserts(TestCase):
 
     def test__ethernet_802_3__header__dst__not_MacAddress(self) -> None:
         """
-        Ensure the Ethernet 802.3 header constructor raises an exception when the
-        provided 'dst' argument is not a MacAddress.
+        Ensure the Ethernet 802.3 header constructor raises an exception when the provided
+        'dst' argument is not a MacAddress.
         """
 
         self._kwargs["dst"] = value = "not a MacAddress"
 
         with self.assertRaises(AssertionError) as error:
-            Ethernet8023Header(*self._args, **self._kwargs)
+            Ethernet8023Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -80,14 +79,14 @@ class TestEthernet8023HeaderAsserts(TestCase):
 
     def test__ethernet_802_3__header__src__not_MacAddress(self) -> None:
         """
-        Ensure the Ethernet 802.3 header constructor raises an exception when the
-        provided 'src' argument is not a MacAddress.
+        Ensure the Ethernet 802.3 header constructor raises an exception when the provided
+        'src' argument is not a MacAddress.
         """
 
         self._kwargs["src"] = value = "not a MacAddress"
 
         with self.assertRaises(AssertionError) as error:
-            Ethernet8023Header(*self._args, **self._kwargs)
+            Ethernet8023Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -96,14 +95,14 @@ class TestEthernet8023HeaderAsserts(TestCase):
 
     def test__ethernet_802_3__header__dlen__under_min(self) -> None:
         """
-        Ensure the Ethernet 802.3 header constructor raises an exception when the
-        provided 'dlen' argument is lower than the minimum supported value.
+        Ensure the Ethernet 802.3 header constructor raises an exception when the provided
+        'dlen' argument is lower than the minimum supported value.
         """
 
         self._kwargs["dlen"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ethernet8023Header(*self._args, **self._kwargs)
+            Ethernet8023Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -113,14 +112,14 @@ class TestEthernet8023HeaderAsserts(TestCase):
 
     def test__ethernet_802_3__header__dlen__over_max(self) -> None:
         """
-        Ensure the Ethernet 802.3 header constructor raises an exception when the
-        provided 'plen' argument is higher than the maximum supported value.
+        Ensure the Ethernet 802.3 header constructor raises an exception when the provided
+        'dlen' argument is higher than the maximum supported value.
         """
 
         self._kwargs["dlen"] = value = ETHERNET_802_3__PAYLOAD__MAX_LEN + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ethernet8023Header(*self._args, **self._kwargs)
+            Ethernet8023Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

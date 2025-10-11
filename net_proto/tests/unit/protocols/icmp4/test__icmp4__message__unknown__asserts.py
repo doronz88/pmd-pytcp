@@ -58,7 +58,6 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "type": Icmp4Type.from_int(255),
             "code": Icmp4Code.from_int(255),
@@ -75,7 +74,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["type"] = value = "not an Icmp4Type"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageUnknown(*self._args, **self._kwargs)
+            Icmp4MessageUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -91,7 +90,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp4Code"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageUnknown(*self._args, **self._kwargs)
+            Icmp4MessageUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -108,7 +107,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageUnknown(*self._args, **self._kwargs)
+            Icmp4MessageUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -125,7 +124,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageUnknown(*self._args, **self._kwargs)
+            Icmp4MessageUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -141,7 +140,7 @@ class TestIcmp4MessageUnknownAssemblerAsserts(TestCase):
         self._kwargs["data"] = value = "not bytes or memoryview"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageUnknown(*self._args, **self._kwargs)
+            Icmp4MessageUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

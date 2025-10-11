@@ -51,7 +51,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 Destination Unreachable (No Route) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
                 "data": b"",
@@ -82,7 +81,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Prohibited) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PROHIBITED,
                 "data": b"",
@@ -113,7 +111,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Scope) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.SCOPE,
                 "data": b"",
@@ -144,7 +141,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Address) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.ADDRESS,
                 "data": b"",
@@ -175,7 +171,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Port) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "data": b"",
@@ -206,7 +201,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Failed Policy) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.FAILED_POLICY,
                 "data": b"",
@@ -237,7 +231,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Reject Route) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.REJECT_ROUTE,
                 "data": b"",
@@ -268,7 +261,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable (Source Routing Header) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER,
                 "data": b"",
@@ -299,7 +291,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable message, non-empty payload.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "data": b"0123456789ABCDEF",
@@ -331,7 +322,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 Destination Unreachable message, maximum length payload.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "data": b"X" * 65527,
@@ -369,7 +359,6 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -379,9 +368,7 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
         object with testcase arguments.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6MessageDestinationUnreachable(*self._args, **self._kwargs)
-        )
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageDestinationUnreachable(**self._kwargs))
 
     def test__icmp6__message__destination_unreachable__assembler__len(
         self,

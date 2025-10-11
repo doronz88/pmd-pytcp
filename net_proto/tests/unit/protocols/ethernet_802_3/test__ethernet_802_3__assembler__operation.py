@@ -54,7 +54,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "Ethernet 802.3 packet (I).",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__src": MacAddress("77:88:99:aa:bb:cc"),
                 "ethernet_802_3__dst": MacAddress("11:22:33:44:55:66"),
@@ -62,7 +61,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 30,
-                "__str__": ("ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 16, len 30 (14+16)"),
+                "__str__": "ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 16, len 30 (14+16)",
                 "__repr__": (
                     "Ethernet8023Assembler(header=Ethernet8023Header(dst=MacAddress('11:22:33:44:55:66'), "
                     "src=MacAddress('77:88:99:aa:bb:cc'), dlen=16), "
@@ -92,7 +91,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "Ethernet 802.3 packet (II).",
-            "_args": [],
             "_kwargs": {
                 "ethernet_802_3__dst": MacAddress("a1:b2:c3:d4:e5:f6"),
                 "ethernet_802_3__src": MacAddress("11:12:13:14:15:16"),
@@ -140,7 +138,6 @@ class TestEthernet8023AssemblerOperation(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -149,12 +146,11 @@ class TestEthernet8023AssemblerOperation(TestCase):
         Set up the test environment.
         """
 
-        self._ethernet_802_3__assembler = Ethernet8023Assembler(*self._args, **self._kwargs)
+        self._ethernet_802_3__assembler = Ethernet8023Assembler(**self._kwargs)
 
-    def test__ehternet_802_3__assembler__len(self) -> None:
+    def test__ethernet_802_3__assembler__len(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler '__len__()' method returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler '__len__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -164,8 +160,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__str(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler '__str__()' method returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler '__str__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -175,8 +170,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__repr(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler '__repr__()' method returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler '__repr__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -186,8 +180,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__bytes(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler '__bytes__()' method returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler '__bytes__()' method returns a correct value.
         """
 
         self.assertEqual(
@@ -197,8 +190,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__dst(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'dst' property returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'dst' property returns a correct value.
         """
 
         self.assertEqual(
@@ -208,8 +200,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__src(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'src' property returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'src' property returns a correct value.
         """
 
         self.assertEqual(
@@ -219,8 +210,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__dlen(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'dlen' property returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'dlen' property returns a correct value.
         """
 
         self.assertEqual(
@@ -230,8 +220,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__header(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'header' property returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'header' property returns a correct value.
         """
 
         self.assertEqual(
@@ -241,8 +230,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
 
     def test__ethernet_802_3__assembler__payload(self) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'payload' property returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'payload' property returns a correct value.
         """
 
         self.assertEqual(
@@ -254,8 +242,7 @@ class TestEthernet8023AssemblerOperation(TestCase):
         self,
     ) -> None:
         """
-        Ensure the Ethernet 802.3 packet assembler 'assemble()' method returns
-        a correct value.
+        Ensure the Ethernet 802.3 packet assembler 'assemble()' method returns a correct value.
         """
 
         buffers: list[Buffer] = []

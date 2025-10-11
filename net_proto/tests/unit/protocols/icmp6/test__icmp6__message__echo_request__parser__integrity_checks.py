@@ -48,7 +48,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [
+            "_frame_rx": [
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -73,7 +73,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [
+            "_frame_rx": [
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -100,7 +100,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": (
                 "ICMPv6 Echo Request message, " "the 'ICMP6__ECHO_REQUEST__LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [
+            "_frame_rx": [
                 # ICMPv6 Echo Request
                 #   Type     : 128 (Echo Request)
                 #   Code     : 0 (Default)
@@ -125,7 +125,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 Echo Request message, invalid checksum.",
-            "_args": [
+            "_frame_rx": [
                 (
                     # ICMPv6 Echo Request
                     #   Type     : 128 (Echo Request)
@@ -152,7 +152,7 @@ class TestIcmp6MessageEchoRequestParserIntegrityChecks(TestCasePacketRxIp6):
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: list[Any]
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

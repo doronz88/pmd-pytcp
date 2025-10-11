@@ -225,5 +225,5 @@ class TestIcmp6MessageEchoRequestParserAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'type' field must be <Icmp6Type.ECHO_REQUEST: 128>. " "Got: <Icmp6Type.UNKNOWN_255: 255>"),
+            ("The 'type' field must be <Icmp6Type.ECHO_REQUEST: 128>. Got: <Icmp6Type.UNKNOWN_255: 255>"),
         )

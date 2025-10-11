@@ -47,7 +47,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv4 unknown message.",
-            "_args": [],
             "_kwargs": {
                 "type": Icmp4Type.from_int(255),
                 "code": Icmp4Code.from_int(255),
@@ -86,7 +85,6 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -96,7 +94,7 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         arguments.
         """
 
-        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageUnknown(*self._args, **self._kwargs))
+        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageUnknown(**self._kwargs))
 
     def test__icmp4__message__unknown__assembler__len(self) -> None:
         """

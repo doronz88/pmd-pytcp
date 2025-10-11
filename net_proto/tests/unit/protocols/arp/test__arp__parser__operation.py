@@ -46,24 +46,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
     [
         {
             "_description": "ARP Request.",
-            "_args": [
-                (
-                    # ARP (Ethernet/IPv4)
-                    #   Hardware type : 1 (Ethernet)
-                    #   Protocol type : 0x0800 (IPv4)
-                    #   HLEN / PLEN   : 6 / 4
-                    #   Operation     : 1 (Request)
-                    #   Sender MAC    : 02:00:00:00:00:91
-                    #   Sender IP     : 10.0.1.91
-                    #   Target MAC    : 00:00:00:00:00:07
-                    #   Target IP     : 10.0.1.7
-                    #
-                    #   Summary       : Unicast ARP request — "Who has 10.0.1.7? Tell 10.0.1.91."
-                    b"\x00\x01\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00"
-                    b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # ARP (Ethernet/IPv4)
+                #   Hardware type : 1 (Ethernet)
+                #   Protocol type : 0x0800 (IPv4)
+                #   HLEN / PLEN   : 6 / 4
+                #   Operation     : 1 (Request)
+                #   Sender MAC    : 02:00:00:00:00:91
+                #   Sender IP     : 10.0.1.91
+                #   Target MAC    : 00:00:00:00:00:07
+                #   Target IP     : 10.0.1.7
+                #
+                #   Summary       : Unicast ARP request — "Who has 10.0.1.7? Tell 10.0.1.91."
+                b"\x00\x01\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00"
+                b"\x01\x5b\x00\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+            ),
             "_results": {
                 "header": ArpHeader(
                     oper=ArpOperation.REQUEST,
@@ -76,24 +73,21 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "ARP Reply.",
-            "_args": [
-                (
-                    # ARP (Ethernet/IPv4)
-                    #   Hardware type : 1 (Ethernet)
-                    #   Protocol type : 0x0800 (IPv4)
-                    #   HLEN / PLEN   : 6 / 4
-                    #   Operation     : 2 (Reply)
-                    #   Sender MAC    : 02:00:00:00:00:07
-                    #   Sender IP     : 10.0.1.7
-                    #   Target MAC    : 02:00:00:00:00:91
-                    #   Target IP     : 10.0.1.91
-                    #
-                    #   Summary       : Unicast ARP reply — "10.0.1.7 is at 02:00:00:00:00:07."
-                    b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00"
-                    b"\x01\x07\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # ARP (Ethernet/IPv4)
+                #   Hardware type : 1 (Ethernet)
+                #   Protocol type : 0x0800 (IPv4)
+                #   HLEN / PLEN   : 6 / 4
+                #   Operation     : 2 (Reply)
+                #   Sender MAC    : 02:00:00:00:00:07
+                #   Sender IP     : 10.0.1.7
+                #   Target MAC    : 02:00:00:00:00:91
+                #   Target IP     : 10.0.1.91
+                #
+                #   Summary       : Unicast ARP reply — "10.0.1.7 is at 02:00:00:00:00:07."
+                b"\x00\x01\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00"
+                b"\x01\x07\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+            ),
             "_results": {
                 "header": ArpHeader(
                     oper=ArpOperation.REPLY,
@@ -112,17 +106,15 @@ class TestArpHeaderParserOperation(TestCasePacketRx):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx
 
     def test__arp__parser(self) -> None:
         """
-        Ensure the ARP packet parser creates the proper header, options
-        and payload objects and also updates the appropriate 'tx_packet'
-        object fields.
+        Ensure the ARP packet parser creates the proper header, options and payload
+        objects and also updates the appropriate 'tx_packet' object fields.
         """
 
         arp_parser = ArpParser(self._packet_rx)

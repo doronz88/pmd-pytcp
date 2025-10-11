@@ -51,7 +51,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv4 Destination Unreachable (Network) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK,
                 "data": b"",
@@ -82,7 +81,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST,
                 "data": b"",
@@ -113,7 +111,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Protocol) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PROTOCOL,
                 "data": b"",
@@ -144,7 +141,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable - (Port) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"",
@@ -175,7 +171,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Fragmentation Needed) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
                 "mtu": 1200,
@@ -183,7 +178,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 8,
-                "__str__": ("ICMPv4 Destination Unreachable - Fragmentation Needed, mtu 1200, " "len 8 (8+0)"),
+                "__str__": "ICMPv4 Destination Unreachable - Fragmentation Needed, mtu 1200, len 8 (8+0)",
                 "__repr__": (
                     "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".FRAGMENTATION_NEEDED: 4>, cksum=0, mtu=1200, data=b'')"
@@ -208,7 +203,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Source Route Failed) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.SOURCE_ROUTE_FAILED,
                 "data": b"",
@@ -239,7 +233,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network Unknown) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_UNKNOWN,
                 "data": b"",
@@ -270,7 +263,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Unknown) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_UNKNOWN,
                 "data": b"",
@@ -301,7 +293,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Source Host Isolated) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.SOURCE_HOST_ISOLATED,
                 "data": b"",
@@ -332,7 +323,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network Prohibited) message'.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_PROHIBITED,
                 "data": b"",
@@ -363,7 +353,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Prohibited) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_PROHIBITED,
                 "data": b"",
@@ -394,7 +383,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Network TOS) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_TOS,
                 "data": b"",
@@ -425,7 +413,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host TOS) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_TOS,
                 "data": b"",
@@ -456,14 +443,13 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Communication Prohibited) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.COMMUNICATION_PROHIBITED,
                 "data": b"",
             },
             "_results": {
                 "__len__": 8,
-                "__str__": ("ICMPv4 Destination Unreachable - Communication Prohibited, len 8 (8+0)"),
+                "__str__": "ICMPv4 Destination Unreachable - Communication Prohibited, len 8 (8+0)",
                 "__repr__": (
                     "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
                     ".COMMUNICATION_PROHIBITED: 13>, cksum=0, mtu=None, data=b'')"
@@ -487,7 +473,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Host Precedence) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_PRECEDENCE,
                 "data": b"",
@@ -518,7 +503,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable (Precedence Cutoff) message.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PRECEDENCE_CUTOFF,
                 "data": b"",
@@ -549,7 +533,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable message, non-empty payload.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"0123456789ABCDEF",
@@ -581,7 +564,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Destination Unreachable message, maximum length payload.",
-            "_args": [],
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"X" * 65507,
@@ -619,26 +601,23 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv4 Destination Unreachable message assembler
-        object with testcase arguments.
+        Initialize the ICMPv4 Destination Unreachable message assembler object with
+        testcase arguments.
         """
 
-        self._icmp4__assembler = Icmp4Assembler(
-            icmp4__message=Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
-        )
+        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageDestinationUnreachable(**self._kwargs))
 
     def test__icmp4__message__destination_unreachable__assembler__len(
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__len__()' method
-        returns a correct value.
+        Ensure the ICMPv4 Destination Unreachable message '__len__()' method returns
+        a correct value.
         """
 
         self.assertEqual(
@@ -650,8 +629,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__str__()' method
-        returns a correct value.
+        Ensure the ICMPv4 Destination Unreachable message '__str__()' method returns
+        a correct value.
         """
 
         self.assertEqual(
@@ -663,8 +642,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__repr__()' method
-        returns a correct value.
+        Ensure the ICMPv4 Destination Unreachable message '__repr__()' method returns
+        a correct value.
         """
 
         self.assertEqual(
@@ -676,8 +655,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__bytes__()' method
-        returns a correct value.
+        Ensure the ICMPv4 Destination Unreachable message '__bytes__()' method returns
+        a correct value.
         """
 
         self.assertEqual(
@@ -689,8 +668,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'type' field
-        contains a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'type' field contains
+        a correct value.
         """
 
         self.assertEqual(
@@ -702,8 +681,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'code' field
-        contains a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'code' field contains
+        a correct value.
         """
 
         self.assertEqual(
@@ -715,8 +694,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'cksum' field
-        contains a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'cksum' field contains
+        a correct value.
         """
 
         self.assertEqual(
@@ -728,8 +707,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'mtu' field
-        contains a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'mtu' field contains
+        a correct value.
         """
 
         if "mtu" in self._results:
@@ -745,8 +724,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'data' field
-        contains a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'data' field contains
+        a correct value.
         """
 
         self.assertEqual(
@@ -761,8 +740,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'assemble()' method
-        returns a correct value.
+        Ensure the ICMPv4 Destination Unreachable message 'assemble()' method returns
+        a correct value.
         """
 
         buffers: list[Buffer] = []

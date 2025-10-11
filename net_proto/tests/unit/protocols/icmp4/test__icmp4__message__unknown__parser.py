@@ -51,20 +51,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMPv4 unknown message.",
-            "_args": [
-                (
-                    # ICMPv4 Unknown Message
-                    #   Type     : 255 (Unknown)
-                    #   Code     : 255 (Unknown)
-                    #   Checksum : 0x3129
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Vendor-specific or unsupported ICMP message with 16-byte payload.
-                    b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
-                    b"\x43\x44\x45\x46"
-                )
+            "_frame_rx": [
+                # ICMPv4 Unknown Message
+                #   Type     : 255 (Unknown)
+                #   Code     : 255 (Unknown)
+                #   Checksum : 0x3129
+                #   Data len : 16 bytes ("0123456789ABCDEF")
+                #
+                #   Summary  : Vendor-specific or unsupported ICMP message with 16-byte payload.
+                b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
+                b"\x43\x44\x45\x46",
             ],
-            "_kwargs": {},
             "_results": {
                 "message": Icmp4MessageUnknown(
                     type=Icmp4Type.from_int(255),
@@ -82,8 +79,7 @@ class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

@@ -48,9 +48,9 @@ class TestCasePacketRxIp4(TestCase):
     IPv4 parser values.
     """
 
-    _args: list[Any] = []
-    _kwargs: dict[str, Any] = {}
+    _frame_rx: bytes
     _mocked_values: dict[str, Any] = {}
+
     _packet_rx: PacketRx
 
     def setUp(self) -> None:
@@ -58,13 +58,13 @@ class TestCasePacketRxIp4(TestCase):
         Set up the mocked values for the IPv4 related fields.
         """
 
-        self._packet_rx = PacketRx(*self._args, **self._kwargs)
+        self._packet_rx = PacketRx(self._frame_rx)
 
         self._packet_rx.ip = self._packet_rx.ip4 = cast(Ip4Parser, StrictMock(template=Ip4Parser))
         self.patch_attribute(
             target=self._packet_rx.ip4,
             attribute="payload_len",
-            new_value=self._mocked_values.get("ip4__payload_len", len(self._args[0])),
+            new_value=self._mocked_values.get("ip4__payload_len", len(self._frame_rx)),
         )
         self.patch_attribute(
             target=self._packet_rx.ip4,

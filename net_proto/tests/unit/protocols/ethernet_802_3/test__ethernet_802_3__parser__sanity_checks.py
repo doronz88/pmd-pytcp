@@ -48,8 +48,7 @@ class TestEthernet8023ParserSanityChecks(TestCasePacketRx):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx
@@ -64,5 +63,5 @@ class TestEthernet8023ParserSanityChecks(TestCasePacketRx):
 
         self.assertEqual(
             str(error.exception),
-            f"[SANITY ERROR][Ethernet 802.3] {self._results["error_message"]}",
+            f"[SANITY ERROR][Ethernet 802.3] {self._results['error_message']}",
         )

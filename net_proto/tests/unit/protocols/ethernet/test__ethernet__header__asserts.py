@@ -51,7 +51,6 @@ class TestEthernetHeaderAsserts(TestCase):
         Create the default arguments for the Ethernet header constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "dst": MacAddress(),
             "src": MacAddress(),
@@ -60,14 +59,14 @@ class TestEthernetHeaderAsserts(TestCase):
 
     def test__ethernet_header__dst__not_MacAddress(self) -> None:
         """
-        Ensure the Ethernet header constructor raises an exception when the
-        provided 'dst' argument is not a MacAddress.
+        Ensure the Ethernet header constructor raises an exception when the provided
+        'dst' argument is not a MacAddress.
         """
 
         self._kwargs["dst"] = value = "not a MacAddress"
 
         with self.assertRaises(AssertionError) as error:
-            EthernetHeader(*self._args, **self._kwargs)
+            EthernetHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -76,14 +75,14 @@ class TestEthernetHeaderAsserts(TestCase):
 
     def test__ethernet__header__src__not_MacAddress(self) -> None:
         """
-        Ensure the Ethernet header constructor raises an exception when the
-        provided 'src' argument is not a MacAddress.
+        Ensure the Ethernet header constructor raises an exception when the provided
+        'src' argument is not a MacAddress.
         """
 
         self._kwargs["src"] = value = "not a MacAddress"
 
         with self.assertRaises(AssertionError) as error:
-            EthernetHeader(*self._args, **self._kwargs)
+            EthernetHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -92,14 +91,14 @@ class TestEthernetHeaderAsserts(TestCase):
 
     def test__ethernet__header__type__not_EtherType(self) -> None:
         """
-        Ensure the Ethernet header constructor raises an exception when the
-        provided 'type' argument is not an EtherType.
+        Ensure the Ethernet header constructor raises an exception when the provided
+        'type' argument is not an EtherType.
         """
 
         self._kwargs["type"] = value = "not an EtherType"
 
         with self.assertRaises(AssertionError) as error:
-            EthernetHeader(*self._args, **self._kwargs)
+            EthernetHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

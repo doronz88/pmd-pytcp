@@ -51,19 +51,16 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
     [
         {
             "_description": "Ethernet 802.3 packet (I).",
-            "_args": [
-                (
-                    # Ethernet 802.3
-                    #   Destination MAC : 11:22:33:44:55:66
-                    #   Source MAC      : 77:88:99:aa:bb:cc
-                    #   Length          : 0x0010 (16 bytes)
-                    #
-                    #   Summary         : Unicast 802.3 frame with 16-byte LLC payload.
-                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
-                    b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : 11:22:33:44:55:66
+                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Length          : 0x0010 (16 bytes)
+                #
+                #   Summary         : Unicast 802.3 frame with 16-byte LLC payload.
+                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
+                b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
+            ),
             "_results": {
                 "header": Ethernet8023Header(
                     dst=MacAddress("11:22:33:44:55:66"),
@@ -75,19 +72,16 @@ from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
         },
         {
             "_description": "Ethernet 802.3 packet (II).",
-            "_args": [
-                (
-                    # Ethernet 802.3
-                    #   Destination MAC : a1:b2:c3:d4:e5:f6
-                    #   Source MAC      : 11:12:13:14:15:16
-                    #   Length          : 0x05dc (1500 bytes)
-                    #
-                    #   Summary         : Unicast 802.3 frame at maximum payload size.
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
-                    + b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN
-                ),
-            ],
-            "_kwargs": {},
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : 11:12:13:14:15:16
+                #   Length          : 0x05dc (1500 bytes)
+                #
+                #   Summary         : Unicast 802.3 frame at maximum payload size.
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
+                + b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN
+            ),
             "_results": {
                 "header": Ethernet8023Header(
                     dst=MacAddress("a1:b2:c3:d4:e5:f6"),
@@ -105,8 +99,7 @@ class TestEthernet8023ParserOperation(TestCasePacketRx):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

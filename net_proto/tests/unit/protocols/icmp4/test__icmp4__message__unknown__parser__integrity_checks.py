@@ -47,19 +47,16 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": (
                 "ICMPv4 Unknown message, " "the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
             ),
-            "_args": [
-                (
-                    # ICMPv4 Unknown Message
-                    #   Type     : 255 (Unknown)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb?? (truncated)
-                    #   Frame len: 3 bytes (< 4-byte minimum header)
-                    #
-                    #   Summary  : Frame shorter than ICMP header length.
-                    b"\xff\x00\xfb"
-                ),
+            "_frame_rx": [
+                # ICMPv4 Unknown Message
+                #   Type     : 255 (Unknown)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb?? (truncated)
+                #   Frame len: 3 bytes (< 4-byte minimum header)
+                #
+                #   Summary  : Frame shorter than ICMP header length.
+                b"\xff\x00\xfb",
             ],
-            "_kwargs": {},
             "_mocked_values": {
                 "ip4__payload_len": 3,
             },
@@ -75,20 +72,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": (
                 "ICMPv4 unknown message, " "the 'self._ip4_payload_len <= len(self._frame)' condition not met."
             ),
-            "_args": [
-                (
-                    # ICMPv4 Unknown Message
-                    #   Type     : 255 (Unknown)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0xfb94
-                    #   Next-Hop : 0x3039d4?? (truncated payload)
-                    #   Frame len: 7 bytes (< 8-byte minimum header)
-                    #
-                    #   Summary  : Declared payload exceeds available frame length.
-                    b"\xff\x00\xfb\x94\x30\x39\xd4"
-                ),
+            "_frame_rx": [
+                # ICMPv4 Unknown Message
+                #   Type     : 255 (Unknown)
+                #   Code     : 0 (Default)
+                #   Checksum : 0xfb94
+                #   Next-Hop : 0x3039d4?? (truncated payload)
+                #   Frame len: 7 bytes (< 8-byte minimum header)
+                #
+                #   Summary  : Declared payload exceeds available frame length.
+                b"\xff\x00\xfb\x94\x30\x39\xd4",
             ],
-            "_kwargs": {},
             "_mocked_values": {
                 "ip4__payload_len": 8,
             },
@@ -102,20 +96,17 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMPv4 unknown message, invalid checksum.",
-            "_args": [
-                (
-                    # ICMPv4 Unknown Message
-                    #   Type     : 255 (Unknown)
-                    #   Code     : 0 (Default)
-                    #   Checksum : 0x0000 (invalid)
-                    #   Next-Hop : 0x3039d431
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Header checksum field set to zero (invalid).
-                    b"\xff\x00\x00\x00\x30\x39\xd4\x31"
-                ),
+            "_frame_rx": [
+                # ICMPv4 Unknown Message
+                #   Type     : 255 (Unknown)
+                #   Code     : 0 (Default)
+                #   Checksum : 0x0000 (invalid)
+                #   Next-Hop : 0x3039d431
+                #   Data len : 0 bytes
+                #
+                #   Summary  : Header checksum field set to zero (invalid).
+                b"\xff\x00\x00\x00\x30\x39\xd4\x31",
             ],
-            "_kwargs": {},
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -129,8 +120,7 @@ class TestIcmp4MessageUnknownParserIntegrityChecks(TestCasePacketRxIp4):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

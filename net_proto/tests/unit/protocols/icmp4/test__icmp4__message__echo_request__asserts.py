@@ -60,7 +60,6 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "code": Icmp4EchoRequestCode.DEFAULT,
             "cksum": 0,
@@ -80,7 +79,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp4EchoRequestCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -97,7 +96,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -114,7 +113,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -131,7 +130,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -148,7 +147,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["id"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -165,7 +164,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -182,7 +181,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["seq"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -200,7 +199,7 @@ class TestIcmp4MessageEchoRequestAssemblerAsserts(TestCase):
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoRequest(*self._args, **self._kwargs)
+            Icmp4MessageEchoRequest(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),

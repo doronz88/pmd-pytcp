@@ -60,7 +60,6 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         message constructor.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "code": Icmp4DestinationUnreachableCode.NETWORK,
             "mtu": None,
@@ -72,15 +71,14 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message constructor
-        raises an exception when the provided 'code' argument is not
-        an Icmp4DestinationUnreachableCode.
+        Ensure the ICMPv4 Destination Unreachable message constructor raises an exception
+        when the provided 'code' argument is not an Icmp4DestinationUnreachableCode.
         """
 
         self._kwargs["code"] = value = "not an Icmp4DestinationUnreachableCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -91,17 +89,16 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the given 'code' argument
-        equals 'FRAGMENTATION_NEEDED', but the MTU argument is not
-        provided.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor raises
+        an exception when the given 'code' argument equals 'FRAGMENTATION_NEEDED',
+        but the MTU argument is not provided.
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = None
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -112,10 +109,9 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the given 'code' argument
-        doesn't equal 'FRAGMENTATION_NEEDED', but the MTU argument is
-        provided.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor raises
+        an exception when the given 'code' argument doesn't equal 'FRAGMENTATION_NEEDED',
+        but the MTU argument is provided.
         """
 
         self._kwargs["mtu"] = value = 1500
@@ -123,7 +119,7 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         for code in Icmp4DestinationUnreachableCode:
             if code != Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
                 with self.assertRaises(AssertionError) as error:
-                    Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+                    Icmp4MessageDestinationUnreachable(**self._kwargs)
 
                 self.assertEqual(
                     str(error.exception),
@@ -134,15 +130,15 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the provided 'cksum' argument
-        is lower than the minimum supported value.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor raises
+        an exception when the provided 'cksum' argument is lower than the minimum
+        supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -153,15 +149,15 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the provided 'cksum' argument
-        is higher than the maximum supported value.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor raises
+        an exception when the provided 'cksum' argument is higher than the maximum
+        supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -172,16 +168,15 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the provided 'mtu' argument
-        is lower than the minimum supported value.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor raises an
+        exception when the provided 'mtu' argument is lower than the minimum supported value.
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -192,16 +187,16 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the provided 'mtu' argument
-        is higher than the maximum supported value.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor
+        raises an exception when the provided 'mtu' argument is higher than the
+        maximum supported value.
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         self._kwargs["mtu"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -212,16 +207,16 @@ class TestIcmp4MessageDestinationUnreachableAssemblerAsserts(TestCase):
         self,
     ) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message assembler
-        constructor raises an exception when the length of the provided
-        'data' argument is higher than the maximum supported value.
+        Ensure the ICMPv4 Destination Unreachable message assembler constructor
+        raises an exception when the length of the provided 'data' argument is
+        higher than the maximum supported value.
         """
 
         value = IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN + 1
         self._kwargs["data"] = b"X" * value
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable(*self._args, **self._kwargs)
+            Icmp4MessageDestinationUnreachable(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -239,9 +234,8 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
 
     def test__icmp4__message__destination_unreachable__wrong_type(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message parser raises
-        an exception when the provided 'buffer' argument contains incorrect
-        'type' field.
+        Ensure the ICMPv4 Destination Unreachable message parser raises an exception
+        when the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         with self.assertRaises(AssertionError) as error:

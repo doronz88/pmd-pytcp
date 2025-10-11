@@ -51,7 +51,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv4 Echo Reply message, empty data.",
-            "_args": [],
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -86,7 +85,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Echo Reply message, non-empty data.",
-            "_args": [],
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -122,7 +120,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv4 Echo Reply message, maximum length of data.",
-            "_args": [],
             "_kwargs": {
                 "id": 11111,
                 "seq": 22222,
@@ -164,7 +161,6 @@ class TestIcmp4MessageEchoReplyAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -174,7 +170,7 @@ class TestIcmp4MessageEchoReplyAssembler(TestCase):
         with testcase arguments.
         """
 
-        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageEchoReply(*self._args, **self._kwargs))
+        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageEchoReply(**self._kwargs))
 
     def test__icmp4__message__echo_reply__assembler__len(self) -> None:
         """
