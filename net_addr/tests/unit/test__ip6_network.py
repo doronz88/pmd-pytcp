@@ -34,12 +34,16 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import (
+    Ip4Address,
+    Ip4Host,
+    Ip4Network,
     Ip6Address,
+    Ip6Host,
     Ip6Mask,
     Ip6Network,
     Ip6NetworkFormatError,
@@ -98,8 +102,8 @@ from net_addr import (
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
-                "address": Ip6Address(),
-                "mask": Ip6Mask(),
+                "address": Ip6Address("2001::"),
+                "mask": Ip6Mask("/96"),
                 "last": Ip6Address("2001::ffff:ffff"),
             },
         },
@@ -116,8 +120,8 @@ from net_addr import (
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
-                "address": Ip6Address(),
-                "mask": Ip6Mask(),
+                "address": Ip6Address("2001:0:aaaa:bbbb::"),
+                "mask": Ip6Mask("/64"),
                 "last": Ip6Address("2001:0:aaaa:bbbb:ffff:ffff:ffff:ffff"),
             },
         },
@@ -134,8 +138,8 @@ from net_addr import (
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
-                "address": Ip6Address(),
-                "mask": Ip6Mask(),
+                "address": Ip6Address("2002::"),
+                "mask": Ip6Mask("/32"),
                 "last": Ip6Address("2002:0:ffff:ffff:ffff:ffff:ffff:ffff"),
             },
         },
@@ -152,8 +156,8 @@ from net_addr import (
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
-                "address": Ip6Address(),
-                "mask": Ip6Mask(),
+                "address": Ip6Address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+                "mask": Ip6Mask("/128"),
                 "last": Ip6Address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
             },
         },
@@ -165,7 +169,7 @@ class TestNetAddrIp6Network(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -203,6 +207,7 @@ class TestNetAddrIp6Network(TestCase):
 
         self.assertTrue(
             self._ip6_network == self._ip6_network,
+            msg="Ip6Network must compare equal to itself.",
         )
 
         if int(self._ip6_network.mask) != 0:
@@ -214,6 +219,7 @@ class TestNetAddrIp6Network(TestCase):
                         self._ip6_network.mask,
                     ),
                 ),
+                msg="Ip6Network values with different addresses must compare unequal.",
             )
 
         self.assertFalse(
@@ -224,10 +230,12 @@ class TestNetAddrIp6Network(TestCase):
                     Ip6Mask(f"/{(len(self._ip6_network.mask) + 1) % 129}"),
                 ),
             ),
+            msg="Ip6Network values with different masks must compare unequal.",
         )
 
         self.assertFalse(
             self._ip6_network == "not an IPv6 network",
+            msg="Ip6Network must not compare equal to an arbitrary string.",
         )
 
     def test__net_addr__ip6_network__hash(self) -> None:
@@ -272,6 +280,26 @@ class TestNetAddrIp6Network(TestCase):
             self._results["is_ip6"],
         )
 
+    def test__net_addr__ip6_network__address(self) -> None:
+        """
+        Ensure the IPv6 network 'address' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip6_network.address,
+            self._results["address"],
+        )
+
+    def test__net_addr__ip6_network__mask(self) -> None:
+        """
+        Ensure the IPv6 network 'mask' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip6_network.mask,
+            self._results["mask"],
+        )
+
     def test__net_addr__ip6_network__last(self) -> None:
         """
         Ensure the IPv6 network 'last' property returns a correct
@@ -287,6 +315,98 @@ class TestNetAddrIp6Network(TestCase):
 @parameterized_class(
     [
         {
+            "_description": "Ip6Address inside network",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Address("2001:db8::1"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip6Address equals network address",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Address("2001:db8::"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip6Address equals last address",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Address("2001:db8::ffff:ffff:ffff:ffff"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip6Address outside network",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Address("2001:db9::1"),
+            "_result": False,
+        },
+        {
+            "_description": "Ip6Host inside network",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Host("2001:db8::50/64"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip6Host outside network",
+            "_network": "2001:db8::/64",
+            "_object": Ip6Host("2001:db9::50/64"),
+            "_result": False,
+        },
+        {
+            "_description": "Unsupported type returns False",
+            "_network": "2001:db8::/64",
+            "_object": "2001:db8::1",
+            "_result": False,
+        },
+        {
+            "_description": "Ip4Address cross-version returns False",
+            "_network": "2001:db8::/64",
+            "_object": Ip4Address("192.168.1.1"),
+            "_result": False,
+        },
+        {
+            "_description": "Ip4Host cross-version returns False",
+            "_network": "2001:db8::/64",
+            "_object": Ip4Host("192.168.1.1/24"),
+            "_result": False,
+        },
+        {
+            "_description": "Integer type returns False",
+            "_network": "2001:db8::/64",
+            "_object": 0x20010DB8_00000000_00000000_00000001,
+            "_result": False,
+        },
+        {
+            "_description": "None returns False",
+            "_network": "2001:db8::/64",
+            "_object": None,
+            "_result": False,
+        },
+    ]
+)
+class TestNetAddrIp6NetworkContains(TestCase):
+    """
+    The NetAddr IPv6 network '__contains__()' tests.
+    """
+
+    _description: str
+    _network: str
+    _object: Any
+    _result: bool
+
+    def test__net_addr__ip6_network__contains(self) -> None:
+        """
+        Ensure the IPv6 network '__contains__()' method returns a correct value.
+        """
+
+        self.assertEqual(
+            self._object in Ip6Network(self._network),
+            self._result,
+            msg=f"'__contains__()' returned wrong value for case: {self._description}.",
+        )
+
+
+@parameterized_class(
+    [
+        {
             "_description": "Test the IPv6 network format: '2001:://64'",
             "_args": [
                 "2001:://64",
@@ -294,7 +414,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": ("The IPv6 network format is invalid: '2001:://64'"),
+                "error_message": "The IPv6 network format is invalid: '2001:://64'",
             },
         },
         {
@@ -305,7 +425,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": ("The IPv6 network format is invalid: '2001::64'"),
+                "error_message": "The IPv6 network format is invalid: '2001::64'",
             },
         },
         {
@@ -316,7 +436,7 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": ("The IPv6 network format is invalid: '1:2:3:4:5:6:7:8:9/64'"),
+                "error_message": "The IPv6 network format is invalid: '1:2:3:4:5:6:7:8:9/64'",
             },
         },
         {
@@ -327,7 +447,29 @@ class TestNetAddrIp6Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6NetworkFormatError,
-                "error_message": ("The IPv6 network format is invalid: '1:2:3:4:5:6:7:8/129'"),
+                "error_message": "The IPv6 network format is invalid: '1:2:3:4:5:6:7:8/129'",
+            },
+        },
+        {
+            "_description": "Test the IPv6 network format: '2001:db8::' (missing mask)",
+            "_args": [
+                "2001:db8::",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": "The IPv6 network format is invalid: '2001:db8::'",
+            },
+        },
+        {
+            "_description": "Test the IPv6 network format: 12345 (invalid type)",
+            "_args": [
+                12345,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": "The IPv6 network format is invalid: 12345",
             },
         },
     ]
@@ -338,7 +480,7 @@ class TestNetAddrIp6NetworkErrors(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -353,4 +495,205 @@ class TestNetAddrIp6NetworkErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
+        )
+
+
+class TestNetAddrIp6NetworkEquality(TestCase):
+    """
+    The NetAddr IPv6 network equality and inequality tests not tied to
+    a parameterized matrix.
+    """
+
+    def test__net_addr__ip6_network__eq__cross_version(self) -> None:
+        """
+        Ensure an IPv6 network never compares equal to an IPv4 network
+        even when their prefix lengths overlap.
+        """
+
+        self.assertNotEqual(
+            Ip6Network("2001:db8::/24"),
+            Ip4Network("192.168.1.0/24"),
+            msg="Ip6Network must not compare equal to an Ip4Network.",
+        )
+
+    def test__net_addr__ip6_network__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv6 network is never equal to a value of a foreign
+        type, including its own component pieces.
+        """
+
+        network = Ip6Network("2001:db8::/64")
+
+        self.assertFalse(
+            network == "2001:db8::/64",
+            msg="Ip6Network must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            network == network.address,
+            msg="Ip6Network must not compare equal to its Ip6Address component.",
+        )
+        self.assertFalse(
+            network == network.mask,
+            msg="Ip6Network must not compare equal to its Ip6Mask component.",
+        )
+        self.assertFalse(
+            network == Ip6Host("2001:db8::1/64"),
+            msg="Ip6Network must not compare equal to an Ip6Host.",
+        )
+        self.assertFalse(
+            network == 0x20010DB8_00000000_00000000_00000000,
+            msg="Ip6Network must not compare equal to an integer.",
+        )
+        self.assertFalse(
+            network == None,  # noqa: E711
+            msg="Ip6Network must not compare equal to None.",
+        )
+
+    def test__net_addr__ip6_network__ne(self) -> None:
+        """
+        Ensure the IPv6 network '__ne__()' method returns a correct value.
+        """
+
+        network = Ip6Network("2001:db8::/64")
+        self.assertTrue(
+            network != Ip6Network("2001:db9::/64"),
+            msg="Ip6Network instances with different network addresses must be unequal.",
+        )
+        self.assertTrue(
+            network != Ip6Network("2001:db8::/96"),
+            msg="Ip6Network instances with different masks must be unequal.",
+        )
+        self.assertFalse(
+            network != Ip6Network("2001:db8::/64"),
+            msg="Ip6Network instances with matching address and mask must not be unequal.",
+        )
+        self.assertTrue(
+            network != "2001:db8::/64",
+            msg="Ip6Network must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp6NetworkHashConsistency(TestCase):
+    """
+    The NetAddr IPv6 network hash consistency tests.
+    """
+
+    def test__net_addr__ip6_network__hash__distinct_instances(self) -> None:
+        """
+        Ensure two independently constructed equal networks hash identically.
+        """
+
+        a = Ip6Network("2001:db8::abcd/64")
+        b = Ip6Network((Ip6Address("2001:db8::1234"), Ip6Mask("/64")))
+
+        self.assertEqual(
+            a,
+            b,
+            msg="Ip6Network built from CIDR string and (address, mask) tuple must compare equal.",
+        )
+        self.assertEqual(
+            hash(a),
+            hash(b),
+            msg="Equal Ip6Network values must hash to the same value across constructor forms.",
+        )
+
+    def test__net_addr__ip6_network__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv6 networks collapse into a single element when
+        used in a set.
+        """
+
+        a = Ip6Network("2001:db8::/64")
+        b = Ip6Network((Ip6Address("2001:db8::abcd"), Ip6Mask("/64")))
+        c = Ip6Network("2001:db9::/64")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip6Network values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip6Network values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip6Network values as the same key.",
+        )
+
+    def test__net_addr__ip6_network__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv6 networks refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip6Network("2001:db8::/64")
+        b = Ip6Network((Ip6Address("2001:db8::abcd"), Ip6Mask("/64")))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip6Network must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp6NetworkRoundtrip(TestCase):
+    """
+    The NetAddr IPv6 network string roundtrip tests.
+    """
+
+    def test__net_addr__ip6_network__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip6Network(str(x))' yields a network equal to 'x'.
+        """
+
+        for spec in (
+            "::/0",
+            "2001::/16",
+            "2001:db8::/32",
+            "2001:db8::/64",
+            "2001:db8::1/128",
+            "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128",
+        ):
+            with self.subTest(spec=spec):
+                network = Ip6Network(spec)
+                self.assertEqual(
+                    Ip6Network(str(network)),
+                    network,
+                    msg=f"Roundtrip through str() must preserve network {spec!r}.",
+                )
+
+    def test__net_addr__ip6_network__roundtrip__copy(self) -> None:
+        """
+        Ensure constructing an Ip6Network from another Ip6Network yields
+        an equal network with the same hash.
+        """
+
+        source = Ip6Network("2001:db8::abcd/64")
+        clone = Ip6Network(source)
+
+        self.assertEqual(
+            clone,
+            source,
+            msg="Copy-constructed Ip6Network must compare equal to the source.",
+        )
+        self.assertEqual(
+            hash(clone),
+            hash(source),
+            msg="Copy-constructed Ip6Network must share the source's hash.",
+        )
+        self.assertEqual(
+            clone.address,
+            source.address,
+            msg="Copy-constructed Ip6Network must preserve the network address.",
+        )
+        self.assertEqual(
+            clone.mask,
+            source.mask,
+            msg="Copy-constructed Ip6Network must preserve the mask.",
         )
