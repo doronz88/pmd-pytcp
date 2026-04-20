@@ -44,6 +44,9 @@ from net_addr import (
     Ip4Mask,
     Ip4Network,
     Ip4NetworkFormatError,
+    Ip6Address,
+    Ip6Host,
+    Ip6Network,
     IpVersion,
 )
 
@@ -286,10 +289,12 @@ class TestNetAddrIp4Network(TestCase):
 
         self.assertTrue(
             self._ip4_network == self._ip4_network,
+            msg="An Ip4Network instance must compare equal to itself.",
         )
 
         self.assertTrue(
             self._ip4_network == Ip4Network(str(self._ip4_network)),
+            msg="Ip4Network must compare equal to one reconstructed from its string representation.",
         )
 
         if int(self._ip4_network.mask) != 0:
@@ -301,6 +306,7 @@ class TestNetAddrIp4Network(TestCase):
                         self._ip4_network.mask,
                     ),
                 ),
+                msg="Ip4Network instances with different network addresses must not compare equal.",
             )
 
         self.assertFalse(
@@ -311,10 +317,12 @@ class TestNetAddrIp4Network(TestCase):
                     Ip4Mask(f"/{(len(self._ip4_network.mask) + 1) % 33}"),
                 ),
             ),
+            msg="Ip4Network instances with different masks must not compare equal.",
         )
 
         self.assertFalse(
             self._ip4_network == "not an IPv4 network",
+            msg="Ip4Network must not compare equal to a foreign string value.",
         )
 
     def test__net_addr__ip4_network__hash(self) -> None:
@@ -442,6 +450,30 @@ class TestNetAddrIp4Network(TestCase):
             "_object": "192.168.1.1",
             "_result": False,
         },
+        {
+            "_description": "Ip6Address cross-version returns False",
+            "_network": "192.168.1.0/24",
+            "_object": Ip6Address("2001:db8::1"),
+            "_result": False,
+        },
+        {
+            "_description": "Ip6Host cross-version returns False",
+            "_network": "192.168.1.0/24",
+            "_object": Ip6Host("2001:db8::1/64"),
+            "_result": False,
+        },
+        {
+            "_description": "Integer type returns False",
+            "_network": "192.168.1.0/24",
+            "_object": 0xC0A80101,
+            "_result": False,
+        },
+        {
+            "_description": "None returns False",
+            "_network": "192.168.1.0/24",
+            "_object": None,
+            "_result": False,
+        },
     ]
 )
 class TestNetAddrIp4NetworkContains(TestCase):
@@ -462,6 +494,7 @@ class TestNetAddrIp4NetworkContains(TestCase):
         self.assertEqual(
             self._object in Ip4Network(self._network),
             self._result,
+            msg=f"'__contains__()' returned wrong value for case: {self._description}.",
         )
 
 
@@ -567,4 +600,216 @@ class TestNetAddrIp4NetworkErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
+        )
+
+
+class TestNetAddrIp4NetworkEquality(TestCase):
+    """
+    The NetAddr IPv4 network equality and inequality tests not tied to
+    a parameterized matrix.
+    """
+
+    def test__net_addr__ip4_network__eq__cross_version(self) -> None:
+        """
+        Ensure an IPv4 network never compares equal to an IPv6 network
+        even when their string representations overlap.
+        """
+
+        self.assertNotEqual(
+            Ip4Network("192.168.1.0/24"),
+            Ip6Network("2001:db8::/24"),
+            msg="Ip4Network must not compare equal to an Ip6Network.",
+        )
+
+    def test__net_addr__ip4_network__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv4 network is never equal to a value of a foreign
+        type, including its own component pieces.
+        """
+
+        network = Ip4Network("192.168.1.0/24")
+
+        self.assertFalse(
+            network == "192.168.1.0/24",
+            msg="Ip4Network must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            network == network.address,
+            msg="Ip4Network must not compare equal to its Ip4Address component.",
+        )
+        self.assertFalse(
+            network == network.mask,
+            msg="Ip4Network must not compare equal to its Ip4Mask component.",
+        )
+        self.assertFalse(
+            network == Ip4Host("192.168.1.1/24"),
+            msg="Ip4Network must not compare equal to an Ip4Host.",
+        )
+        self.assertFalse(
+            network == 0xC0A80100,
+            msg="Ip4Network must not compare equal to an integer.",
+        )
+        self.assertFalse(
+            network == None,  # noqa: E711
+            msg="Ip4Network must not compare equal to None.",
+        )
+
+    def test__net_addr__ip4_network__ne(self) -> None:
+        """
+        Ensure the IPv4 network '__ne__()' method returns a correct value.
+        """
+
+        network = Ip4Network("192.168.1.0/24")
+        self.assertTrue(
+            network != Ip4Network("192.168.2.0/24"),
+            msg="Ip4Network instances with different network addresses must be unequal.",
+        )
+        self.assertTrue(
+            network != Ip4Network("192.168.1.0/25"),
+            msg="Ip4Network instances with different masks must be unequal.",
+        )
+        self.assertFalse(
+            network != Ip4Network("192.168.1.0/24"),
+            msg="Ip4Network instances with matching address and mask must not be unequal.",
+        )
+        self.assertTrue(
+            network != "192.168.1.0/24",
+            msg="Ip4Network must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp4NetworkHashConsistency(TestCase):
+    """
+    The NetAddr IPv4 network hash consistency tests.
+    """
+
+    def test__net_addr__ip4_network__hash__distinct_instances(self) -> None:
+        """
+        Ensure two independently constructed equal networks hash identically.
+        """
+
+        a = Ip4Network("192.168.1.100/24")
+        b = Ip4Network((Ip4Address("192.168.1.200"), Ip4Mask("/24")))
+        c = Ip4Network("192.168.1.0 255.255.255.0")
+
+        self.assertEqual(
+            a,
+            b,
+            msg="Ip4Network built from CIDR string and (address, mask) tuple must compare equal.",
+        )
+        self.assertEqual(
+            a,
+            c,
+            msg="Ip4Network built from CIDR string and 'address mask' string must compare equal.",
+        )
+        self.assertEqual(
+            hash(a),
+            hash(b),
+            msg="Equal Ip4Network values must hash to the same value across constructor forms.",
+        )
+        self.assertEqual(
+            hash(a),
+            hash(c),
+            msg="Equal Ip4Network values must hash to the same value across string forms.",
+        )
+
+    def test__net_addr__ip4_network__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv4 networks collapse into a single element when
+        used in a set.
+        """
+
+        a = Ip4Network("192.168.1.0/24")
+        b = Ip4Network((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+        c = Ip4Network("192.168.2.0/24")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip4Network values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip4Network values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip4Network values as the same key.",
+        )
+
+    def test__net_addr__ip4_network__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv4 networks refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip4Network("192.168.1.0/24")
+        b = Ip4Network((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip4Network must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp4NetworkRoundtrip(TestCase):
+    """
+    The NetAddr IPv4 network string roundtrip tests.
+    """
+
+    def test__net_addr__ip4_network__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip4Network(str(x))' yields a network equal to 'x'.
+        """
+
+        for spec in (
+            "0.0.0.0/0",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.1.0/24",
+            "192.168.1.100/31",
+            "255.255.255.255/32",
+        ):
+            with self.subTest(spec=spec):
+                network = Ip4Network(spec)
+                self.assertEqual(
+                    Ip4Network(str(network)),
+                    network,
+                    msg=f"Roundtrip through str() must preserve network {spec!r}.",
+                )
+
+    def test__net_addr__ip4_network__roundtrip__copy(self) -> None:
+        """
+        Ensure constructing an Ip4Network from another Ip4Network yields
+        an equal network with the same hash.
+        """
+
+        source = Ip4Network("192.168.1.100/24")
+        clone = Ip4Network(source)
+
+        self.assertEqual(
+            clone,
+            source,
+            msg="Copy-constructed Ip4Network must compare equal to the source.",
+        )
+        self.assertEqual(
+            hash(clone),
+            hash(source),
+            msg="Copy-constructed Ip4Network must share the source's hash.",
+        )
+        self.assertEqual(
+            clone.address,
+            source.address,
+            msg="Copy-constructed Ip4Network must preserve the network address.",
+        )
+        self.assertEqual(
+            clone.mask,
+            source.mask,
+            msg="Copy-constructed Ip4Network must preserve the mask.",
         )
