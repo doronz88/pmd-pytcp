@@ -213,18 +213,22 @@ class TestNetAddrIp4Host(TestCase):
 
         self.assertTrue(
             self._ip4_host == self._ip4_host,
+            msg="An Ip4Host instance must compare equal to itself.",
         )
 
         self.assertTrue(
             self._ip4_host == Ip4Host(str(self._ip4_host)),
+            msg="Ip4Host must compare equal to one reconstructed from its string representation.",
         )
 
         self.assertFalse(
             self._ip4_host == "not an IPv4 host",
+            msg="Ip4Host must not compare equal to a foreign string value.",
         )
 
         self.assertFalse(
             self._ip4_host == None,  # noqa: E711
+            msg="Ip4Host must not compare equal to None.",
         )
 
         self.assertFalse(
@@ -235,6 +239,7 @@ class TestNetAddrIp4Host(TestCase):
                     self._ip4_host.network,
                 ),
             ),
+            msg="Ip4Host instances with different addresses must not compare equal.",
         )
 
         self.assertFalse(
@@ -245,6 +250,7 @@ class TestNetAddrIp4Host(TestCase):
                     Ip4Mask(f"/{(len(self._ip4_host.network.mask) + 1) % 33}"),
                 ),
             ),
+            msg="Ip4Host instances with different networks must not compare equal.",
         )
 
     def test__net_addr__ip4_host__hash(self) -> None:
@@ -357,8 +363,16 @@ class TestNetAddrIp4HostSemantics(TestCase):
             expiration_time=IP4_ADDRESS_EXPIRATION_TIME,
         )
 
-        self.assertEqual(plain, decorated)
-        self.assertEqual(hash(plain), hash(decorated))
+        self.assertEqual(
+            plain,
+            decorated,
+            msg="Ip4Host equality must ignore gateway, origin, and expiration_time.",
+        )
+        self.assertEqual(
+            hash(plain),
+            hash(decorated),
+            msg="Equal Ip4Host values must hash to the same value regardless of metadata.",
+        )
 
     def test__net_addr__ip4_host__eq__cross_version(self) -> None:
         """
@@ -368,6 +382,51 @@ class TestNetAddrIp4HostSemantics(TestCase):
         self.assertNotEqual(
             Ip4Host("192.168.1.100/24"),
             Ip6Host("2001:db8::c0a8:164/64"),
+            msg="Ip4Host must not compare equal to an Ip6Host.",
+        )
+
+    def test__net_addr__ip4_host__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv4 host is never equal to a value of a foreign type,
+        including its own component pieces.
+        """
+
+        host = Ip4Host("192.168.1.100/24")
+
+        self.assertFalse(
+            host == "192.168.1.100/24",
+            msg="Ip4Host must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            host == host.address,
+            msg="Ip4Host must not compare equal to its Ip4Address component.",
+        )
+        self.assertFalse(
+            host == host.network,
+            msg="Ip4Host must not compare equal to its Ip4Network component.",
+        )
+        self.assertFalse(
+            host == 0,
+            msg="Ip4Host must not compare equal to an integer.",
+        )
+
+    def test__net_addr__ip4_host__ne(self) -> None:
+        """
+        Ensure the IPv4 host '__ne__()' method returns a correct value.
+        """
+
+        host = Ip4Host("192.168.1.100/24")
+        self.assertTrue(
+            host != Ip4Host("192.168.1.101/24"),
+            msg="Ip4Host instances with different addresses must be unequal.",
+        )
+        self.assertFalse(
+            host != Ip4Host("192.168.1.100/24"),
+            msg="Ip4Host instances with the same address and network must not be unequal.",
+        )
+        self.assertTrue(
+            host != "192.168.1.100/24",
+            msg="Ip4Host must be unequal to its string representation.",
         )
 
     def test__net_addr__ip4_host__hash__distinct_instances(self) -> None:
@@ -377,8 +436,73 @@ class TestNetAddrIp4HostSemantics(TestCase):
 
         a = Ip4Host("192.168.1.100/24")
         b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
-        self.assertEqual(a, b)
-        self.assertEqual(hash(a), hash(b))
+        self.assertEqual(
+            a,
+            b,
+            msg="Ip4Host built from string and from (address, mask) tuple must compare equal.",
+        )
+        self.assertEqual(
+            hash(a),
+            hash(b),
+            msg="Equal Ip4Host values must hash to the same value across constructor forms.",
+        )
+
+    def test__net_addr__ip4_host__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv4 hosts collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip4Host("192.168.1.100/24")
+        b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+        c = Ip4Host("192.168.1.101/24")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip4Host values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip4Host values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip4Host values as the same key.",
+        )
+
+    def test__net_addr__ip4_host__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv4 hosts refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip4Host("192.168.1.100/24")
+        b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip4Host must behave consistently as a dict key across input forms.",
+        )
+
+    def test__net_addr__ip4_host__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip4Host(str(x))' yields a host equal to 'x' (metadata-free).
+        """
+
+        for spec in ("0.0.0.0/0", "10.0.0.1/8", "192.168.1.100/24", "255.255.255.254/31"):
+            with self.subTest(spec=spec):
+                host = Ip4Host(spec)
+                self.assertEqual(
+                    Ip4Host(str(host)),
+                    host,
+                    msg=f"Roundtrip through str() must preserve host {spec!r}.",
+                )
 
     def test__net_addr__ip4_host__copy_preserves_fields(self) -> None:
         """
@@ -393,11 +517,31 @@ class TestNetAddrIp4HostSemantics(TestCase):
         )
         clone = Ip4Host(source)
 
-        self.assertEqual(clone.address, source.address)
-        self.assertEqual(clone.network, source.network)
-        self.assertEqual(clone.gateway, source.gateway)
-        self.assertEqual(clone.origin, source.origin)
-        self.assertEqual(clone.expiration_time, source.expiration_time)
+        self.assertEqual(
+            clone.address,
+            source.address,
+            msg="Copying an Ip4Host must preserve its address.",
+        )
+        self.assertEqual(
+            clone.network,
+            source.network,
+            msg="Copying an Ip4Host must preserve its network.",
+        )
+        self.assertEqual(
+            clone.gateway,
+            source.gateway,
+            msg="Copying an Ip4Host must preserve its gateway.",
+        )
+        self.assertEqual(
+            clone.origin,
+            source.origin,
+            msg="Copying an Ip4Host must preserve its origin.",
+        )
+        self.assertEqual(
+            clone.expiration_time,
+            source.expiration_time,
+            msg="Copying an Ip4Host must preserve its expiration_time.",
+        )
 
 
 @parameterized_class(
@@ -535,6 +679,7 @@ class TestNetAddrIp4HostErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
         )
 
 
@@ -608,7 +753,10 @@ class TestNetAddrIp4HostAssertionErrors(TestCase):
         Ensure the IPv4 host raises AssertionError on constraint violations.
         """
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(
+            AssertionError,
+            msg=f"Expected AssertionError for case: {self._description}.",
+        ):
             Ip4Host(*self._args, **self._kwargs)
 
 
@@ -630,7 +778,11 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         self._ip4_host.origin = Ip4HostOrigin.UNKNOWN
-        self.assertEqual(self._ip4_host.origin, Ip4HostOrigin.UNKNOWN)
+        self.assertEqual(
+            self._ip4_host.origin,
+            Ip4HostOrigin.UNKNOWN,
+            msg="The 'origin' setter must store the assigned value.",
+        )
 
     def test__net_addr__ip4_host__expiration_time_setter(self) -> None:
         """
@@ -638,7 +790,11 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         self._ip4_host.expiration_time = 9999999999
-        self.assertEqual(self._ip4_host.expiration_time, 9999999999)
+        self.assertEqual(
+            self._ip4_host.expiration_time,
+            9999999999,
+            msg="The 'expiration_time' setter must store the assigned value.",
+        )
 
     def test__net_addr__ip4_host__gateway_setter(self) -> None:
         """
@@ -646,7 +802,11 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         self._ip4_host.gateway = Ip4Address("192.168.1.254")
-        self.assertEqual(self._ip4_host.gateway, Ip4Address("192.168.1.254"))
+        self.assertEqual(
+            self._ip4_host.gateway,
+            Ip4Address("192.168.1.254"),
+            msg="The 'gateway' setter must store a valid in-network address.",
+        )
 
     def test__net_addr__ip4_host__gateway_setter__clear(self) -> None:
         """
@@ -655,14 +815,20 @@ class TestNetAddrIp4HostSetters(TestCase):
 
         self._ip4_host.gateway = Ip4Address("192.168.1.1")
         self._ip4_host.gateway = None
-        self.assertIsNone(self._ip4_host.gateway)
+        self.assertIsNone(
+            self._ip4_host.gateway,
+            msg="Assigning None to 'gateway' must clear the stored gateway.",
+        )
 
     def test__net_addr__ip4_host__gateway_setter__error__outside_network(self) -> None:
         """
         Ensure the 'gateway' setter rejects an address outside the host network.
         """
 
-        with self.assertRaises(Ip4HostGatewayError):
+        with self.assertRaises(
+            Ip4HostGatewayError,
+            msg="The 'gateway' setter must reject an address outside the host's network.",
+        ):
             self._ip4_host.gateway = Ip4Address("10.0.0.1")
 
     def test__net_addr__ip4_host__gateway_setter__error__network_address(self) -> None:
@@ -670,7 +836,10 @@ class TestNetAddrIp4HostSetters(TestCase):
         Ensure the 'gateway' setter rejects the network address.
         """
 
-        with self.assertRaises(Ip4HostGatewayError):
+        with self.assertRaises(
+            Ip4HostGatewayError,
+            msg="The 'gateway' setter must reject the network address.",
+        ):
             self._ip4_host.gateway = Ip4Address("192.168.1.0")
 
     def test__net_addr__ip4_host__gateway_setter__error__broadcast_address(self) -> None:
@@ -678,7 +847,10 @@ class TestNetAddrIp4HostSetters(TestCase):
         Ensure the 'gateway' setter rejects the broadcast address.
         """
 
-        with self.assertRaises(Ip4HostGatewayError):
+        with self.assertRaises(
+            Ip4HostGatewayError,
+            msg="The 'gateway' setter must reject the broadcast address.",
+        ):
             self._ip4_host.gateway = Ip4Address("192.168.1.255")
 
     def test__net_addr__ip4_host__gateway_setter__error__host_address(self) -> None:
@@ -686,5 +858,8 @@ class TestNetAddrIp4HostSetters(TestCase):
         Ensure the 'gateway' setter rejects the host's own address.
         """
 
-        with self.assertRaises(Ip4HostGatewayError):
+        with self.assertRaises(
+            Ip4HostGatewayError,
+            msg="The 'gateway' setter must reject the host's own address.",
+        ):
             self._ip4_host.gateway = Ip4Address("192.168.1.100")
