@@ -69,7 +69,9 @@ test__net_proto__unit: venv
 	@echo '<<< TESTSLIDE NET_PROTO UNIT'
 	@./$(VENV)/bin/testslide $(shell find 'net_proto/tests/unit' -name '*.py')
 
-test: venv test__net_addr__unit test__net_proto__unit test__pytcp__integration
+test: venv
+	@echo '<<< TESTSLIDE ALL'
+	@./$(VENV)/bin/testslide $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
 
 validate: lint test
 
