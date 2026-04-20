@@ -3,4 +3,5 @@ venv/
 .mypy_cache/
 .pyre
 .vscode/
+.coverage
 PyTCP.egg-info/
