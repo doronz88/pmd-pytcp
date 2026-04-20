@@ -27,7 +27,7 @@
 """
 This module contains the DHCPv4 Pad option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__pad.py
+net_proto/protocols/dhcp4/options/dhcp4__option__pad.py
 
 ver 3.0.4
 """
@@ -45,7 +45,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
 # The DHCPv4 Pad option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+
-# |    Type = 0   |
+# |    Code = 0   |
 # +-+-+-+-+-+-+-+-+
 
 
@@ -79,7 +79,7 @@ class Dhcp4OptionPad(Dhcp4Option):
     @override
     def __str__(self) -> str:
         """
-        Get the the DHCPv4 Pad option log string.
+        Get the DHCPv4 Pad option log string.
         """
 
         return "pad"
