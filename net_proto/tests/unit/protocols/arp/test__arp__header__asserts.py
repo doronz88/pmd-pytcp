@@ -260,7 +260,8 @@ class TestArpHeaderOperation(TestCase):
 
     def test__arp__header__reply_construction(self) -> None:
         """
-        Ensure a valid ARP Reply header instance can be constructed.
+        Ensure a valid ARP Reply header instance can be constructed and its
+        fields are exposed exactly as provided.
         """
 
         header = ArpHeader(
@@ -272,6 +273,10 @@ class TestArpHeaderOperation(TestCase):
         )
 
         self.assertEqual(header.oper, ArpOperation.REPLY, msg="Unexpected 'oper'.")
+        self.assertEqual(header.sha, MacAddress("a1:b2:c3:d4:e5:f6"), msg="Unexpected 'sha'.")
+        self.assertEqual(header.spa, Ip4Address("5.5.5.5"), msg="Unexpected 'spa'.")
+        self.assertEqual(header.tha, MacAddress("7a:7b:7c:7d:7e:7f"), msg="Unexpected 'tha'.")
+        self.assertEqual(header.tpa, Ip4Address("7.7.7.7"), msg="Unexpected 'tpa'.")
 
     def test__arp__header__len(self) -> None:
         """
