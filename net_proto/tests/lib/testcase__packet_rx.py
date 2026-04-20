@@ -33,6 +33,8 @@ ver 3.0.4
 """
 
 
+from typing import Any
+
 from testslide import TestCase
 
 from net_proto import PacketRx
@@ -43,6 +45,7 @@ class TestCasePacketRx(TestCase):
     Customized TestCase class that provides PacketRx object.
     """
 
+    _args: list[Any] = []
     _frame_rx: bytes
 
     _packet_rx: PacketRx
@@ -51,5 +54,8 @@ class TestCasePacketRx(TestCase):
         """
         Set up the PacketRx object.
         """
+
+        if not hasattr(self, "_frame_rx"):
+            self._frame_rx = self._args[0]
 
         self._packet_rx = PacketRx(self._frame_rx)

@@ -83,7 +83,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Frame len: 7 bytes (< 8-byte minimum header)
                 #
                 #   Summary  : Declared payload exceeds available frame length.
-                b"\x80\x00\xfb\x94\x30\x39\xd4",
+                b"\x80\x00\xfb\x94\x30\x39\xd4"
             ),
             "_mocked_values": {
                 "ip6__dlen": 8,

@@ -75,7 +75,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 MLDv2 Report message, single record.",
-            "_frame_rxx": (
+            "_frame_rx": (
                 # ICMPv6 MLDv2 Report
                 #   Type     : 143 (MLDv2 Report)
                 #   Code     : 0

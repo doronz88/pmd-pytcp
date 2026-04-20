@@ -45,7 +45,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
     [
         {
             "_description": "ICMP4 Echo Reply message, empty data.",
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -68,7 +68,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMP4 Echo Reply message, non-empty data.",
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -92,7 +92,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
         },
         {
             "_description": "ICMP4 Echo Reply message, maximum length of data.",
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -122,7 +122,7 @@ class TestIcmp4MessageEchoReplyParser(TestCasePacketRxIp4):
     """
 
     _description: str
-    _frame_tx: bytes
+    _frame_rx: bytes
     _results: dict[str, Any]
 
     _packet_rx: PacketRx

@@ -48,6 +48,7 @@ class TestCasePacketRxIp4(TestCase):
     IPv4 parser values.
     """
 
+    _args: list[Any] = []
     _frame_rx: bytes
     _mocked_values: dict[str, Any] = {}
 
@@ -57,6 +58,9 @@ class TestCasePacketRxIp4(TestCase):
         """
         Set up the mocked values for the IPv4 related fields.
         """
+
+        if not hasattr(self, "_frame_rx"):
+            self._frame_rx = self._args[0]
 
         self._packet_rx = PacketRx(self._frame_rx)
 

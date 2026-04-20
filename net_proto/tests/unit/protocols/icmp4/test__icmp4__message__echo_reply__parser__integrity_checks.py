@@ -47,7 +47,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": (
                 "ICMPv4 Echo Reply message, the 'ICMP4_HEADER_LEN <= self._ip4_payload_len' condition not met."
             ),
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -72,7 +72,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": (
                 "ICMPv4 Echo Reply message, the 'self._ip4_payload_len <= len(self._frame)' condition not met."
             ),
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -99,7 +99,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
             "_description": (
                 "ICMPv4 Echo Reply message, the 'ICMP4_ECHO_REPLY_LEN <= self._ip4_payload_len' condition not met."
             ),
-            "_frame_tx": (
+            "_frame_rx": (
                 # ICMPv4 Echo Reply
                 #   Type     : 0 (Echo Reply)
                 #   Code     : 0 (Default)
@@ -149,7 +149,7 @@ class TestIcmp4MessageEchoReplyParserIntegrityChecks(TestCasePacketRxIp4):
     """
 
     _description: str
-    _frame_tx: bytes
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 
