@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Parameters Request List option support code.
+This module contains the DHCPv4 Parameter Request List option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__param_req_list.py
+net_proto/protocols/dhcp4/options/dhcp4__option__param_req_list.py
 
 ver 3.0.4
 """
@@ -125,15 +125,6 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         """
         Validate the DHCPv4 Parameter Request List option integrity before parsing it.
         """
-
-        # Raise integrity error when the option length value is incorrect.
-        # Defensive guard: unreachable with unsigned-byte buffers (the only ones PyTCP constructs),
-        # but retained in case a signed-format memoryview is passed in.
-        if (value := DHCP4__OPTION__LEN + buffer[1]) < DHCP4__OPTION__LEN:  # pragma: no cover
-            raise Dhcp4IntegrityError(
-                "The DHCPv4 Parameter Request List option length value must be "
-                f"at least {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
-            )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
