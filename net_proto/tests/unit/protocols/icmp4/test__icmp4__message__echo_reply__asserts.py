@@ -217,11 +217,20 @@ class TestIcmp4MessageEchoReplyParserAsserts(TestCase):
     def test__icmp4__message__echo_reply__wrong_type(self) -> None:
         """
         Ensure the ICMPv4 Echo Reply message parser raises an exception when
-        the provided '_bytes' argument contains incorrect 'type' field.
+        the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageEchoReply.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp4MessageEchoReply.from_buffer(
+                # ICMPv4 (invalid)
+                #   Type     : 255 (unknown)
+                #   Code     : 0
+                #   Checksum : 0xff00
+                #   Identifier/Seq/Data : 0x0000
+                #
+                #   Summary  : Buffer with incorrect type to trigger parser assertion.
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
+            )
 
         self.assertEqual(
             str(error.exception),

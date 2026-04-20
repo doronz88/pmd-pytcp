@@ -239,7 +239,16 @@ class TestIcmp4MessageDestinationUnreachableParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp4MessageDestinationUnreachable.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp4MessageDestinationUnreachable.from_buffer(
+                # ICMPv4 (invalid)
+                #   Type     : 255 (unknown)
+                #   Code     : 0
+                #   Checksum : 0xff00
+                #   Rest     : 0x00000000
+                #
+                #   Summary  : Buffer with incorrect type to trigger assert.
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
+            )
 
         self.assertEqual(
             str(error.exception),

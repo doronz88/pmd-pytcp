@@ -217,13 +217,22 @@ class TestIcmp6MessageEchoRequestParserAsserts(TestCase):
     def test__icmp6__message__echo_request__wrong_type(self) -> None:
         """
         Ensure the ICMPv6 Echo Request message parser raises an exception when
-        the provided '_bytes' argument contains incorrect 'type' field.
+        the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageEchoRequest.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp6MessageEchoRequest.from_buffer(
+                # ICMPv6 (invalid)
+                #   Type     : 255 (unknown)
+                #   Code     : 0
+                #   Checksum : 0xff00
+                #   Identifier/Seq/Data : 0x0000
+                #
+                #   Summary  : Buffer with incorrect type to trigger parser assertion.
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
+            )
 
         self.assertEqual(
             str(error.exception),
-            ("The 'type' field must be <Icmp6Type.ECHO_REQUEST: 128>. Got: <Icmp6Type.UNKNOWN_255: 255>"),
+            "The 'type' field must be <Icmp6Type.ECHO_REQUEST: 128>. Got: <Icmp6Type.UNKNOWN_255: 255>",
         )

@@ -156,19 +156,26 @@ class TestIcmp6MessageUnknownParserAsserts(TestCase):
     def test__icmp6__message__unknown__wrong_type(self) -> None:
         """
         Ensure the ICMPv6 unknown message parser raises an exception when
-        the provided '_bytes' argument contains incorrect 'type' field.
+        the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         for type in range(0, 256):
             if type not in Icmp6Type.get_known_values():
                 continue
 
-            _bytes = bytearray(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-            _bytes[0] = type
-            _bytes[2:4] = inet_cksum(_bytes).to_bytes(2)
+            buffer = bytearray(
+                # ICMPv6 Known Type Template
+                #   Type     : {type}
+                #   Code     : 0
+                #   Checksum : computed below
+                #   Reserved : 0x000000
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+            )
+            buffer[0] = type
+            buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
             with self.assertRaises(AssertionError) as error:
-                Icmp6MessageUnknown.from_buffer(_bytes)
+                Icmp6MessageUnknown.from_buffer(buffer)
 
             self.assertEqual(
                 str(error.exception),

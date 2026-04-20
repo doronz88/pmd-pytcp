@@ -82,7 +82,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'code' field must be an Icmp6Mld2ReportCode. " f"Got: {type(value)!r}"),
+            f"The 'code' field must be an Icmp6Mld2ReportCode. Got: {type(value)!r}",
         )
 
     def test__icmp6__mld2__message__report__cksum__under_min(self) -> None:
@@ -99,7 +99,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
+            f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
         )
 
     def test__icmp6__mld2__message__report__cksum__over_max(self) -> None:
@@ -116,7 +116,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {value!r}"),
+            f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
         )
 
     def test__icmp6__mld2__message__report__records_len__over_max(self) -> None:
@@ -142,7 +142,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            ("The 'records' field length must be less than or equal " f"to {records_len_max}. Got: {records_len}"),
+            f"The 'records' field length must be less than or equal to {records_len_max}. Got: {records_len}",
         )
 
 
@@ -154,11 +154,20 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
     def test__icmp6__mld2__message__report__wrong_type(self) -> None:
         """
         Ensure the ICMPv6 MLDv2 Report message parser raises an exception
-        when the provided '_bytes' argument contains incorrect 'type' field.
+        when the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp6Mld2ReportMessage.from_buffer(
+                # ICMPv6 (invalid)
+                #   Type     : 255 (unknown)
+                #   Code     : 0
+                #   Checksum : 0xff00
+                #   Record count : 0x0000
+                #
+                #   Summary  : Buffer with incorrect type to trigger parser assertion.
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
+            )
 
         self.assertEqual(
             str(error.exception),

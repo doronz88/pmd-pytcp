@@ -49,7 +49,16 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 ND Neighbor Solicitation message, "
                 "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
             ),
-            "_args": [b"\x87\x00\x00"],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Solicitation
+                #   Type     : 135 (Neighbor Solicitation)
+                #   Code     : 0
+                #   Checksum : 0x0000 (truncated)
+                #   Frame len: 3 bytes (< 4-byte minimum header)
+                #
+                #   Summary  : Frame shorter than ICMPv6 header length.
+                b"\x87\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 3,
             },
@@ -66,9 +75,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "ICMPv6 ND Neighbor Solicitation message, "
                 "the 'self._ip6__dlen <= len(self._frame)' condition not met."
             ),
-            "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Solicitation
+                #   Type     : 135 (Neighbor Solicitation)
+                #   Code     : 0
+                #   Checksum : 0x0000 (placeholder)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::
+                #   Options  : none
+                #   Frame len: 23 bytes (< 24-byte minimum message)
+                #
+                #   Summary  : Declared payload exceeds available frame length.
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 24,
             },
@@ -86,9 +106,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 "the 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= self._ip6__dlen' "
                 "condition not met."
             ),
-            "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Solicitation
+                #   Type     : 135 (Neighbor Solicitation)
+                #   Code     : 0
+                #   Checksum : 0x0000 (placeholder)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::
+                #   Options  : none
+                #   Frame len: 23 bytes (< 24-byte minimum message)
+                #
+                #   Summary  : Payload shorter than Neighbor Solicitation minimum length.
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00"
+            ),
             "_mocked_values": {
                 "ip6__dlen": 23,
             },
@@ -102,9 +133,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
-            "_args": [
-                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
+            "_frame_rx": (
+                # ICMPv6 Neighbor Solicitation
+                #   Type     : 135 (Neighbor Solicitation)
+                #   Code     : 0
+                #   Checksum : 0x0000 (invalid)
+                #   Reserved : 0x000000
+                #   Target   : 2001:db8::1
+                #   Options  : none
+                #
+                #   Summary  : NS with checksum cleared to zero.
+                b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01"
+            ),
             "_mocked_values": {},
             "_results": {
                 "error_message": "The packet checksum must be valid.",
@@ -118,7 +159,7 @@ class TestIcmp6NdMessageNeighborSolicitationMessageParserIntegrityChecks(TestCas
     """
 
     _description: str
-    _args: list[Any]
+    _frame_rx: bytes
     _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 

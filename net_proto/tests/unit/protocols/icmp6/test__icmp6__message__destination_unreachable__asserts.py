@@ -154,12 +154,21 @@ class TestIcmp6MessageDestinationUnreachableParserAsserts(TestCase):
     def test__icmp6__message__destination_unreachable__wrong_type(self) -> None:
         """
         Ensure the ICMPv6 Destination Unreachable message parser raises
-        an exception when the provided '_bytes' argument contains incorrect
+        an exception when the provided 'buffer' argument contains incorrect
         'type' field.
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6MessageDestinationUnreachable.from_buffer(b"\xff\x00\xff\x00\x00\x00\x00\x00")
+            Icmp6MessageDestinationUnreachable.from_buffer(
+                # ICMPv6 (invalid)
+                #   Type     : 255 (unknown)
+                #   Code     : 0
+                #   Checksum : 0xff00
+                #   Pointer  : 0x000000
+                #
+                #   Summary  : Buffer with incorrect type to trigger parser assertion.
+                b"\xff\x00\xff\x00\x00\x00\x00\x00"
+            )
 
         self.assertEqual(
             str(error.exception),

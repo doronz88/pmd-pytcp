@@ -156,21 +156,28 @@ class TestIcmp4MessageUnknownParserAsserts(TestCase):
     def test__icmp4__message__unknown__wrong_type(self) -> None:
         """
         Ensure the ICMPv4 unknown message parser raises an exception when
-        the provided '_bytes' argument contains incorrect 'type' field.
+        the provided 'buffer' argument contains incorrect 'type' field.
         """
 
         for type in range(0, 256):
             if type not in Icmp4Type.get_known_values():
                 continue
 
-            _bytes = bytearray(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-            _bytes[0] = type
-            _bytes[2:4] = inet_cksum(_bytes).to_bytes(2)
+            buffer = bytearray(
+                # ICMPv4 Known Type Template
+                #   Type     : {type}
+                #   Code     : 0
+                #   Checksum : computed below
+                #   Rest     : 0x00000000
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+            )
+            buffer[0] = type
+            buffer[2:4] = inet_cksum(buffer).to_bytes(2)
 
             with self.assertRaises(AssertionError) as error:
-                Icmp4MessageUnknown.from_buffer(_bytes)
+                Icmp4MessageUnknown.from_buffer(buffer)
 
             self.assertEqual(
                 str(error.exception),
-                ("The 'type' field must not be known. " f"Got: {Icmp4Type.from_int(type)!r}"),
+                f"The 'type' field must not be known. Got: {Icmp4Type.from_int(type)!r}",
             )

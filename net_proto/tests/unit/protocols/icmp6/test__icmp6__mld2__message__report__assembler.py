@@ -60,8 +60,18 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 8,
                 "__str__": "ICMPv6 MLDv2 Report",
-                "__repr__": ("Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, " "cksum=0, records=[])"),
-                "__bytes__": b"\x8f\x00\x70\xff\x00\x00\x00\x00",
+                "__repr__": "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, cksum=0, records=[])",
+                "__bytes__": (
+                    # ICMPv6 MLDv2 Report
+                    #   Type     : 143 (MLDv2 Report)
+                    #   Code     : 0
+                    #   Checksum : 0x70ff
+                    #   Record cnt: 0x0000
+                    #   Records   : none
+                    #
+                    #   Summary  : MLDv2 report with no multicast address records.
+                    b"\x8f\x00\x70\xff\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.MLD2__REPORT,
                 "code": Icmp6Mld2ReportCode.DEFAULT,
                 "cksum": 0,
@@ -98,6 +108,17 @@ from net_proto.lib.buffer import Buffer
                     "Ip6Address('2001:db8::2')], aux_data=b'')])"
                 ),
                 "__bytes__": (
+                    # ICMPv6 MLDv2 Report
+                    #   Type     : 143 (MLDv2 Report)
+                    #   Code     : 0
+                    #   Checksum : 0x1583
+                    #   Record cnt: 0x0001
+                    #   Record 0 : Type 0x01 (MODE_IS_INCLUDE)
+                    #              Aux len 0x00, Src count 0x0002
+                    #              Multicast address ff02::1
+                    #              Source addresses: 2001:db8::1, 2001:db8::2
+                    #
+                    #   Summary  : Include-mode report for ff02::1 with two source addresses.
                     b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
@@ -190,6 +211,23 @@ from net_proto.lib.buffer import Buffer
                     "b'0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF')])"
                 ),
                 "__bytes__": (
+                    # ICMPv6 MLDv2 Report
+                    #   Type     : 143 (MLDv2 Report)
+                    #   Code     : 0
+                    #   Checksum : 0x52f0
+                    #   Record cnt: 0x0004
+                    #   Record 0 : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x04, Src cnt 0x0001,
+                    #              Multicast addr ff02::1, Source 2001:db8::1,
+                    #              Aux data "0123456789ABCDEF"
+                    #   Record 1 : Type 0x02 (MODE_IS_EXCLUDE), Aux len 0x08, Src cnt 0x0003,
+                    #              Multicast addr ff02::2, Sources 2001:db8::2/3/4,
+                    #              Aux data "0123456789ABCDEF" * 2
+                    #   Record 2 : Type 0x03 (CHANGE_TO_INCLUDE), Aux len 0x00, Src cnt 0x0004,
+                    #              Multicast addr ff02::3, Sources 2001:db8::6/7/8/9
+                    #   Record 3 : Type 0x06 (BLOCK_OLD_SOURCES), Aux len 0x10, Src cnt 0x0000,
+                    #              Multicast addr ff02::4, Aux data "0123456789ABCDEF" * 4
+                    #
+                    #   Summary  : Complex MLDv2 report covering multiple record types, sources, and aux data.
                     b"\x8f\x00\x52\xf0\x00\x00\x00\x04\x01\x04\x00\x01\xff\x02\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x30\x31\x32\x33"
@@ -248,7 +286,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                         multicast_address=Ip6Address("ff02::4"),
-                        aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
+                        aux_data=b"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
                     ),
                 ],
             },
