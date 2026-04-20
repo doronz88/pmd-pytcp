@@ -33,194 +33,207 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
-
-from net_proto import (
-    DHCP4__OPTION__PAD__LEN,
-    Dhcp4OptionPad,
-    Dhcp4OptionType,
-)
+from net_proto import DHCP4__OPTION__PAD__LEN, Dhcp4OptionPad, Dhcp4OptionType
 
 
-class TestDhcp4OptionPadAsserts(TestCase):
-    """
-    The DHCPv4 Pad option constructor argument assert tests.
-    """
-
-    # Currently the DHCPv4 Pad option does not have any constructor
-    # argument asserts.
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "The DHCPv4 Pad option.",
-            "_args": [],
-            "_kwargs": {},
-            "_results": {
-                "__len__": 1,
-                "__str__": "pad",
-                "__repr__": "Dhcp4OptionPad()",
-                "__bytes__": b"\x00",
-                "type": Dhcp4OptionType.PAD,
-                "len": DHCP4__OPTION__PAD__LEN,
-            },
-        },
-    ]
-)
 class TestDhcp4OptionPadAssembler(TestCase):
     """
     The DHCPv4 Pad option assembler tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def setUp(self) -> None:
         """
-        Initialize the DHCPv4 Pad option object with testcase arguments.
+        Initialize the DHCPv4 Pad option object.
         """
 
-        self._option = Dhcp4OptionPad(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionPad()
 
     def test__dhcp4__option__pad__len(self) -> None:
         """
-        Ensure the DHCPv4 Pad option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the one-byte Pad marker length.
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            1,
+            msg="Pad option length must be 1 byte.",
         )
 
     def test__dhcp4__option__pad__str(self) -> None:
         """
-        Ensure the DHCPv4 Pad option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the canonical 'pad' log string.
         """
 
         self.assertEqual(
             str(self._option),
-            self._results["__str__"],
+            "pad",
+            msg="Pad option __str__ must be 'pad'.",
         )
 
     def test__dhcp4__option__pad__repr(self) -> None:
         """
-        Ensure the DHCPv4 Pad option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the dataclass form.
         """
 
         self.assertEqual(
             repr(self._option),
-            self._results["__repr__"],
+            "Dhcp4OptionPad()",
+            msg="Pad option __repr__ must be 'Dhcp4OptionPad()'.",
         )
 
     def test__dhcp4__option__pad__bytes(self) -> None:
         """
-        Ensure the DHCPv4 Pad option '__bytes__()' method returns a correct
-        value.
+        Ensure 'bytes()' yields the single 0x00 Pad marker byte.
+
+        DHCPv4 Pad option [RFC 2132]:
+          Code : 0x00 (0, Pad)
         """
 
         self.assertEqual(
             bytes(self._option),
-            self._results["__bytes__"],
+            b"\x00",
+            msg="Pad option wire image must be b'\\x00'.",
+        )
+
+    def test__dhcp4__option__pad__memoryview(self) -> None:
+        """
+        Ensure the option supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._option)),
+            b"\x00",
+            msg="Pad option memoryview must equal b'\\x00'.",
         )
 
     def test__dhcp4__option__pad__type(self) -> None:
         """
-        Ensure the DHCPv4 Pad option 'type' field contains a correct value.
+        Ensure the 'type' field is Dhcp4OptionType.PAD.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            Dhcp4OptionType.PAD,
+            msg="Pad option 'type' must be Dhcp4OptionType.PAD.",
         )
 
-    def test__dhcp4__option__pad__length(self) -> None:
+    def test__dhcp4__option__pad__len_field(self) -> None:
         """
-        Ensure the DHCPv4 Pad option 'len' field contains a correct value.
+        Ensure the 'len' field equals DHCP4__OPTION__PAD__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            DHCP4__OPTION__PAD__LEN,
+            msg="Pad option 'len' must equal DHCP4__OPTION__PAD__LEN.",
         )
 
 
-@parameterized_class(
-    [
-        {
-            "_description": "The DHCPv4 Pad option.",
-            "_args": [
-                b"\x00" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": Dhcp4OptionPad(),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Pad option minimum length assert.",
-            "_args": [
-                b"",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": ("The minimum length of the DHCPv4 Pad option must be 1 " "byte. Got: 0"),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Pad option incorrect 'type' field assert.",
-            "_args": [
-                b"\xfe",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. "
-                    f"Got: {Dhcp4OptionType.from_int(254)!r}"
-                ),
-            },
-        },
-    ]
-)
 class TestDhcp4OptionPadParser(TestCase):
     """
     The DHCPv4 Pad option parser tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def test__dhcp4__option__pad__from_buffer(self) -> None:
         """
-        Ensure the DHCPv4 Pad option parser creates the proper option object
-        or throws assertion error.
+        Ensure 'from_buffer()' parses a buffer starting with 0x00 and ignores
+        any trailing bytes.
         """
 
-        if "option" in self._results:
-            option = Dhcp4OptionPad.from_buffer(*self._args, **self._kwargs)
+        option = Dhcp4OptionPad.from_buffer(b"\x00" + b"ZH0PA")
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
+        self.assertEqual(
+            option,
+            Dhcp4OptionPad(),
+            msg="Parser must return a Pad option equal to Dhcp4OptionPad().",
+        )
 
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionPad.from_buffer(*self._args, **self._kwargs)
+    def test__dhcp4__option__pad__from_buffer_exact(self) -> None:
+        """
+        Ensure 'from_buffer()' succeeds on a buffer containing only 0x00.
+        """
 
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        option = Dhcp4OptionPad.from_buffer(b"\x00")
+
+        self.assertEqual(
+            option,
+            Dhcp4OptionPad(),
+            msg="A single-byte 0x00 buffer must parse as Dhcp4OptionPad().",
+        )
+
+    def test__dhcp4__option__pad__minimum_length(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts on an empty buffer.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionPad.from_buffer(b"")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The minimum length of the DHCPv4 Pad option must be {DHCP4__OPTION__PAD__LEN} byte. Got: 0",
+            msg="Unexpected minimum-length assert message.",
+        )
+
+    def test__dhcp4__option__pad__wrong_type(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the option type byte is not 0x00.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionPad.from_buffer(b"\xfe")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. "
+            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            msg="Unexpected wrong-type assert message.",
+        )
+
+
+class TestDhcp4OptionPadBehavior(TestCase):
+    """
+    The DHCPv4 Pad option behavioral tests.
+    """
+
+    def test__dhcp4__option__pad__equality(self) -> None:
+        """
+        Ensure two Pad options compare equal.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionPad(),
+            Dhcp4OptionPad(),
+            msg="All Pad options must compare equal.",
+        )
+
+    def test__dhcp4__option__pad__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        option = Dhcp4OptionPad()
+
+        self.assertEqual(
+            Dhcp4OptionPad.from_buffer(bytes(option)),
+            option,
+            msg="Roundtrip must preserve equality.",
+        )
+
+    def test__dhcp4__option__pad__rejects_type_override(self) -> None:
+        """
+        Ensure 'type' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionPad(type=Dhcp4OptionType.PAD)  # type: ignore[call-arg]
+
+    def test__dhcp4__option__pad__rejects_len_override(self) -> None:
+        """
+        Ensure 'len' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionPad(len=DHCP4__OPTION__PAD__LEN)  # type: ignore[call-arg]
