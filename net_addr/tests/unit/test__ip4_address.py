@@ -771,6 +771,138 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
             },
         },
         {
+            "_description": "Test the IPv4 address: 191.255.255.255 (str)",
+            "_args": [
+                "191.255.255.255",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "191.255.255.255",
+                "__repr__": "Ip4Address('191.255.255.255')",
+                "__bytes__": b"\xbf\xff\xff\xff",
+                "__int__": 3221225471,
+                "__hash__": hash("Ip4Address('191.255.255.255')"),
+                "version": IpVersion.IP4,
+                "unspecified": Ip4Address(),
+                "is_ip6": False,
+                "is_ip4": True,
+                "is_unspecified": False,
+                "is_unicast": True,
+                "is_global": True,
+                "is_link_local": False,
+                "is_loopback": False,
+                "is_multicast": False,
+                "is_private": False,
+                "is_reserved": False,
+                "is_invalid": False,
+                "is_limited_broadcast": False,
+                "is_class_a": False,
+                "is_class_b": True,
+                "is_class_c": False,
+                "is_class_d": False,
+                "is_class_e": False,
+            },
+        },
+        {
+            "_description": "Test the IPv4 address: 192.0.0.0 (str)",
+            "_args": [
+                "192.0.0.0",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "192.0.0.0",
+                "__repr__": "Ip4Address('192.0.0.0')",
+                "__bytes__": b"\xc0\x00\x00\x00",
+                "__int__": 3221225472,
+                "__hash__": hash("Ip4Address('192.0.0.0')"),
+                "version": IpVersion.IP4,
+                "unspecified": Ip4Address(),
+                "is_ip6": False,
+                "is_ip4": True,
+                "is_unspecified": False,
+                "is_unicast": True,
+                "is_global": True,
+                "is_link_local": False,
+                "is_loopback": False,
+                "is_multicast": False,
+                "is_private": False,
+                "is_reserved": False,
+                "is_invalid": False,
+                "is_limited_broadcast": False,
+                "is_class_a": False,
+                "is_class_b": False,
+                "is_class_c": True,
+                "is_class_d": False,
+                "is_class_e": False,
+            },
+        },
+        {
+            "_description": "Test the IPv4 address: 0 (int, unspecified boundary)",
+            "_args": [
+                0,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "0.0.0.0",
+                "__repr__": "Ip4Address('0.0.0.0')",
+                "__bytes__": b"\x00\x00\x00\x00",
+                "__int__": 0,
+                "__hash__": hash("Ip4Address('0.0.0.0')"),
+                "version": IpVersion.IP4,
+                "unspecified": Ip4Address(),
+                "is_ip6": False,
+                "is_ip4": True,
+                "is_unspecified": True,
+                "is_unicast": False,
+                "is_global": False,
+                "is_link_local": False,
+                "is_loopback": False,
+                "is_multicast": False,
+                "is_private": False,
+                "is_reserved": False,
+                "is_invalid": False,
+                "is_limited_broadcast": False,
+                "is_class_a": True,
+                "is_class_b": False,
+                "is_class_c": False,
+                "is_class_d": False,
+                "is_class_e": False,
+            },
+        },
+        {
+            "_description": "Test the IPv4 address: 4294967295 (int, limited broadcast boundary)",
+            "_args": [
+                4294967295,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "255.255.255.255",
+                "__repr__": "Ip4Address('255.255.255.255')",
+                "__bytes__": b"\xff\xff\xff\xff",
+                "__int__": 4294967295,
+                "__hash__": hash("Ip4Address('255.255.255.255')"),
+                "version": IpVersion.IP4,
+                "unspecified": Ip4Address(),
+                "is_ip6": False,
+                "is_ip4": True,
+                "is_unspecified": False,
+                "is_unicast": False,
+                "is_global": False,
+                "is_link_local": False,
+                "is_loopback": False,
+                "is_multicast": False,
+                "is_private": False,
+                "is_reserved": False,
+                "is_invalid": False,
+                "is_limited_broadcast": True,
+                "is_class_a": False,
+                "is_class_b": False,
+                "is_class_c": False,
+                "is_class_d": False,
+                "is_class_e": True,
+            },
+        },
+        {
             "_description": "Test the IPv4 address: 192.167.255.255 (str)",
             "_args": [
                 "192.167.255.255",
@@ -1332,27 +1464,6 @@ class TestNetAddrIp4Address(TestCase):
             self._results["__int__"],
         )
 
-    def test__net_addr__ip4_address__eq(self) -> None:
-        """
-        Ensure the IPv4 address '__eq__()' method returns a correct value.
-        """
-
-        self.assertTrue(
-            self._ip4_address == self._ip4_address,
-        )
-
-        self.assertTrue(
-            self._ip4_address == Ip4Address(int(self._ip4_address)),
-        )
-
-        self.assertFalse(
-            self._ip4_address == Ip4Address((int(self._ip4_address) + 1) & 0xFF_FF_FF_FF),
-        )
-
-        self.assertFalse(
-            self._ip4_address == "not an IPv4 address",
-        )
-
     def test__net_addr__ip4_address__hash(self) -> None:
         """
         Ensure the IPv4 address '__hash__()' method returns a correct value.
@@ -1580,6 +1691,39 @@ class TestNetAddrIp4Address(TestCase):
             },
         },
         {
+            "_description": "Test the IPv4 address format: '1.2.3' (too few octets)",
+            "_args": [
+                "1.2.3",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.4.5' (too many octets)",
+            "_args": [
+                "1.2.3.4.5",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3.4.5'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '300.300.300.300'",
+            "_args": [
+                "300.300.300.300",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '300.300.300.300'",
+            },
+        },
+        {
             "_description": "Test the IPv4 address format: '10.10..10'",
             "_args": [
                 "10.10..10",
@@ -1755,11 +1899,23 @@ class TestNetAddrIp4AddressErrors(TestCase):
 
         self.assertTrue(
             str(error.exception).startswith(self._results["error_message"]),
+            msg=(
+                f"Expected exception message to start with "
+                f"{self._results['error_message']!r}, got {str(error.exception)!r}."
+            ),
         )
 
 
 @parameterized_class(
     [
+        {
+            "_description": "Test classful_mask for Class A boundary: 0.0.0.0",
+            "_args": ["0.0.0.0"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.0.0.0"),
+            },
+        },
         {
             "_description": "Test classful_mask for Class A address: 1.0.0.0",
             "_args": ["1.0.0.0"],
@@ -1777,8 +1933,16 @@ class TestNetAddrIp4AddressErrors(TestCase):
             },
         },
         {
-            "_description": "Test classful_mask for Class B address: 172.16.0.0",
-            "_args": ["172.16.0.0"],
+            "_description": "Test classful_mask for Class A boundary: 127.255.255.255",
+            "_args": ["127.255.255.255"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.0.0.0"),
+            },
+        },
+        {
+            "_description": "Test classful_mask for Class B boundary: 128.0.0.0",
+            "_args": ["128.0.0.0"],
             "_kwargs": {},
             "_results": {
                 "classful_mask": Ip4Mask("255.255.0.0"),
@@ -1793,6 +1957,30 @@ class TestNetAddrIp4AddressErrors(TestCase):
             },
         },
         {
+            "_description": "Test classful_mask for Class B address: 172.16.0.0",
+            "_args": ["172.16.0.0"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.255.0.0"),
+            },
+        },
+        {
+            "_description": "Test classful_mask for Class B boundary: 191.255.255.255",
+            "_args": ["191.255.255.255"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.255.0.0"),
+            },
+        },
+        {
+            "_description": "Test classful_mask for Class C boundary: 192.0.0.0",
+            "_args": ["192.0.0.0"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.255.255.0"),
+            },
+        },
+        {
             "_description": "Test classful_mask for Class C address: 192.168.1.0",
             "_args": ["192.168.1.0"],
             "_kwargs": {},
@@ -1803,6 +1991,14 @@ class TestNetAddrIp4AddressErrors(TestCase):
         {
             "_description": "Test classful_mask for Class C address: 223.255.255.0",
             "_args": ["223.255.255.0"],
+            "_kwargs": {},
+            "_results": {
+                "classful_mask": Ip4Mask("255.255.255.0"),
+            },
+        },
+        {
+            "_description": "Test classful_mask for Class C boundary: 223.255.255.255",
+            "_args": ["223.255.255.255"],
             "_kwargs": {},
             "_results": {
                 "classful_mask": Ip4Mask("255.255.255.0"),
@@ -1918,6 +2114,22 @@ class TestNetAddrIp4AddressClassfulMaskErrors(TestCase):
                 "multicast_mac": MacAddress("01:00:5e:7f:ff:ff"),
             },
         },
+        {
+            "_description": "Test multicast_mac masking collision: 224.128.0.1 shares MAC with 224.0.0.1",
+            "_args": ["224.128.0.1"],
+            "_kwargs": {},
+            "_results": {
+                "multicast_mac": MacAddress("01:00:5e:00:00:01"),
+            },
+        },
+        {
+            "_description": "Test multicast_mac masking collision: 239.128.0.1 shares MAC with 224.0.0.1",
+            "_args": ["239.128.0.1"],
+            "_kwargs": {},
+            "_results": {
+                "multicast_mac": MacAddress("01:00:5e:00:00:01"),
+            },
+        },
     ]
 )
 class TestNetAddrIp4AddressMulticastMac(TestCase):
@@ -1955,8 +2167,79 @@ class TestNetAddrIp4AddressMulticastMacError(TestCase):
 
     def test__net_addr__ip4_address__multicast_mac__error(self) -> None:
         """
-        Ensure 'multicast_mac' raises AssertionError when called on a non-multicast address.
+        Ensure 'multicast_mac' raises AssertionError with the expected
+        message when called on a non-multicast address.
         """
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(AssertionError) as error:
             _ = Ip4Address("192.168.1.1").multicast_mac
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv4 address must be a multicast address to get a multicast "
+            "MAC address. Got: 192.168.1.1",
+        )
+
+
+class TestNetAddrIp4AddressEquality(TestCase):
+    """
+    The NetAddr IPv4 address equality tests across value and type boundaries.
+    """
+
+    def test__net_addr__ip4_address__eq__identity(self) -> None:
+        """
+        Ensure the IPv4 address equals itself.
+        """
+
+        address = Ip4Address("192.168.1.1")
+        self.assertTrue(address == address)
+
+    def test__net_addr__ip4_address__eq__same_value(self) -> None:
+        """
+        Ensure two IPv4 addresses with the same underlying value are equal
+        regardless of which constructor form was used.
+        """
+
+        self.assertEqual(
+            Ip4Address("192.168.1.1"),
+            Ip4Address(b"\xc0\xa8\x01\x01"),
+        )
+        self.assertEqual(
+            Ip4Address("192.168.1.1"),
+            Ip4Address(3232235777),
+        )
+
+    def test__net_addr__ip4_address__eq__different_value(self) -> None:
+        """
+        Ensure two IPv4 addresses with different values are not equal.
+        """
+
+        self.assertNotEqual(
+            Ip4Address("192.168.1.1"),
+            Ip4Address("192.168.1.2"),
+        )
+
+    def test__net_addr__ip4_address__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv4 address is never equal to a value of a foreign type,
+        even when the underlying integer/bytes would match.
+        """
+
+        address = Ip4Address("192.168.1.1")
+
+        self.assertFalse(address == "192.168.1.1")
+        self.assertFalse(address == int(address))
+        self.assertFalse(address == bytes(address))
+        self.assertFalse(address == None)  # noqa: E711
+        self.assertFalse(address == Ip6Address())
+        self.assertFalse(address == MacAddress())
+
+    def test__net_addr__ip4_address__ne(self) -> None:
+        """
+        Ensure the IPv4 address '__ne__()' method returns a correct value.
+        """
+
+        address = Ip4Address("192.168.1.1")
+        self.assertTrue(address != Ip4Address("192.168.1.2"))
+        self.assertFalse(address != Ip4Address("192.168.1.1"))
+        self.assertTrue(address != "192.168.1.1")
