@@ -34,7 +34,6 @@ ver 3.0.4
 
 
 from typing import Any
-
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
@@ -2196,8 +2195,7 @@ class TestNetAddrIp4AddressMulticastMacError(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The IPv4 address must be a multicast address to get a multicast "
-            "MAC address. Got: 192.168.1.1",
+            "The IPv4 address must be a multicast address to get a multicast " "MAC address. Got: 192.168.1.1",
         )
 
 

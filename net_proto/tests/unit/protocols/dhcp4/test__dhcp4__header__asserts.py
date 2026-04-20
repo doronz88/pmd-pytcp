@@ -385,8 +385,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'file' field length must less or equal to "
-            f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
+            f"The 'file' field length must less or equal to " f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
             msg="Unexpected 'file' length assert message.",
         )
 

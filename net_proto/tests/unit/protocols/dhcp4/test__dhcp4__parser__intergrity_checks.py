@@ -143,7 +143,7 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
         buffer (not a truncated or cached value).
         """
 
-        frame = b"\x00" * 37
+        frame = memoryview(b"\x00" * 37)
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Parser(frame)

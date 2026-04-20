@@ -432,8 +432,7 @@ class TestDhcp4OptionSubnetMaskParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Subnet Mask option length value must be "
-            "6 bytes. Got: 5",
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Subnet Mask option length value must be " "6 bytes. Got: 5",
             msg="Unexpected bad-length-field integrity error message.",
         )
 

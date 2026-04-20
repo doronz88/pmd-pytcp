@@ -98,7 +98,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.multicast_mac.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.multicast_mac.fget(Ip4Address())  # type: ignore[attr-defined]
 
     def test__net_addr__ip_address__is_loopback_stub_raises(self) -> None:
         """
@@ -107,7 +107,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.is_loopback.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.is_loopback.fget(Ip4Address())  # type: ignore[attr-defined]
 
     def test__net_addr__ip_address__is_global_stub_raises(self) -> None:
         """
@@ -116,7 +116,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.is_global.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.is_global.fget(Ip4Address())  # type: ignore[attr-defined]
 
     def test__net_addr__ip_address__is_private_stub_raises(self) -> None:
         """
@@ -125,7 +125,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.is_private.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.is_private.fget(Ip4Address())  # type: ignore[attr-defined]
 
     def test__net_addr__ip_address__is_link_local_stub_raises(self) -> None:
         """
@@ -134,7 +134,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.is_link_local.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.is_link_local.fget(Ip4Address())  # type: ignore[attr-defined]
 
     def test__net_addr__ip_address__is_multicast_stub_raises(self) -> None:
         """
@@ -143,7 +143,7 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpAddress.is_multicast.fget(Ip4Address())  # type: ignore[misc,union-attr]
+            IpAddress.is_multicast.fget(Ip4Address())  # type: ignore[attr-defined]
 
 
 class TestNetAddrIpMaskAbstractStubs(TestCase):
@@ -173,7 +173,7 @@ class TestNetAddrIpNetworkAbstractStubs(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            IpNetwork.last.fget(Ip4Network())  # type: ignore[misc,union-attr]
+            IpNetwork.last.fget(Ip4Network())  # type: ignore[attr-defined]
 
 
 class TestNetAddrIpHostAbstractStubs(TestCase):

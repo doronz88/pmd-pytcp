@@ -136,13 +136,13 @@ class TestNetProtoLibProtoAbstract(TestCase):
 
         class _SuperProto(Proto):
             def __len__(self) -> int:
-                return super().__len__()
+                return super().__len__()  # type: ignore[safe-super]
 
             def __str__(self) -> str:
-                return super().__str__()
+                return super().__str__()  # type: ignore[safe-super]
 
             def __repr__(self) -> str:
-                return super().__repr__()
+                return super().__repr__()  # type: ignore[safe-super]
 
             def __buffer__(self, flags: int) -> memoryview:
                 return super().__buffer__(flags)

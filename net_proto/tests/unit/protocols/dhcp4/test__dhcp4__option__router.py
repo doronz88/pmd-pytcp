@@ -99,8 +99,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'routers' field must be a list of Ip4Address elements. "
-            f"Got: {[type(item) for item in value]!r}",
+            f"The 'routers' field must be a list of Ip4Address elements. " f"Got: {[type(item) for item in value]!r}",
             msg="Unexpected 'routers' element type assert message.",
         )
 
@@ -117,8 +116,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'routers' field must be a list of Ip4Address elements. "
-            f"Got: {[type(item) for item in value]!r}",
+            f"The 'routers' field must be a list of Ip4Address elements. " f"Got: {[type(item) for item in value]!r}",
             msg="Unexpected 'routers' element type assert message for str.",
         )
 
@@ -169,9 +167,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
             "_results": {
                 "__len__": 10,
                 "__str__": "router ['192.0.2.1', '198.51.100.5']",
-                "__repr__": (
-                    "Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])"
-                ),
+                "__repr__": ("Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])"),
                 "__bytes__": (
                     # DHCPv4 Router option [RFC 2132]
                     #   Code : 0x03 (3, Router)
@@ -379,9 +375,7 @@ class TestDhcp4OptionRouterAssembler(TestCase):
             "_description": "The DHCPv4 Router option (two routers).",
             "_args": [b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionRouter(
-                    [Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")]
-                ),
+                "option": Dhcp4OptionRouter([Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")]),
             },
         },
         {
@@ -525,9 +519,7 @@ class TestDhcp4OptionRouterBehavior(TestCase):
 
         self.assertNotEqual(
             Dhcp4OptionRouter([Ip4Address("192.0.2.1")]),
-            Dhcp4OptionRouter(
-                [Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")]
-            ),
+            Dhcp4OptionRouter([Ip4Address("192.0.2.1"), Ip4Address("198.51.100.5")]),
             msg="Options with different router counts must not compare equal.",
         )
 

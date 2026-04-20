@@ -187,8 +187,7 @@ class TestDhcp4OptionEndParser(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The DHCPv4 End option type must be {Dhcp4OptionType.END!r}. "
-            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            f"The DHCPv4 End option type must be {Dhcp4OptionType.END!r}. " f"Got: {Dhcp4OptionType.from_int(254)!r}",
             msg="Unexpected wrong-type assert message.",
         )
 

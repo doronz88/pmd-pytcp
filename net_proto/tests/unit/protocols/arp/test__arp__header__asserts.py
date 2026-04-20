@@ -361,7 +361,7 @@ class TestArpHeaderOperation(TestCase):
         Ensure two ARP headers with identical field values compare equal.
         """
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "oper": ArpOperation.REQUEST,
             "sha": MacAddress("01:02:03:04:05:06"),
             "spa": Ip4Address("11.22.33.44"),

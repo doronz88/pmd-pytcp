@@ -483,7 +483,7 @@ class TestNetProtoLibProtoOptionsAbstractBody(TestCase):
         class _SuperOptions(ProtoOptions):
             @classmethod
             def from_buffer(cls, buffer: Buffer, /) -> Self:
-                return super().from_buffer(buffer)  # type: ignore[misc,safe-super]
+                return super().from_buffer(buffer)
 
         with self.assertRaises(NotImplementedError):
             _SuperOptions.from_buffer(b"")

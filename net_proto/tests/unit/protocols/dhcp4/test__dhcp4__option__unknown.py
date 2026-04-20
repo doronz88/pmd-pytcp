@@ -120,8 +120,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'len' field must be an 8-bit unsigned integer. "
-            f"Got: {UINT_8__MAX + DHCP4__OPTION__LEN + 1}",
+            f"The 'len' field must be an 8-bit unsigned integer. " f"Got: {UINT_8__MAX + DHCP4__OPTION__LEN + 1}",
             msg="Unexpected 8-bit-len assert message.",
         )
 
@@ -138,8 +137,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                 "__len__": 18,
                 "__str__": "unk-254-18",
                 "__repr__": (
-                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, "
-                    "len=18, data=b'0123456789ABCDEF')"
+                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, " "len=18, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
                     # Unknown DHCPv4 option [RFC 2132 format]
@@ -165,10 +163,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             "_results": {
                 "__len__": 2,
                 "__str__": "unk-200-2",
-                "__repr__": (
-                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(200)!r}, "
-                    "len=2, data=b'')"
-                ),
+                "__repr__": (f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(200)!r}, " "len=2, data=b'')"),
                 "__bytes__": (
                     # Unknown DHCPv4 option
                     #   Code : 0xc8 (200, unknown)
@@ -190,10 +185,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "unk-100-3",
-                "__repr__": (
-                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(100)!r}, "
-                    "len=3, data=b'B')"
-                ),
+                "__repr__": (f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(100)!r}, " "len=3, data=b'B')"),
                 "__bytes__": (
                     # Unknown DHCPv4 option
                     #   Code : 0x64 (100, unknown)
@@ -220,10 +212,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                     f"len={UINT_8__MAX}, "
                     f"data={(b'\xaa' * (UINT_8__MAX - DHCP4__OPTION__LEN))!r})"
                 ),
-                "__bytes__": (
-                    b"\x63" + bytes([UINT_8__MAX])
-                    + b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN)
-                ),
+                "__bytes__": (b"\x63" + bytes([UINT_8__MAX]) + b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN)),
                 "type": Dhcp4OptionType.from_int(99),
                 "len": UINT_8__MAX,
                 "data": b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN),
@@ -340,10 +329,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     [
         {
             "_description": "The unknown DHCPv4 option (16-byte payload).",
-            "_args": [
-                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
-                + b"ZH0PA"
-            ],
+            "_args": [b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionUnknown(
                     type=Dhcp4OptionType.from_int(254),
@@ -424,9 +410,7 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown.from_buffer(
-                b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
-            )
+            Dhcp4OptionUnknown.from_buffer(b"\xff\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46")
 
         self.assertEqual(
             str(error.exception),
@@ -441,9 +425,7 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionUnknown.from_buffer(
-                b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
-            )
+            Dhcp4OptionUnknown.from_buffer(b"\x00\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46")
 
         self.assertEqual(
             str(error.exception),
@@ -458,9 +440,7 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
-            Dhcp4OptionUnknown.from_buffer(
-                b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45"
-            )
+            Dhcp4OptionUnknown.from_buffer(b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45")
 
         self.assertEqual(
             str(error.exception),
@@ -481,12 +461,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
         """
 
         self.assertEqual(
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(254), data=b"data"
-            ),
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(254), data=b"data"
-            ),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data"),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data"),
             msg="Options with identical fields must compare equal.",
         )
 
@@ -496,12 +472,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
         """
 
         self.assertNotEqual(
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(254), data=b"data"
-            ),
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(253), data=b"data"
-            ),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data"),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(253), data=b"data"),
             msg="Options with different type must not compare equal.",
         )
 
@@ -511,12 +483,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
         """
 
         self.assertNotEqual(
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(254), data=b"data-a"
-            ),
-            Dhcp4OptionUnknown(
-                type=Dhcp4OptionType.from_int(254), data=b"data-b"
-            ),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data-a"),
+            Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data-b"),
             msg="Options with different data must not compare equal.",
         )
 
@@ -525,9 +493,7 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
         Ensure the option cannot be mutated after construction.
         """
 
-        option = Dhcp4OptionUnknown(
-            type=Dhcp4OptionType.from_int(254), data=b"data"
-        )
+        option = Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data")
 
         with self.assertRaises(FrozenInstanceError):
             option.data = b"other"  # type: ignore[misc]

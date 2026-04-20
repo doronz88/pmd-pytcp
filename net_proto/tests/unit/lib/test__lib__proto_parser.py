@@ -247,13 +247,13 @@ class TestNetProtoLibProtoParserAbstractBodies(TestCase):
 
         class _SuperParser(ProtoParser):
             def _validate_integrity(self) -> None:
-                super()._validate_integrity()
+                super()._validate_integrity()  # type: ignore[safe-super]
 
             def _parse(self) -> None:
-                super()._parse()
+                super()._parse()  # type: ignore[safe-super]
 
             def _validate_sanity(self) -> None:
-                super()._validate_sanity()
+                super()._validate_sanity()  # type: ignore[safe-super]
 
             def __len__(self) -> int:
                 return 0

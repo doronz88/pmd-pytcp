@@ -310,4 +310,4 @@ class TestNetProtoLibInetCksumRange(TestCase):
         """
 
         with self.assertRaises(TypeError):
-            inet_cksum(b"\x00\x00", 0x1234)  # type: ignore[misc]
+            inet_cksum(b"\x00\x00", 0x1234)  # type: ignore[arg-type]

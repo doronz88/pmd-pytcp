@@ -35,7 +35,7 @@ ver 3.0.4
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Self
+from typing import Iterator, Self
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
@@ -126,14 +126,14 @@ class ProtoOptions(ABC):
 
         return isinstance(other, type(self)) and self._options == other._options
 
-    def __contains__(self, option: ProtoOption, /) -> bool:
+    def __contains__(self, option: object, /) -> bool:
         """
         Check if the options contain the provided option.
         """
 
         return option in self._options
 
-    def __iter__(self) -> Iterable[ProtoOption]:
+    def __iter__(self) -> Iterator[ProtoOption]:
         """
         Get the options iterator.
         """

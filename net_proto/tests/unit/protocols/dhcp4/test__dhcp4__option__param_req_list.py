@@ -368,9 +368,7 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
             "_args": [b"\x37\x02\x0c\x35" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionParamReqList(
-                    [Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE]
-                ),
+                "option": Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE]),
             },
         },
         {

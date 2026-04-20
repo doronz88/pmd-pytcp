@@ -187,8 +187,7 @@ class TestDhcp4OptionPadParser(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. "
-            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. " f"Got: {Dhcp4OptionType.from_int(254)!r}",
             msg="Unexpected wrong-type assert message.",
         )
 

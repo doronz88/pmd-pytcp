@@ -244,7 +244,7 @@ class TestNetProtoLibProtoAssemblerAbstractBody(_TrackerReset):
                 return memoryview(b"")
 
             def assemble(self, buffers: list[Buffer], /) -> None:
-                super().assemble(buffers)
+                super().assemble(buffers)  # type: ignore[safe-super]
 
         assembler = _SuperAssembler()
 

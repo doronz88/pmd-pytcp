@@ -49,7 +49,6 @@ from net_proto import (
     Dhcp4MessageType,
     Dhcp4OptionClientId,
     Dhcp4OptionEnd,
-    Dhcp4OptionHostName,
     Dhcp4OptionLeaseTime,
     Dhcp4OptionMessageType,
     Dhcp4OptionPad,
