@@ -33,10 +33,11 @@ ver 3.0.4
 """
 
 
+from dataclasses import FrozenInstanceError
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Dhcp4IntegrityError,
@@ -50,58 +51,77 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
     The DHCPv4 Parameter Request List option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
+    def test__dhcp4__option__param_req_list__not_list(self) -> None:
         """
-        Create the default arguments for the DHCPv4 Parameter Request List option
-        constructor.
-        """
-
-        self._args: list[Any] = [
-            [Dhcp4OptionType.HOST_NAME],
-        ]
-        self._kwargs: dict[str, Any] = {}
-
-    def test__dhcp4__option__param_req_list__param_req_list__not_list(
-        self,
-    ) -> None:
-        """
-        Ensure the DHCPv4 Parameter Request List option constructor raises an
-        exception when the provided 'param_req_list' argument is not a list.
+        Ensure the constructor raises an exception when the provided
+        'param_req_list' argument is not a list.
         """
 
-        self._args[0] = value = "not a list"
+        value = "not a list"
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionParamReqList(*self._args, **self._kwargs)
+            Dhcp4OptionParamReqList(value)  # type: ignore[arg-type]
 
         self.assertEqual(
             str(error.exception),
             f"The 'param_req_list' field must be a list. Got: {type(value)!r}",
+            msg="Unexpected 'param_req_list' type assert message.",
         )
 
-    def test__dhcp4__option__param_req_list__param_req_list__contains_wrong_types(
-        self,
-    ) -> None:
+    def test__dhcp4__option__param_req_list__rejects_tuple(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option constructor raises an
-        exception when the provided 'param_req_list' argument contains elements
-        of the wrong types.
+        Ensure the constructor rejects a tuple of Dhcp4OptionType values —
+        only a bare list is allowed.
         """
 
-        value: list[Any]
+        value = (Dhcp4OptionType.HOST_NAME,)
 
-        self._args[0] = value = [
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList(value)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'param_req_list' field must be a list. Got: {type(value)!r}",
+            msg="Unexpected 'param_req_list' type assert message for tuple.",
+        )
+
+    def test__dhcp4__option__param_req_list__contains_wrong_types(self) -> None:
+        """
+        Ensure the constructor raises an exception when the provided
+        'param_req_list' contains an element that is not a Dhcp4OptionType.
+        """
+
+        value: list[Any] = [
             Dhcp4OptionType.HOST_NAME,
             "not an option type",
         ]
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionParamReqList(*self._args, **self._kwargs)
+            Dhcp4OptionParamReqList(value)
 
         self.assertEqual(
             str(error.exception),
             f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
-            f"Got: {[type(item) for item in value]!r}",
+            f"Got: {[type(element) for element in value]!r}",
+            msg="Unexpected 'param_req_list' element type assert message.",
+        )
+
+    def test__dhcp4__option__param_req_list__rejects_raw_ints(self) -> None:
+        """
+        Ensure the constructor rejects a list of raw ints (values must be
+        wrapped in Dhcp4OptionType).
+        """
+
+        value: list[Any] = [12, 53]
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList(value)
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
+            f"Got: {[type(element) for element in value]!r}",
+            msg="Unexpected 'param_req_list' element type assert message for raw ints.",
         )
 
 
@@ -109,38 +129,45 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [
-                [],
-            ],
-            "_kwargs": {},
+            "_args": [[]],
             "_results": {
                 "__len__": 2,
                 "__str__": "param_req_list []",
                 "__repr__": "Dhcp4OptionParamReqList(param_req_list=[])",
-                "__bytes__": b"\x37\x00",
+                "__bytes__": (
+                    # DHCPv4 Parameter Request List option [RFC 2132]
+                    #   Code : 0x37 (55, Parameter Request List)
+                    #   Len  : 0x00 (0 bytes)
+                    #   Data : (empty)
+                    b"\x37\x00"
+                ),
                 "param_req_list": [],
+                "type": Dhcp4OptionType.PARAM_REQ_LIST,
+                "len": 2,
             },
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
-            "_args": [
-                [Dhcp4OptionType.HOST_NAME],
-            ],
-            "_kwargs": {},
+            "_args": [[Dhcp4OptionType.HOST_NAME]],
             "_results": {
                 "__len__": 3,
                 "__str__": "param_req_list ['HOST_NAME']",
-                "__repr__": ("Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.HOST_NAME: 12>])"),
-                "__bytes__": b"\x37\x01\x0c",
+                "__repr__": "Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.HOST_NAME: 12>])",
+                "__bytes__": (
+                    # DHCPv4 Parameter Request List option [RFC 2132]
+                    #   Code : 0x37 (55, Parameter Request List)
+                    #   Len  : 0x01 (1 byte)
+                    #   Data : 0c   (12, Host Name)
+                    b"\x37\x01\x0c"
+                ),
                 "param_req_list": [Dhcp4OptionType.HOST_NAME],
+                "type": Dhcp4OptionType.PARAM_REQ_LIST,
+                "len": 3,
             },
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
-            "_args": [
-                [Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE],
-            ],
-            "_kwargs": {},
+            "_args": [[Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE]],
             "_results": {
                 "__len__": 4,
                 "__str__": "param_req_list ['HOST_NAME', 'MESSAGE_TYPE']",
@@ -148,11 +175,58 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
                     "Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.HOST_NAME: 12>, "
                     "<Dhcp4OptionType.MESSAGE_TYPE: 53>])"
                 ),
-                "__bytes__": b"\x37\x02\x0c\x35",
+                "__bytes__": (
+                    # DHCPv4 Parameter Request List option [RFC 2132]
+                    #   Code : 0x37 (55, Parameter Request List)
+                    #   Len  : 0x02 (2 bytes)
+                    #   Data : 0c 35   (12 Host Name, 53 Message Type)
+                    b"\x37\x02\x0c\x35"
+                ),
                 "param_req_list": [
                     Dhcp4OptionType.HOST_NAME,
                     Dhcp4OptionType.MESSAGE_TYPE,
                 ],
+                "type": Dhcp4OptionType.PARAM_REQ_LIST,
+                "len": 4,
+            },
+        },
+        {
+            "_description": "The DHCPv4 Parameter Request List option (multiple elements).",
+            "_args": [
+                [
+                    Dhcp4OptionType.SUBNET_MASK,
+                    Dhcp4OptionType.ROUTER,
+                    Dhcp4OptionType.HOST_NAME,
+                    Dhcp4OptionType.LEASE_TIME,
+                    Dhcp4OptionType.SERVER_ID,
+                ]
+            ],
+            "_results": {
+                "__len__": 7,
+                "__str__": "param_req_list ['SUBNET_MASK', 'ROUTER', 'HOST_NAME', 'LEASE_TIME', 'SERVER_ID']",
+                "__repr__": (
+                    "Dhcp4OptionParamReqList(param_req_list=[<Dhcp4OptionType.SUBNET_MASK: 1>, "
+                    "<Dhcp4OptionType.ROUTER: 3>, <Dhcp4OptionType.HOST_NAME: 12>, "
+                    "<Dhcp4OptionType.LEASE_TIME: 51>, <Dhcp4OptionType.SERVER_ID: 54>])"
+                ),
+                "__bytes__": (
+                    # DHCPv4 Parameter Request List option [RFC 2132]
+                    #   Code : 0x37 (55, Parameter Request List)
+                    #   Len  : 0x05 (5 bytes)
+                    #   Data : 01 03 0c 33 36
+                    #          (1 Subnet Mask, 3 Router, 12 Host Name,
+                    #           51 Lease Time, 54 Server ID)
+                    b"\x37\x05\x01\x03\x0c\x33\x36"
+                ),
+                "param_req_list": [
+                    Dhcp4OptionType.SUBNET_MASK,
+                    Dhcp4OptionType.ROUTER,
+                    Dhcp4OptionType.HOST_NAME,
+                    Dhcp4OptionType.LEASE_TIME,
+                    Dhcp4OptionType.SERVER_ID,
+                ],
+                "type": Dhcp4OptionType.PARAM_REQ_LIST,
+                "len": 7,
             },
         },
     ]
@@ -164,145 +238,153 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the DHCPv4 Parameter Request List option object with testcase
-        arguments.
+        Initialize the DHCPv4 Parameter Request List option object with
+        testcase arguments.
         """
 
-        self._option = Dhcp4OptionParamReqList(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionParamReqList(*self._args)
 
     def test__dhcp4__option__param_req_list__len(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option '__len__()' method returns
-        a correct value.
+        Ensure '__len__()' returns code + len + per-element bytes.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__dhcp4__option__param_req_list__str(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option '__str__()' method returns
-        a correct value.
+        Ensure '__str__()' renders the canonical log line.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__dhcp4__option__param_req_list__repr(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option '__repr__()' method
-        returns a correct value.
+        Ensure '__repr__()' renders the dataclass form.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__dhcp4__option__param_req_list__bytes(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option '__bytes__()' method
-        returns a correct value.
+        Ensure 'bytes()' yields the expected wire image.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes output for case: {self._description}",
+        )
+
+    def test__dhcp4__option__param_req_list__memoryview(self) -> None:
+        """
+        Ensure the option supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._option)),
+            self._results["__bytes__"],
+            msg=f"Unexpected memoryview output for case: {self._description}",
         )
 
     def test__dhcp4__option__param_req_list__field(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option 'param_req_list' field
-        contains a correct value.
+        Ensure the 'param_req_list' field reflects the constructor argument.
         """
 
-        self.assertEqual(self._option.param_req_list, self._results["param_req_list"])
+        self.assertEqual(
+            self._option.param_req_list,
+            self._results["param_req_list"],
+            msg=f"Unexpected 'param_req_list' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__param_req_list__type(self) -> None:
+        """
+        Ensure the 'type' field is always PARAM_REQ_LIST (55).
+        """
+
+        self.assertEqual(
+            self._option.type,
+            self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__param_req_list__len_field(self) -> None:
+        """
+        Ensure the 'len' field matches __len__().
+        """
+
+        self.assertEqual(
+            self._option.len,
+            self._results["len"],
+            msg=f"Unexpected 'len' field for case: {self._description}",
+        )
+
+    def test__dhcp4__option__param_req_list__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionParamReqList.from_buffer(bytes(self._option)),
+            self._option,
+            msg=f"Roundtrip must preserve equality for case: {self._description}",
+        )
 
 
 @parameterized_class(
     [
         {
             "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [
-                b"\x37\x00" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x37\x00" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionParamReqList(param_req_list=[]),
+                "option": Dhcp4OptionParamReqList([]),
             },
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
-            "_args": [
-                b"\x37\x01\x0c" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x37\x01\x0c" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionParamReqList(param_req_list=[Dhcp4OptionType.HOST_NAME]),
+                "option": Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME]),
             },
         },
         {
             "_description": "The DHCPv4 Parameter Request List option (two elements).",
-            "_args": [
-                b"\x37\x02\x0c\x35" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x37\x02\x0c\x35" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionParamReqList(
-                    param_req_list=[
+                    [Dhcp4OptionType.HOST_NAME, Dhcp4OptionType.MESSAGE_TYPE]
+                ),
+            },
+        },
+        {
+            "_description": "The DHCPv4 Parameter Request List option (multiple elements).",
+            "_args": [b"\x37\x05\x01\x03\x0c\x33\x36" + b"ZH0PA"],
+            "_results": {
+                "option": Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
                         Dhcp4OptionType.HOST_NAME,
-                        Dhcp4OptionType.MESSAGE_TYPE,
+                        Dhcp4OptionType.LEASE_TIME,
+                        Dhcp4OptionType.SERVER_ID,
                     ]
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Parameter Request List option minimum length assert.",
-            "_args": [
-                b"\x37",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Parameter Request List option must be 2 " "bytes. Got: 1"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Parameter Request List option incorrect 'type' field assert.",
-            "_args": [
-                b"\xfe\x00",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
-                    f"Got: {Dhcp4OptionType.from_int(254)!r}"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Parameter Request List option length integrity check (II).",
-            "_args": [
-                b"\x37\x02",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Parameter Request List option length value must "
-                    "be less than or equal to the length of provided bytes (2). Got: 4"
                 ),
             },
         },
@@ -310,33 +392,124 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
 )
 class TestDhcp4OptionParamReqListParser(TestCase):
     """
-    The DHCPv4 Parameter Request List option parser tests.
+    The DHCPv4 Parameter Request List option parser (success) tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__param_req_list__from_buffer(self) -> None:
         """
-        Ensure the DHCPv4 Parameter Request List option parser creates the proper
-        option object or throws assertion error.
+        Ensure 'from_buffer()' produces the expected option and ignores the
+        trailing bytes beyond the advertised length.
         """
 
-        if "option" in self._results:
-            option = Dhcp4OptionParamReqList.from_buffer(*self._args, **self._kwargs)
+        option = Dhcp4OptionParamReqList.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
+        self.assertEqual(
+            option,
+            self._results["option"],
+            msg=f"Unexpected parser output for case: {self._description}",
+        )
 
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionParamReqList.from_buffer(*self._args, **self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
+class TestDhcp4OptionParamReqListParserErrors(TestCase):
+    """
+    The DHCPv4 Parameter Request List option parser error tests.
+    """
+
+    def test__dhcp4__option__param_req_list__minimum_length(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the buffer is shorter than the
+        2-byte type+len header.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList.from_buffer(b"\x37")
+
+        self.assertEqual(
+            str(error.exception),
+            "The minimum length of the DHCPv4 Parameter Request List option must be 2 bytes. Got: 1",
+            msg="Unexpected minimum-length assert message.",
+        )
+
+    def test__dhcp4__option__param_req_list__wrong_type(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the option type byte is not 55.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList.from_buffer(b"\xfe\x00")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
+            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            msg="Unexpected wrong-type assert message.",
+        )
+
+    def test__dhcp4__option__param_req_list__advertised_len_exceeds_buffer(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length exceeds the remaining bytes in the buffer.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionParamReqList.from_buffer(b"\x37\x02")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Parameter Request List option length value must "
+            "be less than or equal to the length of provided bytes (2). Got: 4",
+            msg="Unexpected integrity-error message.",
+        )
+
+
+class TestDhcp4OptionParamReqListBehavior(TestCase):
+    """
+    The DHCPv4 Parameter Request List option behavioral tests.
+    """
+
+    def test__dhcp4__option__param_req_list__equality(self) -> None:
+        """
+        Ensure two options with equal 'param_req_list' compare equal.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME]),
+            Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME]),
+            msg="Options with identical param_req_list must compare equal.",
+        )
+
+    def test__dhcp4__option__param_req_list__inequality(self) -> None:
+        """
+        Ensure two options with different 'param_req_list' compare unequal.
+        """
+
+        self.assertNotEqual(
+            Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME]),
+            Dhcp4OptionParamReqList([Dhcp4OptionType.MESSAGE_TYPE]),
+            msg="Options with different param_req_list must not compare equal.",
+        )
+
+    def test__dhcp4__option__param_req_list__is_frozen(self) -> None:
+        """
+        Ensure the option cannot be mutated after construction.
+        """
+
+        option = Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME])
+
+        with self.assertRaises(FrozenInstanceError):
+            option.param_req_list = [Dhcp4OptionType.MESSAGE_TYPE]  # type: ignore[misc]
+
+    def test__dhcp4__option__param_req_list__type_cannot_be_overridden(self) -> None:
+        """
+        Ensure 'type' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionParamReqList(  # type: ignore[call-arg]
+                [Dhcp4OptionType.HOST_NAME],
+                type=Dhcp4OptionType.PARAM_REQ_LIST,
             )
