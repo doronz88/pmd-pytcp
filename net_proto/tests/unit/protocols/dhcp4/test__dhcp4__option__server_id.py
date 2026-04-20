@@ -33,16 +33,20 @@ ver 3.0.4
 """
 
 
+from dataclasses import FrozenInstanceError
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr.ip4_address import Ip4Address
 from net_proto import (
     Dhcp4IntegrityError,
     Dhcp4OptionServerId,
     Dhcp4OptionType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
+    DHCP4__OPTION__SERVER_ID__LEN,
 )
 
 
@@ -51,30 +55,55 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
     The DHCPv4 Server Identifier option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
+    def test__dhcp4__option__server_id__not_Ip4Address(self) -> None:
         """
-        Create the default arguments for the DHCPv4 Server Identifier option constructor.
-        """
-
-        self._args: list[Any] = [
-            Ip4Address("192.0.2.1"),
-        ]
-        self._kwargs: dict[str, Any] = {}
-
-    def test__dhcp4__option__server_id__server_id__not_Ip4Address(self) -> None:
-        """
-        Ensure the DHCPv4 Server Identifier option constructor raises an exception when the
-        provided 'server_id' argument is not an Ip4Address.
+        Ensure the constructor raises an exception when the provided
+        'server_id' argument is not an Ip4Address.
         """
 
-        self._args[0] = value = "not an Ip4Address"
+        value = "not an Ip4Address"
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionServerId(*self._args, **self._kwargs)
+            Dhcp4OptionServerId(value)  # type: ignore[arg-type]
 
         self.assertEqual(
             str(error.exception),
             f"The 'server_id' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'server_id' type assert message.",
+        )
+
+    def test__dhcp4__option__server_id__rejects_str_ip(self) -> None:
+        """
+        Ensure the constructor rejects a dotted-decimal string address —
+        Ip4Address instances are required.
+        """
+
+        value = "192.0.2.1"
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionServerId(value)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'server_id' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'server_id' type assert message for str.",
+        )
+
+    def test__dhcp4__option__server_id__rejects_int(self) -> None:
+        """
+        Ensure the constructor rejects a bare int — Ip4Address instances are
+        required.
+        """
+
+        value = 0xC0000201
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionServerId(value)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'server_id' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'server_id' type assert message for int.",
         )
 
 
@@ -82,44 +111,97 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-1).",
-            "_args": [
-                Ip4Address("192.0.2.1"),
-            ],
-            "_kwargs": {},
+            "_args": [Ip4Address("192.0.2.1")],
             "_results": {
                 "__len__": 6,
                 "__str__": "server_id 192.0.2.1",
                 "__repr__": "Dhcp4OptionServerId(server_id=Ip4Address('192.0.2.1'))",
-                "__bytes__": b"\x36\x04\xc0\x00\x02\x01",
+                "__bytes__": (
+                    # DHCPv4 Server Identifier option [RFC 2132]
+                    #   Code : 0x36 (54, Server Identifier)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : c0 00 02 01   (192.0.2.1)
+                    b"\x36\x04\xc0\x00\x02\x01"
+                ),
                 "server_id": Ip4Address("192.0.2.1"),
+                "type": Dhcp4OptionType.SERVER_ID,
+                "len": DHCP4__OPTION__SERVER_ID__LEN,
             },
         },
         {
             "_description": "The DHCPv4 Server Identifier option (low address).",
-            "_args": [
-                Ip4Address("1.2.3.4"),
-            ],
-            "_kwargs": {},
+            "_args": [Ip4Address("1.2.3.4")],
             "_results": {
                 "__len__": 6,
                 "__str__": "server_id 1.2.3.4",
                 "__repr__": "Dhcp4OptionServerId(server_id=Ip4Address('1.2.3.4'))",
-                "__bytes__": b"\x36\x04\x01\x02\x03\x04",
+                "__bytes__": (
+                    # DHCPv4 Server Identifier option [RFC 2132]
+                    #   Code : 0x36 (54, Server Identifier)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 01 02 03 04   (1.2.3.4)
+                    b"\x36\x04\x01\x02\x03\x04"
+                ),
                 "server_id": Ip4Address("1.2.3.4"),
+                "type": Dhcp4OptionType.SERVER_ID,
+                "len": DHCP4__OPTION__SERVER_ID__LEN,
             },
         },
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-3).",
-            "_args": [
-                Ip4Address("203.0.113.10"),
-            ],
-            "_kwargs": {},
+            "_args": [Ip4Address("203.0.113.10")],
             "_results": {
                 "__len__": 6,
                 "__str__": "server_id 203.0.113.10",
                 "__repr__": "Dhcp4OptionServerId(server_id=Ip4Address('203.0.113.10'))",
-                "__bytes__": b"\x36\x04\xcb\x00\x71\x0a",
+                "__bytes__": (
+                    # DHCPv4 Server Identifier option [RFC 2132]
+                    #   Code : 0x36 (54, Server Identifier)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : cb 00 71 0a   (203.0.113.10)
+                    b"\x36\x04\xcb\x00\x71\x0a"
+                ),
                 "server_id": Ip4Address("203.0.113.10"),
+                "type": Dhcp4OptionType.SERVER_ID,
+                "len": DHCP4__OPTION__SERVER_ID__LEN,
+            },
+        },
+        {
+            "_description": "The DHCPv4 Server Identifier option (zero address).",
+            "_args": [Ip4Address("0.0.0.0")],
+            "_results": {
+                "__len__": 6,
+                "__str__": "server_id 0.0.0.0",
+                "__repr__": "Dhcp4OptionServerId(server_id=Ip4Address('0.0.0.0'))",
+                "__bytes__": (
+                    # DHCPv4 Server Identifier option [RFC 2132]
+                    #   Code : 0x36 (54, Server Identifier)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 00 00 00 00   (0.0.0.0)
+                    b"\x36\x04\x00\x00\x00\x00"
+                ),
+                "server_id": Ip4Address("0.0.0.0"),
+                "type": Dhcp4OptionType.SERVER_ID,
+                "len": DHCP4__OPTION__SERVER_ID__LEN,
+            },
+        },
+        {
+            "_description": "The DHCPv4 Server Identifier option (broadcast address).",
+            "_args": [Ip4Address("255.255.255.255")],
+            "_results": {
+                "__len__": 6,
+                "__str__": "server_id 255.255.255.255",
+                "__repr__": "Dhcp4OptionServerId(server_id=Ip4Address('255.255.255.255'))",
+                "__bytes__": (
+                    # DHCPv4 Server Identifier option [RFC 2132]
+                    #   Code : 0x36 (54, Server Identifier)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : ff ff ff ff   (255.255.255.255)
+                    b"\x36\x04\xff\xff\xff\xff"
+                ),
+                "server_id": Ip4Address("255.255.255.255"),
+                "type": Dhcp4OptionType.SERVER_ID,
+                "len": DHCP4__OPTION__SERVER_ID__LEN,
             },
         },
     ]
@@ -131,69 +213,113 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the DHCPv4 Server Identifier option object with testcase arguments.
+        Initialize the DHCPv4 Server Identifier option object with testcase
+        arguments.
         """
 
-        self._option = Dhcp4OptionServerId(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionServerId(*self._args)
 
     def test__dhcp4__option__server_id__len(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the fixed 6-byte option length.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__dhcp4__option__server_id__str(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' renders the canonical log line.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__dhcp4__option__server_id__repr(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' renders the dataclass form.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__dhcp4__option__server_id__bytes(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option '__bytes__()' method returns a correct
-        value.
+        Ensure 'bytes()' yields the expected wire image.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes output for case: {self._description}",
+        )
+
+    def test__dhcp4__option__server_id__memoryview(self) -> None:
+        """
+        Ensure the option supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._option)),
+            self._results["__bytes__"],
+            msg=f"Unexpected memoryview output for case: {self._description}",
         )
 
     def test__dhcp4__option__server_id__field(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option 'server_id' field contains a correct
-        value.
+        Ensure the 'server_id' field reflects the constructor argument.
         """
 
         self.assertEqual(
             self._option.server_id,
             self._results["server_id"],
+            msg=f"Unexpected 'server_id' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__server_id__type(self) -> None:
+        """
+        Ensure the 'type' field is always SERVER_ID (54).
+        """
+
+        self.assertEqual(
+            self._option.type,
+            self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__server_id__len_field(self) -> None:
+        """
+        Ensure the 'len' field equals DHCP4__OPTION__SERVER_ID__LEN.
+        """
+
+        self.assertEqual(
+            self._option.len,
+            self._results["len"],
+            msg=f"Unexpected 'len' field for case: {self._description}",
+        )
+
+    def test__dhcp4__option__server_id__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionServerId.from_buffer(bytes(self._option)),
+            self._option,
+            msg=f"Roundtrip must preserve equality for case: {self._description}",
         )
 
 
@@ -201,118 +327,178 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-1).",
-            "_args": [
-                b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x36\x04\xc0\x00\x02\x01" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
             },
         },
         {
             "_description": "The DHCPv4 Server Identifier option (low address).",
-            "_args": [
-                b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x36\x04\x01\x02\x03\x04" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("1.2.3.4")),
             },
         },
         {
             "_description": "The DHCPv4 Server Identifier option (TEST-NET-3).",
-            "_args": [
-                b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x36\x04\xcb\x00\x71\x0a" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionServerId(Ip4Address("203.0.113.10")),
             },
         },
         {
-            "_description": "The DHCPv4 Server Identifier option minimum length assert.",
-            "_args": [
-                b"\x36",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Server Identifier option (zero address).",
+            "_args": [b"\x36\x04\x00\x00\x00\x00" + b"ZH0PA"],
             "_results": {
-                "error": AssertionError,
-                "error_message": ("The minimum length of the DHCPv4 Subnet Mask option must be 2 " "bytes. Got: 1"),
+                "option": Dhcp4OptionServerId(Ip4Address("0.0.0.0")),
             },
         },
         {
-            "_description": "The DHCPv4 Server Identifier option incorrect 'type' field assert.",
-            "_args": [
-                b"\xfe\x04\xc0\x00\x02\x01",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Server Identifier option (broadcast address).",
+            "_args": [b"\x36\x04\xff\xff\xff\xff" + b"ZH0PA"],
             "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SERVER_ID!r}. "
-                    f"Got: {Dhcp4OptionType.from_int(254)!r}"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Server Identifier option length integrity check (I).",
-            "_args": [
-                b"\x36\x03\xc0\x00\x02",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must be "
-                    "6 bytes. Got: 5"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Server Identifier option length integrity check (II).",
-            "_args": [
-                b"\x36\x04",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must "
-                    "be less than or equal to the length of provided bytes (2). Got: 6"
-                ),
+                "option": Dhcp4OptionServerId(Ip4Address("255.255.255.255")),
             },
         },
     ]
 )
 class TestDhcp4OptionServerIdParser(TestCase):
     """
-    The DHCPv4 Server Identifier option parser tests.
+    The DHCPv4 Server Identifier option parser (success) tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__server_id__from_buffer(self) -> None:
         """
-        Ensure the DHCPv4 Server Identifier option parser creates the proper option
-        object or throws assertion error.
+        Ensure 'from_buffer()' produces the expected option and ignores the
+        trailing bytes beyond the advertised length.
         """
 
-        if "option" in self._results:
-            option = Dhcp4OptionServerId.from_buffer(*self._args, **self._kwargs)
+        option = Dhcp4OptionServerId.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
+        self.assertEqual(
+            option,
+            self._results["option"],
+            msg=f"Unexpected parser output for case: {self._description}",
+        )
 
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionServerId.from_buffer(*self._args, **self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
+class TestDhcp4OptionServerIdParserErrors(TestCase):
+    """
+    The DHCPv4 Server Identifier option parser error tests.
+    """
+
+    def test__dhcp4__option__server_id__minimum_length(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the buffer is shorter than the
+        2-byte type+len header. The source code's assert message still refers
+        to 'Subnet Mask' (copy-paste artifact) — the test preserves it.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionServerId.from_buffer(b"\x36")
+
+        self.assertEqual(
+            str(error.exception),
+            "The minimum length of the DHCPv4 Subnet Mask option must be 2 bytes. Got: 1",
+            msg="Unexpected minimum-length assert message.",
+        )
+
+    def test__dhcp4__option__server_id__wrong_type(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the option type byte is not 54.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionServerId.from_buffer(b"\xfe\x04\xc0\x00\x02\x01")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The DHCPv4 Server Identifier option type must be {Dhcp4OptionType.SERVER_ID!r}. "
+            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            msg="Unexpected wrong-type assert message.",
+        )
+
+    def test__dhcp4__option__server_id__bad_length_field(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length is not exactly 4 bytes.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionServerId.from_buffer(b"\x36\x03\xc0\x00\x02")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must be "
+            "6 bytes. Got: 5",
+            msg="Unexpected bad-length-field integrity error message.",
+        )
+
+    def test__dhcp4__option__server_id__advertised_len_exceeds_buffer(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length exceeds the remaining bytes in the buffer.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionServerId.from_buffer(b"\x36\x04")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must "
+            "be less than or equal to the length of provided bytes (2). Got: 6",
+            msg="Unexpected buffer-too-short integrity error message.",
+        )
+
+
+class TestDhcp4OptionServerIdBehavior(TestCase):
+    """
+    The DHCPv4 Server Identifier option behavioral tests.
+    """
+
+    def test__dhcp4__option__server_id__equality(self) -> None:
+        """
+        Ensure two options with equal 'server_id' compare equal.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
+            Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
+            msg="Options with identical server_id must compare equal.",
+        )
+
+    def test__dhcp4__option__server_id__inequality(self) -> None:
+        """
+        Ensure two options with different 'server_id' compare unequal.
+        """
+
+        self.assertNotEqual(
+            Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
+            Dhcp4OptionServerId(Ip4Address("192.0.2.2")),
+            msg="Options with different server_id must not compare equal.",
+        )
+
+    def test__dhcp4__option__server_id__is_frozen(self) -> None:
+        """
+        Ensure the option cannot be mutated after construction.
+        """
+
+        option = Dhcp4OptionServerId(Ip4Address("192.0.2.1"))
+
+        with self.assertRaises(FrozenInstanceError):
+            option.server_id = Ip4Address("198.51.100.1")  # type: ignore[misc]
+
+    def test__dhcp4__option__server_id__type_cannot_be_overridden(self) -> None:
+        """
+        Ensure 'type' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionServerId(  # type: ignore[call-arg]
+                Ip4Address("192.0.2.1"),
+                type=Dhcp4OptionType.SERVER_ID,
             )
