@@ -27,7 +27,7 @@
 """
 This module contains the DHCPv4 Server Identifier option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__server_id.py
+net_proto/protocols/dhcp4/options/dhcp4__option__server_id.py
 
 ver 3.0.4
 """
@@ -117,7 +117,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
+        Validate the DHCPv4 Server Identifier option integrity before parsing it.
         """
 
         # Raise integrity error if the option length value is incorrect.
@@ -138,12 +138,12 @@ class Dhcp4OptionServerId(Dhcp4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 Subnet Mask option from buffer.
+        Initialize the DHCPv4 Server Identifier option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Subnet Mask option must "
+            f"The minimum length of the DHCPv4 Server Identifier option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 

@@ -394,8 +394,7 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
     def test__dhcp4__option__server_id__minimum_length(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
-        2-byte type+len header. The source code's assert message still refers
-        to 'Subnet Mask' (copy-paste artifact) — the test preserves it.
+        2-byte type+len header.
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -403,7 +402,7 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The minimum length of the DHCPv4 Subnet Mask option must be 2 bytes. Got: 1",
+            "The minimum length of the DHCPv4 Server Identifier option must be 2 bytes. Got: 1",
             msg="Unexpected minimum-length assert message.",
         )
 
@@ -433,7 +432,7 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must be " "6 bytes. Got: 5",
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Server Identifier option length value must be 6 bytes. Got: 5",
             msg="Unexpected bad-length-field integrity error message.",
         )
 
