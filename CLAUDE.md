@@ -108,3 +108,166 @@ Stack-wide constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, l
 - **No comments on obvious code**: docstrings and inline comments only when the *why* is non-obvious.
 - **Zero external runtime deps**: the stack itself uses stdlib only; `aenum` and `click` are only for `net_addr` CLI helpers.
 - **Memory**: prefer `memoryview`/buffer protocol for packet data; assemblers expose `__buffer__()`.
+
+## Coding Style Rules
+
+### File Structure
+
+Every file follows this exact order:
+1. `#!/usr/bin/env python3` shebang
+2. 80-char `#`-bordered copyright/license block
+3. Module docstring with: description, file path, and `ver 3.0.x`
+4. Imports
+5. Module-level constants
+6. Class definition(s)
+
+### Imports
+
+- Order: stdlib → `dataclasses`/`typing` → local packages (`net_addr`, `net_proto`, `pytcp`)
+- Multi-import from same module uses parentheses, never backslash continuation
+- Circular-import avoidance uses `TYPE_CHECKING` guard
+- No `__all__` except in package `__init__.py` files
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from net_proto.protocols.tcp.tcp__base import Tcp
+```
+
+### Module-Level Constants
+
+- ALL_CAPS with double-underscore delimiters: `TCP__HEADER__LEN`, `IP6__MIN_MTU`
+- Double underscores encode hierarchy: `PROTOCOL__CATEGORY__NAME`
+- Inline comment only when value needs RFC citation or non-obvious explanation
+
+### Dataclasses
+
+- Always configured `@dataclass(frozen=True, kw_only=True, slots=True)`
+- Fields with non-trivial configuration use `field(repr=False, init=False, default=...)`
+- `__post_init__` is always decorated `@override` and contains only `assert` validation
+- Frozen dataclass mutation (rare) uses `object.__setattr__(self, name, value)`
+
+### Class Hierarchy Pattern (per protocol)
+
+```
+*Header (dataclass)                   ← frozen data, struct pack/unpack
+*HeaderProperties (ABC)               ← @property accessors into _header
+*OptionsProperties (ABC)              ← @property accessors into _options
+*Base (Tcp, ProtoBase...)             ← declares _header/_options/_payload
+*Parser(Tcp, ProtoParser)             ← integrity → parse → sanity pipeline
+*Assembler(Tcp[P], ProtoAssembler)    ← kw-only ctor, assemble() method
+```
+
+### Naming Conventions
+
+| Target | Pattern | Example |
+|---|---|---|
+| Module constants | `PROTO__FIELD` | `TCP__HEADER__LEN` |
+| Assembler params | `proto__field` | `tcp__sport` |
+| Private attributes | `_name` | `_header`, `_frame` |
+| Private methods | `_name` | `_validate_integrity` |
+| Test classes | `Test<Feature>__<Variant>` | `TestTcpParser__Ip4` |
+| Test methods | `test__proto__component` | `test__tcp__parser` |
+| Files | `proto__component.py` | `tcp__header.py` |
+
+No trailing underscores. No dunder names except standard Python protocols.
+
+### Type Annotations
+
+- Use Python 3.10+ syntax everywhere: `Type1 | Type2`, not `Union[Type1, Type2]`
+- Use lowercase generics: `list[Buffer]`, `dict[str, Any]`
+- Use `Self` from `typing` for self-referential classmethods
+- Decorate every override with `@override`
+- Mark positional-only parameters with `/`:
+  ```python
+  def assemble(self, buffers: list[Buffer], /) -> None:
+  ```
+- All assembler constructor parameters are keyword-only (after bare `*`)
+
+### Validation
+
+**In dataclass headers** (`__post_init__`):
+```python
+assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport}"
+```
+
+**In parsers** — three mandatory phases:
+```python
+def __init__(self, packet_rx: PacketRx) -> None:
+    self._frame = packet_rx.frame
+    self._validate_integrity()
+    self._parse()
+    self._validate_sanity()
+```
+
+- `_validate_integrity()`: structural/format checks → raises `*IntegrityError`
+- `_parse()`: extracts fields from buffer
+- `_validate_sanity()`: logical consistency → raises `*SanityError`
+
+Walrus operator in validation conditionals:
+```python
+if (value := self._header.sport) == 0:
+    raise TcpSanityError(f"The 'sport' field must be greater than 0. Got: {value}")
+```
+
+### Error Classes
+
+```python
+class TcpIntegrityError(PacketIntegrityError):
+    """Exception raised when TCP packet integrity check fails."""
+
+    def __init__(self, message: str, /) -> None:
+        super().__init__("[TCP] " + message)
+```
+
+- Always subclass the appropriate base error
+- Constructor prepends `[PROTO] ` to every message
+
+### Docstrings
+
+- Triple quotes always, even for one-liners
+- Module: description + blank line + file path + blank line + `ver x.y.z`
+- Class: brief noun phrase (e.g. `"The TCP packet header."`)
+- Method: imperative phrase (e.g. `"Get the TCP header 'sport' field."`, `"Ensure integrity of..."`)
+- Property pattern: `"Get the <protocol> header '<field>' field."`
+- All classes and all methods have docstrings — no exceptions
+
+### Properties
+
+- Exposed via a dedicated `*HeaderProperties(ABC)` mixin class
+- One property per field; name and return type match the underlying field exactly
+- The mixin is listed in the base class's inheritance but not in Parser/Assembler directly
+
+### Assembler Pattern
+
+- All constructor parameters keyword-only, prefixed `proto__field`, defaulting to zero/empty
+- `assemble(self, buffers: list[Buffer], /) -> None` appends components in-place
+- Validates constraints with `assert` before constructing the header object
+
+### Enums
+
+- Inherit from `ProtoEnumWord` or `ProtoEnumByte`
+- Implement `__str__` using `match`/`case` for human-readable names
+- Include a `from_proto()` factory classmethod
+
+### Tests
+
+- Framework: `testslide.TestCase` (not `unittest.TestCase`)
+- Parameterized tests use `@parameterized_class(testcases)` with a module-level `testcases: list[dict[str, Any]]`
+- Each test case dict keys: `_description`, `_args`, `_kwargs`, `_mocked_values`, `_results`
+- `setUp` populates `self._args` and `self._kwargs` for constructor tests
+- Test method docstrings start with `"Ensure ..."` and describe the behavioral guarantee
+
+### Inline Comments
+
+- Write zero comments on self-evident code
+- RFC packet format diagrams are the one systematic exception (ASCII art in header files)
+- Inline `# RFC XXXX` or `# reason` only when the value or choice is non-obvious
+
+### Formatting
+
+- Line length: 120 chars max (black/isort configured at 120)
+- Multi-line: parentheses, 4-space indent continuation, trailing comma on last element
+- f-strings preferred; use `!r` for values in assertion messages
+- Bit-field packing: one flag per line with `|` aligned
