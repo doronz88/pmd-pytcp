@@ -127,7 +127,9 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         """
 
         # Raise integrity error when the option length value is incorrect.
-        if (value := DHCP4__OPTION__LEN + buffer[1]) < DHCP4__OPTION__LEN:
+        # Defensive guard: unreachable with unsigned-byte buffers (the only ones PyTCP constructs),
+        # but retained in case a signed-format memoryview is passed in.
+        if (value := DHCP4__OPTION__LEN + buffer[1]) < DHCP4__OPTION__LEN:  # pragma: no cover
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Parameter Request List option length value must be "
                 f"at least {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
