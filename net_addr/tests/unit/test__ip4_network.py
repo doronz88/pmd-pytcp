@@ -34,12 +34,13 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import (
     Ip4Address,
+    Ip4Host,
     Ip4Mask,
     Ip4Network,
     Ip4NetworkFormatError,
@@ -49,6 +50,25 @@ from net_addr import (
 
 @parameterized_class(
     [
+        {
+            "_description": "Test the IPv4 network: 0.0.0.0/0 (None)",
+            "_args": [
+                None,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "0.0.0.0/0",
+                "__repr__": "Ip4Network('0.0.0.0/0')",
+                "__hash__": hash("Ip4Network('0.0.0.0/0')"),
+                "version": IpVersion.IP4,
+                "is_ip6": False,
+                "is_ip4": True,
+                "address": Ip4Address(),
+                "mask": Ip4Mask(),
+                "last": Ip4Address("255.255.255.255"),
+                "broadcast": Ip4Address("255.255.255.255"),
+            },
+        },
         {
             "_description": "Test the IPv4 network: 0.0.0.0/0 (str)",
             "_args": [
@@ -69,7 +89,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 192.168.1.100/24 (str)",
+            "_description": "Test the IPv4 network: 192.168.1.0/24 (str CIDR)",
             "_args": [
                 "192.168.1.100/24",
             ],
@@ -88,7 +108,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 192.168.1.100/24 (str str)",
+            "_description": "Test the IPv4 network: 192.168.1.0/24 (str address mask)",
             "_args": [
                 "192.168.1.100 255.255.255.0",
             ],
@@ -107,7 +127,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 192.168.1.100/24 (Ip4Address, Ip4Mask)",
+            "_description": "Test the IPv4 network: 192.168.1.0/24 (Ip4Address, Ip4Mask)",
             "_args": [
                 (Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0")),
             ],
@@ -126,7 +146,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 192.168.1.100/24 (Ip4Network)",
+            "_description": "Test the IPv4 network: 192.168.1.0/24 (Ip4Network)",
             "_args": [
                 Ip4Network("192.168.1.100/24"),
             ],
@@ -145,7 +165,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 10.20.30.40/8 (str)",
+            "_description": "Test the IPv4 network: 10.0.0.0/8 (str)",
             "_args": [
                 "10.20.30.40/8",
             ],
@@ -164,7 +184,7 @@ from net_addr import (
             },
         },
         {
-            "_description": "Test the IPv4 network: 172.16.21.40/23 (str)",
+            "_description": "Test the IPv4 network: 172.16.16.0/20 (str)",
             "_args": [
                 "172.16.21.40/20",
             ],
@@ -228,7 +248,7 @@ class TestNetAddrIp4Network(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -266,6 +286,10 @@ class TestNetAddrIp4Network(TestCase):
 
         self.assertTrue(
             self._ip4_network == self._ip4_network,
+        )
+
+        self.assertTrue(
+            self._ip4_network == Ip4Network(str(self._ip4_network)),
         )
 
         if int(self._ip4_network.mask) != 0:
@@ -315,8 +339,7 @@ class TestNetAddrIp4Network(TestCase):
 
     def test__net_addr__ip4_network__is_ip4(self) -> None:
         """
-        Ensure the IPv4 network 'is_ip4' property returns a correct
-        value.
+        Ensure the IPv4 network 'is_ip4' property returns a correct value.
         """
 
         self.assertEqual(
@@ -326,8 +349,7 @@ class TestNetAddrIp4Network(TestCase):
 
     def test__net_addr__ip4_network__is_ip6(self) -> None:
         """
-        Ensure the IPv4 network 'is_ip6' property returns a correct
-        value.
+        Ensure the IPv4 network 'is_ip6' property returns a correct value.
         """
 
         self.assertEqual(
@@ -335,10 +357,29 @@ class TestNetAddrIp4Network(TestCase):
             self._results["is_ip6"],
         )
 
+    def test__net_addr__ip4_network__address(self) -> None:
+        """
+        Ensure the IPv4 network 'address' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip4_network.address,
+            self._results["address"],
+        )
+
+    def test__net_addr__ip4_network__mask(self) -> None:
+        """
+        Ensure the IPv4 network 'mask' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip4_network.mask,
+            self._results["mask"],
+        )
+
     def test__net_addr__ip4_network__last(self) -> None:
         """
-        Ensure the IPv4 network 'last' property returns a correct
-        value.
+        Ensure the IPv4 network 'last' property returns a correct value.
         """
 
         self.assertEqual(
@@ -348,13 +389,79 @@ class TestNetAddrIp4Network(TestCase):
 
     def test__net_addr__ip4_network__broadcast(self) -> None:
         """
-        Ensure the IPv4 network 'broadcast' property returns a correct
-        value.
+        Ensure the IPv4 network 'broadcast' property returns a correct value.
         """
 
         self.assertEqual(
             self._ip4_network.broadcast,
             self._results["broadcast"],
+        )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "Ip4Address inside network",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Address("192.168.1.100"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip4Address equals network address",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Address("192.168.1.0"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip4Address equals broadcast address",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Address("192.168.1.255"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip4Address outside network",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Address("192.168.2.1"),
+            "_result": False,
+        },
+        {
+            "_description": "Ip4Host inside network",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Host("192.168.1.50/24"),
+            "_result": True,
+        },
+        {
+            "_description": "Ip4Host outside network",
+            "_network": "192.168.1.0/24",
+            "_object": Ip4Host("192.168.2.50/24"),
+            "_result": False,
+        },
+        {
+            "_description": "Unsupported type returns False",
+            "_network": "192.168.1.0/24",
+            "_object": "192.168.1.1",
+            "_result": False,
+        },
+    ]
+)
+class TestNetAddrIp4NetworkContains(TestCase):
+    """
+    The NetAddr IPv4 network '__contains__()' tests.
+    """
+
+    _description: str
+    _network: str
+    _object: Any
+    _result: bool
+
+    def test__net_addr__ip4_network__contains(self) -> None:
+        """
+        Ensure the IPv4 network '__contains__()' method returns a correct value.
+        """
+
+        self.assertEqual(
+            self._object in Ip4Network(self._network),
+            self._result,
         )
 
 
@@ -368,7 +475,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": ("The IPv4 network format is invalid: '192.168.1.0//24'"),
+                "error_message": "The IPv4 network format is invalid: '192.168.1.0//24'",
             },
         },
         {
@@ -379,7 +486,7 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": ("The IPv4 network format is invalid: '192.168.1./24'"),
+                "error_message": "The IPv4 network format is invalid: '192.168.1./24'",
             },
         },
         {
@@ -390,18 +497,51 @@ class TestNetAddrIp4Network(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": ("The IPv4 network format is invalid: '192.168.1.0/33'"),
+                "error_message": "The IPv4 network format is invalid: '192.168.1.0/33'",
             },
         },
         {
-            "_description": "Test the IPv4 network format: '192.168.1.0 128.255.255.255'",
+            "_description": "Test the IPv4 network format: '192.168.1.0 128.255.255.255' (non-contiguous mask)",
             "_args": [
                 "192.168.1.0 128.255.255.255",
             ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4NetworkFormatError,
-                "error_message": ("The IPv4 network format is invalid: '192.168.1.0 128.255.255.255'"),
+                "error_message": "The IPv4 network format is invalid: '192.168.1.0 128.255.255.255'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 network format: '192.168.1.0' (missing mask)",
+            "_args": [
+                "192.168.1.0",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4NetworkFormatError,
+                "error_message": "The IPv4 network format is invalid: '192.168.1.0'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 network format: '256.168.1.0/24' (invalid address)",
+            "_args": [
+                "256.168.1.0/24",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4NetworkFormatError,
+                "error_message": "The IPv4 network format is invalid: '256.168.1.0/24'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 network format: 12345 (invalid type)",
+            "_args": [
+                12345,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4NetworkFormatError,
+                "error_message": "The IPv4 network format is invalid: 12345",
             },
         },
     ]
@@ -412,7 +552,7 @@ class TestNetAddrIp4NetworkErrors(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 

@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
 
@@ -65,6 +65,24 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
             "_description": "Test the IPv4 mask: 0.0.0.0 (None)",
             "_args": [
                 None,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__len__": 0,
+                "__str__": "/0",
+                "__repr__": "Ip4Mask('/0')",
+                "__bytes__": b"\x00\x00\x00\x00",
+                "__int__": 0,
+                "__hash__": hash("Ip4Mask('/0')"),
+                "version": IpVersion.IP4,
+                "is_ip6": False,
+                "is_ip4": True,
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask: /0 (slash notation)",
+            "_args": [
+                "/0",
             ],
             "_kwargs": {},
             "_results": {
@@ -260,6 +278,24 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
             },
         },
         {
+            "_description": "Test the IPv4 mask: /24 (slash notation)",
+            "_args": [
+                "/24",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__len__": 24,
+                "__str__": "/24",
+                "__repr__": "Ip4Mask('/24')",
+                "__bytes__": b"\xff\xff\xff\x00",
+                "__int__": 4294967040,
+                "__hash__": hash("Ip4Mask('/24')"),
+                "version": IpVersion.IP4,
+                "is_ip6": False,
+                "is_ip4": True,
+            },
+        },
+        {
             "_description": "Test the IPv4 mask: 255.255.255.252 (str)",
             "_args": [
                 "255.255.255.252",
@@ -295,6 +331,24 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "is_ip4": True,
             },
         },
+        {
+            "_description": "Test the IPv4 mask: /32 (slash notation)",
+            "_args": [
+                "/32",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__len__": 32,
+                "__str__": "/32",
+                "__repr__": "Ip4Mask('/32')",
+                "__bytes__": b"\xff\xff\xff\xff",
+                "__int__": 4294967295,
+                "__hash__": hash("Ip4Mask('/32')"),
+                "version": IpVersion.IP4,
+                "is_ip6": False,
+                "is_ip4": True,
+            },
+        },
     ]
 )
 class TestNetAddrIp4Mask(TestCase):
@@ -303,7 +357,7 @@ class TestNetAddrIp4Mask(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -354,6 +408,16 @@ class TestNetAddrIp4Mask(TestCase):
             self._results["__bytes__"],
         )
 
+    def test__net_addr__ip4_mask__buffer(self) -> None:
+        """
+        Ensure the IPv4 mask '__buffer__()' method returns a correct value.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._ip4_mask)),
+            self._results["__bytes__"],
+        )
+
     def test__net_addr__ip4_mask__int(self) -> None:
         """
         Ensure the IPv4 mask '__int__()' method returns a correct value.
@@ -371,6 +435,10 @@ class TestNetAddrIp4Mask(TestCase):
 
         self.assertTrue(
             self._ip4_mask == self._ip4_mask,
+        )
+
+        self.assertTrue(
+            self._ip4_mask == Ip4Mask(int(self._ip4_mask)),
         )
 
         self.assertFalse(
@@ -403,8 +471,7 @@ class TestNetAddrIp4Mask(TestCase):
 
     def test__net_addr__ip4_mask__is_ip4(self) -> None:
         """
-        Ensure the IPv4 mask 'is_ip4' property returns a correct
-        value.
+        Ensure the IPv4 mask 'is_ip4' property returns a correct value.
         """
 
         self.assertEqual(
@@ -414,8 +481,7 @@ class TestNetAddrIp4Mask(TestCase):
 
     def test__net_addr__ip4_mask__is_ip6(self) -> None:
         """
-        Ensure the IPv4 mask 'is_ip6' property returns a correct
-        value.
+        Ensure the IPv4 mask 'is_ip6' property returns a correct value.
         """
 
         self.assertEqual(
@@ -434,7 +500,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: '255.255.255.256'"),
+                "error_message": "The IPv4 mask format is invalid: '255.255.255.256'",
             },
         },
         {
@@ -445,40 +511,106 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: '255.255.255,255'"),
+                "error_message": "The IPv4 mask format is invalid: '255.255.255,255'",
             },
         },
         {
-            "_description": "Test the IPv4 mask format: '255.254.255.255'",
+            "_description": "Test the IPv4 mask format: '255.254.255.255' (non-contiguous)",
             "_args": [
                 "255.254.255.255",
             ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: '255.254.255.255'"),
+                "error_message": "The IPv4 mask format is invalid: '255.254.255.255'",
             },
         },
         {
-            "_description": "Test the IPv4 mask format: b'\xff\xff\xff'",
+            "_description": "Test the IPv4 mask format: '' (empty string)",
+            "_args": [
+                "",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: ''",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '/33' (out-of-range slash notation)",
+            "_args": [
+                "/33",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '/33'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '/-1' (negative slash notation)",
+            "_args": [
+                "/-1",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '/-1'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: b'\\xff\\xff\\xff' (3 bytes)",
             "_args": [
                 b"\xff\xff\xff",
             ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (r"The IPv4 mask format is invalid: b'\xff\xff\xff'"),
+                "error_message": r"The IPv4 mask format is invalid: b'\xff\xff\xff'",
             },
         },
         {
-            "_description": "Test the IPv4 mask format: b'\xff\xff\xff\xff\xff'",
+            "_description": "Test the IPv4 mask format: b'\\xff\\xff\\xff\\xff\\xff' (5 bytes)",
             "_args": [
                 b"\xff\xff\xff\xff\xff",
             ],
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": (r"The IPv4 mask format is invalid: b'\xff\xff\xff\xff\xff'"),
+                "error_message": r"The IPv4 mask format is invalid: b'\xff\xff\xff\xff\xff'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: bytearray(b'\\xff\\xff\\xff') (3 bytes)",
+            "_args": [
+                bytearray(b"\xff\xff\xff"),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: bytearray(b'\\xff\\xff\\xff')",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: bytearray(b'\\xff\\xff\\xff\\xff\\xff') (5 bytes)",
+            "_args": [
+                bytearray(b"\xff\xff\xff\xff\xff"),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: bytearray(b'\\xff\\xff\\xff\\xff\\xff')",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: memoryview (3 bytes)",
+            "_args": [
+                memoryview(b"\xff\xff\xff"),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: <memory at 0x",
             },
         },
         {
@@ -489,7 +621,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: -1"),
+                "error_message": "The IPv4 mask format is invalid: -1",
             },
         },
         {
@@ -500,7 +632,18 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: 4294967296"),
+                "error_message": "The IPv4 mask format is invalid: 4294967296",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: 0xFF00FF00 (non-contiguous int)",
+            "_args": [
+                0xFF00FF00,
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: 4278255360",
             },
         },
         {
@@ -511,7 +654,7 @@ class TestNetAddrIp4Mask(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4MaskFormatError,
-                "error_message": ("The IPv4 mask format is invalid: Ip6Mask('/0')"),
+                "error_message": "The IPv4 mask format is invalid: Ip6Mask('/0')",
             },
         },
         {
@@ -526,7 +669,7 @@ class TestNetAddrIp4Mask(TestCase):
             },
         },
         {
-            "_description": "Test the IPv4 address format: 1.1",
+            "_description": "Test the IPv4 mask format: 1.1 (float)",
             "_args": [
                 1.1,
             ],
@@ -544,7 +687,7 @@ class TestNetAddrIp4MaskErrors(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -556,7 +699,6 @@ class TestNetAddrIp4MaskErrors(TestCase):
         with self.assertRaises(self._results["error"]) as error:
             Ip4Mask(*self._args, **self._kwargs)
 
-        self.assertEqual(
-            str(error.exception),
-            self._results["error_message"],
+        self.assertTrue(
+            str(error.exception).startswith(self._results["error_message"]),
         )
