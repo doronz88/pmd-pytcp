@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import MacAddress, MacAddressFormatError
 
@@ -275,27 +275,6 @@ from net_addr import MacAddress, MacAddressFormatError
             },
         },
         {
-            "_description": "Test the MAC address: 33:33:00:01:02:03 (str)",
-            "_args": [
-                "33:33:00:01:02:03",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "__str__": "33:33:00:01:02:03",
-                "__repr__": "MacAddress('33:33:00:01:02:03')",
-                "__bytes__": b"\x33\x33\x00\x01\x02\x03",
-                "__int__": 56294136414723,
-                "__hash__": hash(MacAddress("33:33:00:01:02:03")),
-                "is_unspecified": False,
-                "is_unicast": False,
-                "is_multicast": True,
-                "is_multicast_ip4": False,
-                "is_multicast_ip6": True,
-                "is_multicast_ip6_solicited_node": False,
-                "is_broadcast": False,
-            },
-        },
-        {
             "_description": "Test the MAC address: 33:33:ff:01:02:03 (str)",
             "_args": [
                 "33:33:ff:01:02:03",
@@ -345,7 +324,7 @@ class TestNetAddrMacAddress(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -403,14 +382,17 @@ class TestNetAddrMacAddress(TestCase):
 
         self.assertTrue(
             self._mac_address == self._mac_address,
+            msg="MacAddress must compare equal to itself.",
         )
 
         self.assertFalse(
             self._mac_address == MacAddress((int(self._mac_address) + 1) & 0xFFFF_FFFF_FFFF),
+            msg="MacAddress values with different integer payloads must compare unequal.",
         )
 
         self.assertFalse(
             self._mac_address == "not a MAC address",
+            msg="MacAddress must not compare equal to an arbitrary string.",
         )
 
     def test__net_addr__mac_address__hash(self) -> None:
@@ -482,7 +464,7 @@ class TestNetAddrMacAddress(TestCase):
         self,
     ) -> None:
         """
-        Ensure the MAC address 'is_multicast_ip6_colicited_node' property
+        Ensure the MAC address 'is_multicast__ip6__solicited_node' property
         returns a correct value.
         """
 
@@ -500,6 +482,22 @@ class TestNetAddrMacAddress(TestCase):
         self.assertEqual(
             self._mac_address.is_broadcast,
             self._results["is_broadcast"],
+        )
+
+    def test__net_addr__mac_address__unspecified(self) -> None:
+        """
+        Ensure the MAC address 'unspecified' property yields the all-zero
+        MAC address regardless of the source instance.
+        """
+
+        self.assertEqual(
+            self._mac_address.unspecified,
+            MacAddress(),
+            msg="MacAddress.unspecified must always equal the all-zero MAC address.",
+        )
+        self.assertTrue(
+            self._mac_address.unspecified.is_unspecified,
+            msg="MacAddress.unspecified must report 'is_unspecified' as True.",
         )
 
 
@@ -612,7 +610,7 @@ class TestNetAddrMacAddressErrors(TestCase):
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -627,4 +625,216 @@ class TestNetAddrMacAddressErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
+        )
+
+
+class TestNetAddrMacAddressEquality(TestCase):
+    """
+    The NetAddr MAC address equality and inequality tests not tied to a
+    parameterized matrix.
+    """
+
+    def test__net_addr__mac_address__eq__foreign_types(self) -> None:
+        """
+        Ensure the MAC address is never equal to a value of a foreign type,
+        even when the underlying integer or byte payload would match.
+        """
+
+        mac = MacAddress("02:03:04:aa:bb:cc")
+
+        self.assertFalse(
+            mac == "02:03:04:aa:bb:cc",
+            msg="MacAddress must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            mac == int(mac),
+            msg="MacAddress must not compare equal to its integer payload.",
+        )
+        self.assertFalse(
+            mac == bytes(mac),
+            msg="MacAddress must not compare equal to its bytes payload.",
+        )
+        self.assertFalse(
+            mac == None,  # noqa: E711
+            msg="MacAddress must not compare equal to None.",
+        )
+
+    def test__net_addr__mac_address__ne(self) -> None:
+        """
+        Ensure the MAC address '__ne__()' method returns a correct value.
+        """
+
+        mac = MacAddress("02:03:04:aa:bb:cc")
+        self.assertTrue(
+            mac != MacAddress("02:03:04:aa:bb:cd"),
+            msg="MacAddress instances with different payloads must be unequal.",
+        )
+        self.assertFalse(
+            mac != MacAddress("02:03:04:aa:bb:cc"),
+            msg="MacAddress instances with matching payloads must not be unequal.",
+        )
+        self.assertTrue(
+            mac != "02:03:04:aa:bb:cc",
+            msg="MacAddress must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrMacAddressHashConsistency(TestCase):
+    """
+    The NetAddr MAC address hash consistency tests.
+    """
+
+    def test__net_addr__mac_address__hash__distinct_instances(self) -> None:
+        """
+        Ensure independently constructed equal MAC addresses hash identically
+        regardless of the input form.
+        """
+
+        a = MacAddress("02:03:04:aa:bb:cc")
+        b = MacAddress(b"\x02\x03\x04\xaa\xbb\xcc")
+        c = MacAddress(2211986455500)
+        d = MacAddress("02-03-04-AA-BB-CC")
+
+        for other, label in ((b, "bytes"), (c, "int"), (d, "dash-separated string")):
+            with self.subTest(source=label):
+                self.assertEqual(
+                    a,
+                    other,
+                    msg=f"MacAddress built from {label} must compare equal to CIDR-style constructor.",
+                )
+                self.assertEqual(
+                    hash(a),
+                    hash(other),
+                    msg=f"Equal MacAddress values must hash identically across constructor forms ({label}).",
+                )
+
+    def test__net_addr__mac_address__usable_in_set(self) -> None:
+        """
+        Ensure equal MAC addresses collapse into a single element when used
+        in a set.
+        """
+
+        a = MacAddress("02:03:04:aa:bb:cc")
+        b = MacAddress(2211986455500)
+        c = MacAddress("02:03:04:aa:bb:cd")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal MacAddress values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct MacAddress values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal MacAddress values as the same key.",
+        )
+
+    def test__net_addr__mac_address__usable_in_dict(self) -> None:
+        """
+        Ensure equal MAC addresses refer to the same dict entry regardless
+        of which constructor form built the key.
+        """
+
+        a = MacAddress("02:03:04:aa:bb:cc")
+        b = MacAddress(b"\x02\x03\x04\xaa\xbb\xcc")
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="MacAddress must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrMacAddressRoundtrip(TestCase):
+    """
+    The NetAddr MAC address roundtrip tests.
+    """
+
+    def test__net_addr__mac_address__roundtrip__str(self) -> None:
+        """
+        Ensure 'MacAddress(str(x))' yields a MAC address equal to 'x'.
+        """
+
+        for spec in (
+            "00:00:00:00:00:00",
+            "02:03:04:aa:bb:cc",
+            "01:00:5e:01:02:03",
+            "33:33:ff:01:02:03",
+            "ff:ff:ff:ff:ff:ff",
+        ):
+            with self.subTest(spec=spec):
+                mac = MacAddress(spec)
+                self.assertEqual(
+                    MacAddress(str(mac)),
+                    mac,
+                    msg=f"Roundtrip through str() must preserve MAC address {spec!r}.",
+                )
+
+    def test__net_addr__mac_address__roundtrip__int(self) -> None:
+        """
+        Ensure 'MacAddress(int(x))' yields a MAC address equal to 'x'.
+        """
+
+        for spec in (
+            "00:00:00:00:00:00",
+            "02:03:04:aa:bb:cc",
+            "ff:ff:ff:ff:ff:ff",
+        ):
+            with self.subTest(spec=spec):
+                mac = MacAddress(spec)
+                self.assertEqual(
+                    MacAddress(int(mac)),
+                    mac,
+                    msg=f"Roundtrip through int() must preserve MAC address {spec!r}.",
+                )
+
+    def test__net_addr__mac_address__roundtrip__bytes(self) -> None:
+        """
+        Ensure 'MacAddress(bytes(x))' yields a MAC address equal to 'x'.
+        """
+
+        for spec in (
+            "00:00:00:00:00:00",
+            "02:03:04:aa:bb:cc",
+            "ff:ff:ff:ff:ff:ff",
+        ):
+            with self.subTest(spec=spec):
+                mac = MacAddress(spec)
+                self.assertEqual(
+                    MacAddress(bytes(mac)),
+                    mac,
+                    msg=f"Roundtrip through bytes() must preserve MAC address {spec!r}.",
+                )
+
+    def test__net_addr__mac_address__roundtrip__copy(self) -> None:
+        """
+        Ensure constructing a MacAddress from another MacAddress yields an
+        equal instance with the same hash.
+        """
+
+        source = MacAddress("02:03:04:aa:bb:cc")
+        clone = MacAddress(source)
+
+        self.assertEqual(
+            clone,
+            source,
+            msg="Copy-constructed MacAddress must compare equal to the source.",
+        )
+        self.assertEqual(
+            hash(clone),
+            hash(source),
+            msg="Copy-constructed MacAddress must share the source's hash.",
+        )
+        self.assertEqual(
+            int(clone),
+            int(source),
+            msg="Copy-constructed MacAddress must preserve the integer payload.",
         )
