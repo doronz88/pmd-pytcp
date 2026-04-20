@@ -96,7 +96,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'oper' field must be a Dhcp4Operation. Got: {type(value)!r}",
+            f"The 'operation' field must be a Dhcp4Operation. Got: {type(value)!r}",
             msg="Unexpected 'operation' assert message.",
         )
 
@@ -334,7 +334,7 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'sname' field length must less or equal to "
+            f"The 'sname' field length must be less than or equal to "
             f"{DHCP4__HEADER__SNAME__MAX_LEN!r}. Got: {len(value)!r}",
             msg="Unexpected 'sname' length assert message.",
         )
@@ -385,7 +385,8 @@ class TestDhcp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'file' field length must less or equal to " f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
+            f"The 'file' field length must be less than or equal to "
+            f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(value)!r}",
             msg="Unexpected 'file' length assert message.",
         )
 

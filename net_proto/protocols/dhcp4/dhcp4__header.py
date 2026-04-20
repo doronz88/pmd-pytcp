@@ -131,6 +131,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 DHCP4__HEADER__LEN = 240
 DHCP4__HEADER__STRUCT = "! BBBB L HH L L L L 16s 64s 128s 4s"
 DHCP4__HEADER__MAGIC_COOKIE = b"\x63\x82\x53\x63"
+DHCP4__HEADER__CHADDR__MAX_LEN = 16
 DHCP4__HEADER__SNAME__MAX_LEN = 64
 DHCP4__HEADER__FILE__MAX_LEN = 128
 
@@ -172,12 +173,12 @@ class Dhcp4Header(ProtoStruct):
     @override
     def __post_init__(self) -> None:
         """
-        Ensure integrity of the ARP header fields.
+        Ensure integrity of the DHCPv4 header fields.
         """
 
         assert isinstance(
             self.operation, Dhcp4Operation
-        ), f"The 'oper' field must be a Dhcp4Operation. Got: {type(self.operation)!r}"
+        ), f"The 'operation' field must be a Dhcp4Operation. Got: {type(self.operation)!r}"
 
         assert is_uint8(self.hops), "The 'hops' field must be an 8-bit unsigned integer. " f"Got: {self.hops!r}"
 
@@ -210,21 +211,21 @@ class Dhcp4Header(ProtoStruct):
         assert isinstance(self.sname, str), f"The 'sname' field must be a string. Got: {type(self.sname)!r}"
 
         assert len(self.sname) <= DHCP4__HEADER__SNAME__MAX_LEN, (
-            "The 'sname' field length must less or equal to "
+            "The 'sname' field length must be less than or equal to "
             f"{DHCP4__HEADER__SNAME__MAX_LEN!r}. Got: {len(self.sname)!r}"
         )
 
         assert isinstance(self.file, str), f"The 'file' field must be a string. Got: {type(self.file)!r}"
 
         assert len(self.file) <= DHCP4__HEADER__FILE__MAX_LEN, (
-            "The 'file' field length must less or equal to "
+            "The 'file' field length must be less than or equal to "
             f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(self.file)!r}"
         )
 
     @override
     def __len__(self) -> int:
         """
-        Get the ARP header length.
+        Get the DHCPv4 header length.
         """
 
         return DHCP4__HEADER__LEN
@@ -232,7 +233,7 @@ class Dhcp4Header(ProtoStruct):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP header as memoryview.
+        Get the DHCPv4 header as memoryview.
         """
 
         struct.pack_into(
@@ -250,9 +251,9 @@ class Dhcp4Header(ProtoStruct):
             int(self.yiaddr),
             int(self.siaddr),
             int(self.giaddr),
-            bytes(self.chaddr) + b"\0" * 10,
-            bytes(self.sname, encoding="ascii") + b"\0" * (64 - len(self.sname)),
-            bytes(self.file, encoding="ascii") + b"\0" * (128 - len(self.file)),
+            bytes(self.chaddr) + b"\0" * (DHCP4__HEADER__CHADDR__MAX_LEN - DHCP4__HARDWARE_LEN__ETHERNET),
+            bytes(self.sname, encoding="ascii") + b"\0" * (DHCP4__HEADER__SNAME__MAX_LEN - len(self.sname)),
+            bytes(self.file, encoding="ascii") + b"\0" * (DHCP4__HEADER__FILE__MAX_LEN - len(self.file)),
             self.magic_cookie,
         )
 
@@ -262,7 +263,7 @@ class Dhcp4Header(ProtoStruct):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ARP header from buffer.
+        Initialize the DHCPv4 header from buffer.
         """
 
         (
