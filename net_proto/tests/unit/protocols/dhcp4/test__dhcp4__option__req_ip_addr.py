@@ -25,7 +25,7 @@
 
 
 """
-Module contains tests for the DHCPv4 Requested Ip Address option code.
+Module contains tests for the DHCPv4 Requested IP Address option code.
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__req_ip_addr.py
 
@@ -33,10 +33,11 @@ ver 3.0.4
 """
 
 
+from dataclasses import FrozenInstanceError
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr.ip4_address import Ip4Address
 from net_proto import (
@@ -44,279 +45,459 @@ from net_proto import (
     Dhcp4OptionReqIpAddr,
     Dhcp4OptionType,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
+    DHCP4__OPTION__REQ_IP_ADDR__LEN,
+)
 
 
 class TestDhcp4OptionReqIpAddrAsserts(TestCase):
     """
-    The DHCPv4 Requested Ip Address option constructor argument assert tests.
+    The DHCPv4 Requested IP Address option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
+    def test__dhcp4__option__req_ip_addr__not_Ip4Address(self) -> None:
         """
-        Create the default arguments for the DHCPv4 Requested Ip Address option constructor.
-        """
-
-        self._args: list[Any] = [
-            Ip4Address("192.0.2.1"),
-        ]
-        self._kwargs: dict[str, Any] = {}
-
-    def test__dhcp4__option__req_ip_addr__req_ip_addr__not_Ip4Address(
-        self,
-    ) -> None:
-        """
-        Ensure the DHCPv4 Requested Ip Address option constructor raises an exception when the
-        provided 'req_ip_addr' argument is not an Ip4Address.
+        Ensure the constructor raises an exception when the provided
+        'req_ip_addr' argument is not an Ip4Address.
         """
 
-        self._args[0] = value = "not an Ip4Address"
+        value = "not an Ip4Address"
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionReqIpAddr(*self._args, **self._kwargs)
+            Dhcp4OptionReqIpAddr(value)  # type: ignore[arg-type]
 
         self.assertEqual(
             str(error.exception),
             f"The 'req_ip_addr' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'req_ip_addr' type assert message.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__rejects_str_ip(self) -> None:
+        """
+        Ensure the constructor rejects a dotted-decimal string address —
+        Ip4Address instances are required.
+        """
+
+        value = "192.0.2.1"
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionReqIpAddr(value)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'req_ip_addr' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'req_ip_addr' type assert message for str.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__rejects_int(self) -> None:
+        """
+        Ensure the constructor rejects a bare int — Ip4Address instances are
+        required.
+        """
+
+        value = 0xC0000201
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionReqIpAddr(value)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'req_ip_addr' field must be an Ip4Address. Got: {type(value)!r}",
+            msg="Unexpected 'req_ip_addr' type assert message for int.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-1).",
-            "_args": [
-                Ip4Address("192.0.2.1"),
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (TEST-NET-1).",
+            "_args": [Ip4Address("192.0.2.1")],
             "_results": {
                 "__len__": 6,
                 "__str__": "req_ip_addr 192.0.2.1",
                 "__repr__": "Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address('192.0.2.1'))",
-                "__bytes__": b"\x32\x04\xc0\x00\x02\x01",
+                "__bytes__": (
+                    # DHCPv4 Requested IP Address option [RFC 2132]
+                    #   Code : 0x32 (50, Requested IP Address)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : c0 00 02 01   (192.0.2.1)
+                    b"\x32\x04\xc0\x00\x02\x01"
+                ),
                 "req_ip_addr": Ip4Address("192.0.2.1"),
+                "type": Dhcp4OptionType.REQ_IP_ADDR,
+                "len": DHCP4__OPTION__REQ_IP_ADDR__LEN,
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option (low address).",
-            "_args": [
-                Ip4Address("1.2.3.4"),
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (low address).",
+            "_args": [Ip4Address("1.2.3.4")],
             "_results": {
                 "__len__": 6,
                 "__str__": "req_ip_addr 1.2.3.4",
                 "__repr__": "Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address('1.2.3.4'))",
-                "__bytes__": b"\x32\x04\x01\x02\x03\x04",
+                "__bytes__": (
+                    # DHCPv4 Requested IP Address option [RFC 2132]
+                    #   Code : 0x32 (50, Requested IP Address)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 01 02 03 04   (1.2.3.4)
+                    b"\x32\x04\x01\x02\x03\x04"
+                ),
                 "req_ip_addr": Ip4Address("1.2.3.4"),
+                "type": Dhcp4OptionType.REQ_IP_ADDR,
+                "len": DHCP4__OPTION__REQ_IP_ADDR__LEN,
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-3).",
-            "_args": [
-                Ip4Address("203.0.113.10"),
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (TEST-NET-3).",
+            "_args": [Ip4Address("203.0.113.10")],
             "_results": {
                 "__len__": 6,
                 "__str__": "req_ip_addr 203.0.113.10",
                 "__repr__": "Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address('203.0.113.10'))",
-                "__bytes__": b"\x32\x04\xcb\x00\x71\x0a",
+                "__bytes__": (
+                    # DHCPv4 Requested IP Address option [RFC 2132]
+                    #   Code : 0x32 (50, Requested IP Address)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : cb 00 71 0a   (203.0.113.10)
+                    b"\x32\x04\xcb\x00\x71\x0a"
+                ),
                 "req_ip_addr": Ip4Address("203.0.113.10"),
+                "type": Dhcp4OptionType.REQ_IP_ADDR,
+                "len": DHCP4__OPTION__REQ_IP_ADDR__LEN,
+            },
+        },
+        {
+            "_description": "The DHCPv4 Requested IP Address option (zero address).",
+            "_args": [Ip4Address("0.0.0.0")],
+            "_results": {
+                "__len__": 6,
+                "__str__": "req_ip_addr 0.0.0.0",
+                "__repr__": "Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address('0.0.0.0'))",
+                "__bytes__": (
+                    # DHCPv4 Requested IP Address option [RFC 2132]
+                    #   Code : 0x32 (50, Requested IP Address)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 00 00 00 00   (0.0.0.0)
+                    b"\x32\x04\x00\x00\x00\x00"
+                ),
+                "req_ip_addr": Ip4Address("0.0.0.0"),
+                "type": Dhcp4OptionType.REQ_IP_ADDR,
+                "len": DHCP4__OPTION__REQ_IP_ADDR__LEN,
+            },
+        },
+        {
+            "_description": "The DHCPv4 Requested IP Address option (broadcast address).",
+            "_args": [Ip4Address("255.255.255.255")],
+            "_results": {
+                "__len__": 6,
+                "__str__": "req_ip_addr 255.255.255.255",
+                "__repr__": "Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address('255.255.255.255'))",
+                "__bytes__": (
+                    # DHCPv4 Requested IP Address option [RFC 2132]
+                    #   Code : 0x32 (50, Requested IP Address)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : ff ff ff ff   (255.255.255.255)
+                    b"\x32\x04\xff\xff\xff\xff"
+                ),
+                "req_ip_addr": Ip4Address("255.255.255.255"),
+                "type": Dhcp4OptionType.REQ_IP_ADDR,
+                "len": DHCP4__OPTION__REQ_IP_ADDR__LEN,
             },
         },
     ]
 )
 class TestDhcp4OptionReqIpAddrAssembler(TestCase):
     """
-    The DHCPv4 Requested Ip Address option assembler tests.
+    The DHCPv4 Requested IP Address option assembler tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the DHCPv4 Requested Ip Address option object with testcase arguments.
+        Initialize the DHCPv4 Requested IP Address option object with
+        testcase arguments.
         """
 
-        self._option = Dhcp4OptionReqIpAddr(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionReqIpAddr(*self._args)
 
     def test__dhcp4__option__req_ip_addr__len(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the fixed 6-byte option length.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__dhcp4__option__req_ip_addr__str(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' renders the canonical log line.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__dhcp4__option__req_ip_addr__repr(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' renders the dataclass form.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__dhcp4__option__req_ip_addr__bytes(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option '__bytes__()' method returns a correct
-        value.
+        Ensure 'bytes()' yields the expected wire image.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes output for case: {self._description}",
+        )
+
+    def test__dhcp4__option__req_ip_addr__memoryview(self) -> None:
+        """
+        Ensure the option supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._option)),
+            self._results["__bytes__"],
+            msg=f"Unexpected memoryview output for case: {self._description}",
         )
 
     def test__dhcp4__option__req_ip_addr__field(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option 'req_ip_addr' field contains a correct
-        value.
+        Ensure the 'req_ip_addr' field reflects the constructor argument.
         """
 
         self.assertEqual(
             self._option.req_ip_addr,
             self._results["req_ip_addr"],
+            msg=f"Unexpected 'req_ip_addr' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__req_ip_addr__type(self) -> None:
+        """
+        Ensure the 'type' field is always REQ_IP_ADDR (50).
+        """
+
+        self.assertEqual(
+            self._option.type,
+            self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__req_ip_addr__len_field(self) -> None:
+        """
+        Ensure the 'len' field equals DHCP4__OPTION__REQ_IP_ADDR__LEN.
+        """
+
+        self.assertEqual(
+            self._option.len,
+            self._results["len"],
+            msg=f"Unexpected 'len' field for case: {self._description}",
+        )
+
+    def test__dhcp4__option__req_ip_addr__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionReqIpAddr.from_buffer(bytes(self._option)),
+            self._option,
+            msg=f"Roundtrip must preserve equality for case: {self._description}",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-1).",
-            "_args": [
-                b"\x32\x04\xc0\x00\x02\x01" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (TEST-NET-1).",
+            "_args": [b"\x32\x04\xc0\x00\x02\x01" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("192.0.2.1")),
+                "option": Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.1")),
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option (low address).",
-            "_args": [
-                b"\x32\x04\x01\x02\x03\x04" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (low address).",
+            "_args": [b"\x32\x04\x01\x02\x03\x04" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("1.2.3.4")),
+                "option": Dhcp4OptionReqIpAddr(Ip4Address("1.2.3.4")),
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option (TEST-NET-3).",
-            "_args": [
-                b"\x32\x04\xcb\x00\x71\x0a" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (TEST-NET-3).",
+            "_args": [b"\x32\x04\xcb\x00\x71\x0a" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionReqIpAddr(req_ip_addr=Ip4Address("203.0.113.10")),
+                "option": Dhcp4OptionReqIpAddr(Ip4Address("203.0.113.10")),
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option minimum length assert.",
-            "_args": [
-                b"\x32",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (zero address).",
+            "_args": [b"\x32\x04\x00\x00\x00\x00" + b"ZH0PA"],
             "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 Requested Ip Address option must be 2 " "bytes. Got: 1"
-                ),
+                "option": Dhcp4OptionReqIpAddr(Ip4Address("0.0.0.0")),
             },
         },
         {
-            "_description": "The DHCPv4 Requested Ip Address option incorrect 'type' field assert.",
-            "_args": [
-                b"\xfe\x04\xc0\x00\x02\x01",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 Requested IP Address option (broadcast address).",
+            "_args": [b"\x32\x04\xff\xff\xff\xff" + b"ZH0PA"],
             "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
-                    f"Got: {Dhcp4OptionType.from_int(254)!r}"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Requested Ip Address option length integrity check (I).",
-            "_args": [
-                b"\x32\x03\xc0\x00\x02",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must be "
-                    "6 bytes. Got: 5"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 Requested Ip Address option length integrity check (II).",
-            "_args": [
-                b"\x32\x04",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must "
-                    "be less than or equal to the length of provided bytes (2). Got: 6"
-                ),
+                "option": Dhcp4OptionReqIpAddr(Ip4Address("255.255.255.255")),
             },
         },
     ]
 )
 class TestDhcp4OptionReqIpAddrParser(TestCase):
     """
-    The DHCPv4 Requested Ip Address option parser tests.
+    The DHCPv4 Requested IP Address option parser (success) tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__req_ip_addr__from_buffer(self) -> None:
         """
-        Ensure the DHCPv4 Requested Ip Address option parser creates the proper option
-        object or throws assertion error.
+        Ensure 'from_buffer()' produces the expected option and ignores the
+        trailing bytes beyond the advertised length.
         """
 
-        if "option" in self._results:
-            option = Dhcp4OptionReqIpAddr.from_buffer(*self._args, **self._kwargs)
+        option = Dhcp4OptionReqIpAddr.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
+        self.assertEqual(
+            option,
+            self._results["option"],
+            msg=f"Unexpected parser output for case: {self._description}",
+        )
 
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionReqIpAddr.from_buffer(*self._args, **self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
+class TestDhcp4OptionReqIpAddrParserErrors(TestCase):
+    """
+    The DHCPv4 Requested IP Address option parser error tests.
+    """
+
+    def test__dhcp4__option__req_ip_addr__minimum_length(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the buffer is shorter than the
+        2-byte type+len header.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionReqIpAddr.from_buffer(b"\x32")
+
+        self.assertEqual(
+            str(error.exception),
+            "The minimum length of the DHCPv4 Requested Ip Address option must be 2 bytes. Got: 1",
+            msg="Unexpected minimum-length assert message.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__wrong_type(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the option type byte is not 50.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionReqIpAddr.from_buffer(b"\xfe\x04\xc0\x00\x02\x01")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
+            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            msg="Unexpected wrong-type assert message.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__bad_length_field(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length is not exactly 4 bytes.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionReqIpAddr.from_buffer(b"\x32\x03\xc0\x00\x02")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must be "
+            "6 bytes. Got: 5",
+            msg="Unexpected bad-length-field integrity error message.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__advertised_len_exceeds_buffer(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length exceeds the remaining bytes in the buffer.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionReqIpAddr.from_buffer(b"\x32\x04")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must "
+            "be less than or equal to the length of provided bytes (2). Got: 6",
+            msg="Unexpected buffer-too-short integrity error message.",
+        )
+
+
+class TestDhcp4OptionReqIpAddrBehavior(TestCase):
+    """
+    The DHCPv4 Requested IP Address option behavioral tests.
+    """
+
+    def test__dhcp4__option__req_ip_addr__equality(self) -> None:
+        """
+        Ensure two options with equal 'req_ip_addr' compare equal.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.1")),
+            Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.1")),
+            msg="Options with identical req_ip_addr must compare equal.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__inequality(self) -> None:
+        """
+        Ensure two options with different 'req_ip_addr' compare unequal.
+        """
+
+        self.assertNotEqual(
+            Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.1")),
+            Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.2")),
+            msg="Options with different req_ip_addr must not compare equal.",
+        )
+
+    def test__dhcp4__option__req_ip_addr__is_frozen(self) -> None:
+        """
+        Ensure the option cannot be mutated after construction.
+        """
+
+        option = Dhcp4OptionReqIpAddr(Ip4Address("192.0.2.1"))
+
+        with self.assertRaises(FrozenInstanceError):
+            option.req_ip_addr = Ip4Address("198.51.100.1")  # type: ignore[misc]
+
+    def test__dhcp4__option__req_ip_addr__type_cannot_be_overridden(self) -> None:
+        """
+        Ensure 'type' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionReqIpAddr(  # type: ignore[call-arg]
+                Ip4Address("192.0.2.1"),
+                type=Dhcp4OptionType.REQ_IP_ADDR,
             )
