@@ -27,7 +27,7 @@
 """
 This module contains the DHCPv4 Message Type option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__message_type.py
+net_proto/protocols/dhcp4/options/dhcp4__option__message_type.py
 
 ver 3.0.4
 """
@@ -49,7 +49,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
 # The DHCPv4 Message Type option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 1   |   Length = 1  |     Value     |
+# |   Code = 53   |   Length = 1  |     Value     |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
