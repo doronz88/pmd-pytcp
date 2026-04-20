@@ -86,7 +86,7 @@ def _dhcp4_header(
     Build a DHCPv4 header (236 BOOTP bytes + 4-byte DHCP magic cookie).
     """
 
-    assert len(chaddr_mac) == 6
+    assert len(chaddr_mac) == 6, f"Ethernet MAC must be 6 bytes. Got: {len(chaddr_mac)}"
     chaddr = chaddr_mac + b"\x00" * (16 - 6)
 
     sname_bytes = sname.encode("ascii") + b"\x00" * (64 - len(sname))
