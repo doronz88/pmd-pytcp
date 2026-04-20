@@ -34,11 +34,11 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
-from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion
+from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion, MacAddress
 
 
 @parameterized_class(
@@ -697,14 +697,27 @@ class TestNetAddrIp6Address(TestCase):
 
         self.assertTrue(
             self._ip6_address == self._ip6_address,
+            msg="An Ip6Address instance must compare equal to itself.",
+        )
+
+        self.assertTrue(
+            self._ip6_address == Ip6Address(int(self._ip6_address)),
+            msg="Ip6Address must compare equal to one reconstructed from its integer value.",
         )
 
         self.assertFalse(
-            self._ip6_address == Ip6Address((int(self._ip6_address) + 1) & 0xFF_FF_FF_FF),
+            self._ip6_address == Ip6Address((int(self._ip6_address) + 1) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
+            msg="Ip6Address instances with different integer values must not compare equal.",
         )
 
         self.assertFalse(
             self._ip6_address == "not an IPv6 address",
+            msg="Ip6Address must not compare equal to a foreign string value.",
+        )
+
+        self.assertFalse(
+            self._ip6_address == None,  # noqa: E711
+            msg="Ip6Address must not compare equal to None.",
         )
 
     def test__net_addr__ip6_address__hash(self) -> None:
@@ -845,6 +858,17 @@ class TestNetAddrIp6Address(TestCase):
         self.assertEqual(
             self._ip6_address.is_multicast__all_routers,
             self._results["is_multicast__all_routers"],
+        )
+
+    def test__net_addr__ip6_address__is_multicast__solicited_node(self) -> None:
+        """
+        Ensure the IPv6 address 'is_multicast__solicited_node' property returns
+        a correct value.
+        """
+
+        self.assertEqual(
+            self._ip6_address.is_multicast__solicited_node,
+            self._results["is_multicast__solicited_node"],
         )
 
     def test__net_addr__ip6_address__is_private(self) -> None:
@@ -1005,4 +1029,288 @@ class TestNetAddrIp6AddressErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
         )
+
+
+class TestNetAddrIp6AddressSemantics(TestCase):
+    """
+    The NetAddr IPv6 address semantic tests not tied to a parameterized matrix.
+    """
+
+    def test__net_addr__ip6_address__eq__cross_version(self) -> None:
+        """
+        Ensure an IPv6 address never compares equal to an IPv4 address
+        even when they share the same integer value.
+        """
+
+        self.assertNotEqual(
+            Ip6Address(0xC0A80101),
+            Ip4Address(0xC0A80101),
+            msg="Ip6Address must not compare equal to an Ip4Address of the same integer value.",
+        )
+
+    def test__net_addr__ip6_address__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv6 address is never equal to a value of a foreign type.
+        """
+
+        address = Ip6Address("2001:db8::1")
+
+        self.assertFalse(
+            address == "2001:db8::1",
+            msg="Ip6Address must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            address == int(address),
+            msg="Ip6Address must not compare equal to its integer value.",
+        )
+        self.assertFalse(
+            address == bytes(address),
+            msg="Ip6Address must not compare equal to its bytes representation.",
+        )
+
+    def test__net_addr__ip6_address__ne(self) -> None:
+        """
+        Ensure the IPv6 address '__ne__()' method returns a correct value.
+        """
+
+        address = Ip6Address("2001:db8::1")
+        self.assertTrue(
+            address != Ip6Address("2001:db8::2"),
+            msg="Distinct Ip6Address values must be unequal.",
+        )
+        self.assertFalse(
+            address != Ip6Address("2001:db8::1"),
+            msg="Equal Ip6Address values must not be unequal.",
+        )
+        self.assertTrue(
+            address != "2001:db8::1",
+            msg="Ip6Address must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp6AddressHashConsistency(TestCase):
+    """
+    The NetAddr IPv6 address hash consistency tests.
+    """
+
+    def test__net_addr__ip6_address__hash__distinct_instances(self) -> None:
+        """
+        Ensure two independently constructed equal addresses hash identically.
+        """
+
+        a = Ip6Address("ff02::1:ff00:0")
+        b = Ip6Address(bytes(a))
+        c = Ip6Address(int(a))
+        d = Ip6Address("FF02::1:FF00:0")
+
+        self.assertEqual(
+            a,
+            b,
+            msg="Ip6Address built from string and bytes must compare equal.",
+        )
+        self.assertEqual(
+            a,
+            c,
+            msg="Ip6Address built from string and integer must compare equal.",
+        )
+        self.assertEqual(
+            a,
+            d,
+            msg="Ip6Address case must not affect equality.",
+        )
+        for other in (b, c, d):
+            self.assertEqual(
+                hash(a),
+                hash(other),
+                msg="Equal Ip6Address values must hash to the same value across constructor forms.",
+            )
+
+    def test__net_addr__ip6_address__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv6 addresses collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip6Address("2001:db8::1")
+        b = Ip6Address(int(a))
+        c = Ip6Address("2001:db8::2")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip6Address values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip6Address values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip6Address values as the same key.",
+        )
+
+    def test__net_addr__ip6_address__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv6 addresses refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip6Address("2001:db8::1")
+        b = Ip6Address(bytes(a))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip6Address must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp6AddressRoundtrip(TestCase):
+    """
+    The NetAddr IPv6 address roundtrip tests.
+    """
+
+    def test__net_addr__ip6_address__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip6Address(str(x))' yields an address equal to 'x'.
+        """
+
+        for spec in (
+            "::",
+            "::1",
+            "2001:db8::1",
+            "fe80::1",
+            "ff02::1",
+            "ff02::1:ff00:0",
+            "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        ):
+            with self.subTest(spec=spec):
+                address = Ip6Address(spec)
+                self.assertEqual(
+                    Ip6Address(str(address)),
+                    address,
+                    msg=f"Roundtrip through str() must preserve address {spec!r}.",
+                )
+
+    def test__net_addr__ip6_address__roundtrip__bytes(self) -> None:
+        """
+        Ensure 'Ip6Address(bytes(x))' yields an address equal to 'x'.
+        """
+
+        for spec in (
+            "::",
+            "2001:db8::1",
+            "ff02::1:ff00:0",
+            "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        ):
+            with self.subTest(spec=spec):
+                address = Ip6Address(spec)
+                self.assertEqual(
+                    Ip6Address(bytes(address)),
+                    address,
+                    msg=f"Roundtrip through bytes() must preserve address {spec!r}.",
+                )
+
+    def test__net_addr__ip6_address__roundtrip__int(self) -> None:
+        """
+        Ensure 'Ip6Address(int(x))' yields an address equal to 'x'.
+        """
+
+        for spec in (
+            "::",
+            "2001:db8::1",
+            "ff02::1:ff00:0",
+            "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        ):
+            with self.subTest(spec=spec):
+                address = Ip6Address(spec)
+                self.assertEqual(
+                    Ip6Address(int(address)),
+                    address,
+                    msg=f"Roundtrip through int() must preserve address {spec!r}.",
+                )
+
+
+class TestNetAddrIp6AddressMulticastMac(TestCase):
+    """
+    The NetAddr IPv6 address 'multicast_mac' property tests.
+    """
+
+    def test__net_addr__ip6_address__multicast_mac__all_nodes(self) -> None:
+        """
+        Ensure multicast_mac maps ff02::1 to 33:33:00:00:00:01.
+        """
+
+        self.assertEqual(
+            Ip6Address("ff02::1").multicast_mac,
+            MacAddress("33:33:00:00:00:01"),
+            msg="ff02::1 must map to MAC 33:33:00:00:00:01.",
+        )
+
+    def test__net_addr__ip6_address__multicast_mac__solicited_node(self) -> None:
+        """
+        Ensure multicast_mac uses the low 32 bits of the IPv6 address.
+        """
+
+        self.assertEqual(
+            Ip6Address("ff02::1:ff12:3456").multicast_mac,
+            MacAddress("33:33:ff:12:34:56"),
+            msg="Solicited-node multicast address must map to 33:33:ff:xx:xx:xx.",
+        )
+
+    def test__net_addr__ip6_address__multicast_mac__non_multicast_raises(self) -> None:
+        """
+        Ensure 'multicast_mac' raises AssertionError for a non-multicast address.
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="multicast_mac must reject a non-multicast address.",
+        ):
+            _ = Ip6Address("2001:db8::1").multicast_mac
+
+
+class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
+    """
+    The NetAddr IPv6 address 'solicited_node_multicast' property tests.
+    """
+
+    def test__net_addr__ip6_address__solicited_node_multicast__unicast(self) -> None:
+        """
+        Ensure the solicited-node multicast of a unicast address is
+        ff02::1:ff<low-24-bits>.
+        """
+
+        self.assertEqual(
+            Ip6Address("2001:db8::1:2345:6789").solicited_node_multicast,
+            Ip6Address("ff02::1:ff45:6789"),
+            msg="Solicited-node multicast must combine ff02::1:ff00:0 with the low 24 bits.",
+        )
+
+    def test__net_addr__ip6_address__solicited_node_multicast__unspecified(self) -> None:
+        """
+        Ensure the unspecified address maps to ff02::1:ff00:0.
+        """
+
+        self.assertEqual(
+            Ip6Address().solicited_node_multicast,
+            Ip6Address("ff02::1:ff00:0"),
+            msg="The unspecified address must map to ff02::1:ff00:0.",
+        )
+
+    def test__net_addr__ip6_address__solicited_node_multicast__multicast_raises(self) -> None:
+        """
+        Ensure 'solicited_node_multicast' rejects a multicast address.
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="solicited_node_multicast must reject a multicast address.",
+        ):
+            _ = Ip6Address("ff02::1").solicited_node_multicast
