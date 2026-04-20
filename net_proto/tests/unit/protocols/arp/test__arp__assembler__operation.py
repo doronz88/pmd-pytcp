@@ -66,9 +66,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": ARP__HEADER__LEN,
-                "__str__": (
-                    "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > 101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28"
-                ),
+                "__str__": "ARP Request 11.22.33.44 / 01:02:03:04:05:06 > 101.102.103.104 / 0a:0b:0c:0d:0e:0f, len 28",
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REQUEST: 1>, "
                     "sha=MacAddress('01:02:03:04:05:06'), spa=Ip4Address('11.22.33.44'), "
@@ -168,7 +166,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": ARP__HEADER__LEN,
-                "__str__": ("ARP Request 0.0.0.0 / 02:00:00:00:00:91 > 10.0.1.7 / 00:00:00:00:00:00, len 28"),
+                "__str__": "ARP Request 0.0.0.0 / 02:00:00:00:00:91 > 10.0.1.7 / 00:00:00:00:00:00, len 28",
                 "__repr__": (
                     "ArpAssembler(header=ArpHeader(oper=<ArpOperation.REQUEST: 1>, "
                     "sha=MacAddress('02:00:00:00:00:91'), spa=Ip4Address('0.0.0.0'), "
