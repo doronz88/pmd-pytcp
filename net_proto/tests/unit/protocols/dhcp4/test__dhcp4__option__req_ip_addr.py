@@ -402,7 +402,7 @@ class TestDhcp4OptionReqIpAddrParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The minimum length of the DHCPv4 Requested Ip Address option must be 2 bytes. Got: 1",
+            "The minimum length of the DHCPv4 Requested IP Address option must be 2 bytes. Got: 1",
             msg="Unexpected minimum-length assert message.",
         )
 
@@ -416,7 +416,7 @@ class TestDhcp4OptionReqIpAddrParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
+            f"The DHCPv4 Requested IP Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(254)!r}",
             msg="Unexpected wrong-type assert message.",
         )
@@ -432,7 +432,7 @@ class TestDhcp4OptionReqIpAddrParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must be " "6 bytes. Got: 5",
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested IP Address option length value must be 6 bytes. Got: 5",
             msg="Unexpected bad-length-field integrity error message.",
         )
 
@@ -447,7 +447,7 @@ class TestDhcp4OptionReqIpAddrParserErrors(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested Ip Address option length value must "
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Requested IP Address option length value must "
             "be less than or equal to the length of provided bytes (2). Got: 6",
             msg="Unexpected buffer-too-short integrity error message.",
         )

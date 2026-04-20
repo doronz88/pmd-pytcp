@@ -25,9 +25,9 @@
 
 
 """
-This module contains the DHCPv4 Requested Ip Address option support code.
+This module contains the DHCPv4 Requested IP Address option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__req_ip_addr.py
+net_proto/protocols/dhcp4/options/dhcp4__option__req_ip_addr.py
 
 ver 3.0.4
 """
@@ -46,7 +46,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Requested Ip Address option [RFC 2132].
+# The DHCPv4 Requested IP Address option [RFC 2132].
 
 #                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #                                 |    Code = 50  |   Length = 4  |
@@ -62,7 +62,7 @@ DHCP4__OPTION__REQ_IP_ADDR__STRUCT = "! BB 4s"
 @dataclass(frozen=True, kw_only=False, slots=True)
 class Dhcp4OptionReqIpAddr(Dhcp4Option):
     """
-    The DHCPv4 Request Ip Address option support class.
+    The DHCPv4 Requested IP Address option support class.
     """
 
     type: Dhcp4OptionType = field(
@@ -81,7 +81,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Request Ip Address option fields.
+        Validate the DHCPv4 Requested IP Address option fields.
         """
 
         # Ensure that the 'req_ip_addr' field is Ip4Address instance.
@@ -92,7 +92,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @override
     def __str__(self) -> str:
         """
-        Get the DHCPv4 Requested Ip Address option log string.
+        Get the DHCPv4 Requested IP Address option log string.
         """
 
         return f"req_ip_addr {self.req_ip_addr}"
@@ -100,7 +100,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Requested Ip Address option as memoryview.
+        Get the DHCPv4 Requested IP Address option as memoryview.
         """
 
         struct.pack_into(
@@ -117,20 +117,20 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Requested Ip Address option integrity before parsing it.
+        Validate the DHCPv4 Requested IP Address option integrity before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.
         if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__REQ_IP_ADDR__LEN:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Requested Ip Address option length value must be "
+                "The DHCPv4 Requested IP Address option length value must be "
                 f"{DHCP4__OPTION__REQ_IP_ADDR__LEN} bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Requested Ip Address option length value must be less than or equal "
+                "The DHCPv4 Requested IP Address option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
@@ -138,18 +138,18 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the DHCPv4 Requested Ip Address option from buffer.
+        Initialize the DHCPv4 Requested IP Address option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Requested Ip Address option must "
+            f"The minimum length of the DHCPv4 Requested IP Address option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.REQ_IP_ADDR), (
-            f"The DHCPv4 Requested Ip Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
+            f"The DHCPv4 Requested IP Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
         )
 
