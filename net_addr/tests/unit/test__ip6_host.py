@@ -35,18 +35,22 @@ ver 3.0.4
 
 import time
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import (
+    Ip4Host,
     Ip6Address,
     Ip6Host,
+    Ip6HostFormatError,
+    Ip6HostGatewayError,
     Ip6HostOrigin,
     Ip6HostSanityError,
     Ip6Mask,
     Ip6Network,
     IpVersion,
+    MacAddress,
 )
 
 IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
@@ -194,10 +198,33 @@ class TestNetAddrIp6Host(TestCase):
 
         self.assertTrue(
             self._ip6_host == self._ip6_host,
+            msg="An Ip6Host instance must compare equal to itself.",
+        )
+
+        self.assertTrue(
+            self._ip6_host == Ip6Host(str(self._ip6_host)),
+            msg="Ip6Host must compare equal to one reconstructed from its string representation.",
         )
 
         self.assertFalse(
             self._ip6_host == "not an IPv6 host",
+            msg="Ip6Host must not compare equal to a foreign string value.",
+        )
+
+        self.assertFalse(
+            self._ip6_host == None,  # noqa: E711
+            msg="Ip6Host must not compare equal to None.",
+        )
+
+        self.assertFalse(
+            self._ip6_host
+            == Ip6Host(
+                (
+                    Ip6Address((int(self._ip6_host.address) ^ 0x01) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
+                    self._ip6_host.network,
+                ),
+            ),
+            msg="Ip6Host instances with different addresses must not compare equal.",
         )
 
     def test__net_addr__ip6_host__hash(self) -> None:
@@ -242,6 +269,26 @@ class TestNetAddrIp6Host(TestCase):
             self._results["is_ip6"],
         )
 
+    def test__net_addr__ip6_host__address(self) -> None:
+        """
+        Ensure the IPv6 host 'address' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip6_host.address,
+            self._results["address"],
+        )
+
+    def test__net_addr__ip6_host__network(self) -> None:
+        """
+        Ensure the IPv6 host 'network' property returns a correct value.
+        """
+
+        self.assertEqual(
+            self._ip6_host.network,
+            self._results["network"],
+        )
+
     def test__net_addr__ip6_host__gateway(self) -> None:
         """
         Ensure the IPv6 host 'gateway' property returns a correct
@@ -276,6 +323,247 @@ class TestNetAddrIp6Host(TestCase):
         )
 
 
+class TestNetAddrIp6HostSemantics(TestCase):
+    """
+    The NetAddr IPv6 host semantic tests not tied to a parameterized matrix.
+    """
+
+    def test__net_addr__ip6_host__eq__ignores_metadata(self) -> None:
+        """
+        Ensure '__eq__()' compares only address and network, ignoring
+        gateway, origin, and expiration_time.
+        """
+
+        plain = Ip6Host("2001:db8::1/64")
+        decorated = Ip6Host(
+            "2001:db8::1/64",
+            gateway=Ip6Address("2001:db8::ffff"),
+            origin=Ip6HostOrigin.DHCP,
+            expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
+        )
+
+        self.assertEqual(
+            plain,
+            decorated,
+            msg="Ip6Host equality must ignore gateway, origin, and expiration_time.",
+        )
+        self.assertEqual(
+            hash(plain),
+            hash(decorated),
+            msg="Equal Ip6Host values must hash to the same value regardless of metadata.",
+        )
+
+    def test__net_addr__ip6_host__eq__cross_version(self) -> None:
+        """
+        Ensure '__eq__()' returns False when compared to an Ip4Host.
+        """
+
+        self.assertNotEqual(
+            Ip6Host("2001:db8::c0a8:164/64"),
+            Ip4Host("192.168.1.100/24"),
+            msg="Ip6Host must not compare equal to an Ip4Host.",
+        )
+
+    def test__net_addr__ip6_host__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv6 host is never equal to a value of a foreign type,
+        including its own component pieces.
+        """
+
+        host = Ip6Host("2001:db8::1/64")
+
+        self.assertFalse(
+            host == "2001:db8::1/64",
+            msg="Ip6Host must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            host == host.address,
+            msg="Ip6Host must not compare equal to its Ip6Address component.",
+        )
+        self.assertFalse(
+            host == host.network,
+            msg="Ip6Host must not compare equal to its Ip6Network component.",
+        )
+        self.assertFalse(
+            host == 0,
+            msg="Ip6Host must not compare equal to an integer.",
+        )
+
+    def test__net_addr__ip6_host__ne(self) -> None:
+        """
+        Ensure the IPv6 host '__ne__()' method returns a correct value.
+        """
+
+        host = Ip6Host("2001:db8::1/64")
+        self.assertTrue(
+            host != Ip6Host("2001:db8::2/64"),
+            msg="Ip6Host instances with different addresses must be unequal.",
+        )
+        self.assertFalse(
+            host != Ip6Host("2001:db8::1/64"),
+            msg="Ip6Host instances with the same address and network must not be unequal.",
+        )
+        self.assertTrue(
+            host != "2001:db8::1/64",
+            msg="Ip6Host must be unequal to its string representation.",
+        )
+
+    def test__net_addr__ip6_host__hash__distinct_instances(self) -> None:
+        """
+        Ensure two independently constructed equal hosts hash identically.
+        """
+
+        a = Ip6Host("2001:db8::1/64")
+        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+        self.assertEqual(
+            a,
+            b,
+            msg="Ip6Host built from string and (address, mask) tuple must compare equal.",
+        )
+        self.assertEqual(
+            hash(a),
+            hash(b),
+            msg="Equal Ip6Host values must hash to the same value across constructor forms.",
+        )
+
+    def test__net_addr__ip6_host__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv6 hosts collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip6Host("2001:db8::1/64")
+        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+        c = Ip6Host("2001:db8::2/64")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip6Host values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip6Host values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip6Host values as the same key.",
+        )
+
+    def test__net_addr__ip6_host__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv6 hosts refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip6Host("2001:db8::1/64")
+        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip6Host must behave consistently as a dict key across input forms.",
+        )
+
+    def test__net_addr__ip6_host__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip6Host(str(x))' yields a host equal to 'x' (metadata-free).
+        """
+
+        for spec in ("::/0", "::1/128", "2001:db8::1/64", "fe80::1/10", "ff02::1/128"):
+            with self.subTest(spec=spec):
+                host = Ip6Host(spec)
+                self.assertEqual(
+                    Ip6Host(str(host)),
+                    host,
+                    msg=f"Roundtrip through str() must preserve host {spec!r}.",
+                )
+
+    def test__net_addr__ip6_host__copy_preserves_fields(self) -> None:
+        """
+        Ensure copying an Ip6Host preserves gateway, origin, and expiration_time.
+        """
+
+        source = Ip6Host(
+            "2001:db8::1/64",
+            gateway=Ip6Address("fe80::1"),
+            origin=Ip6HostOrigin.DHCP,
+            expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
+        )
+        clone = Ip6Host(source)
+
+        self.assertEqual(
+            clone.address,
+            source.address,
+            msg="Copying an Ip6Host must preserve its address.",
+        )
+        self.assertEqual(
+            clone.network,
+            source.network,
+            msg="Copying an Ip6Host must preserve its network.",
+        )
+        self.assertEqual(
+            clone.gateway,
+            source.gateway,
+            msg="Copying an Ip6Host must preserve its gateway.",
+        )
+        self.assertEqual(
+            clone.origin,
+            source.origin,
+            msg="Copying an Ip6Host must preserve its origin.",
+        )
+        self.assertEqual(
+            clone.expiration_time,
+            source.expiration_time,
+            msg="Copying an Ip6Host must preserve its expiration_time.",
+        )
+
+
+class TestNetAddrIp6HostFromEui64(TestCase):
+    """
+    The NetAddr IPv6 host 'from_eui64()' classmethod tests.
+    """
+
+    def test__net_addr__ip6_host__from_eui64(self) -> None:
+        """
+        Ensure 'from_eui64()' builds a /64 host from a MAC and network.
+        """
+
+        host = Ip6Host.from_eui64(
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            ip6_network=Ip6Network("2001:db8::/64"),
+        )
+
+        self.assertEqual(
+            host.network,
+            Ip6Network("2001:db8::/64"),
+            msg="EUI64 host must keep the source /64 network.",
+        )
+        self.assertEqual(
+            host.address,
+            Ip6Address("2001:db8::ff:fe11:2233"),
+            msg="EUI64 address must flip the U/L bit and embed the MAC.",
+        )
+
+    def test__net_addr__ip6_host__from_eui64__non_64_mask_raises(self) -> None:
+        """
+        Ensure 'from_eui64()' rejects a network whose mask is not /64.
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="from_eui64() must reject a network whose mask is not /64.",
+        ):
+            Ip6Host.from_eui64(
+                mac_address=MacAddress("02:00:00:11:22:33"),
+                ip6_network=Ip6Network("2001:db8::/48"),
+            )
+
+
 @parameterized_class(
     [
         {
@@ -292,15 +580,69 @@ class TestNetAddrIp6Host(TestCase):
                 ),
             },
         },
+        {
+            "_description": "Test Ip6HostFormatError: invalid input type.",
+            "_args": [12345],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6HostFormatError,
+                "error_message": "The IPv6 host format is invalid: 12345",
+            },
+        },
+        {
+            "_description": "Test Ip6HostFormatError: invalid string.",
+            "_args": ["not-a-host"],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6HostFormatError,
+                "error_message": "The IPv6 host format is invalid: 'not-a-host'",
+            },
+        },
+        {
+            "_description": "Test Ip6HostFormatError: None input.",
+            "_args": [None],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6HostFormatError,
+                "error_message": "The IPv6 host format is invalid: None",
+            },
+        },
+        {
+            "_description": "Test Ip6HostGatewayError: gateway equals network address.",
+            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
+            "_kwargs": {"gateway": Ip6Address("2001:db8::")},
+            "_results": {
+                "error": Ip6HostGatewayError,
+                "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::')",
+            },
+        },
+        {
+            "_description": "Test Ip6HostGatewayError: gateway equals host address.",
+            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
+            "_kwargs": {"gateway": Ip6Address("2001:db8::1")},
+            "_results": {
+                "error": Ip6HostGatewayError,
+                "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::1')",
+            },
+        },
+        {
+            "_description": "Test Ip6HostGatewayError: gateway is neither global nor link-local.",
+            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
+            "_kwargs": {"gateway": Ip6Address("fc00::1")},
+            "_results": {
+                "error": Ip6HostGatewayError,
+                "error_message": "The IPv6 host gateway is invalid: Ip6Address('fc00::1')",
+            },
+        },
     ]
 )
-class TestNetAddrIp6NetworkErrors(TestCase):
+class TestNetAddrIp6HostErrors(TestCase):
     """
     The NetAddr IPv6 host error tests.
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -315,4 +657,178 @@ class TestNetAddrIp6NetworkErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
         )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "AssertionError: DHCP origin requires expiration_time.",
+            "_args": ["2001:db8::1/64"],
+            "_kwargs": {"origin": Ip6HostOrigin.DHCP},
+        },
+        {
+            "_description": "AssertionError: AUTOCONFIG origin requires expiration_time.",
+            "_args": ["2001:db8::1/64"],
+            "_kwargs": {"origin": Ip6HostOrigin.AUTOCONFIG},
+        },
+        {
+            "_description": "AssertionError: STATIC origin with expiration_time set.",
+            "_args": ["2001:db8::1/64"],
+            "_kwargs": {
+                "origin": Ip6HostOrigin.STATIC,
+                "expiration_time": 9999999999,
+            },
+        },
+        {
+            "_description": "AssertionError: DHCP origin with expiration_time in the past.",
+            "_args": ["2001:db8::1/64"],
+            "_kwargs": {
+                "origin": Ip6HostOrigin.DHCP,
+                "expiration_time": 1,
+            },
+        },
+        {
+            "_description": "AssertionError: copying Ip6Host with gateway set.",
+            "_args": [Ip6Host("2001:db8::1/64")],
+            "_kwargs": {"gateway": Ip6Address("fe80::1")},
+        },
+        {
+            "_description": "AssertionError: copying Ip6Host with origin set.",
+            "_args": [Ip6Host("2001:db8::1/64")],
+            "_kwargs": {"origin": Ip6HostOrigin.STATIC},
+        },
+        {
+            "_description": "AssertionError: copying Ip6Host with expiration_time set.",
+            "_args": [Ip6Host("2001:db8::1/64")],
+            "_kwargs": {"expiration_time": 9999999999},
+        },
+    ]
+)
+class TestNetAddrIp6HostAssertionErrors(TestCase):
+    """
+    The NetAddr IPv6 host assertion error tests.
+    """
+
+    _description: str
+    _args: list[Any]
+    _kwargs: dict[str, Any]
+
+    def test__net_addr__ip6_host__assertion_errors(self) -> None:
+        """
+        Ensure the IPv6 host raises AssertionError on constraint violations.
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg=f"Expected AssertionError for case: {self._description}.",
+        ):
+            Ip6Host(*self._args, **self._kwargs)
+
+
+class TestNetAddrIp6HostSetters(TestCase):
+    """
+    The NetAddr IPv6 host property setter tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Initialize a base IPv6 host for setter tests.
+        """
+
+        self._ip6_host = Ip6Host("2001:db8::1/64", origin=Ip6HostOrigin.STATIC)
+
+    def test__net_addr__ip6_host__origin_setter(self) -> None:
+        """
+        Ensure the IPv6 host 'origin' setter stores the new value.
+        """
+
+        self._ip6_host.origin = Ip6HostOrigin.UNKNOWN
+        self.assertEqual(
+            self._ip6_host.origin,
+            Ip6HostOrigin.UNKNOWN,
+            msg="The 'origin' setter must store the assigned value.",
+        )
+
+    def test__net_addr__ip6_host__expiration_time_setter(self) -> None:
+        """
+        Ensure the IPv6 host 'expiration_time' setter stores the new value.
+        """
+
+        self._ip6_host.expiration_time = 9999999999
+        self.assertEqual(
+            self._ip6_host.expiration_time,
+            9999999999,
+            msg="The 'expiration_time' setter must store the assigned value.",
+        )
+
+    def test__net_addr__ip6_host__gateway_setter__link_local(self) -> None:
+        """
+        Ensure the IPv6 host 'gateway' setter accepts a link-local address.
+        """
+
+        self._ip6_host.gateway = Ip6Address("fe80::1")
+        self.assertEqual(
+            self._ip6_host.gateway,
+            Ip6Address("fe80::1"),
+            msg="The 'gateway' setter must store a valid link-local address.",
+        )
+
+    def test__net_addr__ip6_host__gateway_setter__global(self) -> None:
+        """
+        Ensure the IPv6 host 'gateway' setter accepts a global address.
+        """
+
+        self._ip6_host.gateway = Ip6Address("2001:db8::ffff")
+        self.assertEqual(
+            self._ip6_host.gateway,
+            Ip6Address("2001:db8::ffff"),
+            msg="The 'gateway' setter must store a valid global address.",
+        )
+
+    def test__net_addr__ip6_host__gateway_setter__clear(self) -> None:
+        """
+        Ensure the IPv6 host 'gateway' setter accepts None to clear the gateway.
+        """
+
+        self._ip6_host.gateway = Ip6Address("fe80::1")
+        self._ip6_host.gateway = None
+        self.assertIsNone(
+            self._ip6_host.gateway,
+            msg="Assigning None to 'gateway' must clear the stored gateway.",
+        )
+
+    def test__net_addr__ip6_host__gateway_setter__error__not_routable(self) -> None:
+        """
+        Ensure the 'gateway' setter rejects an address that is neither
+        global nor link-local.
+        """
+
+        with self.assertRaises(
+            Ip6HostGatewayError,
+            msg="The 'gateway' setter must reject a non-global, non-link-local address.",
+        ):
+            self._ip6_host.gateway = Ip6Address("fc00::1")
+
+    def test__net_addr__ip6_host__gateway_setter__error__network_address(self) -> None:
+        """
+        Ensure the 'gateway' setter rejects the network address.
+        """
+
+        with self.assertRaises(
+            Ip6HostGatewayError,
+            msg="The 'gateway' setter must reject the network address.",
+        ):
+            self._ip6_host.gateway = Ip6Address("2001:db8::")
+
+    def test__net_addr__ip6_host__gateway_setter__error__host_address(self) -> None:
+        """
+        Ensure the 'gateway' setter rejects the host's own address.
+        """
+
+        with self.assertRaises(
+            Ip6HostGatewayError,
+            msg="The 'gateway' setter must reject the host's own address.",
+        ):
+            self._ip6_host.gateway = Ip6Address("2001:db8::1")
