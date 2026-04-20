@@ -33,17 +33,19 @@ ver 3.0.4
 """
 
 
+from dataclasses import FrozenInstanceError
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
+    UINT_32__MAX,
+    UINT_32__MIN,
     Dhcp4IntegrityError,
     Dhcp4OptionLeaseTime,
     Dhcp4OptionType,
 )
-from net_proto.lib.int_checks import UINT_32__MAX
 
 
 class TestDhcp4OptionLeaseTimeAsserts(TestCase):
@@ -51,46 +53,36 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
     The DHCPv4 IP Address Lease Time option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
+    def test__dhcp4__option__lease_time__over_max(self) -> None:
         """
-        Create the default arguments for the DHCPv4 IP Address Lease Time option constructor.
-        """
-
-        self._args: list[Any] = [
-            60,
-        ]
-        self._kwargs: dict[str, Any] = {}
-
-    def test__dhcp4__option__lease_time__lease_time__not_int(self) -> None:
-        """
-        Ensure the DHCPv4 IP Address Lease Time option constructor raises an exception when the
-        provided 'lease_time' argument is not an int.
+        Ensure the constructor raises when 'lease_time' exceeds UINT_32__MAX.
         """
 
-        self._args[0] = value = UINT_32__MAX + 1
+        value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionLeaseTime(*self._args, **self._kwargs)
+            Dhcp4OptionLeaseTime(value)
 
         self.assertEqual(
             str(error.exception),
             f"The 'lease_time' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected 'lease_time' over-max assert message.",
         )
 
-    def test__dhcp4__option__lease_time__lease_time__out_of_range(self) -> None:
+    def test__dhcp4__option__lease_time__under_min(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option constructor raises an exception when the
-        provided 'lease_time' argument is outside the valid range (0..4294967295).
+        Ensure the constructor raises when 'lease_time' is below zero.
         """
 
-        self._args[0] = value = 0x1_0000_0000
+        value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionLeaseTime(*self._args, **self._kwargs)
+            Dhcp4OptionLeaseTime(value)
 
         self.assertEqual(
             str(error.exception),
             f"The 'lease_time' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected 'lease_time' under-min assert message.",
         )
 
 
@@ -98,58 +90,70 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
     [
         {
             "_description": "The DHCPv4 IP Address Lease Time option (zero).",
-            "_args": [
-                0,
-            ],
-            "_kwargs": {},
+            "_args": [0],
             "_results": {
                 "__len__": 6,
                 "__str__": "lease_time 0",
                 "__repr__": "Dhcp4OptionLeaseTime(lease_time=0)",
-                "__bytes__": b"\x33\x04\x00\x00\x00\x00",
+                "__bytes__": (
+                    # DHCPv4 IP Address Lease Time option [RFC 2132]
+                    #   Code : 0x33 (51, IP Address Lease Time)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 00 00 00 00  (0 seconds)
+                    b"\x33\x04\x00\x00\x00\x00"
+                ),
                 "lease_time": 0,
             },
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one minute).",
-            "_args": [
-                60,
-            ],
-            "_kwargs": {},
+            "_args": [60],
             "_results": {
                 "__len__": 6,
                 "__str__": "lease_time 60",
                 "__repr__": "Dhcp4OptionLeaseTime(lease_time=60)",
-                "__bytes__": b"\x33\x04\x00\x00\x00\x3c",
+                "__bytes__": (
+                    # DHCPv4 IP Address Lease Time option [RFC 2132]
+                    #   Code : 0x33 (51, IP Address Lease Time)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 00 00 00 3c  (60 seconds)
+                    b"\x33\x04\x00\x00\x00\x3c"
+                ),
                 "lease_time": 60,
             },
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one day).",
-            "_args": [
-                86400,
-            ],
-            "_kwargs": {},
+            "_args": [86400],
             "_results": {
                 "__len__": 6,
                 "__str__": "lease_time 86400",
                 "__repr__": "Dhcp4OptionLeaseTime(lease_time=86400)",
-                "__bytes__": b"\x33\x04\x00\x01Q\x80",
+                "__bytes__": (
+                    # DHCPv4 IP Address Lease Time option [RFC 2132]
+                    #   Code : 0x33 (51, IP Address Lease Time)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : 00 01 51 80  (86400 seconds = 24 h)
+                    b"\x33\x04\x00\x01\x51\x80"
+                ),
                 "lease_time": 86400,
             },
         },
         {
-            "_description": "The DHCPv4 IP Address Lease Time option (max uint32).",
-            "_args": [
-                4294967295,
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 IP Address Lease Time option (max uint32, infinite lease).",
+            "_args": [UINT_32__MAX],
             "_results": {
                 "__len__": 6,
-                "__str__": "lease_time 4294967295",
-                "__repr__": "Dhcp4OptionLeaseTime(lease_time=4294967295)",
-                "__bytes__": b"\x33\x04\xff\xff\xff\xff",
-                "lease_time": 4294967295,
+                "__str__": f"lease_time {UINT_32__MAX}",
+                "__repr__": f"Dhcp4OptionLeaseTime(lease_time={UINT_32__MAX})",
+                "__bytes__": (
+                    # DHCPv4 IP Address Lease Time option [RFC 2132]
+                    #   Code : 0x33 (51, IP Address Lease Time)
+                    #   Len  : 0x04 (4 bytes)
+                    #   Data : ff ff ff ff  (RFC 2131 §3.3 "infinite" lease)
+                    b"\x33\x04\xff\xff\xff\xff"
+                ),
+                "lease_time": UINT_32__MAX,
             },
         },
     ]
@@ -161,69 +165,101 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the DHCPv4 IP Address Lease Time option object with testcase arguments.
+        Initialize the DHCPv4 IP Address Lease Time option object.
         """
 
-        self._option = Dhcp4OptionLeaseTime(*self._args, **self._kwargs)
+        self._option = Dhcp4OptionLeaseTime(*self._args)
 
     def test__dhcp4__option__lease_time__len(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the fixed 6 bytes (code + len + 4-byte value).
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__dhcp4__option__lease_time__str(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' renders the canonical log line.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__dhcp4__option__lease_time__repr(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' renders the dataclass form.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__dhcp4__option__lease_time__bytes(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option '__bytes__()' method returns a correct
-        value.
+        Ensure 'bytes()' yields the expected wire image.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes output for case: {self._description}",
+        )
+
+    def test__dhcp4__option__lease_time__memoryview(self) -> None:
+        """
+        Ensure the option supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._option)),
+            self._results["__bytes__"],
+            msg=f"Unexpected memoryview output for case: {self._description}",
         )
 
     def test__dhcp4__option__lease_time__field(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option 'lease_time' field contains a correct
-        value.
+        Ensure the 'lease_time' field reflects the constructor argument.
         """
 
         self.assertEqual(
             self._option.lease_time,
             self._results["lease_time"],
+            msg=f"Unexpected 'lease_time' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__lease_time__type(self) -> None:
+        """
+        Ensure the 'type' field is always LEASE_TIME.
+        """
+
+        self.assertEqual(
+            self._option.type,
+            Dhcp4OptionType.LEASE_TIME,
+            msg=f"Unexpected 'type' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__lease_time__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionLeaseTime.from_buffer(bytes(self._option)),
+            self._option,
+            msg=f"Roundtrip must preserve equality for case: {self._description}",
         )
 
 
@@ -231,130 +267,169 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     [
         {
             "_description": "The DHCPv4 IP Address Lease Time option (zero).",
-            "_args": [
-                b"\x33\x04\x00\x00\x00\x00" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x33\x04\x00\x00\x00\x00" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=0),
             },
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one minute).",
-            "_args": [
-                b"\x33\x04\x00\x00\x00\x3c" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x33\x04\x00\x00\x00\x3c" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=60),
             },
         },
         {
             "_description": "The DHCPv4 IP Address Lease Time option (one day).",
-            "_args": [
-                b"\x33\x04\x00\x01\x51\x80" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_args": [b"\x33\x04\x00\x01\x51\x80" + b"ZH0PA"],
             "_results": {
                 "option": Dhcp4OptionLeaseTime(lease_time=86400),
             },
         },
         {
-            "_description": "The DHCPv4 IP Address Lease Time option (max uint32).",
-            "_args": [
-                b"\x33\x04\xff\xff\xff\xff" + b"ZH0PA",
-            ],
-            "_kwargs": {},
+            "_description": "The DHCPv4 IP Address Lease Time option (max uint32, infinite lease).",
+            "_args": [b"\x33\x04\xff\xff\xff\xff" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionLeaseTime(lease_time=4294967295),
-            },
-        },
-        {
-            "_description": "The DHCPv4 IP Address Lease Time option minimum length assert.",
-            "_args": [
-                b"\x33",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    "The minimum length of the DHCPv4 IP Address Lease Time option must be 2 " "bytes. Got: 1"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 IP Address Lease Time option incorrect 'type' field assert.",
-            "_args": [
-                b"\xfe\x04\x00\x00\x00\x3c",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": AssertionError,
-                "error_message": (
-                    f"The DHCPv4 IP Address Lease Time option type must be {Dhcp4OptionType.LEASE_TIME!r}. "
-                    f"Got: {Dhcp4OptionType.from_int(254)!r}"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 IP Address Lease Time option length integrity check (I).",
-            "_args": [
-                b"\x33\x03\x00\x00\x3c",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 IP Address Lease Time option length value must be "
-                    "6 bytes. Got: 5"
-                ),
-            },
-        },
-        {
-            "_description": "The DHCPv4 IP Address Lease Time option length integrity check (II).",
-            "_args": [
-                b"\x33\x04",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Dhcp4IntegrityError,
-                "error_message": (
-                    "[INTEGRITY ERROR][DHCPv4] The DHCPv4 IP Address Lease Time option length value must "
-                    "be less than or equal to the length of provided bytes (2). Got: 6"
-                ),
+                "option": Dhcp4OptionLeaseTime(lease_time=UINT_32__MAX),
             },
         },
     ]
 )
 class TestDhcp4OptionLeaseTimeParser(TestCase):
     """
-    The DHCPv4 IP Address Lease Time option parser tests.
+    The DHCPv4 IP Address Lease Time option parser (success) tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__option__lease_time__from_buffer(self) -> None:
         """
-        Ensure the DHCPv4 IP Address Lease Time option parser creates the proper option
-        object or throws assertion error.
+        Ensure 'from_buffer()' produces the expected option and ignores the
+        trailing bytes beyond the advertised length.
         """
 
-        if "option" in self._results:
-            option = Dhcp4OptionLeaseTime.from_buffer(*self._args, **self._kwargs)
+        option = Dhcp4OptionLeaseTime.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
+        self.assertEqual(
+            option,
+            self._results["option"],
+            msg=f"Unexpected parser output for case: {self._description}",
+        )
 
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Dhcp4OptionLeaseTime.from_buffer(*self._args, **self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
+class TestDhcp4OptionLeaseTimeParserErrors(TestCase):
+    """
+    The DHCPv4 IP Address Lease Time option parser error tests.
+    """
+
+    def test__dhcp4__option__lease_time__minimum_length(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the buffer is shorter than the
+        2-byte type+len header.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionLeaseTime.from_buffer(b"\x33")
+
+        self.assertEqual(
+            str(error.exception),
+            "The minimum length of the DHCPv4 IP Address Lease Time option must be 2 bytes. Got: 1",
+            msg="Unexpected minimum-length assert message.",
+        )
+
+    def test__dhcp4__option__lease_time__wrong_type(self) -> None:
+        """
+        Ensure 'from_buffer()' asserts when the option type byte is not 51.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionLeaseTime.from_buffer(b"\xfe\x04\x00\x00\x00\x3c")
+
+        self.assertEqual(
+            str(error.exception),
+            f"The DHCPv4 IP Address Lease Time option type must be {Dhcp4OptionType.LEASE_TIME!r}. "
+            f"Got: {Dhcp4OptionType.from_int(254)!r}",
+            msg="Unexpected wrong-type assert message.",
+        )
+
+    def test__dhcp4__option__lease_time__bad_length_field(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        option length is not 4.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionLeaseTime.from_buffer(b"\x33\x03\x00\x00\x3c")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 IP Address Lease Time option length value must be 6 bytes. Got: 5",
+            msg="Unexpected bad-length-field integrity message.",
+        )
+
+    def test__dhcp4__option__lease_time__advertised_len_exceeds_buffer(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
+        length exceeds the remaining bytes in the buffer.
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionLeaseTime.from_buffer(b"\x33\x04")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 IP Address Lease Time option length value must be "
+            "less than or equal to the length of provided bytes (2). Got: 6",
+            msg="Unexpected truncated-buffer integrity message.",
+        )
+
+
+class TestDhcp4OptionLeaseTimeBehavior(TestCase):
+    """
+    The DHCPv4 IP Address Lease Time option behavioral tests.
+    """
+
+    def test__dhcp4__option__lease_time__equality(self) -> None:
+        """
+        Ensure two options with equal 'lease_time' compare equal.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionLeaseTime(3600),
+            Dhcp4OptionLeaseTime(3600),
+            msg="Options with identical lease_time must compare equal.",
+        )
+
+    def test__dhcp4__option__lease_time__inequality(self) -> None:
+        """
+        Ensure two options with different 'lease_time' compare unequal.
+        """
+
+        self.assertNotEqual(
+            Dhcp4OptionLeaseTime(3600),
+            Dhcp4OptionLeaseTime(7200),
+            msg="Options with different lease_time must not compare equal.",
+        )
+
+    def test__dhcp4__option__lease_time__is_frozen(self) -> None:
+        """
+        Ensure the option cannot be mutated after construction.
+        """
+
+        option = Dhcp4OptionLeaseTime(60)
+
+        with self.assertRaises(FrozenInstanceError):
+            option.lease_time = 120  # type: ignore[misc]
+
+    def test__dhcp4__option__lease_time__type_cannot_be_overridden(self) -> None:
+        """
+        Ensure 'type' cannot be supplied via the constructor (init=False).
+        """
+
+        with self.assertRaises(TypeError):
+            Dhcp4OptionLeaseTime(  # type: ignore[call-arg]
+                type=Dhcp4OptionType.LEASE_TIME,
+                lease_time=60,
             )
