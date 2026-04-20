@@ -167,7 +167,7 @@ class TestDhcp4OptionRouterAsserts(TestCase):
             "_results": {
                 "__len__": 10,
                 "__str__": "router ['192.0.2.1', '198.51.100.5']",
-                "__repr__": ("Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])"),
+                "__repr__": "Dhcp4OptionRouter(routers=[Ip4Address('192.0.2.1'), Ip4Address('198.51.100.5')])",
                 "__bytes__": (
                     # DHCPv4 Router option [RFC 2132]
                     #   Code : 0x03 (3, Router)
