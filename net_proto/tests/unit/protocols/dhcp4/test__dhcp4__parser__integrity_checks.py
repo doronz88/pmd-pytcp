@@ -31,7 +31,7 @@ The parser's integrity validator enforces a single invariant: the received
 frame must be at least DHCP4__HEADER__LEN (240) bytes long. Any shorter frame
 must produce a Dhcp4IntegrityError before parsing begins.
 
-net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__intergrity_checks.py
+net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py
 
 ver 3.0.4
 """
@@ -51,18 +51,18 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
             "_description": "The packet is empty (zero length).",
             "_args": [b""],
             "_results": {
-                "error_message": (f"The minimum packet length must be {DHCP4__HEADER__LEN} " "bytes, got 0 bytes."),
+                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, got 0 bytes.",
             },
         },
         {
             "_description": "The packet has a single byte.",
             "_args": [b"\x00"],
             "_results": {
-                "error_message": (f"The minimum packet length must be {DHCP4__HEADER__LEN} " "bytes, got 1 bytes."),
+                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, got 1 bytes.",
             },
         },
         {
-            "_description": ("The packet length is lower than the DHCPv4 minimum header length by 1."),
+            "_description": "The packet length is lower than the DHCPv4 minimum header length by 1.",
             "_args": [b"\x00" * (DHCP4__HEADER__LEN - 1)],
             "_results": {
                 "error_message": (
@@ -72,7 +72,7 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
             },
         },
         {
-            "_description": ("The packet length is roughly half of the DHCPv4 minimum header length."),
+            "_description": "The packet length is roughly half of the DHCPv4 minimum header length.",
             "_args": [b"\x00" * (DHCP4__HEADER__LEN // 2)],
             "_results": {
                 "error_message": (
