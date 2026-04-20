@@ -85,7 +85,7 @@ def _bootp_header(
     wire-image assertions.
     """
 
-    assert len(chaddr_mac) == 6
+    assert len(chaddr_mac) == 6, f"Ethernet MAC must be 6 bytes. Got: {len(chaddr_mac)}"
     chaddr = chaddr_mac + b"\x00" * 10
     sname_bytes = sname.encode("ascii") + b"\x00" * (64 - len(sname))
     file_bytes = file.encode("ascii") + b"\x00" * (128 - len(file))
@@ -97,7 +97,7 @@ def _bootp_header(
     blob += chaddr + sname_bytes + file_bytes
     blob += b"\x63\x82\x53\x63"  # DHCP magic cookie [RFC 2131]
 
-    assert len(blob) == DHCP4__HEADER__LEN
+    assert len(blob) == DHCP4__HEADER__LEN, f"BOOTP header must be {DHCP4__HEADER__LEN} bytes. Got: {len(blob)}"
     return blob
 
 
