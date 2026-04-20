@@ -435,18 +435,22 @@ class TestNetAddrIp4Mask(TestCase):
 
         self.assertTrue(
             self._ip4_mask == self._ip4_mask,
+            msg="An Ip4Mask instance must compare equal to itself.",
         )
 
         self.assertTrue(
             self._ip4_mask == Ip4Mask(int(self._ip4_mask)),
+            msg="Ip4Mask must compare equal to one reconstructed from its integer form.",
         )
 
         self.assertFalse(
             self._ip4_mask == Ip4Mask(f"/{(len(self._ip4_mask) + 1) % 33}"),
+            msg="Ip4Mask instances with different bit lengths must not compare equal.",
         )
 
         self.assertFalse(
             self._ip4_mask == "not an IPv4 mask",
+            msg="Ip4Mask must not compare equal to a foreign string value.",
         )
 
     def test__net_addr__ip4_mask__hash(self) -> None:
@@ -556,6 +560,28 @@ class TestNetAddrIp4Mask(TestCase):
             "_results": {
                 "error": Ip4MaskFormatError,
                 "error_message": "The IPv4 mask format is invalid: '/-1'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '/abc' (non-numeric slash notation)",
+            "_args": [
+                "/abc",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '/abc'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: b'\\xff\\x7f\\xff\\xff' (non-contiguous 4 bytes)",
+            "_args": [
+                b"\xff\x7f\xff\xff",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": r"The IPv4 mask format is invalid: b'\xff\x7f\xff\xff'",
             },
         },
         {
@@ -701,4 +727,278 @@ class TestNetAddrIp4MaskErrors(TestCase):
 
         self.assertTrue(
             str(error.exception).startswith(self._results["error_message"]),
+            msg=(
+                f"Expected exception message to start with "
+                f"{self._results['error_message']!r}, got {str(error.exception)!r}."
+            ),
+        )
+
+
+class TestNetAddrIp4MaskEquality(TestCase):
+    """
+    The NetAddr IPv4 mask equality tests across value and type boundaries.
+    """
+
+    def test__net_addr__ip4_mask__eq__identity(self) -> None:
+        """
+        Ensure the IPv4 mask equals itself.
+        """
+
+        mask = Ip4Mask("/24")
+        self.assertTrue(
+            mask == mask,
+            msg="An Ip4Mask instance must compare equal to itself.",
+        )
+
+    def test__net_addr__ip4_mask__eq__same_value(self) -> None:
+        """
+        Ensure two IPv4 masks with the same underlying value are equal
+        regardless of which constructor form was used.
+        """
+
+        self.assertEqual(
+            Ip4Mask("/24"),
+            Ip4Mask("255.255.255.0"),
+            msg="Ip4Mask built from slash and dotted-decimal must compare equal.",
+        )
+        self.assertEqual(
+            Ip4Mask("/24"),
+            Ip4Mask(b"\xff\xff\xff\x00"),
+            msg="Ip4Mask built from slash and bytes must compare equal.",
+        )
+        self.assertEqual(
+            Ip4Mask("/24"),
+            Ip4Mask(0xFFFFFF00),
+            msg="Ip4Mask built from slash and int must compare equal.",
+        )
+
+    def test__net_addr__ip4_mask__eq__different_value(self) -> None:
+        """
+        Ensure two IPv4 masks with different values are not equal.
+        """
+
+        self.assertNotEqual(
+            Ip4Mask("/24"),
+            Ip4Mask("/25"),
+            msg="Ip4Mask instances with different bit lengths must not compare equal.",
+        )
+
+    def test__net_addr__ip4_mask__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv4 mask is never equal to a value of a foreign type,
+        even when the underlying integer/bytes would match.
+        """
+
+        mask = Ip4Mask("/24")
+
+        self.assertFalse(
+            mask == "/24",
+            msg="Ip4Mask must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            mask == int(mask),
+            msg="Ip4Mask must not compare equal to its integer representation.",
+        )
+        self.assertFalse(
+            mask == bytes(mask),
+            msg="Ip4Mask must not compare equal to its bytes representation.",
+        )
+        self.assertFalse(
+            mask == None,  # noqa: E711
+            msg="Ip4Mask must not compare equal to None.",
+        )
+        self.assertFalse(
+            mask == Ip6Mask("/24"),
+            msg="Ip4Mask must not compare equal to an Ip6Mask of the same bit length.",
+        )
+
+    def test__net_addr__ip4_mask__ne(self) -> None:
+        """
+        Ensure the IPv4 mask '__ne__()' method returns a correct value.
+        """
+
+        mask = Ip4Mask("/24")
+        self.assertTrue(
+            mask != Ip4Mask("/25"),
+            msg="Ip4Mask instances with different bit lengths must be unequal.",
+        )
+        self.assertFalse(
+            mask != Ip4Mask("/24"),
+            msg="Ip4Mask instances with the same bit length must not be unequal.",
+        )
+        self.assertTrue(
+            mask != "/24",
+            msg="Ip4Mask must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp4MaskHashConsistency(TestCase):
+    """
+    The NetAddr IPv4 mask hash and container usability tests.
+    """
+
+    def test__net_addr__ip4_mask__hash__equal_masks_hash_equal(self) -> None:
+        """
+        Ensure equal IPv4 masks built from different input forms produce
+        identical hash values.
+        """
+
+        from_slash = Ip4Mask("/24")
+        from_dotted = Ip4Mask("255.255.255.0")
+        from_bytes = Ip4Mask(b"\xff\xff\xff\x00")
+        from_int = Ip4Mask(0xFFFFFF00)
+        from_bytearray = Ip4Mask(bytearray(b"\xff\xff\xff\x00"))
+        from_memoryview = Ip4Mask(memoryview(b"\xff\xff\xff\x00"))
+        from_copy = Ip4Mask(from_slash)
+
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_dotted),
+            msg="Equal Ip4Mask values (slash, dotted) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_bytes),
+            msg="Equal Ip4Mask values (slash, bytes) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_int),
+            msg="Equal Ip4Mask values (slash, int) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_bytearray),
+            msg="Equal Ip4Mask values (slash, bytearray) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_memoryview),
+            msg="Equal Ip4Mask values (slash, memoryview) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_slash),
+            hash(from_copy),
+            msg="Ip4Mask copied from another Ip4Mask must preserve its hash.",
+        )
+
+    def test__net_addr__ip4_mask__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv4 masks collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip4Mask("/24")
+        b = Ip4Mask("255.255.255.0")
+        c = Ip4Mask("/25")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip4Mask values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip4Mask values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip4Mask values as the same key.",
+        )
+
+    def test__net_addr__ip4_mask__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv4 masks refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip4Mask("/24")
+        b = Ip4Mask("255.255.255.0")
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip4Mask must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp4MaskRoundtrip(TestCase):
+    """
+    The NetAddr IPv4 mask serialization roundtrip tests.
+    """
+
+    def test__net_addr__ip4_mask__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip4Mask(str(x))' yields a mask equal to 'x'.
+        """
+
+        for value in ("/0", "/1", "/15", "/24", "/31", "/32"):
+            with self.subTest(value=value):
+                mask = Ip4Mask(value)
+                self.assertEqual(
+                    Ip4Mask(str(mask)),
+                    mask,
+                    msg=f"Roundtrip through str() must preserve mask {value!r}.",
+                )
+
+    def test__net_addr__ip4_mask__roundtrip__int(self) -> None:
+        """
+        Ensure 'Ip4Mask(int(x))' yields a mask equal to 'x'.
+        """
+
+        for value in (0, 0xFF000000, 0xFFFF0000, 0xFFFFFF00, 0xFFFFFFFF):
+            with self.subTest(value=value):
+                mask = Ip4Mask(value)
+                self.assertEqual(
+                    Ip4Mask(int(mask)),
+                    mask,
+                    msg=f"Roundtrip through int() must preserve mask {value:#x}.",
+                )
+
+    def test__net_addr__ip4_mask__roundtrip__bytes(self) -> None:
+        """
+        Ensure 'Ip4Mask(bytes(x))' yields a mask equal to 'x'.
+        """
+
+        for value in (
+            b"\x00\x00\x00\x00",
+            b"\xff\x00\x00\x00",
+            b"\xff\xff\xff\x00",
+            b"\xff\xff\xff\xff",
+        ):
+            with self.subTest(value=value):
+                mask = Ip4Mask(value)
+                self.assertEqual(
+                    Ip4Mask(bytes(mask)),
+                    mask,
+                    msg=f"Roundtrip through bytes() must preserve mask {value!r}.",
+                )
+
+    def test__net_addr__ip4_mask__roundtrip__copy(self) -> None:
+        """
+        Ensure 'Ip4Mask(x)' where 'x' is an Ip4Mask yields a mask equal
+        to the source.
+        """
+
+        source = Ip4Mask("/24")
+        clone = Ip4Mask(source)
+
+        self.assertEqual(
+            clone,
+            source,
+            msg="Ip4Mask copied from another Ip4Mask must compare equal to the source.",
+        )
+        self.assertEqual(
+            int(clone),
+            int(source),
+            msg="Ip4Mask copied from another Ip4Mask must preserve the integer value.",
+        )
+        self.assertEqual(
+            len(clone),
+            len(source),
+            msg="Ip4Mask copied from another Ip4Mask must preserve the bit length.",
         )
