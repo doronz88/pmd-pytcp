@@ -70,7 +70,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
             "_description": "The frame is empty.",
             "_frame_rx": b"",
             "_results": {
-                "error_message": (f"The minimum packet length must be {ARP__HEADER__LEN} bytes, got 0 bytes."),
+                "error_message": f"The minimum packet length must be {ARP__HEADER__LEN} bytes, got 0 bytes.",
             },
         },
         {
