@@ -1676,6 +1676,26 @@ class TestNetAddrIp4Address(TestCase):
             self._results["is_class_e"],
         )
 
+    def test__net_addr__ip4_address__class__mutually_exclusive(self) -> None:
+        """
+        Ensure every IPv4 address belongs to exactly one of the five
+        address classes (A, B, C, D, E).
+        """
+
+        flags = [
+            self._ip4_address.is_class_a,
+            self._ip4_address.is_class_b,
+            self._ip4_address.is_class_c,
+            self._ip4_address.is_class_d,
+            self._ip4_address.is_class_e,
+        ]
+
+        self.assertEqual(
+            sum(flags),
+            1,
+            msg=f"Address {self._ip4_address} must belong to exactly one class; got flags {flags}.",
+        )
+
 
 @parameterized_class(
     [
@@ -2192,7 +2212,10 @@ class TestNetAddrIp4AddressEquality(TestCase):
         """
 
         address = Ip4Address("192.168.1.1")
-        self.assertTrue(address == address)
+        self.assertTrue(
+            address == address,
+            msg="An Ip4Address instance must compare equal to itself.",
+        )
 
     def test__net_addr__ip4_address__eq__same_value(self) -> None:
         """
@@ -2203,10 +2226,12 @@ class TestNetAddrIp4AddressEquality(TestCase):
         self.assertEqual(
             Ip4Address("192.168.1.1"),
             Ip4Address(b"\xc0\xa8\x01\x01"),
+            msg="Ip4Address built from string and from bytes must compare equal.",
         )
         self.assertEqual(
             Ip4Address("192.168.1.1"),
             Ip4Address(3232235777),
+            msg="Ip4Address built from string and from int must compare equal.",
         )
 
     def test__net_addr__ip4_address__eq__different_value(self) -> None:
@@ -2217,6 +2242,7 @@ class TestNetAddrIp4AddressEquality(TestCase):
         self.assertNotEqual(
             Ip4Address("192.168.1.1"),
             Ip4Address("192.168.1.2"),
+            msg="Ip4Address instances with different values must not compare equal.",
         )
 
     def test__net_addr__ip4_address__eq__foreign_types(self) -> None:
@@ -2227,12 +2253,30 @@ class TestNetAddrIp4AddressEquality(TestCase):
 
         address = Ip4Address("192.168.1.1")
 
-        self.assertFalse(address == "192.168.1.1")
-        self.assertFalse(address == int(address))
-        self.assertFalse(address == bytes(address))
-        self.assertFalse(address == None)  # noqa: E711
-        self.assertFalse(address == Ip6Address())
-        self.assertFalse(address == MacAddress())
+        self.assertFalse(
+            address == "192.168.1.1",
+            msg="Ip4Address must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            address == int(address),
+            msg="Ip4Address must not compare equal to its integer representation.",
+        )
+        self.assertFalse(
+            address == bytes(address),
+            msg="Ip4Address must not compare equal to its bytes representation.",
+        )
+        self.assertFalse(
+            address == None,  # noqa: E711
+            msg="Ip4Address must not compare equal to None.",
+        )
+        self.assertFalse(
+            address == Ip6Address(),
+            msg="Ip4Address must not compare equal to an Ip6Address.",
+        )
+        self.assertFalse(
+            address == MacAddress(),
+            msg="Ip4Address must not compare equal to a MacAddress.",
+        )
 
     def test__net_addr__ip4_address__ne(self) -> None:
         """
@@ -2240,6 +2284,176 @@ class TestNetAddrIp4AddressEquality(TestCase):
         """
 
         address = Ip4Address("192.168.1.1")
-        self.assertTrue(address != Ip4Address("192.168.1.2"))
-        self.assertFalse(address != Ip4Address("192.168.1.1"))
-        self.assertTrue(address != "192.168.1.1")
+        self.assertTrue(
+            address != Ip4Address("192.168.1.2"),
+            msg="Ip4Address instances with different values must be unequal.",
+        )
+        self.assertFalse(
+            address != Ip4Address("192.168.1.1"),
+            msg="Ip4Address instances with the same value must not be unequal.",
+        )
+        self.assertTrue(
+            address != "192.168.1.1",
+            msg="Ip4Address must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp4AddressHashConsistency(TestCase):
+    """
+    The NetAddr IPv4 address hash and container usability tests.
+    """
+
+    def test__net_addr__ip4_address__hash__equal_addresses_hash_equal(self) -> None:
+        """
+        Ensure equal IPv4 addresses built from different input forms produce
+        identical hash values.
+        """
+
+        from_str = Ip4Address("192.168.1.1")
+        from_bytes = Ip4Address(b"\xc0\xa8\x01\x01")
+        from_int = Ip4Address(3232235777)
+        from_bytearray = Ip4Address(bytearray(b"\xc0\xa8\x01\x01"))
+        from_memoryview = Ip4Address(memoryview(b"\xc0\xa8\x01\x01"))
+        from_copy = Ip4Address(from_str)
+
+        self.assertEqual(
+            hash(from_str),
+            hash(from_bytes),
+            msg="Equal Ip4Address values (str, bytes) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_str),
+            hash(from_int),
+            msg="Equal Ip4Address values (str, int) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_str),
+            hash(from_bytearray),
+            msg="Equal Ip4Address values (str, bytearray) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_str),
+            hash(from_memoryview),
+            msg="Equal Ip4Address values (str, memoryview) must hash to the same value.",
+        )
+        self.assertEqual(
+            hash(from_str),
+            hash(from_copy),
+            msg="Ip4Address copied from another Ip4Address must preserve its hash.",
+        )
+
+    def test__net_addr__ip4_address__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv4 addresses collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip4Address("192.168.1.1")
+        b = Ip4Address(b"\xc0\xa8\x01\x01")
+        c = Ip4Address("192.168.1.2")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip4Address values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip4Address values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip4Address values as the same key.",
+        )
+
+    def test__net_addr__ip4_address__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv4 addresses refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip4Address("192.168.1.1")
+        b = Ip4Address(b"\xc0\xa8\x01\x01")
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip4Address must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp4AddressRoundtrip(TestCase):
+    """
+    The NetAddr IPv4 address serialization roundtrip tests.
+    """
+
+    def test__net_addr__ip4_address__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip4Address(str(x))' yields an address equal to 'x'.
+        """
+
+        for value in ("0.0.0.0", "127.0.0.1", "192.168.1.1", "255.255.255.255"):
+            with self.subTest(value=value):
+                address = Ip4Address(value)
+                self.assertEqual(
+                    Ip4Address(str(address)),
+                    address,
+                    msg=f"Roundtrip through str() must preserve address {value!r}.",
+                )
+
+    def test__net_addr__ip4_address__roundtrip__int(self) -> None:
+        """
+        Ensure 'Ip4Address(int(x))' yields an address equal to 'x'.
+        """
+
+        for value in (0, 1, 2130706433, 3232235777, 4294967295):
+            with self.subTest(value=value):
+                address = Ip4Address(value)
+                self.assertEqual(
+                    Ip4Address(int(address)),
+                    address,
+                    msg=f"Roundtrip through int() must preserve address {value}.",
+                )
+
+    def test__net_addr__ip4_address__roundtrip__bytes(self) -> None:
+        """
+        Ensure 'Ip4Address(bytes(x))' yields an address equal to 'x'.
+        """
+
+        for value in (
+            b"\x00\x00\x00\x00",
+            b"\x7f\x00\x00\x01",
+            b"\xc0\xa8\x01\x01",
+            b"\xff\xff\xff\xff",
+        ):
+            with self.subTest(value=value):
+                address = Ip4Address(value)
+                self.assertEqual(
+                    Ip4Address(bytes(address)),
+                    address,
+                    msg=f"Roundtrip through bytes() must preserve address {value!r}.",
+                )
+
+    def test__net_addr__ip4_address__roundtrip__copy(self) -> None:
+        """
+        Ensure 'Ip4Address(x)' where 'x' is an Ip4Address yields an address
+        equal to the source.
+        """
+
+        source = Ip4Address("192.168.1.1")
+        clone = Ip4Address(source)
+
+        self.assertEqual(
+            clone,
+            source,
+            msg="Ip4Address copied from another Ip4Address must compare equal to the source.",
+        )
+        self.assertEqual(
+            int(clone),
+            int(source),
+            msg="Ip4Address copied from another Ip4Address must preserve the integer value.",
+        )
