@@ -221,9 +221,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
             ),
             "_ethernet_src": None,
             "_results": {
-                "error_message": (
-                    "The 'spa' field value 255.255.255.255 must not be a limited broadcast IPv4 address."
-                ),
+                "error_message": "The 'spa' field value 255.255.255.255 must not be a limited broadcast IPv4 address.",
             },
         },
         {
