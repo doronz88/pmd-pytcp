@@ -25,8 +25,8 @@
 
 
 """
-Module contains tests for the DHCPv4 options support code (parsing only),
-mirroring the style of the TCP options parsing tests.
+Module contains tests for the DHCPv4 options support code (parser, assembler,
+properties, and integrity checks).
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__options.py
 
@@ -35,13 +35,14 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
 from net_proto import (
+    Dhcp4IntegrityError,
     Dhcp4MessageType,
     Dhcp4OptionClientId,
     Dhcp4OptionEnd,
@@ -56,18 +57,214 @@ from net_proto import (
     Dhcp4OptionServerId,
     Dhcp4OptionSubnetMask,
     Dhcp4OptionType,
+    Dhcp4OptionUnknown,
 )
+from net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__LEN
 
 
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 options (I) — single option + End.",
+            "_description": "The DHCPv4 options assembler (empty).",
+            "_args": [],
+            "_results": {
+                "__len__": 0,
+                "__str__": "",
+                "__repr__": "Dhcp4Options(options=[])",
+                "__bytes__": b"",
+                "__bool__": False,
+            },
+        },
+        {
+            "_description": "The DHCPv4 options assembler (End only).",
+            "_args": [Dhcp4OptionEnd()],
+            "_results": {
+                "__len__": 1,
+                "__str__": "end",
+                "__repr__": "Dhcp4Options(options=[Dhcp4OptionEnd()])",
+                #   End : 0xff (terminator)
+                "__bytes__": b"\xff",
+                "__bool__": True,
+            },
+        },
+        {
+            "_description": "The DHCPv4 options assembler (message_type + End).",
             "_args": [
-                b"\x35\x01\x01"  # message_type=DISCOVER
-                b"\xff"  # End
+                Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER),
+                Dhcp4OptionEnd(),
             ],
-            "_kwargs": {},
+            "_results": {
+                "__len__": 4,
+                "__str__": "message_type Discover, end",
+                "__repr__": (
+                    "Dhcp4Options(options=[Dhcp4OptionMessageType(message_type="
+                    f"{Dhcp4MessageType.DISCOVER!r}), Dhcp4OptionEnd()])"
+                ),
+                "__bytes__": (
+                    # Message Type option [RFC 2132]
+                    #   Code : 0x35 (53, Message Type)
+                    #   Len  : 0x01 (1 byte)
+                    #   Data : 0x01 (DISCOVER)
+                    b"\x35\x01\x01"
+                    #   End  : 0xff
+                    b"\xff"
+                ),
+                "__bool__": True,
+            },
+        },
+        {
+            "_description": "The DHCPv4 options assembler (rich mix with pads).",
+            "_args": [
+                Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
+                Dhcp4OptionRouter(
+                    [
+                        Ip4Address("192.0.2.1"),
+                        Ip4Address("198.51.100.5"),
+                    ]
+                ),
+                Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
+                Dhcp4OptionLeaseTime(60),
+                Dhcp4OptionClientId(b"\x01\xde\xad\xbe\xef\x00\x01"),
+                Dhcp4OptionPad(),
+                Dhcp4OptionPad(),
+                Dhcp4OptionHostName("host"),
+                Dhcp4OptionReqIpAddr(Ip4Address("1.2.3.4")),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.HOST_NAME,
+                        Dhcp4OptionType.MESSAGE_TYPE,
+                    ]
+                ),
+                Dhcp4OptionMessageType(Dhcp4MessageType.REQUEST),
+                Dhcp4OptionEnd(),
+            ],
+            "_results": {
+                "__len__": 6 + 10 + 6 + 6 + 9 + 1 + 1 + 6 + 6 + 4 + 3 + 1,
+                "__bytes__": (
+                    # Subnet Mask [RFC 2132]: Code=1, Len=4, 255.255.255.0
+                    b"\x01\x04\xff\xff\xff\x00"
+                    # Router [RFC 2132]: Code=3, Len=8, 192.0.2.1, 198.51.100.5
+                    b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"
+                    # Server Identifier [RFC 2132]: Code=54, Len=4, 192.0.2.1
+                    b"\x36\x04\xc0\x00\x02\x01"
+                    # IP Address Lease Time [RFC 2132]: Code=51, Len=4, 60 s
+                    b"\x33\x04\x00\x00\x00\x3c"
+                    # Client Identifier [RFC 2132]: Code=61, Len=7, hw-type + MAC
+                    b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"
+                    # Pad + Pad [RFC 2132]: two 1-byte 0x00 fillers
+                    b"\x00\x00"
+                    # Host Name [RFC 2132]: Code=12, Len=4, "host"
+                    b"\x0c\x04\x68\x6f\x73\x74"
+                    # Requested IP Address [RFC 2132]: Code=50, Len=4, 1.2.3.4
+                    b"\x32\x04\x01\x02\x03\x04"
+                    # Parameter Request List [RFC 2132]:
+                    #   Code=55, Len=2, [HOST_NAME=12, MESSAGE_TYPE=53]
+                    b"\x37\x02\x0c\x35"
+                    # Message Type [RFC 2132]: Code=53, Len=1, REQUEST
+                    b"\x35\x01\x03"
+                    # End [RFC 2132]: terminator
+                    b"\xff"
+                ),
+                "__bool__": True,
+            },
+        },
+    ]
+)
+class TestDhcp4OptionsAssembler(TestCase):
+    """
+    The 'Dhcp4Options' class assembler tests.
+    """
+
+    _description: str
+    _args: list[Any]
+    _results: dict[str, Any]
+
+    def setUp(self) -> None:
+        """
+        Initialize the 'Dhcp4Options' class object with testcase arguments.
+        """
+
+        self._options = Dhcp4Options(*self._args)
+
+    def test__dhcp4__options__len(self) -> None:
+        """
+        Ensure '__len__()' returns the sum of all option lengths.
+        """
+
+        self.assertEqual(
+            len(self._options),
+            self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
+        )
+
+    def test__dhcp4__options__str(self) -> None:
+        """
+        Ensure '__str__()' returns comma-separated option strings.
+        """
+
+        if "__str__" in self._results:
+            self.assertEqual(
+                str(self._options),
+                self._results["__str__"],
+                msg=f"Unexpected __str__ for case: {self._description}",
+            )
+
+    def test__dhcp4__options__repr(self) -> None:
+        """
+        Ensure '__repr__()' renders the container and its options.
+        """
+
+        if "__repr__" in self._results:
+            self.assertEqual(
+                repr(self._options),
+                self._results["__repr__"],
+                msg=f"Unexpected __repr__ for case: {self._description}",
+            )
+
+    def test__dhcp4__options__bytes(self) -> None:
+        """
+        Ensure 'bytes()' yields the concatenated wire image.
+        """
+
+        self.assertEqual(
+            bytes(self._options),
+            self._results["__bytes__"],
+            msg=f"Unexpected bytes output for case: {self._description}",
+        )
+
+    def test__dhcp4__options__memoryview(self) -> None:
+        """
+        Ensure the container supports the buffer protocol.
+        """
+
+        self.assertEqual(
+            bytes(memoryview(self._options)),
+            self._results["__bytes__"],
+            msg=f"Unexpected memoryview output for case: {self._description}",
+        )
+
+    def test__dhcp4__options__bool(self) -> None:
+        """
+        Ensure '__bool__()' reflects whether any options are present.
+        """
+
+        self.assertEqual(
+            bool(self._options),
+            self._results["__bool__"],
+            msg=f"Unexpected __bool__ for case: {self._description}",
+        )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "The DHCPv4 options parser — single option + End.",
+            "_args": [
+                # Message Type [RFC 2132]: Code=53, Len=1, DISCOVER (1)
+                b"\x35\x01\x01"
+                # End [RFC 2132]: terminator
+                b"\xff"
+            ],
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER),
@@ -76,22 +273,34 @@ from net_proto import (
             },
         },
         {
-            "_description": "The DHCPv4 options (II) — rich mix, pads, trailing data.",
+            "_description": "The DHCPv4 options parser — rich mix, pads, trailing bytes.",
             "_args": [
-                b"\x01\x04\xff\xff\xff\x00"  # subnet_mask 255.255.255.0
-                b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"  # router 192.0.2.1, 198.51.100.5
-                b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
-                b"\x33\x04\x00\x00\x00\x3c"  # lease_time 60
-                b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"  # client_id 01:de:ad:be:ef:00:01
-                b"\x00\x00"  # Pad, Pad
-                b"\x0c\x04\x68\x6f\x73\x74"  # host_name "host"
-                b"\x32\x04\x01\x02\x03\x04"  # req_ip_addr 1.2.3.4
-                b"\x37\x02\x0c\x35"  # param_req_list [HOST_NAME, MESSAGE_TYPE]
-                b"\x35\x01\x03"  # message_type=REQUEST
-                b"\xff"  # End
-                b"\x00\x00\x00",  # bytes after End ignored
+                # Subnet Mask [RFC 2132]: Code=1, Len=4, 255.255.255.0
+                b"\x01\x04\xff\xff\xff\x00"
+                # Router [RFC 2132]: Code=3, Len=8, 192.0.2.1, 198.51.100.5
+                b"\x03\x08\xc0\x00\x02\x01\xc6\x33\x64\x05"
+                # Server Identifier [RFC 2132]: Code=54, Len=4, 192.0.2.1
+                b"\x36\x04\xc0\x00\x02\x01"
+                # IP Address Lease Time [RFC 2132]: Code=51, Len=4, 60 s
+                b"\x33\x04\x00\x00\x00\x3c"
+                # Client Identifier [RFC 2132]: Code=61, Len=7, 01:de:ad:be:ef:00:01
+                b"\x3d\x07\x01\xde\xad\xbe\xef\x00\x01"
+                # Pad + Pad [RFC 2132]
+                b"\x00\x00"
+                # Host Name [RFC 2132]: Code=12, Len=4, "host"
+                b"\x0c\x04\x68\x6f\x73\x74"
+                # Requested IP Address [RFC 2132]: Code=50, Len=4, 1.2.3.4
+                b"\x32\x04\x01\x02\x03\x04"
+                # Parameter Request List [RFC 2132]:
+                #   Code=55, Len=2, [HOST_NAME, MESSAGE_TYPE]
+                b"\x37\x02\x0c\x35"
+                # Message Type [RFC 2132]: Code=53, Len=1, REQUEST (3)
+                b"\x35\x01\x03"
+                # End [RFC 2132]: terminator
+                b"\xff"
+                # Trailing bytes after End — must be ignored by the parser.
+                b"\x00\x00\x00"
             ],
-            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
@@ -120,11 +329,11 @@ from net_proto import (
             },
         },
         {
-            "_description": "The DHCPv4 options (III) — only End.",
+            "_description": "The DHCPv4 options parser — only End marker.",
             "_args": [
+                # End [RFC 2132]: terminator
                 b"\xff",
             ],
-            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionEnd(),
@@ -132,13 +341,15 @@ from net_proto import (
             },
         },
         {
-            "_description": "The DHCPv4 options (IV) — options behind End are ignored.",
+            "_description": "The DHCPv4 options parser — options behind End are ignored.",
             "_args": [
-                b"\x36\x04\xc0\x00\x02\x01"  # server_id 192.0.2.1
-                b"\xff"  # End
-                b"\x01\x04\xff\xff\xff\x00",  # subnet_mask (ignored)
+                # Server Identifier [RFC 2132]: Code=54, Len=4, 192.0.2.1
+                b"\x36\x04\xc0\x00\x02\x01"
+                # End [RFC 2132]: terminator
+                b"\xff"
+                # Subnet Mask after End — must be ignored
+                b"\x01\x04\xff\xff\xff\x00",
             ],
-            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
@@ -147,13 +358,15 @@ from net_proto import (
             },
         },
         {
-            "_description": "The DHCPv4 options (V) — empty/zero-length valued options allowed.",
+            "_description": "The DHCPv4 options parser — empty-valued Client Id and Host Name.",
             "_args": [
-                b"\x3d\x00"  # client_id empty
-                b"\x0c\x00"  # host_name empty
+                # Client Identifier [RFC 2132]: Code=61, Len=0 (empty)
+                b"\x3d\x00"
+                # Host Name [RFC 2132]: Code=12, Len=0 (empty)
+                b"\x0c\x00"
+                # End [RFC 2132]: terminator
                 b"\xff",
             ],
-            "_kwargs": {},
             "_results": {
                 "options": Dhcp4Options(
                     Dhcp4OptionClientId(b""),
@@ -162,26 +375,426 @@ from net_proto import (
                 ),
             },
         },
+        {
+            "_description": "The DHCPv4 options parser — unknown option code falls back to Unknown.",
+            "_args": [
+                # Unknown DHCPv4 option: Code=254, Len=3, data='ABC'
+                b"\xfe\x03\x41\x42\x43"
+                # End [RFC 2132]: terminator
+                b"\xff",
+            ],
+            "_results": {
+                "options": Dhcp4Options(
+                    Dhcp4OptionUnknown(
+                        type=Dhcp4OptionType.from_int(254),
+                        data=b"ABC",
+                    ),
+                    Dhcp4OptionEnd(),
+                ),
+            },
+        },
+        {
+            "_description": "The DHCPv4 options parser — runs off the end of the buffer without End.",
+            "_args": [
+                # Subnet Mask [RFC 2132]: Code=1, Len=4, 255.255.255.0
+                b"\x01\x04\xff\xff\xff\x00"
+            ],
+            "_results": {
+                "options": Dhcp4Options(
+                    Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
+                ),
+            },
+        },
     ]
 )
 class TestDhcp4OptionsParser(TestCase):
     """
-    The 'Dhcp4Options' class parser tests (analogous to TCP options).
+    The 'Dhcp4Options' class parser tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def test__dhcp4__options__from_buffer(self) -> None:
         """
-        Ensure the 'Dhcp4Options' class parser creates the proper options object.
+        Ensure 'from_buffer()' builds the expected Dhcp4Options container.
         """
 
-        dhcp4_options = Dhcp4Options.from_buffer(*self._args, **self._kwargs)
+        dhcp4_options = Dhcp4Options.from_buffer(*self._args)
 
         self.assertEqual(
             dhcp4_options,
             self._results["options"],
+            msg=f"Unexpected parser output for case: {self._description}",
+        )
+
+
+class TestDhcp4OptionsValidateIntegrity(TestCase):
+    """
+    The 'Dhcp4Options.validate_integrity()' static method tests.
+
+    The method scans the frame starting at offset DHCP4__HEADER__LEN (240) up
+    to hlen, so test frames are constructed as 240 zero header bytes followed
+    by the option stream under test.
+    """
+
+    def _frame(self, options: bytes) -> bytes:
+        """
+        Build a DHCPv4 frame (zero-filled header + provided option bytes).
+        """
+
+        return b"\x00" * DHCP4__HEADER__LEN + options
+
+    def test__dhcp4__options__validate_integrity__all_pads_and_end(self) -> None:
+        """
+        Ensure Pad bytes are consumed 1-at-a-time and End terminates scanning.
+        """
+
+        # Pad, Pad, Pad, End — all known, all valid.
+        frame = self._frame(b"\x00\x00\x00\xff")
+
+        Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+    def test__dhcp4__options__validate_integrity__well_formed_mix(self) -> None:
+        """
+        Ensure a well-formed mix of TLV options and an End marker passes.
+        """
+
+        frame = self._frame(
+            # Subnet Mask [RFC 2132]: Code=1, Len=4, 255.255.255.0
+            b"\x01\x04\xff\xff\xff\x00"
+            # Message Type [RFC 2132]: Code=53, Len=1, DISCOVER
+            b"\x35\x01\x01"
+            # End
+            b"\xff"
+        )
+
+        Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+    def test__dhcp4__options__validate_integrity__missing_end_is_accepted(
+        self,
+    ) -> None:
+        """
+        Ensure a frame with no End marker passes integrity as long as the
+        offset walk doesn't exceed hlen. The loop simply falls off the end.
+        """
+
+        frame = self._frame(b"\x01\x04\xff\xff\xff\x00")
+
+        Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+    def test__dhcp4__options__validate_integrity__length_byte_zero(self) -> None:
+        """
+        Ensure an option whose length byte is 0 raises Dhcp4IntegrityError
+        (length must be greater than 1).
+        """
+
+        # Server Identifier with Len=0 — illegal, trips the length check.
+        frame = self._frame(b"\x36\x00\xff")
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option length must be greater than 1. Got: 0.",
+            msg="Unexpected integrity error for zero-length option.",
+        )
+
+    def test__dhcp4__options__validate_integrity__length_byte_one(self) -> None:
+        """
+        Ensure an option with length byte = 1 (still less than 2) is rejected.
+        """
+
+        # Server Identifier with Len=1 — illegal, trips the length check.
+        frame = self._frame(b"\x36\x01\x00\xff")
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option length must be greater than 1. Got: 1.",
+            msg="Unexpected integrity error for length-1 option.",
+        )
+
+    def test__dhcp4__options__validate_integrity__length_extends_past_hlen(
+        self,
+    ) -> None:
+        """
+        Ensure an option whose length extends past hlen raises
+        Dhcp4IntegrityError.
+        """
+
+        # Client Identifier claims Len=10 but only 2 data bytes are present.
+        options = b"\x3d\x0a\xaa\xbb"
+        frame = self._frame(options)
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+        expected_offset = DHCP4__HEADER__LEN + 0x0A
+        hlen = len(frame)
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option length must not extend past "
+            f"the header length. Got: offset={expected_offset}, hlen={hlen}",
+            msg="Unexpected integrity error for over-long option.",
+        )
+
+
+class TestDhcp4OptionsProperties(TestCase):
+    """
+    The 'Dhcp4Options' per-option accessor property tests.
+    """
+
+    def test__dhcp4__options__properties__all_absent(self) -> None:
+        """
+        Ensure every accessor returns None when the corresponding option is
+        absent.
+        """
+
+        options = Dhcp4Options(Dhcp4OptionEnd())
+
+        self.assertIsNone(options.host_name, msg="host_name must be None.")
+        self.assertIsNone(options.message_type, msg="message_type must be None.")
+        self.assertIsNone(options.param_req_list, msg="param_req_list must be None.")
+        self.assertIsNone(options.req_ip_addr, msg="req_ip_addr must be None.")
+        self.assertIsNone(options.router, msg="router must be None.")
+        self.assertIsNone(options.server_id, msg="server_id must be None.")
+        self.assertIsNone(options.subnet_mask, msg="subnet_mask must be None.")
+
+    def test__dhcp4__options__properties__all_present(self) -> None:
+        """
+        Ensure every accessor returns the value carried by the corresponding
+        option when present.
+        """
+
+        options = Dhcp4Options(
+            Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
+            Dhcp4OptionRouter([Ip4Address("192.0.2.1")]),
+            Dhcp4OptionServerId(Ip4Address("192.0.2.254")),
+            Dhcp4OptionHostName("example"),
+            Dhcp4OptionReqIpAddr(Ip4Address("10.0.0.7")),
+            Dhcp4OptionParamReqList(
+                [
+                    Dhcp4OptionType.SUBNET_MASK,
+                    Dhcp4OptionType.ROUTER,
+                ]
+            ),
+            Dhcp4OptionMessageType(Dhcp4MessageType.OFFER),
+            Dhcp4OptionEnd(),
+        )
+
+        self.assertEqual(
+            options.host_name,
+            "example",
+            msg="host_name must reflect the Host Name option.",
+        )
+        self.assertEqual(
+            options.message_type,
+            Dhcp4MessageType.OFFER,
+            msg="message_type must reflect the Message Type option.",
+        )
+        self.assertEqual(
+            options.param_req_list,
+            [Dhcp4OptionType.SUBNET_MASK, Dhcp4OptionType.ROUTER],
+            msg="param_req_list must reflect the Parameter Request List option.",
+        )
+        self.assertEqual(
+            options.req_ip_addr,
+            Ip4Address("10.0.0.7"),
+            msg="req_ip_addr must reflect the Requested IP Address option.",
+        )
+        self.assertEqual(
+            options.router,
+            [Ip4Address("192.0.2.1")],
+            msg="router must reflect the Router option.",
+        )
+        self.assertEqual(
+            options.server_id,
+            Ip4Address("192.0.2.254"),
+            msg="server_id must reflect the Server Identifier option.",
+        )
+        self.assertEqual(
+            options.subnet_mask,
+            Ip4Mask("255.255.255.0"),
+            msg="subnet_mask must reflect the Subnet Mask option.",
+        )
+
+    def test__dhcp4__options__properties__first_occurrence_wins(self) -> None:
+        """
+        Ensure each accessor returns the first matching option when duplicates
+        are present (the loop returns on first match).
+        """
+
+        options = Dhcp4Options(
+            Dhcp4OptionSubnetMask(Ip4Mask("255.255.0.0")),
+            Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0")),
+            Dhcp4OptionServerId(Ip4Address("10.0.0.1")),
+            Dhcp4OptionServerId(Ip4Address("10.0.0.2")),
+            Dhcp4OptionEnd(),
+        )
+
+        self.assertEqual(
+            options.subnet_mask,
+            Ip4Mask("255.255.0.0"),
+            msg="subnet_mask must return the first Subnet Mask option.",
+        )
+        self.assertEqual(
+            options.server_id,
+            Ip4Address("10.0.0.1"),
+            msg="server_id must return the first Server Identifier option.",
+        )
+
+
+class TestDhcp4OptionsBehavior(TestCase):
+    """
+    The 'Dhcp4Options' collection and equality behavior tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Initialize a representative Dhcp4Options object for the behavior tests.
+        """
+
+        self._server_id = Dhcp4OptionServerId(Ip4Address("192.0.2.1"))
+        self._message_type = Dhcp4OptionMessageType(Dhcp4MessageType.ACK)
+        self._end = Dhcp4OptionEnd()
+        self._options = Dhcp4Options(
+            self._server_id,
+            self._message_type,
+            self._end,
+        )
+
+    def test__dhcp4__options__equality(self) -> None:
+        """
+        Ensure two Dhcp4Options built from equal inputs compare equal.
+        """
+
+        self.assertEqual(
+            self._options,
+            Dhcp4Options(
+                Dhcp4OptionServerId(Ip4Address("192.0.2.1")),
+                Dhcp4OptionMessageType(Dhcp4MessageType.ACK),
+                Dhcp4OptionEnd(),
+            ),
+            msg="Dhcp4Options with identical options must compare equal.",
+        )
+
+    def test__dhcp4__options__inequality_different_options(self) -> None:
+        """
+        Ensure Dhcp4Options with different option lists compare unequal.
+        """
+
+        self.assertNotEqual(
+            self._options,
+            Dhcp4Options(
+                Dhcp4OptionServerId(Ip4Address("192.0.2.2")),
+                Dhcp4OptionMessageType(Dhcp4MessageType.ACK),
+                Dhcp4OptionEnd(),
+            ),
+            msg="Dhcp4Options with different options must compare unequal.",
+        )
+
+    def test__dhcp4__options__inequality_different_order(self) -> None:
+        """
+        Ensure Dhcp4Options with options in different order compare unequal —
+        the underlying list is order-sensitive.
+        """
+
+        self.assertNotEqual(
+            self._options,
+            Dhcp4Options(
+                self._message_type,
+                self._server_id,
+                self._end,
+            ),
+            msg="Dhcp4Options with reordered options must compare unequal.",
+        )
+
+    def test__dhcp4__options__inequality_other_type(self) -> None:
+        """
+        Ensure Dhcp4Options compare unequal to a non-Dhcp4Options value.
+        """
+
+        self.assertNotEqual(
+            self._options,
+            [self._server_id, self._message_type, self._end],
+            msg="Dhcp4Options must not compare equal to a plain list.",
+        )
+
+    def test__dhcp4__options__contains(self) -> None:
+        """
+        Ensure '__contains__' reports membership of a specific option value.
+        """
+
+        self.assertIn(
+            self._server_id,
+            self._options,
+            msg="Server Identifier option must be reported as present.",
+        )
+        self.assertNotIn(
+            Dhcp4OptionServerId(Ip4Address("203.0.113.1")),
+            self._options,
+            msg="A different Server Identifier option must not be reported as present.",
+        )
+
+    def test__dhcp4__options__iter(self) -> None:
+        """
+        Ensure iteration yields the options in insertion order.
+        """
+
+        self.assertEqual(
+            list(self._options),
+            [self._server_id, self._message_type, self._end],
+            msg="Iteration must yield options in insertion order.",
+        )
+
+    def test__dhcp4__options__getitem(self) -> None:
+        """
+        Ensure '__getitem__' returns the option at the given index.
+        """
+
+        self.assertEqual(
+            self._options[0],
+            self._server_id,
+            msg="Index 0 must return the first inserted option.",
+        )
+        self.assertEqual(
+            self._options[-1],
+            self._end,
+            msg="Index -1 must return the last inserted option.",
+        )
+
+    def test__dhcp4__options__index(self) -> None:
+        """
+        Ensure 'index()' returns the position of a given option.
+        """
+
+        self.assertEqual(
+            self._options.index(self._message_type),
+            1,
+            msg="Message Type option must be at position 1.",
+        )
+
+    def test__dhcp4__options__bool_empty(self) -> None:
+        """
+        Ensure empty Dhcp4Options is falsy.
+        """
+
+        self.assertFalse(
+            bool(Dhcp4Options()),
+            msg="Empty Dhcp4Options must be falsy.",
+        )
+
+    def test__dhcp4__options__bool_non_empty(self) -> None:
+        """
+        Ensure a non-empty Dhcp4Options is truthy.
+        """
+
+        self.assertTrue(
+            bool(self._options),
+            msg="Non-empty Dhcp4Options must be truthy.",
         )
