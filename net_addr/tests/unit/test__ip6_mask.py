@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import Ip4Mask, Ip6Mask, Ip6MaskFormatError, IpVersion
 
@@ -551,14 +551,27 @@ class TestNetAddrIp6Mask(TestCase):
 
         self.assertTrue(
             self._ip6_mask == self._ip6_mask,
+            msg="An Ip6Mask instance must compare equal to itself.",
+        )
+
+        self.assertTrue(
+            self._ip6_mask == Ip6Mask(int(self._ip6_mask)),
+            msg="Ip6Mask must compare equal to one reconstructed from its integer value.",
         )
 
         self.assertFalse(
             self._ip6_mask == Ip6Mask(f"/{(len(self._ip6_mask) + 1) % 129}"),
+            msg="Ip6Mask instances with different prefix lengths must not compare equal.",
         )
 
         self.assertFalse(
             self._ip6_mask == "not an IPv6 mask",
+            msg="Ip6Mask must not compare equal to a foreign string value.",
+        )
+
+        self.assertFalse(
+            self._ip6_mask == None,  # noqa: E711
+            msg="Ip6Mask must not compare equal to None.",
         )
 
     def test__net_addr__ip6_mask__hash(self) -> None:
@@ -716,15 +729,45 @@ class TestNetAddrIp6Mask(TestCase):
                 "error_message": "The IPv6 mask format is invalid: 1.1",
             },
         },
+        {
+            "_description": "Test the IPv6 mask format: '/abc' (non-numeric suffix).",
+            "_args": ["/abc"],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6MaskFormatError,
+                "error_message": "The IPv6 mask format is invalid: '/abc'",
+            },
+        },
+        {
+            "_description": "Test the IPv6 mask: non-contiguous 16-byte bytes.",
+            "_args": [b"\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00"],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6MaskFormatError,
+                "error_message": (
+                    "The IPv6 mask format is invalid: "
+                    r"b'\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00'"
+                ),
+            },
+        },
+        {
+            "_description": "Test the IPv6 mask: non-contiguous int (valid 128-bit, invalid mask).",
+            "_args": [0xFF00_FF00_FF00_FF00_FF00_FF00_FF00_FF00],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6MaskFormatError,
+                "error_message": (f"The IPv6 mask format is invalid: {0xFF00_FF00_FF00_FF00_FF00_FF00_FF00_FF00}"),
+            },
+        },
     ]
 )
-class TestNetAddrIp4MaskErrors(TestCase):
+class TestNetAddrIp6MaskErrors(TestCase):
     """
     The NetAddr IPv6 mask error tests.
     """
 
     _description: str
-    _args: dict[str, Any]
+    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
@@ -739,4 +782,186 @@ class TestNetAddrIp4MaskErrors(TestCase):
         self.assertEqual(
             str(error.exception),
             self._results["error_message"],
+            msg=f"Expected error message does not match for case: {self._description}.",
         )
+
+
+class TestNetAddrIp6MaskEquality(TestCase):
+    """
+    The NetAddr IPv6 mask equality and inequality tests not tied to a
+    parameterized matrix.
+    """
+
+    def test__net_addr__ip6_mask__eq__cross_version(self) -> None:
+        """
+        Ensure an IPv6 mask never compares equal to an IPv4 mask even when
+        their integer values overlap in the low bits.
+        """
+
+        self.assertNotEqual(
+            Ip6Mask("/24"),
+            Ip4Mask("/24"),
+            msg="Ip6Mask must not compare equal to an Ip4Mask of the same prefix length.",
+        )
+
+    def test__net_addr__ip6_mask__eq__foreign_types(self) -> None:
+        """
+        Ensure the IPv6 mask is never equal to a value of a foreign type.
+        """
+
+        mask = Ip6Mask("/64")
+
+        self.assertFalse(
+            mask == "/64",
+            msg="Ip6Mask must not compare equal to its string representation.",
+        )
+        self.assertFalse(
+            mask == int(mask),
+            msg="Ip6Mask must not compare equal to its integer value.",
+        )
+        self.assertFalse(
+            mask == bytes(mask),
+            msg="Ip6Mask must not compare equal to its bytes representation.",
+        )
+        self.assertFalse(
+            mask == len(mask),
+            msg="Ip6Mask must not compare equal to its prefix length integer.",
+        )
+
+    def test__net_addr__ip6_mask__ne(self) -> None:
+        """
+        Ensure the IPv6 mask '__ne__()' method returns a correct value.
+        """
+
+        mask = Ip6Mask("/64")
+        self.assertTrue(
+            mask != Ip6Mask("/65"),
+            msg="Ip6Mask instances with different prefix lengths must be unequal.",
+        )
+        self.assertFalse(
+            mask != Ip6Mask("/64"),
+            msg="Equal Ip6Mask values must not be unequal.",
+        )
+        self.assertTrue(
+            mask != "/64",
+            msg="Ip6Mask must be unequal to its string representation.",
+        )
+
+
+class TestNetAddrIp6MaskHashConsistency(TestCase):
+    """
+    The NetAddr IPv6 mask hash consistency tests.
+    """
+
+    def test__net_addr__ip6_mask__hash__distinct_instances(self) -> None:
+        """
+        Ensure equal masks constructed from different forms hash identically.
+        """
+
+        a = Ip6Mask("/16")
+        b = Ip6Mask(int(a))
+        c = Ip6Mask(bytes(a))
+        d = Ip6Mask(Ip6Mask("/16"))
+
+        for other in (b, c, d):
+            self.assertEqual(
+                a,
+                other,
+                msg="Ip6Mask values built from different inputs but the same prefix must compare equal.",
+            )
+            self.assertEqual(
+                hash(a),
+                hash(other),
+                msg="Equal Ip6Mask values must hash to the same value across constructor forms.",
+            )
+
+    def test__net_addr__ip6_mask__usable_in_set(self) -> None:
+        """
+        Ensure equal IPv6 masks collapse into a single element when used
+        in a set.
+        """
+
+        a = Ip6Mask("/64")
+        b = Ip6Mask(int(a))
+        c = Ip6Mask("/65")
+
+        self.assertEqual(
+            len({a, b}),
+            1,
+            msg="Two equal Ip6Mask values must collapse into one set element.",
+        )
+        self.assertEqual(
+            len({a, b, c}),
+            2,
+            msg="Distinct Ip6Mask values must occupy distinct set elements.",
+        )
+        self.assertIn(
+            a,
+            {b},
+            msg="Set membership lookup must treat equal Ip6Mask values as the same key.",
+        )
+
+    def test__net_addr__ip6_mask__usable_in_dict(self) -> None:
+        """
+        Ensure equal IPv6 masks refer to the same dict entry regardless
+        of which constructor form was used to build the key.
+        """
+
+        a = Ip6Mask("/64")
+        b = Ip6Mask(bytes(a))
+
+        mapping = {a: "value"}
+
+        self.assertEqual(
+            mapping[b],
+            "value",
+            msg="Ip6Mask must behave consistently as a dict key across input forms.",
+        )
+
+
+class TestNetAddrIp6MaskRoundtrip(TestCase):
+    """
+    The NetAddr IPv6 mask roundtrip tests.
+    """
+
+    def test__net_addr__ip6_mask__roundtrip__str(self) -> None:
+        """
+        Ensure 'Ip6Mask(str(x))' yields a mask equal to 'x'.
+        """
+
+        for prefix in (0, 1, 8, 16, 32, 48, 64, 96, 127, 128):
+            with self.subTest(prefix=prefix):
+                mask = Ip6Mask(f"/{prefix}")
+                self.assertEqual(
+                    Ip6Mask(str(mask)),
+                    mask,
+                    msg=f"Roundtrip through str() must preserve mask /{prefix}.",
+                )
+
+    def test__net_addr__ip6_mask__roundtrip__int(self) -> None:
+        """
+        Ensure 'Ip6Mask(int(x))' yields a mask equal to 'x'.
+        """
+
+        for prefix in (0, 1, 64, 127, 128):
+            with self.subTest(prefix=prefix):
+                mask = Ip6Mask(f"/{prefix}")
+                self.assertEqual(
+                    Ip6Mask(int(mask)),
+                    mask,
+                    msg=f"Roundtrip through int() must preserve mask /{prefix}.",
+                )
+
+    def test__net_addr__ip6_mask__roundtrip__bytes(self) -> None:
+        """
+        Ensure 'Ip6Mask(bytes(x))' yields a mask equal to 'x'.
+        """
+
+        for prefix in (0, 1, 64, 127, 128):
+            with self.subTest(prefix=prefix):
+                mask = Ip6Mask(f"/{prefix}")
+                self.assertEqual(
+                    Ip6Mask(bytes(mask)),
+                    mask,
+                    msg=f"Roundtrip through bytes() must preserve mask /{prefix}.",
+                )
