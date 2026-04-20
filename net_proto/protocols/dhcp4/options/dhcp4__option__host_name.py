@@ -27,7 +27,7 @@
 """
 This module contains the DHCPv4 Host Name option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__host_name.py
+net_proto/protocols/dhcp4/options/dhcp4__option__host_name.py
 
 ver 3.0.4
 """
@@ -45,7 +45,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
     Dhcp4OptionType,
 )
 
-# The DHCPv4 Parameter Request List option [RFC 2132].
+# The DHCPv4 Host Name option [RFC 2132].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Code=12   |     Len=N     |           Hostname           ...
