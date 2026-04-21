@@ -33,7 +33,9 @@ ver 3.0.4
 """
 
 
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -41,419 +43,311 @@ from net_proto import (
     Icmp4DestinationUnreachableCode,
     Icmp4MessageDestinationUnreachable,
     Icmp4Parser,
+    Ip4Parser,
     PacketRx,
 )
-from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
+
+
+def _packet_rx_with_ip4(frame: bytes) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv4 stub whose 'payload_len' matches
+    the full frame (the single field Icmp4Parser reads off 'packet_rx.ip4').
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip4 = cast(Ip4Parser, SimpleNamespace(payload_len=len(frame)))
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
-            "_description": "ICMPv4 Destination Unreachable (Network) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 0 (Network), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 0 (Network)
-                #   Checksum : 0xfcff
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Network unreachable notification with empty payload.
+                # Type/Code : 3/0, Cksum 0xfcff, Rest 0x00000000
                 b"\x03\x00\xfc\xff\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK,
-                    cksum=64767,
+                    cksum=0xFCFF,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 1 (Host), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 1 (Host)
-                #   Checksum : 0xfcfe
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Host unreachable notification with empty payload.
+                # Type/Code : 3/1, Cksum 0xfcfe, Rest 0x00000000
                 b"\x03\x01\xfc\xfe\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST,
-                    cksum=64766,
+                    cksum=0xFCFE,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Protocol) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 2 (Protocol), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 2 (Protocol)
-                #   Checksum : 0xfcfd
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Protocol unreachable notification with empty payload.
+                # Type/Code : 3/2, Cksum 0xfcfd, Rest 0x00000000
                 b"\x03\x02\xfc\xfd\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PROTOCOL,
-                    cksum=64765,
+                    cksum=0xFCFD,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Port) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 3 (Port), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 3 (Port)
-                #   Checksum : 0xfcfc
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Port unreachable notification with empty payload.
+                # Type/Code : 3/3, Cksum 0xfcfc, Rest 0x00000000
                 b"\x03\x03\xfc\xfc\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
-                    cksum=64764,
+                    cksum=0xFCFC,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Fragmentation Needed) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 4 (Fragmentation Needed), MTU 1200.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 4 (Fragmentation Needed)
-                #   Checksum : 0xf84b
-                #   Next-Hop : 0x000004b0 (MTU 1200)
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Fragmentation needed notification with MTU set to 1200.
+                # Type/Code : 3/4, Cksum 0xf84b, Reserved 0x0000, MTU 0x04b0 (1200)
                 b"\x03\x04\xf8\x4b\x00\x00\x04\xb0"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
-                    cksum=63563,
+                    cksum=0xF84B,
                     mtu=1200,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Source Route Failed) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 5 (Source Route Failed), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 5 (Source Route Failed)
-                #   Checksum : 0xfcfa
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Source route failed notification with empty payload.
+                # Type/Code : 3/5, Cksum 0xfcfa, Rest 0x00000000
                 b"\x03\x05\xfc\xfa\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_ROUTE_FAILED,
-                    cksum=64762,
+                    cksum=0xFCFA,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network Unknown) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 6 (Network Unknown), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 6 (Network Unknown)
-                #   Checksum : 0xfcf9
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Network unknown notification with empty payload.
+                # Type/Code : 3/6, Cksum 0xfcf9, Rest 0x00000000
                 b"\x03\x06\xfc\xf9\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_UNKNOWN,
-                    cksum=64761,
+                    cksum=0xFCF9,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Unknown) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 7 (Host Unknown), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 7 (Host Unknown)
-                #   Checksum : 0xfcf8
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Host unknown notification with empty payload.
+                # Type/Code : 3/7, Cksum 0xfcf8, Rest 0x00000000
                 b"\x03\x07\xfc\xf8\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_UNKNOWN,
-                    cksum=64760,
+                    cksum=0xFCF8,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Source Host Isolated) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 8 (Source Host Isolated), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 8 (Source Host Isolated)
-                #   Checksum : 0xfcf7
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Source host isolated notification with empty payload.
+                # Type/Code : 3/8, Cksum 0xfcf7, Rest 0x00000000
                 b"\x03\x08\xfc\xf7\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.SOURCE_HOST_ISOLATED,
-                    cksum=64759,
+                    cksum=0xFCF7,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network Prohibited) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 9 (Network Prohibited), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 9 (Network Prohibited)
-                #   Checksum : 0xfcf6
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Network administratively prohibited notification.
+                # Type/Code : 3/9, Cksum 0xfcf6, Rest 0x00000000
                 b"\x03\x09\xfc\xf6\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_PROHIBITED,
-                    cksum=64758,
+                    cksum=0xFCF6,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Prohibited) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 10 (Host Prohibited), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 10 (Host Prohibited)
-                #   Checksum : 0xfcf5
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Host administratively prohibited notification.
+                # Type/Code : 3/10, Cksum 0xfcf5, Rest 0x00000000
                 b"\x03\x0a\xfc\xf5\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PROHIBITED,
-                    cksum=64757,
+                    cksum=0xFCF5,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network TOS) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 11 (Network TOS), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 11 (Network TOS)
-                #   Checksum : 0xfcf4
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Network TOS unreachable notification with empty payload.
+                # Type/Code : 3/11, Cksum 0xfcf4, Rest 0x00000000
                 b"\x03\x0b\xfc\xf4\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.NETWORK_TOS,
-                    cksum=64756,
+                    cksum=0xFCF4,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host TOS) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 12 (Host TOS), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 12 (Host TOS)
-                #   Checksum : 0xfcf3
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Host TOS unreachable notification with empty payload.
+                # Type/Code : 3/12, Cksum 0xfcf3, Rest 0x00000000
                 b"\x03\x0c\xfc\xf3\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_TOS,
-                    cksum=64755,
+                    cksum=0xFCF3,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Communication Prohibited) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 13 (Communication Prohibited), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 13 (Communication Prohibited)
-                #   Checksum : 0xfcf2
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Communication administratively prohibited notification.
+                # Type/Code : 3/13, Cksum 0xfcf2, Rest 0x00000000
                 b"\x03\x0d\xfc\xf2\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.COMMUNICATION_PROHIBITED,
-                    cksum=64754,
+                    cksum=0xFCF2,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Precedence) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 14 (Host Precedence), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 14 (Host Precedence)
-                #   Checksum : 0xfcf1
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Host precedence violation notification with empty payload.
+                # Type/Code : 3/14, Cksum 0xfcf1, Rest 0x00000000
                 b"\x03\x0e\xfc\xf1\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.HOST_PRECEDENCE,
-                    cksum=64753,
+                    cksum=0xFCF1,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Precedence Cutoff) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 15 (Precedence Cutoff), no data.",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 15 (Precedence Cutoff)
-                #   Checksum : 0xfcf0
-                #   Next-Hop : 0x00000000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Precedence cutoff in effect notification with empty payload.
+                # Type/Code : 3/15, Cksum 0xfcf0, Rest 0x00000000
                 b"\x03\x0f\xfc\xf0\x00\x00\x00\x00"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PRECEDENCE_CUTOFF,
-                    cksum=64752,
+                    cksum=0xFCF0,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable message, non-empty payload.",
+            "_description": "ICMPv4 Destination Unreachable, non-empty 16-byte data (code=Port).",
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 3 (Port)
-                #   Checksum : 0x2e26
-                #   Next-Hop : 0x00000000
-                #   Data len : 16 bytes ("0123456789ABCDEF")
-                #
-                #   Summary  : Port unreachable with 16-byte payload echoing offending packet.
+                # Type/Code : 3/3, Cksum 0x2e26, Rest 0x00000000
+                # Data      : b"0123456789ABCDEF"
                 b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
-                    cksum=11814,
+                    cksum=0x2E26,
                     data=b"0123456789ABCDEF",
                 ),
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable message, maximum length payload.",
+            "_description": (
+                "ICMPv4 Destination Unreachable, maximum-length data (548 bytes — "
+                "IP4__MIN_MTU minus IP4__HEADER__LEN minus DU__LEN)."
+            ),
             "_frame_rx": (
-                # ICMPv4 Destination Unreachable
-                #   Type     : 3 (Destination Unreachable)
-                #   Code     : 3 (Port)
-                #   Checksum : 0x6e6e
-                #   Next-Hop : 0x00000000
-                #   Data len : 548 bytes (max payload captured)
-                #
-                #   Summary  : Port unreachable carrying maximum-length payload fragment.
+                # Type/Code : 3/3, Cksum 0x6e6e, Rest 0x00000000
+                # Data      : b"X" * 548 (truncation cap for the DU data field)
                 b"\x03\x03\x6e\x6e\x00\x00\x00\x00"
                 + b"X" * 548
             ),
             "_results": {
                 "message": Icmp4MessageDestinationUnreachable(
                     code=Icmp4DestinationUnreachableCode.PORT,
-                    cksum=28270,
+                    cksum=0x6E6E,
                     data=b"X" * 548,
                 ),
             },
         },
     ]
 )
-class TestIcmp4MessageDestinationUnreachableParser(TestCasePacketRxIp4):
+class TestIcmp4MessageDestinationUnreachableParser(TestCase):
     """
     The ICMPv4 Destination Unreachable message parser tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp4__message__destination_unreachable__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'from_bytes()'
-        method creates a proper message object.
+        Build a PacketRx for the parametrized frame.
+        """
+
+        self._packet_rx = _packet_rx_with_ip4(self._frame_rx)
+
+    def test__icmp4__message__destination_unreachable__parser(self) -> None:
+        """
+        Ensure the ICMPv4 parser produces an Icmp4MessageDestinationUnreachable
+        whose fields match the expected reference message for each frame.
         """
 
         icmp4_parser = Icmp4Parser(self._packet_rx)
 
-        # Convert the 'data' field from memoryview to bytes so we can compare.
+        # Materialize 'data' from memoryview to bytes for structural equality.
         object.__setattr__(
             icmp4_parser.message,
             "data",
@@ -463,4 +357,20 @@ class TestIcmp4MessageDestinationUnreachableParser(TestCasePacketRxIp4):
         self.assertEqual(
             icmp4_parser.message,
             self._results["message"],
+            msg=f"Parsed message mismatch for case: {self._description}",
+        )
+
+    def test__icmp4__message__destination_unreachable__parser__frame_advanced(self) -> None:
+        """
+        Ensure the ICMPv4 parser fully consumes 'packet_rx.frame' after
+        parsing the Destination Unreachable (so downstream layers see an
+        empty remainder).
+        """
+
+        Icmp4Parser(self._packet_rx)
+
+        self.assertEqual(
+            len(self._packet_rx.frame),
+            0,
+            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
         )
