@@ -27,16 +27,16 @@
 """
 Module contains tests for the unknown IPv4 option code.
 
-net_proto/tests/unit/protocols/tcp/test__ip4__option__unknown.py
+net_proto/tests/unit/protocols/ip4/test__ip4__option__unknown.py
 
 ver 3.0.4
 """
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Ip4IntegrityError,
@@ -54,10 +54,10 @@ class TestIp4OptionUnknownAsserts(TestCase):
 
     def setUp(self) -> None:
         """
-        Create the default arguments for the IPv4 unknown option constructor.
+        Build a valid default kwargs dict so each test can override exactly
+        one field and trigger its assert.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "type": Ip4OptionType.from_int(255),
             "data": b"",
@@ -65,42 +65,45 @@ class TestIp4OptionUnknownAsserts(TestCase):
 
     def test__ip4__option__unknown__type__not_Ip4OptionType(self) -> None:
         """
-        Ensure the IPv4 unknown option constructor raises an exception when
-        the provided 'type' argument is not a Ip4OptionType.
+        Ensure the constructor rejects 'type' when it is not an
+        Ip4OptionType instance.
         """
 
         self._kwargs["type"] = value = "not a Ip4OptionType"
 
         with self.assertRaises(AssertionError) as error:
-            Ip4OptionUnknown(*self._args, **self._kwargs)
+            Ip4OptionUnknown(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'type' field must be a Ip4OptionType. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-Ip4OptionType 'type'.",
         )
 
-    def test__ip4__option__unknown__type__known_value(
-        self,
-    ) -> None:
+    def test__ip4__option__unknown__type__known_value(self) -> None:
         """
-        Ensure the IPv4 unknown option constructor raises an exception when
-        the provided 'type' argument is a known Ip4OptionType.
+        Ensure the constructor rejects every known Ip4OptionType value
+        (the unknown option MUST NOT overlap with Eol or Nop).
         """
 
-        for type in Ip4OptionType.get_known_values():
-            self._kwargs["type"] = value = Ip4OptionType(type)
+        for known in Ip4OptionType.get_known_values():
+            with self.subTest(known=known):
+                kwargs = dict(self._kwargs)
+                kwargs["type"] = value = Ip4OptionType(known)
 
-            with self.assertRaises(AssertionError) as error:
-                Ip4OptionUnknown(**self._kwargs)
+                with self.assertRaises(AssertionError) as error:
+                    Ip4OptionUnknown(**kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                "The 'type' field must not be a known Ip4OptionType. " f"Got: {value!r}",
-            )
+                self.assertEqual(
+                    str(error.exception),
+                    f"The 'type' field must not be a known Ip4OptionType. Got: {value!r}",
+                    msg=f"Unexpected assertion message for known type {value!r}.",
+                )
 
     def test__ip4__option__unknown__len__8bit_integer(self) -> None:
         """
-        Ensure the IPv4 unknown option 'len' field is an 8-bit unsigned integer.
+        Ensure the constructor rejects 'data' long enough that
+        IP4__OPTION__LEN + len(data) overflows an 8-bit unsigned integer.
         """
 
         self._kwargs["data"] = b"X" * (UINT_8__MAX - IP4__OPTION__LEN + 1)
@@ -111,14 +114,49 @@ class TestIp4OptionUnknownAsserts(TestCase):
         self.assertEqual(
             str(error.exception),
             f"The 'len' field must be an 8-bit unsigned integer. Got: {UINT_8__MAX + 1}",
+            msg="Unexpected assertion message for over-max 'len' derived from oversized 'data'.",
+        )
+
+    def test__ip4__option__unknown__len__at_max_accepted(self) -> None:
+        """
+        Ensure the constructor accepts 'data' whose length brings the
+        derived 'len' field exactly to UINT_8__MAX (boundary case).
+        """
+
+        self._kwargs["data"] = b"X" * (UINT_8__MAX - IP4__OPTION__LEN)
+
+        option = Ip4OptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            option.len,
+            UINT_8__MAX,
+            msg="Constructed option.len must equal UINT_8__MAX at the boundary.",
+        )
+
+    def test__ip4__option__unknown__data__empty_accepted(self) -> None:
+        """
+        Ensure the constructor accepts an empty 'data' buffer (the
+        resulting option is exactly IP4__OPTION__LEN bytes on the wire).
+        """
+
+        option = Ip4OptionUnknown(**self._kwargs)
+
+        self.assertEqual(
+            option.len,
+            IP4__OPTION__LEN,
+            msg="Constructed option.len must equal IP4__OPTION__LEN for empty 'data'.",
+        )
+        self.assertEqual(
+            option.data,
+            b"",
+            msg="Constructed option.data must be empty.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The unknown IPv4 option.",
-            "_args": [],
+            "_description": "Unknown IPv4 option with type=255 and 16-byte 'data'.",
             "_kwargs": {
                 "type": Ip4OptionType.from_int(255),
                 "data": b"0123456789ABCDEF",
@@ -129,10 +167,33 @@ class TestIp4OptionUnknownAsserts(TestCase):
                 "__repr__": (
                     f"Ip4OptionUnknown(type={Ip4OptionType.from_int(255)!r}, " "len=18, data=b'0123456789ABCDEF')"
                 ),
-                "__bytes__": b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
+                # IPv4 unknown option wire format:
+                #   Type:  0xff (UNKNOWN_255)
+                #   Len:   0x12 (18 bytes total)
+                #   Data:  b"0123456789ABCDEF" (16 bytes of ASCII)
+                "__bytes__": (b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46"),
                 "type": Ip4OptionType.from_int(255),
                 "len": 18,
                 "data": b"0123456789ABCDEF",
+            },
+        },
+        {
+            "_description": "Unknown IPv4 option with type=254 and empty 'data'.",
+            "_kwargs": {
+                "type": Ip4OptionType.from_int(254),
+                "data": b"",
+            },
+            "_results": {
+                "__len__": 2,
+                "__str__": "unk-254-2",
+                "__repr__": (f"Ip4OptionUnknown(type={Ip4OptionType.from_int(254)!r}, " "len=2, data=b'')"),
+                # IPv4 unknown option wire format:
+                #   Type:  0xfe (UNKNOWN_254)
+                #   Len:   0x02 (2 bytes total; empty data)
+                "__bytes__": b"\xfe\x02",
+                "type": Ip4OptionType.from_int(254),
+                "len": 2,
+                "data": b"",
             },
         },
     ]
@@ -143,146 +204,198 @@ class TestIp4OptionUnknownAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the unknown IPv4 option object with testcase arguments.
+        Build the unknown IPv4 option from the parametrized kwargs.
         """
 
-        self._option = Ip4OptionUnknown(*self._args, **self._kwargs)
+        self._option = Ip4OptionUnknown(**self._kwargs)
 
     def test__ip4__option__unknown__len(self) -> None:
         """
-        Ensure the unknown IPv4 option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the expected wire-byte length.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__ip4__option__unknown__str(self) -> None:
         """
-        Ensure the unknown IPv4 option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__ip4__option__unknown__repr(self) -> None:
         """
-        Ensure the unknown IPv4 option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__ip4__option__unknown__bytes(self) -> None:
         """
-        Ensure the unknown IPv4 option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire bytes.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__ip4__option__unknown__type(self) -> None:
         """
-        Ensure the unknown IPv4 option 'type' field contains a correct value.
+        Ensure the 'type' field carries the provided Ip4OptionType.
         """
 
         self.assertEqual(
             self._option.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
     def test__ip4__option__unknown__length(self) -> None:
         """
-        Ensure the unknown IPv4 option 'len' field contains a correct value.
+        Ensure the 'len' field equals IP4__OPTION__LEN + len(data).
         """
 
         self.assertEqual(
             self._option.len,
             self._results["len"],
+            msg=f"Unexpected 'len' for case: {self._description}",
         )
 
     def test__ip4__option__unknown__data(self) -> None:
         """
-        Ensure the unknown IPv4 option 'data' field contains a correct value.
+        Ensure the 'data' field carries the provided payload verbatim.
         """
 
         self.assertEqual(
             self._option.data,
             self._results["data"],
+            msg=f"Unexpected 'data' for case: {self._description}",
+        )
+
+
+class TestIp4OptionUnknownParser(TestCase):
+    """
+    The unknown IPv4 option parser positive tests.
+    """
+
+    def test__ip4__option__unknown__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses an unknown option whose buffer length
+        equals the declared 'len' byte (boundary case).
+        """
+
+        # IPv4 unknown option wire format (exactly 18 bytes):
+        #   Type: 0xff (UNKNOWN_255)
+        #   Len:  0x12 (18 bytes total)
+        #   Data: b"0123456789ABCDEF" (16 bytes of ASCII)
+        buffer = b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46"
+
+        option = Ip4OptionUnknown.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionUnknown(
+                type=Ip4OptionType.from_int(255),
+                data=b"0123456789ABCDEF",
+            ),
+            msg="Parsed option must equal the reference Ip4OptionUnknown.",
+        )
+
+    def test__ip4__option__unknown__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses an unknown option when the buffer
+        carries trailing bytes past the declared 'len' byte.
+        """
+
+        # IPv4 unknown option with 5 trailing bytes that must be ignored
+        # (the option is truncated to its declared 18-byte length):
+        #   Type: 0xff (UNKNOWN_255)
+        #   Len:  0x12 (18 bytes total)
+        #   Data: b"0123456789ABCDEF" (16 bytes)
+        #   Trail: b"ZH0PA"
+        buffer = b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46" + b"ZH0PA"
+
+        option = Ip4OptionUnknown.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionUnknown(
+                type=Ip4OptionType.from_int(255),
+                data=b"0123456789ABCDEF",
+            ),
+            msg="Parsed option must equal the reference Ip4OptionUnknown (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The unknown IPv4 option.",
-            "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": Ip4OptionUnknown(
-                    type=Ip4OptionType.from_int(255),
-                    data=b"0123456789ABCDEF",
-                ),
-            },
-        },
-        {
-            "_description": "The unknown IPv4 option minimum length assert.",
-            "_args": [
-                b"\xff",
-            ],
-            "_kwargs": {},
+            "_description": "Unknown IPv4 option, buffer shorter than IP4__OPTION__LEN.",
+            "_args": [b"\xff"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the unknown IPv4 option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the unknown IPv4 option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The unknown IPv4 option incorrect 'type' field (Eol) assert.",
+            "_description": "Unknown IPv4 option, buffer 'type' byte is known (Eol).",
             "_args": [
-                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
+                # IPv4 unknown option parser rejection fixture:
+                #   Type: 0x00 (Ip4OptionType.EOL, i.e. a KNOWN type)
+                #   Len:  0x12 (18 bytes total)
+                #   Data: b"0123456789ABCDEF" (16 bytes)
+                b"\x00\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
-            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The unknown IPv4 option type must not be known. " "Got: <Ip4OptionType.EOL: 0>"),
+                "error_message": f"The unknown IPv4 option type must not be known. Got: {Ip4OptionType.EOL!r}",
             },
         },
         {
-            "_description": "The unknown IPv4 option incorrect 'type' field (Nop) assert.",
+            "_description": "Unknown IPv4 option, buffer 'type' byte is known (Nop).",
             "_args": [
-                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45\x46",
+                # IPv4 unknown option parser rejection fixture:
+                #   Type: 0x01 (Ip4OptionType.NOP, i.e. a KNOWN type)
+                #   Len:  0x12 (18 bytes total)
+                #   Data: b"0123456789ABCDEF" (16 bytes)
+                b"\x01\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45\x46",
             ],
-            "_kwargs": {},
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The unknown IPv4 option type must not be known. " f"Got: {Ip4OptionType.NOP!r}"),
+                "error_message": f"The unknown IPv4 option type must not be known. Got: {Ip4OptionType.NOP!r}",
             },
         },
         {
-            "_description": "The unknown IPv4 option length integrity check (II).",
+            "_description": "Unknown IPv4 option, declared 'len' exceeds available buffer bytes.",
             "_args": [
-                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" b"\x45",
+                # IPv4 unknown option integrity-failure fixture:
+                #   Type: 0xff (UNKNOWN_255)
+                #   Len:  0x12 (declared 18 bytes)
+                #   Data: 15 ASCII bytes (buffer is only 17 bytes total)
+                b"\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
+                b"\x45",
             ],
-            "_kwargs": {},
             "_results": {
                 "error": Ip4IntegrityError,
                 "error_message": (
@@ -294,35 +407,27 @@ class TestIp4OptionUnknownAssembler(TestCase):
         },
     ]
 )
-class TestIp4OptionUnknownParser(TestCase):
+class TestIp4OptionUnknownParserFailures(TestCase):
     """
-    The unknown IPv4 option parser tests.
+    The unknown IPv4 option parser failure-path tests (short-buffer
+    assert, known-type rejection, and length-integrity error).
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__option__from_buffer(self) -> None:
+    def test__ip4__option__unknown__from_buffer__error(self) -> None:
         """
-        Ensure the unknown IPv4 option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = Ip4OptionUnknown.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            Ip4OptionUnknown.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Ip4OptionUnknown.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )

@@ -73,20 +73,20 @@ class Ip4OptionUnknown(Ip4Option):
         """
 
         # Ensure the 'type' field is a valid Ip4OptionType enum member.
-        assert isinstance(self.type, Ip4OptionType), (
-            f"The 'type' field must be a Ip4OptionType. " f"Got: {type(self.type)!r}"
-        )
+        assert isinstance(
+            self.type, Ip4OptionType
+        ), f"The 'type' field must be a Ip4OptionType. Got: {type(self.type)!r}"
 
         # Ensure the 'type' field is not a known Ip4OptionType.
-        assert int(self.type) not in Ip4OptionType.get_known_values(), (
-            "The 'type' field must not be a known Ip4OptionType. " f"Got: {self.type!r}"
-        )
+        assert (
+            int(self.type) not in Ip4OptionType.get_known_values()
+        ), f"The 'type' field must not be a known Ip4OptionType. Got: {self.type!r}"
 
         # Update the option 'len' field based on the length of the 'data' field.
         object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
 
         # Ensure the 'len' field is a valid 8-bit unsigned integer.
-        assert is_uint8(self.len), f"The 'len' field must be an 8-bit unsigned integer. " f"Got: {self.len!r}"
+        assert is_uint8(self.len), f"The 'len' field must be an 8-bit unsigned integer. Got: {self.len!r}"
 
     @override
     def __str__(self) -> str:
@@ -135,13 +135,17 @@ class Ip4OptionUnknown(Ip4Option):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= IP4__OPTION__LEN, (
-            f"The minimum length of the unknown IPv4 option must be " f"{IP4__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= IP4__OPTION__LEN, (
+            f"The minimum length of the unknown IPv4 option must be {IP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is not known.
-        assert (value := buffer[0]) not in Ip4OptionType.get_known_values(), (
-            f"The unknown IPv4 option type must not be known. " f"Got: {Ip4OptionType.from_int(value)!r}"
+        assert (
+            value := buffer[0]
+        ) not in Ip4OptionType.get_known_values(), (
+            f"The unknown IPv4 option type must not be known. Got: {Ip4OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
