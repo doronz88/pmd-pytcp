@@ -253,10 +253,13 @@ class TcpIntegrityError(PacketIntegrityError):
 
 ### Tests
 
-- Framework: `testslide.TestCase` (not `unittest.TestCase`)
-- Parameterized tests use `@parameterized_class(testcases)` with a module-level `testcases: list[dict[str, Any]]`
-- Each test case dict keys: `_description`, `_args`, `_kwargs`, `_mocked_values`, `_results`
-- `setUp` populates `self._args` and `self._kwargs` for constructor tests
+**Canonical rule: [`.claude/rules/unit_tests.md`](.claude/rules/unit_tests.md)** — read and follow it for every new or rewritten test file. It covers framework, file layout, naming, the parameterization pattern, byte-frame comments, assertion style, and the required test-file matrix per protocol. The bullets below are only a quick summary.
+
+- Framework: native `unittest.TestCase` (the legacy testslide tests are being migrated — do not add new testslide tests)
+- Parameterized tests use `@parameterized_class([{...}, ...])` with per-case dicts
+- Each test-case dict keys: `_description`, `_args`, `_kwargs`, `_mocked_values`, `_results`
+- Declare the parametrized attributes as class-level annotations so mypy strict accepts them
+- Every assertion carries a descriptive `msg=`; every raw-byte frame carries a field-by-field annotation comment
 - Test method docstrings start with `"Ensure ..."` and describe the behavioral guarantee
 
 ### Inline Comments

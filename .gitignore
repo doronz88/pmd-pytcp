@@ -4,5 +4,4 @@ venv/
 .pyre
 .vscode/
 .coverage
-.claude
 PyTCP.egg-info/
