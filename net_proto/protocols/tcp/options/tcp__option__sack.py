@@ -45,10 +45,10 @@ from net_proto.protocols.tcp.options.tcp__option import (
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP Sackp option [RFC 2018].
+# The TCP Sack option [RFC 2018].
 
 #                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#                                 |    Type = 4   |   Length = 2  |
+#                                 |    Type = 5   |   Length = N  |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                    Left Edge of 1st Block                     |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

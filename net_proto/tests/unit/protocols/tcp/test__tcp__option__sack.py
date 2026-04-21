@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     TCP__OPTION__SACK__MAX_BLOCK_NUM,
@@ -53,78 +53,81 @@ class TestTcpOptionSackAsserts(TestCase):
     The TCP Sack option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
-        """
-        Create the default arguments for the TCP Sack option constructor.
-        """
-
-        self._args: list[Any] = [
-            [],
-        ]
-        self._kwargs: dict[str, Any] = {}
-
     def test__tcp__option__sack__blocks__too_many(self) -> None:
         """
-        Ensure the TCP Sack option constructor raises an exception when the
-        provided 'blocks' argument has too many elements.
+        Ensure the TCP Sack option constructor raises an exception when
+        the provided 'blocks' argument has more than
+        TCP__OPTION__SACK__MAX_BLOCK_NUM elements.
         """
 
         value = TCP__OPTION__SACK__MAX_BLOCK_NUM + 1
-        self._args[0] = [TcpSackBlock(0, 0)] * value
+        blocks = [TcpSackBlock(0, 0)] * value
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionSack(*self._args, **self._kwargs)
+            TcpOptionSack(blocks)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value}",
+            (f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value}"),
+            msg="Unexpected assertion message for 'blocks' over TCP__OPTION__SACK__MAX_BLOCK_NUM.",
+        )
+
+    def test__tcp__option__sack__blocks__exact_max_accepted(self) -> None:
+        """
+        Ensure the TCP Sack option constructor accepts exactly
+        TCP__OPTION__SACK__MAX_BLOCK_NUM blocks (the boundary).
+        """
+
+        blocks = [TcpSackBlock(0, 0)] * TCP__OPTION__SACK__MAX_BLOCK_NUM
+
+        option = TcpOptionSack(blocks)
+
+        self.assertEqual(
+            len(option.blocks),
+            TCP__OPTION__SACK__MAX_BLOCK_NUM,
+            msg="Option must accept exactly TCP__OPTION__SACK__MAX_BLOCK_NUM blocks.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Sack option (I).",
-            "_args": [
-                [],
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option with zero blocks (empty Sack).",
+            "_blocks": [],
             "_results": {
                 "__len__": 2,
                 "__str__": "sack []",
                 "__repr__": "TcpOptionSack(blocks=[])",
+                # TCP Sack option wire frame (2 bytes):
+                #   Byte 0 : 0x05 -> type=TcpOptionType.SACK (5)
+                #   Byte 1 : 0x02 -> len=2 (header only, no blocks)
                 "__bytes__": b"\x05\x02",
-                "type": TcpOptionType.SACK,
                 "length": TCP__OPTION__LEN,
-                "blocks": [],
             },
         },
         {
-            "_description": "The TCP Sack option (II).",
-            "_args": [
-                [TcpSackBlock(4294967295, 4294967295)],
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option with a single block carrying maximum 32-bit edges.",
+            "_blocks": [TcpSackBlock(4294967295, 4294967295)],
             "_results": {
                 "__len__": 10,
                 "__str__": "sack [4294967295-4294967295]",
-                "__repr__": ("TcpOptionSack(blocks=[TcpSackBlock(left=4294967295, " "right=4294967295)])"),
+                "__repr__": "TcpOptionSack(blocks=[TcpSackBlock(left=4294967295, right=4294967295)])",
+                # TCP Sack option wire frame (10 bytes = 2-byte header + 1x 8-byte block):
+                #   Byte 0      : 0x05       -> type=TcpOptionType.SACK (5)
+                #   Byte 1      : 0x0a       -> len=10 (header + 1 block)
+                #   Bytes 2-5   : 0xffffffff -> block[0].left=4294967295 (UINT_32__MAX)
+                #   Bytes 6-9   : 0xffffffff -> block[0].right=4294967295
                 "__bytes__": b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff",
-                "type": TcpOptionType.SACK,
                 "length": TCP__OPTION__LEN + 8 * 1,
-                "blocks": [TcpSackBlock(4294967295, 4294967295)],
             },
         },
         {
-            "_description": "The TCP Sack option (III).",
-            "_args": [
-                [
-                    TcpSackBlock(1111, 2222),
-                    TcpSackBlock(3333, 4444),
-                    TcpSackBlock(5555, 6666),
-                ],
+            "_description": "TCP Sack option with three blocks (typical Sack reply).",
+            "_blocks": [
+                TcpSackBlock(1111, 2222),
+                TcpSackBlock(3333, 4444),
+                TcpSackBlock(5555, 6666),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 26,
                 "__str__": "sack [1111-2222, 3333-4444, 5555-6666]",
@@ -133,30 +136,30 @@ class TestTcpOptionSackAsserts(TestCase):
                     "TcpSackBlock(left=3333, right=4444), TcpSackBlock(left=5555, "
                     "right=6666)])"
                 ),
+                # TCP Sack option wire frame (26 bytes = 2-byte header + 3x 8-byte blocks):
+                #   Byte 0      : 0x05       -> type=TcpOptionType.SACK (5)
+                #   Byte 1      : 0x1a       -> len=26 (header + 3 blocks)
+                #   Bytes 2-5   : 0x00000457 -> block[0].left=1111
+                #   Bytes 6-9   : 0x000008ae -> block[0].right=2222
+                #   Bytes 10-13 : 0x00000d05 -> block[1].left=3333
+                #   Bytes 14-17 : 0x0000115c -> block[1].right=4444
+                #   Bytes 18-21 : 0x000015b3 -> block[2].left=5555
+                #   Bytes 22-25 : 0x00001a0a -> block[2].right=6666
                 "__bytes__": (
                     b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
                     b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a"
                 ),
-                "type": TcpOptionType.SACK,
                 "length": TCP__OPTION__LEN + 8 * 3,
-                "blocks": [
-                    TcpSackBlock(1111, 2222),
-                    TcpSackBlock(3333, 4444),
-                    TcpSackBlock(5555, 6666),
-                ],
             },
         },
         {
-            "_description": "The TCP Sack option (IV).",
-            "_args": [
-                [
-                    TcpSackBlock(111, 222),
-                    TcpSackBlock(333, 444),
-                    TcpSackBlock(555, 666),
-                    TcpSackBlock(777, 888),
-                ],
+            "_description": "TCP Sack option with TCP__OPTION__SACK__MAX_BLOCK_NUM blocks (max 4).",
+            "_blocks": [
+                TcpSackBlock(111, 222),
+                TcpSackBlock(333, 444),
+                TcpSackBlock(555, 666),
+                TcpSackBlock(777, 888),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 34,
                 "__str__": "sack [111-222, 333-444, 555-666, 777-888]",
@@ -165,19 +168,23 @@ class TestTcpOptionSackAsserts(TestCase):
                     "TcpSackBlock(left=333, right=444), TcpSackBlock(left=555, "
                     "right=666), TcpSackBlock(left=777, right=888)])"
                 ),
+                # TCP Sack option wire frame (34 bytes = 2-byte header + 4x 8-byte blocks):
+                #   Byte 0      : 0x05       -> type=TcpOptionType.SACK (5)
+                #   Byte 1      : 0x22       -> len=34 (header + 4 blocks)
+                #   Bytes 2-5   : 0x0000006f -> block[0].left=111
+                #   Bytes 6-9   : 0x000000de -> block[0].right=222
+                #   Bytes 10-13 : 0x0000014d -> block[1].left=333
+                #   Bytes 14-17 : 0x000001bc -> block[1].right=444
+                #   Bytes 18-21 : 0x0000022b -> block[2].left=555
+                #   Bytes 22-25 : 0x0000029a -> block[2].right=666
+                #   Bytes 26-29 : 0x00000309 -> block[3].left=777
+                #   Bytes 30-33 : 0x00000378 -> block[3].right=888
                 "__bytes__": (
                     b"\x05\x22\x00\x00\x00\x6f\x00\x00\x00\xde\x00\x00\x01\x4d\x00\x00"
                     b"\x01\xbc\x00\x00\x02\x2b\x00\x00\x02\x9a\x00\x00\x03\x09\x00\x00"
                     b"\x03\x78"
                 ),
-                "type": TcpOptionType.SACK,
                 "length": TCP__OPTION__LEN + 8 * 4,
-                "blocks": [
-                    TcpSackBlock(111, 222),
-                    TcpSackBlock(333, 444),
-                    TcpSackBlock(555, 666),
-                    TcpSackBlock(777, 888),
-                ],
             },
         },
     ]
@@ -188,171 +195,184 @@ class TestTcpOptionSackAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, TcpSackBlock]
+    _blocks: list[TcpSackBlock]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the TCP Sack option object with testcase arguments.
+        Build the TCP Sack option from the parametrized block list.
         """
 
-        self._option = TcpOptionSack(*self._args, **self._kwargs)  # type: ignore
+        self._option = TcpOptionSack(self._blocks)
 
     def test__tcp__option__sack__len(self) -> None:
         """
-        Ensure the TCP Sack option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the expected total option length
+        (2-byte header + 8 bytes per block).
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__tcp__option__sack__str(self) -> None:
         """
-        Ensure the TCP Sack option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__tcp__option__sack__repr(self) -> None:
         """
-        Ensure the TCP Sack option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__tcp__option__sack__bytes(self) -> None:
         """
-        Ensure the TCP Sack option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire frame.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__tcp__option__sack__blocks(self) -> None:
         """
-        Ensure the TCP Sack option 'blocks' field contains a correct value.
+        Ensure the 'blocks' field exposes the provided block list.
         """
 
         self.assertEqual(
             self._option.blocks,
-            self._results["blocks"],
+            self._blocks,
+            msg=f"Unexpected 'blocks' field for case: {self._description}",
         )
 
     def test__tcp__option__sack__type(self) -> None:
         """
-        Ensure the TCP Sack option 'type' field contains a correct value.
+        Ensure the 'type' field is TcpOptionType.SACK.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            TcpOptionType.SACK,
+            msg=f"Unexpected 'type' field for case: {self._description}",
         )
 
     def test__tcp__option__sack__length(self) -> None:
         """
-        Ensure the TCP Sack option 'len' field contains a correct value.
+        Ensure the 'len' field equals TCP__OPTION__LEN + 8 * num_blocks.
         """
 
         self.assertEqual(
             self._option.len,
             self._results["length"],
+            msg=f"Unexpected 'len' field for case: {self._description}",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Sack option (I).",
-            "_args": [
-                b"\x05\x02" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionSack(blocks=[]),
-            },
+            "_description": "TCP Sack option, zero blocks (empty Sack) with trailing bytes.",
+            "_args": [b"\x05\x02" + b"ZH0PA"],
+            "_expected": TcpOptionSack(blocks=[]),
         },
         {
-            "_description": "The TCP Sack option (II).",
-            "_args": [
-                b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionSack(
-                    blocks=[
-                        TcpSackBlock(4294967295, 4294967295),
-                    ],
-                ),
-            },
+            "_description": "TCP Sack option, single block with trailing bytes.",
+            "_args": [b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA"],
+            "_expected": TcpOptionSack(blocks=[TcpSackBlock(4294967295, 4294967295)]),
         },
         {
-            "_description": "The TCP Sack option (III).",
+            "_description": "TCP Sack option, three blocks with trailing bytes.",
             "_args": [
                 b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
-                b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a" + b"ZH0PA",
+                b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a" + b"ZH0PA"
             ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionSack(
-                    blocks=[
-                        TcpSackBlock(1111, 2222),
-                        TcpSackBlock(3333, 4444),
-                        TcpSackBlock(5555, 6666),
-                    ],
-                ),
-            },
+            "_expected": TcpOptionSack(
+                blocks=[
+                    TcpSackBlock(1111, 2222),
+                    TcpSackBlock(3333, 4444),
+                    TcpSackBlock(5555, 6666),
+                ]
+            ),
         },
         {
-            "_description": "The TCP Sack option (IV).",
+            "_description": "TCP Sack option, four blocks (max) with trailing bytes.",
             "_args": [
                 b"\x05\x22\x00\x00\x00\x6f\x00\x00\x00\xde\x00\x00\x01\x4d\x00\x00"
                 b"\x01\xbc\x00\x00\x02\x2b\x00\x00\x02\x9a\x00\x00\x03\x09\x00\x00"
-                b"\x03\x78" + b"ZH0PA",
+                b"\x03\x78" + b"ZH0PA"
             ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionSack(
-                    blocks=[
-                        TcpSackBlock(111, 222),
-                        TcpSackBlock(333, 444),
-                        TcpSackBlock(555, 666),
-                        TcpSackBlock(777, 888),
-                    ],
-                ),
-            },
+            "_expected": TcpOptionSack(
+                blocks=[
+                    TcpSackBlock(111, 222),
+                    TcpSackBlock(333, 444),
+                    TcpSackBlock(555, 666),
+                    TcpSackBlock(777, 888),
+                ]
+            ),
         },
+    ]
+)
+class TestTcpOptionSackParser(TestCase):
+    """
+    The TCP Sack option parser positive tests.
+    """
+
+    _description: str
+    _args: list[Any]
+    _expected: TcpOptionSack
+
+    def test__tcp__option__sack__from_buffer(self) -> None:
+        """
+        Ensure from_buffer parses the Sack wire frame into the expected
+        TcpOptionSack (trailing bytes must be ignored).
+        """
+
+        option = TcpOptionSack.from_buffer(*self._args)
+
+        self.assertEqual(
+            option,
+            self._expected,
+            msg=f"Unexpected parsed option for case: {self._description}",
+        )
+
+
+@parameterized_class(
+    [
         {
-            "_description": "The TCP Sack option minimum length assert.",
-            "_args": [
-                b"\x05",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option, buffer shorter than TCP__OPTION__LEN (2).",
+            "_args": [b"\x05"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the TCP Sack option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the TCP Sack option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The TCP Sack option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff\x02",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option, buffer empty (zero-length).",
+            "_args": [b""],
+            "_results": {
+                "error": AssertionError,
+                "error_message": "The minimum length of the TCP Sack option must be 2 bytes. Got: 0",
+            },
+        },
+        {
+            "_description": "TCP Sack option, buffer 'type' byte is not TcpOptionType.SACK.",
+            "_args": [b"\xff\x02"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -361,26 +381,19 @@ class TestTcpOptionSackAssembler(TestCase):
             },
         },
         {
-            "_description": "The TCP Sack option length integrity check (II).",
-            "_args": [
-                b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option, declared 'len' exceeds provided buffer size.",
+            "_args": [b"\x05\x0a\xff\xff\xff\xff\xff\xff\xff"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sack option length value must "
-                    "be less than or equal to the length of provided bytes "
-                    "(9). Got: 10"
+                    "[INTEGRITY ERROR][TCP] The TCP Sack option length value must be "
+                    "less than or equal to the length of provided bytes (9). Got: 10"
                 ),
             },
         },
         {
-            "_description": "The TCP Sack option length integrity check (III).",
-            "_args": [
-                b"\x05\x0b\xff\xff\xff\xff\xff\xff\xff\xff\x00",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sack option, (len - 2) is not a multiple of 8 (malformed block alignment).",
+            "_args": [b"\x05\x0b\xff\xff\xff\xff\xff\xff\xff\xff\x00"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
@@ -390,35 +403,26 @@ class TestTcpOptionSackAssembler(TestCase):
         },
     ]
 )
-class TestTcpOptionSackParser(TestCase):
+class TestTcpOptionSackParserFailures(TestCase):
     """
-    The TCP Sack option parser tests.
+    The TCP Sack option parser failure-path tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__sack__from_buffer(self) -> None:
+    def test__tcp__option__sack__from_buffer__error(self) -> None:
         """
-        Ensure the TCP Sackp option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = TcpOptionSack.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            TcpOptionSack.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                TcpOptionSack.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
