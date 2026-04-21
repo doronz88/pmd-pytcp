@@ -25,7 +25,7 @@
 
 
 """
-This module contains tests for the UDP packet assembler operation.
+This module contains tests for the UDP protocol packet assembling functionality.
 
 net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py
 
@@ -34,19 +34,18 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
-from net_proto import Tracker, UdpAssembler, UdpHeader
+from net_proto import UDP__HEADER__LEN, Tracker, UdpAssembler, UdpHeader
 from net_proto.lib.buffer import Buffer
 
 
 @parameterized_class(
     [
         {
-            "_description": "UDP packet with the empty payload.",
-            "_args": [],
+            "_description": "UDP packet with no payload, maximum port values.",
             "_kwargs": {
                 "udp__sport": 65535,
                 "udp__dport": 65535,
@@ -55,9 +54,12 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 8,
                 "__str__": "UDP 65535 > 65535, len 8 (8+0)",
-                "__repr__": (
-                    "UdpAssembler(header=UdpHeader(sport=65535, dport=65535, " "plen=8, cksum=0), payload=b'')"
-                ),
+                "__repr__": "UdpAssembler(header=UdpHeader(sport=65535, dport=65535, plen=8, cksum=0), payload=b'')",
+                # UDP wire frame (8 bytes, header-only):
+                #   Bytes 0-1 : 0xffff -> sport=65535
+                #   Bytes 2-3 : 0xffff -> dport=65535
+                #   Bytes 4-5 : 0x0008 -> plen=8 (UDP__HEADER__LEN)
+                #   Bytes 6-7 : 0xfff7 -> cksum (computed by assemble())
                 "__bytes__": b"\xff\xff\xff\xff\x00\x08\xff\xf7",
                 "sport": 65535,
                 "dport": 65535,
@@ -73,8 +75,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "UDP packet with the non-empty payload.",
-            "_args": [],
+            "_description": "UDP packet with 16-byte ASCII payload.",
             "_kwargs": {
                 "udp__sport": 12345,
                 "udp__dport": 54321,
@@ -87,6 +88,12 @@ from net_proto.lib.buffer import Buffer
                     "UdpAssembler(header=UdpHeader(sport=12345, dport=54321, "
                     "plen=24, cksum=0), payload=b'0123456789ABCDEF')"
                 ),
+                # UDP wire frame (24 bytes = 8-byte header + 16-byte payload):
+                #   Bytes 0-1  : 0x3039 -> sport=12345
+                #   Bytes 2-3  : 0xd431 -> dport=54321
+                #   Bytes 4-5  : 0x0018 -> plen=24
+                #   Bytes 6-7  : 0x2ca6 -> cksum (computed by assemble())
+                #   Bytes 8-23 : b"0123456789ABCDEF" (ASCII payload)
                 "__bytes__": (
                     b"\x30\x39\xd4\x31\x00\x18\x2c\xa6\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
@@ -105,8 +112,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "UDP packet with the maximum length payload.",
-            "_args": [],
+            "_description": "UDP packet with maximum 65527-byte payload (total 65535).",
             "_kwargs": {
                 "udp__sport": 11111,
                 "udp__dport": 22222,
@@ -117,8 +123,14 @@ from net_proto.lib.buffer import Buffer
                 "__str__": "UDP 11111 > 22222, len 65535 (8+65527)",
                 "__repr__": (
                     "UdpAssembler(header=UdpHeader(sport=11111, dport=22222, "
-                    f"plen=65535, cksum=0), payload=b'{"X" * 65527}')"
+                    f"plen=65535, cksum=0), payload=b'{'X' * 65527}')"
                 ),
+                # UDP wire frame (65535 bytes = 8-byte header + 65527-byte payload):
+                #   Bytes 0-1 : 0x2b67 -> sport=11111
+                #   Bytes 2-3 : 0x56ce -> dport=22222
+                #   Bytes 4-5 : 0xffff -> plen=65535 (UINT_16__MAX)
+                #   Bytes 6-7 : 0xb357 -> cksum (computed by assemble())
+                #   Bytes 8+  : 65527 bytes of 'X'
                 "__bytes__": b"\x2b\x67\x56\xce\xff\xff\xb3\x57" + b"X" * 65527,
                 "sport": 11111,
                 "dport": 22222,
@@ -141,131 +153,132 @@ class TestUdpAssemblerOperation(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the UDP packet assembler object with testcase arguments.
+        Build the UDP packet assembler from the parametrized kwargs.
         """
 
-        self._udp__assembler = UdpAssembler(*self._args, **self._kwargs)
+        self._udp__assembler = UdpAssembler(**self._kwargs)
 
     def test__udp__assembler__len(self) -> None:
         """
-        Ensure the UDP packet assembler '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns header + payload bytes.
         """
 
         self.assertEqual(
             len(self._udp__assembler),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__udp__assembler__str(self) -> None:
         """
-        Ensure the UDP packet assembler '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._udp__assembler),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__udp__assembler__repr(self) -> None:
         """
-        Ensure the UDP packet assembler '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._udp__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__udp__assembler__bytes(self) -> None:
         """
-        Ensure the UDP packet assembler '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire-frame bytes.
         """
 
         self.assertEqual(
             bytes(self._udp__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__udp__assembler__sport(self) -> None:
         """
-        Ensure the UDP packet assembler 'sport' property returns a correct
-        value.
+        Ensure the 'sport' property returns the provided source port.
         """
 
         self.assertEqual(
             self._udp__assembler.sport,
             self._results["sport"],
+            msg=f"Unexpected 'sport' for case: {self._description}",
         )
 
     def test__udp__assembler__dport(self) -> None:
         """
-        Ensure the UDP packet assembler 'dport' property returns a correct
-        value.
+        Ensure the 'dport' property returns the provided destination port.
         """
 
         self.assertEqual(
             self._udp__assembler.dport,
             self._results["dport"],
+            msg=f"Unexpected 'dport' for case: {self._description}",
         )
 
     def test__udp__assembler__plen(self) -> None:
         """
-        Ensure the UDP packet assembler 'plen' property returns a correct
-        value.
+        Ensure the 'plen' property returns the computed packet length
+        (UDP__HEADER__LEN + len(payload)).
         """
 
         self.assertEqual(
             self._udp__assembler.plen,
             self._results["plen"],
+            msg=f"Unexpected 'plen' for case: {self._description}",
         )
 
     def test__udp__assembler__cksum(self) -> None:
         """
-        Ensure the UDP packet assembler 'cksum' property returns a correct
-        value.
+        Ensure the 'cksum' property returns 0 on the assembler (the field
+        is populated only inside the __bytes__ / assemble() buffer).
         """
 
         self.assertEqual(
             self._udp__assembler.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
     def test__udp__assembler__header(self) -> None:
         """
-        Ensure the UDP packet assembler 'header' property returns a correct
-        value.
+        Ensure the 'header' property returns the computed UdpHeader.
         """
 
         self.assertEqual(
             self._udp__assembler.header,
             self._results["header"],
+            msg=f"Unexpected 'header' for case: {self._description}",
         )
 
     def test__udp__assembler__payload(self) -> None:
         """
-        Ensure the UDP packet assembler 'payload' property returns a correct
-        value.
+        Ensure the 'payload' property returns the provided payload bytes.
         """
 
         self.assertEqual(
             self._udp__assembler.payload,
             self._results["payload"],
+            msg=f"Unexpected 'payload' for case: {self._description}",
         )
 
     def test__udp__assembler__assemble(self) -> None:
         """
-        Ensure the UDP packet assembler 'assemble()' method returns a correct
-        value.
+        Ensure 'assemble()' appends header and payload in order and the
+        concatenation matches '__bytes__'.
         """
 
         buffers: list[Buffer] = []
@@ -275,6 +288,33 @@ class TestUdpAssemblerOperation(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected concatenated buffers for case: {self._description}",
+        )
+
+    def test__udp__assembler__assemble__buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' appends exactly two buffers — header then
+        payload — so downstream code can locate them by index.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._udp__assembler.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg="UdpAssembler.assemble must append header + payload.",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            UDP__HEADER__LEN,
+            msg="UdpAssembler.assemble must append the 8-byte fixed header first.",
+        )
+        self.assertEqual(
+            len(buffers[1]),
+            len(self._results["payload"]),
+            msg="UdpAssembler.assemble must append the payload buffer second.",
         )
 
 
@@ -285,8 +325,8 @@ class TestUdpAssemblerMisc(TestCase):
 
     def test__udp__assembler__echo_tracker(self) -> None:
         """
-        Ensure the UDP packet assembler 'tracker' property returns
-        a correct value.
+        Ensure the UDP packet assembler stores the provided echo_tracker
+        on its internal Tracker.
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -296,4 +336,44 @@ class TestUdpAssemblerMisc(TestCase):
         self.assertEqual(
             udp__assembler.tracker.echo_tracker,
             echo_tracker,
+            msg="Assembler tracker must carry the provided echo_tracker.",
+        )
+
+    def test__udp__assembler__defaults(self) -> None:
+        """
+        Ensure the assembler with no arguments produces a minimal valid
+        8-byte zeroed-out UDP header with an empty payload.
+        """
+
+        assembler = UdpAssembler()
+
+        self.assertEqual(
+            assembler.sport,
+            0,
+            msg="Default 'sport' must be 0.",
+        )
+        self.assertEqual(
+            assembler.dport,
+            0,
+            msg="Default 'dport' must be 0.",
+        )
+        self.assertEqual(
+            assembler.plen,
+            UDP__HEADER__LEN,
+            msg="Default 'plen' must be UDP__HEADER__LEN (8).",
+        )
+        self.assertEqual(
+            assembler.cksum,
+            0,
+            msg="Default 'cksum' must be 0.",
+        )
+        self.assertEqual(
+            bytes(assembler.payload),
+            b"",
+            msg="Default 'payload' must be empty.",
+        )
+        self.assertEqual(
+            len(assembler),
+            UDP__HEADER__LEN,
+            msg="Default-constructed assembler must serialize to 8 bytes (header only).",
         )
