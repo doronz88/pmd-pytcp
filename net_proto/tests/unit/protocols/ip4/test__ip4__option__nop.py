@@ -34,150 +34,158 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import IP4__OPTION__NOP__LEN, Ip4OptionNop, Ip4OptionType
 
 
-class TestIp4OptionNopAsserts(TestCase):
-    """
-    The IPv4 Nop option constructor argument assert tests.
-    """
-
-    # Currently the IPv4 Nop option does not have any constructor
-    # argument asserts.
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "The IPv4 Nop option.",
-            "_args": [],
-            "_kwargs": {},
-            "_results": {
-                "__len__": 1,
-                "__str__": "nop",
-                "__repr__": "Ip4OptionNop()",
-                "__bytes__": b"\x01",
-                "type": Ip4OptionType.NOP,
-                "len": IP4__OPTION__NOP__LEN,
-            },
-        },
-    ]
-)
 class TestIp4OptionNopAssembler(TestCase):
     """
     The IPv4 Nop option assembler tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def setUp(self) -> None:
         """
-        Initialize the IPv4 Nop option object with testcase arguments.
+        Build the IPv4 Nop option; the option takes no constructor args.
         """
 
-        self._option = Ip4OptionNop(*self._args, **self._kwargs)
+        self._option = Ip4OptionNop()
 
     def test__ip4__option__nop__len(self) -> None:
         """
-        Ensure the IPv4 Nop option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns IP4__OPTION__NOP__LEN (1 byte).
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            IP4__OPTION__NOP__LEN,
+            msg="Unexpected __len__ for IPv4 Nop option.",
         )
 
     def test__ip4__option__nop__str(self) -> None:
         """
-        Ensure the IPv4 Nop option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the log string 'nop'.
         """
 
         self.assertEqual(
             str(self._option),
-            self._results["__str__"],
+            "nop",
+            msg="Unexpected __str__ for IPv4 Nop option.",
         )
 
     def test__ip4__option__nop__repr(self) -> None:
         """
-        Ensure the IPv4 Nop option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns 'Ip4OptionNop()'.
         """
 
         self.assertEqual(
             repr(self._option),
-            self._results["__repr__"],
+            "Ip4OptionNop()",
+            msg="Unexpected __repr__ for IPv4 Nop option.",
         )
 
     def test__ip4__option__nop__bytes(self) -> None:
         """
-        Ensure the IPv4 Nop option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the single wire byte 0x01.
         """
 
+        # IPv4 Nop option wire format:
+        #   Type: 0x01 (Ip4OptionType.NOP)
         self.assertEqual(
             bytes(self._option),
-            self._results["__bytes__"],
+            b"\x01",
+            msg="Unexpected __bytes__ for IPv4 Nop option.",
         )
 
     def test__ip4__option__nop__type(self) -> None:
         """
-        Ensure the IPv4 Nop option 'type' field contains a correct value.
+        Ensure the 'type' field is Ip4OptionType.NOP.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            Ip4OptionType.NOP,
+            msg="Unexpected 'type' field for IPv4 Nop option.",
         )
 
-    def test__ip4__option__nop__lenght(self) -> None:
+    def test__ip4__option__nop__length(self) -> None:
         """
-        Ensure the IPv4 Nop option 'len' field contains a correct value.
+        Ensure the 'len' field equals IP4__OPTION__NOP__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            IP4__OPTION__NOP__LEN,
+            msg="Unexpected 'len' field for IPv4 Nop option.",
+        )
+
+
+class TestIp4OptionNopParser(TestCase):
+    """
+    The IPv4 Nop option parser positive tests.
+    """
+
+    def test__ip4__option__nop__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses a 1-byte Nop whose buffer length
+        exactly matches IP4__OPTION__NOP__LEN.
+        """
+
+        # IPv4 Nop option wire format (exactly 1 byte):
+        #   Type: 0x01 (Ip4OptionType.NOP)
+        buffer = b"\x01"
+
+        self.assertEqual(
+            len(buffer),
+            IP4__OPTION__NOP__LEN,
+            msg="Fixture must match IP4__OPTION__NOP__LEN.",
+        )
+
+        option = Ip4OptionNop.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionNop(),
+            msg="Parsed option must equal the reference Ip4OptionNop.",
+        )
+
+    def test__ip4__option__nop__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses a Nop option when the buffer carries
+        trailing bytes past the 1-byte option payload (those trailing
+        bytes are consumed by the next option in the options container).
+        """
+
+        # IPv4 Nop option wire format followed by 5 trailing bytes that
+        # must be ignored by Ip4OptionNop.from_buffer:
+        #   Type: 0x01 (Ip4OptionType.NOP)
+        #   Trail: b"ZH0PA"
+        buffer = b"\x01" + b"ZH0PA"
+
+        option = Ip4OptionNop.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionNop(),
+            msg="Parsed option must equal the reference Ip4OptionNop (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The IPv4 Nop option.",
-            "_args": [
-                b"\x01" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": Ip4OptionNop(),
-            },
-        },
-        {
-            "_description": "The IPv4 Nop option minimum length assert.",
-            "_args": [
-                b"",
-            ],
-            "_kwargs": {},
+            "_description": "IPv4 Nop option, buffer shorter than IP4__OPTION__NOP__LEN.",
+            "_args": [b""],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the IPv4 Nop option must be 1 " "byte. Got: 0"),
+                "error_message": "The minimum length of the IPv4 Nop option must be 1 byte. Got: 0",
             },
         },
         {
-            "_description": "The IPv4 Nop option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff",
-            ],
-            "_kwargs": {},
+            "_description": "IPv4 Nop option, buffer 'type' byte is not Ip4OptionType.NOP.",
+            "_args": [b"\xff"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -185,37 +193,39 @@ class TestIp4OptionNopAssembler(TestCase):
                 ),
             },
         },
+        {
+            "_description": "IPv4 Nop option, buffer 'type' byte is Eol (another known type).",
+            "_args": [b"\x00"],
+            "_results": {
+                "error": AssertionError,
+                "error_message": (
+                    f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. " f"Got: {Ip4OptionType.EOL!r}"
+                ),
+            },
+        },
     ]
 )
-class TestIp4OptionNopParser(TestCase):
+class TestIp4OptionNopParserFailures(TestCase):
     """
-    The IPv4 Nop option parser tests.
+    The IPv4 Nop option parser failure-path tests (assertion errors on
+    short and mistyped buffers).
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__ip4__option__nop__from_buffer(self) -> None:
+    def test__ip4__option__nop__from_buffer__error(self) -> None:
         """
-        Ensure the IPv4 Nop option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = Ip4OptionNop.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            Ip4OptionNop.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Ip4OptionNop.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )

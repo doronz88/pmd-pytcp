@@ -97,13 +97,15 @@ class Ip4OptionNop(Ip4Option):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= IP4__OPTION__NOP__LEN, (
-            f"The minimum length of the IPv4 Nop option must be " f"{IP4__OPTION__NOP__LEN} byte. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= IP4__OPTION__NOP__LEN, (
+            f"The minimum length of the IPv4 Nop option must be {IP4__OPTION__NOP__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(Ip4OptionType.NOP), (
-            f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. " f"Got: {Ip4OptionType.from_int(value)!r}"
-        )
+        assert (value := buffer[0]) == int(
+            Ip4OptionType.NOP
+        ), f"The IPv4 Nop option type must be {Ip4OptionType.NOP!r}. Got: {Ip4OptionType.from_int(value)!r}"
 
         return cls()
