@@ -33,85 +33,68 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto import PacketRx, UdpParser, UdpSanityError
-from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
 
-testcases: list[dict[str, Any]] = [
-    {
-        "_description": "The value of the 'sport' field equals 0.",
-        "_args": [
-            b"\x00\x00\xd4\x31\x00\x08\x2b\xc6",
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "error_message": ("The 'sport' field must be greater than 0. Got: 0"),
+
+@parameterized_class(
+    [
+        {
+            "_description": "The 'sport' field equals 0.",
+            # UDP wire frame (8 bytes, header-only):
+            #   Bytes 0-1 : 0x0000 -> sport=0 (sanity violation)
+            #   Bytes 2-3 : 0xd431 -> dport=54321
+            #   Bytes 4-5 : 0x0008 -> plen=8
+            #   Bytes 6-7 : 0x2bc6 -> cksum (valid for init=0)
+            "_frame_rx": b"\x00\x00\xd4\x31\x00\x08\x2b\xc6",
+            "_error_message": "The 'sport' field must be greater than 0. Got: 0",
         },
-    },
-    {
-        "_description": "The value of the 'dport' field equals 0.",
-        "_args": [
-            b"\x30\x39\x00\x00\x00\x08\xcf\xbe",
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "error_message": ("The 'dport' field must be greater than 0. Got: 0"),
+        {
+            "_description": "The 'dport' field equals 0.",
+            # UDP wire frame (8 bytes, header-only):
+            #   Bytes 0-1 : 0x3039 -> sport=12345
+            #   Bytes 2-3 : 0x0000 -> dport=0 (sanity violation)
+            #   Bytes 4-5 : 0x0008 -> plen=8
+            #   Bytes 6-7 : 0xcfbe -> cksum (valid for init=0)
+            "_frame_rx": b"\x30\x39\x00\x00\x00\x08\xcf\xbe",
+            "_error_message": "The 'dport' field must be greater than 0. Got: 0",
         },
-    },
-]
-
-
-@parameterized_class(testcases)
-class TestUdpParserSanityChecks__Ip4(TestCasePacketRxIp4):
+    ]
+)
+class TestUdpParserSanityChecks(TestCase):
     """
     The UDP packet parser sanity checks tests.
+
+    The UDP parser reads only 'ip.payload_len' and 'ip.pshdr_sum' from
+    the containing IP layer, so a SimpleNamespace stub is sufficient and
+    the tests are agnostic to whether the carrier is IPv4 or IPv6.
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _mocked_values: dict[str, Any]
-    _results: dict[str, Any]
+    _frame_rx: bytes
+    _error_message: str
 
-    _packet_rx: PacketRx
-
-    def test__udp__parser(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the UDP packet parser raises sanity errors on crazy packets.
+        Wrap the parametrized frame in a PacketRx and stub the IP layer
+        attributes the UDP parser reads from it.
         """
 
-        with self.assertRaises(UdpSanityError) as error:
-            UdpParser(self._packet_rx)
-
-        self.assertEqual(
-            str(error.exception),
-            f"[SANITY ERROR][UDP] {self._results["error_message"]}",
+        self._packet_rx = PacketRx(self._frame_rx)
+        self._packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(self._frame_rx),
+            pshdr_sum=0,
         )
 
-
-@parameterized_class(testcases)
-class TestUdpParserSanityChecks__Ip6(TestCasePacketRxIp6):
-    """
-    The UDP packet parser sanity checks tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _mocked_values: dict[str, Any]
-    _results: dict[str, Any]
-
-    _packet_rx: PacketRx
-
-    def test__udp__parser(self) -> None:
+    def test__udp__parser__sanity_error(self) -> None:
         """
-        Ensure the UDP packet parser raises sanity errors on crazy packets.
+        Ensure the UDP packet parser raises UdpSanityError with the
+        expected message for each frame that is structurally well-formed
+        but logically inconsistent.
         """
 
         with self.assertRaises(UdpSanityError) as error:
@@ -119,5 +102,6 @@ class TestUdpParserSanityChecks__Ip6(TestCasePacketRxIp6):
 
         self.assertEqual(
             str(error.exception),
-            f"[SANITY ERROR][UDP] {self._results["error_message"]}",
+            f"[SANITY ERROR][UDP] {self._error_message}",
+            msg=f"Unexpected sanity-error message for case: {self._description}",
         )
