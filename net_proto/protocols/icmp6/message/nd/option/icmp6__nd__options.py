@@ -117,7 +117,7 @@ class Icmp6NdOptions(ProtoOptions):
         offset: int,
     ) -> None:
         """
-        Run the IPv4 options integrity checks before parsing options.
+        Run the ICMPv6 ND options integrity checks before parsing options.
         """
 
         plen = len(frame)
@@ -125,13 +125,13 @@ class Icmp6NdOptions(ProtoOptions):
         while offset < plen:
             if (value := frame[offset + 1] << 3) < 8:
                 raise Icmp6IntegrityError(
-                    f"The ICMPv6 ND option length must be greater than or equal to 8." f"Got: {value!r}.",
+                    f"The ICMPv6 ND option length must be greater than or equal to 8. Got: {value!r}.",
                 )
 
             offset += frame[offset + 1] << 3
             if offset > plen:
                 raise Icmp6IntegrityError(
-                    f"The ICMPv6 ND option length must not extend past the header " f"length. Got: {offset=}, {plen=}",
+                    f"The ICMPv6 ND option length must not extend past the header length. Got: {offset=}, {plen=}",
                 )
 
     @override
