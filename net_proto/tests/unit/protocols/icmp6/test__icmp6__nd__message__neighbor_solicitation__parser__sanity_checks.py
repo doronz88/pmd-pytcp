@@ -25,239 +25,328 @@
 
 
 """
-Module contains tests for the ICMPv6 ND Neighbor Solicitation message parser sanity
-checks.
+Module contains tests for the ICMPv6 ND Neighbor Solicitation message parser
+sanity checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_addvertisement__parser__sanity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicitation__parser__sanity_checks.py
 
 ver 3.0.4
 """
 
 
-from typing import Any
-
-from parameterized import parameterized_class  # type: ignore
+from types import SimpleNamespace
+from typing import cast
+from unittest import TestCase
 
 from net_addr import Ip6Address
-from net_proto import Icmp6Parser, Icmp6SanityError, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+from net_proto import Icmp6Parser, Icmp6SanityError, Ip6Parser, PacketRx
 
-
-@parameterized_class(
-    [
-        {
-            "_description": ("The value of the 'ip6__hop' field must be 255. It's 64."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 64,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {
-                "error_message": ("ND Neighbor Solicitation - [RFC 4861] The 'ip6__hop' field " "must be 255. Got: 64"),
-            },
-        },
-        {
-            "_description": ("The value of the 'ip6__hop' field must be 255. It's 255."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's multicast."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("ff02::1"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {
-                "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address "
-                    "must be unicast or unspecified. Got: Ip6Address('ff02::1')"
-                ),
-            },
-        },
-        {
-            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's unicast."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": ("The value of the 'ip6__src' must be unicast or unspecified. " "It's unspecified."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("::"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": (
-                "The value of the 'ip6__dst' must be same as target address or its "
-                "solicited-node multicast address. It's different."
-            ),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::1"),
-                "ip6__dst": Ip6Address("2001:db8::2"),
-            },
-            "_results": {
-                "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address must "
-                    "be the same as 'target_address' address or related solicited-node "
-                    "multicast address. Got: Ip6Address('2001:db8::2')"
-                ),
-            },
-        },
-        {
-            "_description": (
-                "The value of the 'ip6__dst' must be same as target address or its "
-                "solicited-node multicast address. It's the same as target address."
-            ),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": (
-                "The value of the 'ip6__dst' must be same as target address or its "
-                "solicited-node multicast address. It's the related solicited-node "
-                "multicast address."
-            ),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("ff02::1:ff00:1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": ("The target address must be unicast. It's unspecified."),
-            "_args": [
-                b"\x87\x00\x78\xff\x00\x00\x00\x00\00\x00\x00\x00\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x00"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("::"),
-            },
-            "_results": {
-                "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] The 'target_address' address "
-                    "must be unicast. Got: Ip6Address('::')"
-                ),
-            },
-        },
-        {
-            "_description": ("The target address must be unicast. It's unicast."),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::2"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-        {
-            "_description": (
-                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. " "It's not present."
-            ),
-            "_args": [
-                b"\x87\x00\xe3\xa9\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("::"),
-                "ip6__dst": Ip6Address("2001:db8::2"),
-            },
-            "_results": {
-                "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' is "
-                    "unspecified, the 'slla' option must not be included. Got: "
-                    "MacAddress('00:11:22:33:44:55')"
-                ),
-            },
-        },
-        {
-            "_description": (
-                "If the 'ip6__src' is unspecified, the 'slla' option must not be present. " "It's not present."
-            ),
-            "_args": [
-                b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
-            ],
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("::"),
-                "ip6__dst": Ip6Address("2001:db8::1"),
-            },
-            "_results": {},
-        },
-    ]
+# Valid 24-byte NS, target 2001:db8::1, checksum 0x4b45 with pshdr_sum=0.
+_NS_TARGET_UNICAST_FRAME = (
+    b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
 )
-class TestIcmp4NdMessageNeighborSolicitationParserSanityChecks(TestCasePacketRxIp6):
+
+# Valid 24-byte NS, target :: (unspecified — used to exercise the
+# target-address unicast rule), checksum 0x78ff with pshdr_sum=0.
+_NS_TARGET_UNSPECIFIED_FRAME = b"\x87\x00\x78\xff" + bytes(4) + bytes(16)
+
+# Valid 32-byte NS, target 2001:db8::2, SLLA option present, checksum
+# 0xe3a9 with pshdr_sum=0 — used to exercise the "slla forbidden when
+# ip6__src is unspecified" rule.
+_NS_WITH_SLLA_FRAME = (
+    b"\x87\x00\xe3\xa9\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
+    b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
+)
+
+
+def _packet_rx_with_ip6(
+    frame: bytes,
+    *,
+    ip6__hop: int,
+    ip6__src: Ip6Address,
+    ip6__dst: Ip6Address,
+) -> PacketRx:
     """
-    The ICMPv6 ND Neighbor Solicitation message parser sanity checks tests.
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads off 'packet_rx.ip6' so the ND Neighbor Solicitation
+    sanity rules can be exercised in both directions.
     """
 
-    _description: str
-    _args: list[Any]
-    _mocked_values: dict[str, Any]
-    _results: dict[str, Any]
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame),
+            payload_len=len(frame),
+            pshdr_sum=0,
+            src=ip6__src,
+            dst=ip6__dst,
+            hop=ip6__hop,
+        ),
+    )
+    return packet_rx
 
-    _packet_rx: PacketRx
 
-    def test__icmp6__nd__message__neighbor_solicitation__parser(
-        self,
-    ) -> None:
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksHop(TestCase):
+    """
+    Sanity-check tests for the 'ip6__hop' field (RFC 4861 requires 255).
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__hop_not_255__rejected(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Solicitation parser raises sanity errors
-        on crazy packets.
+        Ensure every ip6__hop value other than 255 is rejected with the
+        canonical Icmp6SanityError message.
         """
 
-        if "error_message" in self._results:
-            with self.assertRaises(Icmp6SanityError) as error:
-                Icmp6Parser(self._packet_rx)
+        for hop in (0, 1, 64, 128, 254):
+            with self.subTest(ip6__hop=hop):
+                with self.assertRaises(Icmp6SanityError) as error:
+                    Icmp6Parser(
+                        _packet_rx_with_ip6(
+                            _NS_TARGET_UNICAST_FRAME,
+                            ip6__hop=hop,
+                            ip6__src=Ip6Address("2001:db8::2"),
+                            ip6__dst=Ip6Address("2001:db8::1"),
+                        )
+                    )
 
-            self.assertEqual(
-                str(error.exception),
-                f"[SANITY ERROR][ICMPv6] {self._results["error_message"]}",
+                self.assertEqual(
+                    str(error.exception),
+                    (
+                        "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                        f"The 'ip6__hop' field must be 255. Got: {hop!r}"
+                    ),
+                    msg=f"Unexpected sanity-error message for ip6__hop={hop}.",
+                )
+
+    def test__icmp6__nd__message__neighbor_solicitation__hop_255__accepted(self) -> None:
+        """
+        Ensure ip6__hop == 255 passes the sanity check.
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("2001:db8::2"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
+
+
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
+    """
+    Sanity-check tests for the 'ip6__src' field (RFC 4861 requires unicast
+    or unspecified).
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__src_multicast__rejected(self) -> None:
+        """
+        Ensure a multicast 'ip6__src' is rejected.
+        """
+
+        src = Ip6Address("ff02::1")
+
+        with self.assertRaises(Icmp6SanityError) as error:
+            Icmp6Parser(
+                _packet_rx_with_ip6(
+                    _NS_TARGET_UNICAST_FRAME,
+                    ip6__hop=255,
+                    ip6__src=src,
+                    ip6__dst=Ip6Address("2001:db8::1"),
+                )
             )
 
-        else:
-            Icmp6Parser(self._packet_rx)
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                f"The 'ip6__src' address must be unicast or unspecified. Got: {src!r}"
+            ),
+            msg="Unexpected sanity-error message for multicast 'ip6__src'.",
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__src_unicast__accepted(self) -> None:
+        """
+        Ensure a unicast 'ip6__src' passes the sanity check.
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("2001:db8::2"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__src_unspecified__accepted(self) -> None:
+        """
+        Ensure an unspecified 'ip6__src' passes the sanity check (DAD case).
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("::"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
+
+
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDst(TestCase):
+    """
+    Sanity-check tests for the 'ip6__dst' field (RFC 4861 requires
+    equality with target_address or its solicited-node multicast).
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__dst_unrelated__rejected(self) -> None:
+        """
+        Ensure an 'ip6__dst' that is neither the target_address nor its
+        solicited-node multicast address is rejected.
+        """
+
+        dst = Ip6Address("2001:db8::2")
+
+        with self.assertRaises(Icmp6SanityError) as error:
+            Icmp6Parser(
+                _packet_rx_with_ip6(
+                    _NS_TARGET_UNICAST_FRAME,
+                    ip6__hop=255,
+                    ip6__src=Ip6Address("2001:db8::2"),
+                    ip6__dst=dst,
+                )
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                "The 'ip6__dst' address must be the same as 'target_address' "
+                f"address or related solicited-node multicast address. Got: {dst!r}"
+            ),
+            msg="Unexpected sanity-error message for unrelated 'ip6__dst'.",
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__dst_target__accepted(self) -> None:
+        """
+        Ensure an 'ip6__dst' equal to the target_address passes.
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("2001:db8::2"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__dst_solicited_node_multicast__accepted(self) -> None:
+        """
+        Ensure an 'ip6__dst' equal to the target_address's solicited-node
+        multicast address passes.
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("2001:db8::2"),
+                ip6__dst=Ip6Address("ff02::1:ff00:1"),
+            )
+        )
+
+
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksTargetAddress(TestCase):
+    """
+    Sanity-check tests for the 'target_address' field (RFC 4861 requires
+    unicast).
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__target_address_unspecified__rejected(self) -> None:
+        """
+        Ensure a non-unicast (unspecified) target_address is rejected.
+        """
+
+        with self.assertRaises(Icmp6SanityError) as error:
+            Icmp6Parser(
+                _packet_rx_with_ip6(
+                    _NS_TARGET_UNSPECIFIED_FRAME,
+                    ip6__hop=255,
+                    ip6__src=Ip6Address("2001:db8::2"),
+                    ip6__dst=Ip6Address("::"),
+                )
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                f"The 'target_address' address must be unicast. Got: {Ip6Address('::')!r}"
+            ),
+            msg="Unexpected sanity-error message for unspecified 'target_address'.",
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__target_address_unicast__accepted(self) -> None:
+        """
+        Ensure a unicast 'target_address' passes the sanity check.
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("2001:db8::2"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
+
+
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifiedSrc(TestCase):
+    """
+    Sanity-check tests for the SLLA option when 'ip6__src' is unspecified
+    (RFC 4861 forbids SLLA in DAD solicitations).
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__slla_with_unspecified_src__rejected(self) -> None:
+        """
+        Ensure an NS carrying an SLLA option is rejected when 'ip6__src'
+        is unspecified.
+        """
+
+        with self.assertRaises(Icmp6SanityError) as error:
+            Icmp6Parser(
+                _packet_rx_with_ip6(
+                    _NS_WITH_SLLA_FRAME,
+                    ip6__hop=255,
+                    ip6__src=Ip6Address("::"),
+                    ip6__dst=Ip6Address("2001:db8::2"),
+                )
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                "When the 'ip6__src' is unspecified, the 'slla' option must not "
+                "be included. Got: MacAddress('00:11:22:33:44:55')"
+            ),
+            msg="Unexpected sanity-error message for SLLA with unspecified 'ip6__src'.",
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__no_slla_with_unspecified_src__accepted(self) -> None:
+        """
+        Ensure an NS with no SLLA option passes when 'ip6__src' is
+        unspecified (the DAD case).
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("::"),
+                ip6__dst=Ip6Address("2001:db8::1"),
+            )
+        )
