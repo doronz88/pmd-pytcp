@@ -241,6 +241,7 @@ from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertiseme
     Icmp6NdRouterAdvertisementCode,
 )
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_solicitation import (
+    ICMP6__ND__ROUTER_SOLICITATION__LEN,
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdRouterSolicitationCode,
 )
@@ -450,6 +451,7 @@ __all__ = [
     "ICMP6__ND__NEIGHBOR_SOLICITATION__LEN",
     "ICMP6__ND__OPTION__LEN",
     "ICMP6__ND__ROUTER_ADVERTISEMENT__LEN",
+    "ICMP6__ND__ROUTER_SOLICITATION__LEN",
     "IP4__DEFAULT_TTL",
     "IP4__HEADER__LEN",
     "IP4__MIN_MTU",

@@ -101,20 +101,20 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         Validate the ICMPv6 ND Router Solicitation message fields.
         """
 
-        assert isinstance(self.code, Icmp6NdRouterSolicitationCode), (
-            f"The 'code' field must be an Icmp6NdRouterSolicitationCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6NdRouterSolicitationCode
+        ), f"The 'code' field must be an Icmp6NdRouterSolicitationCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
-        )
+        assert isinstance(
+            self.options, Icmp6NdOptions
+        ), f"The 'options' field must be an Icmp6NdOptions. Got: {type(self.options)!r}"
 
     @override
     def __len__(self) -> int:
         """
-        Get the ICMPv6 ND Router Solicitation messeage length.
+        Get the ICMPv6 ND Router Solicitation message length.
         """
 
         return ICMP6__ND__ROUTER_SOLICITATION__LEN + len(self.options)
@@ -171,9 +171,9 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         parsing it.
         """
 
-        if not (ip6__hop == 255):
+        if ip6__hop != 255:
             raise Icmp6SanityError(
-                "ND Router Solicitation - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
+                f"ND Router Solicitation - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
             )
 
         if not (ip6__src.is_unicast or ip6__src.is_unspecified):
@@ -182,19 +182,17 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
                 f"must be unicast or unspecified. Got: {ip6__src!r}",
             )
 
-        if not (ip6__dst.is_multicast__all_routers):
+        if not ip6__dst.is_multicast__all_routers:
             raise Icmp6SanityError(
                 "ND Router Solicitation - [RFC 4861] The 'ip6__dst' address "
                 f"must be all-routers multicast. Got: {ip6__dst!r}",
             )
 
-        if ip6__src.is_unspecified:
-            if not (self.option_slla is None):
-                raise Icmp6SanityError(
-                    "ND Router Solicitation - [RFC 4861] When the 'ip6__src' "
-                    "is unspecified, the 'slla' option must not be included. "
-                    f"Got: {self.option_slla!r}",
-                )
+        if ip6__src.is_unspecified and self.option_slla is not None:
+            raise Icmp6SanityError(
+                "ND Router Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, "
+                f"the 'slla' option must not be included. Got: {self.option_slla!r}",
+            )
 
         # TODO: Enforce proper option presence.
 
@@ -230,9 +228,9 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
             buffer[:ICMP6__ND__ROUTER_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__ROUTER_SOLICITATION), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ND__ROUTER_SOLICITATION
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6NdRouterSolicitationCode(code),
