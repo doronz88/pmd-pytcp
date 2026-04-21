@@ -300,8 +300,7 @@ class TestIcmp6NdOptionSllaParser(TestCase):
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length value "
-                    "must be 8 bytes. Got: 16"
+                    "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Slla option length value " "must be 8 bytes. Got: 16"
                 ),
             },
         },

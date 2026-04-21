@@ -25,8 +25,8 @@
 
 
 """
-Module contains tests for the ICMPv6 ND Tlla (Target Link Layer Address) option
-code.
+Module contains tests for the ICMPv6 ND Tlla (Target Link Layer Address)
+option.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__tlla.py
 
@@ -35,12 +35,13 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import MacAddress
 from net_proto import (
+    ICMP6__ND__OPTION__TLLA__LEN,
     Icmp6IntegrityError,
     Icmp6NdOptionTlla,
     Icmp6NdOptionType,
@@ -52,47 +53,84 @@ class TestIcmp6NdOptionTllaAsserts(TestCase):
     The ICMPv6 ND Tlla option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
-        """
-        Create the default arguments for the ICMPv6 ND Tlla option constructor.
-        """
-
-        self._args: list[Any] = [MacAddress()]
-        self._kwargs: dict[str, Any] = {}
-
     def test__icmp6__nd__option__tlla__tlla__not_MacAddress(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option constructor raises an exception when
-        the provided 'tlla' argument is not a MacAddress.
+        Ensure the constructor rejects a 'tlla' argument that is not a
+        MacAddress instance.
         """
 
-        self._args[0] = value = "not a MacAddress"
+        value = "not a MacAddress"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6NdOptionTlla(*self._args, **self._kwargs)
+            Icmp6NdOptionTlla(value)  # type: ignore[arg-type]
 
         self.assertEqual(
             str(error.exception),
             f"The 'tlla' field must be a MacAddress. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-MacAddress 'tlla'.",
+        )
+
+    def test__icmp6__nd__option__tlla__tlla__default_accepted(self) -> None:
+        """
+        Ensure a default-constructed MacAddress is accepted as 'tlla'.
+        """
+
+        tlla = MacAddress()
+
+        option = Icmp6NdOptionTlla(tlla)
+
+        self.assertEqual(
+            option.tlla,
+            tlla,
+            msg="Constructed option.tlla must equal the provided MacAddress().",
+        )
+
+    def test__icmp6__nd__option__tlla__tlla__populated_accepted(self) -> None:
+        """
+        Ensure a populated MacAddress is accepted as 'tlla'.
+        """
+
+        tlla = MacAddress("01:02:03:04:05:06")
+
+        option = Icmp6NdOptionTlla(tlla)
+
+        self.assertEqual(
+            option.tlla,
+            tlla,
+            msg="Constructed option.tlla must equal the provided MacAddress.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The ICMPv6 ND Tlla option (I).",
-            "_args": [
-                MacAddress("01:02:03:04:05:06"),
-            ],
-            "_kwargs": {},
+            "_description": "ICMPv6 ND Tlla option carrying 01:02:03:04:05:06.",
+            "_kwargs": {
+                "tlla": MacAddress("01:02:03:04:05:06"),
+            },
             "_results": {
                 "__len__": 8,
                 "__str__": "tlla 01:02:03:04:05:06",
-                "__repr__": ("Icmp6NdOptionTlla(tlla=MacAddress('01:02:03:04:05:06'))"),
+                "__repr__": "Icmp6NdOptionTlla(tlla=MacAddress('01:02:03:04:05:06'))",
                 "__bytes__": b"\x02\x01\x01\x02\x03\x04\x05\x06",
                 "type": Icmp6NdOptionType.TLLA,
                 "len": 8,
                 "tlla": MacAddress("01:02:03:04:05:06"),
+            },
+        },
+        {
+            "_description": "ICMPv6 ND Tlla option carrying the zero MAC address.",
+            "_kwargs": {
+                "tlla": MacAddress(),
+            },
+            "_results": {
+                "__len__": 8,
+                "__str__": "tlla 00:00:00:00:00:00",
+                "__repr__": "Icmp6NdOptionTlla(tlla=MacAddress('00:00:00:00:00:00'))",
+                "__bytes__": b"\x02\x01\x00\x00\x00\x00\x00\x00",
+                "type": Icmp6NdOptionType.TLLA,
+                "len": 8,
+                "tlla": MacAddress(),
             },
         },
     ]
@@ -103,121 +141,151 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv6 ND Tlla option object with testcase arguments.
+        Build the ICMPv6 ND Tlla option from the parametrized kwargs.
         """
 
-        self._option = Icmp6NdOptionTlla(*self._args, **self._kwargs)
+        self._option = Icmp6NdOptionTlla(**self._kwargs)
 
     def test__icmp6__nd__option__tlla__len(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the expected byte length.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__str(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__repr(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__bytes(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire bytes.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__type(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option 'type' field contains a correct value.
+        Ensure the option 'type' field is Icmp6NdOptionType.TLLA.
         """
 
         self.assertEqual(
             self._option.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__length(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option 'len' field contains a correct value.
+        Ensure the option 'len' field equals ICMP6__ND__OPTION__TLLA__LEN.
         """
 
         self.assertEqual(
             self._option.len,
             self._results["len"],
+            msg=f"Unexpected 'len' for case: {self._description}",
         )
 
     def test__icmp6__nd__option__tlla__tlla(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option 'tlla' field contains a correct value.
+        Ensure the option 'tlla' field carries the provided MacAddress.
         """
 
         self.assertEqual(
             self._option.tlla,
             self._results["tlla"],
+            msg=f"Unexpected 'tlla' for case: {self._description}",
+        )
+
+
+class TestIcmp6NdOptionTllaParser(TestCase):
+    """
+    The ICMPv6 ND Tlla option parser positive tests.
+    """
+
+    def test__icmp6__nd__option__tlla__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses an 8-byte Tlla option whose buffer length
+        exactly matches ICMP6__ND__OPTION__TLLA__LEN.
+        """
+
+        buffer = b"\x02\x01\x01\x02\x03\x04\x05\x06"
+
+        self.assertEqual(
+            len(buffer),
+            ICMP6__ND__OPTION__TLLA__LEN,
+            msg="Fixture must match ICMP6__ND__OPTION__TLLA__LEN.",
+        )
+
+        option = Icmp6NdOptionTlla.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Icmp6NdOptionTlla(tlla=MacAddress("01:02:03:04:05:06")),
+            msg="Parsed option must equal the reference Icmp6NdOptionTlla.",
+        )
+
+    def test__icmp6__nd__option__tlla__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses a Tlla option when the buffer carries
+        trailing bytes past the 8-byte option payload.
+        """
+
+        buffer = b"\x02\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA"
+
+        option = Icmp6NdOptionTlla.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Icmp6NdOptionTlla(tlla=MacAddress("01:02:03:04:05:06")),
+            msg="Parsed option must equal the reference Icmp6NdOptionTlla (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The ICMPv6 ND Tlla option (I).",
-            "_args": [
-                b"\x02\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": Icmp6NdOptionTlla(tlla=MacAddress("01:02:03:04:05:06")),
-            },
-        },
-        {
-            "_description": "The ICMPv6 ND Tlla option minimum length assert.",
-            "_args": [
-                b"\x02",
-            ],
-            "_kwargs": {},
+            "_description": "ICMPv6 ND Tlla option, buffer shorter than ICMP6__ND__OPTION__LEN.",
+            "_args": [b"\x02"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the ICMPv6 ND Tlla option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the ICMPv6 ND Tlla option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The ICMPv6 ND Tlla option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff\x01\x01\x02\x03\x04\x05\x06",
-            ],
-            "_kwargs": {},
+            "_description": "ICMPv6 ND Tlla option, buffer 'type' byte is not Icmp6NdOptionType.TLLA.",
+            "_args": [b"\xff\x01\x01\x02\x03\x04\x05\x06"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -227,11 +295,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
             },
         },
         {
-            "_description": "The ICMPv6 ND Tlla option length integrity check (I).",
-            "_args": [
-                b"\x02\x02\x01\x02\x03\x04\x05\x06",
-            ],
-            "_kwargs": {},
+            "_description": "ICMPv6 ND Tlla option, encoded length value (in 8-byte units) exceeds 1.",
+            "_args": [b"\x02\x02\x01\x02\x03\x04\x05\x06"],
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
@@ -240,51 +305,39 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
             },
         },
         {
-            "_description": "The ND Tlla option length integrity check (II).",
-            "_args": [
-                b"\x02\x01\x01\x02\x03\x04\x05",
-            ],
-            "_kwargs": {},
+            "_description": "ICMPv6 ND Tlla option, encoded length value exceeds available buffer bytes.",
+            "_args": [b"\x02\x01\x01\x02\x03\x04\x05"],
             "_results": {
                 "error": Icmp6IntegrityError,
                 "error_message": (
                     "[INTEGRITY ERROR][ICMPv6] The ICMPv6 ND Tlla option length value "
-                    "must be less than or equal to the length of provided bytes "
-                    "(7). Got: 8"
+                    "must be less than or equal to the length of provided bytes (7). Got: 8"
                 ),
             },
         },
     ]
 )
-class TestIcmp6NdOptionTllaParser(TestCase):
+class TestIcmp6NdOptionTllaParserFailures(TestCase):
     """
-    The ICMPv6 ND Tlla option parser tests.
+    The ICMPv6 ND Tlla option parser failure-path tests (asserts and
+    integrity checks).
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__icmp6__nd__option__tlla__from_buffer(self) -> None:
+    def test__icmp6__nd__option__tlla__from_buffer__error(self) -> None:
         """
-        Ensure the ICMPv6 ND Tlla option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = Icmp6NdOptionTlla.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            Icmp6NdOptionTlla.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Icmp6NdOptionTlla.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
