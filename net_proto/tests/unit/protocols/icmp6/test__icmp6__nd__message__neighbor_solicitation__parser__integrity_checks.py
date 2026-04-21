@@ -25,43 +25,82 @@
 
 
 """
-Module contains tests for the ICMPv6 ND Neighbor Solicitation message parser integrity
-checks.
+Module contains tests for the ICMPv6 ND Neighbor Solicitation message parser
+integrity checks.
 
-net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_addvertisement__parser__integrity_checks.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicitation__parser__integrity_checks.py
 
 ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import Icmp6IntegrityError, Icmp6Parser, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+from net_addr import Ip6Address
+from net_proto import (
+    ICMP6__ND__NEIGHBOR_SOLICITATION__LEN,
+    Icmp6IntegrityError,
+    Icmp6Parser,
+    Ip6Parser,
+    PacketRx,
+)
+
+# Valid 24-byte NS, target 2001:db8::1 — used as a baseline for the positive
+# boundary test. Checksum computed with pshdr_sum=0.
+_NS_BASELINE_FRAME = (
+    b"\x87\x00\x4b\x45\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00" b"\x00\x00\x00\x00\x00\x00\x00\x01"
+)
+
+
+def _packet_rx_with_ip6(
+    frame: bytes,
+    *,
+    ip6__dlen: int | None = None,
+    ip6__hop: int = 255,
+) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads off 'packet_rx.ip6'. 'ip6__hop' defaults to 255 so
+    ND sanity checks pass; 'ip6__dlen' mirrors the frame length unless
+    overridden. The 'dst' is pinned to 2001:db8::1 (matching the baseline
+    NS target_address) so sanity rules pass on the positive path.
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame) if ip6__dlen is None else ip6__dlen,
+            payload_len=len(frame) if ip6__dlen is None else ip6__dlen,
+            pshdr_sum=0,
+            src=Ip6Address("2001:db8::2"),
+            dst=Ip6Address("2001:db8::1"),
+            hop=ip6__hop,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
             "_description": (
-                "ICMPv6 ND Neighbor Solicitation message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 ND Neighbor Solicitation, the 'ICMP6__HEADER__LEN <= self._ip6__dlen' "
+                "condition not met (frame shorter than ICMPv6 base header)."
             ),
             "_frame_rx": (
-                # ICMPv6 Neighbor Solicitation
+                # ICMPv6 Neighbor Solicitation (truncated, < 4 bytes)
                 #   Type     : 135 (Neighbor Solicitation)
                 #   Code     : 0
-                #   Checksum : 0x0000 (truncated)
-                #   Frame len: 3 bytes (< 4-byte minimum header)
-                #
-                #   Summary  : Frame shorter than ICMPv6 header length.
+                #   Checksum : 0x00-- (missing low byte)
+                #   Frame len: 3 bytes
                 b"\x87\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 3,
-            },
+            "_ip6__dlen": 3,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -72,26 +111,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 ND Neighbor Solicitation message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 ND Neighbor Solicitation, the 'self._ip6__dlen <= len(self._frame)' "
+                "condition not met (declared IPv6 payload exceeds frame length)."
             ),
             "_frame_rx": (
                 # ICMPv6 Neighbor Solicitation
-                #   Type     : 135 (Neighbor Solicitation)
+                #   Type     : 135
                 #   Code     : 0
                 #   Checksum : 0x0000 (placeholder)
                 #   Reserved : 0x000000
                 #   Target   : 2001:db8::
-                #   Options  : none
-                #   Frame len: 23 bytes (< 24-byte minimum message)
-                #
-                #   Summary  : Declared payload exceeds available frame length.
+                #   Frame len: 23 bytes (< declared ip6__dlen=24)
                 b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 24,
-            },
+            "_ip6__dlen": 24,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -102,27 +136,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 ND Neighbor Solicitation message, "
-                "the 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= self._ip6__dlen' "
-                "condition not met."
+                "ICMPv6 ND Neighbor Solicitation, the "
+                "'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen' "
+                "condition not met (payload shorter than Neighbor Solicitation fixed size)."
             ),
             "_frame_rx": (
-                # ICMPv6 Neighbor Solicitation
-                #   Type     : 135 (Neighbor Solicitation)
+                # ICMPv6 Neighbor Solicitation (23 bytes, below the 24-byte minimum)
+                #   Type     : 135
                 #   Code     : 0
                 #   Checksum : 0x0000 (placeholder)
                 #   Reserved : 0x000000
                 #   Target   : 2001:db8::
-                #   Options  : none
-                #   Frame len: 23 bytes (< 24-byte minimum message)
-                #
-                #   Summary  : Payload shorter than Neighbor Solicitation minimum length.
                 b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 23,
-            },
+            "_ip6__dlen": 23,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen "
@@ -132,45 +160,45 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
+            "_description": "ICMPv6 ND Neighbor Solicitation with invalid checksum (all zeros).",
             "_frame_rx": (
-                # ICMPv6 Neighbor Solicitation
-                #   Type     : 135 (Neighbor Solicitation)
+                # ICMPv6 Neighbor Solicitation (24 bytes, checksum cleared)
+                #   Type     : 135
                 #   Code     : 0
-                #   Checksum : 0x0000 (invalid)
+                #   Checksum : 0x0000 (invalid; valid value with pshdr_sum=0 is 0x4b45)
                 #   Reserved : 0x000000
                 #   Target   : 2001:db8::1
-                #   Options  : none
-                #
-                #   Summary  : NS with checksum cleared to zero.
                 b"\x87\x00\x00\x00\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ),
-            "_mocked_values": {},
+            "_ip6__dlen": None,
             "_results": {
                 "error_message": "The packet checksum must be valid.",
             },
         },
     ]
 )
-class TestIcmp6NdMessageNeighborSolicitationMessageParserIntegrityChecks(TestCasePacketRxIp6):
+class TestIcmp6NdMessageNeighborSolicitationParserIntegrityChecks(TestCase):
     """
     The ICMPv6 ND Neighbor Solicitation message parser integrity checks tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
+    _ip6__dlen: int | None
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__nd__message__neighbor_solicitation__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Solicitation message parser raises
-        integrity error on malformed packets.
+        Build a PacketRx with the parametrized frame and IPv6 payload length.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx, ip6__dlen=self._ip6__dlen)
+
+    def test__icmp6__nd__message__neighbor_solicitation__parser__integrity_error(self) -> None:
+        """
+        Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
+        Neighbor Solicitation frames with the expected message.
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -178,5 +206,27 @@ class TestIcmp6NdMessageNeighborSolicitationMessageParserIntegrityChecks(TestCas
 
         self.assertEqual(
             str(error.exception),
-            f"[INTEGRITY ERROR][ICMPv6] {self._results["error_message"]}",
+            f"[INTEGRITY ERROR][ICMPv6] {self._results['error_message']}",
+            msg=f"Unexpected integrity-error message for case: {self._description}",
         )
+
+
+class TestIcmp6NdMessageNeighborSolicitationParserIntegrityBoundary(TestCase):
+    """
+    Boundary tests for the ICMPv6 ND Neighbor Solicitation integrity validator.
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__parser__integrity__minimum_length_accepted(self) -> None:
+        """
+        Ensure a frame whose IPv6 payload length equals
+        ICMP6__ND__NEIGHBOR_SOLICITATION__LEN (24) — a bare NS with no
+        options — passes integrity checks and parses successfully.
+        """
+
+        self.assertEqual(
+            len(_NS_BASELINE_FRAME),
+            ICMP6__ND__NEIGHBOR_SOLICITATION__LEN,
+            msg="Baseline fixture must match ICMP6__ND__NEIGHBOR_SOLICITATION__LEN.",
+        )
+
+        Icmp6Parser(_packet_rx_with_ip6(_NS_BASELINE_FRAME))
