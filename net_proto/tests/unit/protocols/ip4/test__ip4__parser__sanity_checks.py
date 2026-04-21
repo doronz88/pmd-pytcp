@@ -27,99 +27,103 @@
 """
 This module contains tests for the IPv4 packet sanity checks.
 
-net_proto/tests/unit/protocols/tcp/test__ip4__parser__sanity_checks.py
+net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py
 
 ver 3.0.4
 """
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto import Ip4Parser, Ip4SanityError, PacketRx
-from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 
 
 @parameterized_class(
     [
         {
-            "_description": "The value of the 'ttl' field is 0.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\x00\xff\xd8\x24\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "TTL field is zero.",
+            # 20-byte IPv4 frame with ttl=0 (byte 8), a correctly
+            # recomputed checksum (bytes 10-11 = 0xd824), and otherwise
+            # valid fields so the integrity checks pass and the sanity
+            # validator raises on 'ttl == 0'.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\x00\xff\xd8\x24" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Value of the 'ttl' field must be greater than 0.",
             },
         },
         {
-            "_description": "The source IP address is a multicast address.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x21\x5e\xe0\x00\x00\x01" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "Source address is a multicast address (224.0.0.1).",
+            # src bytes 12-15 = 0xe0000001 (224.0.0.1 is in the IPv4
+            # multicast range 224.0.0.0/4). cksum = 0x215e.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x21\x5e" b"\xe0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Value of the 'src' field must not be a multicast address.",
             },
         },
         {
-            "_description": "The source IP address is a reserved address.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x11\x5e\xf0\x00\x00\x01" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "Source address is a reserved address (240.0.0.1).",
+            # src bytes 12-15 = 0xf0000001 (240.0.0.1 is in the reserved
+            # range 240.0.0.0/4 excluding 255.255.255.255). cksum=0x115e.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x11\x5e" b"\xf0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Value of the 'src' field must not be a reserved address.",
             },
         },
         {
-            "_description": "The source IP address is a limited broadcast.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x01\x60\xff\xff\xff\xff" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "Source address is the limited broadcast (255.255.255.255).",
+            # src bytes 12-15 = 0xffffffff (limited broadcast).
+            # cksum = 0x0160.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x01\x60" b"\xff\xff\xff\xff\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Value of the 'src' field must not be a limited broadcast address.",
             },
         },
         {
-            "_description": "The fields 'flag_df' and 'flag_mf' are both set.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x60\x00\xff\xff\xb9\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "DF and MF flags set simultaneously.",
+            # Bytes 6-7 = 0x6000 (DF=1, MF=1, offset=0). The parser runs
+            # the 'flag_df and flag_mf' check before the
+            # 'flag_df and offset != 0' check, so this case lands in
+            # the simultaneous-flags branch. cksum = 0xb923.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x60\x00\xff\xff\xb9\x23" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Flags 'DF' and 'MF' must not be set simultaneously.",
             },
         },
         {
-            "_description": "The field 'flag_df' is set and value of the 'offset' field is non-zero.",
-            "_args": [
-                b"\x45\xff\x00\x14\xff\xff\x41\x00\xff\xff\xd8\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50",
-            ],
-            "_kwargs": {},
+            "_description": "DF flag set with a non-zero fragment offset.",
+            # Bytes 6-7 = 0x4100 -> DF=1, MF=0, offset=0x100<<3 = 2048.
+            # cksum = 0xd823.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x41\x00\xff\xff\xd8\x23" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "Value of the 'offset' field must be 0 when 'DF' flag is set.",
             },
         },
-    ],
+    ]
 )
-class TestIp4ParserSanityChecks(TestCasePacketRx):
+class TestIp4ParserSanityChecks(TestCase):
     """
     The IPv4 packet parser sanity checks tests.
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__ip4__parser(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the IPv4 packet parser raises sanity error on crazy packets.
+        Wrap the parametrized frame in a PacketRx so it can be fed to
+        Ip4Parser.
+        """
+
+        self._packet_rx = PacketRx(self._frame_rx)
+
+    def test__ip4__parser__sanity_error(self) -> None:
+        """
+        Ensure the IPv4 packet parser raises Ip4SanityError with the
+        expected message for each semantically invalid frame.
         """
 
         with self.assertRaises(Ip4SanityError) as error:
@@ -127,5 +131,6 @@ class TestIp4ParserSanityChecks(TestCasePacketRx):
 
         self.assertEqual(
             str(error.exception),
-            f"[SANITY ERROR][IPv4] {self._results["error_message"]}",
+            f"[SANITY ERROR][IPv4] {self._results['error_message']}",
+            msg=f"Unexpected sanity-error message for case: {self._description}",
         )
