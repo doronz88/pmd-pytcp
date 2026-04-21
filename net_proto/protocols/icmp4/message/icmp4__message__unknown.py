@@ -65,11 +65,11 @@ class Icmp4MessageUnknown(Icmp4Message):
         Validate the ICMPv4 unknown message fields.
         """
 
-        assert isinstance(self.type, Icmp4Type), f"The 'type' field must be an Icmp4Type. " f"Got: {type(self.type)!r}"
+        assert isinstance(self.type, Icmp4Type), f"The 'type' field must be an Icmp4Type. Got: {type(self.type)!r}"
 
-        assert isinstance(self.code, Icmp4Code), f"The 'code' field must be an Icmp4Code. " f"Got: {type(self.code)!r}"
+        assert isinstance(self.code, Icmp4Code), f"The 'code' field must be an Icmp4Code. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
         assert isinstance(
             self.data, (bytes, bytearray, memoryview)
@@ -111,7 +111,7 @@ class Icmp4MessageUnknown(Icmp4Message):
         /,
     ) -> bytearray:
         """
-        Get the ICMPv4 Echo Reply message as bytes.
+        Pack the ICMPv4 unknown message header into a fresh bytearray.
         """
 
         struct.pack_into(
@@ -151,8 +151,10 @@ class Icmp4MessageUnknown(Icmp4Message):
 
         type, code, cksum = struct.unpack(ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN])
 
-        assert (received_type := type) not in Icmp4Type.get_known_values(), (
-            "The 'type' field must not be known. " f"Got: {Icmp4Type.from_int(received_type)!r}"
+        assert (
+            received_type := type
+        ) not in Icmp4Type.get_known_values(), (
+            f"The 'type' field must not be known. Got: {Icmp4Type.from_int(received_type)!r}"
         )
 
         return cls(
