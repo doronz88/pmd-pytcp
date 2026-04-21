@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Icmp4Assembler,
@@ -50,7 +50,7 @@ from net_proto.lib.buffer import Buffer
 @parameterized_class(
     [
         {
-            "_description": "ICMPv4 Destination Unreachable (Network) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 0 (Network), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK,
                 "data": b"",
@@ -63,14 +63,7 @@ from net_proto.lib.buffer import Buffer
                     ".NETWORK: 0>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 0 (Network)
-                    #   Checksum : 0xfcff
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Network unreachable notification with empty payload.
+                    # Type/Code : 3/0, Cksum 0xfcff (computed by assemble()), Rest 0x00000000
                     b"\x03\x00\xfc\xff\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -80,7 +73,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 1 (Host), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST,
                 "data": b"",
@@ -93,14 +86,7 @@ from net_proto.lib.buffer import Buffer
                     ".HOST: 1>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 1 (Host)
-                    #   Checksum : 0xfcfe
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Host unreachable notification with empty payload.
+                    # Type/Code : 3/1, Cksum 0xfcfe, Rest 0x00000000
                     b"\x03\x01\xfc\xfe\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -110,7 +96,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Protocol) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 2 (Protocol), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PROTOCOL,
                 "data": b"",
@@ -123,14 +109,7 @@ from net_proto.lib.buffer import Buffer
                     ".PROTOCOL: 2>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 2 (Protocol)
-                    #   Checksum : 0xfcfd
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Protocol unreachable notification with empty payload.
+                    # Type/Code : 3/2, Cksum 0xfcfd, Rest 0x00000000
                     b"\x03\x02\xfc\xfd\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -140,7 +119,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable - (Port) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 3 (Port), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"",
@@ -153,14 +132,7 @@ from net_proto.lib.buffer import Buffer
                     ".PORT: 3>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 3 (Port)
-                    #   Checksum : 0xfcfc
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Port unreachable notification with empty payload.
+                    # Type/Code : 3/3, Cksum 0xfcfc, Rest 0x00000000
                     b"\x03\x03\xfc\xfc\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -170,7 +142,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Fragmentation Needed) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 4 (Fragmentation Needed), MTU 1200.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
                 "mtu": 1200,
@@ -184,14 +156,7 @@ from net_proto.lib.buffer import Buffer
                     ".FRAGMENTATION_NEEDED: 4>, cksum=0, mtu=1200, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 4 (Fragmentation Needed)
-                    #   Checksum : 0xf84b
-                    #   Next-Hop : 0x000004b0 (MTU 1200)
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Fragmentation needed notification with MTU set to 1200.
+                    # Type/Code : 3/4, Cksum 0xf84b, Reserved 0x0000, MTU 0x04b0 (1200)
                     b"\x03\x04\xf8\x4b\x00\x00\x04\xb0"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -202,7 +167,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Source Route Failed) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 5 (Source Route Failed), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.SOURCE_ROUTE_FAILED,
                 "data": b"",
@@ -215,14 +180,7 @@ from net_proto.lib.buffer import Buffer
                     ".SOURCE_ROUTE_FAILED: 5>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 5 (Source Route Failed)
-                    #   Checksum : 0xfcfa
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Source route failed notification with empty payload.
+                    # Type/Code : 3/5, Cksum 0xfcfa, Rest 0x00000000
                     b"\x03\x05\xfc\xfa\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -232,7 +190,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network Unknown) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 6 (Network Unknown), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_UNKNOWN,
                 "data": b"",
@@ -245,14 +203,7 @@ from net_proto.lib.buffer import Buffer
                     ".NETWORK_UNKNOWN: 6>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 6 (Network Unknown)
-                    #   Checksum : 0xfcf9
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Network unknown notification with empty payload.
+                    # Type/Code : 3/6, Cksum 0xfcf9, Rest 0x00000000
                     b"\x03\x06\xfc\xf9\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -262,7 +213,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Unknown) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 7 (Host Unknown), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_UNKNOWN,
                 "data": b"",
@@ -275,14 +226,7 @@ from net_proto.lib.buffer import Buffer
                     ".HOST_UNKNOWN: 7>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 7 (Host Unknown)
-                    #   Checksum : 0xfcf8
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Host unknown notification with empty payload.
+                    # Type/Code : 3/7, Cksum 0xfcf8, Rest 0x00000000
                     b"\x03\x07\xfc\xf8\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -292,7 +236,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Source Host Isolated) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 8 (Source Host Isolated), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.SOURCE_HOST_ISOLATED,
                 "data": b"",
@@ -305,14 +249,7 @@ from net_proto.lib.buffer import Buffer
                     ".SOURCE_HOST_ISOLATED: 8>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 8 (Source Host Isolated)
-                    #   Checksum : 0xfcf7
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Source host isolated notification with empty payload.
+                    # Type/Code : 3/8, Cksum 0xfcf7, Rest 0x00000000
                     b"\x03\x08\xfc\xf7\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -322,7 +259,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network Prohibited) message'.",
+            "_description": "ICMPv4 Destination Unreachable, code 9 (Network Prohibited), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_PROHIBITED,
                 "data": b"",
@@ -335,14 +272,7 @@ from net_proto.lib.buffer import Buffer
                     ".NETWORK_PROHIBITED: 9>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 9 (Network Prohibited)
-                    #   Checksum : 0xfcf6
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Network administratively prohibited notification.
+                    # Type/Code : 3/9, Cksum 0xfcf6, Rest 0x00000000
                     b"\x03\x09\xfc\xf6\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -352,7 +282,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Prohibited) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 10 (Host Prohibited), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_PROHIBITED,
                 "data": b"",
@@ -365,14 +295,7 @@ from net_proto.lib.buffer import Buffer
                     ".HOST_PROHIBITED: 10>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 10 (Host Prohibited)
-                    #   Checksum : 0xfcf5
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Host administratively prohibited notification.
+                    # Type/Code : 3/10, Cksum 0xfcf5, Rest 0x00000000
                     b"\x03\x0a\xfc\xf5\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -382,7 +305,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Network TOS) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 11 (Network TOS), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.NETWORK_TOS,
                 "data": b"",
@@ -395,14 +318,7 @@ from net_proto.lib.buffer import Buffer
                     ".NETWORK_TOS: 11>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 11 (Network TOS)
-                    #   Checksum : 0xfcf4
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Network TOS unreachable notification with empty payload.
+                    # Type/Code : 3/11, Cksum 0xfcf4, Rest 0x00000000
                     b"\x03\x0b\xfc\xf4\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -412,7 +328,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host TOS) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 12 (Host TOS), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_TOS,
                 "data": b"",
@@ -425,14 +341,7 @@ from net_proto.lib.buffer import Buffer
                     ".HOST_TOS: 12>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 12 (Host TOS)
-                    #   Checksum : 0xfcf3
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Host TOS unreachable notification with empty payload.
+                    # Type/Code : 3/12, Cksum 0xfcf3, Rest 0x00000000
                     b"\x03\x0c\xfc\xf3\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -442,7 +351,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Communication Prohibited) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 13 (Communication Prohibited), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.COMMUNICATION_PROHIBITED,
                 "data": b"",
@@ -455,14 +364,7 @@ from net_proto.lib.buffer import Buffer
                     ".COMMUNICATION_PROHIBITED: 13>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 13 (Communication Prohibited)
-                    #   Checksum : 0xfcf2
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Communication administratively prohibited notification.
+                    # Type/Code : 3/13, Cksum 0xfcf2, Rest 0x00000000
                     b"\x03\x0d\xfc\xf2\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -472,7 +374,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Host Precedence) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 14 (Host Precedence), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.HOST_PRECEDENCE,
                 "data": b"",
@@ -485,14 +387,7 @@ from net_proto.lib.buffer import Buffer
                     ".HOST_PRECEDENCE: 14>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 14 (Host Precedence)
-                    #   Checksum : 0xfcf1
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Host precedence violation notification with empty payload.
+                    # Type/Code : 3/14, Cksum 0xfcf1, Rest 0x00000000
                     b"\x03\x0e\xfc\xf1\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -502,7 +397,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable (Precedence Cutoff) message.",
+            "_description": "ICMPv4 Destination Unreachable, code 15 (Precedence Cutoff), no data.",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PRECEDENCE_CUTOFF,
                 "data": b"",
@@ -515,14 +410,7 @@ from net_proto.lib.buffer import Buffer
                     ".PRECEDENCE_CUTOFF: 15>, cksum=0, mtu=None, data=b'')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 15 (Precedence Cutoff)
-                    #   Checksum : 0xfcf0
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Precedence cutoff in effect notification with empty payload.
+                    # Type/Code : 3/15, Cksum 0xfcf0, Rest 0x00000000
                     b"\x03\x0f\xfc\xf0\x00\x00\x00\x00"
                 ),
                 "type": Icmp4Type.DESTINATION_UNREACHABLE,
@@ -532,7 +420,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable message, non-empty payload.",
+            "_description": "ICMPv4 Destination Unreachable, non-empty 16-byte data (code=Port).",
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"0123456789ABCDEF",
@@ -545,14 +433,8 @@ from net_proto.lib.buffer import Buffer
                     ".PORT: 3>, cksum=0, mtu=None, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 3 (Port)
-                    #   Checksum : 0x2e26
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 16 bytes
-                    #
-                    #   Summary  : Port unreachable with 16-byte payload echoing offending packet.
+                    # Type/Code : 3/3, Cksum 0x2e26, Rest 0x00000000
+                    # Data      : b"0123456789ABCDEF"
                     b"\x03\x03\x2e\x26\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -563,7 +445,10 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Destination Unreachable message, maximum length payload.",
+            "_description": (
+                "ICMPv4 Destination Unreachable, oversized data silently truncated to 548 bytes "
+                "(IP4__MIN_MTU minus IP4__HEADER__LEN minus DU__LEN)."
+            ),
             "_kwargs": {
                 "code": Icmp4DestinationUnreachableCode.PORT,
                 "data": b"X" * 65507,
@@ -573,17 +458,11 @@ from net_proto.lib.buffer import Buffer
                 "__str__": "ICMPv4 Destination Unreachable - Port, len 556 (8+548)",
                 "__repr__": (
                     "Icmp4MessageDestinationUnreachable(code=<Icmp4DestinationUnreachableCode"
-                    f".PORT: 3>, cksum=0, mtu=None, data=b'{"X" * 548}')"
+                    f".PORT: 3>, cksum=0, mtu=None, data=b'{'X' * 548}')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Destination Unreachable
-                    #   Type     : 3 (Destination Unreachable)
-                    #   Code     : 3 (Port)
-                    #   Checksum : 0x6e6e
-                    #   Next-Hop : 0x00000000
-                    #   Data len : 548 bytes
-                    #
-                    #   Summary  : Port unreachable carrying maximum-length payload (548 bytes).
+                    # Type/Code : 3/3, Cksum 0x6e6e, Rest 0x00000000
+                    # Data      : b"X" * 548 (input was 65507; __post_init__ truncated it)
                     b"\x03\x03\x6e\x6e\x00\x00\x00\x00"
                     + b"X" * 548
                 ),
@@ -606,142 +485,128 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv4 Destination Unreachable message assembler object with
-        testcase arguments.
+        Build an assembler wrapping the parametrized Destination Unreachable
+        message.
         """
 
-        self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageDestinationUnreachable(**self._kwargs))
+        self._icmp4__assembler = Icmp4Assembler(
+            icmp4__message=Icmp4MessageDestinationUnreachable(**self._kwargs),
+        )
 
-    def test__icmp4__message__destination_unreachable__assembler__len(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__len(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__len__()' method returns
-        a correct value.
+        Ensure 'len()' on the assembler equals ICMP4__DESTINATION_UNREACHABLE__LEN
+        plus len(data) (after the __post_init__ truncation).
         """
 
         self.assertEqual(
             len(self._icmp4__assembler),
             self._results["__len__"],
+            msg=f"Unexpected length for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__str(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__str(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__str__()' method returns
-        a correct value.
+        Ensure 'str()' renders the canonical Destination Unreachable log line
+        (including the 'mtu' segment for FRAGMENTATION_NEEDED).
         """
 
         self.assertEqual(
             str(self._icmp4__assembler),
             self._results["__str__"],
+            msg=f"Unexpected str() for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__repr(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__repr__()' method returns
-        a correct value.
+        Ensure 'repr()' forwards the wrapped message's dataclass repr.
         """
 
         self.assertEqual(
             repr(self._icmp4__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected repr() for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__bytes(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message '__bytes__()' method returns
-        a correct value.
+        Ensure 'bytes()' returns the full wire form including the
+        recomputed Internet checksum at bytes 2-3.
         """
 
         self.assertEqual(
             bytes(self._icmp4__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes() for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__type(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__type(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'type' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'type' field
+        (always Icmp4Type.DESTINATION_UNREACHABLE via the non-init
+        dataclass field).
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__code(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__code(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'code' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'code' field.
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__cksum(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'cksum' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'cksum' field.
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__mtu(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__mtu(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'mtu' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'mtu' field for the
+        FRAGMENTATION_NEEDED fixture (other fixtures omit 'mtu' from
+        '_results' and are skipped here — they carry mtu=None, which is
+        already covered by the repr/bytes comparisons).
         """
 
-        if "mtu" in self._results:
-            self.assertEqual(
-                cast(
-                    Icmp4MessageDestinationUnreachable,
-                    self._icmp4__assembler.message,
-                ).mtu,
-                self._results["mtu"],
-            )
+        if "mtu" not in self._results:
+            self.skipTest("Non-FRAGMENTATION_NEEDED fixture: mtu is None by construction.")
 
-    def test__icmp4__message__destination_unreachable__assembler__data(
-        self,
-    ) -> None:
+        self.assertEqual(
+            cast(Icmp4MessageDestinationUnreachable, self._icmp4__assembler.message).mtu,
+            self._results["mtu"],
+            msg=f"Unexpected 'mtu' for case: {self._description}",
+        )
+
+    def test__icmp4__message__destination_unreachable__assembler__data(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'data' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'data' field
+        (post-truncation by __post_init__).
         """
 
         self.assertEqual(
-            cast(
-                Icmp4MessageDestinationUnreachable,
-                self._icmp4__assembler.message,
-            ).data,
+            cast(Icmp4MessageDestinationUnreachable, self._icmp4__assembler.message).data,
             self._results["data"],
+            msg=f"Unexpected 'data' for case: {self._description}",
         )
 
-    def test__icmp4__messsage__destination_unreachable__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp4__message__destination_unreachable__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv4 Destination Unreachable message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' yields the same wire bytes as 'bytes()'.
         """
 
         buffers: list[Buffer] = []
@@ -751,4 +616,5 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected assemble() output for case: {self._description}",
         )
