@@ -27,16 +27,16 @@
 """
 Module contains tests for the ICMPv4 Echo Request message assembler.
 
-net_proto/tests/unit/protocols/icmp4/test__icmp4__message__echo_request__packets.py
+net_proto/tests/unit/protocols/icmp4/test__icmp4__message__echo_request__assembler.py
 
 ver 3.0.4
 """
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Icmp4Assembler,
@@ -50,7 +50,7 @@ from net_proto.lib.buffer import Buffer
 @parameterized_class(
     [
         {
-            "_description": "ICMPv4 Echo Request packet, empty payload.",
+            "_description": "ICMPv4 Echo Request, empty data.",
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -67,12 +67,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv4 Echo Request
                     #   Type     : 8 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0xf394
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 with no payload.
+                    #   Checksum : 0xf394 (computed by assemble())
+                    #   Id/Seq   : 12345 / 54321
+                    #   Data     : none
                     b"\x08\x00\xf3\x94\x30\x39\xd4\x31"
                 ),
                 "type": Icmp4Type.ECHO_REQUEST,
@@ -84,7 +81,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Echo Request packet with payload.",
+            "_description": "ICMPv4 Echo Request, 16-byte data.",
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -101,12 +98,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv4 Echo Request
                     #   Type     : 8 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0x24be
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 carrying 16-byte payload.
+                    #   Checksum : 0x24be (computed by assemble())
+                    #   Id/Seq   : 12345 / 54321
+                    #   Data     : b"0123456789ABCDEF" (16 bytes)
                     b"\x08\x00\x24\xbe\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -119,7 +113,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv4 Echo Request packet, maximum length of data.",
+            "_description": "ICMPv4 Echo Request at maximum data length (65507 bytes).",
             "_kwargs": {
                 "id": 11111,
                 "seq": 22222,
@@ -127,21 +121,18 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 65515,
-                "__str__": ("ICMPv4 Echo Request, id 11111, seq 22222, len 65515 (8+65507)"),
+                "__str__": "ICMPv4 Echo Request, id 11111, seq 22222, len 65515 (8+65507)",
                 "__repr__": (
                     "Icmp4MessageEchoRequest(code=<Icmp4EchoRequestCode.DEFAULT: 0>, "
-                    f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65507}')"
+                    f"cksum=0, id=11111, seq=22222, data=b'{'X' * 65507}')"
                 ),
                 "__bytes__": (
-                    # ICMPv4 Echo Request
+                    # ICMPv4 Echo Request (at IPv4 payload maximum)
                     #   Type     : 8 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0x1ecb
-                    #   Identifier: 11111
-                    #   Sequence : 22222
-                    #   Data len : 65507 bytes ("X" * 65507)
-                    #
-                    #   Summary  : Ping request at maximum payload size (65507 bytes).
+                    #   Checksum : 0x1ecb (computed by assemble())
+                    #   Id/Seq   : 11111 / 22222
+                    #   Data     : b"X" * 65507 (IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN)
                     b"\x08\x00\x1e\xcb\x2b\x67\x56\xce"
                     + b"X" * 65507
                 ),
@@ -166,128 +157,127 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv4 Echo Request message assembler object
-        with testcase arguments.
+        Build an assembler wrapping the parametrized Echo Request message.
         """
 
         self._icmp4__assembler = Icmp4Assembler(icmp4__message=Icmp4MessageEchoRequest(**self._kwargs))
 
     def test__icmp4__message__echo_request__assembler__len(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message '__len__()' method returns
-        a correct value.
+        Ensure 'len()' on the assembler equals ICMP4__ECHO_REQUEST__LEN +
+        len(data).
         """
 
         self.assertEqual(
             len(self._icmp4__assembler),
             self._results["__len__"],
+            msg=f"Unexpected length for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__str(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message '__str__()' method returns
-        a correct value.
+        Ensure 'str()' renders the canonical Echo Request log line.
         """
 
         self.assertEqual(
             str(self._icmp4__assembler),
             self._results["__str__"],
+            msg=f"Unexpected str() for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message '__repr__()' method returns
-        a correct value.
+        Ensure 'repr()' forwards the wrapped message's dataclass repr.
         """
 
         self.assertEqual(
             repr(self._icmp4__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected repr() for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message '__bytes__()' method returns
-        a correct value.
+        Ensure 'bytes()' returns the full wire form including the
+        recomputed Internet checksum at bytes 2-3.
         """
 
         self.assertEqual(
             bytes(self._icmp4__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes() for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__type(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'type' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'type' field
+        (always Icmp4Type.ECHO_REQUEST via the non-init dataclass field).
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__code(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'code' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'code' field.
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'cksum' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'cksum' field.
         """
 
         self.assertEqual(
             self._icmp4__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__id(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'id' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'id' field.
         """
 
         self.assertEqual(
             cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).id,
             self._results["id"],
+            msg=f"Unexpected 'id' for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__seq(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'seq' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'seq' field.
         """
 
         self.assertEqual(
             cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).seq,
             self._results["seq"],
+            msg=f"Unexpected 'seq' for case: {self._description}",
         )
 
     def test__icmp4__message__echo_request__assembler__data(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'data' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'data' field.
         """
 
         self.assertEqual(
             cast(Icmp4MessageEchoRequest, self._icmp4__assembler.message).data,
             self._results["data"],
+            msg=f"Unexpected 'data' for case: {self._description}",
         )
 
-    def test__icmp4__messsage__echo_request__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp4__message__echo_request__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv4 Echo Request message 'assemble()' method
-        returns a correct value.
+        Ensure 'assemble()' yields the same wire bytes as 'bytes()'.
         """
 
         buffers: list[Buffer] = []
@@ -297,4 +287,5 @@ class TestIcmp4MessageEchoRequestAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected assemble() output for case: {self._description}",
         )
