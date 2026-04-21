@@ -226,6 +226,7 @@ from net_proto.protocols.icmp6.message.nd.icmp6__nd__message import (
     Icmp6NdMessage,
 )
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertisement import (
+    ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
 )
@@ -443,6 +444,7 @@ __all__ = [
     "ICMP6__ECHO_REPLY__LEN",
     "ICMP6__ECHO_REQUEST__LEN",
     "ICMP6__MLD2__REPORT__LEN",
+    "ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN",
     "ICMP6__ND__OPTION__LEN",
     "IP4__DEFAULT_TTL",
     "IP4__HEADER__LEN",
