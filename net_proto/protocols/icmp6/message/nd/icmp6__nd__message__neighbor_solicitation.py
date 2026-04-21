@@ -111,19 +111,19 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         Validate the ICMPv6 ND Neighbor Solicitation message fields.
         """
 
-        assert isinstance(self.code, Icmp6NdNeighborSolicitationCode), (
-            f"The 'code' field must be an Icmp6NdNeighborSolicitationCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6NdNeighborSolicitationCode
+        ), f"The 'code' field must be an Icmp6NdNeighborSolicitationCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert isinstance(self.target_address, Ip6Address), (
-            f"The 'target_address' field must be an Ip6Address. " f"Got: {type(self.target_address)!r}"
-        )
+        assert isinstance(
+            self.target_address, Ip6Address
+        ), f"The 'target_address' field must be an Ip6Address. Got: {type(self.target_address)!r}"
 
-        assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
-        )
+        assert isinstance(
+            self.options, Icmp6NdOptions
+        ), f"The 'options' field must be an Icmp6NdOptions. Got: {type(self.options)!r}"
 
     @override
     def __len__(self) -> int:
@@ -140,7 +140,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         """
 
         return (
-            f"ICMP6 ND Neighbor Solicitation, "
+            "ICMPv6 ND Neighbor Solicitation, "
             f"target {self.target_address}, "
             f"{f'opts [{self.options}], ' if self.options else ''}"
             f"len {len(self)} ({ICMP6__ND__NEIGHBOR_SOLICITATION__LEN}+"
@@ -187,42 +187,37 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         parsing it.
         """
 
-        if not (ip6__hop == 255):
+        if ip6__hop != 255:
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
+                f"ND Neighbor Solicitation - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
             )
 
         if not (ip6__src.is_unicast or ip6__src.is_unspecified):
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address "
-                f"must be unicast or unspecified. Got: {ip6__src!r}",
+                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address must be unicast or unspecified. "
+                f"Got: {ip6__src!r}",
             )
 
-        if not (
-            ip6__dst
-            in {
-                self.target_address,
-                self.target_address.solicited_node_multicast,
-            }
-        ):
+        if ip6__dst not in {
+            self.target_address,
+            self.target_address.solicited_node_multicast,
+        }:
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address "
-                "must be the same as 'target_address' address or related "
-                f"solicited-node multicast address. Got: {ip6__dst!r}",
+                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address must be the same as "
+                f"'target_address' address or related solicited-node multicast address. Got: {ip6__dst!r}",
             )
 
-        if not (self.target_address.is_unicast):
+        if not self.target_address.is_unicast:
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'target_address' "
-                f"address must be unicast. Got: {self.target_address!r}",
+                "ND Neighbor Solicitation - [RFC 4861] The 'target_address' address must be unicast. "
+                f"Got: {self.target_address!r}",
             )
 
         if ip6__src.is_unspecified:
-            if not (self.option_slla is None):
+            if self.option_slla is not None:
                 raise Icmp6SanityError(
-                    "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' "
-                    "is unspecified, the 'slla' option must not be included. "
-                    f"Got: {self.option_slla!r}",
+                    "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, the 'slla' option "
+                    f"must not be included. Got: {self.option_slla!r}",
                 )
 
         # TODO: Enforce proper option presence.
@@ -237,9 +232,8 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
 
         if not (ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen <= len(frame)):
             raise Icmp6IntegrityError(
-                "The condition 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen "
-                f"<= len(frame)' must be met. Got: {ICMP6__ND__NEIGHBOR_SOLICITATION__LEN=}, "
-                f"{ip6__dlen=}, {len(frame)=}"
+                "The condition 'ICMP6__ND__NEIGHBOR_SOLICITATION__LEN <= ip6__dlen <= len(frame)' must be met. "
+                f"Got: {ICMP6__ND__NEIGHBOR_SOLICITATION__LEN=}, {ip6__dlen=}, {len(frame)=}"
             )
 
         Icmp6NdOptions.validate_integrity(
@@ -259,9 +253,9 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
             buffer[:ICMP6__ND__NEIGHBOR_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__NEIGHBOR_SOLICITATION), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ND__NEIGHBOR_SOLICITATION
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6NdNeighborSolicitationCode(code),

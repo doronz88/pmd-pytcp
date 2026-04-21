@@ -60,7 +60,7 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 24,
-                "__str__": ("ICMP6 ND Neighbor Solicitation, target 2001:db8::1, " "len 24 (24+0)"),
+                "__str__": ("ICMPv6 ND Neighbor Solicitation, target 2001:db8::1, " "len 24 (24+0)"),
                 "__repr__": (
                     "Icmp6NdMessageNeighborSolicitation(code=<Icmp6NdNeighborSolicitationCode"
                     ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), target_address"
@@ -95,7 +95,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 32,
                 "__str__": (
-                    "ICMP6 ND Neighbor Solicitation, target 2001:db8::2, opts [slla "
+                    "ICMPv6 ND Neighbor Solicitation, target 2001:db8::2, opts [slla "
                     "00:11:22:33:44:55], len 32 (24+8)"
                 ),
                 "__repr__": (
