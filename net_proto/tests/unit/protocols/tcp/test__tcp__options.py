@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     TcpOptionEol,
@@ -57,18 +57,22 @@ from net_proto import (
 @parameterized_class(
     [
         {
-            "_description": "The TCP options (I).",
+            "_description": "TcpOptions with three Nop paddings and a trailing Eol (no feature options).",
             "_args": [
                 TcpOptionNop(),
                 TcpOptionNop(),
                 TcpOptionNop(),
                 TcpOptionEol(),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 4,
                 "__str__": "nop, nop, nop, eol",
-                "__repr__": ("TcpOptions(options=[TcpOptionNop(), TcpOptionNop(), " "TcpOptionNop(), TcpOptionEol()])"),
+                "__repr__": "TcpOptions(options=[TcpOptionNop(), TcpOptionNop(), TcpOptionNop(), TcpOptionEol()])",
+                # TCP options wire frame (4 bytes):
+                #   Byte 0 : 0x01 -> TcpOptionNop
+                #   Byte 1 : 0x01 -> TcpOptionNop
+                #   Byte 2 : 0x01 -> TcpOptionNop
+                #   Byte 3 : 0x00 -> TcpOptionEol
                 "__bytes__": b"\x01\x01\x01\x00",
                 "mss": None,
                 "wscale": None,
@@ -78,7 +82,7 @@ from net_proto import (
             },
         },
         {
-            "_description": "The TCP options (II).",
+            "_description": ("TcpOptions with Mss, Wscale, Sackperm, Timestamps, Unknown, and trailing Eol (max 40)."),
             "_args": [
                 TcpOptionMss(mss=1460),
                 TcpOptionWscale(wscale=7),
@@ -92,7 +96,6 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionEol(),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 40,
                 "__str__": (
@@ -105,6 +108,17 @@ from net_proto import (
                     "UNKNOWN_255: 255>, len=18, data=b'0123456789ABCDEF'), TcpOptionNop(), "
                     "TcpOptionEol()])"
                 ),
+                # TCP options wire frame (40 bytes, max TCP__OPTIONS__MAX_LEN):
+                #   Bytes 0-3   : 0x02 0x04 0x05 0xb4       -> Mss option, mss=1460
+                #   Bytes 4-6   : 0x03 0x03 0x07            -> Wscale option, wscale=7
+                #   Bytes 7-8   : 0x04 0x02                 -> Sackperm option
+                #   Bytes 9-18  : 0x08 0x0a 0x423a35c7 0x84746b8e
+                #                 -> Timestamps option, tsval=1111111111, tsecr=2222222222
+                #   Byte 19     : 0x01                      -> Nop padding
+                #   Bytes 20-37 : 0xff 0x12 b"0123456789ABCDEF"
+                #                 -> Unknown option, type=255, len=18
+                #   Byte 38     : 0x01                      -> Nop padding
+                #   Byte 39     : 0x00                      -> Eol terminator
                 "__bytes__": (
                     b"\x02\x04\x05\xb4\x03\x03\x07\x04\x02\x08\x0a\x42\x3a\x35\xc7\x84"
                     b"\x74\x6b\x8e\x01\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
@@ -118,7 +132,7 @@ from net_proto import (
             },
         },
         {
-            "_description": "The TCP options (III).",
+            "_description": "TcpOptions with Mss, Wscale, Nop, Sackperm, Timestamps (no terminating Eol).",
             "_args": [
                 TcpOptionMss(mss=1200),
                 TcpOptionWscale(wscale=5),
@@ -126,15 +140,21 @@ from net_proto import (
                 TcpOptionSackperm(),
                 TcpOptionTimestamps(tsval=123, tsecr=345),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 20,
-                "__str__": ("mss 1200, wscale 5, nop, sackperm, timestamps 123/345"),
+                "__str__": "mss 1200, wscale 5, nop, sackperm, timestamps 123/345",
                 "__repr__": (
                     "TcpOptions(options=[TcpOptionMss(mss=1200), TcpOptionWscale(wscale=5), "
                     "TcpOptionNop(), TcpOptionSackperm(), TcpOptionTimestamps(tsval=123, "
                     "tsecr=345)])"
                 ),
+                # TCP options wire frame (20 bytes):
+                #   Bytes 0-3   : 0x02 0x04 0x04 0xb0       -> Mss option, mss=1200
+                #   Bytes 4-6   : 0x03 0x03 0x05            -> Wscale option, wscale=5
+                #   Byte 7      : 0x01                      -> Nop padding
+                #   Bytes 8-9   : 0x04 0x02                 -> Sackperm option
+                #   Bytes 10-19 : 0x08 0x0a 0x0000007b 0x00000159
+                #                 -> Timestamps option, tsval=123, tsecr=345
                 "__bytes__": (b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b" b"\x00\x00\x01\x59"),
                 "mss": 1200,
                 "wscale": 5,
@@ -144,7 +164,7 @@ from net_proto import (
             },
         },
         {
-            "_description": "The TCP options (IV).",
+            "_description": "TcpOptions with a 3-block Sack followed by Timestamps.",
             "_args": [
                 TcpOptionSack(
                     blocks=[
@@ -155,7 +175,6 @@ from net_proto import (
                 ),
                 TcpOptionTimestamps(tsval=123456, tsecr=654321),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 36,
                 "__str__": "sack [1111-2222, 3333-4444, 5555-6666], timestamps 123456/654321",
@@ -164,6 +183,11 @@ from net_proto import (
                     "right=2222), TcpSackBlock(left=3333, right=4444), TcpSackBlock(left=5555, "
                     "right=6666)]), TcpOptionTimestamps(tsval=123456, tsecr=654321)])"
                 ),
+                # TCP options wire frame (36 bytes):
+                #   Bytes 0-25  : 0x05 0x1a + 3x 8-byte Sack blocks
+                #                 -> Sack option, blocks=[1111-2222, 3333-4444, 5555-6666]
+                #   Bytes 26-35 : 0x08 0x0a 0x0001e240 0x0009fbf1
+                #                 -> Timestamps option, tsval=123456, tsecr=654321
                 "__bytes__": (
                     b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
                     b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a\x08\x0a\x00\x01\xe2\x40"
@@ -181,7 +205,7 @@ from net_proto import (
             },
         },
         {
-            "_description": "The TCP options - ensure only first option occurrences are considered.",
+            "_description": "TcpOptions with duplicate Mss, Wscale, and Timestamps: only first occurrences exposed.",
             "_args": [
                 TcpOptionMss(mss=11111),
                 TcpOptionWscale(wscale=7),
@@ -196,7 +220,6 @@ from net_proto import (
                 TcpOptionNop(),
                 TcpOptionNop(),
             ],
-            "_kwargs": {},
             "_results": {
                 "__len__": 40,
                 "__str__": (
@@ -210,6 +233,17 @@ from net_proto import (
                     "TcpOptionTimestamps(tsval=222, tsecr=222), TcpOptionNop(), TcpOptionNop(), "
                     "TcpOptionNop()])"
                 ),
+                # TCP options wire frame (40 bytes):
+                #   Bytes 0-3   : 0x02 0x04 0x2b 0x67       -> Mss, mss=11111 (first)
+                #   Bytes 4-6   : 0x03 0x03 0x07            -> Wscale, wscale=7 (first)
+                #   Bytes 7-16  : 0x08 0x0a 0x0000006f 0x0000006f
+                #                 -> Timestamps, tsval=111, tsecr=111 (first)
+                #   Bytes 17-19 : 0x01 0x01 0x01            -> Nop, Nop, Nop
+                #   Bytes 20-23 : 0x02 0x04 0x56 0xce       -> Mss, mss=22222 (duplicate)
+                #   Bytes 24-26 : 0x03 0x03 0x0e            -> Wscale, wscale=14 (duplicate)
+                #   Bytes 27-36 : 0x08 0x0a 0x000000de 0x000000de
+                #                 -> Timestamps, tsval=222, tsecr=222 (duplicate)
+                #   Bytes 37-39 : 0x01 0x01 0x01            -> Nop, Nop, Nop
                 "__bytes__": (
                     b"\x02\x04\x2b\x67\x03\x03\x07\x08\x0a\x00\x00\x00\x6f\x00\x00\x00"
                     b"\x6f\x01\x01\x01\x02\x04\x56\xce\x03\x03\x0e\x08\x0a\x00\x00\x00"
@@ -222,229 +256,242 @@ from net_proto import (
                 "timestamps": TcpTimestamps(tsval=111, tsecr=111),
             },
         },
+        {
+            "_description": "Empty TcpOptions container.",
+            "_args": [],
+            "_results": {
+                "__len__": 0,
+                "__str__": "",
+                "__repr__": "TcpOptions(options=[])",
+                "__bytes__": b"",
+                "mss": None,
+                "wscale": None,
+                "sackperm": None,
+                "sack": None,
+                "timestamps": None,
+            },
+        },
     ]
 )
 class TestTcpOptionsAssembler(TestCase):
     """
-    The 'TcpOptions' class assembler tests.
+    The 'TcpOptions' container assembler tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the 'TcpOptions' class object with testcase arguments.
+        Build the TcpOptions container from the parametrized option list.
         """
 
-        self._tcp_options = TcpOptions(*self._args, **self._kwargs)
+        self._tcp_options = TcpOptions(*self._args)
 
     def test__tcp_options__len(self) -> None:
         """
-        Ensure the 'TcpOptions' class '__len__()' method returns a correct value.
+        Ensure '__len__()' returns the total serialized options length.
         """
 
         self.assertEqual(
             len(self._tcp_options),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__tcp_options__str(self) -> None:
         """
-        Ensure the 'TcpOptions' class '__str__()' method returns a correct value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._tcp_options),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__tcp_options__repr(self) -> None:
         """
-        Ensure the 'TcpOptions' class '__repr__()' method returns a correct value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._tcp_options),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__tcp_options__bytes(self) -> None:
         """
-        Ensure the 'TcpOptions' class '__bytes__()' method returns a correct value.
+        Ensure '__bytes__()' returns the expected wire-frame bytes.
         """
 
         self.assertEqual(
             bytes(self._tcp_options),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__tcp_options__mss(self) -> None:
         """
-        Ensure the 'TcpOptions' class 'mss' property returns a correct value.
+        Ensure the 'mss' property returns the first Mss option value (or
+        None if no Mss option is present).
         """
 
         self.assertEqual(
             self._tcp_options.mss,
             self._results["mss"],
+            msg=f"Unexpected 'mss' for case: {self._description}",
         )
 
     def test__tcp_options__wscale(self) -> None:
         """
-        Ensure the 'TcpOptions' class 'wscale' property returns a correct value.
+        Ensure the 'wscale' property returns the first Wscale option value
+        (or None if no Wscale option is present).
         """
 
         self.assertEqual(
             self._tcp_options.wscale,
             self._results["wscale"],
+            msg=f"Unexpected 'wscale' for case: {self._description}",
         )
 
     def test__tcp_options__sackperm(self) -> None:
         """
-        Ensure the 'TcpOptions' class 'sackperm' property returns a correct value.
+        Ensure the 'sackperm' property returns True when a Sackperm option
+        is present and None otherwise.
         """
 
         self.assertEqual(
             self._tcp_options.sackperm,
             self._results["sackperm"],
+            msg=f"Unexpected 'sackperm' for case: {self._description}",
         )
 
     def test__tcp_options__sack(self) -> None:
         """
-        Ensure the 'TcpOptions' class 'sack' property returns a correct value.
+        Ensure the 'sack' property returns the first Sack option block
+        list (or None if no Sack option is present).
         """
 
         self.assertEqual(
             self._tcp_options.sack,
             self._results["sack"],
+            msg=f"Unexpected 'sack' for case: {self._description}",
         )
 
     def test__tcp_options__timestamps(self) -> None:
         """
-        Ensure the 'TcpOptions' class 'timestamps' property returns a correct value.
+        Ensure the 'timestamps' property returns the first Timestamps
+        option value (or None if no Timestamps option is present).
         """
 
         self.assertEqual(
             self._tcp_options.timestamps,
             self._results["timestamps"],
+            msg=f"Unexpected 'timestamps' for case: {self._description}",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP options (I).",
-            "_args": [
-                b"\x01\x01\x01\x00",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "options": TcpOptions(
-                    TcpOptionNop(),
-                    TcpOptionNop(),
-                    TcpOptionNop(),
-                    TcpOptionEol(),
-                ),
-            },
+            "_description": "TcpOptions parse: three Nops plus trailing Eol.",
+            "_buffer": b"\x01\x01\x01\x00",
+            "_expected": TcpOptions(
+                TcpOptionNop(),
+                TcpOptionNop(),
+                TcpOptionNop(),
+                TcpOptionEol(),
+            ),
         },
         {
-            "_description": "The TCP options (II).",
-            "_args": [
+            "_description": "TcpOptions parse: Mss, Wscale, Sackperm, Timestamps, Nop, Unknown, Nop, Eol.",
+            "_buffer": (
                 b"\x02\x04\x05\xb4\x03\x03\x07\x04\x02\x08\x0a\x42\x3a\x35\xc7\x84"
                 b"\x74\x6b\x8e\x01\xff\x12\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39"
-                b"\x41\x42\x43\x44\x45\x46\x01\x00",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "options": TcpOptions(
-                    TcpOptionMss(mss=1460),
-                    TcpOptionWscale(wscale=7),
-                    TcpOptionSackperm(),
-                    TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222),
-                    TcpOptionNop(),
-                    TcpOptionUnknown(
-                        type=TcpOptionType.from_int(255),
-                        data=b"0123456789ABCDEF",
-                    ),
-                    TcpOptionNop(),
-                    TcpOptionEol(),
+                b"\x41\x42\x43\x44\x45\x46\x01\x00"
+            ),
+            "_expected": TcpOptions(
+                TcpOptionMss(mss=1460),
+                TcpOptionWscale(wscale=7),
+                TcpOptionSackperm(),
+                TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222),
+                TcpOptionNop(),
+                TcpOptionUnknown(
+                    type=TcpOptionType.from_int(255),
+                    data=b"0123456789ABCDEF",
                 ),
-            },
+                TcpOptionNop(),
+                TcpOptionEol(),
+            ),
         },
         {
-            "_description": "The TCP options (III).",
-            "_args": [
-                b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b" b"\x00\x00\x01\x59",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "options": TcpOptions(
-                    TcpOptionMss(mss=1200),
-                    TcpOptionWscale(wscale=5),
-                    TcpOptionNop(),
-                    TcpOptionSackperm(),
-                    TcpOptionTimestamps(tsval=123, tsecr=345),
-                ),
-            },
+            "_description": "TcpOptions parse: Mss, Wscale, Nop, Sackperm, Timestamps (no trailing Eol).",
+            "_buffer": (b"\x02\x04\x04\xb0\x03\x03\x05\x01\x04\x02\x08\x0a\x00\x00\x00\x7b" b"\x00\x00\x01\x59"),
+            "_expected": TcpOptions(
+                TcpOptionMss(mss=1200),
+                TcpOptionWscale(wscale=5),
+                TcpOptionNop(),
+                TcpOptionSackperm(),
+                TcpOptionTimestamps(tsval=123, tsecr=345),
+            ),
         },
         {
-            "_description": "The TCP options (IV).",
-            "_args": [
+            "_description": "TcpOptions parse: 3-block Sack followed by Timestamps.",
+            "_buffer": (
                 b"\x05\x1a\x00\x00\x04\x57\x00\x00\x08\xae\x00\x00\x0d\x05\x00\x00"
                 b"\x11\x5c\x00\x00\x15\xb3\x00\x00\x1a\x0a\x08\x0a\x00\x01\xe2\x40"
-                b"\x00\x09\xfb\xf1",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "options": TcpOptions(
-                    TcpOptionSack(
-                        blocks=[
-                            TcpSackBlock(1111, 2222),
-                            TcpSackBlock(3333, 4444),
-                            TcpSackBlock(5555, 6666),
-                        ]
-                    ),
-                    TcpOptionTimestamps(tsval=123456, tsecr=654321),
+                b"\x00\x09\xfb\xf1"
+            ),
+            "_expected": TcpOptions(
+                TcpOptionSack(
+                    blocks=[
+                        TcpSackBlock(1111, 2222),
+                        TcpSackBlock(3333, 4444),
+                        TcpSackBlock(5555, 6666),
+                    ]
                 ),
-            },
+                TcpOptionTimestamps(tsval=123456, tsecr=654321),
+            ),
         },
         {
-            "_description": "The TCP options with options behind the 'Eol' options.",
-            "_args": [
-                b"\x01\x01\x01\x00\x01\x01",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "options": TcpOptions(
-                    TcpOptionNop(),
-                    TcpOptionNop(),
-                    TcpOptionNop(),
-                    TcpOptionEol(),
-                ),
-            },
+            "_description": "TcpOptions parse: bytes after the Eol are discarded.",
+            "_buffer": b"\x01\x01\x01\x00\x01\x01",
+            "_expected": TcpOptions(
+                TcpOptionNop(),
+                TcpOptionNop(),
+                TcpOptionNop(),
+                TcpOptionEol(),
+            ),
+        },
+        {
+            "_description": "TcpOptions parse: empty buffer yields empty container.",
+            "_buffer": b"",
+            "_expected": TcpOptions(),
         },
     ]
 )
 class TestTcpOptionsParser(TestCase):
     """
-    The 'TcpOptions' class parser tests.
+    The 'TcpOptions' container parser tests.
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
+    _buffer: bytes
+    _expected: TcpOptions
 
     def test__tcp_options__from_buffer(self) -> None:
         """
-        Ensure the 'TcpOptions' class parser creates the proper option object.
+        Ensure 'TcpOptions.from_buffer()' parses the wire frame into the
+        expected TcpOptions container.
         """
 
-        tcp_options = TcpOptions.from_buffer(*self._args, **self._kwargs)
+        tcp_options = TcpOptions.from_buffer(self._buffer)
 
         self.assertEqual(
             tcp_options,
-            self._results["options"],
+            self._expected,
+            msg=f"Unexpected parsed options for case: {self._description}",
         )
