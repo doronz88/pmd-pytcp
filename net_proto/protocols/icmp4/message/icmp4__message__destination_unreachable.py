@@ -141,19 +141,19 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Validate the ICMPv4 Destination Unreachable message fields.
         """
 
-        assert isinstance(self.code, Icmp4DestinationUnreachableCode), (
-            f"The 'code' field must be an Icmp4DestinationUnreachableCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp4DestinationUnreachableCode
+        ), f"The 'code' field must be an Icmp4DestinationUnreachableCode. Got: {type(self.code)!r}"
 
         if self.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
-            assert self.mtu is not None and is_uint16(self.mtu), (
-                f"The 'mtu' field must be a 16-bit unsigned integer. " f"Got: {self.mtu}"
-            )
+            assert self.mtu is not None and is_uint16(
+                self.mtu
+            ), f"The 'mtu' field must be a 16-bit unsigned integer. Got: {self.mtu}"
 
         if self.code != Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
             assert self.mtu is None, f"The 'mtu' field must not be set. Got: {self.mtu}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum}"
 
         assert len(self.data) <= IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN, (
             "The 'data' field length must be a 16-bit unsigned integer less than or "
