@@ -34,150 +34,158 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import IP4__OPTION__EOL__LEN, Ip4OptionEol, Ip4OptionType
 
 
-class TestIp4OptionEolAsserts(TestCase):
-    """
-    The IPv4 Eol option constructor argument assert tests.
-    """
-
-    # Currently the IPv4 Eol option does not have any constructor
-    # argument asserts.
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "The IPv4 Eol option.",
-            "_args": [],
-            "_kwargs": {},
-            "_results": {
-                "__len__": 1,
-                "__str__": "eol",
-                "__repr__": "Ip4OptionEol()",
-                "__bytes__": b"\x00",
-                "type": Ip4OptionType.EOL,
-                "len": IP4__OPTION__EOL__LEN,
-            },
-        },
-    ]
-)
 class TestIp4OptionEolAssembler(TestCase):
     """
     The IPv4 Eol option assembler tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def setUp(self) -> None:
         """
-        Initialize the IPv4 Eol option object with testcase arguments.
+        Build the IPv4 Eol option; the option takes no constructor args.
         """
 
-        self._option = Ip4OptionEol(*self._args, **self._kwargs)
+        self._option = Ip4OptionEol()
 
     def test__ip4__option__eol__len(self) -> None:
         """
-        Ensure the IPv4 Eol option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns IP4__OPTION__EOL__LEN (1 byte).
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            IP4__OPTION__EOL__LEN,
+            msg="Unexpected __len__ for IPv4 Eol option.",
         )
 
     def test__ip4__option__eol__str(self) -> None:
         """
-        Ensure the IPv4 Eol option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the log string 'eol'.
         """
 
         self.assertEqual(
             str(self._option),
-            self._results["__str__"],
+            "eol",
+            msg="Unexpected __str__ for IPv4 Eol option.",
         )
 
     def test__ip4__option__eol__repr(self) -> None:
         """
-        Ensure the IPv4 Eol option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns 'Ip4OptionEol()'.
         """
 
         self.assertEqual(
             repr(self._option),
-            self._results["__repr__"],
+            "Ip4OptionEol()",
+            msg="Unexpected __repr__ for IPv4 Eol option.",
         )
 
     def test__ip4__option__eol__bytes(self) -> None:
         """
-        Ensure the IPv4 Eol option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the single wire byte 0x00.
         """
 
+        # IPv4 Eol option wire format:
+        #   Type: 0x00 (Ip4OptionType.EOL)
         self.assertEqual(
             bytes(self._option),
-            self._results["__bytes__"],
+            b"\x00",
+            msg="Unexpected __bytes__ for IPv4 Eol option.",
         )
 
     def test__ip4__option__eol__type(self) -> None:
         """
-        Ensure the IPv4 Eol option 'type' field contains a correct value.
+        Ensure the 'type' field is Ip4OptionType.EOL.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            Ip4OptionType.EOL,
+            msg="Unexpected 'type' field for IPv4 Eol option.",
         )
 
     def test__ip4__option__eol__length(self) -> None:
         """
-        Ensure the IPv4 Eol option 'len' field contains a correct value.
+        Ensure the 'len' field equals IP4__OPTION__EOL__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            IP4__OPTION__EOL__LEN,
+            msg="Unexpected 'len' field for IPv4 Eol option.",
+        )
+
+
+class TestIp4OptionEolParser(TestCase):
+    """
+    The IPv4 Eol option parser positive tests.
+    """
+
+    def test__ip4__option__eol__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses a 1-byte Eol whose buffer length
+        exactly matches IP4__OPTION__EOL__LEN.
+        """
+
+        # IPv4 Eol option wire format (exactly 1 byte):
+        #   Type: 0x00 (Ip4OptionType.EOL)
+        buffer = b"\x00"
+
+        self.assertEqual(
+            len(buffer),
+            IP4__OPTION__EOL__LEN,
+            msg="Fixture must match IP4__OPTION__EOL__LEN.",
+        )
+
+        option = Ip4OptionEol.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionEol(),
+            msg="Parsed option must equal the reference Ip4OptionEol.",
+        )
+
+    def test__ip4__option__eol__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses an Eol option when the buffer carries
+        trailing bytes past the 1-byte option payload (those trailing
+        bytes are consumed by the next option in the options container).
+        """
+
+        # IPv4 Eol option wire format followed by 5 trailing bytes that
+        # must be ignored by Ip4OptionEol.from_buffer:
+        #   Type: 0x00 (Ip4OptionType.EOL)
+        #   Trail: b"ZH0PA"
+        buffer = b"\x00" + b"ZH0PA"
+
+        option = Ip4OptionEol.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            Ip4OptionEol(),
+            msg="Parsed option must equal the reference Ip4OptionEol (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The IPv4 Eol option.",
-            "_args": [
-                b"\x00" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": Ip4OptionEol(),
-            },
-        },
-        {
-            "_description": "The IPv4 Eol option minimum length assert.",
-            "_args": [
-                b"",
-            ],
-            "_kwargs": {},
+            "_description": "IPv4 Eol option, buffer shorter than IP4__OPTION__EOL__LEN.",
+            "_args": [b""],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the IPv4 Eol option must be 1 " "byte. Got: 0"),
+                "error_message": "The minimum length of the IPv4 Eol option must be 1 byte. Got: 0",
             },
         },
         {
-            "_description": "The IPv4 Eol option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff",
-            ],
-            "_kwargs": {},
+            "_description": "IPv4 Eol option, buffer 'type' byte is not Ip4OptionType.EOL.",
+            "_args": [b"\xff"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -185,37 +193,39 @@ class TestIp4OptionEolAssembler(TestCase):
                 ),
             },
         },
+        {
+            "_description": "IPv4 Eol option, buffer 'type' byte is Nop (another known type).",
+            "_args": [b"\x01"],
+            "_results": {
+                "error": AssertionError,
+                "error_message": (
+                    f"The IPv4 Eol option type must be {Ip4OptionType.EOL!r}. " f"Got: {Ip4OptionType.NOP!r}"
+                ),
+            },
+        },
     ]
 )
-class TestIp4OptionEolParser(TestCase):
+class TestIp4OptionEolParserFailures(TestCase):
     """
-    The IPv4 Eol option parser tests.
+    The IPv4 Eol option parser failure-path tests (assertion errors on
+    short and mistyped buffers).
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__ip4__option__eol__from_buffer(self) -> None:
+    def test__ip4__option__eol__from_buffer__error(self) -> None:
         """
-        Ensure the IPv4 Eol option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = Ip4OptionEol.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            Ip4OptionEol.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                Ip4OptionEol.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
