@@ -27,264 +27,274 @@
 """
 Module contains tests for the ICMPv6 Destination Unreachable message parser.
 
-net_proto/tests/unit/protocols/icmp4/test__icmp6__message__destination_unreachable__parser.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__message__destination_unreachable__parser.py
 
 ver 3.0.4
 """
 
 
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip6Address
 from net_proto import (
     Icmp6DestinationUnreachableCode,
     Icmp6MessageDestinationUnreachable,
     Icmp6Parser,
+    Ip6Parser,
     PacketRx,
 )
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+
+
+def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads (dlen, pshdr_sum, src, dst, hop).
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame),
+            payload_len=len(frame),
+            pshdr_sum=0,
+            src=Ip6Address(),
+            dst=Ip6Address(),
+            hop=0,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
-            "_description": "ICMPv6 Destination Unreachable (No Route) message.",
+            "_description": "ICMPv6 Destination Unreachable (No Route), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 0 (No Route)
                 #   Checksum : 0xfeff
-                #   Data len : 0 bytes
-                #
-                #   Summary  : IPv6 host indicates no route to destination.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x00\xfe\xff\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.NO_ROUTE,
-                    cksum=65279,
+                    cksum=0xFEFF,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Prohibited) message.",
+            "_description": "ICMPv6 Destination Unreachable (Prohibited), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 1 (Administratively Prohibited)
                 #   Checksum : 0xfefe
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Traffic administratively prohibited to destination.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x01\xfe\xfe\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PROHIBITED,
-                    cksum=65278,
+                    cksum=0xFEFE,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Scope) message.",
+            "_description": "ICMPv6 Destination Unreachable (Beyond Scope), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 2 (Beyond Scope)
                 #   Checksum : 0xfefd
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Destination beyond scope of source address.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x02\xfe\xfd\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.SCOPE,
-                    cksum=65277,
+                    cksum=0xFEFD,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Address) message.",
+            "_description": "ICMPv6 Destination Unreachable (Address Unreachable), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 3 (Address Unreachable)
                 #   Checksum : 0xfefc
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Destination address unreachable for the source.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x03\xfe\xfc\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.ADDRESS,
-                    cksum=65276,
+                    cksum=0xFEFC,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Port) message.",
+            "_description": "ICMPv6 Destination Unreachable (Port Unreachable), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 4 (Port Unreachable)
                 #   Checksum : 0xfefb
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Target transport port unreachable.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x04\xfe\xfb\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
-                    cksum=65275,
+                    cksum=0xFEFB,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Failed Policy) message.",
+            "_description": "ICMPv6 Destination Unreachable (Source Failed Policy), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 5 (Source Failed Policy)
                 #   Checksum : 0xfefa
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Source address failed ingress/egress policy.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x05\xfe\xfa\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.FAILED_POLICY,
-                    cksum=65274,
+                    cksum=0xFEFA,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Reject Route) message.",
+            "_description": "ICMPv6 Destination Unreachable (Reject Route), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 6 (Reject Route)
                 #   Checksum : 0xfef9
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Router rejects route to destination.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x06\xfe\xf9\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.REJECT_ROUTE,
-                    cksum=65273,
+                    cksum=0xFEF9,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Source Routing Header) message.",
+            "_description": "ICMPv6 Destination Unreachable (Error in Source Routing Header), empty data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 7 (Error in Source Routing Header)
                 #   Checksum : 0xfef8
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Error processing IPv6 source routing header.
+                #   Reserved : 0x00000000
+                #   Data     : none
                 b"\x01\x07\xfe\xf8\x00\x00\x00\x00"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER,
-                    cksum=65272,
+                    cksum=0xFEF8,
                     data=b"",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable message, non-empty payload.",
+            "_description": "ICMPv6 Destination Unreachable (Port Unreachable), 16-byte data.",
             "_frame_rx": (
                 # ICMPv6 Destination Unreachable
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 4 (Port Unreachable)
                 #   Checksum : 0x3025
-                #   Data len : 16 bytes ("0123456789ABCDEF")
-                #
-                #   Summary  : Port unreachable message carrying 16-byte offending payload.
+                #   Reserved : 0x00000000
+                #   Data     : b"0123456789ABCDEF" (16 bytes)
                 b"\x01\x04\x30\x25\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
-                    cksum=12325,
+                    cksum=0x3025,
                     data=b"0123456789ABCDEF",
                 ),
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable message, maximum length payload.",
-            "_args": (
-                # ICMPv6 Destination Unreachable
+            "_description": (
+                "ICMPv6 Destination Unreachable (Port Unreachable), 1232-byte data "
+                "(IP6_MIN_MTU - IP6_HEADER_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN)."
+            ),
+            "_frame_rx": (
+                # ICMPv6 Destination Unreachable (RFC4443 limit: original datagram
+                # truncated to fit min-MTU-sized reply)
                 #   Type     : 1 (Destination Unreachable)
                 #   Code     : 4 (Port Unreachable)
                 #   Checksum : 0x6a67
-                #   Data len : 1232 bytes ("X" * 1232)
-                #
-                #   Summary  : Port unreachable message with maximum captured payload.
+                #   Reserved : 0x00000000
+                #   Data     : b"X" * 1232
                 b"\x01\x04\x6a\x67\x00\x00\x00\x00"
-                + b"X" * 1232,
+                + b"X" * 1232
             ),
-            "mocked_values": {},
             "_results": {
                 "message": Icmp6MessageDestinationUnreachable(
                     code=Icmp6DestinationUnreachableCode.PORT,
-                    cksum=27239,
+                    cksum=0x6A67,
                     data=b"X" * 1232,
                 ),
             },
         },
     ]
 )
-class TestIcmp6MessageDestinationUnreachableParser(TestCasePacketRxIp6):
+class TestIcmp6MessageDestinationUnreachableParser(TestCase):
     """
     The ICMPv6 Destination Unreachable message parser tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__message__destination_unreachable__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'message()'
-        method creates a proper message object.
+        Build a PacketRx for the parametrized frame.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx)
+
+    def test__icmp6__message__destination_unreachable__parser(self) -> None:
+        """
+        Ensure the ICMPv6 parser produces an Icmp6MessageDestinationUnreachable
+        whose fields match the expected reference message for each frame.
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
 
-        # Convert the 'data' field from memoryview to bytes so we can compare.
+        # Materialize 'data' from memoryview to bytes for structural equality.
         object.__setattr__(
             icmp6_parser.message,
             "data",
@@ -294,4 +304,33 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCasePacketRxIp6):
         self.assertEqual(
             icmp6_parser.message,
             self._results["message"],
+            msg=f"Parsed message mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__message__destination_unreachable__parser__message_type(self) -> None:
+        """
+        Ensure the parsed message is an Icmp6MessageDestinationUnreachable
+        instance.
+        """
+
+        icmp6_parser = Icmp6Parser(self._packet_rx)
+
+        self.assertIsInstance(
+            icmp6_parser.message,
+            Icmp6MessageDestinationUnreachable,
+            msg=f"Parsed message must be Icmp6MessageDestinationUnreachable for case: {self._description}",
+        )
+
+    def test__icmp6__message__destination_unreachable__parser__frame_advanced(self) -> None:
+        """
+        Ensure the ICMPv6 parser advances 'packet_rx.frame' past the
+        parsed Destination Unreachable message.
+        """
+
+        Icmp6Parser(self._packet_rx)
+
+        self.assertEqual(
+            len(self._packet_rx.frame),
+            0,
+            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
         )
