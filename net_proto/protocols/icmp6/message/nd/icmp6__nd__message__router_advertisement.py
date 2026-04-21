@@ -25,7 +25,7 @@
 
 
 """
-This module contains ICMPv6 ND Router Advertisement message support class.
+This module contains the ICMPv6 ND Router Advertisement message support class.
 
 net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_advertisement.py
 
@@ -111,33 +111,33 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         Validate the ICMPv6 ND Router Advertisement message fields.
         """
 
-        assert isinstance(self.code, Icmp6NdRouterAdvertisementCode), (
-            f"The 'code' field must be an Icmp6NdRouterAdvertisementCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6NdRouterAdvertisementCode
+        ), f"The 'code' field must be an Icmp6NdRouterAdvertisementCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert is_uint8(self.hop), f"The 'hop' field must be a 8-bit unsigned integer. " f"Got: {self.hop!r}"
+        assert is_uint8(self.hop), f"The 'hop' field must be a 8-bit unsigned integer. Got: {self.hop!r}"
 
-        assert isinstance(self.flag_m, bool), f"The 'flag_m' field must be a boolean. " f"Got: {type(self.flag_m)!r}"
+        assert isinstance(self.flag_m, bool), f"The 'flag_m' field must be a boolean. Got: {type(self.flag_m)!r}"
 
-        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. " f"Got: {type(self.flag_o)!r}"
+        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. Got: {type(self.flag_o)!r}"
 
-        assert is_uint16(self.router_lifetime), (
-            f"The 'router_lifetime' field must be a 16-bit unsigned integer. " f"Got: {self.router_lifetime!r}"
-        )
+        assert is_uint16(
+            self.router_lifetime
+        ), f"The 'router_lifetime' field must be a 16-bit unsigned integer. Got: {self.router_lifetime!r}"
 
-        assert is_uint32(self.reachable_time), (
-            f"The 'reachable_time' field must be a 32-bit unsigned integer. " f"Got: {self.reachable_time!r}"
-        )
+        assert is_uint32(
+            self.reachable_time
+        ), f"The 'reachable_time' field must be a 32-bit unsigned integer. Got: {self.reachable_time!r}"
 
-        assert is_uint32(self.retrans_timer), (
-            f"The 'retrans_timer' field must be a 32-bit unsigned integer. " f"Got: {self.retrans_timer!r}"
-        )
+        assert is_uint32(
+            self.retrans_timer
+        ), f"The 'retrans_timer' field must be a 32-bit unsigned integer. Got: {self.retrans_timer!r}"
 
-        assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
-        )
+        assert isinstance(
+            self.options, Icmp6NdOptions
+        ), f"The 'options' field must be an Icmp6NdOptions. Got: {type(self.options)!r}"
 
     @override
     def __len__(self) -> int:
@@ -206,20 +206,19 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         parsing it.
         """
 
-        if not (ip6__hop == 255):
+        if ip6__hop != 255:
             raise Icmp6SanityError(
-                "ND Router Advertisement - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
+                f"ND Router Advertisement - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
             )
 
-        if not (ip6__src.is_link_local):
+        if not ip6__src.is_link_local:
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address "
-                f"must be link-local. Got: {ip6__src!r}",
+                "ND Router Advertisement - [RFC 4861] The 'ip6__src' address " f"must be link-local. Got: {ip6__src!r}",
             )
 
         if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
             raise Icmp6SanityError(
-                "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address "
+                "ND Router Advertisement - [RFC 4861] The 'ip6__dst' address "
                 f"must be unicast or all-nodes multicast. Got: {ip6__dst!r}",
             )
 
@@ -266,9 +265,9 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             buffer[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6NdRouterAdvertisementCode(code),

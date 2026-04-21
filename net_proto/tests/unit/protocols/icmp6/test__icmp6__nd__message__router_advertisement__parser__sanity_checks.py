@@ -79,7 +79,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
             "_results": {
                 "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] The 'ip6__src' address must be "
+                    "ND Router Advertisement - [RFC 4861] The 'ip6__src' address must be "
                     "link-local. Got: Ip6Address('2001:db8::1')"
                 ),
             },
@@ -107,7 +107,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
             "_results": {
                 "error_message": (
-                    "ND Neighbor Solicitation - [RFC 4861] The 'ip6__dst' address must be "
+                    "ND Router Advertisement - [RFC 4861] The 'ip6__dst' address must be "
                     "unicast or all-nodes multicast. Got: Ip6Address('::')"
                 )
             },
