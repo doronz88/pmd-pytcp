@@ -33,7 +33,9 @@ ver 3.0.4
 """
 
 
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -42,23 +44,32 @@ from net_proto import (
     Icmp4MessageUnknown,
     Icmp4Parser,
     Icmp4Type,
+    Ip4Parser,
     PacketRx,
 )
-from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
+
+
+def _packet_rx_with_ip4(frame: bytes) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv4 stub whose 'payload_len' matches
+    the full frame (the only field Icmp4Parser reads off 'packet_rx.ip4').
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip4 = cast(Ip4Parser, SimpleNamespace(payload_len=len(frame)))
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
-            "_description": "ICMPv4 unknown message.",
+            "_description": "ICMPv4 unknown message (type 255, code 255), 16-byte data.",
             "_frame_rx": (
                 # ICMPv4 Unknown Message
                 #   Type     : 255 (Unknown)
                 #   Code     : 255 (Unknown)
                 #   Checksum : 0x3129
-                #   Data len : 16 bytes ("0123456789ABCDEF")
-                #
-                #   Summary  : Vendor-specific or unsupported ICMP message with 16-byte payload.
+                #   Data     : b"0123456789ABCDEF" (16 bytes)
                 b"\xff\xff\x31\x29\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42"
                 b"\x43\x44\x45\x46"
             ),
@@ -66,14 +77,53 @@ from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
                 "message": Icmp4MessageUnknown(
                     type=Icmp4Type.from_int(255),
                     code=Icmp4Code.from_int(255),
-                    cksum=12585,
+                    cksum=0x3129,
                     data=b"0123456789ABCDEF",
+                ),
+            },
+        },
+        {
+            "_description": "ICMPv4 unknown message (type 1, code 2), empty data.",
+            "_frame_rx": (
+                # ICMPv4 Unknown Message
+                #   Type     : 1 (Unknown)
+                #   Code     : 2 (Unknown)
+                #   Checksum : 0xfefd
+                #   Data     : none (bare 4-byte header)
+                b"\x01\x02\xfe\xfd"
+            ),
+            "_results": {
+                "message": Icmp4MessageUnknown(
+                    type=Icmp4Type.from_int(1),
+                    code=Icmp4Code.from_int(2),
+                    cksum=0xFEFD,
+                    data=b"",
+                ),
+            },
+        },
+        {
+            "_description": "ICMPv4 unknown message (type 1, code 0), maximum data (65511 bytes).",
+            "_frame_rx": (
+                # ICMPv4 Unknown Message (at IPv4 payload maximum)
+                #   Type     : 1 (Unknown)
+                #   Code     : 0
+                #   Checksum : 0xf74f
+                #   Data     : b"X" * 65511 (IP4__PAYLOAD__MAX_LEN - ICMP4__HEADER__LEN)
+                b"\x01\x00\xf7\x4f"
+                + b"X" * 65511
+            ),
+            "_results": {
+                "message": Icmp4MessageUnknown(
+                    type=Icmp4Type.from_int(1),
+                    code=Icmp4Code.from_int(0),
+                    cksum=0xF74F,
+                    data=b"X" * 65511,
                 ),
             },
         },
     ]
 )
-class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
+class TestIcmp4MessageUnknownParser(TestCase):
     """
     The ICMPv4 unknown message parser tests.
     """
@@ -82,17 +132,22 @@ class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
     _frame_rx: bytes
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
+    def setUp(self) -> None:
+        """
+        Build a PacketRx for the parametrized frame.
+        """
+
+        self._packet_rx = _packet_rx_with_ip4(self._frame_rx)
 
     def test__icmp4__message__unknown__parser(self) -> None:
         """
-        Ensure the ICMPv4 unknown message 'from_bytes()' method creates
-        a proper message object.
+        Ensure the ICMPv4 parser produces an Icmp4MessageUnknown instance
+        whose fields match the expected reference message for each frame.
         """
 
         icmp4_parser = Icmp4Parser(self._packet_rx)
 
-        # Convert the 'data' field from memoryview to bytes so we can compare.
+        # Materialize 'data' from memoryview to bytes for structural equality.
         object.__setattr__(
             icmp4_parser.message,
             "data",
@@ -102,4 +157,19 @@ class TestIcmp4MessageUnknownParser(TestCasePacketRxIp4):
         self.assertEqual(
             icmp4_parser.message,
             self._results["message"],
+            msg=f"Parsed message mismatch for case: {self._description}",
+        )
+
+    def test__icmp4__message__unknown__parser__frame_advanced(self) -> None:
+        """
+        Ensure the ICMPv4 parser advances 'packet_rx.frame' past the
+        parsed unknown message.
+        """
+
+        Icmp4Parser(self._packet_rx)
+
+        self.assertEqual(
+            len(self._packet_rx.frame),
+            0,
+            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
         )
