@@ -34,8 +34,7 @@ ver 3.0.4
 
 
 from typing import Any
-
-from testslide import TestCase
+from unittest import TestCase
 
 from net_proto import (
     UINT_6__MAX,
@@ -55,10 +54,10 @@ class TestTcpHeaderAsserts(TestCase):
 
     def setUp(self) -> None:
         """
-        Create the default arguments for the TCP header constructor.
+        Build a valid default kwargs dict for the TCP header constructor
+        so each test can override exactly one field and trigger its assert.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "sport": 0,
             "dport": 0,
@@ -79,183 +78,209 @@ class TestTcpHeaderAsserts(TestCase):
             "urg": 0,
         }
 
+    def test__tcp__header__default_accepted(self) -> None:
+        """
+        Ensure the default kwargs dict itself is accepted; this guards
+        the negative tests from masking regressions that would make the
+        baseline invalid.
+        """
+
+        header = TcpHeader(**self._kwargs)
+
+        self.assertEqual(
+            len(header),
+            20,
+            msg="Default-constructed header must serialize to the 20-byte TCP fixed header.",
+        )
+
     def test__tcp__header__sport__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'sport' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'sport' argument is lower than the minimum supported value.
         """
 
         self._kwargs["sport"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'sport' under UINT_16__MIN.",
         )
 
     def test__tcp__header__sport__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'sport' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'sport' argument is higher than the maximum supported value.
         """
 
         self._kwargs["sport"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'sport' over UINT_16__MAX.",
         )
 
-    def test__tcp__assembler__dport__under_min(self) -> None:
+    def test__tcp__header__dport__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'dport' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'dport' argument is lower than the minimum supported value.
         """
 
         self._kwargs["dport"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'dport' under UINT_16__MIN.",
         )
 
-    def test__tcp__assembler__dport__over_max(self) -> None:
+    def test__tcp__header__dport__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'dport' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'dport' argument is higher than the maximum supported value.
         """
 
         self._kwargs["dport"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'dport' over UINT_16__MAX.",
         )
 
-    def test__tcp__assembler__seq__under_min(self) -> None:
+    def test__tcp__header__seq__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'seq' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'seq' argument is lower than the minimum supported value.
         """
 
         self._kwargs["seq"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'seq' field must be a 32-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'seq' under UINT_32__MIN.",
         )
 
-    def test__tcp__assembler__seq__over_max(self) -> None:
+    def test__tcp__header__seq__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'seq' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'seq' argument is higher than the maximum supported value.
         """
 
         self._kwargs["seq"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'seq' field must be a 32-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'seq' over UINT_32__MAX.",
         )
 
-    def test__tcp__assembler__ack__under_min(self) -> None:
+    def test__tcp__header__ack__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'ack' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'ack' argument is lower than the minimum supported value.
         """
 
         self._kwargs["ack"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'ack' field must be a 32-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'ack' under UINT_32__MIN.",
         )
 
-    def test__tcp__assembler__ack__over_max(self) -> None:
+    def test__tcp__header__ack__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'ack' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'ack' argument is higher than the maximum supported value.
         """
 
         self._kwargs["ack"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'ack' field must be a 32-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'ack' over UINT_32__MAX.",
         )
 
-    def test__tcp__assembler__hlen__under_min(self) -> None:
+    def test__tcp__header__hlen__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'hlen' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'hlen' argument is lower than the minimum supported value.
         """
 
         self._kwargs["hlen"] = value = UINT_6__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'hlen' field must be a 6-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'hlen' under UINT_6__MIN.",
         )
 
-    def test__tcp__assembler__hlen__over_max(self) -> None:
+    def test__tcp__header__hlen__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'hlen' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'hlen' argument is higher than the maximum supported value.
         """
 
         self._kwargs["hlen"] = value = UINT_6__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'hlen' field must be a 6-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'hlen' over UINT_6__MAX.",
         )
 
-    def test__tcp__assembler__hlen__not_4_bytes_alligned(self) -> None:
+    def test__tcp__header__hlen__not_4_bytes_alligned(self) -> None:
         """
-        Ensure the TCP packet assembler constructor raises an exception when
-        the value of the provided 'hlen' argument is not 4 bytes aligned.
+        Ensure the TCP header constructor raises an exception when the
+        value of the provided 'hlen' argument is not 4 bytes aligned.
         """
 
         self._kwargs["hlen"] = value = UINT_6__MAX - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'hlen' field must be 4-byte aligned. Got: {value!r}",
+            msg="Unexpected assertion message for non-4-byte-aligned 'hlen'.",
         )
 
-    def test__tcp__assembler__flag_ns__not_boolean(self) -> None:
+    def test__tcp__header__flag_ns__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ns' argument is not a boolean.
@@ -264,14 +289,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_ns"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_ns' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_ns'.",
         )
 
-    def test__tcp__assembler__flag_cwr__not_boolean(self) -> None:
+    def test__tcp__header__flag_cwr__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_cwr' argument is not a boolean.
@@ -280,14 +306,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_cwr"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_cwr' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_cwr'.",
         )
 
-    def test__tcp__assembler__flag_ece__not_boolean(self) -> None:
+    def test__tcp__header__flag_ece__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ece' argument is not a boolean.
@@ -296,14 +323,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_ece"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_ece' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_ece'.",
         )
 
-    def test__tcp__assembler__flag_urg__not_boolean(self) -> None:
+    def test__tcp__header__flag_urg__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_urg' argument is not a boolean.
@@ -312,14 +340,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_urg"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_urg' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_urg'.",
         )
 
-    def test__tcp__assembler__flag_ack__not_boolean(self) -> None:
+    def test__tcp__header__flag_ack__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ack' argument is not a boolean.
@@ -328,14 +357,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_ack"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_ack' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_ack'.",
         )
 
-    def test__tcp__assembler__flag_psh__not_boolean(self) -> None:
+    def test__tcp__header__flag_psh__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_psh' argument is not a boolean.
@@ -344,14 +374,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_psh"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_psh' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_psh'.",
         )
 
-    def test__tcp__assembler__flag_rst__not_boolean(self) -> None:
+    def test__tcp__header__flag_rst__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_rst' argument is not a boolean.
@@ -360,14 +391,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_rst"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_rst' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_rst'.",
         )
 
-    def test__tcp__assembler__flag_syn__not_boolean(self) -> None:
+    def test__tcp__header__flag_syn__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_syn' argument is not a boolean.
@@ -376,14 +408,15 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_syn"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_syn' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_syn'.",
         )
 
-    def test__tcp__assembler__flag_fin__not_boolean(self) -> None:
+    def test__tcp__header__flag_fin__not_boolean(self) -> None:
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_fin' argument is not a boolean.
@@ -392,105 +425,112 @@ class TestTcpHeaderAsserts(TestCase):
         self._kwargs["flag_fin"] = value = "not a boolean"
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flag_fin' field must be a boolean. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-boolean 'flag_fin'.",
         )
 
-    def test__tcp__assembler__win__under_min(self) -> None:
+    def test__tcp__header__win__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'win' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'win' argument is lower than the minimum supported value.
         """
 
         self._kwargs["win"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'win' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'win' under UINT_16__MIN.",
         )
 
-    def test__tcp__assembler__win__over_max(self) -> None:
+    def test__tcp__header__win__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'win' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'win' argument is higher than the maximum supported value.
         """
 
         self._kwargs["win"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'win' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'win' over UINT_16__MAX.",
         )
 
-    def test__tcp__assembler__cksum__under_min(self) -> None:
+    def test__tcp__header__cksum__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'cksum' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'cksum' argument is lower than the minimum supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'cksum' under UINT_16__MIN.",
         )
 
-    def test__tcp__assembler__cksum__over_max(self) -> None:
+    def test__tcp__header__cksum__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'cksum' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'cksum' argument is higher than the maximum supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'cksum' over UINT_16__MAX.",
         )
 
-    def test__tcp__assembler__urg__under_min(self) -> None:
+    def test__tcp__header__urg__under_min(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'urg' argument is lower than the minimum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'urg' argument is lower than the minimum supported value.
         """
 
         self._kwargs["urg"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'urg' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'urg' under UINT_16__MIN.",
         )
 
-    def test__tcp__assembler__urg__over_max(self) -> None:
+    def test__tcp__header__urg__over_max(self) -> None:
         """
-        Ensure the TCP header constructor raises an exception when the provided
-        'urg' argument is higher than the maximum supported value.
+        Ensure the TCP header constructor raises an exception when the
+        provided 'urg' argument is higher than the maximum supported value.
         """
 
         self._kwargs["urg"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpHeader(*self._args, **self._kwargs)
+            TcpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'urg' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'urg' over UINT_16__MAX.",
         )
