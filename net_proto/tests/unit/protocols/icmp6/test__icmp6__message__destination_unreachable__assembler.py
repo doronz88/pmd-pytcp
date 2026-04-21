@@ -27,16 +27,16 @@
 """
 Module contains tests for the ICMPv6 Destination Unreachable message assembler.
 
-net_proto/tests/unit/protocols/icmp4/test__icmp6__message__destination_unreachable__assembler.py
+net_proto/tests/unit/protocols/icmp6/test__icmp6__message__destination_unreachable__assembler.py
 
 ver 3.0.4
 """
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Icmp6Assembler,
@@ -50,7 +50,7 @@ from net_proto.lib.buffer import Buffer
 @parameterized_class(
     [
         {
-            "_description": "ICMPv6 Destination Unreachable (No Route) message.",
+            "_description": "ICMPv6 Destination Unreachable (No Route), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
                 "data": b"",
@@ -67,10 +67,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 0 (No Route)
-                    #   Checksum : 0xfeff
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : IPv6 host indicates no route to destination.
+                    #   Checksum : 0xfeff (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x00\xfe\xff\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -80,7 +79,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Prohibited) message.",
+            "_description": "ICMPv6 Destination Unreachable (Prohibited), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PROHIBITED,
                 "data": b"",
@@ -97,10 +96,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 1 (Administratively Prohibited)
-                    #   Checksum : 0xfefe
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Traffic administratively prohibited to destination.
+                    #   Checksum : 0xfefe (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x01\xfe\xfe\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -110,7 +108,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Scope) message.",
+            "_description": "ICMPv6 Destination Unreachable (Beyond Scope), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.SCOPE,
                 "data": b"",
@@ -127,10 +125,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 2 (Beyond Scope)
-                    #   Checksum : 0xfefd
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Destination beyond scope of source address.
+                    #   Checksum : 0xfefd (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x02\xfe\xfd\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -140,7 +137,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Address) message.",
+            "_description": "ICMPv6 Destination Unreachable (Address Unreachable), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.ADDRESS,
                 "data": b"",
@@ -157,10 +154,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 3 (Address Unreachable)
-                    #   Checksum : 0xfefc
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Destination address unreachable for the source.
+                    #   Checksum : 0xfefc (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x03\xfe\xfc\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -170,7 +166,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Port) message.",
+            "_description": "ICMPv6 Destination Unreachable (Port Unreachable), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "data": b"",
@@ -187,10 +183,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 4 (Port Unreachable)
-                    #   Checksum : 0xfefb
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Target transport port unreachable.
+                    #   Checksum : 0xfefb (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x04\xfe\xfb\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -200,7 +195,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Failed Policy) message.",
+            "_description": "ICMPv6 Destination Unreachable (Source Failed Policy), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.FAILED_POLICY,
                 "data": b"",
@@ -217,10 +212,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 5 (Source Failed Policy)
-                    #   Checksum : 0xfefa
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Source address failed ingress/egress policy.
+                    #   Checksum : 0xfefa (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x05\xfe\xfa\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -230,7 +224,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Reject Route) message.",
+            "_description": "ICMPv6 Destination Unreachable (Reject Route), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.REJECT_ROUTE,
                 "data": b"",
@@ -247,10 +241,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 6 (Reject Route)
-                    #   Checksum : 0xfef9
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Router rejects route to destination.
+                    #   Checksum : 0xfef9 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x06\xfe\xf9\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -260,7 +253,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable (Source Routing Header) message.",
+            "_description": "ICMPv6 Destination Unreachable (Error in Source Routing Header), empty data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.SOURCE_ROUTING_HEADER,
                 "data": b"",
@@ -277,10 +270,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 7 (Error in Source Routing Header)
-                    #   Checksum : 0xfef8
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Error processing IPv6 source routing header.
+                    #   Checksum : 0xfef8 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : none
                     b"\x01\x07\xfe\xf8\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.DESTINATION_UNREACHABLE,
@@ -290,7 +282,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable message, non-empty payload.",
+            "_description": "ICMPv6 Destination Unreachable (Port Unreachable), 16-byte data.",
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "data": b"0123456789ABCDEF",
@@ -307,10 +299,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 4 (Port Unreachable)
-                    #   Checksum : 0x3025
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Port unreachable message carrying 16-byte offending payload.
+                    #   Checksum : 0x3025 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : b"0123456789ABCDEF" (16 bytes)
                     b"\x01\x04\x30\x25\x00\x00\x00\x00\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -321,9 +312,15 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Destination Unreachable message, maximum length payload.",
+            "_description": (
+                "ICMPv6 Destination Unreachable (Port Unreachable), data truncated to "
+                "1232 bytes (IP6_MIN_MTU - IP6_HEADER_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN)."
+            ),
             "_kwargs": {
                 "code": Icmp6DestinationUnreachableCode.PORT,
+                # Supply more than the per-RFC4443 cap; the dataclass __post_init__
+                # truncates to 1232 bytes so the total message length stays within
+                # the IPv6 minimum MTU.
                 "data": b"X" * 65527,
             },
             "_results": {
@@ -332,16 +329,15 @@ from net_proto.lib.buffer import Buffer
                 "__repr__": (
                     "Icmp6MessageDestinationUnreachable("
                     "code=<Icmp6DestinationUnreachableCode.PORT: 4>, cksum=0, "
-                    f"data=b'{"X" * 1232}')"
+                    f"data=b'{'X' * 1232}')"
                 ),
                 "__bytes__": (
                     # ICMPv6 Destination Unreachable
                     #   Type     : 1 (Destination Unreachable)
                     #   Code     : 4 (Port Unreachable)
-                    #   Checksum : 0x6a67
-                    #   Data len : 1232 bytes ("X" * 1232)
-                    #
-                    #   Summary  : Port unreachable message with maximum captured payload.
+                    #   Checksum : 0x6a67 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved : 0x00000000
+                    #   Data     : b"X" * 1232 (truncated from 65527 to fit min-MTU reply)
                     b"\x01\x04\x6a\x67\x00\x00\x00\x00"
                     + b"X" * 1232
                 ),
@@ -349,6 +345,39 @@ from net_proto.lib.buffer import Buffer
                 "code": Icmp6DestinationUnreachableCode.PORT,
                 "cksum": 0,
                 "data": b"X" * 1232,
+            },
+        },
+        {
+            "_description": "ICMPv6 Destination Unreachable, constructor cksum ignored on wire.",
+            "_kwargs": {
+                "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
+                # The constructor 'cksum' is retained as a field value but the
+                # assembler overwrites bytes 2-4 on the wire with the computed
+                # Internet checksum, so this 0xAAAA never reaches the wire.
+                "cksum": 0xAAAA,
+                "data": b"X!",
+            },
+            "_results": {
+                "__len__": 10,
+                "__str__": "ICMPv6 Destination Unreachable - No Route, len 10 (8+2)",
+                "__repr__": (
+                    "Icmp6MessageDestinationUnreachable("
+                    "code=<Icmp6DestinationUnreachableCode.NO_ROUTE: 0>, cksum=43690, "
+                    "data=b'X!')"
+                ),
+                "__bytes__": (
+                    # ICMPv6 Destination Unreachable
+                    #   Type     : 1 (Destination Unreachable)
+                    #   Code     : 0 (No Route)
+                    #   Checksum : 0xa6de (computed by assemble(), NOT 0xAAAA)
+                    #   Reserved : 0x00000000
+                    #   Data     : b"X!" (2 bytes)
+                    b"\x01\x00\xa6\xde\x00\x00\x00\x00\x58\x21"
+                ),
+                "type": Icmp6Type.DESTINATION_UNREACHABLE,
+                "code": Icmp6DestinationUnreachableCode.NO_ROUTE,
+                "cksum": 0xAAAA,
+                "data": b"X!",
             },
         },
     ]
@@ -364,125 +393,115 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv6 Destination Unreachable message assembler
-        object with testcase arguments.
+        Build an assembler wrapping the parametrized Destination Unreachable
+        message.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageDestinationUnreachable(**self._kwargs))
+        self._icmp6__assembler = Icmp6Assembler(
+            icmp6__message=Icmp6MessageDestinationUnreachable(**self._kwargs),
+        )
 
-    def test__icmp6__message__destination_unreachable__assembler__len(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message '__len__()' method
-        returns a correct value.
+        Ensure 'len()' on the assembler equals
+        ICMP6__DESTINATION_UNREACHABLE__LEN + len(data) (data already
+        truncated by __post_init__ if the caller supplied more than the
+        RFC4443 min-MTU cap).
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected length for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__str(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message '__str__()' method
-        returns a correct value.
+        Ensure 'str()' renders the canonical ICMPv6 Destination Unreachable
+        log line.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected str() for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__repr(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message '__repr__()' method
-        returns a correct value.
+        Ensure 'repr()' forwards the wrapped message's dataclass repr.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected repr() for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__bytes(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message '__bytes__()' method
-        returns a correct value.
+        Ensure 'bytes()' returns the full wire form including the
+        recomputed Internet checksum at bytes 2-3.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes() for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__type(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'type' field
-        contains a correct value.
+        Ensure the assembler exposes the wrapped message 'type' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__code(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'code' field
-        contains a correct value.
+        Ensure the assembler exposes the wrapped message 'code' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__cksum(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'cksum' field
-        contains a correct value.
+        Ensure the assembler exposes the wrapped message 'cksum' field as
+        passed to the constructor (the on-wire checksum is written during
+        assemble() and does not mutate this attribute).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__data(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__data(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'data' field
-        contains a correct value.
+        Ensure the assembler exposes the wrapped message 'data' field
+        (post-truncation if applicable).
         """
 
         self.assertEqual(
-            cast(
-                Icmp6MessageDestinationUnreachable,
-                self._icmp6__assembler.message,
-            ).data,
+            cast(Icmp6MessageDestinationUnreachable, self._icmp6__assembler.message).data,
             self._results["data"],
+            msg=f"Unexpected 'data' for case: {self._description}",
         )
 
-    def test__icmp6__message__destination_unreachable__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp6__message__destination_unreachable__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 Destination Unreachable message 'assemble()' method
-        returns a correct value.
+        Ensure 'assemble()' appends the header + data, back-patches the
+        checksum into the header buffer, and yields the same wire bytes
+        as 'bytes()'.
         """
 
         buffers: list[Buffer] = []
@@ -492,4 +511,27 @@ class TestIcmp6MessageDestinationUnreachableAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected assemble() output for case: {self._description}",
+        )
+
+    def test__icmp6__message__destination_unreachable__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' produces exactly two buffers — the packed
+        8-byte header followed by the data buffer — so the ICMPv6 checksum
+        back-patch in Icmp6Assembler.assemble() targets the header buffer.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=("assemble() must append exactly 2 buffers (header + data) " f"for case: {self._description}"),
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            8,
+            msg=("First buffer must be the 8-byte Destination Unreachable header " f"for case: {self._description}"),
         )
