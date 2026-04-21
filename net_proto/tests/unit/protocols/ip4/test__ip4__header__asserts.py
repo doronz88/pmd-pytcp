@@ -39,6 +39,7 @@ from unittest import TestCase
 from net_addr import Ip4Address
 from net_proto import (
     IP4__HEADER__LEN,
+    IP4__HEADER__MAX_LEN,
     UINT_2__MAX,
     UINT_2__MIN,
     UINT_6__MAX,
@@ -98,7 +99,8 @@ class TestIp4HeaderAsserts(TestCase):
 
     def test__ip4__header__hlen__under_min(self) -> None:
         """
-        Ensure the constructor rejects 'hlen' below IP4__HEADER__LEN.
+        Ensure the constructor rejects 'hlen' below IP4__HEADER__LEN
+        (20 bytes).
         """
 
         self._kwargs["hlen"] = value = IP4__HEADER__LEN - 1
@@ -108,25 +110,69 @@ class TestIp4HeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'hlen' field must be a 4-bit unsigned integer greater than or equal to 20. Got: {value!r}",
+            (
+                f"The 'hlen' field must be a 4-byte-aligned integer in "
+                f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {value!r}"
+            ),
             msg="Unexpected assertion message for 'hlen' under IP4__HEADER__LEN.",
         )
 
     def test__ip4__header__hlen__over_max(self) -> None:
         """
-        Ensure the constructor rejects 'hlen' above the is_uint6 upper
-        bound (UINT_6__MAX == 63).
+        Ensure the constructor rejects 'hlen' above IP4__HEADER__MAX_LEN
+        (60 bytes; IHL=15 * 4 = 60 is the wire ceiling).
         """
 
-        self._kwargs["hlen"] = value = UINT_6__MAX + 1
+        self._kwargs["hlen"] = value = IP4__HEADER__MAX_LEN + 4
 
         with self.assertRaises(AssertionError) as error:
             Ip4Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'hlen' field must be a 4-bit unsigned integer greater than or equal to 20. Got: {value!r}",
-            msg="Unexpected assertion message for 'hlen' over UINT_6__MAX.",
+            (
+                f"The 'hlen' field must be a 4-byte-aligned integer in "
+                f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {value!r}"
+            ),
+            msg="Unexpected assertion message for 'hlen' over IP4__HEADER__MAX_LEN.",
+        )
+
+    def test__ip4__header__hlen__not_4_byte_alligned(self) -> None:
+        """
+        Ensure the constructor rejects 'hlen' values that are in the
+        [20, 60] range but not multiples of 4. The wire IHL field
+        counts 4-byte words, so these values cannot round-trip.
+        """
+
+        self._kwargs["hlen"] = value = IP4__HEADER__LEN + 1
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4Header(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                f"The 'hlen' field must be a 4-byte-aligned integer in "
+                f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {value!r}"
+            ),
+            msg="Unexpected assertion message for non-4-byte-aligned 'hlen'.",
+        )
+
+    def test__ip4__header__hlen__at_max_accepted(self) -> None:
+        """
+        Ensure the constructor accepts 'hlen' exactly at
+        IP4__HEADER__MAX_LEN (boundary case).
+        """
+
+        self._kwargs["hlen"] = IP4__HEADER__MAX_LEN
+        self._kwargs["plen"] = IP4__HEADER__MAX_LEN
+
+        header = Ip4Header(**self._kwargs)
+
+        self.assertEqual(
+            header.hlen,
+            IP4__HEADER__MAX_LEN,
+            msg="Default-constructed header must accept hlen=IP4__HEADER__MAX_LEN.",
         )
 
     def test__ip4__header__dscp__under_min(self) -> None:

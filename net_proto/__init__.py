@@ -283,6 +283,7 @@ from net_proto.protocols.ip4.ip4__errors import (
 )
 from net_proto.protocols.ip4.ip4__header import (
     IP4__HEADER__LEN,
+    IP4__HEADER__MAX_LEN,
     IP4__PAYLOAD__MAX_LEN,
     Ip4Header,
 )
@@ -460,6 +461,7 @@ __all__ = [
     "ICMP6__ND__ROUTER_SOLICITATION__LEN",
     "IP4__DEFAULT_TTL",
     "IP4__HEADER__LEN",
+    "IP4__HEADER__MAX_LEN",
     "IP4__MIN_MTU",
     "IP4__OPTIONS__MAX_LEN",
     "IP4__OPTION__EOL__LEN",

@@ -43,6 +43,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import (
     UINT_16__MAX,
+    is_4_byte_alligned,
     is_8_byte_alligned,
     is_uint2,
     is_uint6,
@@ -71,6 +72,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 IP4__HEADER__LEN = 20
+IP4__HEADER__MAX_LEN = 60  # IHL is a 4-bit field counting 4-byte words: 15 * 4 = 60.
 IP4__HEADER__STRUCT = "! BBH HH BBH L L"
 IP4__PAYLOAD__MAX_LEN = UINT_16__MAX - IP4__HEADER__LEN
 
@@ -106,9 +108,10 @@ class Ip4Header(ProtoStruct):
         Ensure integrity of the Ip4 header fields.
         """
 
-        assert (
-            is_uint6(self.hlen) and self.hlen >= IP4__HEADER__LEN
-        ), f"The 'hlen' field must be a 4-bit unsigned integer greater than or equal to 20. Got: {self.hlen!r}"
+        assert IP4__HEADER__LEN <= self.hlen <= IP4__HEADER__MAX_LEN and is_4_byte_alligned(self.hlen), (
+            f"The 'hlen' field must be a 4-byte-aligned integer in "
+            f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {self.hlen!r}"
+        )
 
         assert is_uint6(self.dscp), f"The 'dscp' field must be a 6-bit unsigned integer. Got: {self.dscp!r}"
 
