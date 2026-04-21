@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     TCP__OPTION__SACKPERM__LEN,
@@ -46,143 +46,155 @@ from net_proto import (
 )
 
 
-class TestTcpOptionSackpermAsserts(TestCase):
-    """
-    The TCP Sackperm option constructor argument assert tests.
-    """
-
-    # Currently the TCP Sackperm option does not have any constructor
-    # argument asserts.
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "The TCP Sackperm option.",
-            "_args": [],
-            "_kwargs": {},
-            "_results": {
-                "__len__": 2,
-                "__str__": "sackperm",
-                "__repr__": "TcpOptionSackperm()",
-                "__bytes__": b"\x04\x02",
-                "type": TcpOptionType.SACKPERM,
-                "len": TCP__OPTION__SACKPERM__LEN,
-            },
-        },
-    ]
-)
 class TestTcpOptionSackpermAssembler(TestCase):
     """
     The TCP Sackperm option assembler tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def setUp(self) -> None:
         """
-        Initialize the TCP Sackperm option object with testcase arguments.
+        Build the TCP Sackperm option; the option takes no constructor args.
         """
 
-        self._option = TcpOptionSackperm(*self._args, **self._kwargs)
+        self._option = TcpOptionSackperm()
 
     def test__tcp__option__sackperm__len(self) -> None:
         """
-        Ensure the TCP Sackperm option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns TCP__OPTION__SACKPERM__LEN (2 bytes).
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            TCP__OPTION__SACKPERM__LEN,
+            msg="Unexpected __len__ for TCP Sackperm option.",
         )
 
     def test__tcp__option__sackperm__str(self) -> None:
         """
-        Ensure the TCP Sackperm option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the log string 'sackperm'.
         """
 
         self.assertEqual(
             str(self._option),
-            self._results["__str__"],
+            "sackperm",
+            msg="Unexpected __str__ for TCP Sackperm option.",
         )
 
     def test__tcp__option__sackperm__repr(self) -> None:
         """
-        Ensure the TCP Sackperm option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns 'TcpOptionSackperm()'.
         """
 
         self.assertEqual(
             repr(self._option),
-            self._results["__repr__"],
+            "TcpOptionSackperm()",
+            msg="Unexpected __repr__ for TCP Sackperm option.",
         )
 
     def test__tcp__option__sackperm__bytes(self) -> None:
         """
-        Ensure the TCP Sackperm option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the 2-byte wire frame.
         """
 
+        # TCP Sackperm option wire frame (2 bytes):
+        #   Byte 0 : 0x04 -> type=TcpOptionType.SACKPERM (4)
+        #   Byte 1 : 0x02 -> len=TCP__OPTION__SACKPERM__LEN (2)
         self.assertEqual(
             bytes(self._option),
-            self._results["__bytes__"],
+            b"\x04\x02",
+            msg="Unexpected __bytes__ for TCP Sackperm option.",
         )
 
     def test__tcp__option__sackperm__type(self) -> None:
         """
-        Ensure the TCP Sackperm option 'type' field contains a correct value.
+        Ensure the 'type' field is TcpOptionType.SACKPERM.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            TcpOptionType.SACKPERM,
+            msg="Unexpected 'type' field for TCP Sackperm option.",
         )
 
-    def test__tcp__option__sackperm__lenght(self) -> None:
+    def test__tcp__option__sackperm__length(self) -> None:
         """
-        Ensure the TCP Sackperm option 'len' field contains a correct value.
+        Ensure the 'len' field equals TCP__OPTION__SACKPERM__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            TCP__OPTION__SACKPERM__LEN,
+            msg="Unexpected 'len' field for TCP Sackperm option.",
+        )
+
+
+class TestTcpOptionSackpermParser(TestCase):
+    """
+    The TCP Sackperm option parser positive tests.
+    """
+
+    def test__tcp__option__sackperm__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses a 2-byte Sackperm whose buffer length
+        exactly matches TCP__OPTION__SACKPERM__LEN.
+        """
+
+        # TCP Sackperm option wire frame (exactly 2 bytes):
+        #   Byte 0 : 0x04 -> type=TcpOptionType.SACKPERM (4)
+        #   Byte 1 : 0x02 -> len=TCP__OPTION__SACKPERM__LEN (2)
+        buffer = b"\x04\x02"
+
+        option = TcpOptionSackperm.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionSackperm(),
+            msg="Parsed option must equal the reference TcpOptionSackperm.",
+        )
+
+    def test__tcp__option__sackperm__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses a Sackperm option when the buffer carries
+        trailing bytes past the 2-byte option payload (those trailing
+        bytes are consumed by the next option in the options container).
+        """
+
+        # TCP Sackperm option wire frame followed by 5 trailing bytes:
+        #   Byte 0    : 0x04        -> type=TcpOptionType.SACKPERM (4)
+        #   Byte 1    : 0x02        -> len=TCP__OPTION__SACKPERM__LEN (2)
+        #   Bytes 2-6 : b"ZH0PA"    -> trailing data, not part of the Sackperm
+        buffer = b"\x04\x02" + b"ZH0PA"
+
+        option = TcpOptionSackperm.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionSackperm(),
+            msg="Parsed option must equal TcpOptionSackperm (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Sackperm option.",
-            "_args": [
-                b"\x04\x02" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionSackperm(),
-            },
-        },
-        {
-            "_description": "The 'Sackperm' TCP option minimum length assert.",
-            "_args": [
-                b"\x04",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sackperm option, buffer shorter than TCP__OPTION__LEN (2).",
+            "_args": [b"\x04"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the TCP Sackperm option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the TCP Sackperm option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The TCP Sackperm option 'type' incorrect field assert.",
-            "_args": [
-                b"\xff\02",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sackperm option, buffer empty (zero-length).",
+            "_args": [b""],
+            "_results": {
+                "error": AssertionError,
+                "error_message": "The minimum length of the TCP Sackperm option must be 2 bytes. Got: 0",
+            },
+        },
+        {
+            "_description": "TCP Sackperm option, buffer 'type' byte is not TcpOptionType.SACKPERM.",
+            "_args": [b"\xff\x02"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -192,49 +204,37 @@ class TestTcpOptionSackpermAssembler(TestCase):
             },
         },
         {
-            "_description": "The TCP Sackperm option length integrity check (I).",
-            "_args": [
-                b"\x04\01",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Sackperm option, declared 'len' byte differs from TCP__OPTION__SACKPERM__LEN.",
+            "_args": [b"\x04\x01"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length value must be " "2 bytes. Got: 1"
+                    "[INTEGRITY ERROR][TCP] The TCP Sackperm option length value must be 2 bytes. Got: 1"
                 ),
             },
         },
     ]
 )
-class TestTcpOptionSackpermParser(TestCase):
+class TestTcpOptionSackpermParserFailures(TestCase):
     """
-    The TCP Sackperm option parser tests.
+    The TCP Sackperm option parser failure-path tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__sackperm__from_buffer(self) -> None:
+    def test__tcp__option__sackperm__from_buffer__error(self) -> None:
         """
-        Ensure the TCP Sackperm option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = TcpOptionSackperm.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            TcpOptionSackperm.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                TcpOptionSackperm.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
