@@ -25,7 +25,7 @@
 
 
 """
-Thisodule contains the ICMPv6 ND Neighbor Advertisement message support class.
+This module contains the ICMPv6 ND Neighbor Advertisement message support class.
 
 net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_advertisement.py
 
@@ -113,25 +113,25 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         Validate the ICMPv6 ND Neighbor Advertisement message fields.
         """
 
-        assert isinstance(self.code, Icmp6NdNeighborAdvertisementCode), (
-            f"The 'code' field must be an Icmp6NdNeighborAdvertisementCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6NdNeighborAdvertisementCode
+        ), f"The 'code' field must be an Icmp6NdNeighborAdvertisementCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. " f"Got: {type(self.flag_r)!r}"
+        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. Got: {type(self.flag_r)!r}"
 
-        assert isinstance(self.flag_s, bool), f"The 'flag_s' field must be a boolean. " f"Got: {type(self.flag_s)!r}"
+        assert isinstance(self.flag_s, bool), f"The 'flag_s' field must be a boolean. Got: {type(self.flag_s)!r}"
 
-        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. " f"Got: {type(self.flag_o)!r}"
+        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. Got: {type(self.flag_o)!r}"
 
-        assert isinstance(self.target_address, Ip6Address), (
-            f"The 'target_address' field must be an Ip6Address. " f"Got: {type(self.target_address)!r}"
-        )
+        assert isinstance(
+            self.target_address, Ip6Address
+        ), f"The 'target_address' field must be an Ip6Address. Got: {type(self.target_address)!r}"
 
-        assert isinstance(self.options, Icmp6NdOptions), (
-            f"The 'options' field must be an Icmp6NdOptions. " f"Got: {type(self.options)!r}"
-        )
+        assert isinstance(
+            self.options, Icmp6NdOptions
+        ), f"The 'options' field must be an Icmp6NdOptions. Got: {type(self.options)!r}"
 
     @override
     def __len__(self) -> int:
@@ -198,30 +198,28 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         parsing it.
         """
 
-        if not (ip6__hop == 255):
+        if ip6__hop != 255:
             raise Icmp6SanityError(
-                "ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field " f"must be 255. Got: {ip6__hop!r}",
+                f"ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
             )
 
-        if not (ip6__src.is_unicast):
+        if not ip6__src.is_unicast:
             raise Icmp6SanityError(
-                "ND Neighbor Advertisement - [RFC 4861] The 'ip6__src' address " f"must be unicast. Got: {ip6__src!r}",
+                f"ND Neighbor Advertisement - [RFC 4861] The 'ip6__src' address must be unicast. Got: {ip6__src!r}",
             )
 
         if self.flag_s is True:
             if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
                 raise Icmp6SanityError(
-                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is "
-                    "set then 'ip6__dst' address must be either unicast or all-nodes "
-                    f"multicast. Got: {ip6__dst!r}",
+                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is set then 'ip6__dst' address "
+                    f"must be either unicast or all-nodes multicast. Got: {ip6__dst!r}",
                 )
 
         if self.flag_s is False:
-            if not (ip6__dst.is_multicast__all_nodes):
+            if not ip6__dst.is_multicast__all_nodes:
                 raise Icmp6SanityError(
-                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is not "
-                    "set then 'ip6__dst' address must be all-nodes multicast address. "
-                    f"Got: {ip6__dst!r}",
+                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is not set then 'ip6__dst' address "
+                    f"must be all-nodes multicast address. Got: {ip6__dst!r}",
                 )
 
         # TODO: Enforce proper option presence.
@@ -236,9 +234,8 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
 
         if not (ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)):
             raise Icmp6IntegrityError(
-                "The condition 'ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen "
-                f"<= len(frame)' must be met. Got: {ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN=}, "
-                f"{ip6__dlen=}, {len(frame)=}"
+                "The condition 'ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)' must be met. "
+                f"Got: {ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN=}, {ip6__dlen=}, {len(frame)=}"
             )
 
         Icmp6NdOptions.validate_integrity(
@@ -258,9 +255,9 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
             buffer[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6NdNeighborAdvertisementCode(code),
