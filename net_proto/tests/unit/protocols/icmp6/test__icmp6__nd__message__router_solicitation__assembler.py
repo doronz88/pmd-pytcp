@@ -25,7 +25,8 @@
 
 
 """
-Module contains tests for the ICMPv6 ND Router Solicitation message assembler.
+Module contains tests for the ICMPv6 ND Router Solicitation message
+assembler.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_solicitation__assembler.py
 
@@ -34,12 +35,13 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import MacAddress
 from net_proto import (
+    ICMP6__ND__ROUTER_SOLICITATION__LEN,
     Icmp6Assembler,
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
@@ -54,7 +56,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 ND Router Solicitation message, no options.",
-            "_args": [],
             "_kwargs": {
                 "options": Icmp6NdOptions(),
             },
@@ -62,10 +63,20 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 8,
                 "__str__": "ICMPv6 ND Router Solicitation, len 8 (8+0)",
                 "__repr__": (
-                    "Icmp6NdMessageRouterSolicitation(code=<Icmp6NdRouterSolicitationCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]))"
+                    "Icmp6NdMessageRouterSolicitation("
+                    "code=<Icmp6NdRouterSolicitationCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=[]))"
                 ),
-                "__bytes__": b"\x85\x00\x7a\xff\x00\x00\x00\x00",
+                "__bytes__": (
+                    # ICMPv6 Router Solicitation
+                    #   Type     : 133 (Router Solicitation)
+                    #   Code     : 0
+                    #   Checksum : 0x7aff (back-patched by Icmp6Assembler)
+                    #   Reserved : 0x00000000
+                    #   Options  : none
+                    b"\x85\x00\x7a\xff\x00\x00\x00\x00"
+                ),
                 "type": Icmp6Type.ND__ROUTER_SOLICITATION,
                 "code": Icmp6NdRouterSolicitationCode.DEFAULT,
                 "cksum": 0,
@@ -74,7 +85,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 ND Router Solicitation message, Slla option present.",
-            "_args": [],
             "_kwargs": {
                 "options": Icmp6NdOptions(
                     Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55")),
@@ -82,13 +92,24 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 16,
-                "__str__": ("ICMPv6 ND Router Solicitation, opts [slla 00:11:22:33:44:55], " "len 16 (8+8)"),
+                "__str__": "ICMPv6 ND Router Solicitation, opts [slla 00:11:22:33:44:55], len 16 (8+8)",
                 "__repr__": (
-                    "Icmp6NdMessageRouterSolicitation(code=<Icmp6NdRouterSolicitationCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
-                    "slla=MacAddress('00:11:22:33:44:55'))]))"
+                    "Icmp6NdMessageRouterSolicitation("
+                    "code=<Icmp6NdRouterSolicitationCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=["
+                    "Icmp6NdOptionSlla(slla=MacAddress('00:11:22:33:44:55'))"
+                    "]))"
                 ),
-                "__bytes__": b"\x85\x00\x13\x65\x00\x00\x00\x00\x01\x01\x00\x11\x22\x33\x44\x55",
+                "__bytes__": (
+                    # ICMPv6 Router Solicitation
+                    #   Type     : 133
+                    #   Code     : 0
+                    #   Checksum : 0x1365 (back-patched by Icmp6Assembler)
+                    #   Reserved : 0x00000000
+                    #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
+                    b"\x85\x00\x13\x65\x00\x00\x00\x00\x01\x01\x00\x11\x22\x33\x44\x55"
+                ),
                 "type": Icmp6Type.ND__ROUTER_SOLICITATION,
                 "code": Icmp6NdRouterSolicitationCode.DEFAULT,
                 "cksum": 0,
@@ -105,132 +126,115 @@ class TestIcmp6NdMessageRouterSolicitationAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        The ICMPv6 ND Router Solicitation message assembler tests.
+        Build the ICMPv6 assembler wrapping a Router Solicitation message
+        configured from the parametrized kwargs.
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageRouterSolicitation(*self._args, **self._kwargs)
+            icmp6__message=Icmp6NdMessageRouterSolicitation(**self._kwargs),
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__len(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message '__len__()' method
-        returns a correct value.
+        Ensure '__len__()' returns the expected byte length.
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__str(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message '__str__()' method
-        returns a correct value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__repr(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message '__repr__()' method
-        returns a correct value.
+        Ensure '__repr__()' returns the expected representation.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__bytes(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message '__bytes__()' method
-        returns a correct value.
+        Ensure '__bytes__()' returns the expected wire bytes with a
+        back-patched checksum.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__type(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message 'type' field
-        contains a correct value.
+        Ensure the assembled message carries type
+        Icmp6Type.ND__ROUTER_SOLICITATION.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__code(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message 'code' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'code' value.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__cksum(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message 'cksum' field
-        contains a correct value.
+        Ensure the assembled message's 'cksum' field reflects the value
+        passed at construction (the back-patch happens on the buffer, not
+        on the dataclass).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__options(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__options(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message 'options' property returns
-        a correct value.
+        Ensure the assembled message carries the expected 'options' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterSolicitation,
-                self._icmp6__assembler.message,
-            ).options,
+            cast(Icmp6NdMessageRouterSolicitation, self._icmp6__assembler.message).options,
             self._results["options"],
+            msg=f"Unexpected 'options' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_solicitation__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_solicitation__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Solicitation message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' appends the Router Solicitation wire bytes
+        (header + options) to the provided buffer list.
         """
 
         buffers: list[Buffer] = []
@@ -240,4 +244,27 @@ class TestIcmp6NdMessageRouterSolicitationAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"assemble() output mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__router_solicitation__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' appends exactly two buffers (fixed header +
+        options payload) so Icmp6Assembler can back-patch the checksum at
+        buffers[-2][2:4].
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.message.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=f"assemble() must append exactly two buffers for case: {self._description}",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            ICMP6__ND__ROUTER_SOLICITATION__LEN,
+            msg=f"First buffer must be the 8-byte fixed header for case: {self._description}",
         )
