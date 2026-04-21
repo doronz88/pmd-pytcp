@@ -27,7 +27,7 @@
 """
 This module contains the DHCPv4 option base class.
 
-net_proto/protocols/dhcp4/options/dhcp4_option.py
+net_proto/protocols/dhcp4/options/dhcp4__option.py
 
 ver 3.0.4
 """
