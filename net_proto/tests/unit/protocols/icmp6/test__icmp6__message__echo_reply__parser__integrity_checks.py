@@ -34,33 +34,56 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import Icmp6IntegrityError, Icmp6Parser, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+from net_addr import Ip6Address
+from net_proto import Icmp6IntegrityError, Icmp6Parser, Ip6Parser, PacketRx
+from net_proto.protocols.icmp6.message.icmp6__message__echo_reply import (
+    ICMP6__ECHO_REPLY__LEN,
+)
+
+
+def _packet_rx_with_ip6(frame: bytes, *, ip6__dlen: int | None = None) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads off 'packet_rx.ip6' (dlen, pshdr_sum, src, dst, hop).
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame) if ip6__dlen is None else ip6__dlen,
+            payload_len=len(frame) if ip6__dlen is None else ip6__dlen,
+            pshdr_sum=0,
+            src=Ip6Address(),
+            dst=Ip6Address(),
+            hop=0,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
             "_description": (
-                "ICMPv6 Echo Reply message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 Echo Reply, the 'ICMP6__HEADER__LEN <= self._ip6__dlen' "
+                "condition is not met (ip6__dlen < ICMP6__HEADER__LEN)."
             ),
             "_frame_rx": (
-                # ICMPv6 Echo Reply
+                # ICMPv6 Echo Reply (truncated, < 4 bytes)
                 #   Type     : 129 (Echo Reply)
-                #   Code     : 0 (Default)
-                #   Checksum : 0xfb?? (truncated)
-                #   Frame len: 3 bytes (< 4-byte minimum header)
-                #
-                #   Summary  : Frame shorter than ICMPv6 header length.
+                #   Code     : 0
+                #   Checksum : 0xfb-- (missing low byte)
+                #   Frame len: 3 bytes
                 b"\x81\x00\xfb"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 3,
-            },
+            "_ip6__dlen": 3,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -71,23 +94,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 Echo Reply message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 Echo Reply, the 'self._ip6__dlen <= len(self._frame)' "
+                "condition is not met (declared IPv6 payload exceeds frame length)."
             ),
             "_frame_rx": (
-                # ICMPv6 Echo Reply
+                # ICMPv6 Echo Reply (frame shorter than declared ip6__dlen)
                 #   Type     : 129 (Echo Reply)
-                #   Code     : 0 (Default)
+                #   Code     : 0
                 #   Checksum : 0xfb94
-                #   Identifier: 12345 (partial)
-                #   Sequence : 54321 (truncated)
-                #   Frame len: 7 bytes (< 8-byte minimum header)
-                #
-                #   Summary  : Declared payload exceeds available frame length.
+                #   Id/Seq   : 0x3039 / 0xd4-- (missing last byte)
+                #   Frame len: 7 bytes
                 b"\x81\x00\xfb\x94\x30\x39\xd4"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 8,
-            },
+            "_ip6__dlen": 8,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -98,23 +117,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 Echo Reply message, " "the 'ICMP6__ECHO_REPLY__LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 Echo Reply, the 'ICMP6__ECHO_REPLY__LEN <= ip6__dlen' "
+                "condition is not met (payload shorter than the 8-byte Echo Reply header)."
             ),
             "_frame_rx": (
-                # ICMPv6 Echo Reply
+                # ICMPv6 Echo Reply (payload shorter than fixed Echo Reply header)
                 #   Type     : 129 (Echo Reply)
-                #   Code     : 0 (Default)
+                #   Code     : 0
                 #   Checksum : 0xfb94
-                #   Identifier: 12345 (partial)
-                #   Sequence : 54321 (truncated)
-                #   Frame len: 7 bytes (< 8-byte minimum message)
-                #
-                #   Summary  : Payload shorter than Echo Reply minimum length.
+                #   Id/Seq   : 0x3039 / 0xd4-- (missing last byte)
+                #   Frame len: 7 bytes
                 b"\x81\x00\xfb\x94\x30\x39\xd4"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 7,
-            },
+            "_ip6__dlen": 7,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__ECHO_REPLY__LEN <= ip6__dlen "
@@ -124,42 +139,43 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": "ICMPv6 Echo Request message, invalid checksum.",
+            "_description": "ICMPv6 Echo Reply with invalid checksum (all zeros).",
             "_frame_rx": (
                 # ICMPv6 Echo Reply
                 #   Type     : 129 (Echo Reply)
-                #   Code     : 0 (Default)
-                #   Checksum : 0x0000 (invalid)
-                #   Identifier: 12345
-                #   Sequence : 54321
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Header checksum field set to zero (invalid).
+                #   Code     : 0
+                #   Checksum : 0x0000 (invalid; valid value with pshdr_sum=0 is 0x7a94)
+                #   Id/Seq   : 12345 / 54321
                 b"\x81\x00\x00\x00\x30\x39\xd4\x31"
             ),
-            "_mocked_values": {},
+            "_ip6__dlen": 8,
             "_results": {
                 "error_message": "The packet checksum must be valid.",
             },
         },
     ]
 )
-class TestIcmp6MessageEchoReplyParserIntegrityChecks(TestCasePacketRxIp6):
+class TestIcmp6MessageEchoReplyParserIntegrityChecks(TestCase):
     """
     The ICMPv6 Echo Reply message parser integrity checks tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
+    _ip6__dlen: int
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__message__echo_reply__parser(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 Echo Reply message parser raises integrity error
-        on malformed packets.
+        Build a PacketRx with the parametrized frame and IPv6 payload length.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx, ip6__dlen=self._ip6__dlen)
+
+    def test__icmp6__message__echo_reply__parser__integrity_error(self) -> None:
+        """
+        Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
+        Echo Reply frames with the expected message.
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -167,5 +183,30 @@ class TestIcmp6MessageEchoReplyParserIntegrityChecks(TestCasePacketRxIp6):
 
         self.assertEqual(
             str(error.exception),
-            f"[INTEGRITY ERROR][ICMPv6] {self._results["error_message"]}",
+            f"[INTEGRITY ERROR][ICMPv6] {self._results['error_message']}",
+            msg=f"Unexpected integrity-error message for case: {self._description}",
         )
+
+
+class TestIcmp6MessageEchoReplyParserIntegrityBoundary(TestCase):
+    """
+    Boundary tests for the ICMPv6 Echo Reply integrity validator.
+    """
+
+    def test__icmp6__message__echo_reply__parser__integrity__minimum_length_accepted(self) -> None:
+        """
+        Ensure a frame whose IPv6 payload length equals ICMP6__ECHO_REPLY__LEN
+        (8) — a bare, data-less Echo Reply — passes integrity checks and
+        parses successfully.
+        """
+
+        # ICMPv6 Echo Reply at minimum length (8 bytes)
+        #   Type     : 129 (Echo Reply)
+        #   Code     : 0 (Default)
+        #   Checksum : 0x7a94 (valid with pshdr_sum=0)
+        #   Id/Seq   : 12345 / 54321
+        frame = b"\x81\x00\x7a\x94\x30\x39\xd4\x31"
+
+        self.assertEqual(len(frame), ICMP6__ECHO_REPLY__LEN, msg="Fixture must match ICMP6__ECHO_REPLY__LEN.")
+
+        Icmp6Parser(_packet_rx_with_ip6(frame))
