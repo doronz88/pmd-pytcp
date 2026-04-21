@@ -25,7 +25,8 @@
 
 
 """
-Module contains tests for the ICMPv6 ND Router Sdvertisement message assembler.
+Module contains tests for the ICMPv6 ND Router Advertisement message
+assembler.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__assembler.py
 
@@ -34,12 +35,13 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import Ip6Network, MacAddress
 from net_proto import (
+    ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
     Icmp6Assembler,
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOptionPi,
@@ -55,7 +57,6 @@ from net_proto.lib.buffer import Buffer
     [
         {
             "_description": "ICMPv6 ND Router Advertisement message, no options.",
-            "_args": [],
             "_kwargs": {
                 "hop": 255,
                 "flag_m": True,
@@ -72,15 +73,34 @@ from net_proto.lib.buffer import Buffer
                     "reacht 4294967295, retrt 4294967295, len 16 (16+0)"
                 ),
                 "__repr__": (
-                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), hop=255, "
-                    "flag_m=True, flag_o=True, router_lifetime=65535, reachable_time=4294967295, "
+                    "Icmp6NdMessageRouterAdvertisement("
+                    "code=<Icmp6NdRouterAdvertisementCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=[]), "
+                    "hop=255, "
+                    "flag_m=True, "
+                    "flag_o=True, "
+                    "router_lifetime=65535, "
+                    "reachable_time=4294967295, "
                     "retrans_timer=4294967295)"
                 ),
-                "__bytes__": (b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"),
+                "__bytes__": (
+                    # ICMPv6 Router Advertisement
+                    #   Type             : 134 (Router Advertisement)
+                    #   Code             : 0
+                    #   Checksum         : 0x7a3e (back-patched by Icmp6Assembler)
+                    #   Hop Limit        : 255
+                    #   Flags            : 0xc0 (M=1, O=1)
+                    #   Router Lifetime  : 0xffff
+                    #   Reachable Time   : 0xffffffff
+                    #   Retrans Timer    : 0xffffffff
+                    #   Options          : none
+                    b"\x86\x00\x7a\x3e\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+                ),
                 "type": Icmp6Type.ND__ROUTER_ADVERTISEMENT,
                 "code": Icmp6NdRouterAdvertisementCode.DEFAULT,
                 "cksum": 0,
+                "hop": 255,
                 "flag_m": True,
                 "flag_o": True,
                 "router_lifetime": 65535,
@@ -91,7 +111,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 ND Router Advertisement message, Slla option present.",
-            "_args": [],
             "_kwargs": {
                 "hop": 64,
                 "flag_m": False,
@@ -106,16 +125,35 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 24,
                 "__str__": (
-                    "ICMPv6 ND Router Advertisement, hop 64, flags --, rlft 123, reacht 456, "
-                    "retrt 789, opts [slla 00:11:22:33:44:55], len 24 (16+8)"
+                    "ICMPv6 ND Router Advertisement, hop 64, flags --, rlft 123, "
+                    "reacht 456, retrt 789, opts [slla 00:11:22:33:44:55], "
+                    "len 24 (16+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
-                    "slla=MacAddress('00:11:22:33:44:55'))]), hop=64, flag_m=False, flag_o=False, "
-                    "router_lifetime=123, reachable_time=456, retrans_timer=789)"
+                    "Icmp6NdMessageRouterAdvertisement("
+                    "code=<Icmp6NdRouterAdvertisementCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=["
+                    "Icmp6NdOptionSlla(slla=MacAddress('00:11:22:33:44:55'))"
+                    "]), "
+                    "hop=64, "
+                    "flag_m=False, "
+                    "flag_o=False, "
+                    "router_lifetime=123, "
+                    "reachable_time=456, "
+                    "retrans_timer=789)"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Router Advertisement
+                    #   Type             : 134
+                    #   Code             : 0
+                    #   Checksum         : 0xcd0c (back-patched by Icmp6Assembler)
+                    #   Hop Limit        : 64
+                    #   Flags            : 0x00
+                    #   Router Lifetime  : 123
+                    #   Reachable Time   : 456
+                    #   Retrans Timer    : 789
+                    #   Options          : Type 1 (SLLA) = 00:11:22:33:44:55
                     b"\x86\x00\xcd\x0c\x40\x00\x00\x7b\x00\x00\x01\xc8\x00\x00\x03\x15"
                     b"\x01\x01\x00\x11\x22\x33\x44\x55"
                 ),
@@ -135,7 +173,6 @@ from net_proto.lib.buffer import Buffer
         },
         {
             "_description": "ICMPv6 ND Router Advertisement message, Slla & Pi options present.",
-            "_args": [],
             "_kwargs": {
                 "hop": 22,
                 "flag_m": True,
@@ -164,14 +201,36 @@ from net_proto.lib.buffer import Buffer
                     "preferred_lifetime 654321)], len 56 (16+40)"
                 ),
                 "__repr__": (
-                    "Icmp6NdMessageRouterAdvertisement(code=<Icmp6NdRouterAdvertisementCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
-                    "slla=MacAddress('00:11:22:33:44:55')), Icmp6NdOptionPi(flag_l=True, "
-                    "flag_a=True, flag_r=True, valid_lifetime=123456, preferred_lifetime=654321, "
-                    "prefix=Ip6Network('2001:db8::/64'))]), hop=22, flag_m=True, flag_o=False, "
-                    "router_lifetime=33, reachable_time=44, retrans_timer=55)"
+                    "Icmp6NdMessageRouterAdvertisement("
+                    "code=<Icmp6NdRouterAdvertisementCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=["
+                    "Icmp6NdOptionSlla(slla=MacAddress('00:11:22:33:44:55')), "
+                    "Icmp6NdOptionPi(flag_l=True, flag_a=True, flag_r=True, "
+                    "valid_lifetime=123456, preferred_lifetime=654321, "
+                    "prefix=Ip6Network('2001:db8::/64'))"
+                    "]), "
+                    "hop=22, "
+                    "flag_m=True, "
+                    "flag_o=False, "
+                    "router_lifetime=33, "
+                    "reachable_time=44, "
+                    "retrans_timer=55)"
                 ),
                 "__bytes__": (
+                    # ICMPv6 Router Advertisement
+                    #   Type             : 134
+                    #   Code             : 0
+                    #   Checksum         : 0xab86 (back-patched by Icmp6Assembler)
+                    #   Hop Limit        : 22
+                    #   Flags            : 0x80 (M=1)
+                    #   Router Lifetime  : 33
+                    #   Reachable Time   : 44
+                    #   Retrans Timer    : 55
+                    #   Options          : Type 1 (SLLA) = 00:11:22:33:44:55;
+                    #                      Type 3 (PI)   prefix=2001:db8::/64,
+                    #                                    vlft=123456, plft=654321,
+                    #                                    L=1, A=1, R=1
                     b"\x86\x00\xab\x86\x16\x80\x00\x21\x00\x00\x00\x2c\x00\x00\x00\x37"
                     b"\x01\x01\x00\x11\x22\x33\x44\x55\x03\x04\x40\xe0\x00\x01\xe2\x40"
                     b"\x00\x09\xfb\xf1\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
@@ -207,212 +266,184 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        The ICMPv6 ND Router Advertisement message assembler tests.
+        Build the ICMPv6 assembler wrapping a Router Advertisement message
+        configured from the parametrized kwargs.
         """
 
         self._icmp6__assembler = Icmp6Assembler(
-            icmp6__message=Icmp6NdMessageRouterAdvertisement(*self._args, **self._kwargs)
+            icmp6__message=Icmp6NdMessageRouterAdvertisement(**self._kwargs),
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__len(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message '__len__()' method
-        returns a correct value.
+        Ensure '__len__()' returns the expected byte length.
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__str(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message '__str__()' method
-        returns a correct value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__repr(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message '__repr__()' method
-        returns a correct value.
+        Ensure '__repr__()' returns the expected representation.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__bytes(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message '__bytes__()' method
-        returns a correct value.
+        Ensure '__bytes__()' returns the expected wire bytes with a
+        back-patched checksum.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__type(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'type' field
-        contains a correct value.
+        Ensure the assembled message carries type
+        Icmp6Type.ND__ROUTER_ADVERTISEMENT.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__code(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'code' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'code' value.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__cksum(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'cksum' field
-        contains a correct value.
+        Ensure the assembled message's 'cksum' field reflects the value
+        passed at construction (the back-patch happens on the buffer, not
+        on the dataclass).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__flag_m(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__hop(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'flag_m' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'hop' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).flag_m,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).hop,
+            self._results["hop"],
+            msg=f"Unexpected 'hop' for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__router_advertisement__assembler__flag_m(self) -> None:
+        """
+        Ensure the assembled message carries the expected 'flag_m' value.
+        """
+
+        self.assertEqual(
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).flag_m,
             self._results["flag_m"],
+            msg=f"Unexpected 'flag_m' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__flag_o(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__flag_o(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'flag_o' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'flag_o' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).flag_o,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).flag_o,
             self._results["flag_o"],
+            msg=f"Unexpected 'flag_o' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__router_lifetime(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__router_lifetime(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'router_lifetime' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'router_lifetime'
+        value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).router_lifetime,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).router_lifetime,
             self._results["router_lifetime"],
+            msg=f"Unexpected 'router_lifetime' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__reachable_time(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__reachable_time(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'reachable_time' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'reachable_time'
+        value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).reachable_time,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).reachable_time,
             self._results["reachable_time"],
+            msg=f"Unexpected 'reachable_time' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__retrans_timer(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__retrans_timer(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'retrans_timer' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'retrans_timer'
+        value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).retrans_timer,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).retrans_timer,
             self._results["retrans_timer"],
+            msg=f"Unexpected 'retrans_timer' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__options(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__options(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'options' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'options' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageRouterAdvertisement,
-                self._icmp6__assembler.message,
-            ).options,
+            cast(Icmp6NdMessageRouterAdvertisement, self._icmp6__assembler.message).options,
             self._results["options"],
+            msg=f"Unexpected 'options' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__router_advertisement__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__router_advertisement__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' appends the Router Advertisement wire bytes
+        (header + options) to the provided buffer list.
         """
 
         buffers: list[Buffer] = []
@@ -422,4 +453,27 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"assemble() output mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__router_advertisement__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' appends exactly two buffers (fixed header +
+        options payload) so Icmp6Assembler can back-patch the checksum at
+        buffers[-2][2:4].
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.message.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=f"assemble() must append exactly two buffers for case: {self._description}",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+            msg=f"First buffer must be the 16-byte fixed header for case: {self._description}",
         )
