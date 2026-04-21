@@ -111,6 +111,8 @@ Stack-wide constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, l
 
 ## Coding Style Rules
 
+**Canonical rule: [`.claude/rules/coding_style.md`](.claude/rules/coding_style.md)** — read and follow it for every new or rewritten non-test Python file. It covers the full file skeleton, the 80-char GPL block (verbatim), imports, module constants, frozen dataclasses, the per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options-bearing protocols, enums, the `Subsystem` runtime, naming, validation idioms, docstrings, formatting, and canonical reference implementations. The bullets below are only a quick summary.
+
 ### File Structure
 
 Every file follows this exact order:
