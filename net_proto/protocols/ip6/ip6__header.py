@@ -127,7 +127,7 @@ class Ip6Header(ProtoStruct):
     @override
     def __len__(self) -> int:
         """
-        Get the IPv6 packet header.
+        Get the IPv6 header length.
         """
 
         return IP6__HEADER__LEN
