@@ -33,7 +33,7 @@ ver 3.0.4
 """
 
 
-from testslide import TestCase
+from unittest import TestCase
 
 from net_proto import (
     IP4__OPTIONS__MAX_LEN,
@@ -52,41 +52,62 @@ class TestIp4AssemblerAsserts(TestCase):
 
     def test__ip4__assembler__options_len__over_max(self) -> None:
         """
-        Ensure the IPv4 packet assembler constructor raises an exception when
-        the length of the provided 'ip4__options' argument length is higher
-        than the maximum supported value.
+        Ensure the constructor rejects 'ip4__options' longer than
+        IP4__OPTIONS__MAX_LEN bytes.
         """
 
         with self.assertRaises(AssertionError) as error:
             Ip4Assembler(
                 ip4__options=Ip4Options(
                     *([Ip4OptionNop()] * (IP4__OPTIONS__MAX_LEN + 1)),
-                )
+                ),
             )
 
         self.assertEqual(
             str(error.exception),
             f"The IPv4 options length must be less than or equal to {IP4__OPTIONS__MAX_LEN}.",
+            msg="Unexpected assertion message for over-max 'ip4__options'.",
+        )
+
+    def test__ip4__assembler__options_len__at_max_accepted(self) -> None:
+        """
+        Ensure the constructor accepts 'ip4__options' whose length equals
+        IP4__OPTIONS__MAX_LEN bytes (boundary case).
+        """
+
+        options = Ip4Options(*([Ip4OptionNop()] * IP4__OPTIONS__MAX_LEN))
+
+        assembler = Ip4Assembler(ip4__options=options)
+
+        self.assertEqual(
+            assembler.options,
+            options,
+            msg="Assembler must accept options exactly at IP4__OPTIONS__MAX_LEN.",
         )
 
     def test__ip4__assembler__options_len__not_4_bytes_alligned(self) -> None:
         """
-        Ensure the IPv4 packet assembler constructor raises an exception when
-        the length of the provided 'ip4__options' argument is not 4 bytes
-        aligned.
+        Ensure the constructor rejects 'ip4__options' whose length is not
+        a multiple of 4 bytes.
         """
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(AssertionError) as error:
             Ip4Assembler(
                 ip4__options=Ip4Options(
-                    *([Ip4OptionNop()] * (16 + 1)),
-                )
+                    *([Ip4OptionNop()] * 17),
+                ),
             )
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv4 options length must be 4-byte aligned.",
+            msg="Unexpected assertion message for non-4-byte-aligned 'ip4__options'.",
+        )
 
     def test__ip4__assembler__options__eol__not_last(self) -> None:
         """
-        Ensure the IPv4 packet assembler constructor raises an exception when the
-        'Eol' option is not the last option.
+        Ensure the constructor rejects an options list where the 'Eol'
+        option is not the final entry.
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -96,10 +117,51 @@ class TestIp4AssemblerAsserts(TestCase):
                     Ip4OptionNop(),
                     Ip4OptionEol(),
                     Ip4OptionNop(),
-                )
+                ),
             )
 
-        self.assertEqual(str(error.exception), "The IPv4 EOL option must be the last option.")
+        self.assertEqual(
+            str(error.exception),
+            "The IPv4 EOL option must be the last option.",
+            msg="Unexpected assertion message for misplaced 'Eol' option.",
+        )
+
+    def test__ip4__assembler__options__eol__last_accepted(self) -> None:
+        """
+        Ensure the constructor accepts an options list where the 'Eol'
+        option is the last entry.
+        """
+
+        options = Ip4Options(
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionEol(),
+        )
+
+        assembler = Ip4Assembler(ip4__options=options)
+
+        self.assertEqual(
+            assembler.options,
+            options,
+            msg="Assembler must accept options with trailing 'Eol' option.",
+        )
+
+    def test__ip4__assembler__options__no_eol_accepted(self) -> None:
+        """
+        Ensure the constructor accepts an options list that does not
+        contain an 'Eol' option at all.
+        """
+
+        options = Ip4Options(Ip4OptionNop(), Ip4OptionNop(), Ip4OptionNop(), Ip4OptionNop())
+
+        assembler = Ip4Assembler(ip4__options=options)
+
+        self.assertEqual(
+            assembler.options,
+            options,
+            msg="Assembler must accept options without any 'Eol' option.",
+        )
 
 
 class TestIp4FragAssemblerAsserts(TestCase):
@@ -109,48 +171,97 @@ class TestIp4FragAssemblerAsserts(TestCase):
 
     def test__ip4_frag__assembler__options_len__over_max(self) -> None:
         """
-        Ensure the (IPv4) Frag packet assembler constructor raises an exception
-        when the length of the provided 'ip4__options' argument length is higher
-        than the maximum supported value.
-        """
-
-        with self.assertRaises(AssertionError):
-            Ip4FragAssembler(
-                ip4_frag__options=Ip4Options(
-                    *([Ip4OptionNop()] * (IP4__OPTIONS__MAX_LEN + 1)),
-                )
-            )
-
-    def test__ip4_frag__assembler__options_len__not_4_bytes_alligned(
-        self,
-    ) -> None:
-        """
-        Ensure the (IPv4) Frag packet assembler constructor raises an exception
-        when the length of the provided 'ip4_frag__options' argument is not
-        4 bytes aligned.
-        """
-
-        with self.assertRaises(AssertionError):
-            Ip4FragAssembler(
-                ip4_frag__options=Ip4Options(
-                    *([Ip4OptionNop()] * (16 + 1)),
-                )
-            )
-
-    def test__ip4_frag__assembler__options__eol__not_last(self) -> None:
-        """
-        Ensure the IPv4 (Frag) packet assembler constructor raises an exception
-        when the 'Eol' option is not the last option.
+        Ensure the (Frag) constructor rejects 'ip4_frag__options' longer
+        than IP4__OPTIONS__MAX_LEN bytes.
         """
 
         with self.assertRaises(AssertionError) as error:
-            Ip4Assembler(
-                ip4__options=Ip4Options(
+            Ip4FragAssembler(
+                ip4_frag__options=Ip4Options(
+                    *([Ip4OptionNop()] * (IP4__OPTIONS__MAX_LEN + 1)),
+                ),
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            f"The IPv4 options length must be less than or equal to {IP4__OPTIONS__MAX_LEN}.",
+            msg="Unexpected assertion message for over-max 'ip4_frag__options'.",
+        )
+
+    def test__ip4_frag__assembler__options_len__at_max_accepted(self) -> None:
+        """
+        Ensure the (Frag) constructor accepts 'ip4_frag__options' whose
+        length equals IP4__OPTIONS__MAX_LEN bytes (boundary case).
+        """
+
+        options = Ip4Options(*([Ip4OptionNop()] * IP4__OPTIONS__MAX_LEN))
+
+        assembler = Ip4FragAssembler(ip4_frag__options=options)
+
+        self.assertEqual(
+            assembler.options,
+            options,
+            msg="Frag assembler must accept options exactly at IP4__OPTIONS__MAX_LEN.",
+        )
+
+    def test__ip4_frag__assembler__options_len__not_4_bytes_alligned(self) -> None:
+        """
+        Ensure the (Frag) constructor rejects 'ip4_frag__options' whose
+        length is not a multiple of 4 bytes.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4FragAssembler(
+                ip4_frag__options=Ip4Options(
+                    *([Ip4OptionNop()] * 17),
+                ),
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv4 options length must be 4-byte aligned.",
+            msg="Unexpected assertion message for non-4-byte-aligned 'ip4_frag__options'.",
+        )
+
+    def test__ip4_frag__assembler__options__eol__not_last(self) -> None:
+        """
+        Ensure the (Frag) constructor rejects an options list where the
+        'Eol' option is not the final entry.
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4FragAssembler(
+                ip4_frag__options=Ip4Options(
                     Ip4OptionNop(),
                     Ip4OptionNop(),
                     Ip4OptionEol(),
                     Ip4OptionNop(),
-                )
+                ),
             )
 
-        self.assertEqual(str(error.exception), "The IPv4 EOL option must be the last option.")
+        self.assertEqual(
+            str(error.exception),
+            "The IPv4 EOL option must be the last option.",
+            msg="Unexpected assertion message for misplaced 'Eol' option in Frag assembler.",
+        )
+
+    def test__ip4_frag__assembler__options__eol__last_accepted(self) -> None:
+        """
+        Ensure the (Frag) constructor accepts an options list where the
+        'Eol' option is the last entry.
+        """
+
+        options = Ip4Options(
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionEol(),
+        )
+
+        assembler = Ip4FragAssembler(ip4_frag__options=options)
+
+        self.assertEqual(
+            assembler.options,
+            options,
+            msg="Frag assembler must accept options with trailing 'Eol' option.",
+        )
