@@ -78,3 +78,20 @@ class TestIp6FragParserSanityChecks(TestCase):
             Ip6FragParser(packet_rx)
         except Ip6FragSanityError as error:  # pragma: no cover
             self.fail(f"Baseline frame must not raise Ip6FragSanityError, got: {error!s}")
+
+    def test__ip6_frag__sanity_error__message_prefix(self) -> None:
+        """
+        Ensure the Ip6FragSanityError constructor prepends the
+        '[IPv6 Frag] ' protocol tag to the message, matching every
+        other PacketSanityError subclass. Pinned even though the parser
+        currently has no sanity checks, so the contract is enforced
+        from day one for any check added later.
+        """
+
+        error = Ip6FragSanityError("dummy reason")
+
+        self.assertEqual(
+            str(error),
+            "[SANITY ERROR][IPv6 Frag] dummy reason",
+            msg="Ip6FragSanityError must tag messages with '[IPv6 Frag] '.",
+        )
