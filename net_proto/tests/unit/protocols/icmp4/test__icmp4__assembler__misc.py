@@ -33,7 +33,7 @@ ver 3.0.4
 """
 
 
-from testslide import TestCase
+from unittest import TestCase
 
 from net_proto import Icmp4Assembler, Icmp4MessageEchoReply, Tracker
 
@@ -45,8 +45,9 @@ class TestIcmp4AssemblerMisc(TestCase):
 
     def test__icmp4__assembler__echo_tracker(self) -> None:
         """
-        Ensure the ICMPv4 packet assembler 'tracker' property returns
-        a correct value.
+        Ensure the ICMPv4 packet assembler 'tracker' property forwards the
+        provided 'echo_tracker' so that RX/TX log lines stay correlated with
+        the originating packet.
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -56,7 +57,41 @@ class TestIcmp4AssemblerMisc(TestCase):
             echo_tracker=echo_tracker,
         )
 
-        self.assertEqual(
+        self.assertIs(
             icmp4__assembler.tracker.echo_tracker,
             echo_tracker,
+            msg="Assembler tracker must forward the provided echo_tracker instance.",
+        )
+
+    def test__icmp4__assembler__tx_prefix(self) -> None:
+        """
+        Ensure the ICMPv4 packet assembler 'tracker' is created with the 'TX'
+        prefix so that outbound log lines are distinguishable from the inbound
+        'RX' side (the prefix is embedded in the tracker serial).
+        """
+
+        icmp4__assembler = Icmp4Assembler(
+            icmp4__message=Icmp4MessageEchoReply(),
+        )
+
+        self.assertIn(
+            "TX",
+            str(icmp4__assembler.tracker),
+            msg="Assembler tracker serial must embed the 'TX' prefix.",
+        )
+
+    def test__icmp4__assembler__defaults_echo_tracker_to_none(self) -> None:
+        """
+        Ensure that when no 'echo_tracker' is provided the assembler tracker's
+        'echo_tracker' attribute is None (standalone transmit, not tied to an
+        incoming request).
+        """
+
+        icmp4__assembler = Icmp4Assembler(
+            icmp4__message=Icmp4MessageEchoReply(),
+        )
+
+        self.assertIsNone(
+            icmp4__assembler.tracker.echo_tracker,
+            msg="Assembler tracker echo_tracker must default to None when not provided.",
         )
