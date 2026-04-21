@@ -34,25 +34,71 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import Icmp6IntegrityError, Icmp6Parser, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+from net_addr import Ip6Address
+from net_proto import (
+    ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+    Icmp6IntegrityError,
+    Icmp6Parser,
+    Ip6Parser,
+    PacketRx,
+)
+
+# Valid 16-byte RA, hop=64, flags=0, router_lifetime=0xffff, reachable_time=0,
+# retrans_timer=0 — used as a baseline for the positive boundary test.
+# Checksum 0x39ff with pshdr_sum=0.
+_RA_BASELINE_FRAME = b"\x86\x00\x39\xff\x40\x00\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00"
+
+
+def _packet_rx_with_ip6(
+    frame: bytes,
+    *,
+    ip6__dlen: int | None = None,
+    ip6__hop: int = 255,
+) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads off 'packet_rx.ip6'. 'ip6__hop' defaults to 255 and
+    'src' is pinned to a link-local address so RA sanity rules pass on the
+    positive boundary path.
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame) if ip6__dlen is None else ip6__dlen,
+            payload_len=len(frame) if ip6__dlen is None else ip6__dlen,
+            pshdr_sum=0,
+            src=Ip6Address("fe80::1"),
+            dst=Ip6Address("ff02::1"),
+            hop=ip6__hop,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
             "_description": (
-                "ICMPv6 ND Router Advertisement message, "
-                "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."
+                "ICMPv6 ND Router Advertisement, the 'ICMP6__HEADER__LEN <= self._ip6__dlen' "
+                "condition not met (frame shorter than ICMPv6 base header)."
             ),
-            "_args": [b"\x86\x00\x00"],
-            "_mocked_values": {
-                "ip6__dlen": 3,
-            },
+            "_frame_rx": (
+                # ICMPv6 Router Advertisement (truncated, < 4 bytes)
+                #   Type     : 134 (Router Advertisement)
+                #   Code     : 0
+                #   Checksum : 0x00-- (missing low byte)
+                #   Frame len: 3 bytes
+                b"\x86\x00\x00"
+            ),
+            "_ip6__dlen": 3,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -63,13 +109,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 ND Router Advertisement message, "
-                "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 ND Router Advertisement, the 'self._ip6__dlen <= len(self._frame)' "
+                "condition not met (declared IPv6 payload exceeds frame length)."
             ),
-            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
-            "_mocked_values": {
-                "ip6__dlen": 16,
-            },
+            "_frame_rx": (
+                # ICMPv6 Router Advertisement
+                #   Type     : 134
+                #   Code     : 0
+                #   Checksum : 0x0000 (placeholder)
+                #   Hop      : 0xff
+                #   Flags    : 0xc0 (M=1, O=1)
+                #   Router lifetime/reachable/retrans : 0xffff / -- / --
+                #   Frame len: 15 bytes (< declared ip6__dlen=16)
+                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+            ),
+            "_ip6__dlen": 16,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -80,50 +134,58 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 ND Router Advertisement message, "
-                "the 'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= self._ip6__dlen' "
-                "condition not met."
+                "ICMPv6 ND Router Advertisement, the "
+                "'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen' "
+                "condition not met (payload shorter than Router Advertisement fixed size)."
             ),
-            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
-            "_mocked_values": {
-                "ip6__dlen": 15,
-            },
+            "_frame_rx": (
+                # ICMPv6 Router Advertisement (15 bytes, below the 16-byte minimum)
+                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+            ),
+            "_ip6__dlen": 15,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen "
-                    "<= len(frame)' must be met. Got: ICMP6__ND__ROUTER_ADVERTISEMENT"
-                    "__LEN=16, ip6__dlen=15, len(frame)=15"
+                    "<= len(frame)' must be met. Got: ICMP6__ND__ROUTER_ADVERTISEMENT__LEN=16, "
+                    "ip6__dlen=15, len(frame)=15"
                 ),
             },
         },
         {
-            "_description": "ICMPv6 ND Neighbor Advertisement message, invalid checksum.",
-            "_args": [b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"],
-            "_mocked_values": {},
+            "_description": "ICMPv6 ND Router Advertisement with invalid checksum (all-0xff).",
+            "_frame_rx": (
+                # ICMPv6 Router Advertisement (16 bytes, checksum 0x0000 against a
+                # non-zero payload, so the computed checksum will not validate).
+                b"\x86\x00\x00\x00\xff\xc0\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+            ),
+            "_ip6__dlen": None,
             "_results": {
                 "error_message": "The packet checksum must be valid.",
             },
         },
     ]
 )
-class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(TestCasePacketRxIp6):
+class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(TestCase):
     """
     The ICMPv6 ND Router Advertisement message parser integrity checks tests.
     """
 
     _description: str
-    _args: list[Any]
-    _mocked_values: dict[str, Any]
+    _frame_rx: bytes
+    _ip6__dlen: int | None
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__nd__message__router_advertisement__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 ND Router Advertisement message parser raises
-        integrity error on malformed packets.
+        Build a PacketRx with the parametrized frame and IPv6 payload length.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx, ip6__dlen=self._ip6__dlen)
+
+    def test__icmp6__nd__message__router_advertisement__parser__integrity_error(self) -> None:
+        """
+        Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
+        Router Advertisement frames with the expected message.
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -131,5 +193,27 @@ class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(TestCasePacketR
 
         self.assertEqual(
             str(error.exception),
-            f"[INTEGRITY ERROR][ICMPv6] {self._results["error_message"]}",
+            f"[INTEGRITY ERROR][ICMPv6] {self._results['error_message']}",
+            msg=f"Unexpected integrity-error message for case: {self._description}",
         )
+
+
+class TestIcmp6NdMessageRouterAdvertisementParserIntegrityBoundary(TestCase):
+    """
+    Boundary tests for the ICMPv6 ND Router Advertisement integrity validator.
+    """
+
+    def test__icmp6__nd__message__router_advertisement__parser__integrity__minimum_length_accepted(self) -> None:
+        """
+        Ensure a frame whose IPv6 payload length equals
+        ICMP6__ND__ROUTER_ADVERTISEMENT__LEN (16) — a bare RA with no
+        options — passes integrity checks and parses successfully.
+        """
+
+        self.assertEqual(
+            len(_RA_BASELINE_FRAME),
+            ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
+            msg="Baseline fixture must match ICMP6__ND__ROUTER_ADVERTISEMENT__LEN.",
+        )
+
+        Icmp6Parser(_packet_rx_with_ip6(_RA_BASELINE_FRAME))
