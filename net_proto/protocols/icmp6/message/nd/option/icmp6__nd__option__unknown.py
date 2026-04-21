@@ -25,9 +25,9 @@
 
 
 """
-This module contains the unknown ICMPv6 option support code.
+This module contains the unknown ICMPv6 ND option support code.
 
-net_proto/protocols/icmp6/options/icmp6__nd__option__unknown.py
+net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__unknown.py
 
 ver 3.0.4
 """
@@ -69,26 +69,21 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 unknown option fields.
+        Validate the ICMPv6 ND unknown option fields.
         """
 
-        # Ensure the 'type' field is a valid Icmp6NdOptionType enum member.
-        assert isinstance(self.type, Icmp6NdOptionType), (
-            f"The 'type' field must be an Icmp6NdOptionType. " f"Got: {type(self.type)!r}"
-        )
+        assert isinstance(
+            self.type, Icmp6NdOptionType
+        ), f"The 'type' field must be an Icmp6NdOptionType. Got: {type(self.type)!r}"
 
-        # Ensure the 'type' field is not a known Icmp6NdOptionType.
-        assert int(self.type) not in Icmp6NdOptionType.get_known_values(), (
-            "The 'type' field must not be a known Icmp6NdOptionType. " f"Got: {self.type!r}"
-        )
+        assert (
+            int(self.type) not in Icmp6NdOptionType.get_known_values()
+        ), f"The 'type' field must not be a known Icmp6NdOptionType. Got: {self.type!r}"
 
-        # Update the option 'len' field based on the length of the 'data' field.
         object.__setattr__(self, "len", ICMP6__ND__OPTION__LEN + len(self.data))
 
-        # Ensure the 'len' field is a valid 8-bit unsigned integer.
-        assert is_uint8(self.len), f"The 'len' field must be an 8-bit unsigned integer. " f"Got: {self.len!r}"
+        assert is_uint8(self.len), f"The 'len' field must be an 8-bit unsigned integer. Got: {self.len!r}"
 
-        # Ensure the 'len' field is 8-byte aligned.
         assert is_8_byte_alligned(self.len), f"The 'len' field must be 8-byte aligned. Got: {self.len!r}"
 
     @override
@@ -144,8 +139,10 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         )
 
         # Ensure the option type is not known.
-        assert (value := buffer[0]) not in Icmp6NdOptionType.get_known_values(), (
-            f"The unknown ICMPv6 ND option type must not be known. " f"Got: {Icmp6NdOptionType.from_int(value)!r}"
+        assert (
+            value := buffer[0]
+        ) not in Icmp6NdOptionType.get_known_values(), (
+            f"The unknown ICMPv6 ND option type must not be known. Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
         Icmp6NdOptionUnknown._validate_integrity(buffer)
