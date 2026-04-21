@@ -49,7 +49,7 @@ from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 # The TCP Timestamps option [RFC 1323].
 
 #                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-#                                 |    Type = 1   |   Length = 1  |
+#                                 |    Type = 8   |   Length = 10 |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                             Tsval                             |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

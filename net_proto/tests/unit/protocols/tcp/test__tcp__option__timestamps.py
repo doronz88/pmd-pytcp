@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     TCP__OPTION__TIMESTAMPS__LEN,
@@ -55,116 +55,155 @@ class TestTcpOptionTimestampsAsserts(TestCase):
 
     def setUp(self) -> None:
         """
-        Create the default arguments for the TCP Timestamps option constructor.
+        Build a valid default kwargs dict for the TCP Timestamps option
+        constructor so each test can override one field and trigger its
+        assert.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "tsval": 0,
             "tsecr": 0,
         }
 
+    def test__tcp__option__timestamps__default_accepted(self) -> None:
+        """
+        Ensure the default kwargs dict itself is accepted; this guards
+        the negative tests from silent regressions that would make the
+        baseline invalid.
+        """
+
+        option = TcpOptionTimestamps(**self._kwargs)
+
+        self.assertEqual(
+            len(option),
+            TCP__OPTION__TIMESTAMPS__LEN,
+            msg="Default-constructed option must serialize to the 10-byte Timestamps option.",
+        )
+
     def test__tcp__option__timestamps__tsval__under_min(self) -> None:
         """
-        Ensure the TCP Timestamps option constructor raises an exception when
-        the provided 'tsval' argument is lower than the minimum supported value.
+        Ensure the TCP Timestamps option constructor raises an exception
+        when the provided 'tsval' argument is lower than the minimum
+        supported value.
         """
 
         self._kwargs["tsval"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionTimestamps(*self._args, **self._kwargs)
+            TcpOptionTimestamps(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'tsval' under UINT_32__MIN.",
         )
 
     def test__tcp__option__timestamps__tsval__over_max(self) -> None:
         """
-        Ensure the TCP Timestamps option constructor raises an exception when
-        the provided 'tsval' argument is higher than the maximum supported value.
+        Ensure the TCP Timestamps option constructor raises an exception
+        when the provided 'tsval' argument is higher than the maximum
+        supported value.
         """
 
         self._kwargs["tsval"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionTimestamps(*self._args, **self._kwargs)
+            TcpOptionTimestamps(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'tsval' over UINT_32__MAX.",
         )
 
     def test__tcp__option__timestamps__tsecr__under_min(self) -> None:
         """
-        Ensure the TCP Timestamps option constructor raises an exception when
-        the provided 'tsecr' argument is lower than the minimum supported value.
+        Ensure the TCP Timestamps option constructor raises an exception
+        when the provided 'tsecr' argument is lower than the minimum
+        supported value.
         """
 
         self._kwargs["tsecr"] = value = UINT_32__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionTimestamps(*self._args, **self._kwargs)
+            TcpOptionTimestamps(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'tsecr' under UINT_32__MIN.",
         )
 
     def test__tcp__option__timestamps__tsecr__over_max(self) -> None:
         """
-        Ensure the TCP Timestamps option constructor raises an exception when
-        the provided 'tsecr' argument is higher than the maximum supported value.
+        Ensure the TCP Timestamps option constructor raises an exception
+        when the provided 'tsecr' argument is higher than the maximum
+        supported value.
         """
 
         self._kwargs["tsecr"] = value = UINT_32__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionTimestamps(*self._args, **self._kwargs)
+            TcpOptionTimestamps(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'tsecr' over UINT_32__MAX.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Timestamps option (I).",
-            "_args": [],
+            "_description": "TCP Timestamps with tsval=tsecr=UINT_32__MAX (maximum values).",
             "_kwargs": {
                 "tsval": 4294967295,
                 "tsecr": 4294967295,
             },
             "_results": {
-                "__len__": 10,
                 "__str__": "timestamps 4294967295/4294967295",
-                "__repr__": ("TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295)"),
+                "__repr__": "TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295)",
+                # TCP Timestamps option wire frame (10 bytes):
+                #   Byte 0     : 0x08       -> type=TcpOptionType.TIMESTAMPS (8)
+                #   Byte 1     : 0x0a       -> len=TCP__OPTION__TIMESTAMPS__LEN (10)
+                #   Bytes 2-5  : 0xffffffff -> tsval=4294967295 (UINT_32__MAX)
+                #   Bytes 6-9  : 0xffffffff -> tsecr=4294967295 (UINT_32__MAX)
                 "__bytes__": b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff",
-                "type": TcpOptionType.TIMESTAMPS,
-                "len": TCP__OPTION__TIMESTAMPS__LEN,
-                "tsval": 4294967295,
-                "tsecr": 4294967295,
             },
         },
         {
-            "_description": "The TCP Timestamps option (II).",
-            "_args": [],
+            "_description": "TCP Timestamps with typical-range tsval and tsecr values.",
             "_kwargs": {
                 "tsval": 1111111111,
                 "tsecr": 2222222222,
             },
             "_results": {
-                "__len__": 10,
                 "__str__": "timestamps 1111111111/2222222222",
-                "__repr__": ("TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222)"),
+                "__repr__": "TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222)",
+                # TCP Timestamps option wire frame (10 bytes):
+                #   Byte 0     : 0x08       -> type=TcpOptionType.TIMESTAMPS (8)
+                #   Byte 1     : 0x0a       -> len=TCP__OPTION__TIMESTAMPS__LEN (10)
+                #   Bytes 2-5  : 0x423a35c7 -> tsval=1111111111
+                #   Bytes 6-9  : 0x84746b8e -> tsecr=2222222222
                 "__bytes__": b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e",
-                "type": TcpOptionType.TIMESTAMPS,
-                "len": TCP__OPTION__TIMESTAMPS__LEN,
-                "tsval": 1111111111,
-                "tsecr": 2222222222,
+            },
+        },
+        {
+            "_description": "TCP Timestamps with tsval=tsecr=0 (minimum values).",
+            "_kwargs": {
+                "tsval": 0,
+                "tsecr": 0,
+            },
+            "_results": {
+                "__str__": "timestamps 0/0",
+                "__repr__": "TcpOptionTimestamps(tsval=0, tsecr=0)",
+                # TCP Timestamps option wire frame (10 bytes):
+                #   Byte 0     : 0x08       -> type=TcpOptionType.TIMESTAMPS (8)
+                #   Byte 1     : 0x0a       -> len=TCP__OPTION__TIMESTAMPS__LEN (10)
+                #   Bytes 2-5  : 0x00000000 -> tsval=0
+                #   Bytes 6-9  : 0x00000000 -> tsecr=0
+                "__bytes__": b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00\x00",
             },
         },
     ]
@@ -175,141 +214,169 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
     _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the TCP Timestamps option object with testcase arguments.
+        Build the TCP Timestamps option from the parametrized kwargs.
         """
 
-        self._option = TcpOptionTimestamps(*self._args, **self._kwargs)
+        self._option = TcpOptionTimestamps(**self._kwargs)
 
     def test__tcp__option__timestamps__len(self) -> None:
         """
-        Ensure the TCP Timestamps option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns TCP__OPTION__TIMESTAMPS__LEN (10 bytes).
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            TCP__OPTION__TIMESTAMPS__LEN,
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__str(self) -> None:
         """
-        Ensure the TCP Timestamps option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__repr(self) -> None:
         """
-        Ensure the TCP Timestamps option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__bytes(self) -> None:
         """
-        Ensure the TCP Timestamps option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire frame.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__type(self) -> None:
         """
-        Ensure the TCP Timestamps option 'type' field contains a correct value.
+        Ensure the 'type' field is TcpOptionType.TIMESTAMPS.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            TcpOptionType.TIMESTAMPS,
+            msg=f"Unexpected 'type' field for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__length(self) -> None:
         """
-        Ensure the TCP Timestamps option 'len' field contains a correct value.
+        Ensure the 'len' field equals TCP__OPTION__TIMESTAMPS__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            TCP__OPTION__TIMESTAMPS__LEN,
+            msg=f"Unexpected 'len' field for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__tsval(self) -> None:
         """
-        Ensure the TCP Timestamps option 'tsval' field contains a correct value.
+        Ensure the 'tsval' field exposes the provided value.
         """
 
         self.assertEqual(
             self._option.tsval,
-            self._results["tsval"],
+            self._kwargs["tsval"],
+            msg=f"Unexpected 'tsval' field for case: {self._description}",
         )
 
     def test__tcp__option__timestamps__tsecr(self) -> None:
         """
-        Ensure the TCP Timestamps option 'tsecr' field contains a correct value.
+        Ensure the 'tsecr' field exposes the provided value.
         """
 
         self.assertEqual(
             self._option.tsecr,
-            self._results["tsecr"],
+            self._kwargs["tsecr"],
+            msg=f"Unexpected 'tsecr' field for case: {self._description}",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Timestamps option (I).",
-            "_args": [
-                b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295),
-            },
+            "_description": "TCP Timestamps option, UINT_32__MAX edges with trailing bytes.",
+            "_args": [b"\x08\x0a\xff\xff\xff\xff\xff\xff\xff\xff" + b"ZH0PA"],
+            "_expected": TcpOptionTimestamps(tsval=4294967295, tsecr=4294967295),
         },
         {
-            "_description": "The TCP Timestamps option (II).",
-            "_args": [
-                b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222),
-            },
+            "_description": "TCP Timestamps option, typical values with trailing bytes.",
+            "_args": [b"\x08\x0a\x42\x3a\x35\xc7\x84\x74\x6b\x8e" + b"ZH0PA"],
+            "_expected": TcpOptionTimestamps(tsval=1111111111, tsecr=2222222222),
         },
         {
-            "_description": "The TCP Timestamps option minimum length assert.",
-            "_args": [
-                b"\x08",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Timestamps option, exact 10-byte buffer (no trailing bytes).",
+            "_args": [b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00\x00"],
+            "_expected": TcpOptionTimestamps(tsval=0, tsecr=0),
+        },
+    ]
+)
+class TestTcpOptionTimestampsParser(TestCase):
+    """
+    The TCP Timestamps option parser positive tests.
+    """
+
+    _description: str
+    _args: list[Any]
+    _expected: TcpOptionTimestamps
+
+    def test__tcp__option__timestamps__from_buffer(self) -> None:
+        """
+        Ensure from_buffer parses the Timestamps wire frame into the
+        expected TcpOptionTimestamps (trailing bytes must be ignored).
+        """
+
+        option = TcpOptionTimestamps.from_buffer(*self._args)
+
+        self.assertEqual(
+            option,
+            self._expected,
+            msg=f"Unexpected parsed option for case: {self._description}",
+        )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "TCP Timestamps option, buffer shorter than TCP__OPTION__LEN (2).",
+            "_args": [b"\x08"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the TCP Timestamps option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the TCP Timestamps option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The TCP Timestamps option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Timestamps option, buffer empty (zero-length).",
+            "_args": [b""],
+            "_results": {
+                "error": AssertionError,
+                "error_message": "The minimum length of the TCP Timestamps option must be 2 bytes. Got: 0",
+            },
+        },
+        {
+            "_description": "TCP Timestamps option, buffer 'type' byte is not TcpOptionType.TIMESTAMPS.",
+            "_args": [b"\xff\x0a\x00\x00\x00\x00\x00\x00\x00\x00"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -319,64 +386,48 @@ class TestTcpOptionTimestampsAssembler(TestCase):
             },
         },
         {
-            "_description": "The TCP Timestamps option length integrity check (I).",
-            "_args": [
-                b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Timestamps option, declared 'len' differs from TCP__OPTION__TIMESTAMPS__LEN.",
+            "_args": [b"\x08\x09\x00\x00\x00\x00\x00\x00\x00\x00"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value " "must be 10 bytes. Got: 9"
+                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value must be 10 bytes. Got: 9"
                 ),
             },
         },
         {
-            "_description": "The TCP Timestamps option length integrity check (II).",
-            "_args": [
-                b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Timestamps option, declared 'len' exceeds provided buffer size.",
+            "_args": [b"\x08\x0a\x00\x00\x00\x00\x00\x00\x00"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value "
-                    "must be less than or equal to the length of provided "
-                    "bytes (9). Got: 10"
+                    "[INTEGRITY ERROR][TCP] The TCP Timestamps option length value must be "
+                    "less than or equal to the length of provided bytes (9). Got: 10"
                 ),
             },
         },
     ]
 )
-class TestTcpOptionTimestampsParser(TestCase):
+class TestTcpOptionTimestampsParserFailures(TestCase):
     """
-    The TCP Timestamps option parser tests.
+    The TCP Timestamps option parser failure-path tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__timestamps__from_buffer(self) -> None:
+    def test__tcp__option__timestamps__from_buffer__error(self) -> None:
         """
-        Ensure the TCP Timestamps option parser creates the proper option
-        object or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = TcpOptionTimestamps.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            TcpOptionTimestamps.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                TcpOptionTimestamps.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
