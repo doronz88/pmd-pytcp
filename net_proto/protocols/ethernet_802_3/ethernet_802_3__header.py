@@ -128,7 +128,7 @@ class Ethernet8023Header(ProtoStruct):
         )
 
 
-class EthernetHeader8023Properties(ABC):
+class Ethernet8023HeaderProperties(ABC):
     """
     Properties used to access Ethernet 802.3 header fields.
     """
