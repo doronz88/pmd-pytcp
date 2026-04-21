@@ -35,12 +35,13 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
+    ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
     Icmp6Assembler,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdNeighborAdvertisementCode,
@@ -64,22 +65,26 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 24,
-                "__str__": ("ICMPv6 ND Neighbor Advertisement, flags R-O, target 2001:db8::1, " "len 24 (24+0)"),
+                "__str__": ("ICMPv6 ND Neighbor Advertisement, flags R-O, target 2001:db8::1, len 24 (24+0)"),
                 "__repr__": (
-                    "Icmp6NdMessageNeighborAdvertisement(code=<Icmp6NdNeighborAdvertisementCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[]), flag_r=True, "
-                    "flag_s=False, flag_o=True, target_address=Ip6Address('2001:db8::1'))"
+                    "Icmp6NdMessageNeighborAdvertisement("
+                    "code=<Icmp6NdNeighborAdvertisementCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=[]), "
+                    "flag_r=True, "
+                    "flag_s=False, "
+                    "flag_o=True, "
+                    "target_address=Ip6Address('2001:db8::1'))"
                 ),
                 "__bytes__": (
                     # ICMPv6 Neighbor Advertisement
                     #   Type     : 136 (Neighbor Advertisement)
                     #   Code     : 0
-                    #   Checksum : 0xaa44
-                    #   Flags    : R=1, S=0, O=1 (0xa0)
+                    #   Checksum : 0xaa44 (back-patched by Icmp6Assembler)
+                    #   Flags    : 0xa0 (R=1, S=0, O=1)
+                    #   Reserved : 0x000000
                     #   Target   : 2001:db8::1
                     #   Options  : none
-                    #
-                    #   Summary  : NA asserting router capability for 2001:db8::1 without options.
                     b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x01"
                 ),
@@ -105,25 +110,30 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 32,
                 "__str__": (
-                    "ICMPv6 ND Neighbor Advertisement, flags -S-, target 2001:db8::2, opts "
-                    "[slla 00:11:22:33:44:55], len 32 (24+8)"
+                    "ICMPv6 ND Neighbor Advertisement, flags -S-, target 2001:db8::2, "
+                    "opts [slla 00:11:22:33:44:55], len 32 (24+8)"
                 ),
                 "__repr__": (
-                    "Icmp6NdMessageNeighborAdvertisement(code=<Icmp6NdNeighborAdvertisementCode"
-                    ".DEFAULT: 0>, cksum=0, options=Icmp6NdOptions(options=[Icmp6NdOptionSlla("
-                    "slla=MacAddress('00:11:22:33:44:55'))]), flag_r=False, flag_s=True, "
-                    "flag_o=False, target_address=Ip6Address('2001:db8::2'))"
+                    "Icmp6NdMessageNeighborAdvertisement("
+                    "code=<Icmp6NdNeighborAdvertisementCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "options=Icmp6NdOptions(options=["
+                    "Icmp6NdOptionSlla(slla=MacAddress('00:11:22:33:44:55'))"
+                    "]), "
+                    "flag_r=False, "
+                    "flag_s=True, "
+                    "flag_o=False, "
+                    "target_address=Ip6Address('2001:db8::2'))"
                 ),
                 "__bytes__": (
                     # ICMPv6 Neighbor Advertisement
                     #   Type     : 136 (Neighbor Advertisement)
                     #   Code     : 0
-                    #   Checksum : 0xa2a9
-                    #   Flags    : R=0, S=1, O=0 (0x40)
+                    #   Checksum : 0xa2a9 (back-patched by Icmp6Assembler)
+                    #   Flags    : 0x40 (R=0, S=1, O=0)
+                    #   Reserved : 0x000000
                     #   Target   : 2001:db8::2
                     #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
-                    #
-                    #   Summary  : Solicited NA for 2001:db8::2 advertising source MAC 00:11:22:33:44:55.
                     b"\x88\x00\xa2\xa9\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
                 ),
@@ -150,188 +160,154 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        The ICMPv6 ND Neighbor Advertisement message assembler tests.
+        Build the ICMPv6 assembler wrapping a Neighbor Advertisement message
+        configured from the parametrized kwargs.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6NdMessageNeighborAdvertisement(**self._kwargs))
+        self._icmp6__assembler = Icmp6Assembler(
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(**self._kwargs),
+        )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__len(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message '__len__()' method
-        returns a correct value.
+        Ensure '__len__()' returns the expected byte length.
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__str(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message '__str__()' method
-        returns a correct value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__repr(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message '__repr__()' method
-        returns a correct value.
+        Ensure '__repr__()' returns the expected representation.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__bytes(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message '__bytes__()' method
-        returns a correct value.
+        Ensure '__bytes__()' returns the expected wire bytes with a
+        back-patched checksum.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__type(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'type' field
-        contains a correct value.
+        Ensure the assembled message carries type
+        Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__code(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'code' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'code' value.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__cksum(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'cksum' field
-        contains a correct value.
+        Ensure the assembled message's 'cksum' field reflects the value
+        passed at construction (the back-patch happens on the buffer, not
+        on the dataclass).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_r(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_r(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'flag_r' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'flag_r' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageNeighborAdvertisement,
-                self._icmp6__assembler.message,
-            ).flag_r,
+            cast(Icmp6NdMessageNeighborAdvertisement, self._icmp6__assembler.message).flag_r,
             self._results["flag_r"],
+            msg=f"Unexpected 'flag_r' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_s(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_s(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'flag_s' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'flag_s' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageNeighborAdvertisement,
-                self._icmp6__assembler.message,
-            ).flag_s,
+            cast(Icmp6NdMessageNeighborAdvertisement, self._icmp6__assembler.message).flag_s,
             self._results["flag_s"],
+            msg=f"Unexpected 'flag_s' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_o(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_o(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'flag_o' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'flag_o' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageNeighborAdvertisement,
-                self._icmp6__assembler.message,
-            ).flag_o,
+            cast(Icmp6NdMessageNeighborAdvertisement, self._icmp6__assembler.message).flag_o,
             self._results["flag_o"],
+            msg=f"Unexpected 'flag_o' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__target_address(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__target_address(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'target_address' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'target_address' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageNeighborAdvertisement,
-                self._icmp6__assembler.message,
-            ).target_address,
+            cast(Icmp6NdMessageNeighborAdvertisement, self._icmp6__assembler.message).target_address,
             self._results["target_address"],
+            msg=f"Unexpected 'target_address' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__options(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__options(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'options' field
-        contains a correct value.
+        Ensure the assembled message carries the expected 'options' value.
         """
 
         self.assertEqual(
-            cast(
-                Icmp6NdMessageNeighborAdvertisement,
-                self._icmp6__assembler.message,
-            ).options,
+            cast(Icmp6NdMessageNeighborAdvertisement, self._icmp6__assembler.message).options,
             self._results["options"],
+            msg=f"Unexpected 'options' for case: {self._description}",
         )
 
-    def test__icmp6__nd__message__neighbor_advertisement__assembler__assemble(
-        self,
-    ) -> None:
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' appends the Neighbor Advertisement wire bytes
+        (header + options) to the provided buffer list.
         """
 
         buffers: list[Buffer] = []
@@ -341,4 +317,27 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"assemble() output mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__neighbor_advertisement__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' appends exactly two buffers (fixed header +
+        options payload) so Icmp6Assembler can back-patch the checksum at
+        buffers[-2][2:4].
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.message.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=f"assemble() must append exactly two buffers for case: {self._description}",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
+            msg=f"First buffer must be the 24-byte fixed header for case: {self._description}",
         )
