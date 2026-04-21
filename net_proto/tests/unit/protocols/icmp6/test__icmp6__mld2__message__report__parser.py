@@ -33,7 +33,9 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -43,9 +45,30 @@ from net_proto import (
     Icmp6Mld2MulticastAddressRecordType,
     Icmp6Mld2ReportMessage,
     Icmp6Parser,
+    Ip6Parser,
     PacketRx,
 )
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+
+
+def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub. 'hop' is set to 1 so the
+    MLDv2 Report sanity check (RFC 3810 — hop must be 1) passes.
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame),
+            payload_len=len(frame),
+            pshdr_sum=0,
+            src=Ip6Address(),
+            dst=Ip6Address(),
+            hop=1,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
@@ -54,50 +77,39 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": "ICMPv6 MLDv2 Report message, no records.",
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143 (MLDv2 Report)
-                #   Code     : 0
-                #   Checksum : 0x70ff
-                #   Record cnt: 0x0000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Minimal MLDv2 report with no multicast address records.
+                #   Type         : 143 (MLDv2 Report)
+                #   Code         : 0
+                #   Checksum     : 0x70ff
+                #   Reserved     : 0x0000
+                #   Record count : 0x0000
                 b"\x8f\x00\x70\xff\x00\x00\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__hop": 1,
-            },
             "_results": {
                 "message": Icmp6Mld2ReportMessage(
-                    cksum=28927,
+                    cksum=0x70FF,
                     records=[],
                 ),
             },
         },
         {
-            "_description": "ICMPv6 MLDv2 Report message, single record.",
+            "_description": "ICMPv6 MLDv2 Report message, single record (MODE_IS_INCLUDE, two sources).",
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143 (MLDv2 Report)
-                #   Code     : 0
-                #   Checksum : 0x1583
-                #   Record cnt: 0x0001
-                #   Record    : Type 0x01 (MODE_IS_INCLUDE)
-                #              Aux len 0x00, Src count 0x0002
-                #              Multicast address ff02::1
-                #              Sources: 2001:db8::1, 2001:db8::2
-                #
-                #   Summary  : MLDv2 report containing a single include-mode record.
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x1583
+                #   Reserved     : 0x0000
+                #   Record count : 0x0001
+                #   Record [0]   : Type 0x01 (MODE_IS_INCLUDE), Aux 0, Src 2
+                #                  Multicast ff02::1, Sources 2001:db8::1, 2001:db8::2
                 b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
             ),
-            "_mocked_values": {
-                "ip6__hop": 1,
-            },
             "_results": {
                 "message": Icmp6Mld2ReportMessage(
-                    cksum=5507,
+                    cksum=0x1583,
                     records=[
                         Icmp6Mld2MulticastAddressRecord(
                             type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
@@ -112,23 +124,21 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": "ICMPv6 MLDv2 Report message, multiple records.",
+            "_description": "ICMPv6 MLDv2 Report message, four records (all record types exercised).",
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143 (MLDv2 Report)
-                #   Code     : 0
-                #   Checksum : 0x52f0
-                #   Record cnt: 0x0004
-                #   Record 0 : Type 0x01 (MODE_IS_INCLUDE), Src cnt 0x0001, Aux len 0x04
-                #              Multicast address ff02::1, Source 2001:db8::1, Aux data "0123456789ABCDEF"
-                #   Record 1 : Type 0x02 (MODE_IS_EXCLUDE), Src cnt 0x0003, Aux len 0x08
-                #              Multicast address ff02::2, Sources 2001:db8::2/3/4, Aux data "0123456789ABCDEF"*2
-                #   Record 2 : Type 0x03 (CHANGE_TO_INCLUDE), Src cnt 0x0004, Aux len 0x00
-                #              Multicast address ff02::3, Sources 2001:db8::6/7/8/9
-                #   Record 3 : Type 0x06 (BLOCK_OLD_SOURCES), Src cnt 0x0000, Aux len 0x10
-                #              Multicast address ff02::4, Aux data "0123456789ABCDEF"*4
-                #
-                #   Summary  : Comprehensive MLDv2 report with multiple record types, sources, and aux data.
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x52f0
+                #   Reserved     : 0x0000
+                #   Record count : 0x0004
+                #   Record [0]   : MODE_IS_INCLUDE, ff02::1, src 2001:db8::1,
+                #                  aux "0123456789ABCDEF"
+                #   Record [1]   : MODE_IS_EXCLUDE, ff02::2, srcs 2001:db8::2/3/4,
+                #                  aux "0123456789ABCDEF" * 2
+                #   Record [2]   : CHANGE_TO_INCLUDE, ff02::3, srcs 2001:db8::6/7/8/9
+                #   Record [3]   : BLOCK_OLD_SOURCES, ff02::4,
+                #                  aux "0123456789ABCDEF" * 4
                 b"\x8f\x00\x52\xf0\x00\x00\x00\x04\x01\x04\x00\x01\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x30\x31\x32\x33"
@@ -151,19 +161,14 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 b"\x38\x39\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34\x35\x36\x37"
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
-            "_mocked_values": {
-                "ip6__hop": 1,
-            },
             "_results": {
                 "message": Icmp6Mld2ReportMessage(
-                    cksum=21232,
+                    cksum=0x52F0,
                     records=[
                         Icmp6Mld2MulticastAddressRecord(
                             type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
                             multicast_address=Ip6Address("ff02::1"),
-                            source_addresses=[
-                                Ip6Address("2001:db8::1"),
-                            ],
+                            source_addresses=[Ip6Address("2001:db8::1")],
                             aux_data=b"0123456789ABCDEF",
                         ),
                         Icmp6Mld2MulticastAddressRecord(
@@ -189,7 +194,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                         Icmp6Mld2MulticastAddressRecord(
                             type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                             multicast_address=Ip6Address("ff02::4"),
-                            aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
+                            aux_data=b"0123456789ABCDEF" * 4,
                         ),
                     ],
                 ),
@@ -197,7 +202,7 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6Mld2MessageReportParser(TestCasePacketRxIp6):
+class TestIcmp6Mld2MessageReportParser(TestCase):
     """
     The ICMPv6 MLDv2 Report message parser tests.
     """
@@ -206,12 +211,17 @@ class TestIcmp6Mld2MessageReportParser(TestCasePacketRxIp6):
     _frame_rx: bytes
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__mld2__message__report__parser__from_bytes(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'from_bytes()' method
-        creates a proper message object.
+        Build a PacketRx for the parametrized frame.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx)
+
+    def test__icmp6__mld2__message__report__parser(self) -> None:
+        """
+        Ensure the ICMPv6 parser produces an Icmp6Mld2ReportMessage whose
+        fields match the expected reference message for each frame.
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -219,4 +229,47 @@ class TestIcmp6Mld2MessageReportParser(TestCasePacketRxIp6):
         self.assertEqual(
             icmp6_parser.message,
             self._results["message"],
+            msg=f"Parsed message mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__mld2__message__report__parser__message_type(self) -> None:
+        """
+        Ensure the parsed message is an Icmp6Mld2ReportMessage instance.
+        """
+
+        icmp6_parser = Icmp6Parser(self._packet_rx)
+
+        self.assertIsInstance(
+            icmp6_parser.message,
+            Icmp6Mld2ReportMessage,
+            msg=f"Parsed message must be Icmp6Mld2ReportMessage for case: {self._description}",
+        )
+
+    def test__icmp6__mld2__message__report__parser__frame_advanced(self) -> None:
+        """
+        Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
+        MLDv2 Report message (the whole frame is consumed).
+        """
+
+        Icmp6Parser(self._packet_rx)
+
+        self.assertEqual(
+            len(self._packet_rx.frame),
+            0,
+            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
+        )
+
+    def test__icmp6__mld2__message__report__parser__number_of_records(self) -> None:
+        """
+        Ensure the parsed message's 'number_of_records' property matches
+        the length of the reference record list.
+        """
+
+        icmp6_parser = Icmp6Parser(self._packet_rx)
+        expected = cast(Icmp6Mld2ReportMessage, self._results["message"]).number_of_records
+
+        self.assertEqual(
+            cast(Icmp6Mld2ReportMessage, icmp6_parser.message).number_of_records,
+            expected,
+            msg=f"'number_of_records' must match the reference for case: {self._description}",
         )
