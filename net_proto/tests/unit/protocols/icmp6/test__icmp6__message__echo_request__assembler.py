@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     Icmp6Assembler,
@@ -50,7 +50,7 @@ from net_proto.lib.buffer import Buffer
 @parameterized_class(
     [
         {
-            "_description": "ICMPv6 Echo Request message, empty data.",
+            "_description": "ICMPv6 Echo Request message, empty data (bare 8-byte header).",
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -67,12 +67,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Echo Request
                     #   Type     : 128 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0x7b94
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 0 bytes
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 with no payload.
+                    #   Checksum : 0x7b94 (computed by assemble(), pshdr_sum=0)
+                    #   Id/Seq   : 12345 / 54321
+                    #   Data     : none
                     b"\x80\x00\x7b\x94\x30\x39\xd4\x31"
                 ),
                 "type": Icmp6Type.ECHO_REQUEST,
@@ -84,7 +81,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Echo Request message, non-empty data.",
+            "_description": "ICMPv6 Echo Request message, 16-byte data.",
             "_kwargs": {
                 "id": 12345,
                 "seq": 54321,
@@ -101,12 +98,9 @@ from net_proto.lib.buffer import Buffer
                     # ICMPv6 Echo Request
                     #   Type     : 128 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0xacbd
-                    #   Identifier: 12345
-                    #   Sequence : 54321
-                    #   Data len : 16 bytes ("0123456789ABCDEF")
-                    #
-                    #   Summary  : Ping request ID 12345/seq 54321 carrying 16-byte payload.
+                    #   Checksum : 0xacbd (computed by assemble(), pshdr_sum=0)
+                    #   Id/Seq   : 12345 / 54321
+                    #   Data     : b"0123456789ABCDEF" (16 bytes)
                     b"\x80\x00\xac\xbd\x30\x39\xd4\x31\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
@@ -119,7 +113,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": "ICMPv6 Echo Request packet, maximum length of data.",
+            "_description": "ICMPv6 Echo Request message, 65527-byte data (IPv6 payload maximum).",
             "_kwargs": {
                 "id": 11111,
                 "seq": 22222,
@@ -129,19 +123,16 @@ from net_proto.lib.buffer import Buffer
                 "__len__": 65535,
                 "__str__": "ICMPv6 Echo Request, id 11111, seq 22222, len 65535 (8+65527)",
                 "__repr__": (
-                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
-                    f"cksum=0, id=11111, seq=22222, data=b'{"X" * 65527}')"
+                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, cksum=0, "
+                    f"id=11111, seq=22222, data=b'{'X' * 65527}')"
                 ),
                 "__bytes__": (
-                    # ICMPv6 Echo Request
+                    # ICMPv6 Echo Request at maximum payload size
                     #   Type     : 128 (Echo Request)
                     #   Code     : 0 (Default)
-                    #   Checksum : 0x3357
-                    #   Identifier: 11111
-                    #   Sequence : 22222
-                    #   Data len : 65527 bytes ("X" * 65527)
-                    #
-                    #   Summary  : Ping request at maximum IPv6 payload size (65527 bytes).
+                    #   Checksum : 0x3357 (computed by assemble(), pshdr_sum=0)
+                    #   Id/Seq   : 11111 / 22222
+                    #   Data     : b"X" * 65527 (IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REQUEST__LEN)
                     b"\x80\x00\x33\x57\x2b\x67\x56\xce"
                     + b"X" * 65527
                 ),
@@ -151,6 +142,41 @@ from net_proto.lib.buffer import Buffer
                 "id": 11111,
                 "seq": 22222,
                 "data": b"X" * 65527,
+            },
+        },
+        {
+            "_description": "ICMPv6 Echo Request message, constructor cksum ignored on wire.",
+            "_kwargs": {
+                # The constructor 'cksum' is retained as a field value but the
+                # assembler overwrites bytes 2-4 on the wire with the computed
+                # Internet checksum, so this 0xAAAA never reaches the wire.
+                "cksum": 0xAAAA,
+                "id": 1,
+                "seq": 2,
+                "data": b"payload!",
+            },
+            "_results": {
+                "__len__": 16,
+                "__str__": "ICMPv6 Echo Request, id 1, seq 2, len 16 (8+8)",
+                "__repr__": (
+                    "Icmp6MessageEchoRequest(code=<Icmp6EchoRequestCode.DEFAULT: 0>, "
+                    "cksum=43690, id=1, seq=2, data=b'payload!')"
+                ),
+                "__bytes__": (
+                    # ICMPv6 Echo Request
+                    #   Type     : 128 (Echo Request)
+                    #   Code     : 0 (Default)
+                    #   Checksum : 0xc2ab (computed by assemble(), NOT 0xAAAA)
+                    #   Id/Seq   : 1 / 2
+                    #   Data     : b"payload!" (8 bytes)
+                    b"\x80\x00\xc2\xab\x00\x01\x00\x02\x70\x61\x79\x6c\x6f\x61\x64\x21"
+                ),
+                "type": Icmp6Type.ECHO_REQUEST,
+                "code": Icmp6EchoRequestCode.DEFAULT,
+                "cksum": 0xAAAA,
+                "id": 1,
+                "seq": 2,
+                "data": b"payload!",
             },
         },
     ]
@@ -166,126 +192,129 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        Initialize the ICMPv6 Echo Request message assembler object
-        with testcase arguments.
+        Build an assembler wrapping the parametrized Echo Request message.
         """
 
         self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6MessageEchoRequest(**self._kwargs))
 
     def test__icmp6__message__echo_request__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message '__len__()' method returns
-        a correct value.
+        Ensure 'len()' on the assembler equals ICMP6__ECHO_REQUEST__LEN + len(data).
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected length for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message '__str__()' method returns
-        a correct value.
+        Ensure 'str()' renders the canonical ICMPv6 Echo Request log line.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected str() for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message '__repr__()' method returns
-        a correct value.
+        Ensure 'repr()' forwards the wrapped message's dataclass repr.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected repr() for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message '__bytes__()' method returns
-        a correct value.
+        Ensure 'bytes()' returns the full wire form including the
+        recomputed Internet checksum at bytes 2-3.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected bytes() for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'type' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'type' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'code' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'code' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'cksum' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'cksum' field as
+        passed to the constructor (the on-wire checksum is written during
+        assemble() and does not mutate this attribute).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__id(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'id' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'id' field.
         """
 
         self.assertEqual(
             cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).id,
             self._results["id"],
+            msg=f"Unexpected 'id' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__seq(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'seq' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'seq' field.
         """
 
         self.assertEqual(
             cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).seq,
             self._results["seq"],
+            msg=f"Unexpected 'seq' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__data(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'data' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'data' field.
         """
 
         self.assertEqual(
             cast(Icmp6MessageEchoRequest, self._icmp6__assembler.message).data,
             self._results["data"],
+            msg=f"Unexpected 'data' for case: {self._description}",
         )
 
     def test__icmp6__message__echo_request__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 Echo Request message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' appends the header + data, back-patches the
+        checksum into the header buffer, and yields the same wire bytes
+        as 'bytes()'.
         """
 
         buffers: list[Buffer] = []
@@ -295,4 +324,27 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected assemble() output for case: {self._description}",
+        )
+
+    def test__icmp6__message__echo_request__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' produces exactly two buffers — the packed
+        8-byte header followed by the data buffer — so the ICMPv6 checksum
+        back-patch in Icmp6Assembler.assemble() targets the header buffer.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=f"assemble() must append exactly 2 buffers (header + data) for case: {self._description}",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            8,
+            msg=f"First buffer must be the 8-byte Echo Request header for case: {self._description}",
         )
