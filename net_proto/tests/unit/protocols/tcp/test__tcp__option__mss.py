@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import (
     TCP__OPTION__MSS__LEN,
@@ -53,28 +53,21 @@ class TestTcpOptionMssAsserts(TestCase):
     The TCP Mss option constructor argument assert tests.
     """
 
-    def setUp(self) -> None:
-        """
-        Create the default arguments for the TCP Mss option constructor.
-        """
-
-        self._args: list[Any] = [0]
-        self._kwargs: dict[str, Any] = {}
-
     def test__tcp__option__mss__mss__under_min(self) -> None:
         """
         Ensure the TCP Mss option constructor raises an exception when the
         provided 'mss' argument is lower than the minimum supported value.
         """
 
-        self._args[0] = value = UINT_16__MIN - 1
+        value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionMss(*self._args, **self._kwargs)
+            TcpOptionMss(value)
 
         self.assertEqual(
             str(error.exception),
             f"The 'mss' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'mss' under UINT_16__MIN.",
         )
 
     def test__tcp__option__mss__mss__over_max(self) -> None:
@@ -83,33 +76,60 @@ class TestTcpOptionMssAsserts(TestCase):
         provided 'mss' argument is higher than the maximum supported value.
         """
 
-        self._args[0] = value = UINT_16__MAX + 1
+        value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            TcpOptionMss(*self._args, **self._kwargs)
+            TcpOptionMss(value)
 
         self.assertEqual(
             str(error.exception),
             f"The 'mss' field must be a 16-bit unsigned integer. Got: {value}",
+            msg="Unexpected assertion message for 'mss' over UINT_16__MAX.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Mss option.",
-            "_args": [
-                65535,
-            ],
-            "_kwargs": {},
+            "_description": "TCP Mss option, mss=0 (minimum value).",
+            "_mss": 0,
+            "_results": {
+                "__len__": 4,
+                "__str__": "mss 0",
+                "__repr__": "TcpOptionMss(mss=0)",
+                # TCP Mss option wire frame (4 bytes):
+                #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+                #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+                #   Bytes 2-3 : 0x0000      -> mss=0
+                "__bytes__": b"\x02\x04\x00\x00",
+            },
+        },
+        {
+            "_description": "TCP Mss option, mss=UINT_16__MAX (maximum value).",
+            "_mss": UINT_16__MAX,
             "_results": {
                 "__len__": 4,
                 "__str__": "mss 65535",
                 "__repr__": "TcpOptionMss(mss=65535)",
+                # TCP Mss option wire frame (4 bytes):
+                #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+                #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+                #   Bytes 2-3 : 0xffff      -> mss=65535 (UINT_16__MAX)
                 "__bytes__": b"\x02\x04\xff\xff",
-                "type": TcpOptionType.MSS,
-                "len": TCP__OPTION__MSS__LEN,
-                "mss": 65535,
+            },
+        },
+        {
+            "_description": "TCP Mss option, mss=1460 (typical Ethernet MSS).",
+            "_mss": 1460,
+            "_results": {
+                "__len__": 4,
+                "__str__": "mss 1460",
+                "__repr__": "TcpOptionMss(mss=1460)",
+                # TCP Mss option wire frame (4 bytes):
+                #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+                #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+                #   Bytes 2-3 : 0x05b4      -> mss=1460 (typical Ethernet MSS)
+                "__bytes__": b"\x02\x04\x05\xb4",
             },
         },
     ]
@@ -120,121 +140,183 @@ class TestTcpOptionMssAssembler(TestCase):
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _mss: int
     _results: dict[str, Any]
 
     def setUp(self) -> None:
         """
-        Initialize the TCP Mss option object with testcase arguments.
+        Build the TCP Mss option from the parametrized 'mss' value.
         """
 
-        self._option = TcpOptionMss(*self._args, **self._kwargs)
+        self._option = TcpOptionMss(self._mss)
 
     def test__tcp__option__mss__len(self) -> None:
         """
-        Ensure the TCP Mss option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns the expected total option length.
         """
 
         self.assertEqual(
             len(self._option),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__tcp__option__mss__str(self) -> None:
         """
-        Ensure the TCP Mss option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the expected log string.
         """
 
         self.assertEqual(
             str(self._option),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__tcp__option__mss__repr(self) -> None:
         """
-        Ensure the TCP Mss option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns the expected representation string.
         """
 
         self.assertEqual(
             repr(self._option),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__tcp__option__mss__bytes(self) -> None:
         """
-        Ensure the TCP Mss option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the expected wire frame.
         """
 
         self.assertEqual(
             bytes(self._option),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__tcp__option__mss__mss(self) -> None:
         """
-        Ensure the TCP Mss option 'mss' field contains a correct value.
+        Ensure the 'mss' field exposes the provided MSS value.
         """
 
         self.assertEqual(
             self._option.mss,
-            self._results["mss"],
+            self._mss,
+            msg=f"Unexpected 'mss' field for case: {self._description}",
         )
 
     def test__tcp__option__mss__type(self) -> None:
         """
-        Ensure the TCP Mss option 'type' field contains a correct value.
+        Ensure the 'type' field is TcpOptionType.MSS.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            TcpOptionType.MSS,
+            msg=f"Unexpected 'type' field for case: {self._description}",
         )
 
     def test__tcp__option__mss__length(self) -> None:
         """
-        Ensure the TCP Mss option 'len' field contains a correct value.
+        Ensure the 'len' field equals TCP__OPTION__MSS__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            TCP__OPTION__MSS__LEN,
+            msg=f"Unexpected 'len' field for case: {self._description}",
+        )
+
+
+class TestTcpOptionMssParser(TestCase):
+    """
+    The TCP Mss option parser positive tests.
+    """
+
+    def test__tcp__option__mss__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses a 4-byte Mss whose buffer length exactly
+        matches TCP__OPTION__MSS__LEN.
+        """
+
+        # TCP Mss option wire frame (exactly 4 bytes):
+        #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+        #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+        #   Bytes 2-3 : 0xffff      -> mss=65535
+        buffer = b"\x02\x04\xff\xff"
+
+        option = TcpOptionMss.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionMss(mss=65535),
+            msg="Parsed option must equal the reference TcpOptionMss(mss=65535).",
+        )
+
+    def test__tcp__option__mss__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses a Mss option when the buffer carries
+        trailing bytes past the 4-byte option payload (those trailing
+        bytes are consumed by the next option in the options container).
+        """
+
+        # TCP Mss option wire frame followed by 5 trailing bytes:
+        #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+        #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+        #   Bytes 2-3 : 0xffff      -> mss=65535
+        #   Bytes 4-8 : b"ZH0PA"    -> trailing data, not part of the Mss
+        buffer = b"\x02\x04\xff\xff" + b"ZH0PA"
+
+        option = TcpOptionMss.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionMss(mss=65535),
+            msg="Parsed option must equal TcpOptionMss(mss=65535) (trailing bytes ignored).",
+        )
+
+    def test__tcp__option__mss__from_buffer__zero_mss(self) -> None:
+        """
+        Ensure from_buffer parses a valid Mss option carrying the minimum
+        mss value of 0.
+        """
+
+        # TCP Mss option wire frame (4 bytes, mss=0):
+        #   Byte 0    : 0x02        -> type=TcpOptionType.MSS (2)
+        #   Byte 1    : 0x04        -> len=TCP__OPTION__MSS__LEN (4)
+        #   Bytes 2-3 : 0x0000      -> mss=0
+        buffer = b"\x02\x04\x00\x00"
+
+        option = TcpOptionMss.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionMss(mss=0),
+            msg="Parsed option must equal TcpOptionMss(mss=0) for zero-value frame.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Mss option.",
-            "_args": [
-                b"\x02\x04\xff\xff" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionMss(mss=65535),
-            },
-        },
-        {
-            "_description": "The TCP Mss option minimum length assert.",
-            "_args": [
-                b"\x02",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Mss option, buffer shorter than TCP__OPTION__LEN (2).",
+            "_args": [b"\x02"],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the TCP Mss option must be 2 " "bytes. Got: 1"),
+                "error_message": "The minimum length of the TCP Mss option must be 2 bytes. Got: 1",
             },
         },
         {
-            "_description": "The TCP Mss option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff\04\xff\xff",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Mss option, buffer empty (zero-length).",
+            "_args": [b""],
+            "_results": {
+                "error": AssertionError,
+                "error_message": "The minimum length of the TCP Mss option must be 2 bytes. Got: 0",
+            },
+        },
+        {
+            "_description": "TCP Mss option, buffer 'type' byte is not TcpOptionType.MSS.",
+            "_args": [b"\xff\x04\xff\xff"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -243,62 +325,46 @@ class TestTcpOptionMssAssembler(TestCase):
             },
         },
         {
-            "_description": "The TCP Mss option length integrity check (I).",
-            "_args": [
-                b"\x02\03\xff\xff",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Mss option, declared 'len' byte differs from TCP__OPTION__MSS__LEN.",
+            "_args": [b"\x02\x03\xff\xff"],
             "_results": {
                 "error": TcpIntegrityError,
-                "error_message": ("[INTEGRITY ERROR][TCP] The TCP Mss option length value must be " "4 bytes. Got: 3"),
+                "error_message": "[INTEGRITY ERROR][TCP] The TCP Mss option length value must be 4 bytes. Got: 3",
             },
         },
         {
-            "_description": "The TCP Mss option length integrity check (II).",
-            "_args": [
-                b"\x02\04\xff",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Mss option, declared 'len' exceeds provided buffer size.",
+            "_args": [b"\x02\x04\xff"],
             "_results": {
                 "error": TcpIntegrityError,
                 "error_message": (
                     "[INTEGRITY ERROR][TCP] The TCP Mss option length value must be "
-                    "less than or equal to the length of provided bytes "
-                    "(3). Got: 4"
+                    "less than or equal to the length of provided bytes (3). Got: 4"
                 ),
             },
         },
     ]
 )
-class TestTcpOptionMssParser(TestCase):
+class TestTcpOptionMssParserFailures(TestCase):
     """
-    The TCP Mss option parser tests.
+    The TCP Mss option parser failure-path tests.
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__mss__from_buffer(self) -> None:
+    def test__tcp__option__mss__from_buffer__error(self) -> None:
         """
-        Ensure the TCP Mss option parser creates the proper option
-        object or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = TcpOptionMss.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            TcpOptionMss.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                TcpOptionMss.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )

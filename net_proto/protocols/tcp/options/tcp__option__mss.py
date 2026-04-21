@@ -49,7 +49,7 @@ from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 # The TCP Mss (Maximum Segment Size) option [RFC 793].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    Type = 1   |   Length = 1  |             Value             |
+# |    Type = 2   |   Length = 4  |             Value             |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 TCP__OPTION__MSS__LEN = 4
