@@ -80,13 +80,13 @@ class Ip4Options(ProtoOptions):
 
             if (value := frame[offset + 1]) < 2:
                 raise Ip4IntegrityError(
-                    f"The IPv4 option length must be greater than 1. " f"Got: {value!r}.",
+                    f"The IPv4 option length must be greater than 1. Got: {value!r}.",
                 )
 
             offset += frame[offset + 1]
             if offset > hlen:
                 raise Ip4IntegrityError(
-                    f"The IPv4 option length must not extend past the header " f"length. Got: {offset=}, {hlen=}",
+                    f"The IPv4 option length must not extend past the header length. Got: {offset=}, {hlen=}",
                 )
 
     @override
