@@ -25,7 +25,8 @@
 
 
 """
-Module contains tests for the ICMPv6 MLDv2 Report message parser sanity checks.
+Module contains tests for the ICMPv6 MLDv2 Report message parser
+sanity checks.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__parser__sanity_checks.py
 
@@ -33,82 +34,74 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import cast
+from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from net_addr import Ip6Address
+from net_proto import Icmp6Parser, Icmp6SanityError, Ip6Parser, PacketRx
 
-from net_proto import Icmp6Parser, Icmp6SanityError, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+# Valid bare MLDv2 Report, 8 bytes, checksum 0x70ff (pshdr_sum=0), zero records.
+_MLD2_REPORT_EMPTY_FRAME = b"\x8f\x00\x70\xff\x00\x00\x00\x00"
 
 
-@parameterized_class(
-    [
-        {
-            "_description": "The value of the 'ip6__hop' field must be 1. It's 64.",
-            "_frame_rx": (
-                # ICMPv6 MLDv2 Report
-                #   Type     : 143 (MLDv2 Report)
-                #   Code     : 0
-                #   Checksum : 0x70ff
-                #   Record cnt: 0x0000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Valid MLDv2 report header used to verify hop limit sanity.
-                b"\x8f\x00\x70\xff\x00\x00\x00\x00"
-            ),
-            "_mocked_values": {
-                "ip6__hop": 64,
-            },
-            "_results": {
-                "error_message": ("MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. Got: 64"),
-            },
-        },
-        {
-            "_description": "The value of the 'ip6__hop' field must be 1. It's 1.",
-            "_frame_rx": (
-                # ICMPv6 MLDv2 Report
-                #   Type     : 143 (MLDv2 Report)
-                #   Code     : 0
-                #   Checksum : 0x70ff
-                #   Record cnt: 0x0000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : Valid MLDv2 report header with correct hop limit (should pass).
-                b"\x8f\x00\x70\xff\x00\x00\x00\x00"
-            ),
-            "_mocked_values": {
-                "ip6__hop": 1,
-            },
-            "_results": {},
-        },
-    ]
-)
-class TestIcmp4Mld2MessageReportParserSanityChecks(TestCasePacketRxIp6):
+def _packet_rx_with_ip6(frame: bytes, *, ip6__hop: int) -> PacketRx:
     """
-    The ICMPv4 MLDv2 Report message parser sanity checks tests.
+    Build a PacketRx with a minimal IPv6 stub. The 'hop' attribute is
+    tunable so the MLDv2 Report hop-limit sanity check can be exercised
+    in both directions.
     """
 
-    _description: str
-    _frame_rx: bytes
-    _mocked_values: dict[str, Any]
-    _results: dict[str, Any]
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame),
+            payload_len=len(frame),
+            pshdr_sum=0,
+            src=Ip6Address(),
+            dst=Ip6Address(),
+            hop=ip6__hop,
+        ),
+    )
+    return packet_rx
 
-    _packet_rx: PacketRx
 
-    def test__icmp6__mld2__message__report__parser(self) -> None:
+class TestIcmp6Mld2MessageReportParserSanityChecksHopInvalid(TestCase):
+    """
+    Negative sanity-check tests: every ip6__hop value other than 1
+    must be rejected per RFC 3810.
+    """
+
+    def test__icmp6__mld2__message__report__parser__hop_not_one__rejected(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report parser raises sanity errors
-        on crazy packets.
+        Ensure every non-one ip6__hop value is rejected with the
+        canonical Icmp6SanityError message.
         """
 
-        if "error_message" in self._results:
-            with self.assertRaises(Icmp6SanityError) as error:
-                Icmp6Parser(self._packet_rx)
+        for hop in (0, 2, 64, 128, 255):
+            with self.subTest(ip6__hop=hop):
+                with self.assertRaises(Icmp6SanityError) as error:
+                    Icmp6Parser(_packet_rx_with_ip6(_MLD2_REPORT_EMPTY_FRAME, ip6__hop=hop))
 
-            self.assertEqual(
-                str(error.exception),
-                f"[SANITY ERROR][ICMPv6] {self._results["error_message"]}",
-            )
+                self.assertEqual(
+                    str(error.exception),
+                    f"[SANITY ERROR][ICMPv6] MLDv2 Report - [RFC 3810] The 'ip6__hop' field must be 1. Got: {hop!r}",
+                    msg=f"Unexpected sanity-error message for ip6__hop={hop}.",
+                )
 
-        else:
-            Icmp6Parser(self._packet_rx)
+
+class TestIcmp6Mld2MessageReportParserSanityChecksHopValid(TestCase):
+    """
+    Positive sanity-check test: ip6__hop == 1 must pass.
+    """
+
+    def test__icmp6__mld2__message__report__parser__hop_one__accepted(self) -> None:
+        """
+        Ensure a valid MLDv2 Report with ip6__hop == 1 passes sanity
+        checks and parses cleanly.
+        """
+
+        packet_rx = _packet_rx_with_ip6(_MLD2_REPORT_EMPTY_FRAME, ip6__hop=1)
+
+        Icmp6Parser(packet_rx)
