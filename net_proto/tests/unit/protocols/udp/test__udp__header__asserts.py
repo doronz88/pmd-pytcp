@@ -34,10 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
-from testslide import TestCase
-
-from net_proto import UINT_16__MAX, UINT_16__MIN, UdpHeader
+from net_proto import UDP__HEADER__LEN, UINT_16__MAX, UINT_16__MIN, UdpHeader
 
 
 class TestUdpHeaderAsserts(TestCase):
@@ -47,10 +46,10 @@ class TestUdpHeaderAsserts(TestCase):
 
     def setUp(self) -> None:
         """
-        Create the default arguments for the UDP header constructor.
+        Build a valid default kwargs dict for the UDP header constructor
+        so each test can override exactly one field and trigger its assert.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "sport": 0,
             "dport": 0,
@@ -58,130 +57,153 @@ class TestUdpHeaderAsserts(TestCase):
             "cksum": 0,
         }
 
+    def test__udp__header__default_accepted(self) -> None:
+        """
+        Ensure the default kwargs dict itself is accepted; this guards
+        the negative tests from masking regressions that would make the
+        baseline invalid.
+        """
+
+        header = UdpHeader(**self._kwargs)
+
+        self.assertEqual(
+            len(header),
+            UDP__HEADER__LEN,
+            msg="Default-constructed header must serialize to the 8-byte UDP fixed header.",
+        )
+
     def test__udp__header__sport__under_min(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'sport' argument is lower than the minimum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'sport' argument is lower than the minimum supported value.
         """
 
         self._kwargs["sport"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'sport' under UINT_16__MIN.",
         )
 
     def test__udp__header__sport__over_max(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'sport' argument is higher than the maximum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'sport' argument is higher than the maximum supported value.
         """
 
         self._kwargs["sport"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'sport' over UINT_16__MAX.",
         )
 
-    def test__udp__assembler__dport__under_min(self) -> None:
+    def test__udp__header__dport__under_min(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'dport' argument is lower than the minimum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'dport' argument is lower than the minimum supported value.
         """
 
         self._kwargs["dport"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dport' under UINT_16__MIN.",
         )
 
-    def test__udp__assembler__dport__over_max(self) -> None:
+    def test__udp__header__dport__over_max(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'dport' argument is higher than the maximum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'dport' argument is higher than the maximum supported value.
         """
 
         self._kwargs["dport"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dport' over UINT_16__MAX.",
         )
 
-    def test__udp__assembler__plen__under_min(self) -> None:
+    def test__udp__header__plen__under_min(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'plen' argument is lower than the minimum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'plen' argument is lower than the minimum supported value.
         """
 
         self._kwargs["plen"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'plen' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'plen' under UINT_16__MIN.",
         )
 
-    def test__udp__assembler__plen__over_max(self) -> None:
+    def test__udp__header__plen__over_max(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'plen' argument is higher than the maximum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'plen' argument is higher than the maximum supported value.
         """
 
         self._kwargs["plen"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'plen' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'plen' over UINT_16__MAX.",
         )
 
-    def test__udp__assembler__cksum__under_min(self) -> None:
+    def test__udp__header__cksum__under_min(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'cksum' argument is lower than the minimum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'cksum' argument is lower than the minimum supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'cksum' under UINT_16__MIN.",
         )
 
-    def test__udp__assembler__cksum__over_max(self) -> None:
+    def test__udp__header__cksum__over_max(self) -> None:
         """
-        Ensure the UDP header constructor raises an exception when the provided
-        'cksum' argument is higher than the maximum supported value.
+        Ensure the UDP header constructor raises an exception when the
+        provided 'cksum' argument is higher than the maximum supported value.
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            UdpHeader(*self._args, **self._kwargs)
+            UdpHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'cksum' over UINT_16__MAX.",
         )

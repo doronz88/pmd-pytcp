@@ -71,13 +71,13 @@ class UdpHeader(ProtoStruct):
         Ensure integrity of the UDP header fields.
         """
 
-        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. " f"Got: {self.sport!r}"
+        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport!r}"
 
-        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. " f"Got: {self.dport!r}"
+        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. Got: {self.dport!r}"
 
-        assert is_uint16(self.plen), f"The 'plen' field must be a 16-bit unsigned integer. " f"Got: {self.plen!r}"
+        assert is_uint16(self.plen), f"The 'plen' field must be a 16-bit unsigned integer. Got: {self.plen!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
     @override
     def __len__(self) -> int:
