@@ -33,104 +33,124 @@ ver 3.0.4
 """
 
 
+from types import SimpleNamespace
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto import PacketRx, UdpHeader, UdpParser
-from net_proto.tests.lib.testcase__packet_rx__ip4 import TestCasePacketRxIp4
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
-
-testcases: list[dict[str, Any]] = [
-    {
-        "_description": "UDP packet with the empty payload.",
-        "_args": [
-            b"\xff\xff\xff\xff\x00\x08\xff\xf7",
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "header": UdpHeader(
-                sport=65535,
-                dport=65535,
-                plen=8,
-                cksum=65527,
-            ),
-            "payload": b"",
-        },
-    },
-    {
-        "_description": "UDP packet with the non-empty payload.",
-        "_args": [
-            b"\x30\x39\xd4\x31\x00\x18\x2c\xa6\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46",
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "header": UdpHeader(
-                sport=12345,
-                dport=54321,
-                plen=24,
-                cksum=11430,
-            ),
-            "payload": b"0123456789ABCDEF",
-        },
-    },
-    {
-        "_description": "UDP packet with the maximum length payload.",
-        "_args": [
-            b"\x2b\x67\x56\xce\xff\xff\xb3\x57" + b"X" * 65527,
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "header": UdpHeader(
-                sport=11111,
-                dport=22222,
-                plen=65535,
-                cksum=45911,
-            ),
-            "payload": b"X" * 65527,
-        },
-    },
-    {
-        "_description": "UDP packet with the 'cksum' field set to '0' (valid state).",
-        "_args": [
-            b"\x30\x39\xd4\x31\x00\x08\x00\x00",
-        ],
-        "_kwargs": {},
-        "_mocked_values": {},
-        "_results": {
-            "header": UdpHeader(
-                sport=12345,
-                dport=54321,
-                plen=8,
-                cksum=0,
-            ),
-            "payload": b"",
-        },
-    },
-]
 
 
-@parameterized_class(testcases)
-class TestUdpParserOperation__Ip4(TestCasePacketRxIp4):
+@parameterized_class(
+    [
+        {
+            "_description": "UDP packet with no payload, maximum port values.",
+            # UDP wire frame (8 bytes, header-only):
+            #   Bytes 0-1 : 0xffff -> sport=65535 (UINT_16__MAX)
+            #   Bytes 2-3 : 0xffff -> dport=65535 (UINT_16__MAX)
+            #   Bytes 4-5 : 0x0008 -> plen=8 (header-only)
+            #   Bytes 6-7 : 0xfff7 -> cksum=65527 (valid for init=0)
+            "_frame_rx": b"\xff\xff\xff\xff\x00\x08\xff\xf7",
+            "_results": {
+                "header": UdpHeader(
+                    sport=65535,
+                    dport=65535,
+                    plen=8,
+                    cksum=65527,
+                ),
+                "payload": b"",
+            },
+        },
+        {
+            "_description": "UDP packet with 16-byte ASCII payload.",
+            # UDP wire frame (24 bytes = 8-byte header + 16-byte payload):
+            #   Bytes 0-1   : 0x3039 -> sport=12345
+            #   Bytes 2-3   : 0xd431 -> dport=54321
+            #   Bytes 4-5   : 0x0018 -> plen=24
+            #   Bytes 6-7   : 0x2ca6 -> cksum=11430 (valid for init=0)
+            #   Bytes 8-23  : b"0123456789ABCDEF" (ASCII payload)
+            "_frame_rx": (
+                b"\x30\x39\xd4\x31\x00\x18\x2c\xa6\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
+            ),
+            "_results": {
+                "header": UdpHeader(
+                    sport=12345,
+                    dport=54321,
+                    plen=24,
+                    cksum=11430,
+                ),
+                "payload": b"0123456789ABCDEF",
+            },
+        },
+        {
+            "_description": "UDP packet with maximum 65527-byte payload (total 65535).",
+            # UDP wire frame (65535 bytes = 8-byte header + 65527-byte payload):
+            #   Bytes 0-1  : 0x2b67 -> sport=11111
+            #   Bytes 2-3  : 0x56ce -> dport=22222
+            #   Bytes 4-5  : 0xffff -> plen=65535 (UINT_16__MAX)
+            #   Bytes 6-7  : 0xb357 -> cksum=45911 (valid for init=0)
+            #   Bytes 8+   : 65527 bytes of 'X'
+            "_frame_rx": b"\x2b\x67\x56\xce\xff\xff\xb3\x57" + b"X" * 65527,
+            "_results": {
+                "header": UdpHeader(
+                    sport=11111,
+                    dport=22222,
+                    plen=65535,
+                    cksum=45911,
+                ),
+                "payload": b"X" * 65527,
+            },
+        },
+        {
+            "_description": "UDP packet with 'cksum' field set to zero (RFC 768 opt-out).",
+            # UDP wire frame (8 bytes, header-only, cksum=0):
+            #   Bytes 0-1 : 0x3039 -> sport=12345
+            #   Bytes 2-3 : 0xd431 -> dport=54321
+            #   Bytes 4-5 : 0x0008 -> plen=8
+            #   Bytes 6-7 : 0x0000 -> cksum=0 (validation skipped)
+            "_frame_rx": b"\x30\x39\xd4\x31\x00\x08\x00\x00",
+            "_results": {
+                "header": UdpHeader(
+                    sport=12345,
+                    dport=54321,
+                    plen=8,
+                    cksum=0,
+                ),
+                "payload": b"",
+            },
+        },
+    ]
+)
+class TestUdpParserOperation(TestCase):
     """
     The UDP packet parser operation tests.
+
+    The UDP parser reads only 'ip.payload_len' and 'ip.pshdr_sum' from
+    the containing IP layer, so a SimpleNamespace stub is sufficient and
+    the tests are agnostic to whether the carrier is IPv4 or IPv6.
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _mocked_values: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__udp__parser(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the UDP packet parser creates the proper header and payload
-        objects and also updates the appropriate 'tx_packet' object fields.
+        Wrap the parametrized frame in a PacketRx and stub the IP layer
+        attributes the UDP parser reads from it.
+        """
+
+        self._packet_rx = PacketRx(self._frame_rx)
+        self._packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(self._frame_rx),
+            pshdr_sum=0,
+        )
+
+    def test__udp__parser__header(self) -> None:
+        """
+        Ensure the UDP packet parser decodes the 8-byte fixed header
+        into the expected UdpHeader dataclass.
         """
 
         udp_parser = UdpParser(self._packet_rx)
@@ -138,62 +158,54 @@ class TestUdpParserOperation__Ip4(TestCasePacketRxIp4):
         self.assertEqual(
             udp_parser.header,
             self._results["header"],
+            msg=f"Unexpected parsed header for case: {self._description}",
         )
 
-        self.assertEqual(
-            udp_parser.payload,
-            self._results["payload"],
-        )
-
-        self.assertIs(
-            self._packet_rx.udp,
-            udp_parser,
-        )
-
-        self.assertEqual(
-            bytes(self._packet_rx.frame),
-            self._results["payload"],
-        )
-
-
-@parameterized_class(testcases)
-class TestUdpParserOperation__Ip6(TestCasePacketRxIp6):
-    """
-    The UDP packet parser operation tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _mocked_values: dict[str, Any]
-    _results: dict[str, Any]
-
-    _packet_rx: PacketRx
-
-    def test__udp__parser(self) -> None:
+    def test__udp__parser__payload(self) -> None:
         """
-        Ensure the UDP packet parser creates the proper header and payload
-        objects and also updates the appropriate 'tx_packet' object fields.
+        Ensure the UDP packet parser extracts the payload starting at
+        'UDP__HEADER__LEN' and ending at 'header.plen'.
         """
 
         udp_parser = UdpParser(self._packet_rx)
 
         self.assertEqual(
-            udp_parser.header,
-            self._results["header"],
+            bytes(udp_parser.payload),
+            self._results["payload"],
+            msg=f"Unexpected parsed payload for case: {self._description}",
         )
 
-        self.assertEqual(
-            udp_parser.payload,
-            self._results["payload"],
-        )
+    def test__udp__parser__packet_rx_udp(self) -> None:
+        """
+        Ensure the UDP packet parser installs itself on the PacketRx as
+        'packet_rx.udp'.
+        """
+
+        udp_parser = UdpParser(self._packet_rx)
 
         self.assertIs(
             self._packet_rx.udp,
             udp_parser,
+            msg=f"Parser must install itself on packet_rx.udp for case: {self._description}",
         )
+
+    def test__udp__parser__packet_rx_frame_advanced_past_header(self) -> None:
+        """
+        Ensure the UDP packet parser advances 'packet_rx.frame' past the
+        UDP header so the remaining bytes are the UDP payload.
+        """
+
+        udp_parser = UdpParser(self._packet_rx)
 
         self.assertEqual(
             bytes(self._packet_rx.frame),
             self._results["payload"],
+            msg=f"Parser must advance packet_rx.frame past the header for case: {self._description}",
+        )
+        # Sanity: parser.payload and packet_rx.frame refer to the same
+        # payload region after construction.
+        self.assertEqual(
+            bytes(self._packet_rx.frame),
+            bytes(udp_parser.payload),
+            msg=f"packet_rx.frame and parser.payload must match for case: {self._description}",
         )
