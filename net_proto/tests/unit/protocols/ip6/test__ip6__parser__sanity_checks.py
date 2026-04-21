@@ -27,63 +27,116 @@
 """
 This module contains tests for the IPv6 packet sanity checks.
 
-net_proto/tests/unit/protocols/tcp/test__ip6__parser__sanity_checks.py
+net_proto/tests/unit/protocols/ip6/test__ip6__parser__sanity_checks.py
 
 ver 3.0.4
 """
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto import Ip6Parser, Ip6SanityError, PacketRx
-from net_proto.tests.lib.testcase__packet_rx import TestCasePacketRx
 
 
 @parameterized_class(
     [
         {
-            "_description": "The 'hop' field value is 0.",
-            "_args": [
+            "_description": "Hop limit is zero.",
+            # 40-byte IPv6 frame with hop=0 (byte 7). Remaining fields
+            # match the baseline from the integrity tests so the
+            # integrity stage passes and the sanity validator raises on
+            # 'hop == 0'.
+            #
+            # IPv6 wire frame (40 bytes, header only):
+            #   Byte  0     : 0x60   -> ver=6
+            #   Bytes 1-3   : 0x000000 -> dscp=0, ecn=0, flow=0
+            #   Bytes 4-5   : 0x0000 -> dlen=0
+            #   Byte  6     : 0xff   -> next=IpProto.RAW
+            #   Byte  7     : 0x00   -> hop=0 (triggers sanity check)
+            #   Bytes 8-23  : src=1001:2002:3003:4004:5005:6006:7007:8008
+            #   Bytes 24-39 : dst=a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b
+            "_frame_rx": (
                 b"\x60\x00\x00\x00\x00\x00\xff\x00\x10\x01\x20\x02\x30\x03\x40\x04"
                 b"\x50\x05\x60\x06\x70\x07\x80\x08\xa0\x0a\xb0\x0b\xc0\x0c\xd0\x0d"
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
-            ],
-            "_kwargs": {},
+            ),
             "_results": {
                 "error_message": "The 'hop' must not be 0.",
             },
         },
         {
-            "_description": "The 'src' address is multicast.",
-            "_args": [
+            "_description": "Source address is a multicast address.",
+            # Bytes 8-23 set to ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+            # (inside ff00::/8). hop is restored to 1 so the hop check
+            # does not preempt the multicast-src check.
+            #
+            # IPv6 wire frame (40 bytes, header only):
+            #   Byte  0     : 0x60   -> ver=6
+            #   Bytes 1-3   : 0x000000 -> dscp=0, ecn=0, flow=0
+            #   Bytes 4-5   : 0x0000 -> dlen=0
+            #   Byte  6     : 0xff   -> next=IpProto.RAW
+            #   Byte  7     : 0x01   -> hop=1
+            #   Bytes 8-23  : src=ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+            #                (multicast — triggers sanity check)
+            #   Bytes 24-39 : dst=a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b
+            "_frame_rx": (
                 b"\x60\x00\x00\x00\x00\x00\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff"
                 b"\xff\xff\xff\xff\xff\xff\xff\xff\xa0\x0a\xb0\x0b\xc0\x0c\xd0\x0d"
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
-            ],
-            "_kwargs": {},
+            ),
+            "_results": {
+                "error_message": "The 'src' must not be multicast.",
+            },
+        },
+        {
+            "_description": "Source address is a link-local multicast address (ff02::1).",
+            # Bytes 8-23 encode ff02::1 (all-nodes multicast). This
+            # exercises the low-end of the ff00::/8 multicast range, not
+            # just the all-ones corner case.
+            #
+            # IPv6 wire frame (40 bytes, header only):
+            #   Byte  0     : 0x60   -> ver=6
+            #   Bytes 1-3   : 0x000000 -> dscp=0, ecn=0, flow=0
+            #   Bytes 4-5   : 0x0000 -> dlen=0
+            #   Byte  6     : 0xff   -> next=IpProto.RAW
+            #   Byte  7     : 0x40   -> hop=64
+            #   Bytes 8-23  : src=ff02::1 (all-nodes multicast)
+            #   Bytes 24-39 : dst=a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b
+            "_frame_rx": (
+                b"\x60\x00\x00\x00\x00\x00\xff\x40\xff\x02\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01\xa0\x0a\xb0\x0b\xc0\x0c\xd0\x0d"
+                b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
+            ),
             "_results": {
                 "error_message": "The 'src' must not be multicast.",
             },
         },
     ],
 )
-class TestIp6ParserSanityChecks(TestCasePacketRx):
+class TestIp6ParserSanityChecks(TestCase):
     """
     The IPv6 packet parser sanity checks tests.
     """
 
     _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
+    _frame_rx: bytes
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__ip6__parser(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the IPv6 packet parser raises sanity error on crazy packets.
+        Wrap the parametrized frame in a PacketRx so it can be fed to
+        Ip6Parser.
+        """
+
+        self._packet_rx = PacketRx(self._frame_rx)
+
+    def test__ip6__parser__sanity_error(self) -> None:
+        """
+        Ensure the IPv6 packet parser raises Ip6SanityError with the
+        expected message for each semantically invalid frame.
         """
 
         with self.assertRaises(Ip6SanityError) as error:
@@ -91,5 +144,6 @@ class TestIp6ParserSanityChecks(TestCasePacketRx):
 
         self.assertEqual(
             str(error.exception),
-            f"[SANITY ERROR][IPv6] {self._results["error_message"]}",
+            f"[SANITY ERROR][IPv6] {self._results['error_message']}",
+            msg=f"Unexpected sanity-error message for case: {self._description}",
         )
