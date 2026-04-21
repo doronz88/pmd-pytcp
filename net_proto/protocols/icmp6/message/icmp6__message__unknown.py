@@ -66,15 +66,15 @@ class Icmp6MessageUnknown(Icmp6Message):
         Validate the ICMPv6 unknown message fields.
         """
 
-        assert isinstance(self.type, Icmp6Type), f"The 'type' field must be an Icmp6Type. " f"Got: {type(self.type)!r}"
+        assert isinstance(self.type, Icmp6Type), f"The 'type' field must be an Icmp6Type. Got: {type(self.type)!r}"
 
-        assert isinstance(self.code, Icmp6Code), f"The 'code' field must be an Icmp6Code. " f"Got: {type(self.code)!r}"
+        assert isinstance(self.code, Icmp6Code), f"The 'code' field must be an Icmp6Code. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be a bytes or memoryview. " f"Got: {type(self.data)!r}"
-        )
+        assert isinstance(
+            self.data, (bytes, bytearray, memoryview)
+        ), f"The 'data' field must be a bytes, bytearray or memoryview. Got: {type(self.data)!r}"
 
     @override
     def __len__(self) -> int:
@@ -113,7 +113,7 @@ class Icmp6MessageUnknown(Icmp6Message):
         /,
     ) -> bytearray:
         """
-        Get the ICMPv6 Echo Reply message as bytes.
+        Pack the ICMPv6 unknown message header into a fresh bytearray.
         """
 
         struct.pack_into(
@@ -148,13 +148,15 @@ class Icmp6MessageUnknown(Icmp6Message):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 unknown message from bytes.
+        Initialize the ICMPv6 unknown message from buffer.
         """
 
         type, code, cksum = struct.unpack(ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN])
 
-        assert (received_type := type) not in Icmp6Type.get_known_values(), (
-            "The 'type' field must not be known. " f"Got: {Icmp6Type.from_int(received_type)!r}"
+        assert (
+            received_type := type
+        ) not in Icmp6Type.get_known_values(), (
+            f"The 'type' field must not be known. Got: {Icmp6Type.from_int(received_type)!r}"
         )
 
         return cls(
@@ -167,7 +169,7 @@ class Icmp6MessageUnknown(Icmp6Message):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv6 Echo Reply message into the buffer list.
+        Assemble the ICMPv6 unknown message into the buffer list.
         """
 
         buffers.append(self._pack_header())
