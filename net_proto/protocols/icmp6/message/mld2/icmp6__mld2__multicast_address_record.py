@@ -27,7 +27,7 @@
 """
 This module contains the ICMPv6 MLDv2 Multicast Address Record support class.
 
-net_proto/protocols/icmp6/icmp6__mld2__multicast_address_record.py
+net_proto/protocols/icmp6/message/mld2/icmp6__mld2__multicast_address_record.py
 
 ver 3.0.4
 """
@@ -128,18 +128,18 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         Validate the ICMPv6 MLDv2 Multicast Address Record fields.
         """
 
-        assert self.multicast_address.is_multicast, (
-            f"The 'multicast_address' field must be a multicast address. " f"Got: {self.multicast_address!r}"
-        )
+        assert (
+            self.multicast_address.is_multicast
+        ), f"The 'multicast_address' field must be a multicast address. Got: {self.multicast_address!r}"
 
         for address in self.source_addresses:
-            assert address.is_unicast, (
-                f"The 'source_addresses' field must contain only unicast addresses. " f"Got: {address!r}"
-            )
+            assert (
+                address.is_unicast
+            ), f"The 'source_addresses' field must contain only unicast addresses. Got: {address!r}"
 
-        assert is_4_byte_alligned(len(self.aux_data)), (
-            f"The 'aux_data' field must be 4-byte aligned. " f"Got: {len(self.aux_data)!r}"
-        )
+        assert is_4_byte_alligned(
+            len(self.aux_data)
+        ), f"The 'aux_data' field must be 4-byte aligned. Got: {len(self.aux_data)!r}"
 
     @override
     def __len__(self) -> int:
@@ -245,7 +245,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         ]
 
         aux_data_offset = ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN + IP6__ADDRESS_LEN * number_of_sources
-        aux_data = buffer[aux_data_offset : aux_data_offset + (aux_data_len << 2)]
+        aux_data = bytes(buffer[aux_data_offset : aux_data_offset + (aux_data_len << 2)])
 
         return cls(
             type=Icmp6Mld2MulticastAddressRecordType.from_int(type),
