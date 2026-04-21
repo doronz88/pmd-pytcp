@@ -137,16 +137,16 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                 "__len__": 18,
                 "__str__": "unk-254-18",
                 "__repr__": (
-                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, " "len=18, data=b'0123456789ABCDEF')"
+                    f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(254)!r}, " f"len=18, data=b'0123456789ABCDEF')"
                 ),
                 "__bytes__": (
                     # Unknown DHCPv4 option [RFC 2132 format]
                     #   Code : 0xfe (254, unknown)
-                    #   Len  : 0x12 (18, assembler encodes total option length)
+                    #   Len  : 0x10 (16, payload length)
                     #   Data : 30 31 32 33 34 35 36 37
                     #          38 39 41 42 43 44 45 46
                     #          ('0123456789ABCDEF')
-                    b"\xfe\x12\x30\x31\x32\x33\x34\x35\x36\x37"
+                    b"\xfe\x10\x30\x31\x32\x33\x34\x35\x36\x37"
                     b"\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
                 "type": Dhcp4OptionType.from_int(254),
@@ -163,13 +163,13 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             "_results": {
                 "__len__": 2,
                 "__str__": "unk-200-2",
-                "__repr__": (f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(200)!r}, " "len=2, data=b'')"),
+                "__repr__": f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(200)!r}, len=2, data=b'')",
                 "__bytes__": (
                     # Unknown DHCPv4 option
                     #   Code : 0xc8 (200, unknown)
-                    #   Len  : 0x02 (assembler encodes total option length)
+                    #   Len  : 0x00 (0, empty payload)
                     #   Data : (empty)
-                    b"\xc8\x02"
+                    b"\xc8\x00"
                 ),
                 "type": Dhcp4OptionType.from_int(200),
                 "len": 2,
@@ -185,13 +185,13 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
             "_results": {
                 "__len__": 3,
                 "__str__": "unk-100-3",
-                "__repr__": (f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(100)!r}, " "len=3, data=b'B')"),
+                "__repr__": f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(100)!r}, len=3, data=b'B')",
                 "__bytes__": (
                     # Unknown DHCPv4 option
                     #   Code : 0x64 (100, unknown)
-                    #   Len  : 0x03 (assembler encodes total option length)
+                    #   Len  : 0x01 (1, single-byte payload)
                     #   Data : 42 ('B')
-                    b"\x64\x03\x42"
+                    b"\x64\x01\x42"
                 ),
                 "type": Dhcp4OptionType.from_int(100),
                 "len": 3,
@@ -212,7 +212,9 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                     f"len={UINT_8__MAX}, "
                     f"data={(b'\xaa' * (UINT_8__MAX - DHCP4__OPTION__LEN))!r})"
                 ),
-                "__bytes__": (b"\x63" + bytes([UINT_8__MAX]) + b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN)),
+                "__bytes__": (
+                    b"\x63" + bytes([UINT_8__MAX - DHCP4__OPTION__LEN]) + b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN)
+                ),
                 "type": Dhcp4OptionType.from_int(99),
                 "len": UINT_8__MAX,
                 "data": b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN),
@@ -322,6 +324,17 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
             self._option.data,
             self._results["data"],
             msg=f"Unexpected 'data' for case: {self._description}",
+        )
+
+    def test__dhcp4__option__unknown__roundtrip(self) -> None:
+        """
+        Ensure bytes(option) parses back into an equal option.
+        """
+
+        self.assertEqual(
+            Dhcp4OptionUnknown.from_buffer(bytes(self._option)),
+            self._option,
+            msg=f"Roundtrip must preserve equality for case: {self._description}",
         )
 
 

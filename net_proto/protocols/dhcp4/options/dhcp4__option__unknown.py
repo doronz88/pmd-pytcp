@@ -27,7 +27,7 @@
 """
 This module contains the unknown DHCPv4 option support code.
 
-net_proto/protocols/dhcp4/options/dhcp4_option__unknown.py
+net_proto/protocols/dhcp4/options/dhcp4__option__unknown.py
 
 ver 3.0.4
 """
@@ -109,7 +109,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
             buffer := bytearray(len(self)),
             0,
             int(self.type),
-            self.len,
+            self.len - DHCP4__OPTION__LEN,
         )
 
         buffer[DHCP4__OPTION__LEN:] = self.data
