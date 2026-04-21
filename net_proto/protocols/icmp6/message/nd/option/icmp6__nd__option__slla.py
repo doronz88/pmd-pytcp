@@ -25,7 +25,7 @@
 
 
 """
-This odule contains the ICMPv6 Slla (Source Link Layer Address) option support code.
+This module contains the ICMPv6 Slla (Source Link Layer Address) option support code.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__slla.py
 
@@ -80,10 +80,9 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 ND Slla option fields.
+        Validate the ICMPv6 ND Slla option fields.
         """
 
-        # Ensure the 'slla' field is a MacAddress instance.
         assert isinstance(self.slla, MacAddress), f"The 'slla' field must be a MacAddress. Got: {type(self.slla)!r}"
 
     @override
@@ -120,14 +119,14 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
             raise Icmp6IntegrityError(
-                f"The ICMPv6 ND Slla option length value must be {ICMP6__ND__OPTION__SLLA__LEN} "
-                f"bytes. Got: {value!r}"
+                f"The ICMPv6 ND Slla option length value must be "
+                f"{ICMP6__ND__OPTION__SLLA__LEN} bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
-                "The ICMPv6 ND Slla option length value must be less than or equal to "
+                f"The ICMPv6 ND Slla option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
