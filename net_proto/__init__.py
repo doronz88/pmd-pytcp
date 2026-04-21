@@ -251,6 +251,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOptionType,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
+    ICMP6__ND__OPTION__PI__LEN,
     Icmp6NdOptionPi,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
@@ -452,6 +453,7 @@ __all__ = [
     "ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN",
     "ICMP6__ND__NEIGHBOR_SOLICITATION__LEN",
     "ICMP6__ND__OPTION__LEN",
+    "ICMP6__ND__OPTION__PI__LEN",
     "ICMP6__ND__OPTION__SLLA__LEN",
     "ICMP6__ND__OPTION__TLLA__LEN",
     "ICMP6__ND__ROUTER_ADVERTISEMENT__LEN",

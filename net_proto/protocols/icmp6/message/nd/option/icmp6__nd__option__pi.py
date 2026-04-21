@@ -112,32 +112,26 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 ND Pi option fields.
+        Validate the ICMPv6 ND Pi option fields.
         """
 
-        # Ensure the 'flag_l' field is a boolean.
-        assert isinstance(self.flag_l, bool), f"The 'flag_l' field must be a boolean. " f"Got: {type(self.flag_l)!r}"
+        assert isinstance(self.flag_l, bool), f"The 'flag_l' field must be a boolean. Got: {type(self.flag_l)!r}"
 
-        # Ensure the 'flag_a' field is a boolean.
-        assert isinstance(self.flag_a, bool), f"The 'flag_a' field must be a boolean. " f"Got: {type(self.flag_a)!r}"
+        assert isinstance(self.flag_a, bool), f"The 'flag_a' field must be a boolean. Got: {type(self.flag_a)!r}"
 
-        # Ensure the 'flag_r' field is a boolean.
-        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. " f"Got: {type(self.flag_r)!r}"
+        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. Got: {type(self.flag_r)!r}"
 
-        # Ensure the 'valid_lifetime' field is a 32-bit unsigned integer.
-        assert is_uint32(self.valid_lifetime), (
-            f"The 'valid_lifetime' field must be a 32-bit unsigned integer. " f"Got: {self.valid_lifetime!r}"
-        )
+        assert is_uint32(
+            self.valid_lifetime
+        ), f"The 'valid_lifetime' field must be a 32-bit unsigned integer. Got: {self.valid_lifetime!r}"
 
-        # Ensure the 'preferred_lifetime' field is a 32-bit unsigned integer.
-        assert is_uint32(self.preferred_lifetime), (
-            f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. " f"Got: {self.preferred_lifetime!r}"
-        )
+        assert is_uint32(
+            self.preferred_lifetime
+        ), f"The 'preferred_lifetime' field must be a 32-bit unsigned integer. Got: {self.preferred_lifetime!r}"
 
-        # Ensure the 'prefix' field is an Ip6Network instance.
-        assert isinstance(self.prefix, Ip6Network), (
-            f"The 'prefix' field must be an Ip6Network. " f"Got: {type(self.prefix)!r}"
-        )
+        assert isinstance(
+            self.prefix, Ip6Network
+        ), f"The 'prefix' field must be an Ip6Network. Got: {type(self.prefix)!r}"
 
     @override
     def __str__(self) -> str:
@@ -157,7 +151,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Nd Pi option as memoryview.
+        Get the ICMPv6 ND Pi option as memoryview.
         """
 
         struct.pack_into(
