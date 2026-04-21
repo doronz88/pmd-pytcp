@@ -25,8 +25,8 @@
 
 
 """
-Module contains tests for the ICMPv6 MLDv2 Report message parser integrity
-checks.
+Module contains tests for the ICMPv6 MLDv2 Report message parser
+integrity checks.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__parser__integrity_checks.py
 
@@ -34,31 +34,59 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import Icmp6IntegrityError, Icmp6Parser, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+from net_addr import Ip6Address
+from net_proto import (
+    ICMP6__MLD2__REPORT__LEN,
+    Icmp6IntegrityError,
+    Icmp6Parser,
+    Ip6Parser,
+    PacketRx,
+)
+
+
+def _packet_rx_with_ip6(frame: bytes, *, ip6__dlen: int | None = None) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub exposing the attributes the
+    ICMPv6 parser reads off 'packet_rx.ip6' (dlen, pshdr_sum, src, dst, hop).
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame) if ip6__dlen is None else ip6__dlen,
+            payload_len=len(frame) if ip6__dlen is None else ip6__dlen,
+            pshdr_sum=0,
+            src=Ip6Address(),
+            dst=Ip6Address(),
+            hop=1,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
     [
         {
-            "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6_HEADER_LEN <= self._ip6__dlen' condition not met."),
+            "_description": (
+                "ICMPv6 MLDv2 Report, the 'ICMP6__HEADER__LEN <= self._ip6__dlen' "
+                "condition not met (frame shorter than ICMPv6 base header)."
+            ),
             "_frame_rx": (
-                # ICMPv6 MLDv2 Report
+                # ICMPv6 MLDv2 Report (truncated, < 4 bytes)
                 #   Type     : 143 (MLDv2 Report)
                 #   Code     : 0
-                #   Checksum : 0x70?? (truncated)
-                #   Frame len: 3 bytes (< 4-byte minimum header)
-                #
-                #   Summary  : Frame shorter than ICMPv6 header length.
+                #   Checksum : 0x70-- (missing low byte)
+                #   Frame len: 3 bytes
                 b"\x8f\x00\x70"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 3,
-            },
+            "_ip6__dlen": 3,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -69,22 +97,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 MLDv2 Report message, " "the 'self._ip6__dlen <= len(self._frame)' condition not met."
+                "ICMPv6 MLDv2 Report, the 'self._ip6__dlen <= len(self._frame)' "
+                "condition not met (declared IPv6 payload exceeds frame length)."
             ),
             "_frame_rx": (
-                # ICMPv6 MLDv2 Report
-                #   Type     : 143
-                #   Code     : 0
-                #   Checksum : 0x70ff
-                #   Record count: 0x0000 (partial)
-                #   Frame len : 7 bytes (< 8-byte minimum header)
-                #
-                #   Summary   : Declared payload exceeds available frame length.
+                # ICMPv6 MLDv2 Report (frame shorter than declared ip6__dlen)
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x70ff
+                #   Reserved     : 0x0000
+                #   Record count : 0x00-- (missing last byte)
+                #   Frame len    : 7 bytes
                 b"\x8f\x00\x70\xff\x00\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 8,
-            },
+            "_ip6__dlen": 8,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen "
@@ -94,21 +120,20 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": ("ICMPv6 MLDv2 message, " "the 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen' condition not met."),
+            "_description": (
+                "ICMPv6 MLDv2 Report, the 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen' "
+                "condition not met (ip6__dlen below the fixed report header size)."
+            ),
             "_frame_rx": (
-                # ICMPv6 MLDv2 Report
-                #   Type     : 143
-                #   Code     : 0
-                #   Checksum : 0x70ff
-                #   Record count: 0x0000 (claims 0 groups)
-                #   Frame len : 8 bytes (minimum header)
-                #
-                #   Summary   : Payload shorter than required MLDv2 report length.
+                # ICMPv6 MLDv2 Report (minimum 8-byte header, but ip6__dlen=7)
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x70ff
+                #   Reserved     : 0x0000
+                #   Record count : 0x0000
                 b"\x8f\x00\x70\xff\x00\x00\x00\x00"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 7,
-            },
+            "_ip6__dlen": 7,
             "_results": {
                 "error_message": (
                     "The condition 'ICMP6__MLD2__REPORT__LEN <= ip6__dlen <= len(frame)' "
@@ -118,29 +143,26 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
         {
             "_description": (
-                "ICMPv6 MLDv2 message, the "
+                "ICMPv6 MLDv2 Report, the "
                 "'record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN <= ip6__dlen' "
-                "condition not met."
+                "condition not met (record count claims more than the payload holds)."
             ),
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143
-                #   Code     : 0
-                #   Checksum : 0x1582
-                #   Record cnt: 0x0002 (2 records advertised)
-                #   Record 0 : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x00, Src count 0x0002
-                #              Multicast address ff02::1
-                #   Record 1 : Type 0x20 (illegal/extended), Aux len 0x01, Src count 0x0db8
-                #              Multicast address ::2 (truncated)
-                #   Frame len: 60 bytes (records truncated)
-                #
-                #   Summary  : Multicast address record overruns available payload.
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x1582
+                #   Reserved     : 0x0000
+                #   Record count : 0x0002 (two records claimed — only one fits)
+                #   Record [0]   : Type 0x01, Aux 0, Src 2, mcast ff02::1,
+                #                  sources 2001:db8::1, 2001:db8::2 (total 52 bytes)
+                #   Frame len    : 60 bytes
                 b"\x8f\x00\x15\x82\x00\x00\x00\x02\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
             ),
-            "_mocked_values": {},
+            "_ip6__dlen": None,
             "_results": {
                 "error_message": (
                     "The condition 'record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN "
@@ -150,26 +172,26 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": ("ICMPv6 MLDv2 message, the 'record_offset == ip6__dlen' condition not met."),
+            "_description": (
+                "ICMPv6 MLDv2 Report, the 'record_offset == ip6__dlen' condition "
+                "not met (declared payload length shorter than the parsed records)."
+            ),
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143
-                #   Code     : 0
-                #   Checksum : 0x1583
-                #   Record cnt: 0x0001
-                #   Record    : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x00, Src count 0x0002
-                #               Multicast address ff02::1 with source list 2001:db8::1, 2001:db8::2
-                #   Frame len : 60 bytes
-                #
-                #   Summary   : Recorded offset does not match payload length (truncated data).
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x1583
+                #   Reserved     : 0x0000
+                #   Record count : 0x0001
+                #   Record [0]   : Type 0x01, Aux 0, Src 2, mcast ff02::1,
+                #                  sources 2001:db8::1, 2001:db8::2 (total 52 bytes)
+                #   Frame len    : 60 bytes, ip6__dlen=59 (one byte short)
                 b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
             ),
-            "_mocked_values": {
-                "ip6__dlen": 59,
-            },
+            "_ip6__dlen": 59,
             "_results": {
                 "error_message": (
                     "The condition 'record_offset == ip6__dlen' is not met. " "Got: record_offset=60, ip6__dlen=59"
@@ -177,43 +199,44 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             },
         },
         {
-            "_description": "ICMPv6 MLDv2 Report, invalid checksum.",
+            "_description": "ICMPv6 MLDv2 Report with invalid checksum (all zeros).",
             "_frame_rx": (
                 # ICMPv6 MLDv2 Report
-                #   Type     : 143
-                #   Code     : 0
-                #   Checksum : 0x0000 (invalid)
-                #   Record cnt: 0x0000
-                #   Data len : 0 bytes
-                #
-                #   Summary  : MLDv2 report with checksum cleared to zero.
+                #   Type         : 143
+                #   Code         : 0
+                #   Checksum     : 0x0000 (invalid; valid value with pshdr_sum=0 is 0x70ff)
+                #   Reserved     : 0x0000
+                #   Record count : 0x0000
                 b"\x8f\x00\x00\x00\x00\x00\x00\x00"
             ),
-            "_mocked_values": {},
+            "_ip6__dlen": None,
             "_results": {
                 "error_message": "The packet checksum must be valid.",
             },
         },
     ]
 )
-class TestIcmp6Mld2MessageReportParserIntegrityChecks(TestCasePacketRxIp6):
+class TestIcmp6Mld2MessageReportParserIntegrityChecks(TestCase):
     """
     The ICMPv6 MLDv2 Report message parser integrity checks tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
+    _ip6__dlen: int | None
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__mld2__message__report__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message parser raises integrity error
-        on malformed packets.
+        Build a PacketRx with the parametrized frame and IPv6 payload length.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx, ip6__dlen=self._ip6__dlen)
+
+    def test__icmp6__mld2__message__report__parser__integrity_error(self) -> None:
+        """
+        Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
+        MLDv2 Report frames with the expected message.
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -221,5 +244,56 @@ class TestIcmp6Mld2MessageReportParserIntegrityChecks(TestCasePacketRxIp6):
 
         self.assertEqual(
             str(error.exception),
-            f"[INTEGRITY ERROR][ICMPv6] {self._results["error_message"]}",
+            f"[INTEGRITY ERROR][ICMPv6] {self._results['error_message']}",
+            msg=f"Unexpected integrity-error message for case: {self._description}",
         )
+
+
+class TestIcmp6Mld2MessageReportParserIntegrityBoundary(TestCase):
+    """
+    Boundary tests for the ICMPv6 MLDv2 Report integrity validator.
+    """
+
+    def test__icmp6__mld2__message__report__parser__integrity__minimum_length_accepted(self) -> None:
+        """
+        Ensure a frame whose IPv6 payload length equals
+        ICMP6__MLD2__REPORT__LEN (8) — a bare, record-less MLDv2 Report —
+        passes integrity checks and parses successfully.
+        """
+
+        # ICMPv6 MLDv2 Report at minimum length (8 bytes), no records
+        #   Type         : 143 (MLDv2 Report)
+        #   Code         : 0
+        #   Checksum     : 0x70ff (valid with pshdr_sum=0)
+        #   Reserved     : 0x0000
+        #   Record count : 0x0000
+        frame = b"\x8f\x00\x70\xff\x00\x00\x00\x00"
+
+        self.assertEqual(
+            len(frame),
+            ICMP6__MLD2__REPORT__LEN,
+            msg="Fixture must match ICMP6__MLD2__REPORT__LEN.",
+        )
+
+        Icmp6Parser(_packet_rx_with_ip6(frame))
+
+    def test__icmp6__mld2__message__report__parser__integrity__single_record_accepted(self) -> None:
+        """
+        Ensure a valid MLDv2 Report carrying a single record passes
+        integrity checks and walks the record-offset loop cleanly.
+        """
+
+        # ICMPv6 MLDv2 Report, one record
+        #   Type         : 143
+        #   Code         : 0
+        #   Checksum     : 0x70fa (valid with pshdr_sum=0)
+        #   Reserved     : 0x0000
+        #   Record count : 0x0001
+        #   Record [0]   : Type 0x01 (MODE_IS_INCLUDE), Aux 0, Src 0,
+        #                  mcast ff02::1 (20 bytes)
+        frame = (
+            b"\x8f\x00\x70\xfa\x00\x00\x00\x01\x01\x00\x00\x00\xff\x02\x00\x00"
+            b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01"
+        )
+
+        Icmp6Parser(_packet_rx_with_ip6(frame))
