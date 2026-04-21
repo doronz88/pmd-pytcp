@@ -34,10 +34,9 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
-from testslide import TestCase
-
-from net_addr import Ip6Address
+from net_addr import Ip6Address, IpVersion
 from net_proto import (
     UINT_2__MAX,
     UINT_2__MIN,
@@ -61,10 +60,10 @@ class TestIp6HeaderAsserts(TestCase):
 
     def setUp(self) -> None:
         """
-        Create the default arguments for the IPv6 header constructor.
+        Build a valid default kwargs dict for the IPv6 header constructor
+        so each test can override exactly one field and trigger its assert.
         """
 
-        self._args: list[Any] = []
         self._kwargs: dict[str, Any] = {
             "dscp": 0,
             "ecn": 0,
@@ -76,210 +75,226 @@ class TestIp6HeaderAsserts(TestCase):
             "dst": Ip6Address(),
         }
 
+    def test__ip6__header__default_accepted(self) -> None:
+        """
+        Ensure the default kwargs dict itself is accepted; this guards
+        the negative tests from masking future regressions that would
+        make the baseline invalid. Also pins 'ver' to IpVersion.IP6
+        because the field is set unconditionally via field(init=False).
+        """
+
+        header = Ip6Header(**self._kwargs)
+
+        self.assertEqual(
+            header.ver,
+            IpVersion.IP6,
+            msg="Default-constructed header must expose ver=IpVersion.IP6.",
+        )
+
     def test__ip6__header__dscp__under_min(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'dscp' argument is lower than the minimum supported value.
+        Ensure the constructor rejects 'dscp' below UINT_6__MIN.
         """
 
         self._kwargs["dscp"] = value = UINT_6__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dscp' field must be a 6-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dscp' under UINT_6__MIN.",
         )
 
     def test__ip6__header__dscp__over_max(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'dscp' argument is higher than the maximum supported value.
+        Ensure the constructor rejects 'dscp' above UINT_6__MAX.
         """
 
         self._kwargs["dscp"] = value = UINT_6__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dscp' field must be a 6-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dscp' over UINT_6__MAX.",
         )
 
     def test__ip6__header__ecn__under_min(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'ecn' argument is lower than the minimum supported value.
+        Ensure the constructor rejects 'ecn' below UINT_2__MIN.
         """
 
         self._kwargs["ecn"] = value = UINT_2__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'ecn' field must be a 2-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'ecn' under UINT_2__MIN.",
         )
 
     def test__ip6__header__ecn__over_max(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'ecn' argument is higher than the maximum supported value.
+        Ensure the constructor rejects 'ecn' above UINT_2__MAX.
         """
 
         self._kwargs["ecn"] = value = UINT_2__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'ecn' field must be a 2-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'ecn' over UINT_2__MAX.",
         )
 
     def test__ip6__header__flow__under_min(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'flow' argument is lower than the minimum supported value.
+        Ensure the constructor rejects 'flow' below UINT_20__MIN.
         """
 
         self._kwargs["flow"] = value = UINT_20__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flow' field must be a 20-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'flow' under UINT_20__MIN.",
         )
 
     def test__ip6__header__flow__over_max(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'flow' argument is higher than the maximum supported value.
+        Ensure the constructor rejects 'flow' above UINT_20__MAX.
         """
 
         self._kwargs["flow"] = value = UINT_20__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'flow' field must be a 20-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'flow' over UINT_20__MAX.",
         )
 
     def test__ip6__header__dlen__under_min(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'dlen' argument is lower than the minimum supported value.
+        Ensure the constructor rejects 'dlen' below UINT_16__MIN.
         """
 
         self._kwargs["dlen"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dlen' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dlen' under UINT_16__MIN.",
         )
 
     def test__ip6__header__dlen__over_max(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'dlen' argument is higher than the maximum supported value.
+        Ensure the constructor rejects 'dlen' above UINT_16__MAX.
         """
 
         self._kwargs["dlen"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dlen' field must be a 16-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'dlen' over UINT_16__MAX.",
         )
 
     def test__ip6__header__next__not_IpProto(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'next' argument is not an IpProto.
+        Ensure the constructor rejects 'next' when it is not an IpProto.
         """
 
         self._kwargs["next"] = value = "not an IpProto"
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'next' field must be an IpProto. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-IpProto 'next'.",
         )
 
     def test__ip6__header__hop__under_min(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'hop' argument is lower than the minimum supported value.
+        Ensure the constructor rejects 'hop' below UINT_8__MIN.
         """
 
         self._kwargs["hop"] = value = UINT_8__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'hop' field must be an 8-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'hop' under UINT_8__MIN.",
         )
 
     def test__ip6__header__hop__over_max(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'hop' argument is higher than the maximum supported value.
+        Ensure the constructor rejects 'hop' above UINT_8__MAX.
         """
 
         self._kwargs["hop"] = value = UINT_8__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'hop' field must be an 8-bit unsigned integer. Got: {value!r}",
+            msg="Unexpected assertion message for 'hop' over UINT_8__MAX.",
         )
 
     def test__ip6__header__src__not_Ip6Address(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'src' argument is not an Ip6Address.
+        Ensure the constructor rejects 'src' when it is not an Ip6Address.
         """
 
         self._kwargs["src"] = value = "not an Ip6Address"
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'src' field must be an Ip6Address. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-Ip6Address 'src'.",
         )
 
     def test__ip6__header__dst__not_Ip6Address(self) -> None:
         """
-        Ensure the IPv6 header constructor raises an exception when the provided
-        'dst' argument is not an Ip6Address.
+        Ensure the constructor rejects 'dst' when it is not an Ip6Address.
         """
 
         self._kwargs["dst"] = value = "not an Ip6Address"
 
         with self.assertRaises(AssertionError) as error:
-            Ip6Header(*self._args, **self._kwargs)
+            Ip6Header(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
             f"The 'dst' field must be an Ip6Address. Got: {type(value)!r}",
+            msg="Unexpected assertion message for non-Ip6Address 'dst'.",
         )
