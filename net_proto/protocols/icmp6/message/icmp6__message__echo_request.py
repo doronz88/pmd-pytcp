@@ -94,19 +94,19 @@ class Icmp6MessageEchoRequest(Icmp6Message):
         Validate the ICMPv6 Echo Request message fields.
         """
 
-        assert isinstance(self.code, Icmp6EchoRequestCode), (
-            f"The 'code' field must be an Icmp6EchoRequestCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6EchoRequestCode
+        ), f"The 'code' field must be an Icmp6EchoRequestCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {self.id!r}"
+        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. Got: {self.id!r}"
 
-        assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {self.seq!r}"
+        assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. Got: {self.seq!r}"
 
-        assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be bytes or memoryview. " f"Got: {type(self.data)!r}"
-        )
+        assert isinstance(
+            self.data, (bytes, memoryview)
+        ), f"The 'data' field must be bytes or memoryview. Got: {type(self.data)!r}"
 
         assert len(self.data) <= IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REQUEST__LEN, (
             f"The 'data' field length must be a 16-bit unsigned integer less than "
@@ -197,9 +197,9 @@ class Icmp6MessageEchoRequest(Icmp6Message):
 
         type, code, cksum, id, seq = struct.unpack(ICMP6__ECHO_REQUEST__STRUCT, buffer[:ICMP6__ECHO_REQUEST__LEN])
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ECHO_REQUEST), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ECHO_REQUEST
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6EchoRequestCode.from_int(code),
@@ -212,7 +212,7 @@ class Icmp6MessageEchoRequest(Icmp6Message):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv6 Echo Reply message into the buffer list.
+        Assemble the ICMPv6 Echo Request message into the buffer list.
         """
 
         buffers.append(self._pack_header())
