@@ -34,9 +34,9 @@ ver 3.0.4
 
 
 from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_addr import Ip6Address
 from net_proto import (
@@ -63,13 +63,11 @@ from net_proto.lib.buffer import Buffer
                 "__repr__": "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, cksum=0, records=[])",
                 "__bytes__": (
                     # ICMPv6 MLDv2 Report
-                    #   Type     : 143 (MLDv2 Report)
-                    #   Code     : 0
-                    #   Checksum : 0x70ff
-                    #   Record cnt: 0x0000
-                    #   Records   : none
-                    #
-                    #   Summary  : MLDv2 report with no multicast address records.
+                    #   Type         : 143 (MLDv2 Report)
+                    #   Code         : 0 (Default)
+                    #   Checksum     : 0x70ff (computed by assemble(), pshdr_sum=0)
+                    #   Reserved     : 0x0000
+                    #   Record count : 0x0000
                     b"\x8f\x00\x70\xff\x00\x00\x00\x00"
                 ),
                 "type": Icmp6Type.MLD2__REPORT,
@@ -80,7 +78,7 @@ from net_proto.lib.buffer import Buffer
             },
         },
         {
-            "_description": ("ICMPv6 MLDv2 Report message, single record."),
+            "_description": "ICMPv6 MLDv2 Report message, single record (MODE_IS_INCLUDE, two sources).",
             "_kwargs": {
                 "records": [
                     Icmp6Mld2MulticastAddressRecord(
@@ -100,25 +98,27 @@ from net_proto.lib.buffer import Buffer
                     "addr ff02::1, sources (2001:db8::1, 2001:db8::2)]"
                 ),
                 "__repr__": (
-                    "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
-                    "cksum=0, records=[Icmp6Mld2MulticastAddressRecord("
+                    "Icmp6Mld2ReportMessage("
+                    "code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "records=["
+                    "Icmp6Mld2MulticastAddressRecord("
                     "type=<Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE: 1>, "
                     "multicast_address=Ip6Address('ff02::1'), "
-                    "source_addresses=[Ip6Address('2001:db8::1'), "
-                    "Ip6Address('2001:db8::2')], aux_data=b'')])"
+                    "source_addresses=[Ip6Address('2001:db8::1'), Ip6Address('2001:db8::2')], "
+                    "aux_data=b'')"
+                    "])"
                 ),
                 "__bytes__": (
                     # ICMPv6 MLDv2 Report
-                    #   Type     : 143 (MLDv2 Report)
-                    #   Code     : 0
-                    #   Checksum : 0x1583
-                    #   Record cnt: 0x0001
-                    #   Record 0 : Type 0x01 (MODE_IS_INCLUDE)
-                    #              Aux len 0x00, Src count 0x0002
-                    #              Multicast address ff02::1
-                    #              Source addresses: 2001:db8::1, 2001:db8::2
-                    #
-                    #   Summary  : Include-mode report for ff02::1 with two source addresses.
+                    #   Type         : 143 (MLDv2 Report)
+                    #   Code         : 0 (Default)
+                    #   Checksum     : 0x1583 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved     : 0x0000
+                    #   Record count : 0x0001
+                    #   Record [0]   : Type 0x01 (MODE_IS_INCLUDE), Aux 0, Src 2,
+                    #                  Multicast ff02::1,
+                    #                  Sources 2001:db8::1, 2001:db8::2
                     b"\x8f\x00\x15\x83\x00\x00\x00\x01\x01\x00\x00\x02\xff\x02\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
@@ -136,21 +136,18 @@ from net_proto.lib.buffer import Buffer
                             Ip6Address("2001:db8::1"),
                             Ip6Address("2001:db8::2"),
                         ],
-                        aux_data=b"",
                     ),
                 ],
             },
         },
         {
-            "_description": "ICMPv6 MLDv2 Report message, multiple records.",
+            "_description": "ICMPv6 MLDv2 Report message, four records (every record-type variant exercised).",
             "_kwargs": {
                 "records": [
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
                         multicast_address=Ip6Address("ff02::1"),
-                        source_addresses=[
-                            Ip6Address("2001:db8::1"),
-                        ],
+                        source_addresses=[Ip6Address("2001:db8::1")],
                         aux_data=b"0123456789ABCDEF",
                     ),
                     Icmp6Mld2MulticastAddressRecord(
@@ -176,7 +173,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                         multicast_address=Ip6Address("ff02::4"),
-                        aux_data=(b"0123456789ABCDEF0123456789ABCDEF" b"0123456789ABCDEF0123456789ABCDEF"),
+                        aux_data=b"0123456789ABCDEF" * 4,
                     ),
                 ],
             },
@@ -193,41 +190,50 @@ from net_proto.lib.buffer import Buffer
                     "0123456789ABCDEF']"
                 ),
                 "__repr__": (
-                    "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, cksum=0, "
-                    "records=[Icmp6Mld2MulticastAddressRecord(type="
-                    "<Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE: 1>, multicast_address="
-                    "Ip6Address('ff02::1'), source_addresses=[Ip6Address('2001:db8::1')], "
-                    "aux_data=b'0123456789ABCDEF'), Icmp6Mld2MulticastAddressRecord(type="
-                    "<Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE: 2>, multicast_address="
-                    "Ip6Address('ff02::2'), source_addresses=[Ip6Address('2001:db8::2'), "
-                    "Ip6Address('2001:db8::3'), Ip6Address('2001:db8::4')], aux_data="
-                    "b'0123456789ABCDEF0123456789ABCDEF'), Icmp6Mld2MulticastAddressRecord("
+                    "Icmp6Mld2ReportMessage("
+                    "code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
+                    "cksum=0, "
+                    "records=["
+                    "Icmp6Mld2MulticastAddressRecord("
+                    "type=<Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE: 1>, "
+                    "multicast_address=Ip6Address('ff02::1'), "
+                    "source_addresses=[Ip6Address('2001:db8::1')], "
+                    "aux_data=b'0123456789ABCDEF'), "
+                    "Icmp6Mld2MulticastAddressRecord("
+                    "type=<Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE: 2>, "
+                    "multicast_address=Ip6Address('ff02::2'), "
+                    "source_addresses=["
+                    "Ip6Address('2001:db8::2'), "
+                    "Ip6Address('2001:db8::3'), "
+                    "Ip6Address('2001:db8::4')], "
+                    "aux_data=b'0123456789ABCDEF0123456789ABCDEF'), "
+                    "Icmp6Mld2MulticastAddressRecord("
                     "type=<Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE: 3>, "
-                    "multicast_address=Ip6Address('ff02::3'), source_addresses=[Ip6Address("
-                    "'2001:db8::6'), Ip6Address('2001:db8::7'), Ip6Address('2001:db8::8'), "
-                    "Ip6Address('2001:db8::9')], aux_data=b''), Icmp6Mld2MulticastAddressRecord("
+                    "multicast_address=Ip6Address('ff02::3'), "
+                    "source_addresses=["
+                    "Ip6Address('2001:db8::6'), "
+                    "Ip6Address('2001:db8::7'), "
+                    "Ip6Address('2001:db8::8'), "
+                    "Ip6Address('2001:db8::9')], "
+                    "aux_data=b''), "
+                    "Icmp6Mld2MulticastAddressRecord("
                     "type=<Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES: 6>, "
-                    "multicast_address=Ip6Address('ff02::4'), source_addresses=[], aux_data="
-                    "b'0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF')])"
+                    "multicast_address=Ip6Address('ff02::4'), "
+                    "source_addresses=[], "
+                    "aux_data=b'0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF')"
+                    "])"
                 ),
                 "__bytes__": (
                     # ICMPv6 MLDv2 Report
-                    #   Type     : 143 (MLDv2 Report)
-                    #   Code     : 0
-                    #   Checksum : 0x52f0
-                    #   Record cnt: 0x0004
-                    #   Record 0 : Type 0x01 (MODE_IS_INCLUDE), Aux len 0x04, Src cnt 0x0001,
-                    #              Multicast addr ff02::1, Source 2001:db8::1,
-                    #              Aux data "0123456789ABCDEF"
-                    #   Record 1 : Type 0x02 (MODE_IS_EXCLUDE), Aux len 0x08, Src cnt 0x0003,
-                    #              Multicast addr ff02::2, Sources 2001:db8::2/3/4,
-                    #              Aux data "0123456789ABCDEF" * 2
-                    #   Record 2 : Type 0x03 (CHANGE_TO_INCLUDE), Aux len 0x00, Src cnt 0x0004,
-                    #              Multicast addr ff02::3, Sources 2001:db8::6/7/8/9
-                    #   Record 3 : Type 0x06 (BLOCK_OLD_SOURCES), Aux len 0x10, Src cnt 0x0000,
-                    #              Multicast addr ff02::4, Aux data "0123456789ABCDEF" * 4
-                    #
-                    #   Summary  : Complex MLDv2 report covering multiple record types, sources, and aux data.
+                    #   Type         : 143 (MLDv2 Report)
+                    #   Code         : 0 (Default)
+                    #   Checksum     : 0x52f0 (computed by assemble(), pshdr_sum=0)
+                    #   Reserved     : 0x0000
+                    #   Record count : 0x0004
+                    #   Record [0]   : MODE_IS_INCLUDE,    ff02::1, src 2001:db8::1, aux 16B
+                    #   Record [1]   : MODE_IS_EXCLUDE,    ff02::2, src 2001:db8::2/3/4, aux 32B
+                    #   Record [2]   : CHANGE_TO_INCLUDE,  ff02::3, src 2001:db8::6/7/8/9
+                    #   Record [3]   : BLOCK_OLD_SOURCES,  ff02::4, aux 64B
                     b"\x8f\x00\x52\xf0\x00\x00\x00\x04\x01\x04\x00\x01\xff\x02\x00\x00"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8"
                     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x30\x31\x32\x33"
@@ -258,9 +264,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
                         multicast_address=Ip6Address("ff02::1"),
-                        source_addresses=[
-                            Ip6Address("2001:db8::1"),
-                        ],
+                        source_addresses=[Ip6Address("2001:db8::1")],
                         aux_data=b"0123456789ABCDEF",
                     ),
                     Icmp6Mld2MulticastAddressRecord(
@@ -286,7 +290,7 @@ from net_proto.lib.buffer import Buffer
                     Icmp6Mld2MulticastAddressRecord(
                         type=Icmp6Mld2MulticastAddressRecordType.BLOCK_OLD_SOURCES,
                         multicast_address=Ip6Address("ff02::4"),
-                        aux_data=b"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+                        aux_data=b"0123456789ABCDEF" * 4,
                     ),
                 ],
             },
@@ -304,116 +308,119 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
 
     def setUp(self) -> None:
         """
-        The ICMPv6 MLDv2 message assembler tests.
+        Build an assembler wrapping the parametrized MLDv2 Report message.
         """
 
         self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2ReportMessage(**self._kwargs))
 
     def test__icmp6__mld2__message__report__assembler__len(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message '__len__()' method
-        returns a correct value.
+        Ensure 'len()' on the assembler equals ICMP6__MLD2__REPORT__LEN
+        plus the summed lengths of every record.
         """
 
         self.assertEqual(
             len(self._icmp6__assembler),
             self._results["__len__"],
+            msg=f"Unexpected __len__ for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__str(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message '__str__()' method
-        returns a correct value.
+        Ensure 'str()' renders the canonical MLDv2 Report log line.
         """
 
         self.assertEqual(
             str(self._icmp6__assembler),
             self._results["__str__"],
+            msg=f"Unexpected __str__ for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__repr(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message '__repr__()' method
-        returns a correct value.
+        Ensure 'repr()' forwards the wrapped message's dataclass repr.
         """
 
         self.assertEqual(
             repr(self._icmp6__assembler),
             self._results["__repr__"],
+            msg=f"Unexpected __repr__ for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__bytes(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message '__bytes__()' method
-        returns a correct value.
+        Ensure 'bytes()' returns the full wire form including the
+        recomputed Internet checksum at bytes 2-3.
         """
 
         self.assertEqual(
             bytes(self._icmp6__assembler),
             self._results["__bytes__"],
+            msg=f"Unexpected __bytes__ for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__type(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'type' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'type' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.type,
             self._results["type"],
+            msg=f"Unexpected 'type' for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__code(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'code' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'code' field.
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.code,
             self._results["code"],
+            msg=f"Unexpected 'code' for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__cksum(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'cksum' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'cksum' field as
+        passed to the constructor (the on-wire checksum is written during
+        assemble() and does not mutate this attribute).
         """
 
         self.assertEqual(
             self._icmp6__assembler.message.cksum,
             self._results["cksum"],
+            msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp6__mld2__message__report__assembler__number_of_records(
-        self,
-    ) -> None:
+    def test__icmp6__mld2__message__report__assembler__number_of_records(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'number_of_records' field contains
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'number_of_records'
+        property.
         """
 
         self.assertEqual(
             cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).number_of_records,
             self._results["number_of_records"],
+            msg=f"Unexpected 'number_of_records' for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__records(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'records' property returns
-        a correct value.
+        Ensure the assembler exposes the wrapped message 'records' field.
         """
 
         self.assertEqual(
             cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).records,
             self._results["records"],
+            msg=f"Unexpected 'records' for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__assembler__assemble(self) -> None:
         """
-        Ensure the ICMPv6 MLDv2 Report message 'assemble()' method returns
-        a correct value.
+        Ensure 'assemble()' appends the packed buffers, back-patches the
+        checksum, and yields the same wire bytes as 'bytes()'.
         """
 
         buffers: list[Buffer] = []
@@ -423,4 +430,28 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         self.assertEqual(
             b"".join(buffers),
             self._results["__bytes__"],
+            msg=f"Unexpected assemble() output for case: {self._description}",
+        )
+
+    def test__icmp6__mld2__message__report__assembler__assemble_buffer_layout(self) -> None:
+        """
+        Ensure 'assemble()' produces exactly two buffers — the packed
+        8-byte report header followed by the concatenated records — so the
+        ICMPv6 checksum back-patch in Icmp6Assembler.assemble() targets
+        the header buffer.
+        """
+
+        buffers: list[Buffer] = []
+
+        self._icmp6__assembler.assemble(buffers)
+
+        self.assertEqual(
+            len(buffers),
+            2,
+            msg=f"assemble() must append exactly 2 buffers (header + records) for case: {self._description}",
+        )
+        self.assertEqual(
+            len(buffers[0]),
+            8,
+            msg=f"First buffer must be the 8-byte MLDv2 Report header for case: {self._description}",
         )
