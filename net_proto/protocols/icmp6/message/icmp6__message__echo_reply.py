@@ -64,7 +64,7 @@ ICMP6__ECHO_REPLY__STRUCT = "! BBH HH"
 
 class Icmp6EchoReplyCode(Icmp6Code):
     """
-    The ICMPv6 Echo Reply message 'code values.
+    The ICMPv6 Echo Reply message 'code' field values.
     """
 
     DEFAULT = 0
@@ -94,19 +94,19 @@ class Icmp6MessageEchoReply(Icmp6Message):
         Validate the ICMPv6 Echo Reply message fields.
         """
 
-        assert isinstance(self.code, Icmp6EchoReplyCode), (
-            f"The 'code' field must be an Icmp6EchoReplyCode. " f"Got: {type(self.code)!r}"
-        )
+        assert isinstance(
+            self.code, Icmp6EchoReplyCode
+        ), f"The 'code' field must be an Icmp6EchoReplyCode. Got: {type(self.code)!r}"
 
-        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. " f"Got: {self.cksum!r}"
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. " f"Got: {self.id!r}"
+        assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. Got: {self.id!r}"
 
-        assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. " f"Got: {self.seq!r}"
+        assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. Got: {self.seq!r}"
 
-        assert isinstance(self.data, (bytes, memoryview)), (
-            f"The 'data' field must be bytes or memoryview. " f"Got: {type(self.data)!r}"
-        )
+        assert isinstance(
+            self.data, (bytes, memoryview)
+        ), f"The 'data' field must be bytes or memoryview. Got: {type(self.data)!r}"
 
         assert len(self.data) <= IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REPLY__LEN, (
             f"The 'data' field length must be a 16-bit unsigned integer less than "
@@ -150,7 +150,7 @@ class Icmp6MessageEchoReply(Icmp6Message):
         /,
     ) -> bytearray:
         """
-        Get the ICMPv6 Echo Reply message as bytes.
+        Pack the ICMPv6 Echo Reply message header into a fresh bytearray.
         """
 
         struct.pack_into(
@@ -192,14 +192,14 @@ class Icmp6MessageEchoReply(Icmp6Message):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 Echo Reply message from bytes.
+        Initialize the ICMPv6 Echo Reply message from buffer.
         """
 
         type, code, cksum, id, seq = struct.unpack(ICMP6__ECHO_REPLY__STRUCT, buffer[:ICMP6__ECHO_REPLY__LEN])
 
-        assert (received_type := Icmp6Type.from_int(type)) == (valid_type := Icmp6Type.ECHO_REPLY), (
-            f"The 'type' field must be {valid_type!r}. " f"Got: {received_type!r}"
-        )
+        assert (received_type := Icmp6Type.from_int(type)) == (
+            valid_type := Icmp6Type.ECHO_REPLY
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
             code=Icmp6EchoReplyCode.from_int(code),
