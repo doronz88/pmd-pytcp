@@ -34,150 +34,158 @@ ver 3.0.4
 
 
 from typing import Any
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
-from testslide import TestCase
 
 from net_proto import TCP__OPTION__NOP__LEN, TcpOptionNop, TcpOptionType
 
 
-class TestTcpOptionNopAsserts(TestCase):
-    """
-    The TCP Nop option constructor argument assert tests.
-    """
-
-    # Currently the TCP Nop option does not have any constructor
-    # argument asserts.
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "The TCP Nop option.",
-            "_args": [],
-            "_kwargs": {},
-            "_results": {
-                "__len__": 1,
-                "__str__": "nop",
-                "__repr__": "TcpOptionNop()",
-                "__bytes__": b"\x01",
-                "type": TcpOptionType.NOP,
-                "len": TCP__OPTION__NOP__LEN,
-            },
-        },
-    ]
-)
 class TestTcpOptionNopAssembler(TestCase):
     """
     The TCP Nop option assembler tests.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
     def setUp(self) -> None:
         """
-        Initialize the TCP Nop option object with testcase arguments.
+        Build the TCP Nop option; the option takes no constructor args.
         """
 
-        self._option = TcpOptionNop(*self._args, **self._kwargs)
+        self._option = TcpOptionNop()
 
     def test__tcp__option__nop__len(self) -> None:
         """
-        Ensure the TCP Nop option '__len__()' method returns a correct
-        value.
+        Ensure '__len__()' returns TCP__OPTION__NOP__LEN (1 byte).
         """
 
         self.assertEqual(
             len(self._option),
-            self._results["__len__"],
+            TCP__OPTION__NOP__LEN,
+            msg="Unexpected __len__ for TCP Nop option.",
         )
 
     def test__tcp__option__nop__str(self) -> None:
         """
-        Ensure the TCP Nop option '__str__()' method returns a correct
-        value.
+        Ensure '__str__()' returns the log string 'nop'.
         """
 
         self.assertEqual(
             str(self._option),
-            self._results["__str__"],
+            "nop",
+            msg="Unexpected __str__ for TCP Nop option.",
         )
 
     def test__tcp__option__nop__repr(self) -> None:
         """
-        Ensure the TCP Nop option '__repr__()' method returns a correct
-        value.
+        Ensure '__repr__()' returns 'TcpOptionNop()'.
         """
 
         self.assertEqual(
             repr(self._option),
-            self._results["__repr__"],
+            "TcpOptionNop()",
+            msg="Unexpected __repr__ for TCP Nop option.",
         )
 
     def test__tcp__option__nop__bytes(self) -> None:
         """
-        Ensure the TCP Nop option '__bytes__()' method returns a correct
-        value.
+        Ensure '__bytes__()' returns the single wire byte 0x01.
         """
 
+        # TCP Nop option wire format (1 byte):
+        #   Byte 0 : 0x01 -> type=TcpOptionType.NOP (1)
         self.assertEqual(
             bytes(self._option),
-            self._results["__bytes__"],
+            b"\x01",
+            msg="Unexpected __bytes__ for TCP Nop option.",
         )
 
     def test__tcp__option__nop__type(self) -> None:
         """
-        Ensure the TCP Nop option 'type' field contains a correct value.
+        Ensure the 'type' field is TcpOptionType.NOP.
         """
 
         self.assertEqual(
             self._option.type,
-            self._results["type"],
+            TcpOptionType.NOP,
+            msg="Unexpected 'type' field for TCP Nop option.",
         )
 
     def test__tcp__option__nop__length(self) -> None:
         """
-        Ensure the TCP Nop option 'len' field contains a correct value.
+        Ensure the 'len' field equals TCP__OPTION__NOP__LEN.
         """
 
         self.assertEqual(
             self._option.len,
-            self._results["len"],
+            TCP__OPTION__NOP__LEN,
+            msg="Unexpected 'len' field for TCP Nop option.",
+        )
+
+
+class TestTcpOptionNopParser(TestCase):
+    """
+    The TCP Nop option parser positive tests.
+    """
+
+    def test__tcp__option__nop__from_buffer__exact_length(self) -> None:
+        """
+        Ensure from_buffer parses a 1-byte Nop whose buffer length exactly
+        matches TCP__OPTION__NOP__LEN.
+        """
+
+        # TCP Nop option wire format (exactly 1 byte):
+        #   Byte 0 : 0x01 -> type=TcpOptionType.NOP (1)
+        buffer = b"\x01"
+
+        self.assertEqual(
+            len(buffer),
+            TCP__OPTION__NOP__LEN,
+            msg="Fixture must match TCP__OPTION__NOP__LEN.",
+        )
+
+        option = TcpOptionNop.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionNop(),
+            msg="Parsed option must equal the reference TcpOptionNop.",
+        )
+
+    def test__tcp__option__nop__from_buffer__trailing_bytes_ignored(self) -> None:
+        """
+        Ensure from_buffer parses a Nop option when the buffer carries
+        trailing bytes past the 1-byte option payload (those trailing
+        bytes are consumed by the next option in the options container).
+        """
+
+        # TCP Nop option wire format followed by 5 trailing bytes that
+        # must be ignored by TcpOptionNop.from_buffer:
+        #   Byte 0    : 0x01        -> type=TcpOptionType.NOP (1)
+        #   Bytes 1-5 : b"ZH0PA"    -> trailing data, not part of the Nop
+        buffer = b"\x01" + b"ZH0PA"
+
+        option = TcpOptionNop.from_buffer(buffer)
+
+        self.assertEqual(
+            option,
+            TcpOptionNop(),
+            msg="Parsed option must equal the reference TcpOptionNop (trailing bytes ignored).",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "The TCP Nop option.",
-            "_args": [
-                b"\x01" + b"ZH0PA",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "option": TcpOptionNop(),
-            },
-        },
-        {
-            "_description": "The TCP Nop option minimum length assert.",
-            "_args": [
-                b"",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Nop option, buffer shorter than TCP__OPTION__NOP__LEN.",
+            "_args": [b""],
             "_results": {
                 "error": AssertionError,
-                "error_message": ("The minimum length of the TCP Nop option must be 1 " "byte. Got: 0"),
+                "error_message": "The minimum length of the TCP Nop option must be 1 byte. Got: 0",
             },
         },
         {
-            "_description": "The TCP Nop option incorrect 'type' field assert.",
-            "_args": [
-                b"\xff",
-            ],
-            "_kwargs": {},
+            "_description": "TCP Nop option, buffer 'type' byte is not TcpOptionType.NOP.",
+            "_args": [b"\xff"],
             "_results": {
                 "error": AssertionError,
                 "error_message": (
@@ -185,37 +193,37 @@ class TestTcpOptionNopAssembler(TestCase):
                 ),
             },
         },
+        {
+            "_description": "TCP Nop option, buffer 'type' byte is Eol (another known type).",
+            "_args": [b"\x00"],
+            "_results": {
+                "error": AssertionError,
+                "error_message": f"The TCP Nop option type must be {TcpOptionType.NOP!r}. Got: {TcpOptionType.EOL!r}",
+            },
+        },
     ]
 )
-class TestTcpOptionNopParser(TestCase):
+class TestTcpOptionNopParserFailures(TestCase):
     """
-    The TCP Nop option parser tests.
+    The TCP Nop option parser failure-path tests (assertion errors on
+    short and mistyped buffers).
     """
 
     _description: str
     _args: list[Any]
-    _kwargs: dict[str, Any]
     _results: dict[str, Any]
 
-    def test__tcp__option__nop__from_buffer(self) -> None:
+    def test__tcp__option__nop__from_buffer__error(self) -> None:
         """
-        Ensure the TCP Nop option parser creates the proper option object
-        or throws assertion error.
+        Ensure from_buffer raises the expected exception with the expected
+        message for each malformed buffer.
         """
 
-        if "option" in self._results:
-            option = TcpOptionNop.from_buffer(*self._args, **self._kwargs)
+        with self.assertRaises(self._results["error"]) as error:
+            TcpOptionNop.from_buffer(*self._args)
 
-            self.assertEqual(
-                option,
-                self._results["option"],
-            )
-
-        if "error" in self._results:
-            with self.assertRaises(self._results["error"]) as error:
-                TcpOptionNop.from_buffer(*self._args, **self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                self._results["error_message"],
-            )
+        self.assertEqual(
+            str(error.exception),
+            self._results["error_message"],
+            msg=f"Unexpected error message for case: {self._description}",
+        )
