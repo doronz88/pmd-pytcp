@@ -27,42 +27,54 @@
 """
 This module contains tests for the IPv6 Frag packet sanity checks.
 
-net_proto/tests/unit/protocols/tcp/test__ip6_frag__parser__sanity_checks.py
+net_proto/tests/unit/protocols/ip6_frag/test__ip6_frag__parser__sanity_checks.py
 
 ver 3.0.4
 """
 
 
-from typing import Any
-
-from parameterized import parameterized_class  # type: ignore
+from types import SimpleNamespace
+from unittest import TestCase
 
 from net_proto import Ip6FragParser, Ip6FragSanityError, PacketRx
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+
+# Valid 8-byte IPv6 Frag header (no payload). Used to assert that
+# '_validate_sanity()' is a no-op for well-formed frames.
+#
+# IPv6 Frag wire frame (8 bytes, header only):
+#   Byte  0     : 0xff       -> next=IpProto.RAW (255)
+#   Byte  1     : 0x00       -> reserved (must be zero)
+#   Bytes 2-3   : 0x0000     -> offset=0, res=0, flag_mf=0
+#   Bytes 4-7   : 0x00000000 -> id=0
+_BASELINE_FRAME = b"\xff\x00\x00\x00\x00\x00\x00\x00"
 
 
-@parameterized_class([])
-class TestIp6FragParserSanityChecks(TestCasePacketRxIp6):
+class TestIp6FragParserSanityChecks(TestCase):
     """
     The IPv6 Frag packet parser sanity checks tests.
+
+    The Ip6FragParser '_validate_sanity()' implementation is currently
+    a no-op (RFC 2460 fragmentation header has no semantic constraints
+    beyond the wire-format ones already covered by the integrity stage
+    and dataclass asserts). This suite documents that contract: a
+    well-formed frame must parse without raising Ip6FragSanityError,
+    and any future sanity check should be added here as a parametrized
+    negative test.
     """
 
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
-    _packet_rx: PacketRx
-
-    def test__ip6_frag__parser(self) -> None:
+    def test__ip6_frag__parser__sanity__no_op_for_baseline_frame(self) -> None:
         """
-        Ensure the IPv6 Frag packet parser raises sanity error on crazy packets.
+        Ensure that parsing a well-formed minimal frame does not raise
+        Ip6FragSanityError. This guards against a future change that
+        accidentally rejects valid frames.
         """
 
-        with self.assertRaises(Ip6FragSanityError) as error:
-            Ip6FragParser(self._packet_rx)
-
-        self.assertEqual(
-            str(error.exception),
-            f"[SANITY ERROR][IPv6 Frag] {self._results["error_message"]}",
+        packet_rx = PacketRx(_BASELINE_FRAME)
+        packet_rx.ip6 = SimpleNamespace(  # type: ignore[assignment]
+            dlen=len(_BASELINE_FRAME),
         )
+
+        try:
+            Ip6FragParser(packet_rx)
+        except Ip6FragSanityError as error:  # pragma: no cover
+            self.fail(f"Baseline frame must not raise Ip6FragSanityError, got: {error!s}")
