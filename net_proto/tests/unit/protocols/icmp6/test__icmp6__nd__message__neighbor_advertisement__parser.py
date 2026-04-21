@@ -33,7 +33,9 @@ ver 3.0.4
 """
 
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -43,9 +45,32 @@ from net_proto import (
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6Parser,
+    Ip6Parser,
     PacketRx,
 )
-from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
+
+
+def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
+    """
+    Build a PacketRx with a minimal IPv6 stub. 'hop' is set to 255, 'src'
+    to a unicast address, and 'dst' to all-nodes multicast so the ND
+    Neighbor Advertisement sanity checks pass regardless of the
+    'flag_s' value in the frame.
+    """
+
+    packet_rx = PacketRx(frame)
+    packet_rx.ip = packet_rx.ip6 = cast(
+        Ip6Parser,
+        SimpleNamespace(
+            dlen=len(frame),
+            payload_len=len(frame),
+            pshdr_sum=0,
+            src=Ip6Address("2001:db8::1"),
+            dst=Ip6Address("ff02::1"),
+            hop=255,
+        ),
+    )
+    return packet_rx
 
 
 @parameterized_class(
@@ -61,19 +86,12 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
                 #   Reserved : 0x000000
                 #   Target   : 2001:db8::1
                 #   Options  : none
-                #
-                #   Summary  : Router NA for 2001:db8::1 received from 2001:db8::1 to ff02::1.
                 b"\x88\x00\xaa\x44\xa0\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x01"
             ),
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::1"),
-                "ip6__dst": Ip6Address("ff02::1"),
-            },
             "_results": {
                 "message": Icmp6NdMessageNeighborAdvertisement(
-                    cksum=43588,
+                    cksum=0xAA44,
                     flag_r=True,
                     flag_s=False,
                     flag_o=True,
@@ -86,26 +104,19 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
             "_description": "ICMPv6 ND Neighbor Advertisement message, Slla option present.",
             "_frame_rx": (
                 # ICMPv6 Neighbor Advertisement
-                #   Type     : 136 (Neighbor Advertisement)
+                #   Type     : 136
                 #   Code     : 0
                 #   Checksum : 0xa2a9
                 #   Flags    : 0x40 (R=0, S=1, O=0)
                 #   Reserved : 0x000000
                 #   Target   : 2001:db8::2
                 #   Options  : Type 1 (Source Link-Layer Address) = 00:11:22:33:44:55
-                #
-                #   Summary  : Solicited NA for 2001:db8::2 advertising source MAC 00:11:22:33:44:55.
                 b"\x88\x00\xa2\xa9\x40\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\x00\x00"
                 b"\x00\x00\x00\x00\x00\x00\x00\x02\x01\x01\x00\x11\x22\x33\x44\x55"
             ),
-            "_mocked_values": {
-                "ip6__hop": 255,
-                "ip6__src": Ip6Address("2001:db8::1"),
-                "ip6__dst": Ip6Address("ff02::1"),
-            },
             "_results": {
                 "message": Icmp6NdMessageNeighborAdvertisement(
-                    cksum=41641,
+                    cksum=0xA2A9,
                     flag_r=False,
                     flag_s=True,
                     flag_o=False,
@@ -118,24 +129,26 @@ from net_proto.tests.lib.testcase__packet_rx__ip6 import TestCasePacketRxIp6
         },
     ]
 )
-class TestIcmp6NdNeighborAdvertisementParser(TestCasePacketRxIp6):
+class TestIcmp6NdMessageNeighborAdvertisementParser(TestCase):
     """
     The ICMPv6 ND Neighbor Advertisement message parser tests.
     """
 
     _description: str
     _frame_rx: bytes
-    _mocked_values: dict[str, Any]
     _results: dict[str, Any]
 
-    _packet_rx: PacketRx
-
-    def test__icmp6__nd__message__neighbor_advertisement__parser(
-        self,
-    ) -> None:
+    def setUp(self) -> None:
         """
-        Ensure the ICMPv6 ND Neighbor Advertisement message 'from_bytes()'
-        method creates a proper message object.
+        Build a PacketRx for the parametrized frame.
+        """
+
+        self._packet_rx = _packet_rx_with_ip6(self._frame_rx)
+
+    def test__icmp6__nd__message__neighbor_advertisement__parser(self) -> None:
+        """
+        Ensure the ICMPv6 parser produces an Icmp6NdMessageNeighborAdvertisement
+        whose fields match the expected reference message for each frame.
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -143,4 +156,33 @@ class TestIcmp6NdNeighborAdvertisementParser(TestCasePacketRxIp6):
         self.assertEqual(
             icmp6_parser.message,
             self._results["message"],
+            msg=f"Parsed message mismatch for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__neighbor_advertisement__parser__message_type(self) -> None:
+        """
+        Ensure the parsed message is an Icmp6NdMessageNeighborAdvertisement
+        instance.
+        """
+
+        icmp6_parser = Icmp6Parser(self._packet_rx)
+
+        self.assertIsInstance(
+            icmp6_parser.message,
+            Icmp6NdMessageNeighborAdvertisement,
+            msg=f"Parsed message must be Icmp6NdMessageNeighborAdvertisement for case: {self._description}",
+        )
+
+    def test__icmp6__nd__message__neighbor_advertisement__parser__frame_advanced(self) -> None:
+        """
+        Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
+        Neighbor Advertisement message (the whole frame is consumed).
+        """
+
+        Icmp6Parser(self._packet_rx)
+
+        self.assertEqual(
+            len(self._packet_rx.frame),
+            0,
+            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
         )
