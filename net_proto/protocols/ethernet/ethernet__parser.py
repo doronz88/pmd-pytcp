@@ -78,7 +78,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
 
         if len(self._frame) < ETHERNET__HEADER__LEN:
             raise EthernetIntegrityError(
-                "The minimum packet length must be " f"{ETHERNET__HEADER__LEN} bytes, got {len(self._frame)} bytes."
+                f"The minimum packet length must be {ETHERNET__HEADER__LEN} bytes, got {len(self._frame)} bytes."
             )
 
     @override
