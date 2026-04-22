@@ -29,7 +29,7 @@
 
 
 """
-This module contains unit tests for the Packet Handler UDP RX operations.
+This module contains integration tests for the Packet Handler UDP RX operations.
 
 pytcp/tests/integration/test__packet_handler__udp__rx.py
 
@@ -384,6 +384,57 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
         },
+        {
+            "_description": "Ethernet/IPv4/UDP - malformed (corrupted checksum), failed parse drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=UDP
+                # UDP: sport=1000, dport=2000, len=13, cksum=0xffff (intentionally invalid)
+                # Payload: "hello"
+                #
+                # Summary: UDP packet with bad checksum triggers UdpParser to raise
+                #          'UdpIntegrityError'; bumps 'udp__failed_parse__drop' and
+                #          skips socket dispatch.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x21\x00\x01\x00\x00\x40\x11\x64\x6a\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\xe8\x07\xd0\x00\x0d\xff\xff\x68\x65\x6c\x6c\x6f",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                udp__pre_parse=1,
+                udp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4/UDP - src IP unspecified (0.0.0.0), silently dropped",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: src=0.0.0.0 (unspecified), dst=10.0.1.7, proto=UDP
+                # UDP: sport=68, dport=67 (DHCP-like), payload="hello", cksum=0xb074
+                #
+                # Summary: UDP from an unspecified source IP is silently dropped without
+                #          ICMP response (avoids infinite reply loops). Bumps
+                #          'udp__ip_source_unspecified'.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x21\x00\x01\x00\x00\x40\x11\x6f\xc5\x00\x00\x00\x00\x0a\x00"
+                b"\x01\x07\x00\x44\x00\x43\x00\x0d\xb0\x74\x68\x65\x6c\x6c\x6f",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                udp__pre_parse=1,
+                udp__ip_source_unspecified=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerUdpRx(NetworkTestCase):
@@ -393,9 +444,9 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -424,4 +475,70 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
             msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
+
+
+class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
+    """
+    Test the Packet Handler UDP RX path when 'stack.UDP__ECHO_NATIVE' is
+    disabled. The default 'NetworkTestCase' fixture patches it to True
+    (so port-7 packets are echoed), so this dedicated TestCase flips it
+    off in setUp to exercise the fallthrough into the ICMP-unreachable
+    branch for port-7 traffic.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build the standard mock stack, then disable native UDP echo.
+        """
+
+        super().setUp()
+        from pytcp import stack
+
+        stack.__dict__["UDP__ECHO_NATIVE"] = False
+
+    def test__packet_handler__udp__rx__port7_echo_disabled(self) -> None:
+        """
+        Ensure a UDP packet to port 7 with 'UDP__ECHO_NATIVE' disabled
+        falls through to the no-socket-match branch and replies with
+        ICMPv4 Port Unreachable.
+        """
+
+        # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91
+        # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=UDP
+        # UDP: sport=1000, dport=7 (echo), payload="hello", cksum=0xa1b1
+        #
+        # Summary: With native echo off, port-7 UDP is treated as a normal closed-port
+        #          packet — the handler responds with ICMPv4 Port Unreachable instead.
+        frame_rx = (
+            b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+            b"\x00\x21\x00\x01\x00\x00\x40\x11\x64\x6a\x0a\x00\x01\x5b\x0a\x00"
+            b"\x01\x07\x03\xe8\x00\x07\x00\x0d\xa1\xb1\x68\x65\x6c\x6c\x6f"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Echo-disabled port-7 UDP must produce exactly one ICMPv4 Unreachable response.",
+        )
+        # ICMPv4 Destination Unreachable, code 3 (port) sits at offset 34 (Eth+IPv4 header).
+        self.assertEqual(
+            self._frames_tx[0][34:36],
+            b"\x03\x03",
+            msg="Response must be ICMPv4 Destination Unreachable / code Port.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                udp__pre_parse=1,
+                udp__no_socket_match__respond_icmp4_unreachable=1,
+            ),
+            msg="udp__no_socket_match__respond_icmp4_unreachable must bump (not echo).",
         )
