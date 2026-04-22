@@ -67,6 +67,12 @@ class IpHostGatewayError(NetAddrError):
     """
 
 
+class IpHostSanityError(NetAddrError):
+    """
+    Base class for all IP host sanity exceptions.
+    """
+
+
 class Ip4AddressFormatError(IpAddressFormatError):
     """
     Exception raised when IPv4 address format is invalid.
@@ -103,7 +109,7 @@ class Ip4HostFormatError(IpHostFormatError):
         super().__init__(f"The IPv4 host format is invalid: {value!r}")
 
 
-class Ip4HostSanityError(IpHostFormatError):
+class Ip4HostSanityError(IpHostSanityError):
     """
     Exception raised when IPv4 host doesn't belong to provided network.
     """
@@ -157,7 +163,7 @@ class Ip6HostFormatError(IpHostFormatError):
         super().__init__(f"The IPv6 host format is invalid: {value!r}")
 
 
-class Ip6HostSanityError(IpHostFormatError):
+class Ip6HostSanityError(IpHostSanityError):
     """
     Exception raised when IPv6 host doesn't belong to provided network.
     """
