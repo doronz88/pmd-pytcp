@@ -29,7 +29,7 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv6 TX operations.
+This module contains integration tests for the Packet Handler IPv6 TX operations.
 
 pytcp/tests/integration/test__packet_handler__ip6__tx.py
 
@@ -41,6 +41,16 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip6Address
+from net_proto import (
+    Icmp6Assembler,
+    Icmp6NdMessageNeighborSolicitation,
+    Icmp6NdOptions,
+    IpProto,
+)
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
+    Icmp6Mld2ReportMessage,
+)
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import (
@@ -58,6 +68,7 @@ from pytcp.tests.lib.network_testcase import (
     [
         {
             "_description": "Ethernet/IPv6 - src valid, dst unicast local network",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -93,10 +104,10 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src not owned drop, dst unicast local network",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": HOST_B__IP6_ADDRESS,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -107,10 +118,10 @@ from pytcp.tests.lib.network_testcase import (
                 ip6__pre_assemble=1,
                 ip6__src_not_owned__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src multicast replace, dst unicast local network",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": IP6__MULTICAST__ALL_NODES,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -147,10 +158,10 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src multicast drop, dst unicast local network",
+            "_clear_ip6_host": True,
             "_kwargs": {
                 "ip6__src": IP6__MULTICAST__ALL_NODES,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -161,10 +172,10 @@ from pytcp.tests.lib.network_testcase import (
                 ip6__pre_assemble=1,
                 ip6__src_multicast__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified replace, dst unicast local network",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -201,10 +212,10 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified replace, dst unicast external network",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -241,10 +252,10 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src unspecified drop, dst unicast local network",
+            "_clear_ip6_host": True,
             "_kwargs": {
                 "ip6__src": IP6__UNSPECIFIED,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -255,10 +266,10 @@ from pytcp.tests.lib.network_testcase import (
                 ip6__pre_assemble=1,
                 ip6__src_unspecified__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - src valid, dst unspecified drop",
+            "_clear_ip6_host": False,
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__UNSPECIFIED,
@@ -269,21 +280,102 @@ from pytcp.tests.lib.network_testcase import (
                 ip6__pre_assemble=1,
                 ip6__dst_unspecified__drop=1,
             ),
-            "_expected__error": None,
+        },
+        {
+            "_description": ("Ethernet/IPv6 - src unspecified accepted for ICMPv6 ND DAD probe (NS, no options)"),
+            "_clear_ip6_host": False,
+            "_kwargs": {
+                # DAD probe: src=:: + ICMPv6 NS payload with no options + dst=solicited-node multicast
+                "ip6__src": IP6__UNSPECIFIED,
+                "ip6__dst": Ip6Address("ff02::1:ff00:5"),
+                "ip6__hop": 255,
+                "ip6__payload": Icmp6Assembler(
+                    icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                        target_address=Ip6Address("2001:db8:0:1::5"),
+                        options=Icmp6NdOptions(),
+                    ),
+                ),
+            },
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:05 (solicited-node multicast for ::5)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd
+                # IPv6
+                #   Source IP       : ::                       (DAD probe — unspecified accepted)
+                #   Destination IP  : ff02::1:ff00:5
+                #   Hop Limit       : 255
+                # ICMPv6 ND Neighbor Solicitation
+                #   Type/Code       : 135 / 0, target=2001:db8:0:1::5, no options
+                b"\x33\x33\xff\x00\x00\x05\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x05\x87\x00\x4c\xe4\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x05",
+            ],
+            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                ip6__pre_assemble=1,
+                ip6__src_unspecified__send=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": "Ethernet/IPv6 - src unspecified accepted for ICMPv6 MLDv2 Report",
+            "_clear_ip6_host": False,
+            "_kwargs": {
+                # MLDv2 report: src=:: + ICMPv6 MLDv2 Report payload + dst=ff02::16
+                "ip6__src": IP6__UNSPECIFIED,
+                "ip6__dst": Ip6Address("ff02::16"),
+                "ip6__hop": 1,
+                "ip6__payload": Icmp6Assembler(
+                    icmp6__message=Icmp6Mld2ReportMessage(records=[]),
+                ),
+            },
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:16 (MLDv2 routers)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd
+                # IPv6
+                #   Source IP       : ::          (MLDv2 — unspecified accepted)
+                #   Destination IP  : ff02::16
+                #   Hop Limit       : 1
+                # ICMPv6 MLDv2 Report
+                #   Type/Code       : 143 / 0, 0 records
+                b"\x33\x33\x00\x00\x00\x16\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x08\x3a\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x16\x8f\x00\x71\xa4\x00\x00\x00\x00",
+            ],
+            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                ip6__pre_assemble=1,
+                ip6__src_unspecified__send=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
         },
     ]
 )
 class TestPacketHandlerIp6Tx(NetworkTestCase):
     """
-    Test the Packet Handler IPv6 TX operations.
+    Test the Packet Handler IPv6 TX operations (success path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _clear_ip6_host: bool
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -293,41 +385,168 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
         frames, statuses, and statistics for each parametrized case.
         """
 
-        if any(
-            pattern in self._description
-            for pattern in (
-                "src multicast drop",
-                "src limited broadcast drop",
-                "src unspecified drop",
-            )
-        ):
+        if self._clear_ip6_host:
             self._packet_handler._ip6_host = []
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_ip6(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler._phtx_ip6(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
 
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ip6(**self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+@parameterized_class(
+    [
+        {
+            "_description": "_phtx_ip6 - ip6__hop == 0 fails the 0 < hop < 256 assert",
+            "_kwargs": {
+                "ip6__src": STACK__IP6_HOST.address,
+                "ip6__dst": HOST_A__IP6_ADDRESS,
+                "ip6__hop": 0,
+            },
+            "_expected__error": AssertionError(),
+        },
+        {
+            "_description": "_phtx_ip6 - ip6__hop == 256 fails the 0 < hop < 256 assert",
+            "_kwargs": {
+                "ip6__src": STACK__IP6_HOST.address,
+                "ip6__dst": HOST_A__IP6_ADDRESS,
+                "ip6__hop": 256,
+            },
+            "_expected__error": AssertionError(),
+        },
+    ]
+)
+class TestPacketHandlerIp6TxErrors(NetworkTestCase):
+    """
+    Test the Packet Handler IPv6 TX operations (error path).
+    """
+
+    _description: str
+    _kwargs: dict[str, Any]
+    _expected__error: Exception
+
+    def test__packet_handler__ip6__tx__error(self) -> None:
+        """
+        Ensure '_phtx_ip6' raises the expected exception for invalid kwargs.
+        """
+
+        with self.assertRaises(type(self._expected__error)) as error:
+            self._packet_handler._phtx_ip6(**self._kwargs)
+
+        # AssertionError messages depend on '__debug__' and the assert
+        # expression text; only assert the exception type is correct.
+        self.assertIsInstance(
+            error.exception,
+            type(self._expected__error),
+            msg=f"Unexpected exception type for case: {self._description}",
+        )
+
+
+class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
+    """
+    Test the Packet Handler IPv6 TX path when IPv6 protocol support is
+    disabled — '_phtx_ip6' must short-circuit before assembly.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build the standard mock stack, then disable IPv6 protocol
+        support on the packet handler.
+        """
+
+        super().setUp()
+        self._packet_handler._ip6_support = False
+
+    def test__packet_handler__ip6__tx__no_ip6_support(self) -> None:
+        """
+        Ensure '_phtx_ip6' returns 'DROPED__IP6__NO_PROTOCOL_SUPPORT'
+        and bumps 'ip6__no_proto_support__drop' without emitting any
+        frame when IPv6 support is disabled.
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPED__IP6__NO_PROTOCOL_SUPPORT,
+            msg="_phtx_ip6 must return DROPED__IP6__NO_PROTOCOL_SUPPORT when IPv6 disabled.",
+        )
+
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="No frame must be emitted when IPv6 protocol support is disabled.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            PacketStatsTx(
+                ip6__pre_assemble=1,
+                ip6__no_proto_support__drop=1,
+            ),
+            msg="Only ip6__pre_assemble and ip6__no_proto_support__drop must bump.",
+        )
+
+
+class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
+    """
+    Test the public 'send_ip6_packet' wrapper, which forwards into
+    '_phtx_ip6' wrapping the user payload as a 'RawAssembler' and
+    renaming the addressing kwargs.
+    """
+
+    def test__packet_handler__ip6__tx__send_ip6_packet(self) -> None:
+        """
+        Ensure 'send_ip6_packet' wraps the call to '_phtx_ip6' with
+        a 'RawAssembler' payload using the supplied 'ip6__next' and
+        the renamed addressing kwargs, producing a successful frame
+        and matching stats.
+        """
+
+        tx_status = self._packet_handler.send_ip6_packet(
+            ip6__local_address=STACK__IP6_HOST.address,
+            ip6__remote_address=HOST_A__IP6_ADDRESS,
+            ip6__next=IpProto.from_int(99),
+            ip6__payload=b"\x00\x00\x00\x00",
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="send_ip6_packet must propagate the underlying _phtx_ip6 TxStatus.",
+        )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="send_ip6_packet must emit exactly one frame for a small RAW payload.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            PacketStatsTx(
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+            msg="send_ip6_packet stats must match a direct _phtx_ip6 RAW-payload call.",
+        )
