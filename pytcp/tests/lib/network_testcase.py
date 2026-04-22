@@ -26,22 +26,20 @@
 
 # pylint: disable=protected-access
 # pyright: reportPrivateUsage=false
-# pyright: reportUnknownMemberType=false
 
 
 """
 This module contains base testcase for PyTCP Packet Handler tests.
 
-pytcp/tests/unit/test__packet_handle__arp__tx.py
+pytcp/tests/lib/network_testcase.py
 
 ver 3.0.4
 """
 
 
 from typing import cast
-
-from testslide import TestCase
-from testslide.strict_mock import StrictMock
+from unittest import TestCase
+from unittest.mock import create_autospec
 
 from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, MacAddress
 from net_proto.lib.buffer import Buffer
@@ -116,6 +114,21 @@ IP6__MULTICAST__ALL_NODES = Ip6Address("ff02::1")
 IP6__MULTICAST__ALL_ROUTERS = Ip6Address("ff02::2")
 IP6__MULTICAST__MLD2_ROUTERS = Ip6Address("ff02::16")
 
+# Pre-populated address tables consumed by the mocked 'find_entry'
+# dispatchers. Unknown lookups raise to preserve the strict-mock
+# semantics the original testslide harness enforced.
+_ARP_CACHE__FIND_ENTRY__TABLE: dict[Ip4Address, MacAddress | None] = {
+    HOST_A__IP4_ADDRESS: HOST_A__MAC_ADDRESS,
+    HOST_B__IP4_ADDRESS: None,
+    STACK__IP4_GATEWAY: STACK__IP4_GATEWAY_MAC_ADDRESS,
+}
+_ND_CACHE__FIND_ENTRY__TABLE: dict[Ip6Address, MacAddress | None] = {
+    HOST_A__IP6_ADDRESS: HOST_A__MAC_ADDRESS,
+    HOST_B__IP6_ADDRESS: None,
+    STACK__IP6_GATEWAY: STACK__IP6_GATEWAY_MAC_ADDRESS,
+    ROUTER_B__IP6_ADDRESS: None,
+}
+
 
 class NetworkTestCase(TestCase):
     """
@@ -161,85 +174,46 @@ class NetworkTestCase(TestCase):
             self.assertEqual(
                 frame_tx,
                 bytes(packet_tx),
-                "Mismatch between output of 'assemble()' and 'bytes()' methods.",
+                msg="TxRing mock: 'assemble()' output must equal 'bytes(packet_tx)'.",
             )
 
             self._frames_tx.append(frame_tx)
 
         # Mock the TxRing so we can record the assembled frames.
-        mock_TxRing = cast(TxRing, StrictMock(template=TxRing))
-
-        self.mock_callable(
-            target=mock_TxRing,
-            method="enqueue",
-        ).with_implementation(
-            func=_mock_enqueue,
-        )
+        mock_TxRing = create_autospec(TxRing, spec_set=True)
+        mock_TxRing.enqueue.side_effect = _mock_enqueue
 
         # Mock the ArpCache so we can get predictable responses.
-        mock_ArpCache = cast(ArpCache, StrictMock(template=ArpCache))
+        def _mock_arp_find_entry(*, ip4_address: Ip4Address) -> MacAddress | None:
+            """
+            Mock 'ArpCache.find_entry()' — dispatch on 'ip4_address' via
+            the pre-populated table; raise on unknown keys.
+            """
 
-        self.mock_callable(
-            target=mock_ArpCache,
-            method="find_entry",
-        ).for_call(
-            ip4_address=HOST_A__IP4_ADDRESS
-        ).to_return_value(HOST_A__MAC_ADDRESS)
+            if ip4_address not in _ARP_CACHE__FIND_ENTRY__TABLE:
+                raise AssertionError(f"Unexpected 'ArpCache.find_entry' call. Got: {ip4_address=}")
 
-        self.mock_callable(
-            target=mock_ArpCache,
-            method="find_entry",
-        ).for_call(
-            ip4_address=HOST_B__IP4_ADDRESS
-        ).to_return_value(None)
+            return _ARP_CACHE__FIND_ENTRY__TABLE[ip4_address]
 
-        self.mock_callable(
-            target=mock_ArpCache,
-            method="find_entry",
-        ).for_call(
-            ip4_address=STACK__IP4_GATEWAY
-        ).to_return_value(STACK__IP4_GATEWAY_MAC_ADDRESS)
-
-        self.mock_callable(
-            target=mock_ArpCache,
-            method="add_entry",
-        ).to_return_value(None)
+        mock_ArpCache = create_autospec(ArpCache, spec_set=True)
+        mock_ArpCache.find_entry.side_effect = _mock_arp_find_entry
+        mock_ArpCache.add_entry.return_value = None
 
         # Mock the NdCache so we can get predictable responses.
-        mock_NdCache = cast(NdCache, StrictMock(template=NdCache))
+        def _mock_nd_find_entry(*, ip6_address: Ip6Address) -> MacAddress | None:
+            """
+            Mock 'NdCache.find_entry()' — dispatch on 'ip6_address' via
+            the pre-populated table; raise on unknown keys.
+            """
 
-        self.mock_callable(
-            target=mock_NdCache,
-            method="find_entry",
-        ).for_call(
-            ip6_address=HOST_A__IP6_ADDRESS
-        ).to_return_value(HOST_A__MAC_ADDRESS)
+            if ip6_address not in _ND_CACHE__FIND_ENTRY__TABLE:
+                raise AssertionError(f"Unexpected 'NdCache.find_entry' call. Got: {ip6_address=}")
 
-        self.mock_callable(
-            target=mock_NdCache,
-            method="find_entry",
-        ).for_call(
-            ip6_address=HOST_B__IP6_ADDRESS
-        ).to_return_value(None)
+            return _ND_CACHE__FIND_ENTRY__TABLE[ip6_address]
 
-        self.mock_callable(
-            target=mock_NdCache,
-            method="find_entry",
-        ).for_call(
-            ip6_address=STACK__IP6_GATEWAY
-        ).to_return_value(STACK__IP6_GATEWAY_MAC_ADDRESS)
-
-        self.mock_callable(
-            target=mock_NdCache,
-            method="find_entry",
-        ).for_call(
-            ip6_address=ROUTER_B__IP6_ADDRESS
-        ).to_return_value(None)
-
-        self.mock_callable(
-            target=mock_NdCache,
-            method="add_entry",
-        ).to_return_value(None)
+        mock_NdCache = create_autospec(NdCache, spec_set=True)
+        mock_NdCache.find_entry.side_effect = _mock_nd_find_entry
+        mock_NdCache.add_entry.return_value = None
 
         # Prepare PacketHandler object to be used with the tests.
         self._packet_handler = PacketHandlerL2(
@@ -262,8 +236,8 @@ class NetworkTestCase(TestCase):
         self._frames_tx = []
 
         stack.mock__init(
-            mock__tx_ring=mock_TxRing,
-            mock__arp_cache=mock_ArpCache,
-            mock__nd_cache=mock_NdCache,
+            mock__tx_ring=cast(TxRing, mock_TxRing),
+            mock__arp_cache=cast(ArpCache, mock_ArpCache),
+            mock__nd_cache=cast(NdCache, mock_NdCache),
             mock__packet_handler=self._packet_handler,
         )
