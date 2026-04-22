@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains unit tests for the 'PacketHandlerUdpRx' mixin.
+
+pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__udp__rx.py
+
+ver 3.0.4
+"""
+
+
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from net_addr import Ip4Address, Ip6Address
+from net_proto import (
+    Icmp4MessageDestinationUnreachable,
+    Icmp6MessageDestinationUnreachable,
+    Ip4Assembler,
+    Ip4Parser,
+    Ip6Assembler,
+    Ip6Parser,
+    UdpAssembler,
+)
+from net_proto.lib.packet_rx import PacketRx
+from pytcp import stack
+from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.lib.tx_status import TxStatus
+from pytcp.stack.packet_handler.packet_handler__udp__rx import (
+    PacketHandlerUdpRx,
+)
+
+# Silence log output emitted by the handlers during tests.
+stack.LOG__CHANNEL = set()
+# Disable UDP echo to avoid accidentally triggering the echo path in
+# tests that send UDP packets to arbitrary ports.
+stack.UDP__ECHO_NATIVE = False
+
+
+STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
+HOST_A__IP4 = Ip4Address("10.0.1.91")
+IP4__UNSPEC = Ip4Address()
+STACK__IP6_ADDRESS = Ip6Address("2001:db8::7")
+HOST_A__IP6 = Ip6Address("2001:db8::91")
+
+
+class _StubHandler(PacketHandlerUdpRx):
+    """
+    Minimal concrete subclass of 'PacketHandlerUdpRx' for testing.
+    """
+
+    def __init__(self) -> None:
+        self._packet_stats_rx = PacketStatsRx()
+        self.udp_tx_calls: list[dict[str, object]] = []
+        self.icmp4_tx_calls: list[dict[str, object]] = []
+        self.icmp6_tx_calls: list[dict[str, object]] = []
+
+    def _phtx_udp(self, **kwargs: object) -> TxStatus:
+        self.udp_tx_calls.append(kwargs)
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+    def _phtx_icmp4(self, **kwargs: object) -> TxStatus:
+        self.icmp4_tx_calls.append(kwargs)
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+    def _phtx_icmp6(self, **kwargs: object) -> TxStatus:
+        self.icmp6_tx_calls.append(kwargs)
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+
+def _packet_rx_from_ip4_udp(
+    *,
+    src: Ip4Address = HOST_A__IP4,
+    dst: Ip4Address = STACK__IP4_ADDRESS,
+    sport: int = 12345,
+    dport: int = 54321,
+    payload: bytes = b"",
+) -> PacketRx:
+    """
+    Build a 'PacketRx' parsed through Ip4Parser carrying a UDP payload.
+    """
+
+    udp = UdpAssembler(udp__sport=sport, udp__dport=dport, udp__payload=payload)
+    frame = bytes(Ip4Assembler(ip4__src=src, ip4__dst=dst, ip4__payload=udp))
+    packet_rx = PacketRx(frame)
+    Ip4Parser(packet_rx)
+    return packet_rx
+
+
+def _packet_rx_from_ip6_udp(
+    *,
+    src: Ip6Address = HOST_A__IP6,
+    dst: Ip6Address = STACK__IP6_ADDRESS,
+    sport: int = 12345,
+    dport: int = 54321,
+    payload: bytes = b"",
+) -> PacketRx:
+    """
+    Build a 'PacketRx' parsed through Ip6Parser carrying a UDP payload.
+    """
+
+    udp = UdpAssembler(udp__sport=sport, udp__dport=dport, udp__payload=payload)
+    frame = bytes(Ip6Assembler(ip6__src=src, ip6__dst=dst, ip6__payload=udp))
+    packet_rx = PacketRx(frame)
+    Ip6Parser(packet_rx)
+    return packet_rx
+
+
+class _UdpRxTestBase(TestCase):
+    """
+    Common setUp for the UDP RX tests.
+    """
+
+    def setUp(self) -> None:
+        self._handler = _StubHandler()
+        self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
+        self._sockets_patch.start()
+
+    def tearDown(self) -> None:
+        self._sockets_patch.stop()
+
+
+class TestPacketHandlerUdpRxParse(_UdpRxTestBase):
+    """
+    The parse-failure tests.
+    """
+
+    def test__stack__packet_handler__udp__rx__parse_fail_drops(self) -> None:
+        """
+        Ensure a UDP segment with a bad checksum is counted in
+        'udp__failed_parse__drop'.
+        """
+
+        frame = bytearray(
+            Ip4Assembler(
+                ip4__src=HOST_A__IP4,
+                ip4__dst=STACK__IP4_ADDRESS,
+                ip4__payload=UdpAssembler(udp__sport=12345, udp__dport=54321),
+            )
+        )
+        # UDP cksum is at offset IP4_header_len + 6. Minimum IP header is 20.
+        frame[20 + 6] = 0xDE
+        frame[20 + 7] = 0xAD
+
+        packet_rx = PacketRx(bytes(frame))
+        Ip4Parser(packet_rx)
+        self._handler._phrx_udp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__pre_parse,
+            1,
+            msg="udp__pre_parse must be incremented before the parse attempt.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__failed_parse__drop,
+            1,
+            msg="Malformed UDP must be counted in udp__failed_parse__drop.",
+        )
+
+
+class TestPacketHandlerUdpRxDispatch(_UdpRxTestBase):
+    """
+    The socket-match and unreachable-response tests.
+    """
+
+    def test__stack__packet_handler__udp__rx__socket_match_forwards(self) -> None:
+        """
+        Ensure a UDP datagram matching a listening socket is forwarded
+        to the socket's 'process_udp_packet'.
+        """
+
+        fake_socket = MagicMock()
+
+        class _MatchAllDict(dict[object, object]):
+            def get(self, key: object, default: object = None) -> object:
+                return fake_socket
+
+        self._sockets_patch.stop()
+        self._sockets_patch = patch.object(stack, "sockets", _MatchAllDict())
+        self._sockets_patch.start()
+
+        packet_rx = _packet_rx_from_ip4_udp(payload=b"hello")
+        self._handler._phrx_udp(packet_rx)
+
+        fake_socket.process_udp_packet.assert_called_once()
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__socket_match,
+            1,
+            msg="Matched UDP socket must increment udp__socket_match.",
+        )
+        self.assertEqual(self._handler.icmp4_tx_calls, [])
+
+    def test__stack__packet_handler__udp__rx__unspecified_src_silently_dropped(self) -> None:
+        """
+        Ensure a UDP datagram with an unspecified source IP is silently
+        dropped (no ICMP unreachable, no echo, no socket match).
+        """
+
+        packet_rx = _packet_rx_from_ip4_udp(src=IP4__UNSPEC, payload=b"hi")
+        self._handler._phrx_udp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__ip_source_unspecified,
+            1,
+            msg="Unspecified-src UDP must be counted in udp__ip_source_unspecified.",
+        )
+        self.assertEqual(self._handler.icmp4_tx_calls, [])
+        self.assertEqual(self._handler.udp_tx_calls, [])
+
+    def test__stack__packet_handler__udp__rx__no_match_ip4_responds_icmp4_unreachable(self) -> None:
+        """
+        Ensure an IPv4 UDP datagram with no matching socket elicits an
+        ICMPv4 Port Unreachable reply with the original IP packet in
+        the message data.
+        """
+
+        packet_rx = _packet_rx_from_ip4_udp(payload=b"hi")
+        self._handler._phrx_udp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__no_socket_match__respond_icmp4_unreachable,
+            1,
+            msg="Unmatched IPv4 UDP must be counted in udp__no_socket_match__respond_icmp4_unreachable.",
+        )
+        self.assertEqual(len(self._handler.icmp4_tx_calls), 1)
+        call = self._handler.icmp4_tx_calls[0]
+        self.assertEqual(call["ip4__src"], STACK__IP4_ADDRESS)
+        self.assertEqual(call["ip4__dst"], HOST_A__IP4)
+        self.assertIsInstance(call["icmp4__message"], Icmp4MessageDestinationUnreachable)
+
+    def test__stack__packet_handler__udp__rx__no_match_ip6_responds_icmp6_unreachable(self) -> None:
+        """
+        Ensure an IPv6 UDP datagram with no matching socket elicits an
+        ICMPv6 Port Unreachable reply.
+        """
+
+        packet_rx = _packet_rx_from_ip6_udp(payload=b"hi")
+        self._handler._phrx_udp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__no_socket_match__respond_icmp6_unreachable,
+            1,
+            msg="Unmatched IPv6 UDP must be counted in udp__no_socket_match__respond_icmp6_unreachable.",
+        )
+        self.assertEqual(len(self._handler.icmp6_tx_calls), 1)
+        call = self._handler.icmp6_tx_calls[0]
+        self.assertEqual(call["ip6__src"], STACK__IP6_ADDRESS)
+        self.assertEqual(call["ip6__dst"], HOST_A__IP6)
+        self.assertIsInstance(call["icmp6__message"], Icmp6MessageDestinationUnreachable)
+
+
+class TestPacketHandlerUdpRxEcho(_UdpRxTestBase):
+    """
+    The UDP Echo (port 7) native-reply tests.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._echo_patch = patch.object(stack, "UDP__ECHO_NATIVE", True)
+        self._echo_patch.start()
+
+    def tearDown(self) -> None:
+        self._echo_patch.stop()
+        super().tearDown()
+
+    def test__stack__packet_handler__udp__rx__echo_port_7_responds_udp_echo(self) -> None:
+        """
+        Ensure a UDP datagram to port 7 with UDP__ECHO_NATIVE=True
+        triggers a native UDP echo reply back to the sender.
+        """
+
+        packet_rx = _packet_rx_from_ip4_udp(sport=54321, dport=7, payload=b"echo")
+        self._handler._phrx_udp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.udp__echo_native__respond_udp,
+            1,
+            msg="UDP echo port 7 must be counted in udp__echo_native__respond_udp.",
+        )
+        self.assertEqual(len(self._handler.udp_tx_calls), 1)
+        call = self._handler.udp_tx_calls[0]
+        self.assertEqual(call["ip__src"], STACK__IP4_ADDRESS)
+        self.assertEqual(call["ip__dst"], HOST_A__IP4)
+        self.assertEqual(call["udp__sport"], 7)
+        self.assertEqual(call["udp__dport"], 54321)
