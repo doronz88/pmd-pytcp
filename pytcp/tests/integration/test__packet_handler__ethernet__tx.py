@@ -37,10 +37,12 @@ ver 3.0.4
 """
 
 
-from typing import Any, Callable
+from typing import Any, Literal
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host
+from net_proto import Ip4Assembler, Ip4FragAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.tests.lib.network_testcase import (
@@ -66,11 +68,26 @@ from pytcp.tests.lib.network_testcase import (
 # Due to heavy dependency of IPv4/IPv6 protocols on Ethernet mechanisms
 # the Ethernet tests are mostly executed using IPv4/IPv6 packets.
 
+# Gateway-state discriminator for the per-test host configuration:
+#   "set"   - gateway assigned to the real stack gateway address (default)
+#   "unset" - gateway is None  (exercises 'no_gw__drop' branches)
+#   "miss"  - gateway points at a host whose MAC is not in the cache
+#             (exercises 'gw_*_cache_miss__drop' branches)
+_GatewayState = Literal["set", "unset", "miss"]
+
+# Foreign source addresses used to exercise the "source IP is not any of
+# our configured hosts" fall-through in '_phtx_ethernet' (both for loops
+# skip their bodies, control falls through to the local cache lookup).
+_IP4__FOREIGN_SRC = Ip4Address("192.168.99.1")
+_IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
+
 
 @parameterized_class(
     [
         {
             "_description": "Ethernet/IPv4 - dst unicast address on local network",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_A__IP4_ADDRESS,
@@ -108,10 +125,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst multicast address",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": IP4__MULTICAST__ALL_NODES,
@@ -149,10 +167,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst limited broadcast address",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": IP4__BROADCAST__LIMITED,
@@ -190,10 +209,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__limited_broadcast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst local network broadcast address",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": STACK__IP4_HOST.network.broadcast,
@@ -231,10 +251,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__network_broadcast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst local network address",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": STACK__IP4_HOST.network.address,
@@ -273,10 +294,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__network_broadcast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on local network, ARP cache miss",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_B__IP4_ADDRESS,
@@ -291,10 +313,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_miss__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -332,10 +355,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network, no gateway",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "unset",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -350,10 +374,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4 - dst unicast address on external network, gateway ARP cache miss",
+            "_method_name": "_phtx_ip4",
+            "_gateway_state": "miss",
             "_kwargs": {
                 "ip4__src": STACK__IP4_HOST.address,
                 "ip4__dst": HOST_C__IP4_ADDRESS,
@@ -368,10 +393,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on local network",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_A__IP6_ADDRESS,
@@ -406,10 +432,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst multicast address",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__ALL_NODES,
@@ -444,10 +471,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on local network, ND cache miss",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_B__IP6_ADDRESS,
@@ -462,10 +490,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_miss__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -500,10 +529,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network, no gateway",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "unset",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -518,10 +548,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6 - dst unicast address on external network, gateway ND cache miss",
+            "_method_name": "_phtx_ip6",
+            "_gateway_state": "miss",
             "_kwargs": {
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": HOST_C__IP6_ADDRESS,
@@ -536,10 +567,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet - src specified MAC address",
+            "_method_name": "_phtx_ethernet",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
@@ -563,10 +595,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_spec=1,
                 ethernet__dst_spec__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet - src unspecified MAC address",
+            "_method_name": "_phtx_ethernet",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ethernet__src": MAC__UNSPECIFIED,
                 "ethernet__dst": HOST_A__MAC_ADDRESS,
@@ -590,10 +623,11 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_unspec__fill=1,
                 ethernet__dst_spec__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet - dst unspecified MAC address",
+            "_method_name": "_phtx_ethernet",
+            "_gateway_state": "set",
             "_kwargs": {
                 "ethernet__src": STACK__MAC_ADDRESS,
                 "ethernet__dst": MAC__UNSPECIFIED,
@@ -605,7 +639,94 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__src_spec=1,
                 ethernet__dst_unspec__drop=1,
             ),
-            "_expected__error": None,
+        },
+        {
+            # Direct '_phtx_ethernet' call with an 'Ip4FragAssembler' payload so
+            # the isinstance branch at source line 184 (which accepts both
+            # 'Ip4Assembler' and 'Ip4FragAssembler') is exercised for the frag
+            # variant too — guards against silent drift between the two types'
+            # '.src' / '.dst' surfaces.
+            "_description": "Ethernet - Ip4FragAssembler payload, dst unicast on local network",
+            "_method_name": "_phtx_ethernet",
+            "_gateway_state": "set",
+            "_kwargs": {
+                "ethernet__payload": Ip4FragAssembler(
+                    ip4_frag__src=STACK__IP4_HOST.address,
+                    ip4_frag__dst=HOST_A__IP4_ADDRESS,
+                ),
+            },
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91 (resolved via ARP cache hit)
+                #   Source MAC      : 02:00:00:00:00:07 (stack filled)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4 fragment
+                #   Version / IHL   : 4 / 5
+                #   Total Length    : 20 bytes (header-only fragment)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x638a
+                #   Source IP       : 10.0.1.7
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: Ip4FragAssembler payload drives the same IP4-lookup branch as
+                #          Ip4Assembler; ARP cache hit on the local LAN resolves the dst MAC.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
+                b"\x00\x14\x00\x00\x00\x00\x40\xff\x63\x8a\x0a\x00\x01\x07\x0a\x00"
+                b"\x01\x5b",
+            ],
+            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip4_lookup=1,
+                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+            ),
+        },
+        {
+            # Foreign IPv4 src. The two host-matching 'for' loops both skip
+            # their bodies (no configured host matches), so control falls
+            # through to the local ARP cache lookup for the dst.
+            "_description": "Ethernet/IPv4 - foreign src IP, dst resolved via local ARP cache hit",
+            "_method_name": "_phtx_ethernet",
+            "_gateway_state": "set",
+            "_kwargs": {
+                "ethernet__payload": Ip4Assembler(
+                    ip4__src=_IP4__FOREIGN_SRC,
+                    ip4__dst=HOST_A__IP4_ADDRESS,
+                ),
+            },
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91 (resolved via ARP cache hit)
+                #   Source MAC      : 02:00:00:00:00:07 (stack filled)
+                #   Ethertype       : 0x0800 (IPv4)
+                #   Frame length    : 34 bytes
+                #
+                # IPv4
+                #   Version / IHL   : 4 / 5
+                #   Total Length    : 20 bytes (header-only)
+                #   TTL             : 64
+                #   Protocol        : 255 (Reserved)
+                #   Header Checksum : 0x4ae7
+                #   Source IP       : 192.168.99.1 (foreign — not any of our hosts)
+                #   Destination IP  : 10.0.1.91
+                #
+                # Summary: IPv4 packet with a source address outside our configured hosts.
+                #          Both host-matching for loops skip; fall-through hits the ARP cache.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
+                b"\x00\x14\x00\x00\x00\x00\x40\xff\x4a\xe7\xc0\xa8\x63\x01\x0a\x00"
+                b"\x01\x5b",
+            ],
+            "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip4_lookup=1,
+                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+            ),
         },
     ]
 )
@@ -615,13 +736,43 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
     """
 
     _description: str
+    _method_name: Literal["_phtx_ip4", "_phtx_ip6", "_phtx_ethernet"]
+    _gateway_state: _GatewayState
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
+
+    def setUp(self) -> None:
+        """
+        Build fresh per-test 'Ip4Host' and 'Ip6Host' instances so gateway
+        mutations do not leak into the module-level 'STACK__IP*_HOST'
+        objects shared across tests. Configure each host's gateway per
+        '_gateway_state' and install the pair on the packet handler.
+        """
+
+        super().setUp()
+
+        ip4_host = Ip4Host("10.0.1.7/24")
+        ip6_host = Ip6Host("2001:db8:0:1::7/64")
+
+        match self._gateway_state:
+            case "set":
+                ip4_host.gateway = STACK__IP4_GATEWAY
+                ip6_host.gateway = STACK__IP6_GATEWAY
+            case "unset":
+                # Leave both gateways as None to exercise the 'no_gw__drop' branches.
+                pass
+            case "miss":
+                # Point gateways at hosts whose MACs are unresolved in the cache
+                # mocks (HOST_B is the canonical "cache-miss" fixture).
+                ip4_host.gateway = HOST_B__IP4_ADDRESS
+                ip6_host.gateway = HOST_B__IP6_ADDRESS
+
+        self._packet_handler._ip4_host = [ip4_host]
+        self._packet_handler._ip6_host = [ip6_host]
 
     def test__packet_handler__ethernet__tx(self) -> None:
         """
@@ -630,51 +781,22 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
         parametrized case.
         """
 
-        STACK__IP4_HOST.gateway = STACK__IP4_GATEWAY
-        STACK__IP6_HOST.gateway = STACK__IP6_GATEWAY
+        tx_handler = getattr(self._packet_handler, self._method_name)
 
-        if "no gateway" in self._description:
-            STACK__IP4_HOST.gateway = None
-            STACK__IP6_HOST.gateway = None
+        self.assertEqual(
+            tx_handler(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-        if "gateway ARP cache miss" in self._description or "gateway ND cache miss" in self._description:
-            STACK__IP4_HOST.gateway = HOST_B__IP4_ADDRESS
-            STACK__IP6_HOST.gateway = HOST_B__IP6_ADDRESS
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-        tx_handler: Callable[..., TxStatus]
-
-        if "IPv4" in self._description:
-            tx_handler = self._packet_handler._phtx_ip4
-        elif "IPv6" in self._description:
-            tx_handler = self._packet_handler._phtx_ip6
-        else:
-            tx_handler = self._packet_handler._phtx_ethernet
-
-        if self._expected__error is None:
-            self.assertEqual(
-                tx_handler(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
-
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
-
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
-
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ethernet(**self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
