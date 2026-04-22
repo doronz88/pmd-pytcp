@@ -58,20 +58,20 @@ lint: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${EXAMPLES_PATH}
 
 test__pytcp__integration: venv
-	@echo '<<< TESTSLIDE PYTCP INTEGRATION'
-	@./$(VENV)/bin/testslide $(shell find 'pytcp/tests/integration' -name '*.py')
+	@echo '<<< UNITTEST PYTCP INTEGRATION'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'pytcp/tests/integration' -name 'test__*.py')
 
 test__net_addr__unit: venv
-	@echo '<<< TESTSLIDE NET_ADDR UNIT'
-	@./$(VENV)/bin/testslide $(shell find 'net_addr/tests/unit' -name '*.py')
+	@echo '<<< UNITTEST NET_ADDR UNIT'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_addr/tests/unit' -name 'test__*.py')
 
 test__net_proto__unit: venv
-	@echo '<<< TESTSLIDE NET_PROTO UNIT'
-	@./$(VENV)/bin/testslide $(shell find 'net_proto/tests/unit' -name '*.py')
+	@echo '<<< UNITTEST NET_PROTO UNIT'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_proto/tests/unit' -name 'test__*.py')
 
 test: venv
-	@echo '<<< TESTSLIDE ALL'
-	@./$(VENV)/bin/testslide $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
+	@echo '<<< UNITTEST ALL'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
 
 validate: lint test
 

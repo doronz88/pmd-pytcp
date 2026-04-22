@@ -129,6 +129,18 @@ _ND_CACHE__FIND_ENTRY__TABLE: dict[Ip6Address, MacAddress | None] = {
     ROUTER_B__IP6_ADDRESS: None,
 }
 
+# Stack globals that 'NetworkTestCase.setUp' patches and
+# 'NetworkTestCase.tearDown' restores. Stored as a list so the
+# snapshot is taken in a stable order.
+_STACK__PATCHED_ATTRS: tuple[str, ...] = (
+    "LOG__CHANNEL",
+    "IP6__SUPPORT",
+    "IP4__SUPPORT",
+    "INTERFACE__TAP__MTU",
+    "INTERFACE__TUN__MTU",
+    "UDP__ECHO_NATIVE",
+)
+
 
 class NetworkTestCase(TestCase):
     """
@@ -139,6 +151,8 @@ class NetworkTestCase(TestCase):
 
     _packet_handler: PacketHandlerL2
 
+    _stack__attr_snapshot: dict[str, object]
+
     def setUp(self) -> None:
         """
         Prepare the test case.
@@ -147,6 +161,11 @@ class NetworkTestCase(TestCase):
         self.maxDiff = None
 
         super().setUp()
+
+        # Snapshot the stack globals we are about to mutate so
+        # 'tearDown' can restore them and avoid leaking test-only
+        # values (e.g. an empty 'LOG__CHANNEL') into unrelated tests.
+        self._stack__attr_snapshot = {name: stack.__dict__[name] for name in _STACK__PATCHED_ATTRS}
 
         # Patch the PyTCP stack settings to values suitable for unit tests.
         stack.__dict__.update(
@@ -241,3 +260,14 @@ class NetworkTestCase(TestCase):
             mock__nd_cache=cast(NdCache, mock_NdCache),
             mock__packet_handler=self._packet_handler,
         )
+
+    def tearDown(self) -> None:
+        """
+        Restore the stack globals patched in 'setUp' so test-only
+        values do not leak into unrelated tests run in the same
+        process.
+        """
+
+        stack.__dict__.update(self._stack__attr_snapshot)
+
+        super().tearDown()
