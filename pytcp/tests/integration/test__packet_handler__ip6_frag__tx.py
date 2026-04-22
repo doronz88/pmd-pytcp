@@ -41,6 +41,7 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_proto import Icmp6Assembler, Icmp6MessageEchoRequest, TcpAssembler
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -631,7 +632,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=5,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=5,
             ),
-            "_expected__error": None,
         },
     ]
 )
@@ -642,10 +642,9 @@ class TestPacketHandlerIp6FragTx(NetworkTestCase):
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -656,41 +655,112 @@ class TestPacketHandlerIp6FragTx(NetworkTestCase):
         each parametrized case.
         """
 
-        if any(
-            pattern in self._description
-            for pattern in (
-                "src multicast drop",
-                "src limited broadcast drop",
-                "src unspecified drop",
-            )
-        ):
-            self._packet_handler._ip6_host = []
+        self.assertEqual(
+            self._packet_handler._phtx_ip6(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_ip6(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
 
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ip6(**self._kwargs)
+class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
+    """
+    Verify that '_phtx_ip6_frag' forwards 'pshdr_sum' onto TCP and
+    ICMPv6 payloads (lines 88-89 of source). These are heavyweight
+    fragmentation tests so we assert TX status, fragment count, and
+    counters only — full byte-equal verification for the parent UDP
+    case lives in the parametrized suite above.
+    """
 
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+    _PAYLOAD = b"X" * 1500  # exceeds MTU=1500 once headers are added → 2 fragments
+
+    def _expected_stats(self, frag_count: int) -> PacketStatsTx:
+        """
+        Build the canonical TX stats dict for a 'frag_count'-fragment
+        emission via '_phtx_ip6 → _phtx_ip6_frag'.
+        """
+
+        return PacketStatsTx(
+            ip6__pre_assemble=1 + frag_count,  # 1 initial + 1 per fragment
+            ip6__mtu_exceed__frag=1,
+            ip6__mtu_ok__send=frag_count,
+            ip6_frag__pre_assemble=1,
+            ip6_frag__send=frag_count,
+            ethernet__pre_assemble=frag_count,
+            ethernet__src_unspec__fill=frag_count,
+            ethernet__dst_unspec__ip6_lookup=frag_count,
+            ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=frag_count,
+        )
+
+    def test__packet_handler__ip6_frag__tx__tcp_payload_pshdr_sum(self) -> None:
+        """
+        Ensure a large TCP payload triggers fragmentation and the
+        TCP isinstance branch in '_phtx_ip6_frag' fires.
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            ip6__payload=TcpAssembler(
+                tcp__sport=12345,
+                tcp__dport=54321,
+                tcp__payload=self._PAYLOAD,
+            ),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="TCP fragmentation must complete with PASSED__ETHERNET__TO_TX_RING.",
+        )
+        self.assertEqual(
+            len(self._frames_tx),
+            2,
+            msg="1500-byte TCP payload must produce exactly 2 IPv6 fragments.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected_stats(frag_count=2),
+            msg="TX stats must match the canonical 2-fragment TCP shape.",
+        )
+
+    def test__packet_handler__ip6_frag__tx__icmp6_payload_pshdr_sum(self) -> None:
+        """
+        Ensure a large ICMPv6 payload triggers fragmentation and the
+        Icmp6 isinstance branch in '_phtx_ip6_frag' fires.
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            ip6__payload=Icmp6Assembler(
+                icmp6__message=Icmp6MessageEchoRequest(id=1, seq=1, data=self._PAYLOAD),
+            ),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="ICMPv6 fragmentation must complete with PASSED__ETHERNET__TO_TX_RING.",
+        )
+        self.assertEqual(
+            len(self._frames_tx),
+            2,
+            msg="1500-byte ICMPv6 payload must produce exactly 2 IPv6 fragments.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected_stats(frag_count=2),
+            msg="TX stats must match the canonical 2-fragment ICMPv6 shape.",
+        )
