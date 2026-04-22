@@ -31,6 +31,10 @@ runner: bold class path, colour-coded indented method names (no
 "PASS"/"FAIL" word — colour is the indicator), and a summary block
 listing successful / failed / skipped counts.
 
+Colour styling goes through 'click.secho', which is already a runtime
+dependency (used by 'net_addr' CLI helpers). ANSI emission is gated
+on a TTY check plus the 'NO_COLOR' environment variable.
+
 tests_runner.py
 
 ver 3.0.4
@@ -43,25 +47,16 @@ import time
 import unittest
 from typing import Any
 
-# ANSI SGR escape sequences for colorising output. Honours NO_COLOR
-# (https://no-color.org/) and degrades to no-op strings when the
-# output stream is not a TTY (decided once in TestslideStyleResult).
-_ANSI__RESET = "\033[0m"
-_ANSI__BOLD = "\033[1m"
-_ANSI__DIM = "\033[2m"
-_ANSI__RED = "\033[31m"
-_ANSI__GREEN = "\033[32m"
-_ANSI__YELLOW = "\033[33m"
-_ANSI__MAGENTA = "\033[35m"
+import click
 
-# Map outcome -> ANSI colour for the indented method-name line.
-_OUTCOME_COLORS: dict[str, str] = {
-    "pass": _ANSI__GREEN,
-    "fail": _ANSI__RED,
-    "error": _ANSI__RED,
-    "skip": _ANSI__YELLOW,
-    "xfail": _ANSI__YELLOW,
-    "xpass": _ANSI__MAGENTA,
+# Map outcome -> 'click.style' kwargs for the indented method-name line.
+_OUTCOME_STYLES: dict[str, dict[str, Any]] = {
+    "pass": {"fg": "green"},
+    "fail": {"fg": "red"},
+    "error": {"fg": "red"},
+    "skip": {"fg": "yellow"},
+    "xfail": {"fg": "yellow"},
+    "xpass": {"fg": "magenta"},
 }
 
 
@@ -77,25 +72,23 @@ class TestslideStyleResult(unittest.TextTestResult):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """
-        Detect whether the output stream supports ANSI colour and
-        seed the per-class deduplication state.
+        Detect whether the output stream supports ANSI colour (TTY
+        check plus 'NO_COLOR' env var) and seed the per-class
+        deduplication state used by '_emit'.
         """
 
         super().__init__(*args, **kwargs)
         self._color = "NO_COLOR" not in os.environ and hasattr(self.stream, "isatty") and bool(self.stream.isatty())
         self._current_class_path = None
 
-    def _wrap(self, text: str, *codes: str) -> str:
+    def _secho(self, text: str = "", **kwargs: Any) -> None:
         """
-        Wrap 'text' in the given ANSI codes when colour is active.
-        Always emits a leading reset so partial state from the prior
-        line cannot bleed into this one (matches testslide).
+        Write 'text' to 'self.stream' via 'click.secho'. Forwards the
+        cached colour decision so click strips ANSI when colour is
+        disabled (NO_COLOR or non-TTY) and emits it otherwise.
         """
 
-        if not self._color or not codes:
-            return text
-
-        return f"{_ANSI__RESET}{''.join(codes)}{text}{_ANSI__RESET}"
+        click.secho(text, file=self.stream, color=self._color, **kwargs)  # type: ignore[arg-type]
 
     def _emit(self, test: unittest.TestCase, outcome: str, suffix: str = "") -> None:
         """
@@ -108,11 +101,10 @@ class TestslideStyleResult(unittest.TextTestResult):
         class_path, _, method = full_id.rpartition(".")
 
         if class_path != self._current_class_path:
-            self.stream.writeln(self._wrap(class_path, _ANSI__BOLD))
+            self._secho(class_path, bold=True)
             self._current_class_path = class_path
 
-        color = _OUTCOME_COLORS[outcome]
-        self.stream.writeln(self._wrap(f"  {method}{suffix}", color))
+        self._secho(f"  {method}{suffix}", **_OUTCOME_STYLES[outcome])
         self.stream.flush()
 
     @staticmethod
@@ -195,28 +187,26 @@ class TestslideStyleResult(unittest.TextTestResult):
         if not (self.failures or self.errors):
             return
 
-        self.stream.writeln()
-        self.stream.writeln(self._wrap("Failures:", _ANSI__RED))
-        self.stream.writeln()
+        self._secho()
+        self._secho("Failures:", fg="red")
+        self._secho()
 
         index = 0
         for test, formatted_tb in self.failures + self.errors:
             index += 1
             class_path, _, method = test.id().rpartition(".")
-            self.stream.writeln(self._wrap(f"  {index}) {class_path}: {method}", _ANSI__BOLD))
-            # Pull the final exception line from the formatted traceback;
-            # the rest is the traceback context, which we re-print verbatim.
+            self._secho(f"  {index}) {class_path}: {method}", bold=True)
             tb_lines = formatted_tb.rstrip("\n").splitlines()
             exception_line = tb_lines[-1] if tb_lines else ""
-            self.stream.writeln(self._wrap(f"    {index}) {exception_line}", _ANSI__RED))
+            self._secho(f"    {index}) {exception_line}", fg="red")
             # Drop the boilerplate 'Traceback (most recent call last):'
             # header — testslide prints just the frame lines.
             frame_lines = tb_lines[:-1]
             if frame_lines and frame_lines[0].startswith("Traceback"):
                 frame_lines = frame_lines[1:]
             for line in frame_lines:
-                self.stream.writeln(line)
-            self.stream.writeln()
+                self._secho(line)
+            self._secho()
 
         self.stream.flush()
 
@@ -279,36 +269,83 @@ class TestslideStyleRunner(unittest.TextTestRunner):
         skipped = len(result.skipped) + len(result.expectedFailures)
         unexpected = len(result.unexpectedSuccesses)
 
-        def _line(label: str, count: int, color: str) -> str:
+        def _line(label: str, count: int, color: str) -> None:
             text = f"  {label}: {count}"
-            return result._wrap(text, color if count else _ANSI__DIM)
+            if count:
+                result._secho(text, fg=color)
+            else:
+                result._secho(text, dim=True)
 
-        self.stream.writeln()
-        self.stream.writeln(
-            result._wrap(
-                f"Executed {result.testsRun} examples in {elapsed:.1f}s:",
-                _ANSI__BOLD,
-            )
+        result._secho()
+        result._secho(
+            f"Executed {result.testsRun} examples in {elapsed:.1f}s:",
+            bold=True,
         )
-        self.stream.writeln(_line("Successful", successful, _ANSI__GREEN))
-        self.stream.writeln(_line("Failed", failed, _ANSI__RED))
-        self.stream.writeln(_line("Skipped", skipped, _ANSI__YELLOW))
-        self.stream.writeln(_line("Not executed", 0, _ANSI__DIM))
+        _line("Successful", successful, "green")
+        _line("Failed", failed, "red")
+        _line("Skipped", skipped, "yellow")
+        _line("Not executed", 0, "white")
         if unexpected:
-            self.stream.writeln(_line("Unexpected pass", unexpected, _ANSI__MAGENTA))
+            _line("Unexpected pass", unexpected, "magenta")
         self.stream.flush()
 
 
-def main() -> None:
+@click.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=(
+        "Run the given test files with testslide-style output. "
+        "TESTS may be file paths (e.g. 'pytcp/tests/integration/...') "
+        "or dotted module names that 'unittest' can import."
+    ),
+)
+@click.argument("tests", nargs=-1, required=True)
+@click.option(
+    "--failfast",
+    "-f",
+    is_flag=True,
+    default=False,
+    help="Stop the run on the first failure or error.",
+)
+@click.option(
+    "--pattern",
+    "-k",
+    "pattern",
+    default=None,
+    metavar="PATTERN",
+    help="Only run tests whose dotted name contains PATTERN (forwarded to 'unittest -k').",
+)
+@click.option(
+    "--no-color",
+    is_flag=True,
+    default=False,
+    help="Disable ANSI colour output even when stdout is a TTY.",
+)
+def main(
+    *,
+    tests: tuple[str, ...],
+    failfast: bool,
+    pattern: str | None,
+    no_color: bool,
+) -> None:
     """
-    Run 'unittest.TestProgram' with the testslide-style runner.
-    Forwards 'sys.argv' so caller-supplied test paths and discovery
-    options work exactly as with 'python -m unittest'.
+    Parse runner-level options and invoke 'unittest.TestProgram' with
+    the testslide-style runner. The remaining arguments are the test
+    files / modules to run.
     """
+
+    if no_color:
+        os.environ["NO_COLOR"] = "1"
+
+    argv: list[str] = [sys.argv[0]]
+    if failfast:
+        argv.append("--failfast")
+    if pattern is not None:
+        argv.extend(["-k", pattern])
+    argv.extend(tests)
 
     unittest.TestProgram(
         module=None,
-        argv=sys.argv,
+        argv=argv,
         testRunner=TestslideStyleRunner,
         exit=True,
     )
