@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -39,7 +37,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr.ip4_address import Ip4Address
+from net_addr import Ip4Address
 from net_proto import (
     Dhcp4IntegrityError,
     Dhcp4OptionServerId,

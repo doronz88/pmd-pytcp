@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -40,9 +38,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import MacAddress
-from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_mask import Ip4Mask
+from net_addr import Ip4Address, Ip4Mask, MacAddress
 from net_proto import (
     DHCP4__HEADER__LEN,
     Dhcp4Header,

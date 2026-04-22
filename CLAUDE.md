@@ -115,13 +115,17 @@ Stack-wide constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, l
 
 ### File Structure
 
-Every file follows this exact order:
-1. `#!/usr/bin/env python3` shebang
-2. 80-char `#`-bordered copyright/license block
-3. Module docstring with: description, file path, and `ver 3.0.x`
-4. Imports
-5. Module-level constants
-6. Class definition(s)
+Library modules (imported-only files) follow this order:
+1. 80-char `#`-bordered copyright/license block
+2. Module docstring with: description, file path, and `ver 3.0.x`
+3. Imports
+4. Module-level constants
+5. Class definition(s)
+
+Scripts (files with `if __name__ == "__main__":` — `tests_runner.py`
+and `examples/*.py`) add `#!/usr/bin/env python3` on line 1 plus a
+blank line before the copyright block, and carry the executable bit.
+Library modules carry no shebang and no executable bit.
 
 ### Imports
 

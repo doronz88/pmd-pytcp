@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -33,7 +31,6 @@ ver 3.0.4
 """
 
 
-from net_addr.address import Address
 from net_addr.click_types import (
     ClickTypeIp4Address,
     ClickTypeIp4Host,
@@ -65,6 +62,7 @@ from net_addr.errors import (
     IpMaskFormatError,
     IpNetworkFormatError,
     MacAddressFormatError,
+    NetAddrError,
 )
 from net_addr.ip4_address import IP4__ADDRESS_LEN, Ip4Address
 from net_addr.ip4_host import Ip4Host
@@ -77,11 +75,14 @@ from net_addr.ip6_host_origin import Ip6HostOrigin
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
 from net_addr.ip_address import IpAddress
+from net_addr.ip_host import IpHost
+from net_addr.ip_host_origin import IpHostOrigin
+from net_addr.ip_mask import IpMask
+from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MacAddress
 
 __all__ = [
-    "Address",
     "ClickTypeIp4Address",
     "ClickTypeIp4Host",
     "ClickTypeIp4Network",
@@ -92,37 +93,42 @@ __all__ = [
     "ClickTypeIpHost",
     "ClickTypeIpNetwork",
     "ClickTypeMacAddress",
-    "Ip4Address",
     "IP4__ADDRESS_LEN",
-    "Ip4Host",
-    "Ip4HostOrigin",
-    "Ip4Mask",
-    "Ip4Network",
+    "IP6__ADDRESS_LEN",
+    "Ip4Address",
     "Ip4AddressFormatError",
+    "Ip4Host",
     "Ip4HostFormatError",
     "Ip4HostGatewayError",
+    "Ip4HostOrigin",
     "Ip4HostSanityError",
+    "Ip4Mask",
     "Ip4MaskFormatError",
+    "Ip4Network",
     "Ip4NetworkFormatError",
     "Ip6Address",
-    "IP6__ADDRESS_LEN",
-    "Ip6Host",
-    "Ip6HostOrigin",
-    "Ip6Mask",
-    "Ip6Network",
     "Ip6AddressFormatError",
+    "Ip6Host",
     "Ip6HostFormatError",
     "Ip6HostGatewayError",
+    "Ip6HostOrigin",
     "Ip6HostSanityError",
+    "Ip6Mask",
     "Ip6MaskFormatError",
+    "Ip6Network",
     "Ip6NetworkFormatError",
     "IpAddress",
-    "IpVersion",
+    "IpAddressFormatError",
+    "IpHost",
     "IpHostFormatError",
     "IpHostGatewayError",
+    "IpHostOrigin",
+    "IpMask",
     "IpMaskFormatError",
+    "IpNetwork",
     "IpNetworkFormatError",
+    "IpVersion",
     "MacAddress",
     "MacAddressFormatError",
-    "IpAddressFormatError",
+    "NetAddrError",
 ]

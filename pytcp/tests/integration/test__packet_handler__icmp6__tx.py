@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -41,7 +39,7 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr.ip6_address import Ip6Address
+from net_addr import Ip6Address
 from net_proto.protocols.icmp6.message.icmp6__message__destination_unreachable import (
     Icmp6DestinationUnreachableCode,
     Icmp6MessageDestinationUnreachable,

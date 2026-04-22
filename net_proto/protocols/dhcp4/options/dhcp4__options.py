@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -36,8 +34,7 @@ ver 3.0.4
 from abc import ABC
 from typing import Self, override
 
-from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_mask import Ip4Mask
+from net_addr import Ip4Address, Ip4Mask
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType

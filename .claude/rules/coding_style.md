@@ -40,20 +40,47 @@ anything under `tests/`.
 
 ## 2. File skeleton
 
-Every `.py` file under `net_addr/`, `net_proto/`, or `pytcp/` (and
-any source added to `examples/`) has this exact layout:
+A `.py` file is either a **library module** (imported only) or a
+**script** (has an `if __name__ == "__main__":` block and is invoked
+as `./foo.py`). The shebang and executable bit go on scripts only —
+per standard Python convention, library modules carry neither.
+
+Known scripts in this repo: `tests_runner.py` and every file in
+`examples/`. Everything under `net_addr/`, `net_proto/`, or `pytcp/`
+is a library module.
+
+### Library module layout (no shebang)
+
+1. Lines 1–22: the 80-character-wide GPL copyright block (see §3).
+2. Blank lines 23 and 24.
+3. Lines 25–31: module docstring (see §4).
+4. Blank lines 32 and 33.
+5. Imports (see §5).
+6. Blank line.
+7. Module-level constants (see §6), including any RFC ASCII diagrams.
+8. Blank line.
+9. Class / function definitions.
+
+No shebang. No executable bit (`chmod a-x`).
+
+### Script layout (shebang + exec bit)
 
 1. Shebang on line 1: `#!/usr/bin/env python3`
 2. Blank line 2.
-3. Lines 3–24: the 80-character-wide GPL copyright block (see §3).
+3. Lines 3–24: the GPL copyright block.
 4. Blank lines 25 and 26.
-5. Lines 27–33: module docstring (see §4).
+5. Lines 27–33: module docstring.
 6. Blank lines 34 and 35.
-7. Imports (see §5).
+7. Imports.
 8. Blank line.
-9. Module-level constants (see §6), including any RFC ASCII diagrams.
+9. Module-level constants.
 10. Blank line.
-11. Class / function definitions.
+11. Function / class definitions, ending with an
+    `if __name__ == "__main__":` entry block.
+
+The file must be marked executable (`chmod +x`).
+
+### Common rules
 
 No code, comments, or `__all__` between the docstring and the first
 import. `__all__` lives **only in package `__init__.py` files**
@@ -61,9 +88,10 @@ import. `__all__` lives **only in package `__init__.py` files**
 
 ## 3. Copyright / license block (MANDATORY, verbatim)
 
-Lines 3–24 of every file contain exactly this text. It is **80
-characters wide** (opening/closing lines are 80 `#` characters).
-Do not shorten, widen, or edit the wording.
+The 80-character-wide GPL block below is identical in every file
+(opening/closing lines are 80 `#` characters). Do not shorten,
+widen, or edit the wording. In library modules it starts on line 1;
+in scripts it starts on line 3 (after shebang + blank line).
 
 ```
 ################################################################################
