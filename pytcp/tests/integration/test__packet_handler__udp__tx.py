@@ -29,7 +29,7 @@
 
 
 """
-This module contains unit tests for the Packet Handler UDP TX operations.
+This module contains integration tests for the Packet Handler UDP TX operations.
 
 pytcp/tests/integration/test__packet_handler__udp__tx.py
 
@@ -104,7 +104,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4/UDP - payload",
@@ -211,7 +210,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/UDP - no payload",
@@ -259,7 +257,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/UDP - payload",
@@ -363,8 +360,49 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
+    ]
+)
+class TestPacketHandlerUdpTx(NetworkTestCase):
+    """
+    Test the Packet Handler UDP TX operations (success path).
+    """
+
+    _description: str
+    _kwargs: dict[str, Any]
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
+
+    _frames_tx: list[bytes]
+
+    def test__packet_handler__udp__tx(self) -> None:
+        """
+        Ensure the Packet Handler UDP TX path produces the expected
+        frames, statuses, and statistics for each parametrized case.
+        """
+
+        self.assertEqual(
+            self._packet_handler._phtx_udp(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
+
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
+
+
+@parameterized_class(
+    [
         {
             "_description": "UDP - IPv4/IPv6 version mismatch",
             "_kwargs": {
@@ -373,9 +411,6 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__sport": 1000,
                 "udp__dport": 2000,
             },
-            "_expected__frames_tx": None,
-            "_expected__tx_status": None,
-            "_expected__packet_stats_tx": None,
             "_expected__error": ValueError("Invalid IP address version combination: 10.0.1.7 -> 2001:db8:0:1::91"),
         },
         {
@@ -386,58 +421,81 @@ from pytcp.tests.lib.network_testcase import (
                 "udp__sport": 1000,
                 "udp__dport": 2000,
             },
-            "_expected__frames_tx": None,
-            "_expected__tx_status": None,
-            "_expected__packet_stats_tx": None,
             "_expected__error": ValueError("Invalid IP address version combination: 2001:db8:0:1::7 -> 10.0.1.91"),
         },
     ]
 )
-class TestPacketHandlerUdpTx(NetworkTestCase):
+class TestPacketHandlerUdpTxErrors(NetworkTestCase):
     """
-    Test the Packet Handler UDP TX operations.
+    Test the Packet Handler UDP TX operations (error path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__error: Exception
 
-    _frames_tx: list[bytes]
-
-    def test__packet_handler__udp__tx(self) -> None:
+    def test__packet_handler__udp__tx__error(self) -> None:
         """
-        Ensure the Packet Handler UDP TX path produces the expected
-        frames, statuses, and statistics for each parametrized case.
+        Ensure '_phtx_udp' raises the expected exception for invalid
+        IP address version combinations.
         """
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_udp(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        with self.assertRaises(type(self._expected__error)) as error:
+            self._packet_handler._phtx_udp(**self._kwargs)
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            str(error.exception),
+            str(self._expected__error),
+            msg=f"Unexpected error message for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
 
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_udp(**self._kwargs)
+class TestPacketHandlerUdpTxSendUdpPacket(NetworkTestCase):
+    """
+    Test the public 'send_udp_packet' wrapper, which forwards into
+    '_phtx_udp' renaming the addressing and port kwargs.
+    """
 
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+    def test__packet_handler__udp__tx__send_udp_packet(self) -> None:
+        """
+        Ensure 'send_udp_packet' renames its kwargs ('ip__local_address'
+        / 'ip__remote_address' → 'ip__src' / 'ip__dst', 'udp__local_port'
+        / 'udp__remote_port' → 'udp__sport' / 'udp__dport') and forwards
+        to '_phtx_udp', producing the same frame and stats as a direct
+        '_phtx_udp' call would.
+        """
+
+        tx_status = self._packet_handler.send_udp_packet(
+            ip__local_address=STACK__IP4_HOST.address,
+            ip__remote_address=HOST_A__IP4_ADDRESS,
+            udp__local_port=1000,
+            udp__remote_port=2000,
+            udp__payload=b"hello",
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="send_udp_packet must propagate the underlying _phtx_udp TxStatus.",
+        )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="send_udp_packet must emit exactly one frame for a 5-byte payload.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            PacketStatsTx(
+                udp__pre_assemble=1,
+                udp__send=1,
+                ip4__pre_assemble=1,
+                ip4__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip4_lookup=1,
+                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+            ),
+            msg="send_udp_packet stats must match a direct _phtx_udp call.",
+        )
