@@ -1,0 +1,828 @@
+#!/usr/bin/env python3
+
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains tests for the BSD-like 'socket' base class and its
+companion enums ('AddressFamily', 'SocketType') plus the 'gaierror' shim.
+
+pytcp/tests/unit/socket/test__socket__base.py
+
+ver 3.0.4
+"""
+
+
+from unittest import TestCase
+from unittest.mock import patch
+
+from net_addr import Ip4Address, Ip6Address, IpVersion
+from net_proto.lib.enums import IpProto
+from pytcp.socket import (
+    AF_INET,
+    AF_INET4,
+    AF_INET6,
+    IPPROTO_ICMP,
+    IPPROTO_ICMP4,
+    IPPROTO_ICMP6,
+    IPPROTO_ICMPV6,
+    IPPROTO_IP,
+    IPPROTO_IP4,
+    IPPROTO_IP6,
+    IPPROTO_IPV6,
+    IPPROTO_RAW,
+    IPPROTO_TCP,
+    IPPROTO_UDP,
+    SOCK_DGRAM,
+    SOCK_RAW,
+    SOCK_STREAM,
+    AddressFamily,
+    SocketType,
+    gaierror,
+    socket,
+)
+from pytcp.socket.raw__socket import RawSocket
+from pytcp.socket.socket_id import SocketId
+from pytcp.socket.tcp__socket import TcpSocket
+from pytcp.socket.udp__socket import UdpSocket
+
+
+class TestGaierror(TestCase):
+    """
+    The 'gaierror' exception shim tests.
+    """
+
+    def test__socket__gaierror_is_oserror_subclass(self) -> None:
+        """
+        Ensure 'gaierror' is a subclass of 'OSError' so callers written
+        against the stdlib BSD socket API catch it via the broader
+        exception class.
+        """
+
+        self.assertTrue(
+            issubclass(gaierror, OSError),
+            msg="gaierror must inherit from OSError to match stdlib socket semantics.",
+        )
+
+    def test__socket__gaierror_preserves_message(self) -> None:
+        """
+        Ensure raising 'gaierror' preserves the supplied message through
+        'str(exc)' so error-matching tests can assert on the exact text.
+        """
+
+        with self.assertRaises(gaierror) as context:
+            raise gaierror("boom")
+
+        self.assertEqual(
+            str(context.exception),
+            "boom",
+            msg="gaierror must preserve the supplied message in str().",
+        )
+
+
+class TestAddressFamily(TestCase):
+    """
+    The 'AddressFamily' enum tests.
+    """
+
+    def test__socket__address_family_members(self) -> None:
+        """
+        Ensure the 'AddressFamily' enum has exactly the 'INET4' and
+        'INET6' members with their canonical integer values. Downstream
+        match statements rely on both the member identity and the value.
+        """
+
+        self.assertEqual(
+            int(AddressFamily.INET4),
+            1,
+            msg="AddressFamily.INET4 must have the canonical integer value 1.",
+        )
+        self.assertEqual(
+            int(AddressFamily.INET6),
+            2,
+            msg="AddressFamily.INET6 must have the canonical integer value 2.",
+        )
+
+    def test__socket__address_family_aliases(self) -> None:
+        """
+        Ensure the 'AF_INET', 'AF_INET4', and 'AF_INET6' module-level
+        aliases point at the corresponding 'AddressFamily' members so
+        BSD-API-style constants resolve correctly.
+        """
+
+        self.assertIs(
+            AF_INET,
+            AddressFamily.INET4,
+            msg="AF_INET alias must resolve to AddressFamily.INET4.",
+        )
+        self.assertIs(
+            AF_INET4,
+            AddressFamily.INET4,
+            msg="AF_INET4 alias must resolve to AddressFamily.INET4.",
+        )
+        self.assertIs(
+            AF_INET6,
+            AddressFamily.INET6,
+            msg="AF_INET6 alias must resolve to AddressFamily.INET6.",
+        )
+
+    def test__socket__address_family_str_is_name(self) -> None:
+        """
+        Ensure 'AddressFamily' members stringify as their name, not
+        their integer value. The 'NameEnum' base overrides '__str__'
+        so log lines carry readable identifiers.
+        """
+
+        self.assertEqual(
+            str(AddressFamily.INET4),
+            "INET4",
+            msg="AddressFamily.INET4 must stringify as its name.",
+        )
+        self.assertEqual(
+            str(AddressFamily.INET6),
+            "INET6",
+            msg="AddressFamily.INET6 must stringify as its name.",
+        )
+
+    def test__socket__address_family_from_ver_ip4(self) -> None:
+        """
+        Ensure 'AddressFamily.from_ver()' maps 'IpVersion.IP4' to
+        'AddressFamily.INET4'.
+        """
+
+        self.assertIs(
+            AddressFamily.from_ver(IpVersion.IP4),
+            AddressFamily.INET4,
+            msg="AddressFamily.from_ver(IP4) must return AddressFamily.INET4.",
+        )
+
+    def test__socket__address_family_from_ver_ip6(self) -> None:
+        """
+        Ensure 'AddressFamily.from_ver()' maps 'IpVersion.IP6' to
+        'AddressFamily.INET6'.
+        """
+
+        self.assertIs(
+            AddressFamily.from_ver(IpVersion.IP6),
+            AddressFamily.INET6,
+            msg="AddressFamily.from_ver(IP6) must return AddressFamily.INET6.",
+        )
+
+
+class TestSocketType(TestCase):
+    """
+    The 'SocketType' enum tests.
+    """
+
+    def test__socket__socket_type_members(self) -> None:
+        """
+        Ensure the 'SocketType' enum exposes 'STREAM', 'DGRAM', and
+        'RAW' with their canonical integer values.
+        """
+
+        self.assertEqual(
+            int(SocketType.STREAM),
+            1,
+            msg="SocketType.STREAM must have the canonical integer value 1.",
+        )
+        self.assertEqual(
+            int(SocketType.DGRAM),
+            2,
+            msg="SocketType.DGRAM must have the canonical integer value 2.",
+        )
+        self.assertEqual(
+            int(SocketType.RAW),
+            3,
+            msg="SocketType.RAW must have the canonical integer value 3.",
+        )
+
+    def test__socket__socket_type_aliases(self) -> None:
+        """
+        Ensure the 'SOCK_STREAM', 'SOCK_DGRAM', 'SOCK_RAW' module-level
+        aliases point at the corresponding 'SocketType' members.
+        """
+
+        self.assertIs(
+            SOCK_STREAM,
+            SocketType.STREAM,
+            msg="SOCK_STREAM alias must resolve to SocketType.STREAM.",
+        )
+        self.assertIs(
+            SOCK_DGRAM,
+            SocketType.DGRAM,
+            msg="SOCK_DGRAM alias must resolve to SocketType.DGRAM.",
+        )
+        self.assertIs(
+            SOCK_RAW,
+            SocketType.RAW,
+            msg="SOCK_RAW alias must resolve to SocketType.RAW.",
+        )
+
+    def test__socket__socket_type_str_is_name(self) -> None:
+        """
+        Ensure 'SocketType' members stringify as their member name so
+        log lines use the human-readable identifier.
+        """
+
+        self.assertEqual(
+            str(SocketType.STREAM),
+            "STREAM",
+            msg="SocketType.STREAM must stringify as its name.",
+        )
+
+
+class TestIpProtoAliases(TestCase):
+    """
+    The module-level 'IPPROTO_*' alias tests.
+    """
+
+    def test__socket__ipproto_aliases(self) -> None:
+        """
+        Ensure every BSD-style 'IPPROTO_*' alias exported by
+        'pytcp.socket' points at the matching 'IpProto' enum member.
+        Any drift would silently break the BSD-API surface.
+        """
+
+        self.assertIs(
+            IPPROTO_IP,
+            IpProto.IP4,
+            msg="IPPROTO_IP must alias IpProto.IP4.",
+        )
+        self.assertIs(
+            IPPROTO_IP4,
+            IpProto.IP4,
+            msg="IPPROTO_IP4 must alias IpProto.IP4.",
+        )
+        self.assertIs(
+            IPPROTO_ICMP,
+            IpProto.ICMP4,
+            msg="IPPROTO_ICMP must alias IpProto.ICMP4.",
+        )
+        self.assertIs(
+            IPPROTO_ICMP4,
+            IpProto.ICMP4,
+            msg="IPPROTO_ICMP4 must alias IpProto.ICMP4.",
+        )
+        self.assertIs(
+            IPPROTO_TCP,
+            IpProto.TCP,
+            msg="IPPROTO_TCP must alias IpProto.TCP.",
+        )
+        self.assertIs(
+            IPPROTO_UDP,
+            IpProto.UDP,
+            msg="IPPROTO_UDP must alias IpProto.UDP.",
+        )
+        self.assertIs(
+            IPPROTO_IPV6,
+            IpProto.IP6,
+            msg="IPPROTO_IPV6 must alias IpProto.IP6.",
+        )
+        self.assertIs(
+            IPPROTO_IP6,
+            IpProto.IP6,
+            msg="IPPROTO_IP6 must alias IpProto.IP6.",
+        )
+        self.assertIs(
+            IPPROTO_ICMPV6,
+            IpProto.ICMP6,
+            msg="IPPROTO_ICMPV6 must alias IpProto.ICMP6.",
+        )
+        self.assertIs(
+            IPPROTO_ICMP6,
+            IpProto.ICMP6,
+            msg="IPPROTO_ICMP6 must alias IpProto.ICMP6.",
+        )
+        self.assertIs(
+            IPPROTO_RAW,
+            IpProto.RAW,
+            msg="IPPROTO_RAW must alias IpProto.RAW.",
+        )
+
+
+class TestSocketFactory(TestCase):
+    """
+    The 'socket.__new__' factory dispatch tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Suppress socket construction log output so the factory-path
+        tests can exercise concrete subclass '__init__' without the
+        real 'log()' writing to the shared stderr stream.
+        """
+
+        self._log_patch = patch("pytcp.socket.raw__socket.log")
+        self._tcp_log_patch = patch("pytcp.socket.tcp__socket.log")
+        self._udp_log_patch = patch("pytcp.socket.udp__socket.log")
+        self._log_patch.start()
+        self._tcp_log_patch.start()
+        self._udp_log_patch.start()
+
+    def tearDown(self) -> None:
+        """
+        Remove the log-suppression patches.
+        """
+
+        self._log_patch.stop()
+        self._tcp_log_patch.stop()
+        self._udp_log_patch.stop()
+
+    def test__socket__stream_creates_tcp_socket(self) -> None:
+        """
+        Ensure passing 'SocketType.STREAM' returns a 'TcpSocket' instance
+        for both the implicit-protocol and explicit 'IpProto.TCP'
+        branches of the '__new__' match statement.
+        """
+
+        implicit = socket(family=AddressFamily.INET4, type=SocketType.STREAM)
+        explicit = socket(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            protocol=IpProto.TCP,
+        )
+
+        self.assertIsInstance(
+            implicit,
+            TcpSocket,
+            msg="socket(STREAM) with implicit protocol must dispatch to TcpSocket.",
+        )
+        self.assertIsInstance(
+            explicit,
+            TcpSocket,
+            msg="socket(STREAM, IpProto.TCP) must dispatch to TcpSocket.",
+        )
+
+    def test__socket__dgram_creates_udp_socket(self) -> None:
+        """
+        Ensure passing 'SocketType.DGRAM' returns a 'UdpSocket' instance
+        for both the implicit-protocol and explicit 'IpProto.UDP'
+        branches.
+        """
+
+        implicit = socket(family=AddressFamily.INET4, type=SocketType.DGRAM)
+        explicit = socket(
+            family=AddressFamily.INET4,
+            type=SocketType.DGRAM,
+            protocol=IpProto.UDP,
+        )
+
+        self.assertIsInstance(
+            implicit,
+            UdpSocket,
+            msg="socket(DGRAM) with implicit protocol must dispatch to UdpSocket.",
+        )
+        self.assertIsInstance(
+            explicit,
+            UdpSocket,
+            msg="socket(DGRAM, IpProto.UDP) must dispatch to UdpSocket.",
+        )
+
+    def test__socket__raw_ipv4_creates_raw_socket(self) -> None:
+        """
+        Ensure passing 'AddressFamily.INET4' together with
+        'SocketType.RAW' returns a 'RawSocket' instance.
+        """
+
+        s = socket(
+            family=AddressFamily.INET4,
+            type=SocketType.RAW,
+            protocol=IpProto.ICMP4,
+        )
+        self.assertIsInstance(
+            s,
+            RawSocket,
+            msg="socket(INET4, RAW, ICMP4) must dispatch to RawSocket.",
+        )
+
+    def test__socket__raw_ipv6_creates_raw_socket(self) -> None:
+        """
+        Ensure passing 'AddressFamily.INET6' together with
+        'SocketType.RAW' returns a 'RawSocket' instance.
+        """
+
+        s = socket(
+            family=AddressFamily.INET6,
+            type=SocketType.RAW,
+            protocol=IpProto.ICMP6,
+        )
+        self.assertIsInstance(
+            s,
+            RawSocket,
+            msg="socket(INET6, RAW, ICMP6) must dispatch to RawSocket.",
+        )
+
+    def test__socket__invalid_combination_raises(self) -> None:
+        """
+        Ensure an unsupported (family, type, protocol) triple raises
+        'ValueError' with a message that names the rejected values.
+        """
+
+        with self.assertRaises(ValueError) as context:
+            socket(
+                family=AddressFamily.INET4,
+                type=SocketType.STREAM,
+                protocol=IpProto.UDP,
+            )
+
+        self.assertIn(
+            "Invalid socket",
+            str(context.exception),
+            msg="socket.__new__ must raise ValueError naming the rejected tuple.",
+        )
+
+    def test__socket__subclass_bypasses_factory(self) -> None:
+        """
+        Ensure calling '__new__' on a concrete subclass skips the
+        dispatch table — the derived-class constructor must get an
+        instance of its own type rather than a re-dispatched pick.
+        """
+
+        instance = TcpSocket.__new__(TcpSocket)
+        self.assertIsInstance(
+            instance,
+            TcpSocket,
+            msg="TcpSocket.__new__ must bypass the dispatch table and return a TcpSocket.",
+        )
+
+
+class _StubSocket(socket):
+    """
+    Minimal concrete 'socket' stub used to exercise the base-class
+    methods ('__str__', '__enter__', '__exit__', properties, and the
+    'NotImplementedError' placeholders) without running the complex
+    '__init__' of the real Tcp/Udp/Raw subclasses.
+    """
+
+    def __init__(
+        self,
+        *,
+        address_family: AddressFamily = AddressFamily.INET4,
+        socket_type: SocketType = SocketType.STREAM,
+        ip_proto: IpProto = IpProto.TCP,
+        local_ip_address: Ip4Address | Ip6Address = Ip4Address("10.0.0.1"),
+        remote_ip_address: Ip4Address | Ip6Address = Ip4Address("10.0.0.2"),
+        local_port: int = 1024,
+        remote_port: int = 2048,
+    ) -> None:
+        """
+        Populate the private attributes the base class reads through
+        its property surface.
+        """
+
+        self._address_family = address_family
+        self._socket_type = socket_type
+        self._ip_proto = ip_proto
+        self._local_ip_address = local_ip_address
+        self._remote_ip_address = remote_ip_address
+        self._local_port = local_port
+        self._remote_port = remote_port
+
+
+class TestSocketStringification(TestCase):
+    """
+    The 'socket.__str__' / 'socket.__repr__' formatting tests.
+    """
+
+    def test__socket__str_format(self) -> None:
+        """
+        Ensure '__str__' formats the socket as the canonical
+        'family/type/proto/local_ip/local_port/remote_ip/remote_port'
+        seven-field slash-separated log string.
+        """
+
+        s = _StubSocket()
+
+        self.assertEqual(
+            str(s),
+            "INET4/STREAM/TCP/10.0.0.1/1024/10.0.0.2/2048",
+            msg="socket.__str__ must produce the canonical seven-field log string.",
+        )
+
+    def test__socket__repr_matches_str(self) -> None:
+        """
+        Ensure '__repr__' delegates to '__str__' so debug and log
+        output carry the same representation.
+        """
+
+        s = _StubSocket()
+        self.assertEqual(
+            repr(s),
+            str(s),
+            msg="socket.__repr__ must return the same string as socket.__str__.",
+        )
+
+
+class TestSocketContextManager(TestCase):
+    """
+    The 'socket.__enter__' / 'socket.__exit__' context-manager tests.
+    """
+
+    def test__socket__context_manager_returns_self(self) -> None:
+        """
+        Ensure entering the runtime context yields the socket object
+        itself so the 'with' binding matches the receiver.
+        """
+
+        s = _StubSocket()
+        with s as bound:
+            self.assertIs(
+                bound,
+                s,
+                msg="socket.__enter__ must return the same socket object.",
+            )
+
+    def test__socket__context_manager_exit_is_silent(self) -> None:
+        """
+        Ensure '__exit__' is a no-op that does not suppress or raise
+        anything — clean exit must not mask caller-side exceptions and
+        must not signal suppression.
+        """
+
+        s = _StubSocket()
+        try:
+            s.__exit__(RuntimeError, RuntimeError("boom"), None)
+        except Exception as exc:  # pragma: no cover - fail path
+            self.fail(f"socket.__exit__ must not raise; got {exc!r}.")
+
+
+class TestSocketProperties(TestCase):
+    """
+    The 'socket' read-only property surface tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a canonical stub socket for every property assertion.
+        """
+
+        self._socket = _StubSocket(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.DGRAM,
+            ip_proto=IpProto.UDP,
+            local_ip_address=Ip6Address("2001:db8::1"),
+            remote_ip_address=Ip6Address("2001:db8::2"),
+            local_port=53,
+            remote_port=5353,
+        )
+
+    def test__socket__socket_id_reflects_state(self) -> None:
+        """
+        Ensure 'socket_id' assembles a 'SocketId' from every private
+        attribute that defines the socket tuple. This is the key used
+        in 'stack.sockets'.
+        """
+
+        expected = SocketId(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.DGRAM,
+            local_address=Ip6Address("2001:db8::1"),
+            local_port=53,
+            remote_address=Ip6Address("2001:db8::2"),
+            remote_port=5353,
+        )
+        self.assertEqual(
+            self._socket.socket_id,
+            expected,
+            msg="socket.socket_id must be built from every private tuple attribute.",
+        )
+
+    def test__socket__internal_property_getters(self) -> None:
+        """
+        Ensure the 'address_family', 'socket_type', 'ip_proto',
+        'local_ip_address', 'remote_ip_address', 'local_port',
+        'remote_port' properties each return the matching private
+        attribute.
+        """
+
+        self.assertIs(
+            self._socket.address_family,
+            AddressFamily.INET6,
+            msg="socket.address_family must return the '_address_family' attribute.",
+        )
+        self.assertIs(
+            self._socket.socket_type,
+            SocketType.DGRAM,
+            msg="socket.socket_type must return the '_socket_type' attribute.",
+        )
+        self.assertIs(
+            self._socket.ip_proto,
+            IpProto.UDP,
+            msg="socket.ip_proto must return the '_ip_proto' attribute.",
+        )
+        self.assertEqual(
+            self._socket.local_ip_address,
+            Ip6Address("2001:db8::1"),
+            msg="socket.local_ip_address must return the '_local_ip_address' attribute.",
+        )
+        self.assertEqual(
+            self._socket.remote_ip_address,
+            Ip6Address("2001:db8::2"),
+            msg="socket.remote_ip_address must return the '_remote_ip_address' attribute.",
+        )
+        self.assertEqual(
+            self._socket.local_port,
+            53,
+            msg="socket.local_port must return the '_local_port' attribute.",
+        )
+        self.assertEqual(
+            self._socket.remote_port,
+            5353,
+            msg="socket.remote_port must return the '_remote_port' attribute.",
+        )
+
+    def test__socket__bsd_api_property_aliases(self) -> None:
+        """
+        Ensure the BSD-compatible 'family', 'type', 'proto' properties
+        return the same values as their internal counterparts.
+        """
+
+        self.assertIs(
+            self._socket.family,
+            self._socket.address_family,
+            msg="socket.family alias must match socket.address_family.",
+        )
+        self.assertIs(
+            self._socket.type,
+            self._socket.socket_type,
+            msg="socket.type alias must match socket.socket_type.",
+        )
+        self.assertIs(
+            self._socket.proto,
+            self._socket.ip_proto,
+            msg="socket.proto alias must match socket.ip_proto.",
+        )
+
+
+class TestSocketGetSockName(TestCase):
+    """
+    The 'socket.getsockname' / 'socket.getpeername' tests.
+    """
+
+    def test__socket__getsockname_returns_str_port_tuple(self) -> None:
+        """
+        Ensure 'getsockname()' returns a '(str_ip, port)' tuple matching
+        the BSD API shape, with the IP address stringified.
+        """
+
+        s = _StubSocket(
+            local_ip_address=Ip4Address("10.0.0.1"),
+            local_port=1024,
+        )
+        self.assertEqual(
+            s.getsockname(),
+            ("10.0.0.1", 1024),
+            msg="socket.getsockname() must return a (str_ip, port) tuple.",
+        )
+
+    def test__socket__getpeername_returns_str_port_tuple(self) -> None:
+        """
+        Ensure 'getpeername()' returns a '(str_ip, port)' tuple built
+        from the remote address. Note the base implementation reuses
+        the local port here — this test pins the current contract so
+        any intentional fix is a deliberate, reviewed change.
+        """
+
+        s = _StubSocket(
+            remote_ip_address=Ip4Address("10.0.0.2"),
+            local_port=1024,
+            remote_port=2048,
+        )
+        self.assertEqual(
+            s.getpeername(),
+            ("10.0.0.2", 1024),
+            msg="socket.getpeername() must return a (remote_str_ip, local_port) tuple (current base-class shape).",
+        )
+
+
+class TestSocketPlaceholders(TestCase):
+    """
+    The 'socket' BSD API placeholder tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a stub socket for exercising the abstract placeholders.
+        """
+
+        self._socket = _StubSocket()
+
+    def test__socket__bind_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'bind' placeholder raises
+        'NotImplementedError'. Concrete subclasses must override it.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.bind(("10.0.0.1", 1024))
+
+    def test__socket__connect_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'connect' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.connect(("10.0.0.2", 2048))
+
+    def test__socket__send_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'send' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.send(b"data")
+
+    def test__socket__recv_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'recv' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.recv()
+
+    def test__socket__recv_mv_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'recv__mv' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.recv__mv()
+
+    def test__socket__close_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'close' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.close()
+
+    def test__socket__listen_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'listen' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.listen()
+
+    def test__socket__accept_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'accept' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.accept()
+
+    def test__socket__sendto_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'sendto' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.sendto(b"data", ("10.0.0.2", 2048))
+
+    def test__socket__recvfrom_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'recvfrom' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.recvfrom()
+
+    def test__socket__recvfrom_mv_raises_not_implemented(self) -> None:
+        """
+        Ensure the base-class 'recvfrom__mv' placeholder raises
+        'NotImplementedError'.
+        """
+
+        with self.assertRaises(NotImplementedError):
+            self._socket.recvfrom__mv()

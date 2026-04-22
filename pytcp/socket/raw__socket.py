@@ -50,13 +50,13 @@ from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
     AddressFamily,
+    IpProto,
     SocketType,
     gaierror,
     socket,
 )
 
 if TYPE_CHECKING:
-    from pytcp.socket import IpProto
     from pytcp.socket.raw__metadata import RawMetadata
 
 
