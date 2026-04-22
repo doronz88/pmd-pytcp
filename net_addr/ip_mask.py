@@ -85,7 +85,13 @@ class IpMask(Base, Ip, ABC):
 
         return other is self or (isinstance(other, type(self)) and self._mask == other._mask)
 
-    __hash__ = Base.__hash__
+    @override
+    def __hash__(self) -> int:
+        """
+        Get the IP mask hash value.
+        """
+
+        return hash((type(self), self._mask))
 
     def _validate_bits(self, /, bytes_len: int) -> bool:
         """

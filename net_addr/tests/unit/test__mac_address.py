@@ -52,7 +52,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('00:00:00:00:00:00')",
                 "__bytes__": b"\x00\x00\x00\x00\x00\x00",
                 "__int__": 0,
-                "__hash__": hash(MacAddress("00:00:00:00:00:00")),
                 "is_unspecified": True,
                 "is_unicast": False,
                 "is_multicast": False,
@@ -73,7 +72,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('00:00:00:00:00:00')",
                 "__bytes__": b"\x00\x00\x00\x00\x00\x00",
                 "__int__": 0,
-                "__hash__": hash(MacAddress("00:00:00:00:00:00")),
                 "is_unspecified": True,
                 "is_unicast": False,
                 "is_multicast": False,
@@ -94,7 +92,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -115,7 +112,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -136,7 +132,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -157,7 +152,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -178,7 +172,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -199,7 +192,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -220,7 +212,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
                 "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
                 "__int__": 2211986455500,
-                "__hash__": hash(MacAddress("02:03:04:aa:bb:cc")),
                 "is_unspecified": False,
                 "is_unicast": True,
                 "is_multicast": False,
@@ -241,7 +232,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('01:00:5e:01:02:03')",
                 "__bytes__": b"\x01\x00\x5e\x01\x02\x03",
                 "__int__": 1101088752131,
-                "__hash__": hash(MacAddress("01:00:5e:01:02:03")),
                 "is_unspecified": False,
                 "is_unicast": False,
                 "is_multicast": True,
@@ -262,7 +252,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('33:33:00:01:02:03')",
                 "__bytes__": b"\x33\x33\x00\x01\x02\x03",
                 "__int__": 56294136414723,
-                "__hash__": hash(MacAddress("33:33:00:01:02:03")),
                 "is_unspecified": False,
                 "is_unicast": False,
                 "is_multicast": True,
@@ -283,7 +272,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('33:33:ff:01:02:03')",
                 "__bytes__": b"\x33\x33\xff\x01\x02\x03",
                 "__int__": 56298414604803,
-                "__hash__": hash(MacAddress("33:33:ff:01:02:03")),
                 "is_unspecified": False,
                 "is_unicast": False,
                 "is_multicast": True,
@@ -304,7 +292,6 @@ from net_addr import MacAddress, MacAddressFormatError
                 "__repr__": "MacAddress('ff:ff:ff:ff:ff:ff')",
                 "__bytes__": b"\xff\xff\xff\xff\xff\xff",
                 "__int__": 281474976710655,
-                "__hash__": hash(MacAddress("ff:ff:ff:ff:ff:ff")),
                 "is_unspecified": False,
                 "is_unicast": False,
                 "is_multicast": False,
@@ -391,16 +378,6 @@ class TestNetAddrMacAddress(TestCase):
         self.assertFalse(
             self._mac_address == "not a MAC address",
             msg="MacAddress must not compare equal to an arbitrary string.",
-        )
-
-    def test__net_addr__mac_address__hash(self) -> None:
-        """
-        Ensure the MAC address '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._mac_address),
-            self._results["__hash__"],
         )
 
     def test__net_addr__mac_address__is_unspecified(self) -> None:

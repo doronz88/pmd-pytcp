@@ -69,7 +69,13 @@ class Address(Base, ABC):
 
         return other is self or isinstance(other, type(self)) and self._address == other._address
 
-    __hash__ = Base.__hash__
+    @override
+    def __hash__(self) -> int:
+        """
+        Get the network address hash value.
+        """
+
+        return hash((type(self), self._address))
 
     @property
     def unspecified(self) -> Self:

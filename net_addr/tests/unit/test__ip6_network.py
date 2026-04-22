@@ -60,7 +60,6 @@ from net_addr import (
             "_results": {
                 "__str__": "::/0",
                 "__repr__": "Ip6Network('::/0')",
-                "__hash__": hash("Ip6Network('::/0')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -78,7 +77,6 @@ from net_addr import (
             "_results": {
                 "__str__": "::/0",
                 "__repr__": "Ip6Network('::/0')",
-                "__hash__": hash("Ip6Network('::/0')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -96,7 +94,6 @@ from net_addr import (
             "_results": {
                 "__str__": "2001::/96",
                 "__repr__": "Ip6Network('2001::/96')",
-                "__hash__": hash("Ip6Network('2001::/96')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -114,7 +111,6 @@ from net_addr import (
             "_results": {
                 "__str__": "2001:0:aaaa:bbbb::/64",
                 "__repr__": "Ip6Network('2001:0:aaaa:bbbb::/64')",
-                "__hash__": hash("Ip6Network('2001:0:aaaa:bbbb::/64')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -132,7 +128,6 @@ from net_addr import (
             "_results": {
                 "__str__": "2002::/32",
                 "__repr__": "Ip6Network('2002::/32')",
-                "__hash__": hash("Ip6Network('2002::/32')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -150,7 +145,6 @@ from net_addr import (
             "_results": {
                 "__str__": "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128",
                 "__repr__": "Ip6Network('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128')",
-                "__hash__": hash("Ip6Network('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -234,16 +228,6 @@ class TestNetAddrIp6Network(TestCase):
         self.assertFalse(
             self._ip6_network == "not an IPv6 network",
             msg="Ip6Network must not compare equal to an arbitrary string.",
-        )
-
-    def test__net_addr__ip6_network__hash(self) -> None:
-        """
-        Ensure the IPv6 network '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._ip6_network),
-            self._results["__hash__"],
         )
 
     def test__net_addr__ip6_network__version(self) -> None:

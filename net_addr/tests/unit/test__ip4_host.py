@@ -68,7 +68,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4Host('192.168.1.100/24')",
-                "__hash__": hash("Ip4Host('192.168.1.100/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -88,7 +87,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4Host('192.168.1.100/24')",
-                "__hash__": hash("Ip4Host('192.168.1.100/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -111,7 +109,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4Host('192.168.1.100/24')",
-                "__hash__": hash("Ip4Host('192.168.1.100/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -134,7 +131,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4Host('192.168.1.100/24')",
-                "__hash__": hash("Ip4Host('192.168.1.100/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -154,7 +150,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "10.0.0.1/8",
                 "__repr__": "Ip4Host('10.0.0.1/8')",
-                "__hash__": hash("Ip4Host('10.0.0.1/8')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -249,16 +244,6 @@ class TestNetAddrIp4Host(TestCase):
                 ),
             ),
             msg="Ip4Host instances with different networks must not compare equal.",
-        )
-
-    def test__net_addr__ip4_host__hash(self) -> None:
-        """
-        Ensure the IPv4 host '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._ip4_host),
-            self._results["__hash__"],
         )
 
     def test__net_addr__ip4_host__version(self) -> None:

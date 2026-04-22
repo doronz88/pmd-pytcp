@@ -85,7 +85,13 @@ class IpHost[
             isinstance(other, type(self)) and self._address == other._address and self._network == other._network
         )
 
-    __hash__ = Base.__hash__
+    @override
+    def __hash__(self) -> int:
+        """
+        Get the IP host hash value.
+        """
+
+        return hash((type(self), self._address, self._network))
 
     @abstractmethod
     def _validate_gateway(self, address: A | None, /) -> None:

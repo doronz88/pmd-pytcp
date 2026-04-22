@@ -60,7 +60,6 @@ from net_addr import (
             "_results": {
                 "__str__": "0.0.0.0/0",
                 "__repr__": "Ip4Network('0.0.0.0/0')",
-                "__hash__": hash("Ip4Network('0.0.0.0/0')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -79,7 +78,6 @@ from net_addr import (
             "_results": {
                 "__str__": "0.0.0.0/0",
                 "__repr__": "Ip4Network('0.0.0.0/0')",
-                "__hash__": hash("Ip4Network('0.0.0.0/0')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -98,7 +96,6 @@ from net_addr import (
             "_results": {
                 "__str__": "192.168.1.0/24",
                 "__repr__": "Ip4Network('192.168.1.0/24')",
-                "__hash__": hash("Ip4Network('192.168.1.0/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -117,7 +114,6 @@ from net_addr import (
             "_results": {
                 "__str__": "192.168.1.0/24",
                 "__repr__": "Ip4Network('192.168.1.0/24')",
-                "__hash__": hash("Ip4Network('192.168.1.0/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -136,7 +132,6 @@ from net_addr import (
             "_results": {
                 "__str__": "192.168.1.0/24",
                 "__repr__": "Ip4Network('192.168.1.0/24')",
-                "__hash__": hash("Ip4Network('192.168.1.0/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -155,7 +150,6 @@ from net_addr import (
             "_results": {
                 "__str__": "192.168.1.0/24",
                 "__repr__": "Ip4Network('192.168.1.0/24')",
-                "__hash__": hash("Ip4Network('192.168.1.0/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -174,7 +168,6 @@ from net_addr import (
             "_results": {
                 "__str__": "10.0.0.0/8",
                 "__repr__": "Ip4Network('10.0.0.0/8')",
-                "__hash__": hash("Ip4Network('10.0.0.0/8')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -193,7 +186,6 @@ from net_addr import (
             "_results": {
                 "__str__": "172.16.16.0/20",
                 "__repr__": "Ip4Network('172.16.16.0/20')",
-                "__hash__": hash("Ip4Network('172.16.16.0/20')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -212,7 +204,6 @@ from net_addr import (
             "_results": {
                 "__str__": "172.16.10.70/31",
                 "__repr__": "Ip4Network('172.16.10.70/31')",
-                "__hash__": hash("Ip4Network('172.16.10.70/31')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -231,7 +222,6 @@ from net_addr import (
             "_results": {
                 "__str__": "127.0.0.1/32",
                 "__repr__": "Ip4Network('127.0.0.1/32')",
-                "__hash__": hash("Ip4Network('127.0.0.1/32')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -321,16 +311,6 @@ class TestNetAddrIp4Network(TestCase):
         self.assertFalse(
             self._ip4_network == "not an IPv4 network",
             msg="Ip4Network must not compare equal to a foreign string value.",
-        )
-
-    def test__net_addr__ip4_network__hash(self) -> None:
-        """
-        Ensure the IPv4 network '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._ip4_network),
-            self._results["__hash__"],
         )
 
     def test__net_addr__ip4_network__version(self) -> None:

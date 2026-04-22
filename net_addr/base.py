@@ -25,7 +25,7 @@
 """
 This module contains the base class for all NetAddr objects.
 
-net_addr/net_addr.py
+net_addr/base.py
 
 ver 3.0.4
 """
@@ -54,7 +54,7 @@ class Base(ABC):
         Get the network object representation string.
         """
 
-        return f"{type(self).__name__}('{str(self)}')"
+        return f"{type(self).__name__}({str(self)!r})"
 
     @abstractmethod
     def __eq__(self, other: object, /) -> bool:
@@ -69,4 +69,4 @@ class Base(ABC):
         Get the network object hash value.
         """
 
-        return hash(repr(self))
+        return hash(str(self))

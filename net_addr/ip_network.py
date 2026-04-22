@@ -74,7 +74,13 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             isinstance(other, type(self)) and self._address == other._address and self._mask == other._mask
         )
 
-    __hash__ = Base.__hash__
+    @override
+    def __hash__(self) -> int:
+        """
+        Get the IP network hash value.
+        """
+
+        return hash((type(self), self._address, self._mask))
 
     def __contains__(self, other: object, /) -> bool:
         """

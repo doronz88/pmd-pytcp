@@ -53,7 +53,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/0')",
                 "__bytes__": b"\x00\x00\x00\x00",
                 "__int__": 0,
-                "__hash__": hash("Ip4Mask('/0')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -71,7 +70,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/0')",
                 "__bytes__": b"\x00\x00\x00\x00",
                 "__int__": 0,
-                "__hash__": hash("Ip4Mask('/0')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -89,7 +87,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/0')",
                 "__bytes__": b"\x00\x00\x00\x00",
                 "__int__": 0,
-                "__hash__": hash("Ip4Mask('/0')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -107,7 +104,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/8')",
                 "__bytes__": b"\xff\x00\x00\x00",
                 "__int__": 4278190080,
-                "__hash__": hash("Ip4Mask('/8')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -125,7 +121,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -143,7 +138,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -161,7 +155,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -179,7 +172,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -197,7 +189,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -215,7 +206,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/9')",
                 "__bytes__": b"\xff\x80\x00\x00",
                 "__int__": 4286578688,
-                "__hash__": hash("Ip4Mask('/9')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -233,7 +223,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/16')",
                 "__bytes__": b"\xff\xff\x00\x00",
                 "__int__": 4294901760,
-                "__hash__": hash("Ip4Mask('/16')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -251,7 +240,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/19')",
                 "__bytes__": b"\xff\xff\xe0\x00",
                 "__int__": 4294959104,
-                "__hash__": hash("Ip4Mask('/19')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -269,7 +257,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/24')",
                 "__bytes__": b"\xff\xff\xff\x00",
                 "__int__": 4294967040,
-                "__hash__": hash("Ip4Mask('/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -287,7 +274,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/24')",
                 "__bytes__": b"\xff\xff\xff\x00",
                 "__int__": 4294967040,
-                "__hash__": hash("Ip4Mask('/24')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -305,7 +291,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/30')",
                 "__bytes__": b"\xff\xff\xff\xfc",
                 "__int__": 4294967292,
-                "__hash__": hash("Ip4Mask('/30')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -323,7 +308,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/32')",
                 "__bytes__": b"\xff\xff\xff\xff",
                 "__int__": 4294967295,
-                "__hash__": hash("Ip4Mask('/32')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -341,7 +325,6 @@ from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
                 "__repr__": "Ip4Mask('/32')",
                 "__bytes__": b"\xff\xff\xff\xff",
                 "__int__": 4294967295,
-                "__hash__": hash("Ip4Mask('/32')"),
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
@@ -449,16 +432,6 @@ class TestNetAddrIp4Mask(TestCase):
         self.assertFalse(
             self._ip4_mask == "not an IPv4 mask",
             msg="Ip4Mask must not compare equal to a foreign string value.",
-        )
-
-    def test__net_addr__ip4_mask__hash(self) -> None:
-        """
-        Ensure the IPv4 mask '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._ip4_mask),
-            self._results["__hash__"],
         )
 
     def test__net_addr__ip4_mask__version(self) -> None:

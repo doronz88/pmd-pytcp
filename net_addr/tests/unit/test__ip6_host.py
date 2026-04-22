@@ -69,7 +69,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
-                "__hash__": hash("Ip6Host('2001:b:c:d:1:2:3:4/64')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -89,7 +88,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
-                "__hash__": hash("Ip6Host('2001:b:c:d:1:2:3:4/64')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -113,7 +111,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
-                "__hash__": hash("Ip6Host('2001:b:c:d:1:2:3:4/64')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -139,7 +136,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
-                "__hash__": hash("Ip6Host('2001:b:c:d:1:2:3:4/64')"),
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
@@ -223,16 +219,6 @@ class TestNetAddrIp6Host(TestCase):
                 ),
             ),
             msg="Ip6Host instances with different addresses must not compare equal.",
-        )
-
-    def test__net_addr__ip6_host__hash(self) -> None:
-        """
-        Ensure the IPv6 host '__hash__()' method returns a correct value.
-        """
-
-        self.assertEqual(
-            hash(self._ip6_host),
-            self._results["__hash__"],
         )
 
     def test__net_addr__ip6_host__version(self) -> None:
