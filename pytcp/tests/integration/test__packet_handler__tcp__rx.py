@@ -29,7 +29,7 @@
 
 
 """
-This module contains unit tests for the Packet Handler TCP RX operations.
+This module contains integration tests for the Packet Handler TCP RX operations.
 
 pytcp/tests/integration/test__packet_handler__tcp__rx.py
 
@@ -226,6 +226,58 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
         },
+        {
+            "_description": "Ethernet/IPv4/TCP - malformed (corrupted checksum), failed parse drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=TCP
+                # TCP: SYN with checksum corrupted to 0xffff (intentionally invalid)
+                #
+                # Summary: TCP packet with bad checksum triggers TcpParser to raise
+                #          'TcpIntegrityError'; bumps 'tcp__failed_parse__drop' and
+                #          skips socket dispatch entirely.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x28\x00\x01\x00\x00\x40\x06\x64\x6e\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\xe8\x07\xd0\x00\x00\x04\xd2\x00\x00\x00\x00\x50\x02"
+                b"\x20\x00\xff\xff\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                tcp__pre_parse=1,
+                tcp__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4/TCP - RST to closed port, silently drop (no RST in response)",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=TCP
+                # TCP: sport=1000, dport=2000 (closed), flags=RST+ACK, seq=0x4d2
+                #
+                # Summary: TCP RST targeting a closed port. The handler must NOT respond
+                #          with another RST (RFC 793 — never RST a RST). Bumps
+                #          'tcp__no_socket_match__rst__drop' and stays silent.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x28\x00\x01\x00\x00\x40\x06\x64\x6e\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\xe8\x07\xd0\x00\x00\x04\xd2\x00\x00\x00\x00\x50\x14"
+                b"\x00\x00\x88\xe5\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                tcp__pre_parse=1,
+                tcp__no_socket_match__rst__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerTcpRx(NetworkTestCase):
@@ -235,9 +287,9 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
