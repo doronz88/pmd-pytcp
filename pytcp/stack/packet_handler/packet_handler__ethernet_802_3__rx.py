@@ -94,10 +94,10 @@ class PacketHandlerEthernet8023Rx(ABC):
             return
 
         if packet_rx.ethernet_802_3.dst == self._mac_unicast:
-            self._packet_stats_rx.ethernet__dst_unicast += 1
+            self._packet_stats_rx.ethernet_802_3__dst_unicast += 1
 
         if packet_rx.ethernet_802_3.dst in self._mac_multicast:
-            self._packet_stats_rx.ethernet__dst_multicast += 1
+            self._packet_stats_rx.ethernet_802_3__dst_multicast += 1
 
         if packet_rx.ethernet_802_3.dst == self._mac_broadcast:
-            self._packet_stats_rx.ethernet__dst_broadcast += 1
+            self._packet_stats_rx.ethernet_802_3__dst_broadcast += 1

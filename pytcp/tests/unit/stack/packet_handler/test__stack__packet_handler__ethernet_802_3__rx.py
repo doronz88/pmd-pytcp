@@ -127,7 +127,7 @@ class _StubHandler(PacketHandlerEthernet8023Rx):
             "_frame": _FRAME_802_3__DST_UNICAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
-                "ethernet__dst_unicast": 1,
+                "ethernet_802_3__dst_unicast": 1,
             },
         },
         {
@@ -135,7 +135,7 @@ class _StubHandler(PacketHandlerEthernet8023Rx):
             "_frame": _FRAME_802_3__DST_MULTICAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
-                "ethernet__dst_multicast": 1,
+                "ethernet_802_3__dst_multicast": 1,
             },
         },
         {
@@ -143,7 +143,7 @@ class _StubHandler(PacketHandlerEthernet8023Rx):
             "_frame": _FRAME_802_3__DST_BROADCAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
-                "ethernet__dst_broadcast": 1,
+                "ethernet_802_3__dst_broadcast": 1,
             },
         },
         {
