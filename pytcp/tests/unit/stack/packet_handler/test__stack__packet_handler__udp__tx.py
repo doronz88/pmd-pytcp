@@ -44,8 +44,25 @@ from pytcp.stack.packet_handler.packet_handler__udp__tx import (
     PacketHandlerUdpTx,
 )
 
-# Silence log output emitted by the handlers during tests.
-stack.LOG__CHANNEL = set()
+# Snapshot log channels so 'setUpModule' can silence output during this
+# module's tests and 'tearDownModule' can restore the global state.
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+
+def setUpModule() -> None:
+    """
+    Silence log output for the duration of this module's tests.
+    """
+
+    stack.LOG__CHANNEL = set()
+
+
+def tearDownModule() -> None:
+    """
+    Restore the snapshot of log channels after this module's tests finish.
+    """
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
 STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")

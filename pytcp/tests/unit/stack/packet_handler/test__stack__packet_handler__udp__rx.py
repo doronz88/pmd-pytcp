@@ -54,11 +54,31 @@ from pytcp.stack.packet_handler.packet_handler__udp__rx import (
     PacketHandlerUdpRx,
 )
 
-# Silence log output emitted by the handlers during tests.
-stack.LOG__CHANNEL = set()
-# Disable UDP echo to avoid accidentally triggering the echo path in
-# tests that send UDP packets to arbitrary ports.
-stack.UDP__ECHO_NATIVE = False
+# Snapshot stack globals so 'setUpModule' can silence output and disable
+# the UDP echo fastpath for the duration of this module's tests, and
+# 'tearDownModule' can restore them.
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+_ORIGINAL_UDP_ECHO_NATIVE: bool = stack.UDP__ECHO_NATIVE
+
+
+def setUpModule() -> None:
+    """
+    Silence log output and force UDP__ECHO_NATIVE=False for this
+    module's tests. The 'TestPacketHandlerUdpRxEcho' class re-enables
+    it per-test via 'unittest.mock.patch'.
+    """
+
+    stack.LOG__CHANNEL = set()
+    stack.UDP__ECHO_NATIVE = False
+
+
+def tearDownModule() -> None:
+    """
+    Restore the snapshots after this module's tests finish.
+    """
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
+    stack.UDP__ECHO_NATIVE = _ORIGINAL_UDP_ECHO_NATIVE
 
 
 STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
