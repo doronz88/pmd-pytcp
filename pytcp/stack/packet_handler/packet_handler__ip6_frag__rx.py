@@ -38,7 +38,7 @@ from abc import ABC
 from time import time
 from typing import TYPE_CHECKING
 
-from net_proto import Ip6FragParser, PacketRx
+from net_proto import Ip6FragParser, PacketRx, PacketValidationError
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 from pytcp.lib.logger import log
@@ -67,13 +67,14 @@ class PacketHandlerIp6FragRx(ABC):
 
         self._packet_stats_rx.ip6_frag__pre_parse += 1
 
-        Ip6FragParser(packet_rx)
+        try:
+            Ip6FragParser(packet_rx)
 
-        if packet_rx.parse_failed:
+        except PacketValidationError as error:
             self._packet_stats_rx.ip6_frag__failed_parse += 1
             __debug__ and log(
                 "ip6",
-                f"{packet_rx.tracker} - <CRIT>{packet_rx.parse_failed}</>",
+                f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 

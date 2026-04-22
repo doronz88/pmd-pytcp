@@ -1674,6 +1674,33 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=5,
             ),
         },
+        {
+            "_description": ("Ethernet/IPv6/Frag - malformed Frag header (truncated below 8 bytes), failed parse"),
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7, hop=64, plen=4, next=44 (Frag).
+                # Frag header: 4 bytes only — truncated below the 8-byte minimum. Parser raises
+                # Ip6FragIntegrityError, which the handler now catches and counts as failed_parse.
+                #
+                # Summary: Truncated IPv6 Fragment extension header bumps 'ip6_frag__failed_parse'
+                #          and skips defragmentation. Prior to the source fix this raised
+                #          uncaught into the caller.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x04\x2c\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                ip6_frag__pre_parse=1,
+                ip6_frag__failed_parse=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerIp6FragRx(NetworkTestCase):
@@ -1683,9 +1710,9 @@ class TestPacketHandlerIp6FragRx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
