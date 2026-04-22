@@ -39,6 +39,7 @@ ver 3.0.4
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip6Address, MacAddress
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.tests.lib.network_testcase import NetworkTestCase
@@ -535,6 +536,226 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
         },
+        {
+            "_description": "Ethernet/IPv6/ICMPv6 - Echo Reply, no matching raw socket",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7, hop=64, plen=13
+                # ICMPv6: type=129 (Echo Reply), id=7, seq=10, data="hello"
+                #
+                # Summary: Echo reply addressed to us with no matching RAW socket installed.
+                #          Bumps 'icmp6__echo_reply' and returns silently.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x0d\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x81\x00\xde\xc8\x00\x07\x00\x0a\x68\x65"
+                b"\x6c\x6c\x6f",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__echo_reply=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv6/ICMPv6 - Destination Unreachable, valid embedded IPv6+UDP, " "no matching UDP socket"
+            ),
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07, src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7, hop=64, plen=56
+                # ICMPv6: type=1 (Destination Unreachable), code=4 (Port)
+                #         data = original IPv6 (40B) + UDP (8B):
+                #           IPv6: src=2001:db8:0:1::7, dst=2001:db8:0:1::91, next=UDP, plen=8
+                #           UDP : sport=12345, dport=54321, len=8, cksum=0
+                #
+                # Summary: Embedded IPv6+UDP packet passes the integrity gauntlet but no matching
+                #          UDP socket is installed. Bumps 'icmp6__destination_unreachable'.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x38\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x01\x04\xd0\xb5\x00\x00\x00\x00\x60\x00"
+                b"\x00\x00\x00\x08\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x30\x39\xd4\x31\x00\x08\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__destination_unreachable=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv6/ICMPv6 - Destination Unreachable, embedded data fails IPv6 integrity check"
+            ),
+            "_frames_rx": [
+                # ICMPv6 type=1, embedded data = 48 zero bytes (frame[0]>>4 == 0, fails 'IPv6 version' check)
+                #
+                # Summary: Embedded data exists but is not a valid IPv6 packet.
+                #          Integrity gauntlet rejects it; the function bumps
+                #          'icmp6__destination_unreachable' and returns without UDP socket lookup.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x38\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x01\x04\xa2\x7d\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__destination_unreachable=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv6/ICMPv6 - Router Advertisement, prefix info learned",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=fe80::91 (link-local, RFC 4861), dst=2001:db8:0:1::7, hop=255 (RFC 4861)
+                # ICMPv6: type=134 (RA), hop=64, M/O=0, lifetime=1800, reachable=0, retrans=0
+                #         option = Prefix Information (L+A flags set, 30-day valid, 7-day preferred,
+                #                  prefix=2001:db8:0:abcd::/64)
+                #
+                # Summary: RA carrying a single prefix; handler appends (prefix, src) to
+                #          '_icmp6_ra__prefixes' and releases the '_icmp6_ra__event' semaphore.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x30\x3a\xff\xfe\x80\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x86\x00\x20\xbe\x40\x00\x07\x08\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x03\x04\x40\xc0\x00\x27\x8d\x00\x00\x09"
+                b"\x3a\x80\x00\x00\x00\x00\x20\x01\x0d\xb8\x00\x00\xab\xcd\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_router_advertisement=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": ("Ethernet/IPv6/ICMPv6 - Neighbor Advertisement with TLLA, non-DAD, ND cache update"),
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07, src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91 (unicast), dst=2001:db8:0:1::7, hop=255 (RFC 4861)
+                # ICMPv6: type=136 (NA), flags S=1, target=2001:db8:0:1::91
+                #         option TLLA = 02:00:00:00:00:91
+                #
+                # Summary: Non-DAD NA with TLLA option triggers an ND cache update
+                #          ('icmp6__nd_neighbor_advertisement__update_nd_cache').
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x88\x00\xa8\xbb\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x91\x02\x01"
+                b"\x02\x00\x00\x00\x00\x91",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_advertisement=1,
+                icmp6__nd_neighbor_advertisement__update_nd_cache=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": ("Ethernet/IPv6/ICMPv6 - Neighbor Advertisement without TLLA, non-DAD, no cache update"),
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07, src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7, hop=255
+                # ICMPv6: type=136 (NA), flags S=1, target=2001:db8:0:1::91, no options
+                #
+                # Summary: Non-DAD NA without a TLLA option silently no-ops on the cache.
+                #          Only 'icmp6__nd_neighbor_advertisement' is bumped.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x88\x00\xad\x55\x40\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x91",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_neighbor_advertisement=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv6/ICMPv6 - unknown type (200), classified as unknown",
+            "_frames_rx": [
+                # ICMPv6 type=200 (unassigned), code=0, no payload.
+                #
+                # Summary: Falls through the type-match dispatch to '__phrx_icmp6__unknown',
+                #          bumps 'icmp6__unknown'.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x04\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xc8\x00\xdb\xb4",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__unknown=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv6/ICMPv6 - malformed (truncated) — failed parse drop",
+            "_frames_rx": [
+                # ICMPv6: only 4 bytes (type=128, code=0, cksum=0) — truncated below the
+                #         8-byte minimum the Icmp6Parser expects for an Echo Request.
+                #
+                # Summary: Truncated ICMPv6 message triggers Icmp6Parser to raise, bumping
+                #          'icmp6__failed_parse__drop' and skipping all message-type dispatch.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x04\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x80\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                icmp6__pre_parse=1,
+                icmp6__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerIcmp6Rx(NetworkTestCase):
@@ -544,9 +765,9 @@ class TestPacketHandlerIcmp6Rx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -575,4 +796,188 @@ class TestPacketHandlerIcmp6Rx(NetworkTestCase):
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
             msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
+
+
+class TestPacketHandlerIcmp6RxRouterSolicitation(NetworkTestCase):
+    """
+    Test the Packet Handler dispatch of an ICMPv6 Router Solicitation.
+
+    RFC 4861 requires RS to be sent to the all-routers multicast address
+    (ff02::2) at hop limit 255, so the test joins the corresponding IPv6
+    and Ethernet multicast groups in setUp before driving the frame.
+    """
+
+    _ALL_ROUTERS__IP6 = Ip6Address("ff02::2")
+    _ALL_ROUTERS__MAC = MacAddress("33:33:00:00:00:02")
+
+    def setUp(self) -> None:
+        """
+        Join the all-routers IPv6 and Ethernet multicast groups so the
+        RS frame passes the RX classifier.
+        """
+
+        super().setUp()
+        self._packet_handler._mac_multicast.append(self._ALL_ROUTERS__MAC)
+        self._packet_handler._ip6_multicast.append(self._ALL_ROUTERS__IP6)
+
+    def test__packet_handler__icmp6__rx__router_solicitation(self) -> None:
+        """
+        Ensure an inbound ICMPv6 Router Solicitation reaches the
+        '__phrx_icmp6__nd_router_solicitation' dispatch arm and
+        bumps 'icmp6__nd_router_solicitation'.
+        """
+
+        # Ethernet II: dst=33:33:00:00:00:02 (all-routers), src=02:00:00:00:00:91
+        # IPv6: src=fe80::91, dst=ff02::2, hop=255 (RFC 4861), plen=8
+        # ICMPv6: type=133 (Router Solicitation), code=0, cksum=0x7ca6, no options
+        frame_rx = (
+            b"\x33\x33\x00\x00\x00\x02\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+            b"\x00\x00\x00\x08\x3a\xff\xfe\x80\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x00\x00\x00\x00\x00\x02\x85\x00\x7c\xa6\x00\x00\x00\x00"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="Router Solicitation handler must not transmit any frame.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__nd_router_solicitation=1,
+            ),
+            msg="icmp6__nd_router_solicitation must be bumped for a valid inbound RS.",
+        )
+
+
+class TestPacketHandlerIcmp6RxMld2Report(NetworkTestCase):
+    """
+    Test the Packet Handler dispatch of an ICMPv6 MLDv2 Report.
+
+    RFC 3810 MLDv2 Reports are sent to ff02::16 at hop limit 1. The
+    test joins the corresponding IPv6 and Ethernet multicast groups in
+    setUp.
+    """
+
+    _MLD2_ROUTERS__IP6 = Ip6Address("ff02::16")
+    _MLD2_ROUTERS__MAC = MacAddress("33:33:00:00:00:16")
+
+    def setUp(self) -> None:
+        """
+        Join the MLDv2-routers IPv6 and Ethernet multicast groups.
+        """
+
+        super().setUp()
+        self._packet_handler._mac_multicast.append(self._MLD2_ROUTERS__MAC)
+        self._packet_handler._ip6_multicast.append(self._MLD2_ROUTERS__IP6)
+
+    def test__packet_handler__icmp6__rx__mld2_report(self) -> None:
+        """
+        Ensure an inbound ICMPv6 MLDv2 Report reaches the
+        '__phrx_icmp6__mld2_report' dispatch arm and bumps
+        'icmp6__mld2_report'.
+        """
+
+        # Ethernet II: dst=33:33:00:00:00:16, src=02:00:00:00:00:91
+        # IPv6: src=fe80::91, dst=ff02::16, hop=1 (RFC 3810), plen=8
+        # ICMPv6: type=143 (MLDv2 Report), code=0, cksum=0x7292, 0 records
+        frame_rx = (
+            b"\x33\x33\x00\x00\x00\x16\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+            b"\x00\x00\x00\x08\x3a\x01\xfe\x80\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+            b"\x00\x00\x00\x00\x00\x16\x8f\x00\x72\x92\x00\x00\x00\x00"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="MLDv2 Report handler must not transmit any frame.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                icmp6__pre_parse=1,
+                icmp6__mld2_report=1,
+            ),
+            msg="icmp6__mld2_report must be bumped for a valid inbound MLDv2 Report.",
+        )
+
+
+class TestPacketHandlerIcmp6RxNeighborAdvertisementDad(NetworkTestCase):
+    """
+    Test the Packet Handler dispatch of a Neighbor Advertisement whose
+    target address matches the DAD candidate IPv6 address currently
+    being probed. The handler must record the TLLA, release the DAD
+    semaphore, and bump the DAD-specific stat.
+    """
+
+    _CANDIDATE__IP6 = Ip6Address("2001:db8:0:1::5")
+
+    def setUp(self) -> None:
+        """
+        Install a DAD candidate on the packet handler so the NA
+        target matches and the DAD branch fires.
+        """
+
+        super().setUp()
+        self._packet_handler._icmp6_nd_dad__ip6_unicast_candidate = self._CANDIDATE__IP6
+
+    def test__packet_handler__icmp6__rx__na_dad_match(self) -> None:
+        """
+        Ensure an NA whose target equals the DAD candidate IP bumps
+        'icmp6__nd_neighbor_advertisement__run_dad', captures the
+        peer's TLLA into '_icmp6_nd_dad__tlla', and releases the
+        '_icmp6_nd_dad__event' semaphore.
+        """
+
+        # Ethernet II: dst=02:00:00:00:00:07, src=02:00:00:00:00:91
+        # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7, hop=255
+        # ICMPv6: type=136 (NA), flags S=1, target=2001:db8:0:1::5 (our DAD candidate)
+        #         option TLLA = 02:00:00:00:00:91
+        frame_rx = (
+            b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+            b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+            b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+            b"\x00\x00\x00\x00\x00\x07\x88\x00\xa9\x47\x40\x00\x00\x00\x20\x01"
+            b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x05\x02\x01"
+            b"\x02\x00\x00\x00\x00\x91"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.icmp6__nd_neighbor_advertisement,
+            1,
+            msg="icmp6__nd_neighbor_advertisement must be bumped for any inbound NA.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad,
+            1,
+            msg="NA matching the DAD candidate must bump '__run_dad'.",
+        )
+        self.assertEqual(
+            self._packet_handler._icmp6_nd_dad__tlla,
+            MacAddress("02:00:00:00:00:91"),
+            msg="Handler must capture the peer TLLA from the NA into '_icmp6_nd_dad__tlla'.",
+        )
+        self.assertTrue(
+            self._packet_handler._icmp6_nd_dad__event.acquire(blocking=False),
+            msg="Handler must release the '_icmp6_nd_dad__event' semaphore for DAD NAs.",
         )
