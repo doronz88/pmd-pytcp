@@ -75,7 +75,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet 802.3 - src unspecified MAC address",
@@ -98,7 +97,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_unspec__fill=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet 802.3 - dst unspecified MAC address",
@@ -113,7 +111,20 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_unspec__drop=1,
             ),
-            "_expected__error": None,
+        },
+        {
+            "_description": "Ethernet 802.3 - src and dst both unspecified, src filled then dropped",
+            "_kwargs": {
+                "ethernet_802_3__src": MAC__UNSPECIFIED,
+                "ethernet_802_3__dst": MAC__UNSPECIFIED,
+            },
+            "_expected__frames_tx": [],
+            "_expected__tx_status": TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
+            "_expected__packet_stats_tx": PacketStatsTx(
+                ethernet_802_3__pre_assemble=1,
+                ethernet_802_3__src_unspec__fill=1,
+                ethernet_802_3__dst_unspec__drop=1,
+            ),
         },
         {
             "_description": "Ethernet 802.3 - payload",
@@ -141,7 +152,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet_802_3__src_spec=1,
                 ethernet_802_3__dst_spec__send=1,
             ),
-            "_expected__error": None,
         },
     ]
 )
@@ -152,10 +162,9 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -166,31 +175,20 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
         parametrized case.
         """
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_ethernet_802_3(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler._phtx_ethernet_802_3(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
-
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_ethernet_802_3(**self._kwargs)
-
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
