@@ -169,7 +169,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - Echo Reply",
@@ -241,7 +240,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - Destination Unreachable, port",
@@ -367,7 +365,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Router Solicitation",
@@ -418,7 +415,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Router Advertisement",
@@ -490,7 +486,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Advertisement",
@@ -547,7 +542,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation",
@@ -601,7 +595,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - ND Neighbor Solicitation, DAD variant",
@@ -653,7 +646,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv6/ICMPv6 - MLDv2 Report",
@@ -737,7 +729,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip6_lookup=1,
                 ethernet__dst_unspec__ip6_lookup__multicast__send=1,
             ),
-            "_expected__error": None,
         },
     ]
 )
@@ -748,10 +739,9 @@ class TestPacketHandlerIcmp6Tx(NetworkTestCase):
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -762,31 +752,358 @@ class TestPacketHandlerIcmp6Tx(NetworkTestCase):
         parametrized case.
         """
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_icmp6(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler._phtx_icmp6(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
 
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_icmp6(**self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+@parameterized_class(
+    [
+        {
+            "_description": ("Ethernet/IPv6/ICMPv6 - Destination Unreachable with non-PORT code " "raises ValueError"),
+            "_kwargs": {
+                "ip6__src": STACK__IP6_HOST.address,
+                "ip6__dst": HOST_A__IP6_ADDRESS,
+                # Any DESTINATION_UNREACHABLE code other than PORT falls through
+                # the named match arms into 'case _:' which raises.
+                "icmp6__message": Icmp6MessageDestinationUnreachable(
+                    code=Icmp6DestinationUnreachableCode.NO_ROUTE,
+                ),
+            },
+            "_expected__error": ValueError("Unsupported ICMPv6 type Destination Unreachable, code No Route."),
+        },
+    ]
+)
+class TestPacketHandlerIcmp6TxErrors(NetworkTestCase):
+    """
+    Test the Packet Handler ICMPv6 TX operations (error path).
+    """
+
+    _description: str
+    _kwargs: dict[str, Any]
+    _expected__error: Exception
+
+    def test__packet_handler__icmp6__tx__error(self) -> None:
+        """
+        Ensure '_phtx_icmp6' raises the expected exception for
+        unsupported (type, code) combinations.
+        """
+
+        with self.assertRaises(type(self._expected__error)) as error:
+            self._packet_handler._phtx_icmp6(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            str(self._expected__error),
+            msg=f"Unexpected error message for case: {self._description}",
+        )
+
+
+# Stack DAD candidate IPv6 used by the helper-method tests.
+_DAD_CANDIDATE__IP6 = Ip6Address("2001:db8:0:1::5")
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "_send_icmp6_nd_dad_message - NS to solicited-node multicast for candidate IP",
+            "_method_name": "_send_icmp6_nd_dad_message",
+            "_kwargs": {"ip6_unicast_candidate": _DAD_CANDIDATE__IP6},
+            "_strip_ip6_multicast": False,
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:05 (solicited-node multicast for ::5)
+                #   Source MAC      : 02:00:00:00:00:07 (stack filled)
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 78 bytes
+                #
+                # IPv6
+                #   Source IP       : ::                    (DAD probe — unspecified)
+                #   Destination IP  : ff02::1:ff00:5        (solicited-node multicast)
+                #   Hop Limit       : 255 (RFC 4861)
+                #   Payload Length  : 0x0018 (24 bytes)
+                #
+                # ICMPv6 ND Neighbor Solicitation
+                #   Type/Code       : 135 / 0
+                #   Checksum        : 0x4ce4
+                #   Target          : 2001:db8:0:1::5
+                #   Options         : (none — DAD probe carries no SLLA per RFC 4861 §4.3)
+                #
+                # Summary: DAD probe Neighbor Solicitation for candidate IP 2001:db8:0:1::5.
+                b"\x33\x33\xff\x00\x00\x05\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x18\x3a\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x05\x87\x00\x4c\xe4\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x05",
+            ],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_solicitation__send=1,
+                ip6__pre_assemble=1,
+                ip6__src_unspecified__send=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "_send_icmp6_multicast_listener_report - send MLDv2 with one record (ff02::1 filtered out)"
+            ),
+            "_method_name": "_send_icmp6_multicast_listener_report",
+            "_kwargs": {},
+            "_strip_ip6_multicast": False,
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:16 (MLDv2 routers)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd (IPv6)
+                #   Frame length    : 82 bytes
+                #
+                # IPv6
+                #   Source IP       : 2001:db8:0:1::7 (our IP)
+                #   Destination IP  : ff02::16
+                #   Hop Limit       : 1 (RFC 3810)
+                #   Payload Length  : 0x001c (28 bytes)
+                #
+                # ICMPv6 MLDv2 Report
+                #   Type/Code       : 143 / 0
+                #   Checksum        : 0x41c2
+                #   Records         : 1 (CHANGE_TO_EXCLUDE for ff02::1:ff00:7 — solicited-node)
+                #   (ff02::1 all-nodes is filtered out per source line 183)
+                #
+                # Summary: MLDv2 announcement of our solicited-node multicast group; ff02::1
+                #          is intentionally excluded.
+                b"\x33\x33\x00\x00\x00\x16\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x1c\x3a\x01\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x16\x8f\x00\x41\xc2\x00\x00\x00\x01\x04\x00"
+                b"\x00\x00\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\x00"
+                b"\x00\x07",
+            ],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__mld2__report__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": ("_send_icmp6_multicast_listener_report - filtered set is empty, no MLDv2 sent"),
+            "_method_name": "_send_icmp6_multicast_listener_report",
+            "_kwargs": {},
+            # Replace _ip6_multicast with only ff02::1 so the filter removes
+            # everything and the outer 'if icmp6_mlr2_multicast_address_record :='
+            # short-circuits, sending nothing.
+            "_strip_ip6_multicast": True,
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "_send_icmp6_nd_router_solicitation - RS to all-routers multicast",
+            "_method_name": "_send_icmp6_nd_router_solicitation",
+            "_kwargs": {},
+            "_strip_ip6_multicast": False,
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:00:00:00:02 (all-routers)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd
+                #   Frame length    : 70 bytes
+                #
+                # IPv6
+                #   Source IP       : 2001:db8:0:1::7
+                #   Destination IP  : ff02::2
+                #   Hop Limit       : 255 (RFC 4861)
+                #   Payload Length  : 0x0010 (16 bytes)
+                #
+                # ICMPv6 ND Router Solicitation
+                #   Type/Code       : 133 / 0
+                #   Checksum        : 0x4ae7
+                #   Options         : SLLA = 02:00:00:00:00:07 (our MAC)
+                #
+                # Summary: Router Solicitation announcing our SLLA, asking routers to advertise.
+                b"\x33\x33\x00\x00\x00\x02\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x10\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x02\x85\x00\x4a\xe7\x00\x00\x00\x00\x01\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__router_solicitation__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": ("send_icmp6_neighbor_solicitation - target in our network, src picked from our IP"),
+            "_method_name": "send_icmp6_neighbor_solicitation",
+            "_kwargs": {"icmp6_ns_target_address": Ip6Address("2001:db8:0:1::99")},
+            "_strip_ip6_multicast": False,
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 33:33:ff:00:00:99 (solicited-node multicast for ::99)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd
+                #   Frame length    : 86 bytes
+                #
+                # IPv6
+                #   Source IP       : 2001:db8:0:1::7  (our IP — target is in our network)
+                #   Destination IP  : ff02::1:ff00:99
+                #   Hop Limit       : 255 (RFC 4861)
+                #   Payload Length  : 0x0020 (32 bytes)
+                #
+                # ICMPv6 ND Neighbor Solicitation
+                #   Type/Code       : 135 / 0
+                #   Checksum        : 0x1aeb
+                #   Target          : 2001:db8:0:1::99
+                #   Options         : SLLA = 02:00:00:00:00:07
+                #
+                # Summary: Address-resolution NS for a peer in our subnet, sourced from us.
+                b"\x33\x33\xff\x00\x00\x99\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x20\x3a\xff\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x99\x87\x00\x1a\xeb\x00\x00\x00\x00\x20\x01"
+                b"\x0d\xb8\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x99\x01\x01"
+                b"\x02\x00\x00\x00\x00\x07",
+            ],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_solicitation__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__multicast__send=1,
+            ),
+        },
+        {
+            "_description": (
+                "send_icmp6_neighbor_solicitation - target outside our networks, src stays unspecified, dropped at IP6"
+            ),
+            "_method_name": "send_icmp6_neighbor_solicitation",
+            "_kwargs": {"icmp6_ns_target_address": Ip6Address("2001:db8:99::1")},
+            "_strip_ip6_multicast": False,
+            # The for-loop in source line 243 fails to find a matching host, so 'src'
+            # remains 'Ip6Address()'. The IPv6 TX layer rejects the packet because
+            # an unspecified source is invalid for a non-DAD NS (which carries an SLLA).
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__nd__neighbor_solicitation__send=1,
+                ip6__pre_assemble=1,
+                ip6__src_unspecified__drop=1,
+            ),
+        },
+        {
+            "_description": "send_icmp6_packet - public wrapper renames kwargs and forwards to _phtx_icmp6",
+            "_method_name": "send_icmp6_packet",
+            "_kwargs": {
+                "ip6__local_address": STACK__IP6_HOST.address,
+                "ip6__remote_address": HOST_A__IP6_ADDRESS,
+                "icmp6__message": Icmp6MessageEchoRequest(id=1, seq=1, data=b""),
+            },
+            "_strip_ip6_multicast": False,
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:91 (resolved via ND cache hit)
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x86dd
+                #   Frame length    : 62 bytes
+                #
+                # IPv6
+                #   Source IP       : 2001:db8:0:1::7
+                #   Destination IP  : 2001:db8:0:1::91
+                #   Hop Limit       : 64
+                #   Payload Length  : 0x0008 (8 bytes)
+                #
+                # ICMPv6 Echo Request
+                #   Type/Code       : 128 / 0
+                #   Checksum        : 0x23af
+                #   Identifier      : 1
+                #   Sequence        : 1
+                #   Payload         : (empty)
+                #
+                # Summary: Public wrapper successfully forwards an Echo Request through
+                #          '_phtx_icmp6' with the renamed addressing kwargs.
+                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x08\x3a\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x80\x00\x23\xaf\x00\x01\x00\x01",
+            ],
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__echo_request__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+    ]
+)
+class TestPacketHandlerIcmp6TxHelpers(NetworkTestCase):
+    """
+    Test the Packet Handler ICMPv6 TX helper methods that compose
+    '_phtx_icmp6' calls (DAD, MLR, RS, NS, public wrapper).
+    """
+
+    _description: str
+    _method_name: str
+    _kwargs: dict[str, Any]
+    _strip_ip6_multicast: bool
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_tx: PacketStatsTx
+
+    _frames_tx: list[bytes]
+
+    def test__packet_handler__icmp6__tx__helper(self) -> None:
+        """
+        Ensure each ICMPv6 TX helper method emits the expected wire
+        frame and bumps the expected TX statistics.
+        """
+
+        if self._strip_ip6_multicast:
+            self._packet_handler._ip6_multicast = [Ip6Address("ff02::1")]
+
+        getattr(self._packet_handler, self._method_name)(**self._kwargs)
+
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
