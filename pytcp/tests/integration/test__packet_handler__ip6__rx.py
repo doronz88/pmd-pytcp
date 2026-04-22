@@ -29,7 +29,7 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv6 RX operations.
+This module contains integration tests for the Packet Handler IPv6 RX operations.
 
 pytcp/tests/integration/test__packet_handler__ip6__rx.py
 
@@ -78,6 +78,73 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
+        {
+            "_description": "Ethernet/IPv6 - malformed IPv6 (truncated below header length), failed parse drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: header truncated to 39 bytes (one byte short of the 40-byte minimum).
+                #
+                # Summary: Truncated IPv6 frame triggers Ip6Parser to raise; bumps
+                #          'ip6__failed_parse__drop' and skips dst classification entirely.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x00\x3b\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv6 - dst is our unicast, unsupported next header (99), drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
+                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7 (us), next=99, plen=4
+                #
+                # Summary: Bumps 'ip6__dst_unicast' (classifier) and 'ip6__no_proto_support__drop'
+                #          (default match arm).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x04\x63\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_unicast=1,
+                ip6__no_proto_support__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": ("Ethernet/IPv6 - dst is our solicited-node multicast, unsupported next header (99), drop"),
+            "_frames_rx": [
+                # Ethernet II: dst=33:33:ff:00:00:07 (solicited-node MAC for ::7), src=02:00:00:00:00:91
+                # IPv6: src=2001:db8:0:1::91, dst=ff02::1:ff00:7 (solicited-node multicast for ::7), next=99
+                #
+                # Summary: Bumps 'ip6__dst_multicast' (classifier) and 'ip6__no_proto_support__drop'.
+                b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x04\x63\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x01\xff\x00\x00\x07\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip6__pre_parse=1,
+                ip6__dst_multicast=1,
+                ip6__no_proto_support__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerIp6Rx(NetworkTestCase):
@@ -87,9 +154,9 @@ class TestPacketHandlerIp6Rx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
