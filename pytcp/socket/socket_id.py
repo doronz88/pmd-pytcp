@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from net_addr import Address
+    from net_addr import IpAddress
     from pytcp.socket import AddressFamily, SocketType
 
 
@@ -49,7 +49,7 @@ class SocketId:
 
     address_family: AddressFamily
     socket_type: SocketType
-    local_address: Address
+    local_address: IpAddress
     local_port: int
-    remote_address: Address
+    remote_address: IpAddress
     remote_port: int

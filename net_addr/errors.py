@@ -31,9 +31,6 @@ ver 3.0.4
 """
 
 
-from typing import Any
-
-
 class NetAddrError(Exception):
     """
     Base class for all NetAddr exceptions.
@@ -75,8 +72,8 @@ class Ip4AddressFormatError(IpAddressFormatError):
     Exception raised when IPv4 address format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 address format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 address format is invalid: {value!r}")
 
 
 class Ip4MaskFormatError(IpMaskFormatError):
@@ -84,8 +81,8 @@ class Ip4MaskFormatError(IpMaskFormatError):
     Exception raised when IPv4 mask format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 mask format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 mask format is invalid: {value!r}")
 
 
 class Ip4NetworkFormatError(IpNetworkFormatError):
@@ -93,8 +90,8 @@ class Ip4NetworkFormatError(IpNetworkFormatError):
     Exception raised when IPv4 network format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 network format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 network format is invalid: {value!r}")
 
 
 class Ip4HostFormatError(IpHostFormatError):
@@ -102,8 +99,8 @@ class Ip4HostFormatError(IpHostFormatError):
     Exception raised when IPv4 host format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 host format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 host format is invalid: {value!r}")
 
 
 class Ip4HostSanityError(IpHostFormatError):
@@ -111,8 +108,8 @@ class Ip4HostSanityError(IpHostFormatError):
     Exception raised when IPv4 host doesn't belong to provided network.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 address doesn't belong to the provided network: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 address doesn't belong to the provided network: {value!r}")
 
 
 class Ip4HostGatewayError(IpHostGatewayError):
@@ -120,8 +117,8 @@ class Ip4HostGatewayError(IpHostGatewayError):
     Exception raised when IPv4 host gateway is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv4 host gateway is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 host gateway is invalid: {value!r}")
 
 
 class Ip6AddressFormatError(IpAddressFormatError):
@@ -129,8 +126,8 @@ class Ip6AddressFormatError(IpAddressFormatError):
     Exception raised when IPv6 address format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 address format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 address format is invalid: {value!r}")
 
 
 class Ip6MaskFormatError(IpMaskFormatError):
@@ -138,8 +135,8 @@ class Ip6MaskFormatError(IpMaskFormatError):
     Exception raised when IPv6 mask format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 mask format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 mask format is invalid: {value!r}")
 
 
 class Ip6NetworkFormatError(IpNetworkFormatError):
@@ -147,8 +144,8 @@ class Ip6NetworkFormatError(IpNetworkFormatError):
     Exception raised when IPv6 network format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 network format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 network format is invalid: {value!r}")
 
 
 class Ip6HostFormatError(IpHostFormatError):
@@ -156,8 +153,8 @@ class Ip6HostFormatError(IpHostFormatError):
     Exception raised when IPv6 host format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 host format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 host format is invalid: {value!r}")
 
 
 class Ip6HostSanityError(IpHostFormatError):
@@ -165,8 +162,8 @@ class Ip6HostSanityError(IpHostFormatError):
     Exception raised when IPv6 host doesn't belong to provided network.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 address doesn't belong to the provided network: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 address doesn't belong to the provided network: {value!r}")
 
 
 class Ip6HostGatewayError(IpHostGatewayError):
@@ -174,8 +171,8 @@ class Ip6HostGatewayError(IpHostGatewayError):
     Exception raised when IPv6 host gateway is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The IPv6 host gateway is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 host gateway is invalid: {value!r}")
 
 
 class MacAddressFormatError(NetAddrError):
@@ -183,5 +180,5 @@ class MacAddressFormatError(NetAddrError):
     Exception raised when MAC address format is invalid.
     """
 
-    def __init__(self, message: Any, /):
-        super().__init__(f"The MAC address format is invalid: {message!r}")
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The MAC address format is invalid: {value!r}")
