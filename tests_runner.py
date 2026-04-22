@@ -25,9 +25,11 @@
 
 
 """
-Testslide-style 'unittest' runner for the PyTCP test suites. Emits the
-two-line "<dotted-class-path>\\n  <method>: PASS" format per test that
-the project standardised on while testslide was the runner.
+Testslide-style 'unittest' runner for the PyTCP test suites. Mirrors
+the on-screen layout testslide used while it was the project's
+runner: bold class path, colour-coded indented method names (no
+"PASS"/"FAIL" word — colour is the indicator), and a summary block
+listing successful / failed / skipped counts.
 
 tests_runner.py
 
@@ -37,135 +39,193 @@ ver 3.0.4
 
 import os
 import sys
+import time
 import unittest
 from typing import Any
 
-# ANSI SGR escape sequences for colorising the per-test status word.
-# Honours NO_COLOR (https://no-color.org/) and falls back to no-op
-# strings when the output stream is not a TTY.
+# ANSI SGR escape sequences for colorising output. Honours NO_COLOR
+# (https://no-color.org/) and degrades to no-op strings when the
+# output stream is not a TTY (decided once in TestslideStyleResult).
 _ANSI__RESET = "\033[0m"
-_ANSI__BOLD_GREEN = "\033[1;32m"
-_ANSI__BOLD_RED = "\033[1;31m"
-_ANSI__BOLD_YELLOW = "\033[1;33m"
-_ANSI__BOLD_MAGENTA = "\033[1;35m"
+_ANSI__BOLD = "\033[1m"
+_ANSI__DIM = "\033[2m"
+_ANSI__RED = "\033[31m"
+_ANSI__GREEN = "\033[32m"
+_ANSI__YELLOW = "\033[33m"
+_ANSI__MAGENTA = "\033[35m"
 
-_STATUS_COLORS: dict[str, str] = {
-    "PASS": _ANSI__BOLD_GREEN,
-    "FAIL": _ANSI__BOLD_RED,
-    "ERROR": _ANSI__BOLD_RED,
-    "SKIP": _ANSI__BOLD_YELLOW,
-    "XFAIL": _ANSI__BOLD_YELLOW,
-    "XPASS": _ANSI__BOLD_MAGENTA,
+# Map outcome -> ANSI colour for the indented method-name line.
+_OUTCOME_COLORS: dict[str, str] = {
+    "pass": _ANSI__GREEN,
+    "fail": _ANSI__RED,
+    "error": _ANSI__RED,
+    "skip": _ANSI__YELLOW,
+    "xfail": _ANSI__YELLOW,
+    "xpass": _ANSI__MAGENTA,
 }
 
 
 class TestslideStyleResult(unittest.TextTestResult):
     """
-    'unittest.TextTestResult' subclass that prints a two-line summary
-    per test: full dotted class path on the first line, indented
-    "<method_name>: <STATUS>" on the second. The status word is
-    colorised when the output stream is an interactive TTY.
+    'unittest.TextTestResult' that prints testslide-style two-line
+    output per test (bold class path, colour-coded method name) and
+    a testslide-style summary block at the end of the run.
     """
 
     _color: bool
+    _current_class_path: str | None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """
         Detect whether the output stream supports ANSI colour and
-        cache the result for use by '_emit'.
+        seed the per-class deduplication state.
         """
 
         super().__init__(*args, **kwargs)
         self._color = "NO_COLOR" not in os.environ and hasattr(self.stream, "isatty") and bool(self.stream.isatty())
+        self._current_class_path = None
 
-    def _paint(self, status: str) -> str:
+    def _wrap(self, text: str, *codes: str) -> str:
         """
-        Wrap a status word in ANSI colour codes when colour is active.
+        Wrap 'text' in the given ANSI codes when colour is active.
+        Always emits a leading reset so partial state from the prior
+        line cannot bleed into this one (matches testslide).
         """
 
-        if not self._color:
-            return status
+        if not self._color or not codes:
+            return text
 
-        color = _STATUS_COLORS.get(status, "")
-        if not color:
-            return status
+        return f"{_ANSI__RESET}{''.join(codes)}{text}{_ANSI__RESET}"
 
-        return f"{color}{status}{_ANSI__RESET}"
-
-    def _emit(self, test: unittest.TestCase, status: str, suffix: str = "") -> None:
+    def _emit(self, test: unittest.TestCase, outcome: str, suffix: str = "") -> None:
         """
-        Write one test's two-line summary to the runner's stream.
+        Print one test in the testslide two-line layout: a bold class
+        path on a class transition, followed by an indented coloured
+        method name (with optional trailing ': <error>' for failures).
         """
 
         full_id = test.id()
         class_path, _, method = full_id.rpartition(".")
 
-        self.stream.writeln(class_path)
-        self.stream.writeln(f"  {method}: {self._paint(status)}{suffix}")
+        if class_path != self._current_class_path:
+            self.stream.writeln(self._wrap(class_path, _ANSI__BOLD))
+            self._current_class_path = class_path
+
+        color = _OUTCOME_COLORS[outcome]
+        self.stream.writeln(self._wrap(f"  {method}{suffix}", color))
         self.stream.flush()
+
+    @staticmethod
+    def _format_exception_short(err: Any) -> str:
+        """
+        Render an exc_info triple as "<ExceptionType>: <message>" for
+        the trailing fragment on a failed-test line.
+        """
+
+        exc_type, exc_value, _ = err
+        return f"{exc_type.__name__}: {exc_value}"
 
     def startTest(self, test: unittest.TestCase) -> None:
         """
-        Skip the base class's "<method> ... " prefix print; the full
-        line is emitted by the per-status hooks below.
+        Bypass the base class's "<method> ... " prefix print; the
+        per-status hooks below are responsible for all output.
         """
 
         unittest.TestResult.startTest(self, test)
 
     def addSuccess(self, test: unittest.TestCase) -> None:
         """
-        Record a passing test and emit "PASS".
+        Record a passing test and emit a green method-name line.
         """
 
         unittest.TestResult.addSuccess(self, test)
-        self._emit(test, "PASS")
+        self._emit(test, "pass")
 
     def addFailure(self, test: unittest.TestCase, err: Any) -> None:
         """
-        Record a failing test and emit "FAIL".
+        Record a failing test and emit a red method-name line with
+        the trailing exception summary.
         """
 
         unittest.TestResult.addFailure(self, test, err)
-        self._emit(test, "FAIL")
+        self._emit(test, "fail", suffix=f": {self._format_exception_short(err)}")
 
     def addError(self, test: unittest.TestCase, err: Any) -> None:
         """
-        Record an unexpected-exception test and emit "ERROR".
+        Record an unexpected-exception test and emit a red
+        method-name line with the trailing exception summary.
         """
 
         unittest.TestResult.addError(self, test, err)
-        self._emit(test, "ERROR")
+        self._emit(test, "error", suffix=f": {self._format_exception_short(err)}")
 
     def addSkip(self, test: unittest.TestCase, reason: str) -> None:
         """
-        Record a skipped test and emit "SKIP (<reason>)".
+        Record a skipped test and emit a yellow method-name line.
         """
 
         unittest.TestResult.addSkip(self, test, reason)
-        self._emit(test, "SKIP", suffix=f" ({reason})")
+        self._emit(test, "skip")
 
     def addExpectedFailure(self, test: unittest.TestCase, err: Any) -> None:
         """
-        Record an expected-failure test and emit "XFAIL".
+        Record an expected-failure test and emit a yellow
+        method-name line.
         """
 
         unittest.TestResult.addExpectedFailure(self, test, err)
-        self._emit(test, "XFAIL")
+        self._emit(test, "xfail")
 
     def addUnexpectedSuccess(self, test: unittest.TestCase) -> None:
         """
-        Record an unexpected-success test and emit "XPASS".
+        Record an unexpected-success test and emit a magenta
+        method-name line.
         """
 
         unittest.TestResult.addUnexpectedSuccess(self, test)
-        self._emit(test, "XPASS")
+        self._emit(test, "xpass")
+
+    def printErrors(self) -> None:
+        """
+        Print a testslide-style 'Failures:' block listing every
+        failure / error with its exception summary and traceback.
+        Replaces the default unittest dashed-section format.
+        """
+
+        if not (self.failures or self.errors):
+            return
+
+        self.stream.writeln()
+        self.stream.writeln(self._wrap("Failures:", _ANSI__RED))
+        self.stream.writeln()
+
+        index = 0
+        for test, formatted_tb in self.failures + self.errors:
+            index += 1
+            class_path, _, method = test.id().rpartition(".")
+            self.stream.writeln(self._wrap(f"  {index}) {class_path}: {method}", _ANSI__BOLD))
+            # Pull the final exception line from the formatted traceback;
+            # the rest is the traceback context, which we re-print verbatim.
+            tb_lines = formatted_tb.rstrip("\n").splitlines()
+            exception_line = tb_lines[-1] if tb_lines else ""
+            self.stream.writeln(self._wrap(f"    {index}) {exception_line}", _ANSI__RED))
+            # Drop the boilerplate 'Traceback (most recent call last):'
+            # header — testslide prints just the frame lines.
+            frame_lines = tb_lines[:-1]
+            if frame_lines and frame_lines[0].startswith("Traceback"):
+                frame_lines = frame_lines[1:]
+            for line in frame_lines:
+                self.stream.writeln(line)
+            self.stream.writeln()
+
+        self.stream.flush()
 
 
 class TestslideStyleRunner(unittest.TextTestRunner):
     """
-    'unittest.TextTestRunner' wired to 'TestslideStyleResult'. Always
-    runs at verbosity 2 so the per-test output is emitted regardless
-    of the caller's '--verbose' flag.
+    'unittest.TextTestRunner' wired to 'TestslideStyleResult' and a
+    testslide-style summary printer. Always runs at verbosity 2 so
+    the per-test output is emitted regardless of the caller's flags.
     """
 
     resultclass = TestslideStyleResult
@@ -177,6 +237,66 @@ class TestslideStyleRunner(unittest.TextTestRunner):
 
         kwargs["verbosity"] = 2
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+
+    def run(self, test: Any) -> Any:
+        """
+        Run the test suite, then print the testslide-style summary
+        block in place of the default 'OK' / 'FAILED (...)' line.
+        """
+
+        result = self.resultclass(self.stream, self.descriptions, 2)
+        unittest.signals.registerResult(result)
+        result.failfast = self.failfast
+        result.buffer = self.buffer
+        result.tb_locals = self.tb_locals
+
+        start = time.perf_counter()
+        try:
+            test(result)
+        finally:
+            elapsed = time.perf_counter() - start
+
+        if isinstance(result, TestslideStyleResult):
+            result.printErrors()
+            self._print_summary(result, elapsed)
+
+        return result
+
+    def _print_summary(self, result: TestslideStyleResult, elapsed: float) -> None:
+        """
+        Emit the testslide-style summary block.
+        """
+
+        successful = (
+            result.testsRun
+            - len(result.failures)
+            - len(result.errors)
+            - len(result.skipped)
+            - len(result.expectedFailures)
+            - len(result.unexpectedSuccesses)
+        )
+        failed = len(result.failures) + len(result.errors)
+        skipped = len(result.skipped) + len(result.expectedFailures)
+        unexpected = len(result.unexpectedSuccesses)
+
+        def _line(label: str, count: int, color: str) -> str:
+            text = f"  {label}: {count}"
+            return result._wrap(text, color if count else _ANSI__DIM)
+
+        self.stream.writeln()
+        self.stream.writeln(
+            result._wrap(
+                f"Executed {result.testsRun} examples in {elapsed:.1f}s:",
+                _ANSI__BOLD,
+            )
+        )
+        self.stream.writeln(_line("Successful", successful, _ANSI__GREEN))
+        self.stream.writeln(_line("Failed", failed, _ANSI__RED))
+        self.stream.writeln(_line("Skipped", skipped, _ANSI__YELLOW))
+        self.stream.writeln(_line("Not executed", 0, _ANSI__DIM))
+        if unexpected:
+            self.stream.writeln(_line("Unexpected pass", unexpected, _ANSI__MAGENTA))
+        self.stream.flush()
 
 
 def main() -> None:
