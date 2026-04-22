@@ -275,37 +275,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - request for stack IP, unicast to foreign MAC (ignore)",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:99 (foreign unicast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.91
-                #   Target MAC      : 00:00:00:00:00:00   (unspecified, as in broadcast-style request)
-                #   Target IP       : 10.0.1.7 (our IP)
-                #
-                # Summary: Broadcast-form ARP request delivered to a foreign unicast MAC; Ethernet drops it before ARP.
-                b"\x02\x00\x00\x00\x00\x99\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unknown__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
             "_description": "Ethernet/ARP - request (SHA=00:00:00:00:00:00), drop",
             "_frames_rx": [
                 # Ethernet II
@@ -1021,6 +990,184 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
+        {
+            "_description": "Ethernet/ARP - reply, direct to our MAC, SPA in foreign subnet, no cache update",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 52:54:00:df:85:37
+                #   Sender IP       : 192.168.9.102      (foreign subnet — not in 10.0.1.0/24)
+                #   Target MAC      : 02:00:00:00:00:07  (our MAC)
+                #   Target IP       : 10.0.1.7           (our IP)
+                #
+                # Summary: Unicast ARP reply addressed to us with an SPA outside any of our subnets.
+                #          We process it as a direct reply but the cache update is silently skipped
+                #          because SPA is not in any of our networks.
+                b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__direct=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": (
+                "Ethernet/ARP - reply, gratuitous (SPA == TPA, broadcast), SPA in foreign subnet, " "no cache update"
+            ),
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 52:54:00:df:85:37
+                #   Sender IP       : 192.168.9.102      (foreign subnet — not in 10.0.1.0/24)
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 192.168.9.102      (same as SPA)
+                #
+                # Summary: Broadcast Gratuitous ARP (reply flavor) — “192.168.9.102 is at 52:54:00:df:85:37.”
+                #          We classify it as a gratuitous reply but skip the cache update because
+                #          SPA is not in any of our networks.
+                b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
+                b"\x00\x00\x00\x00\x00\x00\xc0\xa8\x09\x66",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__gratuitous=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": (
+                "Ethernet/ARP - reply, broadcast non-gratuitous (SPA != TPA, THA set), " "cache update only"
+            ),
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 02:00:00:00:00:91
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:91
+                #   Sender IP       : 10.0.1.91
+                #   Target MAC      : 02:00:00:00:00:07   (set, not unspecified)
+                #   Target IP       : 10.0.1.7            (≠ SPA, so not gratuitous form)
+                #
+                # Summary: Broadcast ARP reply that is neither "direct" (dst != our MAC)
+                #          nor "gratuitous" (SPA != TPA, THA != 0). Not RFC-defined; PyTCP
+                #          falls through to __update_arp_cache and learns the SPA->SHA mapping
+                #          because SPA is in our subnet. Pins current cache-injection-permissive
+                #          behavior so future hardening will surface as a deliberate test change.
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
+                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_reply=1,
+                arp__op_reply__update_arp_cache=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/ARP - request from foreign SPA for our IP, respond, no cache update",
+            "_frames_rx": [
+                # Ethernet II
+                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
+                #   Source MAC      : 52:54:00:df:85:37
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 1 (Request)
+                #   Sender MAC      : 52:54:00:df:85:37
+                #   Sender IP       : 192.168.9.102      (foreign subnet — not in 10.0.1.0/24)
+                #   Target MAC      : 00:00:00:00:00:00
+                #   Target IP       : 10.0.1.7           (our IP)
+                #
+                # Summary: RFC 826-valid request from a foreign-subnet SPA for our IP.
+                #          We must reply (TPA matches), but the cache update is skipped
+                #          because SPA is not in any of our networks.
+                b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x01\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66"
+                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
+            ],
+            "_expected__frames_tx": [
+                # Ethernet II
+                #   Destination MAC : 52:54:00:df:85:37
+                #   Source MAC      : 02:00:00:00:00:07
+                #   Ethertype       : 0x0806 (ARP)
+                #   Frame length    : 42 bytes
+                #
+                # ARP (Ethernet/IPv4)
+                #   Hardware type   : 1 (Ethernet)
+                #   Protocol type   : 0x0800 (IPv4)
+                #   HLEN / PLEN     : 6 / 4
+                #   Operation       : 2 (Reply)
+                #   Sender MAC      : 02:00:00:00:00:07
+                #   Sender IP       : 10.0.1.7
+                #   Target MAC      : 52:54:00:df:85:37
+                #   Target IP       : 192.168.9.102
+                #
+                # Summary: Unicast ARP reply — “10.0.1.7 is at 02:00:00:00:00:07.”
+                b"\x52\x54\x00\xdf\x85\x37\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
+                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
+                b"\x52\x54\x00\xdf\x85\x37\xc0\xa8\x09\x66",
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                arp__pre_parse=1,
+                arp__op_request=1,
+                arp__op_request__tpa_stack=1,
+                arp__op_request__respond=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                arp__pre_assemble=1,
+                arp__op_reply__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_spec=1,
+                ethernet__dst_spec__send=1,
+            ),
+        },
     ]
 )
 class TestPacketHandlerArpRx(NetworkTestCase):
@@ -1030,9 +1177,9 @@ class TestPacketHandlerArpRx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
