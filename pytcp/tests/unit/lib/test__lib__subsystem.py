@@ -252,8 +252,18 @@ class TestSubsystemLifecycle(TestCase):
 
     def tearDown(self) -> None:
         """
-        Restore the original log output stream.
+        Join any subsystem-spawned worker threads before restoring the
+        original log output stream. Without the join, a worker that
+        prints its terminal "Stopped ..." line after 'tearDown' has
+        unpatched 'LOG__OUTPUT' would leak the line to real stderr.
         """
+
+        for thread in list(threading.enumerate()):
+            if thread is threading.main_thread():
+                continue
+            if thread is threading.current_thread():
+                continue
+            thread.join(timeout=2.0)
 
         self._log_patch.stop()
 
