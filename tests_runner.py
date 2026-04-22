@@ -177,6 +177,46 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addUnexpectedSuccess(self, test)
         self._emit(test, "xpass")
 
+    def print_summary(self, elapsed: float) -> None:
+        """
+        Emit the testslide-style end-of-run summary block: bold
+        'Executed N examples in T.Ts:' followed by colour-coded
+        Successful / Failed / Skipped / Not executed counters
+        (dimmed when zero).
+        """
+
+        successful = (
+            self.testsRun
+            - len(self.failures)
+            - len(self.errors)
+            - len(self.skipped)
+            - len(self.expectedFailures)
+            - len(self.unexpectedSuccesses)
+        )
+        failed = len(self.failures) + len(self.errors)
+        skipped = len(self.skipped) + len(self.expectedFailures)
+        unexpected = len(self.unexpectedSuccesses)
+
+        def _line(label: str, count: int, color: str) -> None:
+            text = f"  {label}: {count}"
+            if count:
+                self._secho(text, fg=color)
+            else:
+                self._secho(text, dim=True)
+
+        self._secho()
+        self._secho(
+            f"Executed {self.testsRun} examples in {elapsed:.1f}s:",
+            bold=True,
+        )
+        _line("Successful", successful, "green")
+        _line("Failed", failed, "red")
+        _line("Skipped", skipped, "yellow")
+        _line("Not executed", 0, "white")
+        if unexpected:
+            _line("Unexpected pass", unexpected, "magenta")
+        self.stream.flush()
+
     def printErrors(self) -> None:
         """
         Print a testslide-style 'Failures:' block listing every
@@ -248,46 +288,9 @@ class TestslideStyleRunner(unittest.TextTestRunner):
 
         if isinstance(result, TestslideStyleResult):
             result.printErrors()
-            self._print_summary(result, elapsed)
+            result.print_summary(elapsed)
 
         return result
-
-    def _print_summary(self, result: TestslideStyleResult, elapsed: float) -> None:
-        """
-        Emit the testslide-style summary block.
-        """
-
-        successful = (
-            result.testsRun
-            - len(result.failures)
-            - len(result.errors)
-            - len(result.skipped)
-            - len(result.expectedFailures)
-            - len(result.unexpectedSuccesses)
-        )
-        failed = len(result.failures) + len(result.errors)
-        skipped = len(result.skipped) + len(result.expectedFailures)
-        unexpected = len(result.unexpectedSuccesses)
-
-        def _line(label: str, count: int, color: str) -> None:
-            text = f"  {label}: {count}"
-            if count:
-                result._secho(text, fg=color)
-            else:
-                result._secho(text, dim=True)
-
-        result._secho()
-        result._secho(
-            f"Executed {result.testsRun} examples in {elapsed:.1f}s:",
-            bold=True,
-        )
-        _line("Successful", successful, "green")
-        _line("Failed", failed, "red")
-        _line("Skipped", skipped, "yellow")
-        _line("Not executed", 0, "white")
-        if unexpected:
-            _line("Unexpected pass", unexpected, "magenta")
-        self.stream.flush()
 
 
 @click.command(
