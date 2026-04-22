@@ -161,27 +161,36 @@ class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
 
     def test__packet_handler__ethernet_802_3__tx(self) -> None:
         """
-        Validate that sending Ethernet 802.3 packet works as expected.
+        Ensure the Packet Handler Ethernet 802.3 TX path produces
+        the expected frames, statuses, and statistics for each
+        parametrized case.
         """
 
         if self._expected__error is None:
             self.assertEqual(
                 self._packet_handler._phtx_ethernet_802_3(**self._kwargs),
                 self._expected__tx_status,
+                msg=f"Unexpected TxStatus for case: {self._description}",
             )
 
             self.assertEqual(
                 self._frames_tx,
                 self._expected__frames_tx,
+                msg=f"Unexpected TX frames for case: {self._description}",
             )
 
             self.assertEqual(
                 self._packet_handler.packet_stats_tx,
                 self._expected__packet_stats_tx,
+                msg=f"Unexpected TX packet stats for case: {self._description}",
             )
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
                 self._packet_handler._phtx_ethernet_802_3(**self._kwargs)
 
-            self.assertEqual(str(error.exception), str(self._expected__error))
+            self.assertEqual(
+                str(error.exception),
+                str(self._expected__error),
+                msg=f"Unexpected error message for case: {self._description}",
+            )

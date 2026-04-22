@@ -31,7 +31,7 @@
 """
 This module contains unit tests for the Packet Handler TCP RX operations.
 
-pytcp/tests/unit/test__packet_handler__tcp__rx.py
+pytcp/tests/integration/test__packet_handler__tcp__rx.py
 
 ver 3.0.4
 """
@@ -243,7 +243,8 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
 
     def test__packet_handler__tcp__rx(self) -> None:
         """
-        Validate that receiving TCP packet works as expected.
+        Ensure the Packet Handler processes the received TCP
+        frames as expected for each parametrized case.
         """
 
         for frame_rx in self._frames_rx:
@@ -252,14 +253,17 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
         self.assertEqual(
             self._frames_tx,
             self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_rx,
             self._expected__packet_stats_rx,
+            msg=f"Unexpected RX packet stats for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
         )

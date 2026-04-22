@@ -31,7 +31,7 @@
 """
 This module contains unit tests for the Packet Handler TCP TX operations.
 
-pytcp/tests/unit/test__packet_handler__tcp__tx.py
+pytcp/tests/integration/test__packet_handler__tcp__tx.py
 
 ver 3.0.4
 """
@@ -2143,27 +2143,35 @@ class TestPacketHandlerTcpTx(NetworkTestCase):
 
     def test__packet_handler__tcp__tx(self) -> None:
         """
-        Validate that sending TCP packet works as expected.
+        Ensure the Packet Handler TCP TX path produces the expected
+        frames, statuses, and statistics for each parametrized case.
         """
 
         if self._expected__error is None:
             self.assertEqual(
                 self._packet_handler._phtx_tcp(**self._kwargs),
                 self._expected__tx_status,
+                msg=f"Unexpected TxStatus for case: {self._description}",
             )
 
             self.assertEqual(
                 self._frames_tx,
                 self._expected__frames_tx,
+                msg=f"Unexpected TX frames for case: {self._description}",
             )
 
             self.assertEqual(
                 self._packet_handler.packet_stats_tx,
                 self._expected__packet_stats_tx,
+                msg=f"Unexpected TX packet stats for case: {self._description}",
             )
 
         else:
             with self.assertRaises(type(self._expected__error)) as error:
                 self._packet_handler._phtx_tcp(**self._kwargs)
 
-            self.assertEqual(str(error.exception), str(self._expected__error))
+            self.assertEqual(
+                str(error.exception),
+                str(self._expected__error),
+                msg=f"Unexpected error message for case: {self._description}",
+            )

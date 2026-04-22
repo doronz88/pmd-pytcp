@@ -1421,7 +1421,8 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
 
     def test__packet_handler__ip4__rx(self) -> None:
         """
-        Validate that receiving IPv4 packet works as expected.
+        Ensure the Packet Handler processes the received IPv4
+        frames as expected for each parametrized case.
         """
 
         for frame_rx in self._frames_rx:
@@ -1430,14 +1431,17 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
         self.assertEqual(
             self._frames_tx,
             self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_rx,
             self._expected__packet_stats_rx,
+            msg=f"Unexpected RX packet stats for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
         )

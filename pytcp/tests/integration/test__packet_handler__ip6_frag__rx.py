@@ -31,7 +31,7 @@
 """
 This module contains unit tests for the Packet Handler IPv6 Frag RX operations.
 
-pytcp/tests/unit/test__packet_handler__ip6_frag__rx.py
+pytcp/tests/integration/test__packet_handler__ip6_frag__rx.py
 
 ver 3.0.4
 """
@@ -1691,7 +1691,9 @@ class TestPacketHandlerIp6FragRx(NetworkTestCase):
 
     def test__packet_handler__ip6_frag__rx(self) -> None:
         """
-        Validate that receiving IPv6 Frag packet works as expected.
+        Ensure the Packet Handler processes the received IPv6
+        fragments and reassembles them as expected for each
+        parametrized case.
         """
 
         for frame_rx in self._frames_rx:
@@ -1700,14 +1702,17 @@ class TestPacketHandlerIp6FragRx(NetworkTestCase):
         self.assertEqual(
             self._frames_tx,
             self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_rx,
             self._expected__packet_stats_rx,
+            msg=f"Unexpected RX packet stats for case: {self._description}",
         )
 
         self.assertEqual(
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
         )
