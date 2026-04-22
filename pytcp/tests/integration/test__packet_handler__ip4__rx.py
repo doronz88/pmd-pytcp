@@ -39,6 +39,7 @@ ver 3.0.4
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import MacAddress
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.tests.lib.network_testcase import NetworkTestCase
@@ -1404,6 +1405,70 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=5,
             ),
         },
+        {
+            "_description": "Ethernet/IPv4 - malformed IPv4 (truncated below header length), failed parse drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: 16 bytes only — truncated below the 20-byte minimum header.
+                #       Total Length field claims 16, version/ihl=0x45 (5*4=20), so length<header_len.
+                #
+                # Summary: Truncated IPv4 frame triggers Ip4Parser to raise; bumps
+                #          'ip4__failed_parse__drop' and skips dst classification entirely.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x10\x00\x00\x00\x00\x40\xff\x63\xce\x0a\x00\x01\x5b",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4 - dst is our unicast, unsupported proto (99), drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=99 (unsupported), 4 bytes raw payload
+                #
+                # Summary: Bumps 'ip4__dst_unicast' (classifier) and 'ip4__no_proto_support__drop'
+                #          (default match arm).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x18\x00\x00\x00\x00\x40\x63\x64\x22\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                ip4__no_proto_support__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4 - dst is limited broadcast (255.255.255.255), unsupported proto (99), drop",
+            "_frames_rx": [
+                # Ethernet II: dst=ff:ff:ff:ff:ff:ff (broadcast), src=02:00:00:00:00:91
+                # IPv4: src=10.0.1.91, dst=255.255.255.255 (limited broadcast), proto=99
+                #
+                # Summary: Bumps 'ip4__dst_broadcast' (classifier) and 'ip4__no_proto_support__drop'.
+                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x18\x00\x00\x00\x00\x40\x63\x6f\x29\x0a\x00\x01\x5b\xff\xff"
+                b"\xff\xff\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_broadcast=1,
+                ip4__pre_parse=1,
+                ip4__dst_broadcast=1,
+                ip4__no_proto_support__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerIp4Rx(NetworkTestCase):
@@ -1413,9 +1478,9 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -1444,4 +1509,124 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
             self._packet_handler.packet_stats_tx,
             self._expected__packet_stats_tx,
             msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
+
+
+class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
+    """
+    Test the Packet Handler IPv4 RX path when no unicast IPv4 address
+    is configured on the stack — the DHCP-client-startup scenario.
+
+    Source line 106 short-circuits the dst-unknown check via
+    'if self._ip4_unicast and ...': when the unicast list is empty,
+    the stack accepts any inbound IPv4 packet so the DHCP DISCOVER /
+    OFFER exchange can complete before address assignment.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build the standard mock stack, then clear '_ip4_host' so the
+        derived '_ip4_unicast' is empty.
+        """
+
+        super().setUp()
+        self._packet_handler._ip4_host = []
+
+    def test__packet_handler__ip4__rx__dhcp_client_no_unicast(self) -> None:
+        """
+        Ensure an inbound IPv4 packet addressed to an arbitrary unicast
+        IP (not ours) is accepted when no unicast address is configured,
+        and that none of the dst-classification stats fire.
+        """
+
+        # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91
+        # IPv4: src=10.0.1.91, dst=10.0.1.99 (NOT one of ours), proto=99
+        #
+        # Summary: With '_ip4_unicast' empty the dst-unknown check is skipped,
+        #          so the packet enters proto dispatch (and drops as unsupported).
+        #          None of 'ip4__dst_unicast/multicast/broadcast' bump because
+        #          the dst is not in any of those lists.
+        frame_rx = (
+            b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+            b"\x00\x18\x00\x00\x00\x00\x40\x63\x63\xc6\x0a\x00\x01\x5b\x0a\x00"
+            b"\x01\x63\x00\x00\x00\x00"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="No frame must be emitted; payload proto=99 falls to no_proto_support__drop.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__no_proto_support__drop=1,
+            ),
+            msg=(
+                "DHCP-client path must accept any unicast dst when '_ip4_unicast' is "
+                "empty and skip the dst-classification counters."
+            ),
+        )
+
+
+class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
+    """
+    Test the Packet Handler IPv4 RX classifier on a packet addressed to
+    an IPv4 multicast group the stack has joined. The default
+    'NetworkTestCase' fixture only joins the IPv6 solicited-node MAC,
+    so this dedicated TestCase additionally joins the IPv4 all-nodes
+    multicast MAC ('01:00:5e:00:00:01') in setUp.
+    """
+
+    _ALL_NODES__IP4__MULTICAST_MAC = MacAddress("01:00:5e:00:00:01")
+
+    def setUp(self) -> None:
+        """
+        Join the IPv4 all-nodes multicast Ethernet MAC so the inbound
+        IPv4 multicast frame passes the Ethernet RX classifier.
+        """
+
+        super().setUp()
+        self._packet_handler._mac_multicast.append(self._ALL_NODES__IP4__MULTICAST_MAC)
+
+    def test__packet_handler__ip4__rx__dst_multicast(self) -> None:
+        """
+        Ensure an IPv4 frame addressed to 224.0.0.1 (all-nodes
+        multicast) bumps both 'ethernet__dst_multicast' (classifier
+        side) and 'ip4__dst_multicast', then drops on unsupported
+        proto=99 with 'ip4__no_proto_support__drop'.
+        """
+
+        # Ethernet II: dst=01:00:5e:00:00:01 (multicast for 224.0.0.1), src=02:00:00:00:00:91
+        # IPv4: src=10.0.1.91, dst=224.0.0.1 (all-nodes multicast), proto=99, 4-byte raw payload
+        frame_rx = (
+            b"\x01\x00\x5e\x00\x00\x01\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+            b"\x00\x18\x00\x00\x00\x00\x40\x63\x8f\x27\x0a\x00\x01\x5b\xe0\x00"
+            b"\x00\x01\x00\x00\x00\x00"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="No frame must be emitted for an unsupported-proto multicast packet.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx,
+            PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_multicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_multicast=1,
+                ip4__no_proto_support__drop=1,
+            ),
+            msg="ip4__dst_multicast and ip4__no_proto_support__drop must both bump.",
         )
