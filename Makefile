@@ -8,6 +8,7 @@ PYTCP_FILES := $(shell find ${PYTCP_PATH} -name '*.py')
 NET_ADDR_FILES := $(shell find ${NET_ADDR_PATH} -name '*.py')
 NET_PROTO_FILES := $(shell find ${NET_PROTO_PATH} -name '*.py')
 EXAMPLES_FILES := $(shell find ${EXAMPLES_PATH} -name '*.py')
+ROOT_FILES := tests_runner.py
 
 $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 	@python -m venv $(VENV)
@@ -36,42 +37,47 @@ lint: venv
 	@./$(VENV)/bin/codespell --write-changes ${NET_ADDR_FILES}
 	@./$(VENV)/bin/codespell --write-changes ${NET_PROTO_FILES}
 	@./$(VENV)/bin/codespell --write-changes ${EXAMPLES_FILES}
+	@./$(VENV)/bin/codespell --write-changes ${ROOT_FILES}
 	@echo '<<< ISORT'
 	@./$(VENV)/bin/isort ${PYTCP_FILES}
 	@./$(VENV)/bin/isort ${NET_ADDR_FILES}
 	@./$(VENV)/bin/isort ${NET_PROTO_FILES}
 	@./$(VENV)/bin/isort ${EXAMPLES_FILES}
+	@./$(VENV)/bin/isort ${ROOT_FILES}
 	@echo '<<< BLACK'
 	@./$(VENV)/bin/black ${PYTCP_FILES}
 	@./$(VENV)/bin/black ${NET_ADDR_FILES}
 	@./$(VENV)/bin/black ${NET_PROTO_FILES}
 	@./$(VENV)/bin/black ${EXAMPLES_FILES}
+	@./$(VENV)/bin/black ${ROOT_FILES}
 	@echo '<<< FLAKE8'
 	@./$(VENV)/bin/flake8 ${PYTCP_FILES}
 	@./$(VENV)/bin/flake8 ${NET_ADDR_FILES}
 	@./$(VENV)/bin/flake8 ${NET_PROTO_FILES}
 	@./$(VENV)/bin/flake8 ${EXAMPLES_FILES}
+	@./$(VENV)/bin/flake8 ${ROOT_FILES}
 	@echo '<<< MYPY'
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${PYTCP_PATH}
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${NET_ADDR_PATH}
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${NET_PROTO_PATH}
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${EXAMPLES_PATH}
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy ${ROOT_FILES}
 
 test__pytcp__integration: venv
 	@echo '<<< UNITTEST PYTCP INTEGRATION'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'pytcp/tests/integration' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'pytcp/tests/integration' -name 'test__*.py')
 
 test__net_addr__unit: venv
 	@echo '<<< UNITTEST NET_ADDR UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_addr/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests/unit' -name 'test__*.py')
 
 test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_proto/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_proto/tests/unit' -name 'test__*.py')
 
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m unittest $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
 
 validate: lint test
 
