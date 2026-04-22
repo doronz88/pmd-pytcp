@@ -135,7 +135,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4/ICMPv4 - Echo Reply",
@@ -210,7 +209,6 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
         {
             "_description": "Ethernet/IPv4/ICMPv4 - Destination Unreachable, port",
@@ -297,21 +295,19 @@ from pytcp.tests.lib.network_testcase import (
                 ethernet__dst_unspec__ip4_lookup=1,
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
-            "_expected__error": None,
         },
     ]
 )
 class TestPacketHandlerIcmp4Tx(NetworkTestCase):
     """
-    Test the Packet Handler ICMPv4 TX operations.
+    Test the Packet Handler ICMPv4 TX operations (success path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
-    _expected__frames_tx: list[bytes] | None
-    _expected__tx_status: TxStatus | None
-    _expected__packet_stats_tx: PacketStatsTx | None
-    _expected__error: Exception | None
+    _expected__frames_tx: list[bytes]
+    _expected__tx_status: TxStatus
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 
@@ -322,31 +318,112 @@ class TestPacketHandlerIcmp4Tx(NetworkTestCase):
         parametrized case.
         """
 
-        if self._expected__error is None:
-            self.assertEqual(
-                self._packet_handler._phtx_icmp4(**self._kwargs),
-                self._expected__tx_status,
-                msg=f"Unexpected TxStatus for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler._phtx_icmp4(**self._kwargs),
+            self._expected__tx_status,
+            msg=f"Unexpected TxStatus for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._frames_tx,
-                self._expected__frames_tx,
-                msg=f"Unexpected TX frames for case: {self._description}",
-            )
+        self.assertEqual(
+            self._frames_tx,
+            self._expected__frames_tx,
+            msg=f"Unexpected TX frames for case: {self._description}",
+        )
 
-            self.assertEqual(
-                self._packet_handler.packet_stats_tx,
-                self._expected__packet_stats_tx,
-                msg=f"Unexpected TX packet stats for case: {self._description}",
-            )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            self._expected__packet_stats_tx,
+            msg=f"Unexpected TX packet stats for case: {self._description}",
+        )
 
-        else:
-            with self.assertRaises(type(self._expected__error)) as error:
-                self._packet_handler._phtx_icmp4(**self._kwargs)
 
-            self.assertEqual(
-                str(error.exception),
-                str(self._expected__error),
-                msg=f"Unexpected error message for case: {self._description}",
-            )
+@parameterized_class(
+    [
+        {
+            "_description": ("Ethernet/IPv4/ICMPv4 - Destination Unreachable with non-PORT code " "raises ValueError"),
+            "_kwargs": {
+                "ip4__src": STACK__IP4_HOST.address,
+                "ip4__dst": HOST_A__IP4_ADDRESS,
+                # Any DESTINATION_UNREACHABLE code other than PORT falls through
+                # the named match arms into 'case _:' which raises.
+                "icmp4__message": Icmp4MessageDestinationUnreachable(
+                    code=Icmp4DestinationUnreachableCode.NETWORK,
+                ),
+            },
+            "_expected__error": ValueError("Unsupported ICMPv4 message type Destination Unreachable, code Network."),
+        },
+    ]
+)
+class TestPacketHandlerIcmp4TxErrors(NetworkTestCase):
+    """
+    Test the Packet Handler ICMPv4 TX operations (error path).
+    """
+
+    _description: str
+    _kwargs: dict[str, Any]
+    _expected__error: Exception
+
+    def test__packet_handler__icmp4__tx__error(self) -> None:
+        """
+        Ensure '_phtx_icmp4' raises the expected exception for
+        unsupported (type, code) combinations.
+        """
+
+        with self.assertRaises(type(self._expected__error)) as error:
+            self._packet_handler._phtx_icmp4(**self._kwargs)
+
+        self.assertEqual(
+            str(error.exception),
+            str(self._expected__error),
+            msg=f"Unexpected error message for case: {self._description}",
+        )
+
+
+class TestPacketHandlerIcmp4TxSendIcmp4Packet(NetworkTestCase):
+    """
+    Test the public 'send_icmp4_packet' wrapper, which renames its
+    'ip4__local_address'/'ip4__remote_address' kwargs into the
+    'ip4__src'/'ip4__dst' kwargs that '_phtx_icmp4' expects.
+    """
+
+    def test__packet_handler__icmp4__tx__send_icmp4_packet(self) -> None:
+        """
+        Ensure 'send_icmp4_packet' forwards the call to '_phtx_icmp4'
+        with the kwargs renamed correctly, producing the same frame
+        and stats as a direct '_phtx_icmp4' call would.
+        """
+
+        tx_status = self._packet_handler.send_icmp4_packet(
+            ip4__local_address=STACK__IP4_HOST.address,
+            ip4__remote_address=HOST_A__IP4_ADDRESS,
+            icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=b""),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="send_icmp4_packet must propagate the underlying _phtx_icmp4 TxStatus.",
+        )
+
+        # Verify a single frame was emitted and the per-protocol stats
+        # match what '_phtx_icmp4' would have produced directly.
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="send_icmp4_packet must emit exactly one frame for an Echo Request.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx,
+            PacketStatsTx(
+                icmp4__pre_assemble=1,
+                icmp4__echo_request__send=1,
+                ip4__pre_assemble=1,
+                ip4__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip4_lookup=1,
+                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+            ),
+            msg="send_icmp4_packet stats must match a direct _phtx_icmp4 Echo Request call.",
+        )
