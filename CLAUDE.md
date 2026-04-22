@@ -15,7 +15,7 @@ source venv/bin/activate
 
 # Development
 make lint                 # codespell + isort + black + flake8 + mypy + pylint
-make test                 # run all three test suites via testslide
+make test                 # run all three test suites via unittest
 make validate             # lint + test together
 
 # Run the stack (requires TAP interface and sudo for bridge/tap/tun setup)
@@ -30,11 +30,11 @@ make clean                # remove venv, caches, build artifacts
 ### Running a single test
 
 ```bash
-# testslide is the test framework - run a specific test file directly
-python -m testslide net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
+# unittest is the test framework - run a specific test file directly
+PYTHONPATH=. python -m unittest net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
 
-# Or run an entire suite
-python -m testslide net_proto/tests/unit/
+# Or run an entire suite via the find-glob the Makefile uses
+PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
 ```
 
 ### Linting tools and config
@@ -64,7 +64,7 @@ Each protocol under `net_proto/protocols/<proto>/` follows a fixed layout:
 - `*__base.py` — shared logic between parser and assembler
 - `enums.py` — protocol-specific enums
 - `errors.py` — exception classes
-- `tests/unit/` — testslide test files mirroring the source layout
+- `tests/unit/` — `unittest` test files mirroring the source layout
 
 Validation happens at two explicit levels: **integrity** (structural/format) and **sanity** (logical consistency). These produce separate exception types per protocol.
 
@@ -257,7 +257,7 @@ class TcpIntegrityError(PacketIntegrityError):
 
 **Canonical rule: [`.claude/rules/unit_tests.md`](.claude/rules/unit_tests.md)** — read and follow it for every new or rewritten test file. It covers framework, file layout, naming, the parameterization pattern, byte-frame comments, assertion style, and the required test-file matrix per protocol. The bullets below are only a quick summary.
 
-- Framework: native `unittest.TestCase` (the legacy testslide tests are being migrated — do not add new testslide tests)
+- Framework: native `unittest.TestCase` (testslide is no longer a dependency)
 - Parameterized tests use `@parameterized_class([{...}, ...])` with per-case dicts
 - Each test-case dict keys: `_description`, `_args`, `_kwargs`, `_mocked_values`, `_results`
 - Declare the parametrized attributes as class-level annotations so mypy strict accepts them

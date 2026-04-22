@@ -1,4 +1,3 @@
-testslide
 black
 mypy
 flake8
