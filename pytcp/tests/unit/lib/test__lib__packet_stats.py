@@ -28,7 +28,7 @@
 This module contains tests for the 'PacketStats', 'PacketStatsRx', and
 'PacketStatsTx' data stores.
 
-pytcp/tests/unit/lib/test__packet_stats.py
+pytcp/tests/unit/lib/test__lib__packet_stats.py
 
 ver 3.0.4
 """

@@ -27,7 +27,7 @@
 """
 This module contains tests for the 'Subsystem' base class.
 
-pytcp/tests/unit/lib/test__subsystem.py
+pytcp/tests/unit/lib/test__lib__subsystem.py
 
 ver 3.0.4
 """

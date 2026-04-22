@@ -27,7 +27,7 @@
 """
 This module contains tests for the 'Dhcp4Client'.
 
-pytcp/tests/unit/lib/test__dhcp4_client.py
+pytcp/tests/unit/lib/test__lib__dhcp4_client.py
 
 ver 3.0.4
 """

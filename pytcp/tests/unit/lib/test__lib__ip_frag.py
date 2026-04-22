@@ -27,7 +27,7 @@
 """
 This module contains tests for the 'IpFragFlowId' and 'IpFragData' dataclasses.
 
-pytcp/tests/unit/lib/test__ip_frag.py
+pytcp/tests/unit/lib/test__lib__ip_frag.py
 
 ver 3.0.4
 """

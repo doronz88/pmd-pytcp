@@ -54,9 +54,30 @@ class.
 
 - Files go under `<package>/tests/unit/…` mirroring the source layout.
   For a protocol at `net_proto/protocols/<proto>/`, tests live at
-  `net_proto/tests/unit/protocols/<proto>/`.
-- Double-underscore separators, same as source files. Per-aspect
-  splitting is mandatory:
+  `net_proto/tests/unit/protocols/<proto>/`. For a subpackage like
+  `net_proto/lib/` or `pytcp/socket/`, tests live at
+  `<package>/tests/unit/<subpkg>/`.
+- Double-underscore separators, same as source files.
+- **Subdirectory prefix**: when the source subpackage is **not** the
+  protocol-specific tree (`protocols/<proto>/`), the test filename
+  carries an extra leading segment naming the subpackage, so the
+  filename alone states which area of the codebase is under test:
+
+  | Source location                  | Test filename pattern                         |
+  | -------------------------------- | --------------------------------------------- |
+  | `<pkg>/protocols/<proto>/*.py`   | `test__<proto>__<component>__<aspect>.py`     |
+  | `<pkg>/lib/*.py`                 | `test__lib__<source>.py`                      |
+  | `pytcp/socket/*.py`              | `test__socket__<source>.py`                   |
+
+  Examples: `test__lib__inet_cksum.py`, `test__lib__proto_parser.py`,
+  `test__socket__raw__socket.py`, `test__socket__tcp__session__fsm.py`.
+  The one accepted exception is the stutter case
+  `test__socket__socket_id.py` (source file `socket_id.py` already
+  contains the subdir name) — still prefix it; do not drop the
+  leading `socket__` to avoid the stutter.
+
+- **Protocol aspect splits**: for per-protocol files under
+  `net_proto/protocols/<proto>/`, per-aspect splitting is mandatory:
 
   | Source artifact          | Test file                                                            |
   | ------------------------ | -------------------------------------------------------------------- |
@@ -72,6 +93,17 @@ class.
   Examples: `test__udp__header__asserts.py`,
   `test__tcp__parser__integrity_checks.py`,
   `test__tcp__option__mss.py`.
+
+- **Large non-protocol source splits**: if a single source file is
+  large enough to warrant splitting (e.g. `pytcp/socket/tcp__session.py`),
+  fan out by aspect after the `test__<subdir>__<source>` prefix:
+  `test__socket__tcp__session__enums.py`,
+  `test__socket__tcp__session__lifecycle.py`,
+  `test__socket__tcp__session__syscalls.py`,
+  `test__socket__tcp__session__fsm.py`. Pick aspect names that
+  describe the behavioral surface (`enums`, `lifecycle`, `syscalls`,
+  `fsm`) — not implementation-phase names that might collide with
+  Python dunders (avoid `init`, prefer `lifecycle` or `construction`).
 
 - Class naming: `Test<Component>[__<Variant>]`. Method naming:
   `test__<proto>__<component>[__<aspect>]`. No trailing underscores.

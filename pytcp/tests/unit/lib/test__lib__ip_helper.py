@@ -27,7 +27,7 @@
 """
 This module contains tests for the IP helper functions.
 
-pytcp/tests/unit/lib/test__ip_helper.py
+pytcp/tests/unit/lib/test__lib__ip_helper.py
 
 ver 3.0.4
 """
