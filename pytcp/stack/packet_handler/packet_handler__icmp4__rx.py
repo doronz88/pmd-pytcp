@@ -124,18 +124,15 @@ class PacketHandlerIcmp4Rx(ABC):
         )
         self._packet_stats_rx.icmp4__echo_reply += 1
 
-        # Ensure that ICMP message type is memoryview.
-        assert isinstance(
-            packet_rx.icmp4.message, memoryview
-        ), f"The message must be a memoryview. Got {type(packet_rx.icmp4.message)}"
-
-        # Create RawMetadata object and try to find matching RAW socket
+        # Create RawMetadata object and try to find matching RAW socket.
+        # The serialized ICMP message bytes are what 'RawSocket' consumes
+        # via its 'raw__data: bytes' field.
         packet_rx_md = RawMetadata(
             ip__ver=packet_rx.ip.ver,
             ip__local_address=packet_rx.ip.dst,
             ip__remote_address=packet_rx.ip.src,
             ip__proto=IpProto.ICMP4,
-            raw__data=packet_rx.icmp4.message,
+            raw__data=bytes(packet_rx.icmp4.message),
         )
 
         for socket_id in packet_rx_md.socket_ids:

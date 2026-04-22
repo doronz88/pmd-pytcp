@@ -137,6 +137,139 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
             ),
         },
+        {
+            "_description": "Ethernet/IPv4/ICMPv4 Echo Reply, no matching raw socket",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91 (host A), type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=ICMP, total_len=33
+                # ICMPv4: type=0 (Echo Reply), code=0, cksum=0xbc1c, id=0x0007, seq=0x000a, data="hello"
+                #
+                # Summary: Echo reply addressed to us with no matching RAW socket installed.
+                #          Bumps 'icmp4__echo_reply' and returns silently (no TX).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x21\x00\x00\x00\x00\x40\x01\x64\x7b\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x00\x00\xbc\x1c\x00\x07\x00\x0a\x68\x65\x6c\x6c\x6f",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                icmp4__pre_parse=1,
+                icmp4__echo_reply=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4/ICMPv4 unknown type (99), classified as unknown",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91 (host A), type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=ICMP, total_len=24
+                # ICMPv4: type=99 (unassigned), code=0, cksum=0x9cff, no payload
+                #
+                # Summary: ICMPv4 frame with an unknown type code falls through the type-match
+                #          to '__phrx_icmp4__unknown' and bumps 'icmp4__unknown'.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x18\x00\x00\x00\x00\x40\x01\x64\x84\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x63\x00\x9c\xff",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                icmp4__pre_parse=1,
+                icmp4__unknown=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": (
+                "Ethernet/IPv4/ICMPv4 Destination Unreachable, valid embedded IPv4+UDP, " "no matching UDP socket"
+            ),
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91 (host A), type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=ICMP, total_len=56
+                # ICMPv4: type=3 (Destination Unreachable), code=3 (Port), cksum=0x8cf9
+                #         data = original IPv4 (28B = 20B IPv4 + 8B UDP):
+                #           IPv4: src=10.0.1.7, dst=10.0.1.91, proto=UDP, total_len=28
+                #           UDP : sport=12345, dport=54321, len=8, cksum=0
+                #
+                # Summary: Embedded IPv4+UDP packet passes the 5-condition integrity gauntlet,
+                #          but no UDP socket matches the resulting metadata. Bumps
+                #          'icmp4__destination_unreachable' and returns silently.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x38\x00\x00\x00\x00\x40\x01\x64\x64\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\x03\x8c\xf9\x00\x00\x00\x00\x45\x00\x00\x1c\x00\x00"
+                b"\x40\x00\x40\x11\x90\x00\x0a\x00\x01\x07\x0a\x00\x01\x5b\x30\x39"
+                b"\xd4\x31\x00\x08\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                icmp4__pre_parse=1,
+                icmp4__destination_unreachable=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4/ICMPv4 Destination Unreachable, embedded data fails IPv4 integrity check",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91 (host A), type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=ICMP, total_len=56
+                # ICMPv4: type=3 (Destination Unreachable), code=3 (Port), cksum=0xfcfc
+                #         data = 28 zero bytes (frame[0] >> 4 == 0, fails 'IPv4 version' check)
+                #
+                # Summary: Embedded data exists but is not a valid IPv4 packet (version nibble = 0).
+                #          Integrity gauntlet rejects it; the function bumps
+                #          'icmp4__destination_unreachable' and returns without UDP socket lookup.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x38\x00\x00\x00\x00\x40\x01\x64\x64\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x03\x03\xfc\xfc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                icmp4__pre_parse=1,
+                icmp4__destination_unreachable=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
+        {
+            "_description": "Ethernet/IPv4/ICMPv4 malformed (truncated) — failed parse drop",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91 (host A), type=0x0800
+                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=ICMP, total_len=24
+                # ICMPv4: only 4 bytes (type=8, code=0, cksum=0x0000) — truncated below the
+                #         8-byte minimum the Icmp4Parser expects for an Echo Request.
+                #
+                # Summary: Truncated ICMPv4 message triggers Icmp4Parser to raise, bumping
+                #          'icmp4__failed_parse__drop' and skipping all message-type dispatch.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x18\x00\x00\x00\x00\x40\x01\x64\x84\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07\x08\x00\x00\x00",
+            ],
+            "_expected__frames_tx": [],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__dst_unicast=1,
+                icmp4__pre_parse=1,
+                icmp4__failed_parse__drop=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(),
+        },
     ]
 )
 class TestPacketHandlerIcmp4Rx(NetworkTestCase):
@@ -146,9 +279,9 @@ class TestPacketHandlerIcmp4Rx(NetworkTestCase):
 
     _description: str
     _frames_rx: list[bytes]
-    _expected__frames_tx: list[bytes] | None
-    _expected__packet_stats_rx: PacketStatsRx | None
-    _expected__packet_stats_tx: PacketStatsTx | None
+    _expected__frames_tx: list[bytes]
+    _expected__packet_stats_rx: PacketStatsRx
+    _expected__packet_stats_tx: PacketStatsTx
 
     _frames_tx: list[bytes]
 

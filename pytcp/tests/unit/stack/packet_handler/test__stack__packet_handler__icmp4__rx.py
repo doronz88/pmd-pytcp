@@ -205,18 +205,13 @@ class TestPacketHandlerIcmp4RxEchoRequest(_Icmp4RxTestBase):
 class TestPacketHandlerIcmp4RxEchoReply(_Icmp4RxTestBase):
     """
     The ICMPv4 Echo Reply tests.
-
-    Note: '__phrx_icmp4__echo_reply' contains an unconditional assert
-    that the parsed 'message' is a 'memoryview'. Parsed messages are
-    typed objects, not memoryviews, so the assert triggers on every
-    echo reply. The handler is exercised for dispatch routing only.
     """
 
     def test__stack__packet_handler__icmp4__rx__echo_reply_dispatches_to_echo_reply_branch(self) -> None:
         """
         Ensure an ICMPv4 Echo Reply reaches the __phrx_icmp4__echo_reply
-        branch via the match-case dispatch. The handler's internal
-        assert makes a full happy-path test impossible.
+        branch and bumps 'icmp4__echo_reply'. With no matching RAW
+        socket installed, the handler returns silently.
         """
 
         ip4 = bytes(
@@ -229,16 +224,12 @@ class TestPacketHandlerIcmp4RxEchoReply(_Icmp4RxTestBase):
             )
         )
 
-        with self.assertRaises(
-            AssertionError,
-            msg="Handler asserts 'message is memoryview' — dispatch is confirmed by this assert firing.",
-        ):
-            self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
+        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
 
         self.assertEqual(
             self._handler._packet_stats_rx.icmp4__echo_reply,
             1,
-            msg="icmp4__echo_reply must be incremented before the memoryview assert fires.",
+            msg="icmp4__echo_reply must be incremented for an Echo Reply with no matching socket.",
         )
 
 
