@@ -23,7 +23,7 @@
 
 
 """
-This package contains library used by net_proto library.
+This package contains the shared library modules used by net_proto.
 
 net_proto/lib/__init__.py
 
