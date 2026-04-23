@@ -34,7 +34,7 @@ import re
 from typing import Self, override
 
 from net_addr.errors import Ip6MaskFormatError
-from net_addr.ip6_address import IP6__ADDRESS_LEN
+from net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK
 from net_addr.ip_mask import IpMask
 from net_addr.ip_version import IpVersion
 
@@ -50,25 +50,29 @@ class Ip6Mask(IpMask):
 
     def __init__(
         self,
-        /,
         mask: Self | str | bytes | bytearray | memoryview | int | None = None,
+        /,
     ) -> None:
         """
-        Create a new IPv6 mask object.
+        Initialize the IPv6 mask object.
         """
 
         if mask is None:
             self._mask = 0
             return
 
+        if isinstance(mask, Ip6Mask):
+            self._mask = int(mask)
+            return
+
         if isinstance(mask, int):
-            if mask & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF == mask:
+            if 0 <= mask <= IP6__MASK:
                 self._mask = mask
                 if self._validate_bits(IP6__ADDRESS_LEN * 8):
                     return
 
         if isinstance(mask, (memoryview, bytes, bytearray)):
-            if len(mask) == 16:
+            if len(mask) == IP6__ADDRESS_LEN:
                 self._mask = int.from_bytes(mask)
                 if self._validate_bits(IP6__ADDRESS_LEN * 8):
                     return
@@ -79,10 +83,6 @@ class Ip6Mask(IpMask):
                 self._mask = ((1 << bit_count) - 1) << (IP6__ADDRESS_LEN * 8 - bit_count)
                 return
 
-        if isinstance(mask, Ip6Mask):
-            self._mask = mask._mask
-            return
-
         raise Ip6MaskFormatError(mask)
 
     @override
@@ -91,4 +91,4 @@ class Ip6Mask(IpMask):
         Get the IPv6 mask as memoryview.
         """
 
-        return memoryview(bytearray(self._mask.to_bytes(16)))
+        return memoryview(bytearray(self._mask.to_bytes(IP6__ADDRESS_LEN)))
