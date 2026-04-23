@@ -30,7 +30,6 @@ net_proto/protocols/dhcp4/dhcp4__assembler.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_addr import Ip4Address, MacAddress

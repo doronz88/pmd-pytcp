@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__logger.py
 ver 3.0.4
 """
 
-
 import io
 import time
 from unittest import TestCase

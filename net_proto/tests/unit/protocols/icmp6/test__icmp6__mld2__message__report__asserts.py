@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__asserts
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

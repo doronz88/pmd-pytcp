@@ -32,7 +32,6 @@ pytcp/tests/unit/stack/test__stack__init.py
 ver 3.0.4
 """
 
-
 import sys
 from unittest import TestCase
 from unittest.mock import MagicMock, patch

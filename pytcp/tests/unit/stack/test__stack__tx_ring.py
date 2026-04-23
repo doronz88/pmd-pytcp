@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/test__stack__tx_ring.py
 ver 3.0.4
 """
 
-
 import os
 from unittest import TestCase
 from unittest.mock import MagicMock, patch

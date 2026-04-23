@@ -34,7 +34,6 @@ pytcp/tests/integration/test__packet_handler__udp__tx.py
 ver 3.0.4
 """
 
-
 from typing import Any
 
 from parameterized import parameterized_class  # type: ignore

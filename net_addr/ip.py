@@ -30,7 +30,6 @@ net_addr/ip.py
 ver 3.0.4
 """
 
-
 from abc import ABC
 
 from net_addr.ip_version import IpVersion

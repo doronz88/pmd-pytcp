@@ -34,7 +34,6 @@ examples/stack.py
 ver 3.0.3
 """
 
-
 import time
 
 import click

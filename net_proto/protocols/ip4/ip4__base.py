@@ -30,7 +30,6 @@ net_proto/protocols/ip4/ip4__base.py
 ver 3.0.4
 """
 
-
 import struct
 from typing import override
 

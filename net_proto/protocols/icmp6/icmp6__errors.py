@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/icmp6__errors.py
 ver 3.0.4
 """
 
-
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 

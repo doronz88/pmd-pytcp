@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

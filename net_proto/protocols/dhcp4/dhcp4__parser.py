@@ -30,7 +30,6 @@ net_proto/protocols/dhcp4/dhcp4__parser.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_proto.lib.proto_parser import ProtoParser

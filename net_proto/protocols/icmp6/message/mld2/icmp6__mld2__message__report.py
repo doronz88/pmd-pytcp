@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__report.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override
@@ -136,12 +135,9 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         Get the ICMPv6 MLD2 Report message log string.
         """
 
-        return (
-            "ICMPv6 MLDv2 Report"
-            f"{', records ' + ', '.join(
-                str(record) for record in self.records
-            ) if self.records else ''}"
-        )
+        records_part = ", records " + ", ".join(str(record) for record in self.records) if self.records else ""
+
+        return f"ICMPv6 MLDv2 Report{records_part}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

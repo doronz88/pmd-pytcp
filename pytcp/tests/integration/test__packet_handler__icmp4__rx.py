@@ -34,7 +34,6 @@ pytcp/tests/integration/test__packet_handler__icmp4__rx.py
 ver 3.0.4
 """
 
-
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx

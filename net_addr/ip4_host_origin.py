@@ -30,7 +30,6 @@ net_addr/ip4_host_origin.py
 ver 3.0.4
 """
 
-
 from enum import auto
 
 from net_addr.ip_host_origin import IpHostOrigin

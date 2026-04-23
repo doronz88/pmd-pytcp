@@ -30,7 +30,6 @@ net_proto/protocols/tcp/options/tcp__option__sack.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override

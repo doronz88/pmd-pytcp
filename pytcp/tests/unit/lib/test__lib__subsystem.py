@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__subsystem.py
 ver 3.0.4
 """
 
-
 import io
 import threading
 from typing import override

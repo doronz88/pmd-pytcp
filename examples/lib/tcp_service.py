@@ -30,7 +30,6 @@ examples/lib/tcp_service.py
 ver 3.0.3
 """
 
-
 import threading
 from typing import override
 

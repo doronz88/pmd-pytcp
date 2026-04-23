@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/tcp/test__tcp__option__wscale.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

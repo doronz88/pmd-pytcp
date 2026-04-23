@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__assembler__misc.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto import Icmp6Assembler, Icmp6MessageEchoReply, Tracker

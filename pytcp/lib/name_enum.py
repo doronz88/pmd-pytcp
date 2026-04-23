@@ -30,7 +30,6 @@ pytcp/lib/name_enum.py
 ver 3.0.4
 """
 
-
 from enum import IntEnum
 
 

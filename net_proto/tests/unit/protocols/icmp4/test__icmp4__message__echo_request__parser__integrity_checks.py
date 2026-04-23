@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/icmp4/test__icmp4__message__echo_request__parser_
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase

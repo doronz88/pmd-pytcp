@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/message/mld2/icmp6__mld2__multicast_address_record.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override
@@ -155,15 +154,14 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         Get the ICMPv6 MLDv2 Multicast Address Record log string.
         """
 
-        return (
-            f"[type '{self.type}', addr {self.multicast_address}"
-            f"{(
-                ', sources (' + ', '.join(str(source_address)
-                                          for source_address
-                                          in self.source_addresses) + ')'
-            ) if self.source_addresses else ''}"
-            f"{f', aux data {self.aux_data!r}' if self.aux_data else ''}]"
+        sources_part = (
+            ", sources (" + ", ".join(str(addr) for addr in self.source_addresses) + ")"
+            if self.source_addresses
+            else ""
         )
+        aux_part = f", aux data {self.aux_data!r}" if self.aux_data else ""
+
+        return f"[type '{self.type}', addr {self.multicast_address}{sources_part}{aux_part}]"
 
     @override
     def __buffer__(self, _: int) -> memoryview:

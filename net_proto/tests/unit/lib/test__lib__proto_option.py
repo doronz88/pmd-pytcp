@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__proto_option.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError, dataclass
 from typing import Self
 from unittest import TestCase

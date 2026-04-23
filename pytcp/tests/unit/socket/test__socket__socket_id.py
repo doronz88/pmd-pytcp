@@ -30,7 +30,6 @@ pytcp/tests/unit/socket/test__socket__socket_id.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 

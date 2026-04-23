@@ -32,7 +32,6 @@ net_addr/click_types.py
 ver 3.0.4
 """
 
-
 from click import ParamType
 from click.core import Context, Parameter
 

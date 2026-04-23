@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/icmp6__parser.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_proto.lib.inet_cksum import inet_cksum

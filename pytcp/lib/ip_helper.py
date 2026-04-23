@@ -30,7 +30,6 @@ pycp/lib/ip_helper.py
 ver 3.0.4
 """
 
-
 from typing import cast
 
 from net_addr import (

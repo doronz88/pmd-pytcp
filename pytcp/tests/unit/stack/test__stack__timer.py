@@ -31,7 +31,6 @@ pytcp/tests/unit/stack/test__stack__timer.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

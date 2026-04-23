@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicita
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

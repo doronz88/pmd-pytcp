@@ -30,7 +30,6 @@ net_proto/protocols/icmp4/message/icmp4__message.py
 ver 3.0.4
 """
 
-
 from abc import abstractmethod
 from dataclasses import dataclass
 

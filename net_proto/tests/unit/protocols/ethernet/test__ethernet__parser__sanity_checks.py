@@ -35,7 +35,6 @@ net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__sanity_checks.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

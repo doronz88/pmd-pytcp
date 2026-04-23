@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__interface_layer.py
 ver 3.0.4
 """
 
-
 from enum import Enum
 from unittest import TestCase
 

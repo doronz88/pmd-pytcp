@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from unittest import TestCase
 

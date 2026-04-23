@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/tcp/test__tcp__parser__sanity_checks.py
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from unittest import TestCase
 

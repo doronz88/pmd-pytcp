@@ -30,7 +30,6 @@ pytcp/subsystems/packet_handler/packet_handler__ip6_frag__tx.py
 ver 3.0.4
 """
 
-
 from abc import ABC
 from typing import TYPE_CHECKING
 

@@ -30,7 +30,6 @@ net_addr/ip6_host.py
 ver 3.0.4
 """
 
-
 import time
 from typing import Self, override
 
@@ -101,7 +100,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
                 self._address = Ip6Address(address)
                 self._network = Ip6Network(host)
                 return
-            except (ValueError, Ip6AddressFormatError, Ip6MaskFormatError):
+            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
                 pass
 
         if isinstance(host, Ip6Host):

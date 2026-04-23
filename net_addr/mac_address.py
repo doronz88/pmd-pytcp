@@ -30,7 +30,6 @@ net_addr/mac_address.py
 ver 3.0.4
 """
 
-
 import re
 from typing import Self, override
 

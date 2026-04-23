@@ -30,7 +30,6 @@ net_addr/ip_network.py
 ver 3.0.4
 """
 
-
 from abc import ABC, abstractmethod
 from typing import override
 

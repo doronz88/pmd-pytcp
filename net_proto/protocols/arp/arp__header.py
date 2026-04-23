@@ -30,7 +30,6 @@ net_proto/protocols/arp/arp__header.py
 ver 3.0.4
 """
 
-
 import struct
 from abc import ABC
 from dataclasses import dataclass, field

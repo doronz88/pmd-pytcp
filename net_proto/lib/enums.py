@@ -30,9 +30,6 @@ net_proto/lib/enums.py
 ver 3.0.4
 """
 
-
-from __future__ import annotations
-
 from typing import override
 
 from net_proto.lib.proto import Proto

@@ -30,7 +30,6 @@ pytcp/__init__.py
 ver 3.0.4
 """
 
-
 from pytcp import socket, stack
 
 __all__ = [

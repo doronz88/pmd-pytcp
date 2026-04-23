@@ -30,7 +30,6 @@ net_proto/lib/proto_enum.py
 ver 3.0.4
 """
 
-
 from typing import TYPE_CHECKING, Self
 
 from aenum import extend_enum  # type: ignore[import-untyped]

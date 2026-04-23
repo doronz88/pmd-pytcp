@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp6__rx.py
 ver 3.0.4
 """
 
-
 import threading
 from unittest import TestCase
 from unittest.mock import patch

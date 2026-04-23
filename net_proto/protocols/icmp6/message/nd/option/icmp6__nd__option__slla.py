@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__slla.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override

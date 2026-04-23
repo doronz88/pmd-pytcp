@@ -30,7 +30,6 @@ examples/lib/subsystem.py
 ver 3.0.3
 """
 
-
 import threading
 from abc import ABC, abstractmethod
 

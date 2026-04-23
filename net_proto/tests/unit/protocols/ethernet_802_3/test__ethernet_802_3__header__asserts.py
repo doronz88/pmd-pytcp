@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__header__asse
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase

@@ -30,9 +30,6 @@ pytcp/stack/rx_ring.py
 ver 3.0.3
 """
 
-
-from __future__ import annotations
-
 import os
 import queue
 import selectors

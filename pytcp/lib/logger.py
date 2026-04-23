@@ -30,7 +30,6 @@ pytcp/lib/logger.py
 ver 3.0.4
 """
 
-
 import inspect
 import time
 

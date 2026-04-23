@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/test__stack__rx_ring.py
 ver 3.0.4
 """
 
-
 import os
 import queue
 from unittest import TestCase

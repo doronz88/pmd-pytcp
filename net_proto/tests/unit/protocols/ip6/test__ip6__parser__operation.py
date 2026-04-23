@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ip6/test__ip6__parser__operation.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

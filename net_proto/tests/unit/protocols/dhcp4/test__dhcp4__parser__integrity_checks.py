@@ -34,7 +34,6 @@ net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

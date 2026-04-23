@@ -30,7 +30,6 @@ pytcp/subsystems/packet_handler/packet_handler__ip6_frag__rx.py
 ver 3.0.4
 """
 
-
 import struct
 from abc import ABC
 from time import time

@@ -30,9 +30,6 @@ pytcp/socket/__init__.py
 ver 3.0.3
 """
 
-
-from __future__ import annotations
-
 from abc import ABC
 from types import TracebackType
 from typing import Any

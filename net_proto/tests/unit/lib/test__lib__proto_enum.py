@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__proto_enum.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto.lib.proto_enum import ProtoEnum, ProtoEnumByte, ProtoEnumWord

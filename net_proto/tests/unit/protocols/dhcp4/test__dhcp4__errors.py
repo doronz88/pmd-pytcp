@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/dhcp4/test__dhcp4__errors.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError

@@ -30,7 +30,6 @@ net_proto/protocols/icmp4/message/icmp4__message__echo_request.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override

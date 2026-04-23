@@ -30,7 +30,6 @@ net_addr/ip4_host.py
 ver 3.0.4
 """
 
-
 import time
 from typing import Self, override
 
@@ -104,7 +103,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
                 self._network = Ip4Network(host)
                 self._validate_gateway(gateway)
                 return
-            except (ValueError, Ip4AddressFormatError, Ip4MaskFormatError):
+            except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
                 pass
 
         if isinstance(host, Ip4Host):

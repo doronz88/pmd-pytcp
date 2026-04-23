@@ -31,7 +31,6 @@ pytcp/tests/unit/stack/test__stack__nd_cache.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 from unittest.mock import MagicMock, patch

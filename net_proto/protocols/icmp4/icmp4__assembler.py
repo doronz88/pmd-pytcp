@@ -30,7 +30,6 @@ net_proto/protocols/icmp4/icmp4__assembler.py
 ver 3.0.4
 """
 
-
 from typing import cast, override
 
 from net_proto.lib.buffer import Buffer

@@ -30,7 +30,6 @@ net_addr/tests/unit/test__ip4_host.py
 ver 3.0.4
 """
 
-
 import time
 from typing import Any
 from unittest import TestCase

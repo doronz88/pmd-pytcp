@@ -34,7 +34,6 @@ pytcp/tests/lib/network_testcase.py
 ver 3.0.4
 """
 
-
 from typing import cast
 from unittest import TestCase
 from unittest.mock import create_autospec

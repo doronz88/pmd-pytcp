@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ethernet/test__ethernet__header__asserts.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase

@@ -30,7 +30,6 @@ net_proto/lib/proto_struct.py
 ver 3.0.4
 """
 
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Self

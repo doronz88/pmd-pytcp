@@ -30,7 +30,6 @@ net_proto/protocols/ethernet_802_3/ethernet_802_3__header.py
 ver 3.0.4
 """
 
-
 import struct
 from abc import ABC
 from dataclasses import dataclass

@@ -31,7 +31,6 @@ net_addr/tests/unit/test__abstract_stubs.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_addr.address import Address

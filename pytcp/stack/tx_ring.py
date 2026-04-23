@@ -30,9 +30,6 @@ pytcp/stack/tx_ring.py
 ver 3.0.3
 """
 
-
-from __future__ import annotations
-
 import os
 import queue
 from typing import override

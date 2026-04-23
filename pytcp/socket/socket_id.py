@@ -30,7 +30,6 @@ pytcp/lib/socket_id.py
 ver 3.0.3
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass

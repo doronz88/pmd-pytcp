@@ -30,7 +30,6 @@ pytcp/socket/tcp__metadata.py
 ver 3.0.3
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass

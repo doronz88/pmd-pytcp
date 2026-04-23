@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ip4/test__ip4__assembler__asserts.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto import (

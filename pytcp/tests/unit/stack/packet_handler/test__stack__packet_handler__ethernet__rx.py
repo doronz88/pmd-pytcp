@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ethernet__rx.
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

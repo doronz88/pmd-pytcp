@@ -30,9 +30,6 @@ pytcp/stack/timer.py
 ver 3.0.3
 """
 
-
-from __future__ import annotations
-
 import threading
 import time
 from typing import Any, Callable

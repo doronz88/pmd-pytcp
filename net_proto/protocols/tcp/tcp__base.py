@@ -30,7 +30,6 @@ net_proto/protocols/tcp/tpc__base.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_proto.lib.buffer import Buffer

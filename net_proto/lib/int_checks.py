@@ -31,7 +31,6 @@ net_proto/lib/int_checks.py
 ver 3.0.4
 """
 
-
 UINT_2__MIN = 0x00
 UINT_2__MAX = 0x03
 

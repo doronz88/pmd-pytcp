@@ -31,7 +31,6 @@ pytcp/protocols/dhcp4/client.py
 ver 3.0.3
 """
 
-
 import random
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress

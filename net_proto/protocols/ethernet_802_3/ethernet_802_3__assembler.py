@@ -30,7 +30,6 @@ net_proto/protocols/ethernet_802_3/ethernet_802_3__assembler.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_addr import MacAddress

@@ -30,7 +30,6 @@ examples/lib/udp_service.py
 ver 3.0.3
 """
 
-
 from typing import override
 
 from examples.lib.service import Service

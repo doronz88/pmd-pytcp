@@ -30,7 +30,6 @@ net_proto/lib/proto_option.py
 ver 3.0.4
 """
 
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterator, Self

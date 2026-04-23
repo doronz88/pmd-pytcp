@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ip6/test__ip6__header__asserts.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

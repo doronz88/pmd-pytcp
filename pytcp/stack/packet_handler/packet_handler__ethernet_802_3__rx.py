@@ -30,7 +30,6 @@ pytcp/subsystems/packet_handler/packet_handler__ethernet_802_3__rx.py
 ver 3.0.3
 """
 
-
 from abc import ABC
 from typing import TYPE_CHECKING
 

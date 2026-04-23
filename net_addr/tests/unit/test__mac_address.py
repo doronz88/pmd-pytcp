@@ -30,7 +30,6 @@ net_addr/tests/unit/test__mac_address.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

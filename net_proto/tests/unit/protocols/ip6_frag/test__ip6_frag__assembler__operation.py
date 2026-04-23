@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/ip6_frag/test__ip6_frag__assembler__operation.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PyTCP is a pure Python TCP/IP stack (Python 3.12+) built on TAP/TUN interfaces. It implements Ethernet through TCP/UDP with zero runtime dependencies (stdlib only). The project is structured as three independent packages: `net_addr`, `net_proto`, and `pytcp`.
+PyTCP is a pure Python TCP/IP stack (Python 3.14+) built on TAP/TUN interfaces. It implements Ethernet through TCP/UDP with zero runtime dependencies (stdlib only). The project is structured as three independent packages: `net_addr`, `net_proto`, and `pytcp`.
 
 ## Commands
 
 ```bash
 # Setup
-make venv                 # create virtual environment (Python 3.12+)
+make venv                 # create virtual environment (Python 3.14+)
 source venv/bin/activate
 
 # Development
@@ -88,7 +88,7 @@ The socket API (`pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `
 
 ### Protocol Stacking with Generics
 
-Assembler classes use Python 3.12 generic syntax for type-safe stacking:
+Assembler classes use PEP 695 generic syntax for type-safe stacking:
 
 ```python
 class EthernetAssembler[P: (ArpAssembler | Ip4Assembler | Ip6Assembler)]:

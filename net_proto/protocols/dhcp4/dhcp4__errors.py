@@ -30,7 +30,6 @@ net_proto/protocols/dhcp4/dhcp4__errors.py
 ver 3.0.4
 """
 
-
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 

@@ -30,7 +30,6 @@ net_proto/protocols/tcp/options/tcp__option.py
 ver 3.0.4
 """
 
-
 from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType

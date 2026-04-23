@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__parser_
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase

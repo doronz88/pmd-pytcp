@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__packet_rx.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

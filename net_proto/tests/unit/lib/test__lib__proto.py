@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__proto.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto.lib.proto import Proto

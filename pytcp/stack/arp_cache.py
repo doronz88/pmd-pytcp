@@ -30,7 +30,6 @@ pytcp/stack/arp_cache.py
 ver 3.0.3
 """
 
-
 from __future__ import annotations
 
 import threading

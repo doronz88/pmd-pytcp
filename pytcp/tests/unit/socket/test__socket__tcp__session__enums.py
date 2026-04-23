@@ -32,7 +32,6 @@ pytcp/tests/unit/socket/test__socket__tcp__session__enums.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from pytcp.socket.tcp__session import (

@@ -30,7 +30,6 @@ net_addr/ip6_network.py
 ver 3.0.4
 """
 
-
 from typing import Self, override
 
 from net_addr.errors import (
@@ -78,7 +77,7 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
                 self._mask = Ip6Mask("/" + mask)
                 self._address = Ip6Address(int(Ip6Address(address)) & int(self._mask))
                 return
-            except (ValueError, Ip6AddressFormatError, Ip6MaskFormatError):
+            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
                 pass
 
         if isinstance(network, Ip6Network):

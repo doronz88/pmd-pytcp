@@ -35,7 +35,6 @@ examples/client__icmp_echo.py
 ver 3.0.3
 """
 
-
 import os
 import struct
 import threading

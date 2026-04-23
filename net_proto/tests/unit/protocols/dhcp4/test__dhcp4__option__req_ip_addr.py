@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__req_ip_addr.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase

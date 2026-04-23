@@ -30,7 +30,6 @@ net_addr/__init__.py
 ver 3.0.4
 """
 
-
 from net_addr.click_types import (
     ClickTypeIp4Address,
     ClickTypeIp4Host,

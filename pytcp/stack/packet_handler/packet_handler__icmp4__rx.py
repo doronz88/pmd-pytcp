@@ -30,7 +30,6 @@ pytcp/subsystems/packet_handler/packet_handler__icmp4__rx.py
 ver 3.0.4
 """
 
-
 import struct
 from abc import ABC
 from typing import TYPE_CHECKING, cast

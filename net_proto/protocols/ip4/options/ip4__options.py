@@ -30,7 +30,6 @@ net_proto/protocols/ip4/options/ip4__options.py
 ver 3.0.4
 """
 
-
 from abc import ABC
 from typing import Self, override
 

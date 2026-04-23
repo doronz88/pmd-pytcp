@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__dhcp4_client.py
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch

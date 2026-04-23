@@ -31,9 +31,6 @@ net_proto/lib/tracker.py
 ver 3.0.4
 """
 
-
-from __future__ import annotations
-
 import time
 
 

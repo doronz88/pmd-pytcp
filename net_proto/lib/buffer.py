@@ -30,5 +30,4 @@ net_proto/lib/buffer.py
 ver 3.0.4
 """
 
-
 type Buffer = bytes | bytearray | memoryview

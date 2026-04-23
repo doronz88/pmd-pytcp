@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

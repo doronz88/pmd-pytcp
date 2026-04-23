@@ -30,7 +30,6 @@ net_proto/protocols/tcp/tcp__header.py
 ver 3.0.4
 """
 
-
 import struct
 from abc import ABC
 from dataclasses import dataclass

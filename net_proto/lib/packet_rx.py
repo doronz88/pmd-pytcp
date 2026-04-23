@@ -30,7 +30,6 @@ net_proto/lib/packet_rx.py
 ver 3.0.4
 """
 
-
 from typing import TYPE_CHECKING
 
 from net_proto.lib.buffer import Buffer

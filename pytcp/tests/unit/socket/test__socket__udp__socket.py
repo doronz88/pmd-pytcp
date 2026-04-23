@@ -31,7 +31,6 @@ pytcp/tests/unit/socket/test__socket__udp__socket.py
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch

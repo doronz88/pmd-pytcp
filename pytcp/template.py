@@ -29,6 +29,3 @@ pytcp/template.py
 
 ver 3.0.2
 """
-
-
-from __future__ import annotations

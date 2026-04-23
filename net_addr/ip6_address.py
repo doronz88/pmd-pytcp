@@ -30,7 +30,6 @@ net_addr/ip6_address.py
 ver 3.0.4
 """
 
-
 import re
 import socket
 from typing import Self, override

@@ -30,7 +30,6 @@ pytcp/lib/subsystem.py
 ver 3.0.4
 """
 
-
 import threading
 from abc import ABC, abstractmethod
 

@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py
 ver 3.0.4
 """
 
-
 from typing import Any, cast
 from unittest import TestCase
 

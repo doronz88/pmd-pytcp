@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__tx_status.py
 ver 3.0.4
 """
 
-
 from enum import IntEnum
 from typing import Any
 from unittest import TestCase

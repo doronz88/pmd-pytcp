@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_advertisement.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override

@@ -30,7 +30,6 @@ net_proto/protocols/udp/udp__parser.py
 ver 3.0.4
 """
 
-
 from typing import override
 
 from net_proto.lib.buffer import Buffer

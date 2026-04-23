@@ -30,7 +30,6 @@ pytcp/stack/__init__.py
 ver 3.0.3
 """
 
-
 from __future__ import annotations
 
 import fcntl

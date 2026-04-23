@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/icmp4/test__icmp4__assembler__misc.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_proto import Icmp4Assembler, Icmp4MessageEchoReply, Tracker

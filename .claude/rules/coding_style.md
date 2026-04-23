@@ -21,9 +21,21 @@ anything under `tests/`.
 
 ## 1. Language, toolchain, dependencies
 
-- Target **Python 3.12+**. Use 3.10+ union syntax (`A | B`), 3.10+
-  `match`/`case`, 3.12+ PEP 695 generic-class syntax
-  (`class Foo[T]: ...`), and `typing.Self` / `typing.override`.
+- Target **Python 3.14+**. The project ships on 3.14 and uses the
+  modern features available through that version:
+  - 3.10+ union syntax (`A | B`) — never `Optional[X]` / `Union[A, B]`.
+  - 3.10+ `match` / `case`.
+  - 3.10+ `int.bit_count()` for popcount — never a string-format scan.
+  - 3.11+ `typing.Self` for self-returning classmethods.
+  - 3.12+ PEP 695 generic-class syntax (`class Foo[T]: ...`) and
+    `type X = ...` aliases — preferred over `TypeVar` / `TypeAlias`.
+  - 3.12+ `typing.override` on every method that overrides a parent.
+  - 3.13+ PEP 696 type-parameter defaults (`class Foo[T = int]: ...`).
+  - 3.14+ PEP 649 lazy annotation evaluation — annotations are stored
+    as `__annotate__` closures and only evaluated on access. A plain
+    `foo: Ip4Address` in a signature no longer requires
+    `from __future__ import annotations` provided the name is in
+    runtime scope.
 - The stack itself has **zero runtime dependencies outside the
   standard library**. The only permitted non-stdlib imports in
   non-test source are:
@@ -54,7 +66,7 @@ is a library module.
 1. Lines 1–22: the 80-character-wide GPL copyright block (see §3).
 2. Blank lines 23 and 24.
 3. Lines 25–31: module docstring (see §4).
-4. Blank lines 32 and 33.
+4. Blank line 32 (single blank after the docstring — black 26's rule).
 5. Imports (see §5).
 6. Blank line.
 7. Module-level constants (see §6), including any RFC ASCII diagrams.
@@ -70,7 +82,7 @@ No shebang. No executable bit (`chmod a-x`).
 3. Lines 3–24: the GPL copyright block.
 4. Blank lines 25 and 26.
 5. Lines 27–33: module docstring.
-6. Blank lines 34 and 35.
+6. Blank line 34 (single blank after the docstring).
 7. Imports.
 8. Blank line.
 9. Module-level constants.
@@ -150,8 +162,13 @@ ver 3.0.x
 
 Order (each group separated by one blank line):
 
-1. `from __future__ import annotations` (only if the module needs it —
-   most don't since PEP 604/695 work natively on 3.12).
+1. `from __future__ import annotations` (only when a module uses
+   `if TYPE_CHECKING:` imports inside annotations — those names
+   aren't in runtime scope, and PEP 649 would otherwise try to
+   resolve them lazily and fail. If the module's annotations all
+   use names that are actually imported at runtime, omit the
+   future-import entirely — PEP 649 gives you lazy evaluation for
+   free on 3.14+).
 2. Standard library: plain `import …` lines first, then `from …
    import …` lines.
 3. `aenum` / `click` (on the rare occasions they are allowed).

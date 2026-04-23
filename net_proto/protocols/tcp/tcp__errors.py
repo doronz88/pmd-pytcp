@@ -30,7 +30,6 @@ net_proto/protocols/tcp/tcp__errors.py
 ver 3.0.4
 """
 
-
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 

@@ -30,7 +30,6 @@ net_proto/protocols/tcp/options/tcp__option__nop.py
 ver 3.0.4
 """
 
-
 from dataclasses import dataclass, field
 from typing import Self, override
 

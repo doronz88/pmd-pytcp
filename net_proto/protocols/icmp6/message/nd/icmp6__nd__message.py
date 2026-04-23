@@ -30,7 +30,6 @@ net_proto/protocols/icmp6/message/nd/icmp6__nd__message.py
 ver 3.0.4
 """
 
-
 from dataclasses import dataclass
 
 from net_addr import MacAddress

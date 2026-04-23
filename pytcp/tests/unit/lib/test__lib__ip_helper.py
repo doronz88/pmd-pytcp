@@ -30,7 +30,6 @@ pytcp/tests/unit/lib/test__lib__ip_helper.py
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase

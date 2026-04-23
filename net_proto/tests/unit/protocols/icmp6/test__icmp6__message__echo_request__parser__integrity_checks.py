@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__message__echo_request__parser_
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase

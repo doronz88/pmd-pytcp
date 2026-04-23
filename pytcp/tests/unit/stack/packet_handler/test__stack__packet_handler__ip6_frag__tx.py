@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__tx.
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from net_addr import Ip6Address

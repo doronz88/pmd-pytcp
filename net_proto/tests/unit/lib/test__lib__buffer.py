@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__buffer.py
 ver 3.0.4
 """
 
-
 from typing import TypeAliasType, get_args
 from unittest import TestCase
 

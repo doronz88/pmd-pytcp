@@ -33,7 +33,6 @@ examples/client__tcp_echo.py
 ver 3.0.3
 """
 
-
 import threading
 from typing import Any, override
 

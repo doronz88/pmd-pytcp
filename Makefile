@@ -11,7 +11,7 @@ EXAMPLES_FILES := $(shell find ${EXAMPLES_PATH} -name '*.py')
 ROOT_FILES := tests_runner.py
 
 $(VENV)/bin/activate: requirements.txt requirements_dev.txt
-	@python -m venv $(VENV)
+	@python3.14 -m venv $(VENV)
 	@echo "export PYTHONPATH=$(ROOT_PATH)" >> venv/bin/activate
 	@./$(VENV)/bin/python -m pip install --upgrade pip
 	@./$(VENV)/bin/pip install -r requirements.txt
@@ -20,10 +20,10 @@ $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 venv: $(VENV)/bin/activate
 
 run: venv
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/run_stack.py
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py
 
 run_tun: venv
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/run_stack.py --interface tun7 --ip4-address 10.0.0.2/24
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --interface tun7 --ip4-address 10.0.0.2/24
 
 clean:
 	@rm -rf $(VENV)

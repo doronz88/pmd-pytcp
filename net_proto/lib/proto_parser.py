@@ -30,7 +30,6 @@ net_proto/lib/proto_parser.py
 ver 3.0.4
 """
 
-
 from abc import abstractmethod
 
 from net_proto.lib.buffer import Buffer

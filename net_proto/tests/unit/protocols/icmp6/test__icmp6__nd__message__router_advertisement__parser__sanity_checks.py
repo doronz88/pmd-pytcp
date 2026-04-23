@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisem
 ver 3.0.4
 """
 
-
 from types import SimpleNamespace
 from typing import cast
 from unittest import TestCase

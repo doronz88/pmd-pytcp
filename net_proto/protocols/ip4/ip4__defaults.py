@@ -30,6 +30,5 @@ net_proto/protocols/ip4/ip4__defaults.py
 ver 3.0.4
 """
 
-
 IP4__DEFAULT_TTL = 64
 IP4__MIN_MTU = 576  # RFC 791

@@ -30,7 +30,6 @@ net_proto/tests/unit/lib/test__lib__proto_struct.py
 ver 3.0.4
 """
 
-
 from dataclasses import FrozenInstanceError, dataclass, fields, is_dataclass
 from typing import Self
 from unittest import TestCase

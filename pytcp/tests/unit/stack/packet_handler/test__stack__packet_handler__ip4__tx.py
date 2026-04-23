@@ -30,7 +30,6 @@ pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip4__tx.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

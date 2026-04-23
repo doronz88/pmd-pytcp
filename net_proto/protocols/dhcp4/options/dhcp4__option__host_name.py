@@ -30,7 +30,6 @@ net_proto/protocols/dhcp4/options/dhcp4__option__host_name.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override

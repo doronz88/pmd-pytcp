@@ -30,7 +30,6 @@ net_proto/protocols/dhcp4/options/dhcp4_options.py
 ver 3.0.4
 """
 
-
 from abc import ABC
 from typing import Self, override
 

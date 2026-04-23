@@ -30,7 +30,6 @@ net_proto/protocols/tcp/options/tcp__options.py
 ver 3.0.4
 """
 
-
 from abc import ABC
 from typing import Self, override
 

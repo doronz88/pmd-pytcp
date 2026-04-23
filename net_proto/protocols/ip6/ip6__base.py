@@ -30,7 +30,6 @@ net_proto/protocols/ip6/ip6__base.py
 ver 3.0.4
 """
 
-
 import struct
 from typing import override
 

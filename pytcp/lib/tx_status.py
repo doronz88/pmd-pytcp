@@ -30,7 +30,6 @@ pytcp/lib/tx_status.py
 ver 3.0.4
 """
 
-
 from enum import IntEnum, auto
 
 

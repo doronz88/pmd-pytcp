@@ -31,7 +31,6 @@ examples/lib/client.py
 ver 3.0.3
 """
 
-
 import threading
 from abc import abstractmethod
 from typing import override

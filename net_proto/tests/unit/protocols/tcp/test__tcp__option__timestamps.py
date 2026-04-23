@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/tcp/test__tcp__option__timestamps.py
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

@@ -30,7 +30,6 @@ net_addr/ip4_address.py
 ver 3.0.4
 """
 
-
 from __future__ import annotations
 
 import re

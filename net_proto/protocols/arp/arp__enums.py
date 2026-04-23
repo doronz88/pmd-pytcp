@@ -30,7 +30,6 @@ net_proto/protocols/arp/arp__enums.py
 ver 3.0.4
 """
 
-
 from net_proto.lib.proto_enum import ProtoEnumWord
 
 

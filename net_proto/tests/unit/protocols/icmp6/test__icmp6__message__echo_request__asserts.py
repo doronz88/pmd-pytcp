@@ -31,7 +31,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__message__echo_request__asserts
 ver 3.0.4
 """
 
-
 from typing import Any
 from unittest import TestCase
 

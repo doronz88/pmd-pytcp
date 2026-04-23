@@ -30,7 +30,6 @@ net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py
 ver 3.0.4
 """
 
-
 import struct
 from dataclasses import dataclass, field
 from typing import Self, override
@@ -180,16 +179,11 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Get the ICMPv4 Destination Unreachable message log string.
         """
 
+        mtu_part = f"mtu {self.mtu}, " if self.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED else ""
+
         return (
-            f"ICMPv4 Destination Unreachable - {self.code}, "
-            f"{(
-                f'mtu {self.mtu}, '
-                if self.code
-                == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
-                else ''
-            )}"
-            f"len {len(self)} "
-            f"({ICMP4__DESTINATION_UNREACHABLE__LEN}+{len(self.data)})"
+            f"ICMPv4 Destination Unreachable - {self.code}, {mtu_part}"
+            f"len {len(self)} ({ICMP4__DESTINATION_UNREACHABLE__LEN}+{len(self.data)})"
         )
 
     @override

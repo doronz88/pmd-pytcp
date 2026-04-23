@@ -31,7 +31,6 @@ net_proto/lib/inet_cksum.py
 ver 3.0.4
 """
 
-
 import struct
 
 from net_proto.lib.buffer import Buffer

@@ -30,7 +30,6 @@ examples/lib/malpi.py
 ver 3.0.3
 """
 
-
 malpka: bytes = (
     b"\n                                       \n"
     b"                                       \n"

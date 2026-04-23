@@ -30,7 +30,6 @@ net_proto/tests/unit/protocols/icmp6/test__icmp6__mld2__message__report__assembl
 ver 3.0.4
 """
 
-
 from typing import Any, cast
 from unittest import TestCase
 

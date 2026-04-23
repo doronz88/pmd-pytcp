@@ -30,7 +30,6 @@ pytcp/subsystems/packet_handler/packet_handler__tcp__tx.py
 ver 3.0.3
 """
 
-
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
