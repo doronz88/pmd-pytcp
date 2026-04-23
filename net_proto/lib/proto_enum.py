@@ -83,7 +83,7 @@ class ProtoEnum(Enum):
         Extract the enum value from the provided bytes.
         """
 
-        return cls.from_int((int.from_bytes(bytes[:size])))
+        return cls.from_int(int.from_bytes(bytes[:size]))
 
     @classmethod
     def get_known_values(cls) -> list[int]:
