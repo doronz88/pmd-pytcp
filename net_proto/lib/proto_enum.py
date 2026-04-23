@@ -91,7 +91,7 @@ class ProtoEnum(Enum):
         Get the list of known values.
         """
 
-        return [int(value) for value in cls if value.is_unknown is False]
+        return [int(value) for value in cls if not value.is_unknown]
 
     @property
     def is_unknown(self) -> bool:
