@@ -23,7 +23,7 @@
 
 
 """
-This module contains protocols related enums.
+This module contains the shared protocol enums.
 
 net_proto/lib/enums.py
 
