@@ -158,7 +158,7 @@ class IpProto(ProtoEnumByte):
             return IpProto.UDP
 
         if isinstance(proto, Ip6):
-            return IpProto.IP4
+            return IpProto.IP6
 
         if isinstance(proto, Ip6Frag):
             return IpProto.IP6_FRAG
