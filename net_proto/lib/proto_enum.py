@@ -61,7 +61,7 @@ class ProtoEnum(Enum):
 
     def __contains__(self, value: object, /) -> bool:
         """
-        Check if the provided value is a valid core enum value.
+        Check if the provided value is a known enum value.
         """
 
         return value in self.get_known_values()
