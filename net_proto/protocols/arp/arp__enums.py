@@ -41,9 +41,6 @@ class ArpHardwareType(ProtoEnumWord):
     ETHERNET = 0x0001
 
 
-ARP__HARDWARE_LEN__ETHERNET = 6
-
-
 class ArpOperation(ProtoEnumWord):
     """
     The ARP header 'oper' field values.
@@ -53,4 +50,5 @@ class ArpOperation(ProtoEnumWord):
     REPLY = 0x0002
 
 
+ARP__HARDWARE_LEN__ETHERNET = 6
 ARP__PROTOCOL_LEN__IP4 = 4
