@@ -75,6 +75,8 @@ class Proto(ABC):
         Compare two packets.
         """
 
+        if not isinstance(other, Proto):
+            return NotImplemented
         return self is other or (type(self) is type(other) and repr(self) == repr(other))
 
     def __hash__(self) -> int:
