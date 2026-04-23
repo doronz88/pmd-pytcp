@@ -23,7 +23,7 @@
 
 
 """
-This module contains function used to compute the Internet Checksum used by
+This module contains the function used to compute the Internet Checksum for
 the IPv4/ICMPv4/ICMPv6/UDP/TCP protocols.
 
 net_proto/lib/inet_cksum.py
@@ -38,7 +38,7 @@ from net_proto.lib.buffer import Buffer
 
 def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
     """
-    Calculates the Internet Checksum of the provided buffers.
+    Calculate the Internet Checksum of the provided buffers.
     """
 
     cksum = init
