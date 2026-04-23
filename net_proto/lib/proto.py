@@ -68,7 +68,7 @@ class Proto(ABC):
         Get the packet as a memoryview.
         """
 
-        return memoryview(bytes(self))
+        raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
         """

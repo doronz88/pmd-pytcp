@@ -142,7 +142,7 @@ class TestNetProtoLibProtoAbstract(TestCase):
                 return super().__repr__()  # type: ignore[safe-super]
 
             def __buffer__(self, flags: int) -> memoryview:
-                return super().__buffer__(flags)
+                return super().__buffer__(flags)  # type: ignore[safe-super]
 
         instance = _SuperProto()
 
@@ -152,7 +152,7 @@ class TestNetProtoLibProtoAbstract(TestCase):
             str(instance)
         with self.assertRaises(NotImplementedError):
             repr(instance)
-        with self.assertRaises(RecursionError):
+        with self.assertRaises(NotImplementedError):
             memoryview(instance)
 
 
