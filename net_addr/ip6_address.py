@@ -37,10 +37,32 @@ from typing import Self, override
 from net_addr.errors import Ip6AddressFormatError
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
-from net_addr.mac_address import MacAddress
+from net_addr.mac_address import MAC__IP6_MULTICAST_PREFIX, MacAddress
 
 IP6__ADDRESS_LEN = 16
 IP6__MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF
+
+IP6__GLOBAL_PREFIX = 0x2000_0000_0000_0000_0000_0000_0000_0000  # RFC 4291 2000::/3
+IP6__GLOBAL_PREFIX_MASK = 0xE000_0000_0000_0000_0000_0000_0000_0000
+
+IP6__LINK_LOCAL_PREFIX = 0xFE80_0000_0000_0000_0000_0000_0000_0000  # RFC 4291 fe80::/10
+IP6__LINK_LOCAL_PREFIX_MASK = 0xFFC0_0000_0000_0000_0000_0000_0000_0000
+
+IP6__LOOPBACK = 0x0000_0000_0000_0000_0000_0000_0000_0001  # RFC 4291 ::1/128
+
+IP6__MULTICAST_PREFIX = 0xFF00_0000_0000_0000_0000_0000_0000_0000  # RFC 4291 ff00::/8
+IP6__MULTICAST_PREFIX_MASK = 0xFF00_0000_0000_0000_0000_0000_0000_0000
+
+IP6__MULTICAST_ALL_NODES = 0xFF02_0000_0000_0000_0000_0000_0000_0001  # RFC 4291 ff02::1
+IP6__MULTICAST_ALL_ROUTERS = 0xFF02_0000_0000_0000_0000_0000_0000_0002  # RFC 4291 ff02::2
+
+IP6__SOLICITED_NODE_PREFIX = 0xFF02_0000_0000_0000_0000_0001_FF00_0000  # RFC 4291 ff02::1:ff00:0/104
+IP6__SOLICITED_NODE_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FF00_0000
+IP6__SOLICITED_NODE_HOST_MASK = 0x0000_0000_0000_0000_0000_0000_00FF_FFFF
+
+IP6__PRIVATE_PREFIX = 0xFC00_0000_0000_0000_0000_0000_0000_0000  # RFC 4193 fc00::/7
+IP6__PRIVATE_PREFIX_MASK = 0xFE00_0000_0000_0000_0000_0000_0000_0000
+
 IP6__REGEX = (
     r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
     r"([0-9a-fA-F]{1,4}:){1,7}:|"
@@ -86,7 +108,7 @@ class Ip6Address(IpAddress):
                 return
 
         if isinstance(address, (memoryview, bytes, bytearray)):
-            if len(address) == 16:
+            if len(address) == IP6__ADDRESS_LEN:
                 self._address = int.from_bytes(address)
                 return
 
@@ -114,7 +136,7 @@ class Ip6Address(IpAddress):
         Get the IPv6 address as memoryview.
         """
 
-        return memoryview(bytearray(self._address.to_bytes(16)))
+        return memoryview(bytearray(self._address.to_bytes(IP6__ADDRESS_LEN)))
 
     @property
     @override
@@ -127,7 +149,7 @@ class Ip6Address(IpAddress):
             self.is_multicast
         ), f"The IPv6 address must be a multicast address to get a multicast MAC address. Got: {self}"
 
-        return MacAddress(int(MacAddress(0x3333_0000_0000)) | self._address & 0x0000_FFFF_FFFF)
+        return MacAddress(MAC__IP6_MULTICAST_PREFIX | self._address & 0x0000_FFFF_FFFF)
 
     @property
     def solicited_node_multicast(self) -> Self:
@@ -140,9 +162,7 @@ class Ip6Address(IpAddress):
             f"to get a solicited node multicast address. Got: {self}"
         )
 
-        cls = type(self)
-
-        return cls(self._address & 0x0000_0000_0000_0000_0000_0000_00FF_FFFF | int(cls("ff02::1:ff00:0")))
+        return type(self)(self._address & IP6__SOLICITED_NODE_HOST_MASK | IP6__SOLICITED_NODE_PREFIX)
 
     @property
     @override
@@ -151,9 +171,7 @@ class Ip6Address(IpAddress):
         Check if IPv6 address is global.
         """
 
-        return (
-            self._address & 0xE000_0000_0000_0000_0000_0000_0000_0000 == 0x2000_0000_0000_0000_0000_0000_0000_0000
-        )  # 2000::/3
+        return self._address & IP6__GLOBAL_PREFIX_MASK == IP6__GLOBAL_PREFIX
 
     @property
     @override
@@ -162,9 +180,7 @@ class Ip6Address(IpAddress):
         Check if IPv6 address is link local.
         """
 
-        return (
-            self._address & 0xFFC0_0000_0000_0000_0000_0000_0000_0000 == 0xFE80_0000_0000_0000_0000_0000_0000_0000
-        )  # fe80::/10
+        return self._address & IP6__LINK_LOCAL_PREFIX_MASK == IP6__LINK_LOCAL_PREFIX
 
     @property
     @override
@@ -173,7 +189,7 @@ class Ip6Address(IpAddress):
         Check if the IPv6 address is a loopback address.
         """
 
-        return self._address == 1  # ::1/128
+        return self._address == IP6__LOOPBACK
 
     @property
     @override
@@ -182,9 +198,7 @@ class Ip6Address(IpAddress):
         Check if IPv6 address is multicast.
         """
 
-        return (
-            self._address & 0xFF00_0000_0000_0000_0000_0000_0000_0000 == 0xFF00_0000_0000_0000_0000_0000_0000_0000
-        )  # ff00::/8
+        return self._address & IP6__MULTICAST_PREFIX_MASK == IP6__MULTICAST_PREFIX
 
     @property
     def is_multicast__all_nodes(self) -> bool:
@@ -192,7 +206,7 @@ class Ip6Address(IpAddress):
         Check if address is IPv6 all nodes multicast address.
         """
 
-        return self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0001  # ff02::1/128
+        return self._address == IP6__MULTICAST_ALL_NODES
 
     @property
     def is_multicast__all_routers(self) -> bool:
@@ -200,7 +214,7 @@ class Ip6Address(IpAddress):
         Check if address is IPv6 all routers multicast address.
         """
 
-        return self._address == 0xFF02_0000_0000_0000_0000_0000_0000_0002  # ff02::2/128
+        return self._address == IP6__MULTICAST_ALL_ROUTERS
 
     @property
     def is_multicast__solicited_node(self) -> bool:
@@ -208,9 +222,7 @@ class Ip6Address(IpAddress):
         Check if address is IPv6 solicited node multicast address.
         """
 
-        return (
-            self._address & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FF00_0000 == 0xFF02_0000_0000_0000_0000_0001_FF00_0000
-        )  # ff02::1:ff00:0/104
+        return self._address & IP6__SOLICITED_NODE_PREFIX_MASK == IP6__SOLICITED_NODE_PREFIX
 
     @property
     @override
@@ -219,6 +231,4 @@ class Ip6Address(IpAddress):
         Check if IPv6 address is private.
         """
 
-        return (
-            self._address & 0xFE00_0000_0000_0000_0000_0000_0000_0000 == 0xFC00_0000_0000_0000_0000_0000_0000_0000
-        )  # fc00::/7
+        return self._address & IP6__PRIVATE_PREFIX_MASK == IP6__PRIVATE_PREFIX

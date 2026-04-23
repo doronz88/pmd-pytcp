@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Self, override
 from net_addr.errors import Ip4AddressFormatError
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
-from net_addr.mac_address import MacAddress
+from net_addr.mac_address import MAC__IP4_MULTICAST_PREFIX, MacAddress
 
 if TYPE_CHECKING:
     from net_addr.ip4_mask import Ip4Mask
@@ -122,7 +122,7 @@ class Ip4Address(IpAddress):
             self.is_multicast
         ), f"The IPv4 address must be a multicast address to get a multicast MAC address. Got: {self}"
 
-        return MacAddress(int(MacAddress(0x0100_5E00_0000)) | self._address & 0x0000_007F_FFFF)
+        return MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x0000_007F_FFFF)
 
     @property
     @override
