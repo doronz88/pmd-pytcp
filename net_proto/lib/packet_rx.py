@@ -23,7 +23,7 @@
 
 
 """
-This module contains class representing the received packet.
+This module contains the PacketRx class representing a received packet.
 
 net_proto/lib/packet_rx.py
 
@@ -57,7 +57,7 @@ class PacketRx:
 
     def __init__(self, frame: Buffer, /) -> None:
         """
-        Class constructor.
+        Initialize the received-packet container.
         """
 
         self.frame: Buffer = memoryview(frame)
@@ -78,7 +78,7 @@ class PacketRx:
 
     def __len__(self) -> int:
         """
-        Return length of the raw frame.
+        Get the length of the raw frame.
         """
 
         return len(self.frame)
