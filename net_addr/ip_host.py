@@ -75,7 +75,7 @@ class IpHost[
         return f"{self._address}/{len(self._network.mask)}"
 
     @override
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: object, /) -> bool:
         """
         Compare the IP host address with another object.
         """
@@ -159,7 +159,7 @@ class IpHost[
     @gateway.setter
     def gateway(self, address: A | None, /) -> None:
         """
-        Set the IPv4 host address '_gateway' attribute.
+        Set the IP host address '_gateway' attribute.
         """
 
         self._validate_gateway(address)
