@@ -37,7 +37,7 @@ from net_addr.ip_host_origin import IpHostOrigin
 
 class Ip4HostOrigin(IpHostOrigin):
     """
-    IPv4 address origin enumeration.
+    IPv4 host origin enumeration.
     """
 
     STATIC = auto()
