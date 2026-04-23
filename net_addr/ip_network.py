@@ -39,7 +39,6 @@ from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_mask import Ip6Mask
-from net_addr.ip_address import IpAddress
 
 
 class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, ABC):
@@ -61,7 +60,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         Get the IP network log string.
         """
 
-        return str(self._address) + "/" + str(len(self._mask))
+        return f"{self._address}/{len(self._mask)}"
 
     @override
     def __eq__(self, other: object, /) -> bool:
@@ -86,14 +85,14 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         Check if the IP network contains the IP address or host.
         """
 
-        from .ip4_host import Ip4Host
-        from .ip6_host import Ip6Host
+        from net_addr.ip4_host import Ip4Host
+        from net_addr.ip6_host import Ip6Host
 
         if isinstance(other, (Ip6Address, Ip4Address)):
-            return self._version == other.version and int(self.address) <= int(other) <= int(self.last)
+            return self.version == other.version and int(self.address) <= int(other) <= int(self.last)
 
         if isinstance(other, (Ip4Host, Ip6Host)):
-            return self._version == other.version and int(self.address) <= int(other.address) <= int(self.last)
+            return self.version == other.version and int(self.address) <= int(other.address) <= int(self.last)
 
         return False
 
@@ -115,7 +114,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
     @property
     @abstractmethod
-    def last(self) -> IpAddress:
+    def last(self) -> A:
         """
         Get the IP network last address.
         """

@@ -72,7 +72,7 @@ class IpHost[
         Get the IP host address log string.
         """
 
-        return str(self._address) + "/" + str(len(self._network.mask))
+        return f"{self._address}/{len(self._network.mask)}"
 
     @override
     def __eq__(self, other: object) -> bool:
