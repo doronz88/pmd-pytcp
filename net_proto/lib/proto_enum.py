@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ProtoEnum class.
+This module contains the ProtoEnum base classes.
 
 net_proto/lib/proto_enum.py
 
