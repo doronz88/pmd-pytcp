@@ -462,7 +462,8 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
         self,
     ) -> None:
         """
-        Ensure an unsupported Proto subclass triggers a ValueError.
+        Ensure an unsupported Proto subclass trips the unreachable-fallback
+        assertion.
         """
 
         class ForeignProto(Proto):
@@ -478,7 +479,7 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
 
-        with self.assertRaises(ValueError) as error:
+        with self.assertRaises(AssertionError) as error:
             IpProto.from_proto(ForeignProto())
 
         self.assertIn("Unknown protocol", str(error.exception))

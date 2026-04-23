@@ -169,4 +169,4 @@ class IpProto(ProtoEnumByte):
         if isinstance(proto, Raw):
             return proto.ip_proto
 
-        raise ValueError(f"Unknown protocol: {type(proto)}")
+        assert False, f"Unknown protocol: {type(proto)}"
