@@ -81,7 +81,7 @@ from net_addr.ip_host_origin import IpHostOrigin
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
-from net_addr.mac_address import MacAddress
+from net_addr.mac_address import MAC__ADDRESS_LEN, MacAddress
 
 __all__ = [
     "ClickTypeIp4Address",
@@ -130,6 +130,7 @@ __all__ = [
     "IpNetwork",
     "IpNetworkFormatError",
     "IpVersion",
+    "MAC__ADDRESS_LEN",
     "MacAddress",
     "MacAddressFormatError",
     "NetAddrError",

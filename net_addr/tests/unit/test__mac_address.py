@@ -122,6 +122,66 @@ from net_addr import MacAddress, MacAddressFormatError
             },
         },
         {
+            "_description": "Test the MAC address: 02:03:04:aa:bb:cc (str Cisco-style)",
+            "_args": [
+                "0203.04aa.bbcc",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "02:03:04:aa:bb:cc",
+                "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
+                "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
+                "__int__": 2211986455500,
+                "is_unspecified": False,
+                "is_unicast": True,
+                "is_multicast": False,
+                "is_multicast_ip4": False,
+                "is_multicast_ip6": False,
+                "is_multicast_ip6_solicited_node": False,
+                "is_broadcast": False,
+            },
+        },
+        {
+            "_description": "Test the MAC address: 02:03:04:aa:bb:cc (str Cisco-style uppercase)",
+            "_args": [
+                "0203.04AA.BBCC",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "02:03:04:aa:bb:cc",
+                "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
+                "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
+                "__int__": 2211986455500,
+                "is_unspecified": False,
+                "is_unicast": True,
+                "is_multicast": False,
+                "is_multicast_ip4": False,
+                "is_multicast_ip6": False,
+                "is_multicast_ip6_solicited_node": False,
+                "is_broadcast": False,
+            },
+        },
+        {
+            "_description": "Test the MAC address: 02:03:04:aa:bb:cc (str dash-separated)",
+            "_args": [
+                "02-03-04-aa-bb-cc",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "__str__": "02:03:04:aa:bb:cc",
+                "__repr__": "MacAddress('02:03:04:aa:bb:cc')",
+                "__bytes__": b"\x02\x03\x04\xaa\xbb\xcc",
+                "__int__": 2211986455500,
+                "is_unspecified": False,
+                "is_unicast": True,
+                "is_multicast": False,
+                "is_multicast_ip4": False,
+                "is_multicast_ip6": False,
+                "is_multicast_ip6_solicited_node": False,
+                "is_broadcast": False,
+            },
+        },
+        {
             "_description": "Test the MAC address: 02:03:04:aa:bb:cc (bytes)",
             "_args": [
                 b"\x02\x03\x04\xaa\xbb\xcc",
@@ -512,6 +572,28 @@ class TestNetAddrMacAddress(TestCase):
             },
         },
         {
+            "_description": "Test the MAC address format: '0123.45ab' (Cisco-style too short)",
+            "_args": [
+                "0123.45ab",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": MacAddressFormatError,
+                "error_message": ("The MAC address format is invalid: '0123.45ab'"),
+            },
+        },
+        {
+            "_description": "Test the MAC address format: '01:23:45.ab:cd:ef' (mixed separators)",
+            "_args": [
+                "01:23:45.ab:cd:ef",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": MacAddressFormatError,
+                "error_message": ("The MAC address format is invalid: '01:23:45.ab:cd:ef'"),
+            },
+        },
+        {
             "_description": "Test the MAC address format: b'\x01\x23\x45\xab\xcd'",
             "_args": [
                 b"\x01\x23\x45\xab\xcd",
@@ -670,8 +752,14 @@ class TestNetAddrMacAddressHashConsistency(TestCase):
         b = MacAddress(b"\x02\x03\x04\xaa\xbb\xcc")
         c = MacAddress(2211986455500)
         d = MacAddress("02-03-04-AA-BB-CC")
+        e = MacAddress("0203.04aa.bbcc")
 
-        for other, label in ((b, "bytes"), (c, "int"), (d, "dash-separated string")):
+        for other, label in (
+            (b, "bytes"),
+            (c, "int"),
+            (d, "dash-separated string"),
+            (e, "Cisco-style string"),
+        ):
             with self.subTest(source=label):
                 self.assertEqual(
                     a,
