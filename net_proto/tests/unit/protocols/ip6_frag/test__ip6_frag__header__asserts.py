@@ -119,32 +119,36 @@ class TestIp6FragHeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'offset' field must be a 13-bit unsigned integer. Got: {value!r}",
+            f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). Got: {value!r}",
             msg="Unexpected assertion message for 'offset' under UINT_13__MIN.",
         )
 
     def test__ip6_frag__header__offset__over_max(self) -> None:
         """
-        Ensure the constructor rejects 'offset' above UINT_13__MAX.
+        Ensure the constructor rejects 'offset' whose 8-byte-unit
+        representation exceeds UINT_13__MAX. The field is stored in
+        bytes, so the smallest rejected multiple-of-8 value is
+        '(UINT_13__MAX + 1) << 3'.
         """
 
-        self._kwargs["offset"] = value = UINT_13__MAX + 1
+        self._kwargs["offset"] = value = (UINT_13__MAX + 1) << 3
 
         with self.assertRaises(AssertionError) as error:
             Ip6FragHeader(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
-            f"The 'offset' field must be a 13-bit unsigned integer. Got: {value!r}",
+            f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). Got: {value!r}",
             msg="Unexpected assertion message for 'offset' over UINT_13__MAX.",
         )
 
     def test__ip6_frag__header__offset__not_8_byte_alligned(self) -> None:
         """
-        Ensure the constructor rejects 'offset' values that fit in 13
-        bits but are not 8-byte aligned. UINT_13__MAX-1 = 0xFFF7 has
-        bits 0-2 set and so trips the alignment assert that runs after
-        the range check.
+        Ensure the constructor rejects 'offset' values whose
+        8-byte-unit representation fits in 13 bits but are not
+        themselves 8-byte aligned. 'UINT_13__MAX - 1' is the largest
+        such misaligned value, so the range check passes and the
+        alignment assert that runs next fires.
         """
 
         self._kwargs["offset"] = value = UINT_13__MAX - 1

@@ -108,7 +108,7 @@ class TestNetProtoLibIntChecksConstants(TestCase):
         """
 
         self.assertEqual(UINT_13__MIN, 0x0000)
-        self.assertEqual(UINT_13__MAX, 0xFFF8)
+        self.assertEqual(UINT_13__MAX, 0x1FFF)
 
     def test__net_proto__lib__int_checks__uint16_constants(self) -> None:
         """

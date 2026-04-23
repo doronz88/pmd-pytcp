@@ -23,7 +23,7 @@
 
 
 """
-This module contains globals and checks for integers of various lengths used to
+This module contains the integer-range constants and range-check helpers used to
 validate protocol fields.
 
 net_proto/lib/int_checks.py
@@ -44,7 +44,7 @@ UINT_8__MIN = 0x00
 UINT_8__MAX = 0xFF
 
 UINT_13__MIN = 0x0000
-UINT_13__MAX = 0xFFF8
+UINT_13__MAX = 0x1FFF
 
 UINT_16__MIN = 0x0000
 UINT_16__MAX = 0xFFFF

@@ -72,7 +72,9 @@ class Ip6FragHeader(ProtoStruct):
 
         assert isinstance(self.next, IpProto), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
 
-        assert is_uint13(self.offset), f"The 'offset' field must be a 13-bit unsigned integer. Got: {self.offset!r}"
+        assert is_uint13(self.offset >> 3), (
+            f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). " f"Got: {self.offset!r}"
+        )
 
         assert is_8_byte_alligned(self.offset), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
 
