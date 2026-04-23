@@ -23,7 +23,7 @@
 
 
 """
-This module contains base class for the protocol headers.
+This module contains the base class for the protocol headers.
 
 net_proto/lib/proto_struct.py
 
@@ -46,7 +46,7 @@ class ProtoStruct(ABC):
     @abstractmethod
     def __post_init__(self) -> None:
         """
-        Validate the protocol structure fields.
+        Ensure integrity of the protocol structure fields.
         """
 
         raise NotImplementedError
@@ -71,7 +71,7 @@ class ProtoStruct(ABC):
     @abstractmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Create the protocol structure from bytes.
+        Create the protocol structure from the provided buffer.
         """
 
         raise NotImplementedError
