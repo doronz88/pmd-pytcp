@@ -58,7 +58,7 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
         /,
     ) -> None:
         """
-        Create a new IPv4 network object.
+        Initialize the IPv4 network object.
         """
 
         if network is None:
@@ -66,9 +66,15 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
             self._mask = Ip4Mask()
             return
 
+        if isinstance(network, Ip4Network):
+            self._mask = network.mask
+            self._address = Ip4Address(int(network.address) & int(network.mask))
+            return
+
         if isinstance(network, tuple):
-            self._mask = network[1]
-            self._address = Ip4Address(int(network[0]) & int(network[1]))
+            tuple_address, tuple_mask = network
+            self._mask = tuple_mask
+            self._address = Ip4Address(int(tuple_address) & int(tuple_mask))
             return
 
         if isinstance(network, str):
@@ -83,11 +89,6 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
                 return
             except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
                 pass
-
-        if isinstance(network, Ip4Network):
-            self._mask = network.mask
-            self._address = Ip4Address(int(network.address) & int(network.mask))
-            return
 
         raise Ip4NetworkFormatError(network)
 
