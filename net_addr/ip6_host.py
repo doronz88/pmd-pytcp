@@ -71,37 +71,8 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
         expiration_time: int | None = None,
     ) -> None:
         """
-        Get the IPv6 host address log string.
+        Initialize the IPv6 host object.
         """
-
-        self._gateway = gateway
-        self._origin = origin or Ip6HostOrigin.UNKNOWN
-        self._expiration_time = expiration_time or 0
-
-        if self._origin in {Ip6HostOrigin.AUTOCONFIG, Ip6HostOrigin.DHCP}:
-            assert self._expiration_time >= int(time.time())
-        else:
-            assert self._expiration_time == 0
-
-        if isinstance(host, tuple):
-            self._address = host[0]
-            if isinstance(host[1], Ip6Network):
-                self._network = host[1]
-            else:
-                self._network = Ip6Network((host[0], host[1]))
-            if self._address not in self._network:
-                raise Ip6HostSanityError(host)
-            self._validate_gateway(gateway)
-            return
-
-        if isinstance(host, str):
-            try:
-                address, _ = host.split("/")
-                self._address = Ip6Address(address)
-                self._network = Ip6Network(host)
-                return
-            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
-                pass
 
         if isinstance(host, Ip6Host):
             assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
@@ -113,6 +84,37 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             self._origin = host.origin
             self._expiration_time = host.expiration_time
             return
+
+        self._gateway = gateway
+        self._origin = origin or Ip6HostOrigin.UNKNOWN
+        self._expiration_time = expiration_time or 0
+
+        if self._origin in {Ip6HostOrigin.AUTOCONFIG, Ip6HostOrigin.DHCP}:
+            assert self._expiration_time >= int(time.time())
+        else:
+            assert self._expiration_time == 0
+
+        if isinstance(host, tuple):
+            tuple_address, network_or_mask = host
+            self._address = tuple_address
+            if isinstance(network_or_mask, Ip6Network):
+                self._network = network_or_mask
+            else:
+                self._network = Ip6Network((tuple_address, network_or_mask))
+            if self._address not in self._network:
+                raise Ip6HostSanityError(host)
+            self._validate_gateway(gateway)
+            return
+
+        if isinstance(host, str):
+            try:
+                address, _ = host.split("/")
+                self._address = Ip6Address(address)
+                self._network = Ip6Network(host)
+                self._validate_gateway(gateway)
+                return
+            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
+                pass
 
         raise Ip6HostFormatError(host)
 
@@ -136,9 +138,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
         Create IPv6 EUI64 host address.
         """
 
-        assert len(ip6_network.mask) == 64, (
-            "The IPv6 EUI64 network address mask must be /64. " f"Got: {ip6_network.mask}"
-        )
+        assert len(ip6_network.mask) == 64, f"The IPv6 EUI64 network address mask must be /64. Got: {ip6_network.mask}"
 
         interface_id = (
             ((int(mac_address) & 0xFFFFFF000000) << 16) | int(mac_address) & 0xFFFFFF | 0xFFFE000000
