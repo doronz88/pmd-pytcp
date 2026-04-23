@@ -45,7 +45,7 @@ class PacketValidationError(PyTcpError):
 
 class PacketIntegrityError(PacketValidationError):
     """
-    Exception raised when integrity check fails.
+    Exception raised when packet integrity check fails.
     """
 
     def __init__(self, message: str, /) -> None:
@@ -54,7 +54,7 @@ class PacketIntegrityError(PacketValidationError):
 
 class PacketSanityError(PacketValidationError):
     """
-    Exception raised when sanity check fails.
+    Exception raised when packet sanity check fails.
     """
 
     def __init__(self, message: str, /) -> None:
