@@ -69,15 +69,19 @@ class Ip6Address(IpAddress):
         /,
     ) -> None:
         """
-        Create a new IPv6 address object.
+        Initialize the IPv6 address object.
         """
 
         if address is None:
             self._address = 0
             return
 
+        if isinstance(address, Ip6Address):
+            self._address = int(address)
+            return
+
         if isinstance(address, int):
-            if address & IP6__MASK == address:
+            if 0 <= address <= IP6__MASK:
                 self._address = address
                 return
 
@@ -93,10 +97,6 @@ class Ip6Address(IpAddress):
                     return
                 except OSError:
                     pass
-
-        if isinstance(address, Ip6Address):
-            self._address = int(address)
-            return
 
         raise Ip6AddressFormatError(address)
 
@@ -123,9 +123,9 @@ class Ip6Address(IpAddress):
         Get the IPv6 multicast MAC address.
         """
 
-        assert self.is_multicast, (
-            "The IPv6 address must be a multicast address to get a multicast " f"MAC address. Got: {self}"
-        )
+        assert (
+            self.is_multicast
+        ), f"The IPv6 address must be a multicast address to get a multicast MAC address. Got: {self}"
 
         return MacAddress(int(MacAddress(0x3333_0000_0000)) | self._address & 0x0000_FFFF_FFFF)
 

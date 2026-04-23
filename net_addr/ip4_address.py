@@ -23,7 +23,7 @@
 
 
 """
-Module contains IPv4 address support class.
+This module contains IPv4 address support class.
 
 net_addr/ip4_address.py
 
@@ -64,15 +64,19 @@ class Ip4Address(IpAddress):
         /,
     ) -> None:
         """
-        Create a new IPv4 address object.
+        Initialize the IPv4 address object.
         """
 
         if address is None:
             self._address = 0
             return
 
+        if isinstance(address, Ip4Address):
+            self._address = int(address)
+            return
+
         if isinstance(address, int):
-            if address & IP4__MASK == address:
+            if 0 <= address <= IP4__MASK:
                 self._address = address
                 return
 
@@ -88,10 +92,6 @@ class Ip4Address(IpAddress):
                     return
                 except OSError:
                     pass
-
-        if isinstance(address, Ip4Address):
-            self._address = int(address)
-            return
 
         raise Ip4AddressFormatError(address)
 
@@ -118,9 +118,9 @@ class Ip4Address(IpAddress):
         Get the IPv4 multicast MAC address.
         """
 
-        assert self.is_multicast, (
-            "The IPv4 address must be a multicast address to get a multicast " f"MAC address. Got: {self}"
-        )
+        assert (
+            self.is_multicast
+        ), f"The IPv4 address must be a multicast address to get a multicast MAC address. Got: {self}"
 
         return MacAddress(int(MacAddress(0x0100_5E00_0000)) | self._address & 0x0000_007F_FFFF)
 
@@ -130,17 +130,16 @@ class Ip4Address(IpAddress):
         """
         Check if the IPv4 address is a global address.
         """
-        return not any(
-            (
-                self.is_unspecified,
-                self.is_invalid,
-                self.is_link_local,
-                self.is_loopback,
-                self.is_multicast,
-                self.is_private,
-                self.is_reserved,
-                self.is_limited_broadcast,
-            )
+
+        return not (
+            self.is_unspecified
+            or self.is_invalid
+            or self.is_link_local
+            or self.is_loopback
+            or self.is_multicast
+            or self.is_private
+            or self.is_reserved
+            or self.is_limited_broadcast
         )
 
     @property
@@ -188,8 +187,8 @@ class Ip4Address(IpAddress):
         Check if the IPv4 address is a reserved address.
         """
 
-        return (self._address & 0xF0_00_00_00 == 0xF0_00_00_00) & (
-            self._address != 0xFF_FF_FF_FF
+        return (
+            self._address & 0xF0_00_00_00 == 0xF0_00_00_00 and self._address != 0xFF_FF_FF_FF
         )  # 240.0.0.0 - 255.255.255.254
 
     @property

@@ -23,7 +23,7 @@
 
 
 """
-Module contains IPv4 host origin enum.
+This module contains IPv4 host origin enum.
 
 net_addr/ip4_host_origin.py
 
