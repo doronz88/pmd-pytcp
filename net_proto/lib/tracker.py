@@ -23,8 +23,8 @@
 
 
 """
-This module contains class used to generate serial number information
-for new packets.
+This module contains the Tracker class used to generate serial-number
+information for new packets.
 
 net_proto/lib/tracker.py
 
@@ -50,7 +50,7 @@ class Tracker:
         serial: str | None = None,
     ) -> None:
         """
-        Class constructor.
+        Initialize the Tracker.
         """
 
         self._echo_tracker: Tracker | None = echo_tracker
@@ -61,18 +61,18 @@ class Tracker:
             self._serial = serial
             return
 
-        assert prefix in {"RX", "TX"}
+        assert prefix in {"RX", "TX"}, f"The 'prefix' argument must be 'RX' or 'TX'. Got: {prefix!r}"
 
         if prefix == "RX":
             self._timestamp = time.time()
-            self._serial = "<lg>" + f"RX{Tracker.serial_rx:0>4x}</>".upper()
+            self._serial = f"<lg>RX{Tracker.serial_rx:04X}</>"
             Tracker.serial_rx += 1
             if Tracker.serial_rx > 0xFFFF:
                 Tracker.serial_rx = 0
 
         if prefix == "TX":
             self._timestamp = time.time()
-            self._serial = "<lr>" + f"TX{Tracker.serial_tx:0>4x}</>".upper()
+            self._serial = f"<lr>TX{Tracker.serial_tx:04X}</>"
             Tracker.serial_tx += 1
             if Tracker.serial_tx > 0xFFFF:
                 Tracker.serial_tx = 0
@@ -83,7 +83,7 @@ class Tracker:
         """
 
         if self._echo_tracker:
-            return self._serial + " " + str(self._echo_tracker)
+            return f"{self._serial} {self._echo_tracker}"
         return self._serial
 
     def __repr__(self) -> str:
@@ -94,7 +94,7 @@ class Tracker:
         if self._echo_tracker is None:
             return f"Tracker(serial='{self._serial}')"
 
-        return f"Tracker(serial='{self._serial}', " f"echo_tracker={self._echo_tracker})"
+        return f"Tracker(serial='{self._serial}', echo_tracker={self._echo_tracker})"
 
     @property
     def echo_tracker(self) -> Tracker | None:
