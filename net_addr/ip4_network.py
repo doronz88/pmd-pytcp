@@ -78,17 +78,15 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
             return
 
         if isinstance(network, str):
-            try:
+            parts = network.split("/", 1) if "/" in network else network.split(" ", 1)
+            if len(parts) == 2:
                 try:
-                    address, mask = network.split("/")
-                    mask = f"/{mask}"
-                except ValueError:
-                    address, mask = network.split(" ")
-                self._mask = Ip4Mask(mask)
-                self._address = Ip4Address(int(Ip4Address(address)) & int(self._mask))
-                return
-            except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
-                pass
+                    address_str, mask_str = parts
+                    self._mask = Ip4Mask(f"/{mask_str}" if "/" in network else mask_str)
+                    self._address = Ip4Address(int(Ip4Address(address_str)) & int(self._mask))
+                    return
+                except Ip4AddressFormatError, Ip4MaskFormatError:
+                    pass
 
         raise Ip4NetworkFormatError(network)
 
