@@ -49,7 +49,7 @@ class IpAddress(Address, Ip, ABC):
     @abstractmethod
     def multicast_mac(self) -> MacAddress:
         """
-        The 'multicast_mac' property placeholder.
+        Get the multicast MAC address for this IP address.
         """
 
         raise NotImplementedError
@@ -60,14 +60,7 @@ class IpAddress(Address, Ip, ABC):
         Check if the IP address is an unicast address.
         """
 
-        return any(
-            (
-                self.is_global,
-                self.is_private,
-                self.is_link_local,
-                self.is_loopback,
-            )
-        )
+        return self.is_global or self.is_private or self.is_link_local or self.is_loopback
 
     @property
     @abstractmethod

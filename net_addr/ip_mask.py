@@ -49,10 +49,10 @@ class IpMask(Base, Ip, ABC):
 
     def __len__(self) -> int:
         """
-        Get the IP mask bit-length.
+        Get the IP mask prefix length.
         """
 
-        return f"{self._mask:b}".count("1")
+        return self._mask.bit_count()
 
     @override
     def __str__(self) -> str:
@@ -93,15 +93,10 @@ class IpMask(Base, Ip, ABC):
 
         return hash((type(self), self._mask))
 
-    def _validate_bits(self, /, bytes_len: int) -> bool:
+    def _validate_bits(self, bytes_len: int, /) -> bool:
         """
         Validate that mask is made of consecutive bits.
         """
 
-        bit_mask = f"{self._mask:0{bytes_len}b}"
-
-        try:
-            return not bit_mask[bit_mask.index("0") :].count("1")
-
-        except ValueError:
-            return True
+        inverted = (~self._mask) & ((1 << bytes_len) - 1)
+        return inverted & (inverted + 1) == 0
