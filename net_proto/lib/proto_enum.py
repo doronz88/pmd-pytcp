@@ -96,7 +96,7 @@ class ProtoEnum(Enum):
     @property
     def is_unknown(self) -> bool:
         """
-        Check if the provided value is unknown.
+        Check if this enum member represents an unknown (dynamically added) value.
         """
 
         return self.name.startswith("UNKNOWN_")
