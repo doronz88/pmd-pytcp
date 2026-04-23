@@ -56,7 +56,6 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
     __slots__ = ()
 
     _version: IpVersion = IpVersion.IP4
-    _primary: bool
     _gateway: Ip4Address | None
     _origin: Ip4HostOrigin
     _expiration_time: int
@@ -71,8 +70,19 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
         expiration_time: int | None = None,
     ) -> None:
         """
-        Get the IPv4 host address log string.
+        Initialize the IPv4 host object.
         """
+
+        if isinstance(host, Ip4Host):
+            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
+            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
+            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
+            self._address = host.address
+            self._network = host.network
+            self._gateway = host.gateway
+            self._origin = host.origin
+            self._expiration_time = host.expiration_time
+            return
 
         self._gateway = gateway
         self._origin = origin or Ip4HostOrigin.UNKNOWN
@@ -84,13 +94,14 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             assert self._expiration_time == 0
 
         if isinstance(host, tuple):
-            self._address = host[0]
-            if isinstance(host[1], Ip4Network):
-                self._network = host[1]
-            elif host[1] is None:
-                self._network = Ip4Network((host[0], host[0].classful_mask))
+            tuple_address, network_or_mask = host
+            self._address = tuple_address
+            if isinstance(network_or_mask, Ip4Network):
+                self._network = network_or_mask
+            elif network_or_mask is None:
+                self._network = Ip4Network((tuple_address, tuple_address.classful_mask))
             else:
-                self._network = Ip4Network((host[0], host[1]))
+                self._network = Ip4Network((tuple_address, network_or_mask))
             if self._address not in self._network:
                 raise Ip4HostSanityError(host)
             self._validate_gateway(gateway)
@@ -105,17 +116,6 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
                 return
             except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
                 pass
-
-        if isinstance(host, Ip4Host):
-            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
-            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
-            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
-            self._address = host.address
-            self._network = host.network
-            self._gateway = host.gateway
-            self._origin = host.origin
-            self._expiration_time = host.expiration_time
-            return
 
         raise Ip4HostFormatError(host)
 
