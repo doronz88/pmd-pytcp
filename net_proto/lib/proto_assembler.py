@@ -23,7 +23,7 @@
 
 
 """
-This module contains the base class for all of the protocol assembler classes.
+This module contains the base class for all protocol assembler classes.
 
 net_proto/lib/proto_assembler.py
 
@@ -39,7 +39,7 @@ from net_proto.lib.tracker import Tracker
 
 class ProtoAssembler(Proto):
     """
-    Base class for all of the protocol assembler classes.
+    Base class for all protocol assembler classes.
     """
 
     _tracker: Tracker
@@ -55,7 +55,7 @@ class ProtoAssembler(Proto):
     @abstractmethod
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the protocol packet into the list of buffers.
+        Assemble the protocol packet into the provided list of buffers.
         """
 
         raise NotImplementedError
