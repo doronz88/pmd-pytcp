@@ -78,12 +78,12 @@ class ProtoEnum(Enum):
         return cls(value)
 
     @classmethod
-    def _from_bytes(cls, *, bytes: bytes, size: int) -> Self:
+    def _from_bytes(cls, *, data: bytes, size: int) -> Self:
         """
         Extract the enum value from the provided bytes.
         """
 
-        return cls.from_int(int.from_bytes(bytes[:size]))
+        return cls.from_int(int.from_bytes(data[:size]))
 
     @classmethod
     def get_known_values(cls) -> list[int]:
@@ -115,12 +115,12 @@ class ProtoEnumByte(ProtoEnum):
         return int(self).to_bytes(1)
 
     @classmethod
-    def from_bytes(cls, bytes: bytes, /) -> Self:
+    def from_bytes(cls, data: bytes, /) -> Self:
         """
         Extract the enum value from the provided bytes.
         """
 
-        return cls._from_bytes(bytes=bytes, size=1)
+        return cls._from_bytes(data=data, size=1)
 
 
 class ProtoEnumWord(ProtoEnum):
@@ -136,9 +136,9 @@ class ProtoEnumWord(ProtoEnum):
         return int(self).to_bytes(2)
 
     @classmethod
-    def from_bytes(cls, bytes: bytes, /) -> Self:
+    def from_bytes(cls, data: bytes, /) -> Self:
         """
         Extract the enum value from the provided bytes.
         """
 
-        return cls._from_bytes(bytes=bytes, size=2)
+        return cls._from_bytes(data=data, size=2)
