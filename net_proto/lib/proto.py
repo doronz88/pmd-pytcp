@@ -23,7 +23,7 @@
 
 
 """
-This module contains the base class for all of the protocol classes.
+This module contains the base class for all protocol classes.
 
 net_proto/lib/proto.py
 
@@ -35,7 +35,7 @@ from abc import ABC, abstractmethod
 
 class Proto(ABC):
     """
-    Base class for all of the protocol classes.
+    Base class for all protocol classes.
     """
 
     @abstractmethod
