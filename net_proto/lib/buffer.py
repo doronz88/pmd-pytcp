@@ -23,7 +23,7 @@
 
 
 """
-This module contains Buffer type.
+This module contains the Buffer type alias.
 
 net_proto/lib/buffer.py
 
