@@ -23,7 +23,7 @@
 
 
 """
-This module contains base class for all of the option classes.
+This module contains the base classes for all protocol option classes.
 
 net_proto/lib/proto_option.py
 
@@ -31,8 +31,9 @@ ver 3.0.4
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator, Self
+from typing import Self
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
@@ -48,7 +49,7 @@ class ProtoOptionType(ProtoEnumByte):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ProtoOption(ProtoStruct):
     """
-    Base class for all of the protocol option classes.
+    Base class for all protocol option classes.
     """
 
     type: ProtoOptionType
@@ -64,7 +65,7 @@ class ProtoOption(ProtoStruct):
 
 class ProtoOptions(ABC):
     """
-    Base class for all of the protocol options classes.
+    Base class for all protocol options classes.
     """
 
     _options: list[ProtoOption]
@@ -99,7 +100,7 @@ class ProtoOptions(ABC):
 
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the options as memoryview.
+        Get the options as a memoryview.
         """
 
         buffer = bytearray()
@@ -121,7 +122,9 @@ class ProtoOptions(ABC):
         Check if the options are equal.
         """
 
-        return isinstance(other, type(self)) and self._options == other._options
+        if not isinstance(other, ProtoOptions):
+            return NotImplemented
+        return type(self) is type(other) and self._options == other._options
 
     def __contains__(self, option: object, /) -> bool:
         """
@@ -146,7 +149,7 @@ class ProtoOptions(ABC):
 
     def index(self, option: ProtoOption, /) -> int:
         """
-        Get the option index.
+        Get the index of the provided option.
         """
 
         return self._options.index(option)
