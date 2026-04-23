@@ -56,8 +56,8 @@ def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
             else:
                 continue
 
-        if reminder := buffer_len - offset >= 8:
-            q_count = reminder >> 3
+        if (remainder := buffer_len - offset) >= 8:
+            q_count = remainder >> 3
             cksum += sum(struct.unpack_from(f"!{q_count}Q", buffer, offset))
             offset += q_count << 3
 
