@@ -30,6 +30,7 @@ net_proto/tests/unit/lib/test__lib__proto_assembler.py
 ver 3.0.4
 """
 
+import itertools
 from unittest import TestCase
 
 from net_proto.lib.buffer import Buffer
@@ -69,14 +70,14 @@ class _TrackerReset(TestCase):
     """
 
     def setUp(self) -> None:
-        self._saved_rx = Tracker.serial_rx
-        self._saved_tx = Tracker.serial_tx
-        Tracker.serial_rx = 0
-        Tracker.serial_tx = 0
+        self._saved_rx_counter = Tracker._rx_counter
+        self._saved_tx_counter = Tracker._tx_counter
+        Tracker._rx_counter = itertools.count()
+        Tracker._tx_counter = itertools.count()
 
     def tearDown(self) -> None:
-        Tracker.serial_rx = self._saved_rx
-        Tracker.serial_tx = self._saved_tx
+        Tracker._rx_counter = self._saved_rx_counter
+        Tracker._tx_counter = self._saved_tx_counter
 
 
 class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):

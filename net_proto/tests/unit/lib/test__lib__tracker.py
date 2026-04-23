@@ -30,6 +30,7 @@ net_proto/tests/unit/lib/test__lib__tracker.py
 ver 3.0.4
 """
 
+import itertools
 import time
 from unittest import TestCase
 from unittest.mock import patch
@@ -47,18 +48,18 @@ class _TrackerTestBase(TestCase):
         Reset the shared RX/TX serial counters before each test.
         """
 
-        self._saved_rx = Tracker.serial_rx
-        self._saved_tx = Tracker.serial_tx
-        Tracker.serial_rx = 0
-        Tracker.serial_tx = 0
+        self._saved_rx_counter = Tracker._rx_counter
+        self._saved_tx_counter = Tracker._tx_counter
+        Tracker._rx_counter = itertools.count()
+        Tracker._tx_counter = itertools.count()
 
     def tearDown(self) -> None:
         """
         Restore the shared RX/TX serial counters after each test.
         """
 
-        Tracker.serial_rx = self._saved_rx
-        Tracker.serial_tx = self._saved_tx
+        Tracker._rx_counter = self._saved_rx_counter
+        Tracker._tx_counter = self._saved_tx_counter
 
 
 class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
@@ -104,7 +105,6 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
         self.assertEqual(str(first), "<lg>RX0000</>")
         self.assertEqual(str(second), "<lg>RX0001</>")
         self.assertEqual(str(third), "<lg>RX0002</>")
-        self.assertEqual(Tracker.serial_rx, 3)
 
     def test__net_proto__lib__tracker__tx__counter_increments(self) -> None:
         """
@@ -116,7 +116,6 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
 
         self.assertEqual(str(first), "<lr>TX0000</>")
         self.assertEqual(str(second), "<lr>TX0001</>")
-        self.assertEqual(Tracker.serial_tx, 2)
 
     def test__net_proto__lib__tracker__rx_and_tx_counters_are_independent(
         self,
@@ -127,38 +126,47 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
 
         Tracker(prefix="RX")
         Tracker(prefix="TX")
-        Tracker(prefix="RX")
+        second_rx = Tracker(prefix="RX")
+        second_tx = Tracker(prefix="TX")
 
-        self.assertEqual(Tracker.serial_rx, 2)
-        self.assertEqual(Tracker.serial_tx, 1)
+        self.assertEqual(
+            str(second_rx),
+            "<lg>RX0001</>",
+            msg="RX counter must advance independently of TX.",
+        )
+        self.assertEqual(
+            str(second_tx),
+            "<lr>TX0001</>",
+            msg="TX counter must advance independently of RX.",
+        )
 
     def test__net_proto__lib__tracker__rx__counter_wraps_at_0xffff(self) -> None:
         """
         Ensure the RX counter wraps back to zero after hitting 0xFFFF.
         """
 
-        Tracker.serial_rx = 0xFFFF
+        Tracker._rx_counter = itertools.count(0xFFFF)
         last = Tracker(prefix="RX")
-        self.assertEqual(str(last), "<lg>RXFFFF</>")
-        self.assertEqual(Tracker.serial_rx, 0)
-
         wrapped = Tracker(prefix="RX")
+        after_wrap = Tracker(prefix="RX")
+
+        self.assertEqual(str(last), "<lg>RXFFFF</>")
         self.assertEqual(str(wrapped), "<lg>RX0000</>")
-        self.assertEqual(Tracker.serial_rx, 1)
+        self.assertEqual(str(after_wrap), "<lg>RX0001</>")
 
     def test__net_proto__lib__tracker__tx__counter_wraps_at_0xffff(self) -> None:
         """
         Ensure the TX counter wraps back to zero after hitting 0xFFFF.
         """
 
-        Tracker.serial_tx = 0xFFFF
+        Tracker._tx_counter = itertools.count(0xFFFF)
         last = Tracker(prefix="TX")
-        self.assertEqual(str(last), "<lr>TXFFFF</>")
-        self.assertEqual(Tracker.serial_tx, 0)
-
         wrapped = Tracker(prefix="TX")
+        after_wrap = Tracker(prefix="TX")
+
+        self.assertEqual(str(last), "<lr>TXFFFF</>")
         self.assertEqual(str(wrapped), "<lr>TX0000</>")
-        self.assertEqual(Tracker.serial_tx, 1)
+        self.assertEqual(str(after_wrap), "<lr>TX0001</>")
 
     def test__net_proto__lib__tracker__invalid_prefix_raises(self) -> None:
         """
@@ -193,8 +201,19 @@ class TestNetProtoLibTrackerExplicitSerial(_TrackerTestBase):
         Tracker(prefix="RX", serial="FORCE-RX")
         Tracker(prefix="TX", serial="FORCE-TX")
 
-        self.assertEqual(Tracker.serial_rx, 0)
-        self.assertEqual(Tracker.serial_tx, 0)
+        next_rx = Tracker(prefix="RX")
+        next_tx = Tracker(prefix="TX")
+
+        self.assertEqual(
+            str(next_rx),
+            "<lg>RX0000</>",
+            msg="Explicit-serial constructor must not advance the RX counter.",
+        )
+        self.assertEqual(
+            str(next_tx),
+            "<lr>TX0000</>",
+            msg="Explicit-serial constructor must not advance the TX counter.",
+        )
 
     def test__net_proto__lib__tracker__explicit_serial_skips_prefix_validation(
         self,

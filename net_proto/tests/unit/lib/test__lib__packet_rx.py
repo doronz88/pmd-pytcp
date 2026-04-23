@@ -30,6 +30,7 @@ net_proto/tests/unit/lib/test__lib__packet_rx.py
 ver 3.0.4
 """
 
+import itertools
 from typing import Any
 from unittest import TestCase
 
@@ -87,10 +88,10 @@ class TestNetProtoLibPacketRx(TestCase):
         Reset the shared Tracker counters so tracker assertions are stable.
         """
 
-        self._saved_rx = Tracker.serial_rx
-        self._saved_tx = Tracker.serial_tx
-        Tracker.serial_rx = 0
-        Tracker.serial_tx = 0
+        self._saved_rx_counter = Tracker._rx_counter
+        self._saved_tx_counter = Tracker._tx_counter
+        Tracker._rx_counter = itertools.count()
+        Tracker._tx_counter = itertools.count()
         self._packet = PacketRx(self._frame)
 
     def tearDown(self) -> None:
@@ -98,8 +99,8 @@ class TestNetProtoLibPacketRx(TestCase):
         Restore the shared Tracker counters after each test.
         """
 
-        Tracker.serial_rx = self._saved_rx
-        Tracker.serial_tx = self._saved_tx
+        Tracker._rx_counter = self._saved_rx_counter
+        Tracker._tx_counter = self._saved_tx_counter
 
     def test__net_proto__lib__packet_rx__frame_is_memoryview(self) -> None:
         """
@@ -168,14 +169,14 @@ class TestNetProtoLibPacketRxBehavior(TestCase):
     """
 
     def setUp(self) -> None:
-        self._saved_rx = Tracker.serial_rx
-        self._saved_tx = Tracker.serial_tx
-        Tracker.serial_rx = 0
-        Tracker.serial_tx = 0
+        self._saved_rx_counter = Tracker._rx_counter
+        self._saved_tx_counter = Tracker._tx_counter
+        Tracker._rx_counter = itertools.count()
+        Tracker._tx_counter = itertools.count()
 
     def tearDown(self) -> None:
-        Tracker.serial_rx = self._saved_rx
-        Tracker.serial_tx = self._saved_tx
+        Tracker._rx_counter = self._saved_rx_counter
+        Tracker._tx_counter = self._saved_tx_counter
 
     def test__net_proto__lib__packet_rx__parse_failed_is_writable(self) -> None:
         """

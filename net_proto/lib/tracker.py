@@ -31,6 +31,7 @@ net_proto/lib/tracker.py
 ver 3.0.4
 """
 
+import itertools
 import time
 
 
@@ -39,8 +40,8 @@ class Tracker:
     Class used to track packets.
     """
 
-    serial_rx: int = 0
-    serial_tx: int = 0
+    _rx_counter = itertools.count()
+    _tx_counter = itertools.count()
 
     def __init__(
         self,
@@ -65,17 +66,11 @@ class Tracker:
 
         if prefix == "RX":
             self._timestamp = time.time()
-            self._serial = f"<lg>RX{Tracker.serial_rx:04X}</>"
-            Tracker.serial_rx += 1
-            if Tracker.serial_rx > 0xFFFF:
-                Tracker.serial_rx = 0
+            self._serial = f"<lg>RX{next(Tracker._rx_counter) & 0xFFFF:04X}</>"
 
         if prefix == "TX":
             self._timestamp = time.time()
-            self._serial = f"<lr>TX{Tracker.serial_tx:04X}</>"
-            Tracker.serial_tx += 1
-            if Tracker.serial_tx > 0xFFFF:
-                Tracker.serial_tx = 0
+            self._serial = f"<lr>TX{next(Tracker._tx_counter) & 0xFFFF:04X}</>"
 
     def __str__(self) -> str:
         """
