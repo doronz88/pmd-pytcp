@@ -35,7 +35,7 @@ import socket
 from typing import Self, override
 
 from net_addr.errors import Ip4MaskFormatError
-from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__REGEX
+from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK, IP4__REGEX
 from net_addr.ip_mask import IpMask
 from net_addr.ip_version import IpVersion
 
@@ -55,29 +55,33 @@ class Ip4Mask(IpMask):
         /,
     ) -> None:
         """
-        Create a new IPv4 mask object.
+        Initialize the IPv4 mask object.
         """
 
         if mask is None:
             self._mask = 0
             return
 
+        if isinstance(mask, Ip4Mask):
+            self._mask = int(mask)
+            return
+
         if isinstance(mask, int):
-            if mask & 0xFF_FF_FF_FF == mask:
+            if 0 <= mask <= IP4__MASK:
                 self._mask = mask
                 if self._validate_bits(IP4__ADDRESS_LEN * 8):
                     return
 
         if isinstance(mask, (memoryview, bytes, bytearray)):
-            if len(mask) == 4:
+            if len(mask) == IP4__ADDRESS_LEN:
                 self._mask = int.from_bytes(mask)
                 if self._validate_bits(IP4__ADDRESS_LEN * 8):
                     return
 
-        if isinstance(mask, str) and re.search(r"^\/\d{1,2}$", mask):
+        if isinstance(mask, str) and re.search(r"^/\d{1,2}$", mask):
             bit_count = int(mask[1:])
-            if bit_count in range(33):
-                self._mask = int("1" * bit_count + "0" * (32 - bit_count), 2)
+            if 0 <= bit_count <= IP4__ADDRESS_LEN * 8:
+                self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)
                 return
 
         if isinstance(mask, str) and re.search(IP4__REGEX, mask):
@@ -88,10 +92,6 @@ class Ip4Mask(IpMask):
             except OSError:
                 pass
 
-        if isinstance(mask, Ip4Mask):
-            self._mask = mask._mask
-            return
-
         raise Ip4MaskFormatError(mask)
 
     @override
@@ -100,4 +100,4 @@ class Ip4Mask(IpMask):
         Get the IPv4 mask as memoryview.
         """
 
-        return memoryview(bytearray(self._mask.to_bytes(4)))
+        return memoryview(bytearray(self._mask.to_bytes(IP4__ADDRESS_LEN)))
