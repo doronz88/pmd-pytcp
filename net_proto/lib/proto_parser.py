@@ -23,7 +23,7 @@
 
 
 """
-This module contains base class for all of the protocol parser classes.
+This module contains the base class for all protocol parser classes.
 
 net_proto/lib/proto_parser.py
 
@@ -38,7 +38,7 @@ from net_proto.lib.proto import Proto
 
 class ProtoParser(Proto):
     """
-    Base class for all of the protocol parser classes.
+    Base class for all protocol parser classes.
     """
 
     _frame: Buffer
@@ -46,7 +46,7 @@ class ProtoParser(Proto):
     @abstractmethod
     def _validate_integrity(self) -> None:
         """
-        Validate the integrity of the receivedg packet before parsing it.
+        Ensure integrity of the received packet before parsing it.
         """
 
         raise NotImplementedError
@@ -62,7 +62,7 @@ class ProtoParser(Proto):
     @abstractmethod
     def _validate_sanity(self) -> None:
         """
-        Validate the sanity of the received packet after parsing it.
+        Ensure sanity of the received packet after parsing it.
         """
 
         raise NotImplementedError
