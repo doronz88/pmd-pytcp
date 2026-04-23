@@ -37,7 +37,7 @@ from net_addr.errors import (
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
 )
-from net_addr.ip6_address import Ip6Address
+from net_addr.ip6_address import IP6__MASK, Ip6Address
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
@@ -58,7 +58,7 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         /,
     ) -> None:
         """
-        Create a new IPv4 network object.
+        Initialize the IPv6 network object.
         """
 
         if network is None:
@@ -66,9 +66,15 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             self._mask = Ip6Mask()
             return
 
+        if isinstance(network, Ip6Network):
+            self._mask = network.mask
+            self._address = Ip6Address(int(network.address) & int(network.mask))
+            return
+
         if isinstance(network, tuple):
-            self._mask = network[1]
-            self._address = Ip6Address(int(network[0]) & int(network[1]))
+            tuple_address, tuple_mask = network
+            self._mask = tuple_mask
+            self._address = Ip6Address(int(tuple_address) & int(tuple_mask))
             return
 
         if isinstance(network, str):
@@ -80,11 +86,6 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
                 pass
 
-        if isinstance(network, Ip6Network):
-            self._mask = network.mask
-            self._address = Ip6Address(int(network.address) & int(network.mask))
-            return
-
         raise Ip6NetworkFormatError(network)
 
     @property
@@ -94,4 +95,4 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         Last address in the network.
         """
 
-        return Ip6Address(int(self._address) + (~int(self._mask) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))
+        return Ip6Address(int(self._address) + (~int(self._mask) & IP6__MASK))

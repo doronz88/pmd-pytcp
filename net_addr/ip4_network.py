@@ -37,7 +37,7 @@ from net_addr.errors import (
     Ip4MaskFormatError,
     Ip4NetworkFormatError,
 )
-from net_addr.ip4_address import Ip4Address
+from net_addr.ip4_address import IP4__MASK, Ip4Address
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
@@ -97,7 +97,7 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
         Last address in the network.
         """
 
-        return Ip4Address(int(self._address) + (~int(self._mask) & 0xFFFFFFFF))
+        return Ip4Address(int(self._address) + (~int(self._mask) & IP4__MASK))
 
     @property
     def broadcast(self) -> Ip4Address:
