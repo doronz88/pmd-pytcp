@@ -72,14 +72,6 @@ class EthernetAssembler(Ethernet[EthernetPayload], ProtoAssembler):
             type=EtherType.from_proto(self._payload),
         )
 
-    @property
-    def payload(self) -> EthernetPayload:
-        """
-        Get the Ethernet packet '_payload' attribute.
-        """
-
-        return self._payload
-
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
