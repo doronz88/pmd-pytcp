@@ -25,7 +25,7 @@
 """
 This module contains the DHCPv4 packet options class.
 
-net_proto/protocols/dhcp4/options/dhcp4_options.py
+net_proto/protocols/dhcp4/options/dhcp4__options.py
 
 ver 3.0.4
 """
@@ -196,13 +196,13 @@ class Dhcp4Options(ProtoOptions):
 
             if (value := frame[offset + 1]) < 2:
                 raise Dhcp4IntegrityError(
-                    f"The DHCPv4 option length must be greater than 1. " f"Got: {value!r}.",
+                    f"The DHCPv4 option length must be greater than 1. Got: {value!r}.",
                 )
 
             offset += frame[offset + 1]
             if offset > hlen:
                 raise Dhcp4IntegrityError(
-                    f"The DHCPv4 option length must not extend past the header " f"length. Got: {offset=}, {hlen=}",
+                    f"The DHCPv4 option length must not extend past the header length. Got: {offset=}, {hlen=}",
                 )
 
     @override

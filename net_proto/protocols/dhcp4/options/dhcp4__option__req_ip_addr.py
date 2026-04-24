@@ -82,9 +82,9 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         """
 
         # Ensure that the 'req_ip_addr' field is Ip4Address instance.
-        assert isinstance(self.req_ip_addr, Ip4Address), (
-            f"The 'req_ip_addr' field must be an Ip4Address. " f"Got: {type(self.req_ip_addr)!r}"
-        )
+        assert isinstance(
+            self.req_ip_addr, Ip4Address
+        ), f"The 'req_ip_addr' field must be an Ip4Address. Got: {type(self.req_ip_addr)!r}"
 
     @override
     def __str__(self) -> str:

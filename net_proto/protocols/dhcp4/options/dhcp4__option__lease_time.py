@@ -82,9 +82,9 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         """
 
         # Ensure the 'lease_time' field is 32-bit unsigned integer.
-        assert is_uint32(self.lease_time), (
-            f"The 'lease_time' field must be a 32-bit unsigned integer. " f"Got: {self.lease_time}"
-        )
+        assert is_uint32(
+            self.lease_time
+        ), f"The 'lease_time' field must be a 32-bit unsigned integer. Got: {self.lease_time}"
 
     @override
     def __str__(self) -> str:

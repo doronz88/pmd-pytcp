@@ -82,9 +82,9 @@ class Dhcp4OptionServerId(Dhcp4Option):
         """
 
         # Ensure that the 'server_id' field is an Ip4Address instance.
-        assert isinstance(self.server_id, Ip4Address), (
-            f"The 'server_id' field must be an Ip4Address. " f"Got: {type(self.server_id)!r}"
-        )
+        assert isinstance(
+            self.server_id, Ip4Address
+        ), f"The 'server_id' field must be an Ip4Address. Got: {type(self.server_id)!r}"
 
     @override
     def __str__(self) -> str:

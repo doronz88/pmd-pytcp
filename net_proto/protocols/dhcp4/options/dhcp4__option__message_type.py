@@ -80,9 +80,9 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         """
 
         # Ensure the 'message_type' field is Dhcp4MessageType.
-        assert isinstance(self.message_type, Dhcp4MessageType), (
-            f"The 'message_type' field must be a Dhcp4MessageType. " f"Got: {type(self.message_type)!r}"
-        )
+        assert isinstance(
+            self.message_type, Dhcp4MessageType
+        ), f"The 'message_type' field must be a Dhcp4MessageType. Got: {type(self.message_type)!r}"
 
     @override
     def __str__(self) -> str:

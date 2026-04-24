@@ -128,8 +128,10 @@ class Dhcp4OptionHostName(Dhcp4Option):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Host Name option must " f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= DHCP4__OPTION__LEN, (
+            f"The minimum length of the DHCPv4 Host Name option must be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.

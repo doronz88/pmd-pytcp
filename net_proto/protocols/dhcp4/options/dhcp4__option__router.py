@@ -136,7 +136,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
         # Raise integrity error when the option length value (less header) is not a multiple of 4.
         if (value := buffer[1] % 4) != 0:
             raise Dhcp4IntegrityError(
-                "The DHCPv4 Router option length value (less header) must be a multiple of 4. " f"Got: {value!r}"
+                f"The DHCPv4 Router option length value (less header) must be a multiple of 4. Got: {value!r}"
             )
 
     @override
@@ -147,8 +147,10 @@ class Dhcp4OptionRouter(Dhcp4Option):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
-            f"The minimum length of the DHCPv4 Router option must " f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= DHCP4__OPTION__LEN, (
+            f"The minimum length of the DHCPv4 Router option must be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.

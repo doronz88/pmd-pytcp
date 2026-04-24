@@ -79,10 +79,9 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
 
         try:
             self._header = Dhcp4Header.from_buffer(self._frame)
+            self._options = Dhcp4Options.from_buffer(self._frame[len(self._header) :])
         except (AssertionError, UnicodeDecodeError) as error:
             raise Dhcp4IntegrityError(str(error)) from error
-
-        self._options = Dhcp4Options.from_buffer(self._frame[len(self._header) :])
 
     @override
     def _validate_sanity(self) -> None:

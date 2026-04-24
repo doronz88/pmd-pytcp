@@ -82,9 +82,9 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         """
 
         # Ensure that the 'subnet_mask' field is an Ip4Mask instance.
-        assert isinstance(self.subnet_mask, Ip4Mask), (
-            f"The 'subnet_mask' field must be an Ip4Mask. " f"Got: {type(self.subnet_mask)!r}"
-        )
+        assert isinstance(
+            self.subnet_mask, Ip4Mask
+        ), f"The 'subnet_mask' field must be an Ip4Mask. Got: {type(self.subnet_mask)!r}"
 
     @override
     def __str__(self) -> str:
