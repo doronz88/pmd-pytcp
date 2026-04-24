@@ -69,7 +69,7 @@ class Icmp4EchoRequestCode(Icmp4Code):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp4MessageEchoRequest(Icmp4Message):
     """
-    ICMPv4 Echo Request message.
+    The ICMPv4 Echo Request message.
     """
 
     type: Icmp4Type = field(
@@ -140,6 +140,7 @@ class Icmp4MessageEchoRequest(Icmp4Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP4__ECHO_REQUEST__LEN,
