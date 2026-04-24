@@ -702,6 +702,15 @@ through the container.
   `_options` via `header`, `payload`, `options` properties.
 - No setters. These types are read-only at the public surface;
   mutation happens only through the parser / assembler constructors.
+  **Exception**: the Ethernet II and 802.3 header property mixins
+  expose `dst` and `src` setters that bypass `frozen=True` via
+  `object.__setattr__`. The TX packet handlers rewrite these two
+  fields at send time after route lookup (see
+  `pytcp/stack/packet_handler/packet_handler__ethernet__tx.py`),
+  so the setters are load-bearing and must remain. Every such
+  setter must carry the inline comment
+  `# Hack to bypass the 'frozen=True' dataclass decorator.` so the
+  deviation is greppable. No other protocol may add setters.
 - Return type annotation matches the underlying field. Never widen
   (`int` → `int | None`) or narrow (`Buffer` → `bytes`) silently.
 
