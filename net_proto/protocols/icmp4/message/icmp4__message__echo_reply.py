@@ -60,7 +60,7 @@ ICMP4__ECHO_REPLY__STRUCT = "! BBH HH"
 
 class Icmp4EchoReplyCode(Icmp4Code):
     """
-    The ICMPv4 Echo Reply message 'code' field values.
+    The ICMPv4 Echo Reply 'code' field values.
     """
 
     DEFAULT = 0
@@ -140,6 +140,7 @@ class Icmp4MessageEchoReply(Icmp4Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP4__ECHO_REPLY__LEN,

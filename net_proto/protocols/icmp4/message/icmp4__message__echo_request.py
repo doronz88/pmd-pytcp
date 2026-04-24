@@ -60,7 +60,7 @@ ICMP4__ECHO_REQUEST__STRUCT = "! BBH HH"
 
 class Icmp4EchoRequestCode(Icmp4Code):
     """
-    The ICMPv4 Echo Request 'code' field value.
+    The ICMPv4 Echo Request 'code' field values.
     """
 
     DEFAULT = 0
