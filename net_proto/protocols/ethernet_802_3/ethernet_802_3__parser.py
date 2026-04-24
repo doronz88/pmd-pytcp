@@ -84,14 +84,14 @@ class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
 
         if dlen != payload_len:
             raise Ethernet8023IntegrityError(
-                f"Inconsistent payload length ({dlen} bytes) in the Ethernet 802.3 header. "
-                f"Frame length is {ETHERNET_802_3__HEADER__LEN} + {payload_len} bytes."
+                f"The 'dlen' field value must equal the actual payload length. "
+                f"Got: dlen={dlen}, payload_len={payload_len}."
             )
 
         if dlen > ETHERNET_802_3__PAYLOAD__MAX_LEN:
             raise Ethernet8023IntegrityError(
-                f"Payload length ({dlen} bytes) exceeds the maximum allowed value "
-                f"of {ETHERNET_802_3__PAYLOAD__MAX_LEN} bytes."
+                f"The 'dlen' field value must be less than or equal to {ETHERNET_802_3__PAYLOAD__MAX_LEN}. "
+                f"Got: {dlen}."
             )
 
     @override

@@ -121,8 +121,7 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    "Inconsistent payload length (16 bytes) in the Ethernet 802.3 header. "
-                    f"Frame length is {ETHERNET_802_3__HEADER__LEN} + 15 bytes."
+                    "The 'dlen' field value must equal the actual payload length. " "Got: dlen=16, payload_len=15."
                 ),
             },
         },
@@ -139,8 +138,7 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    "Inconsistent payload length (16 bytes) in the Ethernet 802.3 header. "
-                    f"Frame length is {ETHERNET_802_3__HEADER__LEN} + 17 bytes."
+                    "The 'dlen' field value must equal the actual payload length. " "Got: dlen=16, payload_len=17."
                 ),
             },
         },
@@ -156,8 +154,7 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    "Inconsistent payload length (0 bytes) in the Ethernet 802.3 header. "
-                    f"Frame length is {ETHERNET_802_3__HEADER__LEN} + 1 bytes."
+                    "The 'dlen' field value must equal the actual payload length. " "Got: dlen=0, payload_len=1."
                 ),
             },
         },
@@ -174,8 +171,8 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    f"Payload length ({ETHERNET_802_3__PAYLOAD__MAX_LEN + 1} bytes) exceeds the "
-                    f"maximum allowed value of {ETHERNET_802_3__PAYLOAD__MAX_LEN} bytes."
+                    f"The 'dlen' field value must be less than or equal to {ETHERNET_802_3__PAYLOAD__MAX_LEN}. "
+                    f"Got: {ETHERNET_802_3__PAYLOAD__MAX_LEN + 1}."
                 ),
             },
         },
@@ -192,8 +189,8 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    "Payload length (2000 bytes) exceeds the maximum allowed value "
-                    f"of {ETHERNET_802_3__PAYLOAD__MAX_LEN} bytes."
+                    f"The 'dlen' field value must be less than or equal to {ETHERNET_802_3__PAYLOAD__MAX_LEN}. "
+                    "Got: 2000."
                 ),
             },
         },
@@ -329,7 +326,7 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
             Ethernet8023Parser(PacketRx(frame))
 
         self.assertIn(
-            "Inconsistent payload length",
+            "The 'dlen' field value must equal the actual payload length.",
             str(error.exception),
             msg="Consistency error must take precedence over maximum-length error.",
         )
