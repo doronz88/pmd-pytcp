@@ -59,7 +59,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
             ),
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ARP__HEADER__LEN} bytes, got {ARP__HEADER__LEN - 1} bytes."
+                    f"The minimum packet length must be {ARP__HEADER__LEN} bytes. Got: {ARP__HEADER__LEN - 1} bytes."
                 ),
             },
         },
@@ -67,7 +67,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
             "_description": "The frame is empty.",
             "_frame_rx": b"",
             "_results": {
-                "error_message": f"The minimum packet length must be {ARP__HEADER__LEN} bytes, got 0 bytes.",
+                "error_message": f"The minimum packet length must be {ARP__HEADER__LEN} bytes. Got: 0 bytes.",
             },
         },
         {
@@ -135,7 +135,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
             ),
             "_results": {
-                "error_message": "The 'hrlen' field value must be 6, got 0.",
+                "error_message": "The 'hrlen' field value must be 6. Got: 0.",
             },
         },
         {
@@ -156,7 +156,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
             ),
             "_results": {
-                "error_message": "The 'hrlen' field value must be 6, got 8.",
+                "error_message": "The 'hrlen' field value must be 6. Got: 8.",
             },
         },
         {
@@ -177,7 +177,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
             ),
             "_results": {
-                "error_message": "The 'prlen' field value must be 4, got 0.",
+                "error_message": "The 'prlen' field value must be 4. Got: 0.",
             },
         },
         {
@@ -198,7 +198,7 @@ from net_proto import ARP__HEADER__LEN, ArpIntegrityError, ArpParser, PacketRx
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
             ),
             "_results": {
-                "error_message": "The 'prlen' field value must be 4, got 16.",
+                "error_message": "The 'prlen' field value must be 4. Got: 16.",
             },
         },
     ]

@@ -62,7 +62,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
             ),
             "_ethernet_src": None,
             "_results": {
-                "error_message": "The 'oper' field value must be one of [1, 2], got 0.",
+                "error_message": "The 'oper' field value must be one of [1, 2]. Got: 0.",
             },
         },
         {
@@ -84,7 +84,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
             ),
             "_ethernet_src": None,
             "_results": {
-                "error_message": "The 'oper' field value must be one of [1, 2], got 3.",
+                "error_message": "The 'oper' field value must be one of [1, 2]. Got: 3.",
             },
         },
         {
@@ -106,7 +106,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
             ),
             "_ethernet_src": None,
             "_results": {
-                "error_message": "The 'sha' field value 00:00:00:00:00:00 must not be a unspecified MAC address.",
+                "error_message": "The 'sha' field value 00:00:00:00:00:00 must not be an unspecified MAC address.",
             },
         },
         {
@@ -173,7 +173,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
             "_ethernet_src": None,
             "_results": {
                 "error_message": (
-                    "The 'spa' field value 0.0.0.0 must not be a unspecified IPv4 address for an ARP Reply."
+                    "The 'spa' field value 0.0.0.0 must not be an unspecified IPv4 address for an ARP Reply."
                 ),
             },
         },
