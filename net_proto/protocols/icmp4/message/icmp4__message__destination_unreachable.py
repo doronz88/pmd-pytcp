@@ -189,7 +189,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 Destination Unreachable message as memoryview.
+        Get the ICMPv4 Destination Unreachable message as a memoryview.
         """
 
         buffer = self._pack_header(len(self))

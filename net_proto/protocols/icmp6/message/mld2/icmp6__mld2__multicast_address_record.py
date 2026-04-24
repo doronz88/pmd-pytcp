@@ -166,7 +166,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 MLDv2 Multicast Address Record as memoryview.
+        Get the ICMPv6 MLDv2 Multicast Address Record as a memoryview.
         """
 
         struct.pack_into(

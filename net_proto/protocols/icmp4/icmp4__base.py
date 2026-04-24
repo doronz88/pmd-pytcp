@@ -71,7 +71,7 @@ class Icmp4(Proto):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 packet as memoryview.
+        Get the ICMPv4 packet as a memoryview.
         """
 
         buffer = memoryview(self._message)

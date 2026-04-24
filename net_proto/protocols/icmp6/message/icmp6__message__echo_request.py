@@ -133,7 +133,7 @@ class Icmp6MessageEchoRequest(Icmp6Message):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 Echo Request message as memoryview.
+        Get the ICMPv6 Echo Request message as a memoryview.
         """
 
         buffer = self._pack_header(len(self))

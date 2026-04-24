@@ -97,7 +97,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 IP Address Lease Time option as memoryview.
+        Get the DHCPv4 IP Address Lease Time option as a memoryview.
         """
 
         struct.pack_into(

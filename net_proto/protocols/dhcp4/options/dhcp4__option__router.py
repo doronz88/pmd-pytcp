@@ -106,7 +106,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Router option as memoryview.
+        Get the DHCPv4 Router option as a memoryview.
         """
 
         struct.pack_into(

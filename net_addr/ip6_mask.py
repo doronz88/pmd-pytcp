@@ -88,7 +88,7 @@ class Ip6Mask(IpMask):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 mask as memoryview.
+        Get the IPv6 mask as a memoryview.
         """
 
         return memoryview(bytearray(self._mask.to_bytes(IP6__ADDRESS_LEN)))

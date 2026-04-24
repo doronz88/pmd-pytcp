@@ -317,7 +317,7 @@ class UdpSocket(socket):
 
     def recv__mv(self, bufsize: int | None = None, timeout: float | None = None) -> memoryview:
         """
-        Read data from socket as memoryview.
+        Read data from socket as a memoryview.
         """
 
         # TODO - Implement support for buffsize.
@@ -349,7 +349,7 @@ class UdpSocket(socket):
         self, bufsize: int | None = None, timeout: float | None = None
     ) -> tuple[memoryview, tuple[str, int]]:
         """
-        Read data from socket as memoryview.
+        Read data from socket as a memoryview.
         """
 
         # TODO - Implement support for buffsize.

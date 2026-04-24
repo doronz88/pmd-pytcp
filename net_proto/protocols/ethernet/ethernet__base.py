@@ -87,7 +87,7 @@ class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Ethernet packet as memoryview.
+        Get the Ethernet packet as a memoryview.
         """
 
         buffer = bytearray(self._header)

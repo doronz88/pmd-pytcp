@@ -80,7 +80,7 @@ class TcpOptionNop(TcpOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Nop option as memoryview.
+        Get the TCP Nop option as a memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))

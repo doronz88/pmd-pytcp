@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ARP protccol base class.
+This module contains the ARP protocol base class.
 
 net_proto/protocols/arp/arp__base.py
 
@@ -74,7 +74,7 @@ class Arp(Proto, ArpHeaderProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP packet as memoryview.
+        Get the ARP packet as a memoryview.
         """
 
         return memoryview(self._header)

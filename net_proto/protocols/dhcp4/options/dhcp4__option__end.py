@@ -84,7 +84,7 @@ class Dhcp4OptionEnd(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 End option as memoryview.
+        Get the DHCPv4 End option as a memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))

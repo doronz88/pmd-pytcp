@@ -85,7 +85,7 @@ class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 packet as memoryview.
+        Get the IPv6 packet as a memoryview.
         """
 
         if isinstance(

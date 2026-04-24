@@ -97,7 +97,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Subnet Mask option as memoryview.
+        Get the DHCPv4 Subnet Mask option as a memoryview.
         """
 
         struct.pack_into(

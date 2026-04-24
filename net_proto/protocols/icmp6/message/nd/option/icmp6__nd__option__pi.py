@@ -148,7 +148,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Pi option as memoryview.
+        Get the ICMPv6 ND Pi option as a memoryview.
         """
 
         struct.pack_into(

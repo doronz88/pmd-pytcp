@@ -158,7 +158,7 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Neighbor Advertisement message as memoryview.
+        Get the ICMPv6 ND Neighbor Advertisement message as a memoryview.
         """
 
         buffer = self._pack_header(len(self))

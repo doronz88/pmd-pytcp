@@ -106,7 +106,7 @@ class Ip4Address(IpAddress):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 address as memoryview.
+        Get the IPv4 address as a memoryview.
         """
 
         return memoryview(bytearray(self._address.to_bytes(IP4__ADDRESS_LEN)))

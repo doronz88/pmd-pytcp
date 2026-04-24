@@ -81,7 +81,7 @@ class Ip4OptionEol(Ip4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 Eol option as memoryview.
+        Get the IPv4 Eol option as a memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))

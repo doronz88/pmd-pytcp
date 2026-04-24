@@ -23,7 +23,7 @@
 
 
 """
-Module contains the ICMPv6 protccol base class.
+This module contains the ICMPv6 protocol base class.
 
 net_proto/protocols/icmp6/icmp6__base.py
 
@@ -73,7 +73,7 @@ class Icmp6(Proto):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 packet as memoryview.
+        Get the ICMPv6 packet as a memoryview.
         """
 
         buffer = memoryview(self._message)

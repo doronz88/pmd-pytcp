@@ -96,7 +96,7 @@ class TcpOptionUnknown(TcpOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown TCP option as memoryview.
+        Get the unknown TCP option as a memoryview.
         """
 
         struct.pack_into(

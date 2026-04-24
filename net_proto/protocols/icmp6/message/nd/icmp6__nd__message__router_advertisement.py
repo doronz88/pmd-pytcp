@@ -163,7 +163,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Router Advertisement message as memoryview.
+        Get the ICMPv6 ND Router Advertisement message as a memoryview.
         """
 
         buffer = self._pack_header(len(self))

@@ -96,7 +96,7 @@ class TcpOptionWscale(TcpOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Wscale option as memoryview.
+        Get the TCP Wscale option as a memoryview.
         """
 
         struct.pack_into(

@@ -230,7 +230,7 @@ class Dhcp4Header(ProtoStruct):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 header as memoryview.
+        Get the DHCPv4 header as a memoryview.
         """
 
         struct.pack_into(

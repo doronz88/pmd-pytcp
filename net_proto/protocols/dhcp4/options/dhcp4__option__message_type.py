@@ -95,7 +95,7 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Message Type option as memoryview.
+        Get the DHCPv4 Message Type option as a memoryview.
         """
 
         struct.pack_into(

@@ -105,7 +105,7 @@ class MacAddress(Address):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the MAC address as memoryview.
+        Get the MAC address as a memoryview.
         """
 
         return memoryview(bytearray(self._address.to_bytes(MAC__ADDRESS_LEN)))

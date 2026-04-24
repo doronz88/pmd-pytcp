@@ -77,7 +77,7 @@ class Raw(Proto):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Raw packet as memoryview.
+        Get the Raw packet as a memoryview.
         """
 
         buffer = bytearray(self._payload)

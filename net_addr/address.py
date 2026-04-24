@@ -55,7 +55,7 @@ class Address(Base, ABC):
     @abstractmethod
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the network address as memoryview.
+        Get the network address as a memoryview.
         """
 
         raise NotImplementedError

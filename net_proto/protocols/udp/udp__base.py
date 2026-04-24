@@ -79,7 +79,7 @@ class Udp(Proto, UdpHeaderProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the UDP packet as memoryview.
+        Get the UDP packet as a memoryview.
         """
 
         buffer = bytearray(self._header)

@@ -98,7 +98,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown DHCPv4 option as memoryview.
+        Get the unknown DHCPv4 option as a memoryview.
         """
 
         struct.pack_into(

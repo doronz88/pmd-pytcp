@@ -132,7 +132,7 @@ class Icmp4MessageEchoReply(Icmp4Message):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv4 Echo Reply message as memoryview.
+        Get the ICMPv4 Echo Reply message as a memoryview.
         """
 
         buffer = self._pack_header(len(self))

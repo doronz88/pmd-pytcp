@@ -64,7 +64,7 @@ class IpMask(Base, Ip, ABC):
     @abstractmethod
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IP mask as memoryview.
+        Get the IP mask as a memoryview.
         """
 
         raise NotImplementedError

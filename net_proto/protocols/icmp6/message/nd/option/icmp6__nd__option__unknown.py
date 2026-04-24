@@ -94,7 +94,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown ICMPv6 option as memoryview.
+        Get the unknown ICMPv6 option as a memoryview.
         """
 
         struct.pack_into(

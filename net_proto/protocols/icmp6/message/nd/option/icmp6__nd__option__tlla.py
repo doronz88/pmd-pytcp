@@ -93,7 +93,7 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ICMPv6 ND Tlla option as memoryview.
+        Get the ICMPv6 ND Tlla option as a memoryview.
         """
 
         struct.pack_into(

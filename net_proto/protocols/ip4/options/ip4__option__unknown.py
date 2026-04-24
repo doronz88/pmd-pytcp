@@ -96,7 +96,7 @@ class Ip4OptionUnknown(Ip4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown IPv4 option as memoryview.
+        Get the unknown IPv4 option as a memoryview.
         """
 
         struct.pack_into(

@@ -81,7 +81,7 @@ class Ethernet8023[P: (RawAssembler, Buffer)](Proto, Ethernet8023HeaderPropertie
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Ethernet 802.3 packet as memoryview.
+        Get the Ethernet 802.3 packet as a memoryview.
         """
 
         buffer = bytearray(self._header)

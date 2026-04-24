@@ -83,7 +83,7 @@ class TcpSackBlock:
 
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Sack block as memoryview.
+        Get the TCP Sack block as a memoryview.
         """
 
         struct.pack_into(
@@ -152,7 +152,7 @@ class TcpOptionSack(TcpOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Sack option as memoryview.
+        Get the TCP Sack option as a memoryview.
         """
 
         struct.pack_into(

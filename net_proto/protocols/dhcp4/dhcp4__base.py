@@ -83,7 +83,7 @@ class Dhcp4(Proto, Dhcp4HeaderProperties, Dhcp4OptionsProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 packet as memoryview.
+        Get the DHCPv4 packet as a memoryview.
         """
 
         buffer = bytearray(self._header)

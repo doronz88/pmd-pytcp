@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv4 protccol base class.
+This module contains the IPv4 protocol base class.
 
 net_proto/protocols/ip4/ip4__base.py
 
@@ -96,7 +96,7 @@ class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsPropert
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 packet as memoryview.
+        Get the IPv4 packet as a memoryview.
         """
 
         if isinstance(self._payload, (TcpAssembler, UdpAssembler, RawAssembler)):

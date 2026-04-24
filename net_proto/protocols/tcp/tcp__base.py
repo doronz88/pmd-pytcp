@@ -23,7 +23,7 @@
 
 
 """
-This module contains the TCP protccol base class.
+This module contains the TCP protocol base class.
 
 net_proto/protocols/tcp/tpc__base.py
 
@@ -111,7 +111,7 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP packet as memoryview.
+        Get the TCP packet as a memoryview.
         """
 
         buffer = bytearray(self._header)

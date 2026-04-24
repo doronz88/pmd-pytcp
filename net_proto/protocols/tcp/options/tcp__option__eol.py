@@ -80,7 +80,7 @@ class TcpOptionEol(TcpOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the TCP Eol option as memoryview.
+        Get the TCP Eol option as a memoryview.
         """
 
         return memoryview(bytearray(bytes(self.type)))

@@ -97,7 +97,7 @@ class Ip4Mask(IpMask):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv4 mask as memoryview.
+        Get the IPv4 mask as a memoryview.
         """
 
         return memoryview(bytearray(self._mask.to_bytes(IP4__ADDRESS_LEN)))

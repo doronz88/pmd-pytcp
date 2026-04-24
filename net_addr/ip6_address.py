@@ -133,7 +133,7 @@ class Ip6Address(IpAddress):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the IPv6 address as memoryview.
+        Get the IPv6 address as a memoryview.
         """
 
         return memoryview(bytearray(self._address.to_bytes(IP6__ADDRESS_LEN)))

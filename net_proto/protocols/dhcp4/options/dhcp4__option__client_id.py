@@ -95,7 +95,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Client Identifier option as memoryview.
+        Get the DHCPv4 Client Identifier option as a memoryview.
         """
 
         struct.pack_into(

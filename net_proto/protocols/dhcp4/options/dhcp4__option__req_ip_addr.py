@@ -97,7 +97,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the DHCPv4 Requested IP Address option as memoryview.
+        Get the DHCPv4 Requested IP Address option as a memoryview.
         """
 
         struct.pack_into(
