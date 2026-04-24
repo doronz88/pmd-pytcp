@@ -61,7 +61,7 @@ from net_proto import (
             "_frame_rx": b"",
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes, got 0 bytes."
+                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes. Got: 0 bytes."
                 ),
             },
         },
@@ -70,7 +70,7 @@ from net_proto import (
             "_frame_rx": b"\x00",
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes, got 1 bytes."
+                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes. Got: 1 bytes."
                 ),
             },
         },
@@ -86,8 +86,8 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} "
-                    f"bytes, got {ETHERNET_802_3__HEADER__LEN - 1} bytes."
+                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes. "
+                    f"Got: {ETHERNET_802_3__HEADER__LEN - 1} bytes."
                 ),
             },
         },
@@ -103,8 +103,8 @@ from net_proto import (
             ),
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} "
-                    f"bytes, got {ETHERNET_802_3__HEADER__LEN - 2} bytes."
+                    f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes. "
+                    f"Got: {ETHERNET_802_3__HEADER__LEN - 2} bytes."
                 ),
             },
         },
@@ -304,7 +304,7 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
             Ethernet8023Parser(PacketRx(frame))
 
         self.assertIn(
-            "got 7 bytes.",
+            "Got: 7 bytes.",
             str(error.exception),
             msg="Error message must include the actual short frame length.",
         )

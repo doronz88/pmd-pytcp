@@ -48,14 +48,14 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
             "_description": "The packet is empty (zero length).",
             "_args": [b""],
             "_results": {
-                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, got 0 bytes.",
+                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. Got: 0 bytes.",
             },
         },
         {
             "_description": "The packet has a single byte.",
             "_args": [b"\x00"],
             "_results": {
-                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes, got 1 bytes.",
+                "error_message": f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. Got: 1 bytes.",
             },
         },
         {
@@ -63,8 +63,8 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
             "_args": [b"\x00" * (DHCP4__HEADER__LEN - 1)],
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {DHCP4__HEADER__LEN} "
-                    f"bytes, got {DHCP4__HEADER__LEN - 1} bytes."
+                    f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. "
+                    f"Got: {DHCP4__HEADER__LEN - 1} bytes."
                 ),
             },
         },
@@ -73,8 +73,8 @@ from net_proto import DHCP4__HEADER__LEN, Dhcp4IntegrityError, Dhcp4Parser
             "_args": [b"\x00" * (DHCP4__HEADER__LEN // 2)],
             "_results": {
                 "error_message": (
-                    f"The minimum packet length must be {DHCP4__HEADER__LEN} "
-                    f"bytes, got {DHCP4__HEADER__LEN // 2} bytes."
+                    f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. "
+                    f"Got: {DHCP4__HEADER__LEN // 2} bytes."
                 ),
             },
         },
@@ -146,7 +146,7 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
             Dhcp4Parser(frame)
 
         self.assertIn(
-            "got 37 bytes.",
+            "Got: 37 bytes.",
             str(error.exception),
             msg="Error message must include the actual short frame length.",
         )

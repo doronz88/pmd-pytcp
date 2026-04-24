@@ -56,7 +56,7 @@ from net_proto import EthernetParser, EthernetSanityError, PacketRx
                 b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x00\x00"
             ),
             "_results": {
-                "error_message": "The minimum 'type' field value must be 0x0600, got 0x0000.",
+                "error_message": "The minimum 'type' field value must be 0x0600. Got: 0x0000.",
             },
         },
         {
@@ -70,7 +70,7 @@ from net_proto import EthernetParser, EthernetSanityError, PacketRx
                 b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x00\x01"
             ),
             "_results": {
-                "error_message": "The minimum 'type' field value must be 0x0600, got 0x0001.",
+                "error_message": "The minimum 'type' field value must be 0x0600. Got: 0x0001.",
             },
         },
         {
@@ -84,7 +84,7 @@ from net_proto import EthernetParser, EthernetSanityError, PacketRx
                 b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xff"
             ),
             "_results": {
-                "error_message": "The minimum 'type' field value must be 0x0600, got 0x05ff.",
+                "error_message": "The minimum 'type' field value must be 0x0600. Got: 0x05ff.",
             },
         },
     ]
@@ -169,7 +169,7 @@ class TestEthernetParserSanityChecksBoundary(TestCase):
             EthernetParser(PacketRx(frame))
 
         self.assertIn(
-            "got 0x0123.",
+            "Got: 0x0123.",
             str(error.exception),
             msg="Error message must include the actual 'type' field value.",
         )

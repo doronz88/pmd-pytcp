@@ -68,7 +68,7 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
 
         if len(self._frame) < DHCP4__HEADER__LEN:
             raise Dhcp4IntegrityError(
-                "The minimum packet length must be " f"{DHCP4__HEADER__LEN} bytes, got {len(self._frame)} bytes."
+                f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. Got: {len(self._frame)} bytes."
             )
 
     @override

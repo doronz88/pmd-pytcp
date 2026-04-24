@@ -75,7 +75,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
 
         if len(self._frame) < ETHERNET__HEADER__LEN:
             raise EthernetIntegrityError(
-                f"The minimum packet length must be {ETHERNET__HEADER__LEN} bytes, got {len(self._frame)} bytes."
+                f"The minimum packet length must be {ETHERNET__HEADER__LEN} bytes. Got: {len(self._frame)} bytes."
             )
 
     @override
@@ -95,5 +95,5 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
 
         if int(self._header.type) < 0x0600:
             raise EthernetSanityError(
-                f"The minimum 'type' field value must be 0x0600, got 0x{int(self._header.type):04x}."
+                f"The minimum 'type' field value must be 0x0600. Got: 0x{int(self._header.type):04x}."
             )

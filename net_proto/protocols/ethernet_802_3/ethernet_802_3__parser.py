@@ -75,8 +75,8 @@ class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
 
         if len(self._frame) < ETHERNET_802_3__HEADER__LEN:
             raise Ethernet8023IntegrityError(
-                "The minimum packet length must be "
-                f"{ETHERNET_802_3__HEADER__LEN} bytes, got {len(self._frame)} bytes."
+                f"The minimum packet length must be {ETHERNET_802_3__HEADER__LEN} bytes. "
+                f"Got: {len(self._frame)} bytes."
             )
 
         dlen = int.from_bytes(self._frame[12:14])
