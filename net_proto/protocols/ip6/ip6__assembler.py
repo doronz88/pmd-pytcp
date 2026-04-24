@@ -36,7 +36,6 @@ from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_assembler import ProtoAssembler
-from net_proto.lib.tracker import Tracker
 from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler
 from net_proto.protocols.ip6.ip6__base import Ip6, Ip6Payload
 from net_proto.protocols.ip6.ip6__header import (
@@ -70,7 +69,7 @@ class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
         Initialize the IPv6 packet assembler.
         """
 
-        self._tracker: Tracker = ip6__payload.tracker
+        self._tracker = ip6__payload.tracker
 
         self._payload = ip6__payload
 

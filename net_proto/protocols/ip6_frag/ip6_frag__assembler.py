@@ -60,7 +60,7 @@ class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
         Initialize the IPv6 Frag packet assembler.
         """
 
-        self._tracker: Tracker = Tracker(prefix="TX")
+        self._tracker = Tracker(prefix="TX")
 
         self._payload = ip6_frag__payload
 

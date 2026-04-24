@@ -59,7 +59,7 @@ class UdpAssembler(Udp, ProtoAssembler):
         Initialize the UDP packet assembler.
         """
 
-        self._tracker: Tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
+        self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
         self._payload = udp__payload
 

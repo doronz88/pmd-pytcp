@@ -58,7 +58,7 @@ class RawAssembler(Raw, ProtoAssembler):
         Initialize the Raw protocol assembler.
         """
 
-        self._tracker: Tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
+        self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
         self._payload = raw__payload
         self._ether_type = ether_type

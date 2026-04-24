@@ -89,7 +89,7 @@ class TcpAssembler(Tcp, ProtoAssembler):
             TcpOptionEol() not in tcp__options or tcp__options[-1] == TcpOptionEol()
         ), "The TCP EOL option must be the last option."
 
-        self._tracker: Tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
+        self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
         self._payload = tcp__payload
 
