@@ -428,6 +428,30 @@ docstring:
 - `_parse()` — builds `self._header = <Proto>Header.from_buffer(self._frame)`
   and sets `self._payload = self._frame[len(self._header) : self._header.plen]`
   (or protocol equivalent). No validation here.
+
+  **Exception — wrapping `from_buffer` errors**: when a protocol's
+  `from_buffer` classmethod enforces wire-level invariants with
+  `assert` (e.g. DHCPv4 asserts `hrtype == ETHERNET` and
+  `magic_cookie == DHCP4__HEADER__MAGIC_COOKIE`) or performs
+  operations that can raise Python-level exceptions that are
+  actually integrity violations (e.g. `bytes.decode("ascii")`
+  raising `UnicodeDecodeError` on non-ASCII fields), `_parse()`
+  wraps the call and re-raises the offender as
+  `<Proto>IntegrityError`:
+
+  ```python
+  try:
+      self._header = Dhcp4Header.from_buffer(self._frame)
+  except (AssertionError, UnicodeDecodeError) as error:
+      raise Dhcp4IntegrityError(str(error)) from error
+  ```
+
+  The `from ... error` clause preserves the traceback chain. The
+  try/except list enumerates every exception type the underlying
+  `from_buffer` can raise — extending the list is allowed, catching
+  bare `Exception` is not. Only apply this pattern when
+  `from_buffer` genuinely can raise on integrity violations; do
+  not wrap `from_buffer` calls defensively.
 - `_validate_sanity()` — logical checks against already-parsed fields.
   Use the walrus operator to bind the offending value for the error
   message:

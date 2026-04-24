@@ -115,20 +115,23 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
         self,
     ) -> None:
         """
-        Ensure a frame of exactly DHCP4__HEADER__LEN bytes passes integrity
-        validation. The parse step still fails on header content checks, but
-        the integrity phase must not raise Dhcp4IntegrityError.
+        Ensure a frame of exactly DHCP4__HEADER__LEN bytes is not rejected
+        by the minimum-length check. The parse step still fails (all-zero
+        frame has invalid header content) and the failure surfaces as a
+        Dhcp4IntegrityError once the parser wraps the header 'from_buffer'
+        asserts, but the resulting message must not be the length error.
         """
 
-        with self.assertRaises(Exception) as error:
+        with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Parser(memoryview(b"\x00" * DHCP4__HEADER__LEN))
 
-        self.assertNotIsInstance(
-            error.exception,
-            Dhcp4IntegrityError,
+        self.assertNotIn(
+            "minimum packet length",
+            str(error.exception),
             msg=(
-                "At exactly DHCP4__HEADER__LEN the integrity check must pass; "
-                "failures here must originate from header parsing, not integrity."
+                "At exactly DHCP4__HEADER__LEN the minimum-length check must "
+                "pass; the parse failure must come from header content, not "
+                "length."
             ),
         )
 
