@@ -59,7 +59,8 @@ class Icmp4Type(ProtoEnumByte):
 
 class Icmp4Code(ProtoEnumByte):
     """
-    The ICMPv4 message 'code' field values.
+    Base class for ICMPv4 'code' field enums. Concrete code values
+    are defined by each message type's subclass.
     """
 
 
