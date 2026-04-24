@@ -76,7 +76,7 @@ class Ethernet8023[P: (RawAssembler, Buffer)](Proto, Ethernet8023HeaderPropertie
         Get the Ethernet 802.3 packet representation string.
         """
 
-        return f"{type(self).__name__}(header={self._header}, payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
@@ -92,7 +92,15 @@ class Ethernet8023[P: (RawAssembler, Buffer)](Proto, Ethernet8023HeaderPropertie
     @property
     def header(self) -> Ethernet8023Header:
         """
-        Get the Ethernet 802.3 packet's '_header' attribute.
+        Get the Ethernet 802.3 packet '_header' attribute.
         """
 
         return self._header
+
+    @property
+    def payload(self) -> P:
+        """
+        Get the Ethernet 802.3 packet '_payload' attribute.
+        """
+
+        return self._payload
