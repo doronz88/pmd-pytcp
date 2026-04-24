@@ -64,7 +64,6 @@ from net_proto.protocols.arp.arp__enums import (
 # |                       Target IP address                       |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-
 ARP__HEADER__LEN = 28
 ARP__HEADER__STRUCT = "! HH BBH 6s L 6s L"
 
@@ -130,7 +129,7 @@ class ArpHeader(ProtoStruct):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the ARP header as memoryview.
+        Get the ARP header as a memoryview.
         """
 
         struct.pack_into(
@@ -170,7 +169,7 @@ class ArpHeader(ProtoStruct):
 
 class ArpHeaderProperties(ABC):
     """
-    Properties used to access ARP header fields.
+    Properties used to access the ARP header fields.
     """
 
     _header: ArpHeader
