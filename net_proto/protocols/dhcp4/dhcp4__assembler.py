@@ -56,10 +56,10 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         dhcp4__xid: int,
         dhcp4__secs: int = 0,
         dhcp4__flag_b: bool = False,
-        dhcp4__ciaddr: Ip4Address = Ip4Address("0.0.0.0"),
-        dhcp4__yiaddr: Ip4Address = Ip4Address("0.0.0.0"),
-        dhcp4__siaddr: Ip4Address = Ip4Address("0.0.0.0"),
-        dhcp4__giaddr: Ip4Address = Ip4Address("0.0.0.0"),
+        dhcp4__ciaddr: Ip4Address = Ip4Address(),
+        dhcp4__yiaddr: Ip4Address = Ip4Address(),
+        dhcp4__siaddr: Ip4Address = Ip4Address(),
+        dhcp4__giaddr: Ip4Address = Ip4Address(),
         dhcp4__chaddr: MacAddress,
         dhcp4__sname: str | None = None,
         dhcp4__file: str | None = None,
@@ -92,6 +92,4 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         Assemble the DHCPv4 packet into list of buffers.
         """
 
-        raise NotImplementedError(
-            "The 'assemble()' method is not implemented for L7 protocols. " "Use Sockets instead."
-        )
+        raise NotImplementedError("The 'assemble()' method is not implemented for L7 protocols. Use Sockets instead.")
