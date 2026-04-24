@@ -55,7 +55,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 
 ETHERNET_802_3__HEADER__LEN = 14
 ETHERNET_802_3__HEADER__STRUCT = "! 6s 6s H"
-ETHERNET_802_3__PACKET__MAX_LEN = 1514
+ETHERNET_802_3__PACKET__MAX_LEN = 1514  # Maximum frame length per IEEE 802.3 (excluding preamble and FCS).
 ETHERNET_802_3__PAYLOAD__MAX_LEN = ETHERNET_802_3__PACKET__MAX_LEN - ETHERNET_802_3__HEADER__LEN
 
 
@@ -127,7 +127,7 @@ class Ethernet8023Header(ProtoStruct):
 
 class Ethernet8023HeaderProperties(ABC):
     """
-    Properties used to access Ethernet 802.3 header fields.
+    Properties used to access the Ethernet 802.3 header fields.
     """
 
     _header: Ethernet8023Header
