@@ -35,7 +35,7 @@ from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 class Icmp4IntegrityError(PacketIntegrityError):
     """
-    The ICMPv4 packet integrity check failure.
+    Exception raised when ICMPv4 packet integrity check fails.
     """
 
     def __init__(self, message: str, /) -> None:
@@ -44,7 +44,7 @@ class Icmp4IntegrityError(PacketIntegrityError):
 
 class Icmp4SanityError(PacketSanityError):
     """
-    The ICMPv4 packet sanity check failure.
+    Exception raised when ICMPv4 packet sanity check fails.
     """
 
     def __init__(self, message: str, /) -> None:
