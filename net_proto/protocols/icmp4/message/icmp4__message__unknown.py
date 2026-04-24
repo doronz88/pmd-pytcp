@@ -48,7 +48,7 @@ from net_proto.protocols.icmp4.message.icmp4__message import (
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp4MessageUnknown(Icmp4Message):
     """
-    The ICMPv4 unknown message support.
+    The ICMPv4 unknown message.
     """
 
     type: Icmp4Type
@@ -102,13 +102,14 @@ class Icmp4MessageUnknown(Icmp4Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP4__HEADER__LEN,
         /,
     ) -> bytearray:
         """
-        Pack the ICMPv4 unknown message header into a fresh bytearray.
+        Get the ICMPv4 unknown message as bytes.
         """
 
         struct.pack_into(
@@ -164,7 +165,7 @@ class Icmp4MessageUnknown(Icmp4Message):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv4 Unknown message into the buffer list.
+        Assemble the ICMPv4 unknown message into the buffer list.
         """
 
         buffers.append(self._pack_header())
