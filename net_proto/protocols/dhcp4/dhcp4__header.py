@@ -177,45 +177,45 @@ class Dhcp4Header(ProtoStruct):
             self.operation, Dhcp4Operation
         ), f"The 'operation' field must be a Dhcp4Operation. Got: {type(self.operation)!r}"
 
-        assert is_uint8(self.hops), "The 'hops' field must be an 8-bit unsigned integer. " f"Got: {self.hops!r}"
+        assert is_uint8(self.hops), f"The 'hops' field must be an 8-bit unsigned integer. Got: {self.hops!r}"
 
-        assert is_uint32(self.xid), "The 'xid' field must be a 32-bit unsigned integer. " f"Got: {self.xid!r}"
+        assert is_uint32(self.xid), f"The 'xid' field must be a 32-bit unsigned integer. Got: {self.xid!r}"
 
-        assert is_uint16(self.secs), "The 'secs' field must be a 16-bit unsigned integer. " f"Got: {self.secs!r}"
+        assert is_uint16(self.secs), f"The 'secs' field must be a 16-bit unsigned integer. Got: {self.secs!r}"
 
-        assert isinstance(self.flag_b, bool), "The 'flag_b' field must be a boolean. " f"Got: {type(self.flag_b)!r}"
+        assert isinstance(self.flag_b, bool), f"The 'flag_b' field must be a boolean. Got: {type(self.flag_b)!r}"
 
-        assert isinstance(self.ciaddr, Ip4Address), (
-            "The 'ciaddr' field must be an Ip4Address. " f"Got: {type(self.ciaddr)!r}"
-        )
+        assert isinstance(
+            self.ciaddr, Ip4Address
+        ), f"The 'ciaddr' field must be an Ip4Address. Got: {type(self.ciaddr)!r}"
 
-        assert isinstance(self.yiaddr, Ip4Address), (
-            "The 'yiaddr' field must be an Ip4Address. " f"Got: {type(self.yiaddr)!r}"
-        )
+        assert isinstance(
+            self.yiaddr, Ip4Address
+        ), f"The 'yiaddr' field must be an Ip4Address. Got: {type(self.yiaddr)!r}"
 
-        assert isinstance(self.siaddr, Ip4Address), (
-            "The 'siaddr' field must be an Ip4Address. " f"Got: {type(self.siaddr)!r}"
-        )
+        assert isinstance(
+            self.siaddr, Ip4Address
+        ), f"The 'siaddr' field must be an Ip4Address. Got: {type(self.siaddr)!r}"
 
-        assert isinstance(self.giaddr, Ip4Address), (
-            "The 'giaddr' field must be an Ip4Address. " f"Got: {type(self.giaddr)!r}"
-        )
+        assert isinstance(
+            self.giaddr, Ip4Address
+        ), f"The 'giaddr' field must be an Ip4Address. Got: {type(self.giaddr)!r}"
 
-        assert isinstance(self.chaddr, MacAddress), (
-            "The 'chaddr' field must be a MacAddress. " f"Got: {type(self.chaddr)!r}"
-        )
+        assert isinstance(
+            self.chaddr, MacAddress
+        ), f"The 'chaddr' field must be a MacAddress. Got: {type(self.chaddr)!r}"
 
         assert isinstance(self.sname, str), f"The 'sname' field must be a string. Got: {type(self.sname)!r}"
 
         assert len(self.sname) <= DHCP4__HEADER__SNAME__MAX_LEN, (
-            "The 'sname' field length must be less than or equal to "
+            f"The 'sname' field length must be less than or equal to "
             f"{DHCP4__HEADER__SNAME__MAX_LEN!r}. Got: {len(self.sname)!r}"
         )
 
         assert isinstance(self.file, str), f"The 'file' field must be a string. Got: {type(self.file)!r}"
 
         assert len(self.file) <= DHCP4__HEADER__FILE__MAX_LEN, (
-            "The 'file' field length must be less than or equal to "
+            f"The 'file' field length must be less than or equal to "
             f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(self.file)!r}"
         )
 
@@ -319,7 +319,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def oper(self) -> Dhcp4Operation:
         """
-        Get the DHCPv4 operation.
+        Get the DHCPv4 header 'operation' field.
         """
 
         return self._header.operation
@@ -327,7 +327,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def hrtype(self) -> Dhcp4HardwareType:
         """
-        Get the DHCPv4 hardware type.
+        Get the DHCPv4 header 'hrtype' field.
         """
 
         return self._header.hrtype
@@ -335,7 +335,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def hrlen(self) -> int:
         """
-        Get the DHCPv4 hardware length.
+        Get the DHCPv4 header 'hrlen' field.
         """
 
         return self._header.hrlen
@@ -343,7 +343,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def hops(self) -> int:
         """
-        Get the DHCPv4 hops.
+        Get the DHCPv4 header 'hops' field.
         """
 
         return self._header.hops
@@ -351,7 +351,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def xid(self) -> int:
         """
-        Get the DHCPv4 transaction identifier.
+        Get the DHCPv4 header 'xid' field.
         """
 
         return self._header.xid
@@ -359,7 +359,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def secs(self) -> int:
         """
-        Get the DHCPv4 seconds elapsed.
+        Get the DHCPv4 header 'secs' field.
         """
 
         return self._header.secs
@@ -367,7 +367,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def flag_b(self) -> bool:
         """
-        Get the DHCPv4 flag B.
+        Get the DHCPv4 header 'flag_b' field.
         """
 
         return self._header.flag_b
@@ -375,7 +375,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def ciaddr(self) -> Ip4Address:
         """
-        Get the DHCPv4 client IP address.
+        Get the DHCPv4 header 'ciaddr' field.
         """
 
         return self._header.ciaddr
@@ -383,7 +383,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def yiaddr(self) -> Ip4Address:
         """
-        Get the DHCPv4 your IP address.
+        Get the DHCPv4 header 'yiaddr' field.
         """
 
         return self._header.yiaddr
@@ -391,7 +391,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def siaddr(self) -> Ip4Address:
         """
-        Get the DHCPv4 server IP address.
+        Get the DHCPv4 header 'siaddr' field.
         """
 
         return self._header.siaddr
@@ -399,7 +399,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def giaddr(self) -> Ip4Address:
         """
-        Get the DHCPv4 gateway IP address.
+        Get the DHCPv4 header 'giaddr' field.
         """
 
         return self._header.giaddr
@@ -407,7 +407,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def chaddr(self) -> MacAddress:
         """
-        Get the DHCPv4 client hardware address.
+        Get the DHCPv4 header 'chaddr' field.
         """
 
         return self._header.chaddr
@@ -415,7 +415,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def sname(self) -> str:
         """
-        Get the DHCPv4 server hostname.
+        Get the DHCPv4 header 'sname' field.
         """
 
         return self._header.sname
@@ -423,7 +423,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def file(self) -> str:
         """
-        Get the DHCPv4 bootfile name.
+        Get the DHCPv4 header 'file' field.
         """
 
         return self._header.file
@@ -431,7 +431,7 @@ class Dhcp4HeaderProperties(ABC):
     @property
     def magic_cookie(self) -> bytes:
         """
-        Get the DHCPv4 magic cookie.
+        Get the DHCPv4 header 'magic_cookie' field.
         """
 
-        return DHCP4__HEADER__MAGIC_COOKIE
+        return self._header.magic_cookie
