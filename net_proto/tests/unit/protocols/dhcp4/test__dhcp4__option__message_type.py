@@ -129,7 +129,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (ACK).",
             "_message_type": Dhcp4MessageType.ACK,
-            "_str": "message_type Ack",
+            "_str": "message_type ACK",
             "_repr": "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.ACK: 5>)",
             # DHCPv4 Message Type option [RFC 2132]
             #   Code : 0x35 (53, Message Type)
@@ -140,7 +140,7 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         {
             "_description": "The DHCPv4 Message Type option (NAK).",
             "_message_type": Dhcp4MessageType.NAK,
-            "_str": "message_type Nak",
+            "_str": "message_type NAK",
             "_repr": "Dhcp4OptionMessageType(message_type=<Dhcp4MessageType.NAK: 6>)",
             # DHCPv4 Message Type option [RFC 2132]
             #   Code : 0x35 (53, Message Type)
