@@ -65,7 +65,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
         self._validate_sanity()
 
         packet_rx.ethernet = self
-        packet_rx.frame = self._payload
+        packet_rx.frame = packet_rx.frame[len(self._header) :]
 
     @override
     def _validate_integrity(self) -> None:
@@ -93,7 +93,5 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
         Validate sanity of the Ethernet packet after parsing it.
         """
 
-        if int(self._header.type) < 0x0600:
-            raise EthernetSanityError(
-                f"The minimum 'type' field value must be 0x0600. Got: 0x{int(self._header.type):04x}."
-            )
+        if (value := int(self._header.type)) < 0x0600:
+            raise EthernetSanityError(f"The minimum 'type' field value must be 0x0600. Got: 0x{value:04x}.")
