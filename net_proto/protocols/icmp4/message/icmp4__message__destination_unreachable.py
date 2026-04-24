@@ -118,7 +118,7 @@ class Icmp4DestinationUnreachableCode(Icmp4Code):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp4MessageDestinationUnreachable(Icmp4Message):
     """
-    The ICMPv4 Destination Unreachable message support.
+    The ICMPv4 Destination Unreachable message.
     """
 
     type: Icmp4Type = field(
@@ -152,8 +152,12 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
 
         assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum}"
 
+        assert isinstance(
+            self.data, (bytes, memoryview)
+        ), f"The 'data' field must be bytes or memoryview. Got: {type(self.data)!r}."
+
         assert len(self.data) <= IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN, (
-            "The 'data' field length must be a 16-bit unsigned integer less than or "
+            f"The 'data' field length must be a 16-bit unsigned integer less than or "
             f"equal to {IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN}. "
             f"Got: {len(self.data)}"
         )
@@ -197,6 +201,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP4__DESTINATION_UNREACHABLE__LEN,
@@ -289,7 +294,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv4 Destination Unreachable message.
+        Assemble the ICMPv4 Destination Unreachable message into the buffer list.
         """
 
         buffers.append(self._pack_header())
