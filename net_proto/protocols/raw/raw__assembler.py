@@ -67,7 +67,7 @@ class RawAssembler(Raw, ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the Raw packet.
+        Assemble the Raw packet into list of buffers.
         """
 
         buffers.append(self._payload)

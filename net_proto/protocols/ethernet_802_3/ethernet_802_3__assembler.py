@@ -76,7 +76,7 @@ class Ethernet8023Assembler(Ethernet8023[Ethernet8023Payload], ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the Ethernet 802.3 packet into the list of buffers.
+        Assemble the Ethernet 802.3 packet into list of buffers.
         """
 
         buffers.append(bytearray(self._header))

@@ -74,7 +74,7 @@ class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the IPv6 Frag packet.
+        Assemble the IPv6 Frag packet into list of buffers.
         """
 
         buffers.append(bytearray(self._header))

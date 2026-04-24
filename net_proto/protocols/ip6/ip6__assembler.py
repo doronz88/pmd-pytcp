@@ -88,7 +88,7 @@ class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the IPv6 packet.
+        Assemble the IPv6 packet into list of buffers.
         """
 
         buffers.append(bytearray(self._header))

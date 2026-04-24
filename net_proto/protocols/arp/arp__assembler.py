@@ -73,7 +73,7 @@ class ArpAssembler(Arp, ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ARP packet into the list of buffers.
+        Assemble the ARP packet into list of buffers.
         """
 
         buffers.append(bytearray(self._header))

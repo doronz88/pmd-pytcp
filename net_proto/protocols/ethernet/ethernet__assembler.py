@@ -83,7 +83,7 @@ class EthernetAssembler(Ethernet[EthernetPayload], ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the Ethernet packet into the list of buffers.
+        Assemble the Ethernet packet into list of buffers.
         """
 
         buffers.append(bytearray(self._header))

@@ -111,7 +111,7 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the IPv4 packet.
+        Assemble the IPv4 packet into list of buffers.
         """
 
         header = bytearray(self._header)
@@ -196,7 +196,7 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the IPv4 (Frag) packet.
+        Assemble the IPv4 (Frag) packet into list of buffers.
         """
 
         header = bytearray(self._header)

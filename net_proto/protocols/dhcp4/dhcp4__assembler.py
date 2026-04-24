@@ -89,7 +89,7 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the DHCPv4 packet.
+        Assemble the DHCPv4 packet into list of buffers.
         """
 
         raise NotImplementedError(

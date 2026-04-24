@@ -62,7 +62,7 @@ class Icmp6Assembler(Icmp6, ProtoAssembler):
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the ICMPv6 packet.
+        Assemble the ICMPv6 packet into list of buffers.
         """
 
         self._message.assemble(buffers)
