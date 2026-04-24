@@ -51,7 +51,7 @@ type EthernetPayload = (ArpAssembler | Ip4Assembler | Ip4FragAssembler | Ip6Asse
 
 class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
     """
-    The Ethernet protocol base class.
+    The Ethernet protocol base.
     """
 
     _header: EthernetHeader
@@ -82,7 +82,7 @@ class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
         Get the Ethernet packet representation string.
         """
 
-        return f"{type(self).__name__}(header={self._header}, payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
@@ -102,3 +102,11 @@ class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
         """
 
         return self._header
+
+    @property
+    def payload(self) -> P:
+        """
+        Get the Ethernet packet '_payload' attribute.
+        """
+
+        return self._payload
