@@ -49,7 +49,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+      Source MAC Address       +
 # >                                                               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |           EtherType        |
+# |           EtherType           |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 
@@ -90,7 +90,7 @@ class EthernetHeader(ProtoStruct):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the Ethernet header as bytes.
+        Get the Ethernet header as a memoryview.
         """
 
         struct.pack_into(
@@ -111,12 +111,12 @@ class EthernetHeader(ProtoStruct):
         Initialize the Ethernet header from buffer.
         """
 
-        dst, src, type = struct.unpack(ETHERNET__HEADER__STRUCT, buffer[:ETHERNET__HEADER__LEN])
+        dst, src, type_ = struct.unpack(ETHERNET__HEADER__STRUCT, buffer[:ETHERNET__HEADER__LEN])
 
         return cls(
             dst=MacAddress(dst),
             src=MacAddress(src),
-            type=EtherType.from_int(type),
+            type=EtherType.from_int(type_),
         )
 
 
