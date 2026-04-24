@@ -249,7 +249,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         """
 
         (
-            type,
+            type_,
             code,
             cksum,
             hop,
@@ -262,7 +262,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             buffer[:ICMP6__ND__ROUTER_ADVERTISEMENT__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.ND__ROUTER_ADVERTISEMENT
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

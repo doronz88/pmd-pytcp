@@ -247,12 +247,12 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         Initialize the ICMPv6 ND Neighbor Advertisement message from buffer.
         """
 
-        type, code, cksum, flags, target_address = struct.unpack(
+        type_, code, cksum, flags, target_address = struct.unpack(
             ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
             buffer[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

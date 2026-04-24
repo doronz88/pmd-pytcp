@@ -146,16 +146,16 @@ class Icmp4MessageUnknown(Icmp4Message):
         Initialize the ICMPv4 unknown message from buffer.
         """
 
-        type, code, cksum = struct.unpack(ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN])
+        type_, code, cksum = struct.unpack(ICMP4__HEADER__STRUCT, buffer[:ICMP4__HEADER__LEN])
 
         assert (
-            received_type := type
+            received_type := type_
         ) not in Icmp4Type.get_known_values(), (
             f"The 'type' field must not be known. Got: {Icmp4Type.from_int(received_type)!r}"
         )
 
         return cls(
-            type=Icmp4Type.from_int(type),
+            type=Icmp4Type.from_int(type_),
             code=Icmp4Code.from_int(code),
             cksum=cksum,
             data=buffer[ICMP4__HEADER__LEN:],

@@ -148,16 +148,16 @@ class Icmp6MessageUnknown(Icmp6Message):
         Initialize the ICMPv6 unknown message from buffer.
         """
 
-        type, code, cksum = struct.unpack(ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN])
+        type_, code, cksum = struct.unpack(ICMP6__HEADER__STRUCT, buffer[:ICMP6__HEADER__LEN])
 
         assert (
-            received_type := type
+            received_type := type_
         ) not in Icmp6Type.get_known_values(), (
             f"The 'type' field must not be known. Got: {Icmp6Type.from_int(received_type)!r}"
         )
 
         return cls(
-            type=Icmp6Type.from_int(type),
+            type=Icmp6Type.from_int(type_),
             code=Icmp6Code.from_int(code),
             cksum=cksum,
             data=buffer[ICMP6__HEADER__LEN:],

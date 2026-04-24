@@ -220,12 +220,12 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         Initialize the ICMPv6 ND Router Solicitation message from buffer.
         """
 
-        type, code, cksum, _ = struct.unpack(
+        type_, code, cksum, _ = struct.unpack(
             ICMP6__ND__ROUTER_SOLICITATION__STRUCT,
             buffer[:ICMP6__ND__ROUTER_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.ND__ROUTER_SOLICITATION
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

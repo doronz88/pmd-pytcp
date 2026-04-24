@@ -245,12 +245,12 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
         Initialize the ICMPv6 ND Neighbor Solicitation message from buffer.
         """
 
-        type, code, cksum, _, target_address = struct.unpack(
+        type_, code, cksum, _, target_address = struct.unpack(
             ICMP6__ND__NEIGHBOR_SOLICITATION__STRUCT,
             buffer[:ICMP6__ND__NEIGHBOR_SOLICITATION__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.ND__NEIGHBOR_SOLICITATION
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

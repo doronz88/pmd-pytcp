@@ -224,7 +224,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         Initialize the ICMPv6 MLDv2 Multicast Address Record from bytes.
         """
 
-        type, aux_data_len, number_of_sources, multicast_address = struct.unpack(
+        type_, aux_data_len, number_of_sources, multicast_address = struct.unpack(
             ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT,
             buffer[0:ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN],
         )
@@ -244,7 +244,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
         aux_data = bytes(buffer[aux_data_offset : aux_data_offset + (aux_data_len << 2)])
 
         return cls(
-            type=Icmp6Mld2MulticastAddressRecordType.from_int(type),
+            type=Icmp6Mld2MulticastAddressRecordType.from_int(type_),
             multicast_address=Ip6Address(multicast_address),
             source_addresses=source_addresses,
             aux_data=aux_data,

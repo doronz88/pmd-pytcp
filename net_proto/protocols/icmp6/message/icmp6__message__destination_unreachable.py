@@ -210,12 +210,12 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
         Initialize the ICMPv6 Destination Unreachable message from buffer.
         """
 
-        type, code, cksum, _ = struct.unpack(
+        type_, code, cksum, _ = struct.unpack(
             ICMP6__DESTINATION_UNREACHABLE__STRUCT,
             buffer[:ICMP6__DESTINATION_UNREACHABLE__LEN],
         )
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.DESTINATION_UNREACHABLE
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

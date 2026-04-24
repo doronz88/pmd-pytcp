@@ -191,9 +191,9 @@ class Icmp4MessageEchoReply(Icmp4Message):
         Initialize the ICMPv4 Echo Reply message from buffer.
         """
 
-        type, code, cksum, id, seq = struct.unpack(ICMP4__ECHO_REPLY__STRUCT, buffer[:ICMP4__ECHO_REPLY__LEN])
+        type_, code, cksum, id, seq = struct.unpack(ICMP4__ECHO_REPLY__STRUCT, buffer[:ICMP4__ECHO_REPLY__LEN])
 
-        assert (received_type := Icmp4Type.from_int(type)) == (
+        assert (received_type := Icmp4Type.from_int(type_)) == (
             valid_type := Icmp4Type.ECHO_REPLY
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 

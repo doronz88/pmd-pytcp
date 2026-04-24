@@ -243,12 +243,12 @@ class Icmp6Mld2ReportMessage(Icmp6Message):
         Initialize the ICMPv6 MLDv2 Report message from bytes.
         """
 
-        type, code, cksum, _, number_of_records = struct.unpack(
+        type_, code, cksum, _, number_of_records = struct.unpack(
             ICMP6__MLD2__REPORT__STRUCT, buffer[:ICMP6__MLD2__REPORT__LEN]
         )
         record_bytes = buffer[ICMP6__MLD2__REPORT__LEN:]
 
-        assert (received_type := Icmp6Type.from_int(type)) == (
+        assert (received_type := Icmp6Type.from_int(type_)) == (
             valid_type := Icmp6Type.MLD2__REPORT
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
