@@ -82,11 +82,3 @@ class Ethernet8023Assembler(Ethernet8023[Ethernet8023Payload], ProtoAssembler):
         buffers.append(bytearray(self._header))
 
         self._payload.assemble(buffers)
-
-    @property
-    def payload(self) -> Ethernet8023Payload:
-        """
-        Get the Ethernet 802.3 packet '_payload' attribute.
-        """
-
-        return self._payload
