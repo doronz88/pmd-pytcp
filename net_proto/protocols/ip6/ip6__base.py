@@ -80,7 +80,7 @@ class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
         Get the IPv6 packet representation string.
         """
 
-        return f"{type(self).__name__}(header={self._header!r}, " f"payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
@@ -125,6 +125,14 @@ class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
         """
 
         return self._header
+
+    @property
+    def payload(self) -> P:
+        """
+        Get the IPv6 packet '_payload' attribute.
+        """
+
+        return self._payload
 
     @property
     def payload_len(self) -> int:

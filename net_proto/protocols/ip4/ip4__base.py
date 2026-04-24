@@ -89,9 +89,7 @@ class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsPropert
         Get the IPv4 packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, " f"options={self._options!r}, payload={self._payload!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, options={self._options!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
@@ -142,6 +140,14 @@ class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsPropert
         """
 
         return self._options
+
+    @property
+    def payload(self) -> P:
+        """
+        Get the IPv4 packet '_payload' attribute.
+        """
+
+        return self._payload
 
     @property
     def payload_len(self) -> int:

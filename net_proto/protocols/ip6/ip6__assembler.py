@@ -99,19 +99,3 @@ class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
             self._payload.pshdr_sum = self.pshdr_sum
 
         self._payload.assemble(buffers)
-
-    @property
-    def header(self) -> Ip6Header:
-        """
-        Get the IPv6 packet 'header' attribute.
-        """
-
-        return self._header
-
-    @property
-    def payload(self) -> Ip6Payload:
-        """
-        Get the IPv6 packet 'payload' attribute.
-        """
-
-        return self._payload

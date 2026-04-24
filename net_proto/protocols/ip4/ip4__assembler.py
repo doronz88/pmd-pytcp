@@ -126,14 +126,6 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
 
         self._payload.assemble(buffers)
 
-    @property
-    def payload(self) -> Ip4Payload:
-        """
-        Get the IPv4 packet 'payload' attribute.
-        """
-
-        return self._payload
-
 
 class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
     """
@@ -205,11 +197,3 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
         buffers.append(header)
         buffers.append(bytearray(self._options))
         buffers.append(self._payload)
-
-    @property
-    def payload(self) -> Buffer:
-        """
-        Get the IPv4 (Frag) packet 'payload' attribute.
-        """
-
-        return self._payload
