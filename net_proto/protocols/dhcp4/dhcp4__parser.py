@@ -71,6 +71,8 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
                 f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. Got: {len(self._frame)} bytes."
             )
 
+        Dhcp4Options.validate_integrity(frame=self._frame, hlen=len(self._frame))
+
     @override
     def _parse(self) -> None:
         """

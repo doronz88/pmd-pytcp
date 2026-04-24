@@ -480,47 +480,63 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
 
         Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
 
-    def test__dhcp4__options__validate_integrity__length_byte_zero(self) -> None:
+    def test__dhcp4__options__validate_integrity__length_byte_zero_accepted(
+        self,
+    ) -> None:
         """
-        Ensure an option whose length byte is 0 raises Dhcp4IntegrityError
-        (length must be greater than 1).
+        Ensure an option whose length byte is 0 passes integrity. The
+        DHCPv4 wire format (RFC 2132) uses the length byte as data length
+        only; 0 bytes of data is legal. End terminates the scan.
         """
 
-        # Server Identifier with Len=0 — illegal, trips the length check.
+        # Server Identifier with Len=0 (no data), then End.
         frame = self._frame(b"\x36\x00\xff")
 
-        with self.assertRaises(Dhcp4IntegrityError) as error:
-            Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+        Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
 
-        self.assertEqual(
-            str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option length must be greater than 1. Got: 0.",
-            msg="Unexpected integrity error for zero-length option.",
-        )
-
-    def test__dhcp4__options__validate_integrity__length_byte_one(self) -> None:
+    def test__dhcp4__options__validate_integrity__length_byte_one_accepted(
+        self,
+    ) -> None:
         """
-        Ensure an option with length byte = 1 (still less than 2) is rejected.
+        Ensure an option with length byte = 1 passes integrity. The length
+        byte encodes data length only, so 1 byte of data is legal.
         """
 
-        # Server Identifier with Len=1 — illegal, trips the length check.
+        # Server Identifier with Len=1, 1 data byte, then End.
         frame = self._frame(b"\x36\x01\x00\xff")
 
+        Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
+
+    def test__dhcp4__options__validate_integrity__missing_length_byte(
+        self,
+    ) -> None:
+        """
+        Ensure a frame whose final option is truncated at its type byte
+        (length byte missing) raises Dhcp4IntegrityError.
+        """
+
+        # A single type byte at the end of the frame — length byte is absent.
+        frame = self._frame(b"\x36")
+
         with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
 
+        expected_offset = DHCP4__HEADER__LEN
+        hlen = len(frame)
         self.assertEqual(
             str(error.exception),
-            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option length must be greater than 1. Got: 1.",
-            msg="Unexpected integrity error for length-1 option.",
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 option is missing its "
+            f"length byte. Got: offset={expected_offset}, hlen={hlen}",
+            msg="Unexpected integrity error for length-byte-truncated option.",
         )
 
     def test__dhcp4__options__validate_integrity__length_extends_past_hlen(
         self,
     ) -> None:
         """
-        Ensure an option whose length extends past hlen raises
-        Dhcp4IntegrityError.
+        Ensure an option whose data length extends past hlen raises
+        Dhcp4IntegrityError. Total option size on the wire is
+        DHCP4__OPTION__LEN + data_len (2-byte header + data).
         """
 
         # Client Identifier claims Len=10 but only 2 data bytes are present.
@@ -530,7 +546,7 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Options.validate_integrity(frame=frame, hlen=len(frame))
 
-        expected_offset = DHCP4__HEADER__LEN + 0x0A
+        expected_offset = DHCP4__HEADER__LEN + 2 + 0x0A
         hlen = len(frame)
         self.assertEqual(
             str(error.exception),

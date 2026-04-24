@@ -40,6 +40,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__LEN
 from net_proto.protocols.dhcp4.options.dhcp4__option import (
+    DHCP4__OPTION__LEN,
     Dhcp4Option,
     Dhcp4OptionType,
 )
@@ -194,12 +195,16 @@ class Dhcp4Options(ProtoOptions):
                 offset += DHCP4__OPTION__PAD__LEN
                 continue
 
-            if (value := frame[offset + 1]) < 2:
+            # Unlike TCP, the DHCPv4 length byte encodes the data length
+            # only (excluding the 2-byte type+length header), so the
+            # minimum valid value is 0. Total option size on the wire is
+            # DHCP4__OPTION__LEN + data_len.
+            if offset + 1 >= hlen:
                 raise Dhcp4IntegrityError(
-                    f"The DHCPv4 option length must be greater than 1. Got: {value!r}.",
+                    f"The DHCPv4 option is missing its length byte. Got: {offset=}, {hlen=}",
                 )
 
-            offset += frame[offset + 1]
+            offset += DHCP4__OPTION__LEN + frame[offset + 1]
             if offset > hlen:
                 raise Dhcp4IntegrityError(
                     f"The DHCPv4 option length must not extend past the header length. Got: {offset=}, {hlen=}",
