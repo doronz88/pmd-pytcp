@@ -306,15 +306,15 @@ class TestDhcp4ParserHeaderProperties(TestCase):
         frame = self._header_bytes + b"\xff"  # End
         self._parser = Dhcp4Parser(memoryview(frame))
 
-    def test__dhcp4__parser__oper(self) -> None:
+    def test__dhcp4__parser__operation(self) -> None:
         """
-        Ensure 'oper' reflects the header operation field.
+        Ensure 'operation' reflects the header operation field.
         """
 
         self.assertEqual(
-            self._parser.oper,
+            self._parser.operation,
             Dhcp4Operation.REQUEST,
-            msg="Unexpected 'oper' value.",
+            msg="Unexpected 'operation' value.",
         )
 
     def test__dhcp4__parser__hrtype(self) -> None:

@@ -317,7 +317,7 @@ class Dhcp4HeaderProperties(ABC):
     _header: Dhcp4Header
 
     @property
-    def oper(self) -> Dhcp4Operation:
+    def operation(self) -> Dhcp4Operation:
         """
         Get the DHCPv4 header 'operation' field.
         """
