@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ICMPv6 Pi (Prefix Information) option support code.
+This module contains the ICMPv6 ND Pi (Prefix Information) option support code.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__pi.py
 
@@ -44,7 +44,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOptionType,
 )
 
-# The ICMPv6 ND Pi (Prefix Information) option [RFC4861].
+# The ICMPv6 ND Pi (Prefix Information) option [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |    Length     | Prefix Length |L|A|R|    0    |
@@ -71,7 +71,7 @@ ICMP6__ND__OPTION__PI__STRUCT = "! BB BB L L L 16s"
 @dataclass(frozen=True, kw_only=True, slots=True)
 class NdPrefixInfo:
     """
-    Neighbor Discovery Prefix Information.
+    The Neighbor Discovery Prefix Information data.
     """
 
     flag_l: bool
@@ -85,7 +85,7 @@ class NdPrefixInfo:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6NdOptionPi(Icmp6NdOption):
     """
-    The ICMPv6 ND Pi option support.
+    The ICMPv6 ND Pi option support class.
     """
 
     type: Icmp6NdOptionType = field(
@@ -158,7 +158,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             int(self.type),
             self.len >> 3,
             len(self.prefix.mask),
-            (self.flag_l << 7) | (self.flag_a << 6) | (self.flag_r << 5) | (0 & 0b00011111),
+            (self.flag_l << 7) | (self.flag_a << 6) | (self.flag_r << 5),
             self.valid_lifetime,
             self.preferred_lifetime,
             0,
@@ -190,7 +190,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 ND Pi option from bytes.
+        Initialize the ICMPv6 ND Pi option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
@@ -204,7 +204,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionPi._validate_integrity(buffer)
+        cls._validate_integrity(buffer)
 
         (
             _,
