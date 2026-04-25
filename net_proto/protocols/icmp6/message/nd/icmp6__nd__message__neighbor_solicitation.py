@@ -52,7 +52,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
 
-# The ICMPv6 ND Neighbor Solicitation message (135/0) [RFC4861].
+# The ICMPv6 ND Neighbor Solicitation message (135/0) [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |          Checksum             |
@@ -79,7 +79,7 @@ ICMP6__ND__NEIGHBOR_SOLICITATION__STRUCT = "! BBH L 16s"
 
 class Icmp6NdNeighborSolicitationCode(Icmp6Code):
     """
-    The ICMPv6 ND Neighbor Solicitation message 'code' values.
+    The ICMPv6 ND Neighbor Solicitation 'code' field values.
     """
 
     DEFAULT = 0
@@ -155,6 +155,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__ND__NEIGHBOR_SOLICITATION__LEN,
@@ -166,7 +167,7 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
 
         struct.pack_into(
             ICMP6__ND__NEIGHBOR_SOLICITATION__STRUCT,
-            buffer := bytearray(ICMP6__ND__NEIGHBOR_SOLICITATION__LEN),
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),
