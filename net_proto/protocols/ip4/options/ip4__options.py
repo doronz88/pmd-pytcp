@@ -23,7 +23,7 @@
 
 
 """
-Module contains the IPv4 packet option classes.
+This module contains the IPv4 packet option classes.
 
 net_proto/protocols/ip4/options/ip4__options.py
 
