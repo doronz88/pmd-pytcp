@@ -70,7 +70,10 @@ _BASELINE_FRAME = (
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b"
             ),
             "_results": {
-                "error_message": "The wrong packet length (I).",
+                "error_message": (
+                    "The condition 'IP6__HEADER__LEN <= len(self._frame)' must be met. "
+                    "Got: IP6__HEADER__LEN=40, len(self._frame)=39"
+                ),
             },
         },
         {
@@ -84,7 +87,7 @@ _BASELINE_FRAME = (
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
             ),
             "_results": {
-                "error_message": "The 'ver' must be 6.",
+                "error_message": "The 'ver' field must be 6. Got: 5",
             },
         },
         {
@@ -98,7 +101,10 @@ _BASELINE_FRAME = (
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b\x00"
             ),
             "_results": {
-                "error_message": "The wrong packet length (II).",
+                "error_message": (
+                    "The condition 'dlen == len(self._frame) - IP6__HEADER__LEN' must be met. "
+                    "Got: dlen=0, len(self._frame)=41, IP6__HEADER__LEN=40"
+                ),
             },
         },
         {
@@ -112,7 +118,10 @@ _BASELINE_FRAME = (
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
             ),
             "_results": {
-                "error_message": "The wrong packet length (II).",
+                "error_message": (
+                    "The condition 'dlen == len(self._frame) - IP6__HEADER__LEN' must be met. "
+                    "Got: dlen=1, len(self._frame)=40, IP6__HEADER__LEN=40"
+                ),
             },
         },
     ]

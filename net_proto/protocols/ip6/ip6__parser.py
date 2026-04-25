@@ -45,7 +45,7 @@ from net_proto.protocols.ip6.ip6__header import IP6__HEADER__LEN, Ip6Header
 
 class Ip6Parser(Ip6[Buffer], ProtoParser):
     """
-    The IPv6 packet parser
+    The IPv6 packet parser.
     """
 
     _payload: Buffer
@@ -72,17 +72,19 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
 
         if len(self._frame) < IP6__HEADER__LEN:
             raise Ip6IntegrityError(
-                "The wrong packet length (I).",
+                "The condition 'IP6__HEADER__LEN <= len(self._frame)' must be met. "
+                f"Got: {IP6__HEADER__LEN=}, {len(self._frame)=}",
             )
 
-        if self._frame[0] >> 4 != 6:
+        if (value := self._frame[0] >> 4) != 6:
             raise Ip6IntegrityError(
-                "The 'ver' must be 6.",
+                f"The 'ver' field must be 6. Got: {value!r}",
             )
 
-        if int.from_bytes(self._frame[4:6]) != len(self._frame) - IP6__HEADER__LEN:
+        if (dlen := int.from_bytes(self._frame[4:6])) != len(self._frame) - IP6__HEADER__LEN:
             raise Ip6IntegrityError(
-                "The wrong packet length (II).",
+                "The condition 'dlen == len(self._frame) - IP6__HEADER__LEN' must be met. "
+                f"Got: {dlen=}, {len(self._frame)=}, {IP6__HEADER__LEN=}",
             )
 
     @override
@@ -100,14 +102,14 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
         Validate sanity of the IPv6 packet after parsing it.
         """
 
-        if self.hop == 0:
+        if (hop := self.hop) == 0:
             raise Ip6SanityError(
-                "The 'hop' must not be 0.",
+                f"The 'hop' field must not be 0. Got: {hop!r}",
             )
 
-        if self.src.is_multicast:
+        if (src := self.src).is_multicast:
             raise Ip6SanityError(
-                "The 'src' must not be multicast.",
+                f"The 'src' field must not be a multicast address. Got: {src!r}",
             )
 
     @property

@@ -61,7 +61,7 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
             ),
             "_results": {
-                "error_message": "The 'hop' must not be 0.",
+                "error_message": "The 'hop' field must not be 0. Got: 0",
             },
         },
         {
@@ -85,7 +85,10 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
             ),
             "_results": {
-                "error_message": "The 'src' must not be multicast.",
+                "error_message": (
+                    "The 'src' field must not be a multicast address. "
+                    "Got: Ip6Address('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
+                ),
             },
         },
         {
@@ -108,7 +111,7 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
                 b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
             ),
             "_results": {
-                "error_message": "The 'src' must not be multicast.",
+                "error_message": ("The 'src' field must not be a multicast address. Got: Ip6Address('ff02::1')"),
             },
         },
     ],
