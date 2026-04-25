@@ -39,6 +39,7 @@ from net_proto.protocols.icmp4.icmp4__base import Icmp4
 from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
 from net_proto.protocols.icmp4.message.icmp4__message import (
     ICMP4__HEADER__LEN,
+    Icmp4Message,
     Icmp4Type,
 )
 from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
@@ -75,6 +76,22 @@ class Icmp4Parser(Icmp4, ProtoParser):
         packet_rx.icmp4 = self
         packet_rx.frame = packet_rx.frame[len(self) :]
 
+    def _message_class(self) -> type[Icmp4Message]:
+        """
+        Resolve the concrete Icmp4Message subclass that matches the frame's
+        type byte. Falls back to Icmp4MessageUnknown for unrecognised types.
+        """
+
+        match Icmp4Type.from_int(self._frame[0]):
+            case Icmp4Type.ECHO_REPLY:
+                return Icmp4MessageEchoReply
+            case Icmp4Type.DESTINATION_UNREACHABLE:
+                return Icmp4MessageDestinationUnreachable
+            case Icmp4Type.ECHO_REQUEST:
+                return Icmp4MessageEchoRequest
+            case _:
+                return Icmp4MessageUnknown
+
     @override
     def _validate_integrity(self) -> None:
         """
@@ -88,20 +105,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
                 f"{self._ip4__payload_len=}, {len(self._frame)=}"
             )
 
-        match Icmp4Type.from_int(self._frame[0]):
-            case Icmp4Type.ECHO_REPLY:
-                Icmp4MessageEchoReply.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
-
-            case Icmp4Type.DESTINATION_UNREACHABLE:
-                Icmp4MessageDestinationUnreachable.validate_integrity(
-                    frame=self._frame, ip4__payload_len=self._ip4__payload_len
-                )
-
-            case Icmp4Type.ECHO_REQUEST:
-                Icmp4MessageEchoRequest.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
-
-            case _:
-                Icmp4MessageUnknown.validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
+        self._message_class().validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
 
         if inet_cksum(self._frame[: self._ip4__payload_len]):
             raise Icmp4IntegrityError(
@@ -114,18 +118,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
         Parse the ICMPv4 packet.
         """
 
-        match Icmp4Type.from_bytes(self._frame[0:1]):
-            case Icmp4Type.ECHO_REPLY:
-                self._message = Icmp4MessageEchoReply.from_buffer(self._frame)
-
-            case Icmp4Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp4MessageDestinationUnreachable.from_buffer(self._frame)
-
-            case Icmp4Type.ECHO_REQUEST:
-                self._message = Icmp4MessageEchoRequest.from_buffer(self._frame)
-
-            case _:
-                self._message = Icmp4MessageUnknown.from_buffer(self._frame)
+        self._message = self._message_class().from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:
