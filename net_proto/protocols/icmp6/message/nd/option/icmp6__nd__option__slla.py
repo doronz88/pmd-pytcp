@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ICMPv6 Slla (Source Link Layer Address) option support code.
+This module contains the ICMPv6 ND Slla (Source Link Layer Address) option support code.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__slla.py
 
@@ -43,7 +43,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOptionType,
 )
 
-# The ICMPv6 ND Slla (Source Link Layer Address) option [RFC4861].
+# The ICMPv6 ND Slla (Source Link Layer Address) option [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |    Type = 1   |     Length    |                               >
@@ -58,7 +58,7 @@ ICMP6__ND__OPTION__SLLA__STRUCT = "! BB 6s"
 @dataclass(frozen=True, kw_only=False, slots=True)
 class Icmp6NdOptionSlla(Icmp6NdOption):
     """
-    The ICMPv6 ND Slla option support.
+    The ICMPv6 ND Slla option support class.
     """
 
     type: Icmp6NdOptionType = field(
@@ -146,6 +146,6 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionSlla._validate_integrity(buffer)
+        cls._validate_integrity(buffer)
 
         return cls(slla=MacAddress(buffer[2:8]))
