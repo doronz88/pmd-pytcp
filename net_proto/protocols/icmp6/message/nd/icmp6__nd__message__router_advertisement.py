@@ -52,7 +52,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
 
-# The ICMPv6 ND Router Advertisement message (134/0) [RFC4861].
+# The ICMPv6 ND Router Advertisement message (134/0) [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |          Checksum             |
@@ -74,7 +74,7 @@ ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT = "! BBH BBH L L"
 
 class Icmp6NdRouterAdvertisementCode(Icmp6Code):
     """
-    The ICMPv6 ND Router Advertisement message 'code' values.
+    The ICMPv6 ND Router Advertisement 'code' field values.
     """
 
     DEFAULT = 0
@@ -114,7 +114,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
 
         assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
 
-        assert is_uint8(self.hop), f"The 'hop' field must be a 8-bit unsigned integer. Got: {self.hop!r}"
+        assert is_uint8(self.hop), f"The 'hop' field must be an 8-bit unsigned integer. Got: {self.hop!r}"
 
         assert isinstance(self.flag_m, bool), f"The 'flag_m' field must be a boolean. Got: {type(self.flag_m)!r}"
 
@@ -171,6 +171,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
@@ -182,7 +183,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
 
         struct.pack_into(
             ICMP6__ND__ROUTER_ADVERTISEMENT__STRUCT,
-            buffer := bytearray(ICMP6__ND__ROUTER_ADVERTISEMENT__LEN),
+            buffer := bytearray(buffer_len),
             0,
             int(self.type),
             int(self.code),

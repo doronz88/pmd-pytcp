@@ -164,7 +164,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'hop' field must be a 8-bit unsigned integer. Got: {value!r}",
+            f"The 'hop' field must be an 8-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'hop' below minimum.",
         )
 
@@ -181,7 +181,7 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'hop' field must be a 8-bit unsigned integer. Got: {value!r}",
+            f"The 'hop' field must be an 8-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'hop' above maximum.",
         )
 
