@@ -23,7 +23,7 @@
 
 
 """
-Module contains the unknown IPv4 option support code.
+This module contains the unknown IPv4 option support code.
 
 net_proto/protocols/ip4/options/ip4__option__unknown.py
 
@@ -72,7 +72,7 @@ class Ip4OptionUnknown(Ip4Option):
         # Ensure the 'type' field is a valid Ip4OptionType enum member.
         assert isinstance(
             self.type, Ip4OptionType
-        ), f"The 'type' field must be a Ip4OptionType. Got: {type(self.type)!r}"
+        ), f"The 'type' field must be an Ip4OptionType. Got: {type(self.type)!r}"
 
         # Ensure the 'type' field is not a known Ip4OptionType.
         assert (
@@ -101,7 +101,7 @@ class Ip4OptionUnknown(Ip4Option):
 
         struct.pack_into(
             IP4__OPTION__STRUCT,
-            buffer := bytearray(self.len),
+            buffer := bytearray(len(self)),
             0,
             int(self.type),
             self.len,
@@ -120,7 +120,7 @@ class Ip4OptionUnknown(Ip4Option):
         # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
-                "The unknown IPv4 option length must be less than or equal to "
+                "The unknown IPv4 option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 

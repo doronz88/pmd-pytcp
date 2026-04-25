@@ -73,7 +73,7 @@ class TestIp4OptionUnknownAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'type' field must be a Ip4OptionType. Got: {type(value)!r}",
+            f"The 'type' field must be an Ip4OptionType. Got: {type(value)!r}",
             msg="Unexpected assertion message for non-Ip4OptionType 'type'.",
         )
 
@@ -396,7 +396,7 @@ class TestIp4OptionUnknownParser(TestCase):
             "_results": {
                 "error": Ip4IntegrityError,
                 "error_message": (
-                    "[INTEGRITY ERROR][IPv4] The unknown IPv4 option length must "
+                    "[INTEGRITY ERROR][IPv4] The unknown IPv4 option length value must "
                     "be less than or equal to the length of provided bytes (17). "
                     "Got: 18"
                 ),
