@@ -48,7 +48,7 @@ from net_proto.lib.int_checks import (
 )
 from net_proto.lib.proto_struct import ProtoStruct
 
-# The IPv6 packet header [RFC 2460].
+# The IPv6 packet header [RFC 8200].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |Version|   DSCP    |ECN|           Flow Label                  |
