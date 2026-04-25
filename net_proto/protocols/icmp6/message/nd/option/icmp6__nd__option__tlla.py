@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ICMPv6 Tlla (Target Link Layer Address) option support code.
+This module contains the ICMPv6 ND Tlla (Target Link Layer Address) option support code.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__tlla.py
 
@@ -43,7 +43,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOptionType,
 )
 
-# The ICMPv6 ND Tlla (Target Link Layer Address) option [RFC4861].
+# The ICMPv6 ND Tlla (Target Link Layer Address) option [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |    Type = 2   |     Length    |                               >
@@ -58,7 +58,7 @@ ICMP6__ND__OPTION__TLLA__STRUCT = "! BB 6s"
 @dataclass(frozen=True, kw_only=False, slots=True)
 class Icmp6NdOptionTlla(Icmp6NdOption):
     """
-    The ICMPv6 ND Tlla option support.
+    The ICMPv6 ND Tlla option support class.
     """
 
     type: Icmp6NdOptionType = field(
@@ -110,7 +110,7 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the integrity of the ICMPv6 ND Tlla option before parsing it.
+        Validate the ICMPv6 ND Tlla option integrity before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.
@@ -146,6 +146,6 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionTlla._validate_integrity(buffer)
+        cls._validate_integrity(buffer)
 
         return cls(tlla=MacAddress(buffer[2:8]))
