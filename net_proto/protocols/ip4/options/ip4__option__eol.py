@@ -23,7 +23,7 @@
 
 
 """
-Module contains the IPv4 Eol (End of Option List) option support code.
+This module contains the IPv4 Eol (End of Option List) option support code.
 
 net_proto/protocols/ip4/options/ip4__option__eol.py
 
@@ -36,7 +36,7 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 
-# The Ip4 Eol (End of Option List) option [RFC 793].
+# The IPv4 Eol (End of Option List) option [RFC 791].
 
 # +-+-+-+-+-+-+-+-+
 # |    Type = 0   |
@@ -50,7 +50,7 @@ IP4__OPTION__EOL__STRUCT = "! B"
 @dataclass(frozen=True, kw_only=False, slots=True)
 class Ip4OptionEol(Ip4Option):
     """
-    The IPv4 Eol (End of Option List) option support.
+    The IPv4 Eol (End of Option List) option support class.
     """
 
     type: Ip4OptionType = field(
@@ -73,7 +73,7 @@ class Ip4OptionEol(Ip4Option):
     @override
     def __str__(self) -> str:
         """
-        Get the the IPv4 Eol option log string.
+        Get the IPv4 Eol option log string.
         """
 
         return "eol"
