@@ -38,9 +38,9 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip6Address
 from net_proto import (
+    Icmp6Mld2MessageReport,
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
-    Icmp6Mld2ReportMessage,
     Icmp6Parser,
     Ip6Parser,
     PacketRx,
@@ -82,7 +82,7 @@ def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
                 b"\x8f\x00\x70\xff\x00\x00\x00\x00"
             ),
             "_results": {
-                "message": Icmp6Mld2ReportMessage(
+                "message": Icmp6Mld2MessageReport(
                     cksum=0x70FF,
                     records=[],
                 ),
@@ -105,7 +105,7 @@ def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
             ),
             "_results": {
-                "message": Icmp6Mld2ReportMessage(
+                "message": Icmp6Mld2MessageReport(
                     cksum=0x1583,
                     records=[
                         Icmp6Mld2MulticastAddressRecord(
@@ -159,7 +159,7 @@ def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
                 b"\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
             "_results": {
-                "message": Icmp6Mld2ReportMessage(
+                "message": Icmp6Mld2MessageReport(
                     cksum=0x52F0,
                     records=[
                         Icmp6Mld2MulticastAddressRecord(
@@ -217,7 +217,7 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
 
     def test__icmp6__mld2__message__report__parser(self) -> None:
         """
-        Ensure the ICMPv6 parser produces an Icmp6Mld2ReportMessage whose
+        Ensure the ICMPv6 parser produces an Icmp6Mld2MessageReport whose
         fields match the expected reference message for each frame.
         """
 
@@ -231,15 +231,15 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
 
     def test__icmp6__mld2__message__report__parser__message_type(self) -> None:
         """
-        Ensure the parsed message is an Icmp6Mld2ReportMessage instance.
+        Ensure the parsed message is an Icmp6Mld2MessageReport instance.
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
 
         self.assertIsInstance(
             icmp6_parser.message,
-            Icmp6Mld2ReportMessage,
-            msg=f"Parsed message must be Icmp6Mld2ReportMessage for case: {self._description}",
+            Icmp6Mld2MessageReport,
+            msg=f"Parsed message must be Icmp6Mld2MessageReport for case: {self._description}",
         )
 
     def test__icmp6__mld2__message__report__parser__frame_advanced(self) -> None:
@@ -263,10 +263,10 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
-        expected = cast(Icmp6Mld2ReportMessage, self._results["message"]).number_of_records
+        expected = cast(Icmp6Mld2MessageReport, self._results["message"]).number_of_records
 
         self.assertEqual(
-            cast(Icmp6Mld2ReportMessage, icmp6_parser.message).number_of_records,
+            cast(Icmp6Mld2MessageReport, icmp6_parser.message).number_of_records,
             expected,
             msg=f"'number_of_records' must match the reference for case: {self._description}",
         )

@@ -37,7 +37,7 @@ from net_addr import Ip6Address, MacAddress
 from net_proto import (
     IP6__DEFAULT_HOP_LIMIT,
     Icmp6,
-    Icmp6Mld2ReportMessage,
+    Icmp6Mld2MessageReport,
     Icmp6NdMessage,
     Ip6Assembler,
     IpProto,
@@ -253,7 +253,7 @@ class PacketHandlerIp6Tx(ABC):
         if (
             ip6__src.is_unspecified
             and isinstance(ip6__payload, Icmp6)
-            and isinstance(ip6__payload.message, Icmp6Mld2ReportMessage)
+            and isinstance(ip6__payload.message, Icmp6Mld2MessageReport)
         ):
             self._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(

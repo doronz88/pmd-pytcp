@@ -38,10 +38,10 @@ from parameterized import parameterized_class  # type: ignore
 from net_addr import Ip6Address
 from net_proto import (
     Icmp6Assembler,
+    Icmp6Mld2MessageReport,
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
     Icmp6Mld2ReportCode,
-    Icmp6Mld2ReportMessage,
     Icmp6Type,
 )
 from net_proto.lib.buffer import Buffer
@@ -57,7 +57,7 @@ from net_proto.lib.buffer import Buffer
             "_results": {
                 "__len__": 8,
                 "__str__": "ICMPv6 MLDv2 Report",
-                "__repr__": "Icmp6Mld2ReportMessage(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, cksum=0, records=[])",
+                "__repr__": "Icmp6Mld2MessageReport(code=<Icmp6Mld2ReportCode.DEFAULT: 0>, cksum=0, records=[])",
                 "__bytes__": (
                     # ICMPv6 MLDv2 Report
                     #   Type         : 143 (MLDv2 Report)
@@ -95,7 +95,7 @@ from net_proto.lib.buffer import Buffer
                     "addr ff02::1, sources (2001:db8::1, 2001:db8::2)]"
                 ),
                 "__repr__": (
-                    "Icmp6Mld2ReportMessage("
+                    "Icmp6Mld2MessageReport("
                     "code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
                     "cksum=0, "
                     "records=["
@@ -187,7 +187,7 @@ from net_proto.lib.buffer import Buffer
                     "0123456789ABCDEF']"
                 ),
                 "__repr__": (
-                    "Icmp6Mld2ReportMessage("
+                    "Icmp6Mld2MessageReport("
                     "code=<Icmp6Mld2ReportCode.DEFAULT: 0>, "
                     "cksum=0, "
                     "records=["
@@ -308,7 +308,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         Build an assembler wrapping the parametrized MLDv2 Report message.
         """
 
-        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2ReportMessage(**self._kwargs))
+        self._icmp6__assembler = Icmp6Assembler(icmp6__message=Icmp6Mld2MessageReport(**self._kwargs))
 
     def test__icmp6__mld2__message__report__assembler__len(self) -> None:
         """
@@ -398,7 +398,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).number_of_records,
+            cast(Icmp6Mld2MessageReport, self._icmp6__assembler.message).number_of_records,
             self._results["number_of_records"],
             msg=f"Unexpected 'number_of_records' for case: {self._description}",
         )
@@ -409,7 +409,7 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
 
         self.assertEqual(
-            cast(Icmp6Mld2ReportMessage, self._icmp6__assembler.message).records,
+            cast(Icmp6Mld2MessageReport, self._icmp6__assembler.message).records,
             self._results["records"],
             msg=f"Unexpected 'records' for case: {self._description}",
         )

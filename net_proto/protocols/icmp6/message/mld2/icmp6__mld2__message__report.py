@@ -90,7 +90,7 @@ class Icmp6Mld2ReportCode(Icmp6Code):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6Mld2ReportMessage(Icmp6Message):
+class Icmp6Mld2MessageReport(Icmp6Message):
     """
     The ICMPv6 MLDv2 Report message.
     """

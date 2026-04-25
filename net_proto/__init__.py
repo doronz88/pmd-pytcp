@@ -213,8 +213,8 @@ from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
     ICMP6__MLD2__REPORT__LEN,
+    Icmp6Mld2MessageReport,
     Icmp6Mld2ReportCode,
-    Icmp6Mld2ReportMessage,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_record import (
     Icmp6Mld2MulticastAddressRecord,
@@ -499,7 +499,7 @@ __all__ = [
     "Icmp6Mld2MulticastAddressRecord",
     "Icmp6Mld2MulticastAddressRecordType",
     "Icmp6Mld2ReportCode",
-    "Icmp6Mld2ReportMessage",
+    "Icmp6Mld2MessageReport",
     "Icmp6NdMessage",
     "Icmp6NdNeighborAdvertisementCode",
     "Icmp6NdMessageNeighborAdvertisement",

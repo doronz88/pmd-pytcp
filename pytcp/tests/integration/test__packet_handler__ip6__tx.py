@@ -46,7 +46,7 @@ from net_proto import (
     IpProto,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
-    Icmp6Mld2ReportMessage,
+    Icmp6Mld2MessageReport,
 )
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -330,7 +330,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": Ip6Address("ff02::16"),
                 "ip6__hop": 1,
                 "ip6__payload": Icmp6Assembler(
-                    icmp6__message=Icmp6Mld2ReportMessage(records=[]),
+                    icmp6__message=Icmp6Mld2MessageReport(records=[]),
                 ),
             },
             "_expected__frames_tx": [

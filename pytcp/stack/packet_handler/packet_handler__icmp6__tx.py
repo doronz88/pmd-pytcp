@@ -38,9 +38,9 @@ from net_proto import (
     Icmp6Assembler,
     Icmp6DestinationUnreachableCode,
     Icmp6Message,
+    Icmp6Mld2MessageReport,
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
-    Icmp6Mld2ReportMessage,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
@@ -183,7 +183,7 @@ class PacketHandlerIcmp6Tx(ABC):
                 ip6__src=(self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()),
                 ip6__dst=Ip6Address("ff02::16"),
                 ip6__hop=1,
-                icmp6__message=Icmp6Mld2ReportMessage(records=list(icmp6_mlr2_multicast_address_record)),
+                icmp6__message=Icmp6Mld2MessageReport(records=list(icmp6_mlr2_multicast_address_record)),
             )
 
             if tx_status in {

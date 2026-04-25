@@ -50,7 +50,7 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
     Icmp6MessageEchoRequest,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
-    Icmp6Mld2ReportMessage,
+    Icmp6Mld2MessageReport,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_record import (
     Icmp6Mld2MulticastAddressRecord,
@@ -650,7 +650,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__src": STACK__IP6_HOST.address,
                 "ip6__dst": IP6__MULTICAST__MLD2_ROUTERS,
                 "ip6__hop": 1,
-                "icmp6__message": Icmp6Mld2ReportMessage(
+                "icmp6__message": Icmp6Mld2MessageReport(
                     records=[
                         Icmp6Mld2MulticastAddressRecord(
                             type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,

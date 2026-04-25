@@ -38,10 +38,10 @@ from net_addr import Ip6Address
 from net_proto import (
     ICMP6__MLD2__REPORT__LEN,
     IP6__PAYLOAD__MAX_LEN,
+    Icmp6Mld2MessageReport,
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
     Icmp6Mld2ReportCode,
-    Icmp6Mld2ReportMessage,
 )
 from net_proto.lib.int_checks import UINT_16__MAX, UINT_16__MIN
 
@@ -72,7 +72,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["code"] = value = "not an Icmp6Mld2ReportCode"
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(**self._kwargs)
+            Icmp6Mld2MessageReport(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -88,7 +88,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         for code in Icmp6Mld2ReportCode:
             with self.subTest(code=code):
-                message = Icmp6Mld2ReportMessage(**{**self._kwargs, "code": code})
+                message = Icmp6Mld2MessageReport(**{**self._kwargs, "code": code})
                 self.assertEqual(
                     message.code,
                     code,
@@ -104,7 +104,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(**self._kwargs)
+            Icmp6Mld2MessageReport(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -121,7 +121,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(**self._kwargs)
+            Icmp6Mld2MessageReport(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -137,7 +137,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
 
         for cksum in (UINT_16__MIN, UINT_16__MAX):
             with self.subTest(cksum=cksum):
-                message = Icmp6Mld2ReportMessage(**{**self._kwargs, "cksum": cksum})
+                message = Icmp6Mld2MessageReport(**{**self._kwargs, "cksum": cksum})
                 self.assertEqual(
                     message.cksum,
                     cksum,
@@ -163,7 +163,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         self._kwargs["records"] = [offender]
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage(**self._kwargs)
+            Icmp6Mld2MessageReport(**self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -188,7 +188,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
             aux_data=b"X" * (records_len - 20),
         )
 
-        message = Icmp6Mld2ReportMessage(**{**self._kwargs, "records": [record]})
+        message = Icmp6Mld2MessageReport(**{**self._kwargs, "records": [record]})
 
         self.assertEqual(
             len(message),
@@ -202,7 +202,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         8-byte header message.
         """
 
-        message = Icmp6Mld2ReportMessage(**self._kwargs)
+        message = Icmp6Mld2MessageReport(**self._kwargs)
 
         self.assertEqual(
             message.records,
@@ -241,7 +241,7 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
             ),
         ]
 
-        message = Icmp6Mld2ReportMessage(**{**self._kwargs, "records": records})
+        message = Icmp6Mld2MessageReport(**{**self._kwargs, "records": records})
 
         self.assertEqual(
             message.records,
@@ -267,7 +267,7 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
         """
 
         with self.assertRaises(AssertionError) as error:
-            Icmp6Mld2ReportMessage.from_buffer(
+            Icmp6Mld2MessageReport.from_buffer(
                 # ICMPv6 (invalid type)
                 #   Type         : 255 (unknown)
                 #   Code         : 0
@@ -289,7 +289,7 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
         a message with the default code, zero checksum, and no records.
         """
 
-        message = Icmp6Mld2ReportMessage.from_buffer(
+        message = Icmp6Mld2MessageReport.from_buffer(
             # ICMPv6 MLDv2 Report (no records)
             #   Type         : 143 (MLDv2 Report)
             #   Code         : 0 (Default)

@@ -37,7 +37,7 @@ from net_proto import (
     Icmp6Assembler,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
-    Icmp6Mld2ReportMessage,
+    Icmp6Mld2MessageReport,
 )
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
@@ -275,7 +275,7 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=Ip6Address("ff02::16"),
             ip6__hop=1,
-            icmp6__message=Icmp6Mld2ReportMessage(records=[]),
+            icmp6__message=Icmp6Mld2MessageReport(records=[]),
         )
 
         self.assertEqual(

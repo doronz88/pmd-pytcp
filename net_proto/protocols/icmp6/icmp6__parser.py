@@ -54,7 +54,7 @@ from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
-    Icmp6Mld2ReportMessage,
+    Icmp6Mld2MessageReport,
 )
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertisement import (
     Icmp6NdMessageNeighborAdvertisement,
@@ -130,7 +130,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 Icmp6NdMessageNeighborAdvertisement.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case Icmp6Type.MLD2__REPORT:
-                Icmp6Mld2ReportMessage.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
+                Icmp6Mld2MessageReport.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
             case _:
                 Icmp6MessageUnknown.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
@@ -183,7 +183,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 )
 
             case Icmp6Type.MLD2__REPORT:
-                self._message = Icmp6Mld2ReportMessage.from_buffer(
+                self._message = Icmp6Mld2MessageReport.from_buffer(
                     self._frame,
                 )
 
