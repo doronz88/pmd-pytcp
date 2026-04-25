@@ -25,7 +25,7 @@
 """
 This module contains the ICMPv6 Echo Request message support class.
 
-net_proto/protocols/icmp6/message/icmp6_message__echo_request.py
+net_proto/protocols/icmp6/message/icmp6__message__echo_request.py
 
 ver 3.0.4
 """
@@ -45,7 +45,7 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 )
 from net_proto.protocols.ip6.ip6__header import IP6__PAYLOAD__MAX_LEN
 
-# The 'Echo Request' message (128/0) [RFC4443].
+# The ICMPv6 Echo Request message (128/0) [RFC 4443].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |           Checksum            |
@@ -61,7 +61,7 @@ ICMP6__ECHO_REQUEST__STRUCT = "! BBH HH"
 
 class Icmp6EchoRequestCode(Icmp6Code):
     """
-    The ICMPv6 Echo Request message 'code' values.
+    The ICMPv6 Echo Request 'code' field values.
     """
 
     DEFAULT = 0
@@ -141,6 +141,7 @@ class Icmp6MessageEchoRequest(Icmp6Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__ECHO_REQUEST__LEN,
