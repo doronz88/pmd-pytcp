@@ -57,7 +57,10 @@ _BASELINE_FRAME = b"\xff\x00\x00\x00\x00\x00\x00\x00"
             # branch before any field is read.
             "_frame_rx": b"",
             "_results": {
-                "error_message": "The wrong packet length (I).",
+                "error_message": (
+                    "The condition 'IP6_FRAG__HEADER__LEN <= len(self._frame)' must be met. "
+                    "Got: IP6_FRAG__HEADER__LEN=8, len(self._frame)=0"
+                ),
             },
         },
         {
@@ -67,7 +70,10 @@ _BASELINE_FRAME = b"\xff\x00\x00\x00\x00\x00\x00\x00"
             # integrity stage.
             "_frame_rx": b"\xff\x00\x00\x00\x00\x00\x00",
             "_results": {
-                "error_message": "The wrong packet length (I).",
+                "error_message": (
+                    "The condition 'IP6_FRAG__HEADER__LEN <= len(self._frame)' must be met. "
+                    "Got: IP6_FRAG__HEADER__LEN=8, len(self._frame)=7"
+                ),
             },
         },
     ],

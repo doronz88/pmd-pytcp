@@ -45,7 +45,7 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
 
 class Ip6FragParser(Ip6Frag, ProtoParser):
     """
-    IPv6 Frag packet parser.
+    The IPv6 Frag packet parser.
     """
 
     _payload: Buffer
@@ -56,7 +56,6 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
         """
 
         self._frame = packet_rx.frame
-        self._ip6__dlen = packet_rx.ip6.dlen
 
         self._validate_integrity()
         self._parse()
@@ -73,7 +72,8 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
 
         if len(self._frame) < IP6_FRAG__HEADER__LEN:
             raise Ip6FragIntegrityError(
-                "The wrong packet length (I).",
+                "The condition 'IP6_FRAG__HEADER__LEN <= len(self._frame)' must be met. "
+                f"Got: {IP6_FRAG__HEADER__LEN=}, {len(self._frame)=}",
             )
 
     @override
@@ -83,7 +83,7 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
         """
 
         self._header = Ip6FragHeader.from_buffer(self._frame)
-        self._payload = self._frame[len(self._header) : len(self._header) + self._ip6__dlen]
+        self._payload = self._frame[len(self._header) :]
 
     @override
     def _validate_sanity(self) -> None:
