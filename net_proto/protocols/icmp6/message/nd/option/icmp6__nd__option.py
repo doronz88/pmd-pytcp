@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ICMPv6 ND option support code.
+This module contains the ICMPv6 ND option base class.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option.py
 
@@ -40,7 +40,7 @@ ICMP6__ND__OPTION__LEN = 2
 
 class Icmp6NdOptionType(ProtoOptionType):
     """
-    The ICMPv6 ND option 'type' values.
+    The ICMPv6 ND option 'type' field values.
     """
 
     SLLA = 1
@@ -51,5 +51,5 @@ class Icmp6NdOptionType(ProtoOptionType):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6NdOption(ProtoOption):
     """
-    ICMPv6 ND option.
+    The ICMPv6 ND option support class.
     """
