@@ -23,7 +23,7 @@
 
 
 """
-Module contains the IPv4 option support code.
+This module contains the IPv4 option support code.
 
 net_proto/protocols/ip4/options/ip4__option.py
 
@@ -40,7 +40,7 @@ IP4__OPTION__LEN = 2
 
 class Ip4OptionType(ProtoOptionType):
     """
-    IPv4 option types.
+    The IPv4 option 'type' field values.
     """
 
     EOL = 0
