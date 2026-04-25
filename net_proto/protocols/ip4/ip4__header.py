@@ -72,6 +72,8 @@ IP4__HEADER__LEN = 20
 IP4__HEADER__MAX_LEN = 60  # IHL is a 4-bit field counting 4-byte words: 15 * 4 = 60.
 IP4__HEADER__STRUCT = "! BBH HH BBH L L"
 IP4__PAYLOAD__MAX_LEN = UINT_16__MAX - IP4__HEADER__LEN
+IP4__DEFAULT_TTL = 64
+IP4__MIN_MTU = 576  # RFC 791
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

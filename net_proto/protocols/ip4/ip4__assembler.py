@@ -40,8 +40,7 @@ from net_proto.lib.int_checks import is_4_byte_alligned
 from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.ip4.ip4__base import Ip4, Ip4Payload
-from net_proto.protocols.ip4.ip4__defaults import IP4__DEFAULT_TTL
-from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, Ip4Header
+from net_proto.protocols.ip4.ip4__header import IP4__DEFAULT_TTL, IP4__HEADER__LEN, Ip4Header
 from net_proto.protocols.ip4.options.ip4__option__eol import Ip4OptionEol
 from net_proto.protocols.ip4.options.ip4__options import (
     IP4__OPTIONS__MAX_LEN,

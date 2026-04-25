@@ -271,17 +271,15 @@ from net_proto.protocols.ip4.ip4__assembler import (
     Ip4FragAssembler,
 )
 from net_proto.protocols.ip4.ip4__base import Ip4Payload
-from net_proto.protocols.ip4.ip4__defaults import (
-    IP4__DEFAULT_TTL,
-    IP4__MIN_MTU,
-)
 from net_proto.protocols.ip4.ip4__errors import (
     Ip4IntegrityError,
     Ip4SanityError,
 )
 from net_proto.protocols.ip4.ip4__header import (
+    IP4__DEFAULT_TTL,
     IP4__HEADER__LEN,
     IP4__HEADER__MAX_LEN,
+    IP4__MIN_MTU,
     IP4__PAYLOAD__MAX_LEN,
     Ip4Header,
 )

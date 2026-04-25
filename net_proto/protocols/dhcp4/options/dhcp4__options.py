@@ -79,8 +79,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__subnet_mask import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
     Dhcp4OptionUnknown,
 )
-from net_proto.protocols.ip4.ip4__defaults import IP4__MIN_MTU
-from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
+from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, IP4__MIN_MTU
 from net_proto.protocols.udp.udp__header import UDP__HEADER__LEN
 
 DHCP4__OPTIONS__MAX_LEN = IP4__MIN_MTU - IP4__HEADER__LEN - UDP__HEADER__LEN - DHCP4__HEADER__LEN

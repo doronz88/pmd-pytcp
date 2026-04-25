@@ -42,8 +42,7 @@ from net_proto import (
     Icmp4DestinationUnreachableCode,
     Icmp4MessageDestinationUnreachable,
 )
-from net_proto.protocols.ip4.ip4__defaults import IP4__MIN_MTU
-from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
+from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, IP4__MIN_MTU
 
 
 class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):

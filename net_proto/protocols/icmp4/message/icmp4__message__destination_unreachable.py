@@ -42,11 +42,9 @@ from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Message,
     Icmp4Type,
 )
-from net_proto.protocols.ip4.ip4__defaults import (
-    IP4__MIN_MTU,
-)
 from net_proto.protocols.ip4.ip4__header import (
     IP4__HEADER__LEN,
+    IP4__MIN_MTU,
     IP4__PAYLOAD__MAX_LEN,
 )
 
