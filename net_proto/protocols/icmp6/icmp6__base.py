@@ -49,7 +49,7 @@ class Icmp6(Proto):
     @override
     def __len__(self) -> int:
         """
-        Get the ICMPv6 the packet length.
+        Get the ICMPv6 packet length.
         """
 
         return len(self._message)

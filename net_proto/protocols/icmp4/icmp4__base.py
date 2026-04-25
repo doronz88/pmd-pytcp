@@ -82,7 +82,7 @@ class Icmp4(Proto):
     @property
     def message(self) -> Icmp4Message:
         """
-        Get the ICMPv4 packet 'message' attribute.
+        Get the ICMPv4 packet '_message' attribute.
         """
 
         return self._message
