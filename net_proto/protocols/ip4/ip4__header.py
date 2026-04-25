@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv4 packet header class.
+This module contains the IPv4 packet header.
 
 net_proto/protocols/ip4/ip4__header.py
 
@@ -107,7 +107,12 @@ class Ip4Header(ProtoStruct):
         Ensure integrity of the Ip4 header fields.
         """
 
-        assert IP4__HEADER__LEN <= self.hlen <= IP4__HEADER__MAX_LEN and is_4_byte_alligned(self.hlen), (
+        assert IP4__HEADER__LEN <= self.hlen <= IP4__HEADER__MAX_LEN, (
+            f"The 'hlen' field must be a 4-byte-aligned integer in "
+            f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {self.hlen!r}"
+        )
+
+        assert is_4_byte_alligned(self.hlen), (
             f"The 'hlen' field must be a 4-byte-aligned integer in "
             f"[{IP4__HEADER__LEN}, {IP4__HEADER__MAX_LEN}]. Got: {self.hlen!r}"
         )
@@ -116,9 +121,15 @@ class Ip4Header(ProtoStruct):
 
         assert is_uint2(self.ecn), f"The 'ecn' field must be a 2-bit unsigned integer. Got: {self.ecn!r}"
 
-        assert (
-            is_uint16(self.plen) and self.plen >= IP4__HEADER__LEN
-        ), f"The 'plen' field must be a 16-bit unsigned integer greater than or equal to 20. Got: {self.plen!r}"
+        assert is_uint16(self.plen), (
+            f"The 'plen' field must be a 16-bit unsigned integer greater than or equal to "
+            f"{IP4__HEADER__LEN}. Got: {self.plen!r}"
+        )
+
+        assert self.plen >= IP4__HEADER__LEN, (
+            f"The 'plen' field must be a 16-bit unsigned integer greater than or equal to "
+            f"{IP4__HEADER__LEN}. Got: {self.plen!r}"
+        )
 
         assert is_uint16(self.id), f"The 'id' field must be a 16-bit unsigned integer. Got: {self.id!r}"
 
@@ -126,9 +137,9 @@ class Ip4Header(ProtoStruct):
 
         assert isinstance(self.flag_mf, bool), f"The 'flag_mf' field must be a boolean. Got: {type(self.flag_mf)!r}"
 
-        assert is_uint13(self.offset >> 3), (
-            f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). " f"Got: {self.offset!r}"
-        )
+        assert is_uint13(
+            self.offset >> 3
+        ), f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). Got: {self.offset!r}"
 
         assert is_8_byte_alligned(self.offset), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
 
