@@ -23,9 +23,9 @@
 
 
 """
-This module contains the ICMPv6 message support class.
+This module contains the ICMPv6 Echo Reply message support class.
 
-net_proto/protocols/icmp6/message/icmp6_message__echo_reply.py
+net_proto/protocols/icmp6/message/icmp6__message__echo_reply.py
 
 ver 3.0.4
 """
@@ -45,7 +45,7 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 )
 from net_proto.protocols.ip6.ip6__header import IP6__PAYLOAD__MAX_LEN
 
-# The ICMPv6 Echo Reply message (129/0) [RFC4443].
+# The ICMPv6 Echo Reply message (129/0) [RFC 4443].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |           Checksum            |
@@ -141,6 +141,7 @@ class Icmp6MessageEchoReply(Icmp6Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__ECHO_REPLY__LEN,
