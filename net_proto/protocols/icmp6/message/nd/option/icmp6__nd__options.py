@@ -23,7 +23,7 @@
 
 
 """
-This module contains ICMPv6 Neighbor Discovery option support classes.
+This module contains the ICMPv6 Neighbor Discovery option support classes.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__options.py
 
@@ -87,7 +87,8 @@ class Icmp6NdOptions(ProtoOptions):
     @property
     def pi(self) -> list[NdPrefixInfo]:
         """
-        Get the value of the ICMPv6 ND Pi option if present.
+        Get the prefix info entries from every ICMPv6 ND Pi option
+        present, returning an empty list if none are present.
         """
 
         prefix_info_list: list[NdPrefixInfo] = []
@@ -135,7 +136,7 @@ class Icmp6NdOptions(ProtoOptions):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Read the ICMPv6 ND options from bytes.
+        Read the ICMPv6 ND options from buffer.
         """
 
         offset = 0
