@@ -25,7 +25,7 @@
 """
 This module contains the ICMPv6 unknown message support class.
 
-net_proto/protocols/icmp6/message/icmp6_message__unknown.py
+net_proto/protocols/icmp6/message/icmp6__message__unknown.py
 
 ver 3.0.4
 """
@@ -49,7 +49,7 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6MessageUnknown(Icmp6Message):
     """
-    The ICMPv6 unknown message support.
+    The ICMPv6 unknown message.
     """
 
     type: Icmp6Type
@@ -88,9 +88,8 @@ class Icmp6MessageUnknown(Icmp6Message):
         """
 
         return (
-            f"ICMPv6 Unknown Message, type {int(self.type)}, "
-            f"code {int(self.code)}, cksum {self.cksum}, "
-            f"len {len(self)} ({ICMP6__HEADER__LEN}+{len(self.data)})"
+            f"ICMPv6 Unknown Message, type {int(self.type)}, code {int(self.code)}, "
+            f"cksum {self.cksum}, len {len(self)} ({ICMP6__HEADER__LEN}+{len(self.data)})"
         )
 
     @override
@@ -104,6 +103,7 @@ class Icmp6MessageUnknown(Icmp6Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__HEADER__LEN,
