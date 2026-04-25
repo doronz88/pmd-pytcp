@@ -52,7 +52,7 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
 
-# The ICMPv6 ND Neighbor Advertisement message (136/0) [RFC4861].
+# The ICMPv6 ND Neighbor Advertisement message (136/0) [RFC 4861].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |          Checksum             |
@@ -78,7 +78,7 @@ ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT = "! BBH L 16s"
 
 class Icmp6NdNeighborAdvertisementCode(Icmp6Code):
     """
-    The ICMPv6 ND Neighbor Advertisement message 'code' values.
+    The ICMPv6 ND Neighbor Advertisement 'code' field values.
     """
 
     DEFAULT = 0
@@ -87,7 +87,7 @@ class Icmp6NdNeighborAdvertisementCode(Icmp6Code):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
     """
-    The ICMPv6 ND Neighbor Advertisement message class.
+    The ICMPv6 ND Neighbor Advertisement message.
     """
 
     type: Icmp6Type = field(
@@ -166,6 +166,7 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
@@ -208,14 +209,14 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         if self.flag_s is True:
             if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
                 raise Icmp6SanityError(
-                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is set then 'ip6__dst' address "
+                    "ND Neighbor Advertisement - [RFC 4861] If 'flag_s' flag is set then 'ip6__dst' address "
                     f"must be either unicast or all-nodes multicast. Got: {ip6__dst!r}",
                 )
 
         if self.flag_s is False:
             if not ip6__dst.is_multicast__all_nodes:
                 raise Icmp6SanityError(
-                    "ND Neighbor Advertisement - [RFC 4861] If 'na_flag_s' flag is not set then 'ip6__dst' address "
+                    "ND Neighbor Advertisement - [RFC 4861] If 'flag_s' flag is not set then 'ip6__dst' address "
                     f"must be all-nodes multicast address. Got: {ip6__dst!r}",
                 )
 

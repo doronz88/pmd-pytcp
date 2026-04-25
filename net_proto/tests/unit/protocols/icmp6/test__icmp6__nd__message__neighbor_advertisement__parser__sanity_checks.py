@@ -199,7 +199,7 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagSet(TestCa
             str(error.exception),
             (
                 "[SANITY ERROR][ICMPv6] ND Neighbor Advertisement - [RFC 4861] "
-                "If 'na_flag_s' flag is set then 'ip6__dst' address must be either "
+                "If 'flag_s' flag is set then 'ip6__dst' address must be either "
                 f"unicast or all-nodes multicast. Got: {dst!r}"
             ),
             msg="Unexpected sanity-error message for non-unicast/all-nodes 'ip6__dst' with flag_s=1.",
@@ -250,7 +250,7 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagUnset(Test
             str(error.exception),
             (
                 "[SANITY ERROR][ICMPv6] ND Neighbor Advertisement - [RFC 4861] "
-                "If 'na_flag_s' flag is not set then 'ip6__dst' address must be "
+                "If 'flag_s' flag is not set then 'ip6__dst' address must be "
                 f"all-nodes multicast address. Got: {dst!r}"
             ),
             msg="Unexpected sanity-error message for non-all-nodes 'ip6__dst' with flag_s=0.",
