@@ -86,7 +86,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @override
     def __str__(self) -> str:
         """
-        Get the unknown ICMPv6 option log string.
+        Get the unknown ICMPv6 ND option log string.
         """
 
         return f"unk-{int(self.type)}-{self.len}"
@@ -94,7 +94,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the unknown ICMPv6 option as a memoryview.
+        Get the unknown ICMPv6 ND option as a memoryview.
         """
 
         struct.pack_into(
@@ -112,7 +112,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown ICMPv6 option integrity before parsing it.
+        Validate the unknown ICMPv6 ND option integrity before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.
@@ -126,7 +126,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the unknown ICMPv6 option from buffer.
+        Initialize the unknown ICMPv6 ND option from buffer.
         """
 
         # Ensure we got enough bytes to parse the option header.
@@ -142,7 +142,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
             f"The unknown ICMPv6 ND option type must not be known. Got: {Icmp6NdOptionType.from_int(value)!r}"
         )
 
-        Icmp6NdOptionUnknown._validate_integrity(buffer)
+        cls._validate_integrity(buffer)
 
         return cls(
             type=Icmp6NdOptionType(buffer[0]),
