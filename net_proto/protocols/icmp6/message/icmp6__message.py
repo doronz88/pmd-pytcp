@@ -25,7 +25,7 @@
 """
 This module contains the ICMPv6 message base class.
 
-net_proto/protocols/icmp6/message/icmp6_message.py
+net_proto/protocols/icmp6/message/icmp6__message.py
 
 ver 3.0.4
 """
@@ -65,7 +65,8 @@ class Icmp6Type(ProtoEnumByte):
 
 class Icmp6Code(ProtoEnumByte):
     """
-    The ICMPv6 message 'code' field values.
+    Base class for ICMPv6 'code' field enums. Concrete code values
+    are defined by each message type's subclass.
     """
 
 
