@@ -48,7 +48,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # validator raises on 'ttl == 0'.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\x00\xff\xd8\x24" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'ttl' field must be greater than 0.",
+                "error_message": "The 'ttl' field must be greater than 0. Got: 0",
             },
         },
         {
@@ -57,7 +57,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # multicast range 224.0.0.0/4). cksum = 0x215e.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x21\x5e" b"\xe0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'src' field must not be a multicast address.",
+                "error_message": ("The 'src' field must not be a multicast address. Got: Ip4Address('224.0.0.1')"),
             },
         },
         {
@@ -66,7 +66,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # range 240.0.0.0/4 excluding 255.255.255.255). cksum=0x115e.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x11\x5e" b"\xf0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'src' field must not be a reserved address.",
+                "error_message": ("The 'src' field must not be a reserved address. Got: Ip4Address('240.0.0.1')"),
             },
         },
         {
@@ -75,7 +75,9 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # cksum = 0x0160.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x01\x60" b"\xff\xff\xff\xff\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'src' field must not be a limited broadcast address.",
+                "error_message": (
+                    "The 'src' field must not be a limited broadcast address. Got: Ip4Address('255.255.255.255')"
+                ),
             },
         },
         {
@@ -86,7 +88,10 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # the simultaneous-flags branch. cksum = 0xb923.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x60\x00\xff\xff\xb9\x23" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Flags 'DF' and 'MF' must not be set simultaneously.",
+                "error_message": (
+                    "The 'flag_df' and 'flag_mf' flags must not be set simultaneously. "
+                    "Got: self.flag_df=True, self.flag_mf=True"
+                ),
             },
         },
         {
@@ -95,7 +100,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             # cksum = 0xd823.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x41\x00\xff\xff\xd8\x23" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'offset' field must be 0 when 'DF' flag is set.",
+                "error_message": ("The 'offset' field must be 0 when the 'flag_df' flag is set. Got: 2048"),
             },
         },
     ]

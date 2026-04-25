@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv4 protocol parser.
+This module contains the IPv4 packet parser.
 
 net_proto/protocols/ip4/ip4__parser.py
 
@@ -74,25 +74,27 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
 
         if len(self._frame) < IP4__HEADER__LEN:
             raise Ip4IntegrityError(
-                "The wrong packet length (I).",
+                "The condition 'IP4__HEADER__LEN <= len(self._frame)' must be met. "
+                f"Got: {IP4__HEADER__LEN=}, {len(self._frame)=}",
             )
 
-        if self._frame[0] >> 4 != 4:
+        if (value := self._frame[0] >> 4) != 4:
             raise Ip4IntegrityError(
-                "Value of the 'ver' field must be set to 4.",
+                f"The 'ver' field must be 4. Got: {value!r}",
             )
 
         hlen = (self._frame[0] & 0b00001111) << 2
         plen = int.from_bytes(self._frame[2:4])
 
-        if not IP4__HEADER__LEN <= hlen <= plen <= len(self._frame):
+        if not (IP4__HEADER__LEN <= hlen <= plen <= len(self._frame)):
             raise Ip4IntegrityError(
-                "The wrong packet length (II).",
+                "The condition 'IP4__HEADER__LEN <= hlen <= plen <= len(self._frame)' "
+                f"must be met. Got: {IP4__HEADER__LEN=}, {hlen=}, {plen=}, {len(self._frame)=}",
             )
 
         if inet_cksum(self._frame[:hlen]):
             raise Ip4IntegrityError(
-                "The wrong packet checksum.",
+                "The packet checksum must be valid.",
             )
 
         Ip4Options.validate_integrity(frame=self._frame, hlen=hlen)
@@ -115,34 +117,35 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
         Validate sanity of the IPv4 packet after parsing it.
         """
 
-        if self._header.ttl == 0:
+        if (ttl := self.ttl) == 0:
             raise Ip4SanityError(
-                "Value of the 'ttl' field must be greater than 0.",
+                f"The 'ttl' field must be greater than 0. Got: {ttl!r}",
             )
 
-        if self._header.src.is_multicast:
+        if (src := self.src).is_multicast:
             raise Ip4SanityError(
-                "Value of the 'src' field must not be a multicast address.",
+                f"The 'src' field must not be a multicast address. Got: {src!r}",
             )
 
-        if self._header.src.is_reserved:
+        if (src := self.src).is_reserved:
             raise Ip4SanityError(
-                "Value of the 'src' field must not be a reserved address.",
+                f"The 'src' field must not be a reserved address. Got: {src!r}",
             )
 
-        if self._header.src.is_limited_broadcast:
+        if (src := self.src).is_limited_broadcast:
             raise Ip4SanityError(
-                "Value of the 'src' field must not be a limited broadcast address.",
+                f"The 'src' field must not be a limited broadcast address. Got: {src!r}",
             )
 
-        if self._header.flag_df and self._header.flag_mf:
+        if self.flag_df and self.flag_mf:
             raise Ip4SanityError(
-                "Flags 'DF' and 'MF' must not be set simultaneously.",
+                "The 'flag_df' and 'flag_mf' flags must not be set simultaneously. "
+                f"Got: {self.flag_df=}, {self.flag_mf=}",
             )
 
-        if self._header.flag_df and self._header.offset != 0:
+        if self.flag_df and (offset := self.offset) != 0:
             raise Ip4SanityError(
-                "Value of the 'offset' field must be 0 when 'DF' flag is set.",
+                f"The 'offset' field must be 0 when the 'flag_df' flag is set. Got: {offset!r}",
             )
 
     @property

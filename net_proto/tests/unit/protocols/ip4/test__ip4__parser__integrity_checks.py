@@ -53,7 +53,10 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # fires first.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x73\x0a\x14\x1e\x28" b"\x32\x3c\x46"),
             "_results": {
-                "error_message": "The wrong packet length (I).",
+                "error_message": (
+                    "The condition 'IP4__HEADER__LEN <= len(self._frame)' must be met. "
+                    "Got: IP4__HEADER__LEN=20, len(self._frame)=19"
+                ),
             },
         },
         {
@@ -62,7 +65,7 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # rejects any ver != 4 before evaluating hlen/plen.
             "_frame_rx": (b"\x55\xff\x00\x14\xff\xff\x40\x00\xff\xff\xc9\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "Value of the 'ver' field must be set to 4.",
+                "error_message": "The 'ver' field must be 4. Got: 5",
             },
         },
         {
@@ -71,7 +74,10 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # minimum required by 'IP4__HEADER__LEN <= hlen'.
             "_frame_rx": (b"\x44\xff\x00\x14\xff\xff\x40\x00\xff\xff\xda\x23\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "The wrong packet length (II).",
+                "error_message": (
+                    "The condition 'IP4__HEADER__LEN <= hlen <= plen <= len(self._frame)' "
+                    "must be met. Got: IP4__HEADER__LEN=20, hlen=16, plen=20, len(self._frame)=20"
+                ),
             },
         },
         {
@@ -80,7 +86,10 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # violating the 'hlen <= plen' constraint.
             "_frame_rx": (b"\x45\xff\x00\x13\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "The wrong packet length (II).",
+                "error_message": (
+                    "The condition 'IP4__HEADER__LEN <= hlen <= plen <= len(self._frame)' "
+                    "must be met. Got: IP4__HEADER__LEN=20, hlen=20, plen=19, len(self._frame)=20"
+                ),
             },
         },
         {
@@ -90,7 +99,10 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # fails.
             "_frame_rx": (b"\x46\xff\x00\x18\xff\xff\x40\x00\xff\xff\xd8\x1f\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "The wrong packet length (II).",
+                "error_message": (
+                    "The condition 'IP4__HEADER__LEN <= hlen <= plen <= len(self._frame)' "
+                    "must be met. Got: IP4__HEADER__LEN=20, hlen=24, plen=24, len(self._frame)=20"
+                ),
             },
         },
         {
@@ -100,7 +112,7 @@ _BASELINE_FRAME = b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x23" b"\x0a\x14
             # 'inet_cksum(self._frame[:hlen])' returns non-zero.
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xd9\x24\x0a\x14\x1e\x28" b"\x32\x3c\x46\x50"),
             "_results": {
-                "error_message": "The wrong packet checksum.",
+                "error_message": "The packet checksum must be valid.",
             },
         },
         {
