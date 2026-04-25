@@ -39,6 +39,7 @@ from net_proto.protocols.icmp6.icmp6__base import Icmp6
 from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
 from net_proto.protocols.icmp6.message.icmp6__message import (
     ICMP6__HEADER__LEN,
+    Icmp6Message,
     Icmp6Type,
 )
 from net_proto.protocols.icmp6.message.icmp6__message__destination_unreachable import (
@@ -92,7 +93,33 @@ class Icmp6Parser(Icmp6, ProtoParser):
         self._validate_sanity()
 
         packet_rx.icmp6 = self
-        packet_rx.frame = packet_rx.frame[len(self._frame) :]
+        packet_rx.frame = packet_rx.frame[len(self) :]
+
+    def _message_class(self) -> type[Icmp6Message]:
+        """
+        Resolve the concrete Icmp6Message subclass that matches the frame's
+        type byte. Falls back to Icmp6MessageUnknown for unrecognised types.
+        """
+
+        match Icmp6Type.from_int(self._frame[0]):
+            case Icmp6Type.DESTINATION_UNREACHABLE:
+                return Icmp6MessageDestinationUnreachable
+            case Icmp6Type.ECHO_REQUEST:
+                return Icmp6MessageEchoRequest
+            case Icmp6Type.ECHO_REPLY:
+                return Icmp6MessageEchoReply
+            case Icmp6Type.ND__ROUTER_SOLICITATION:
+                return Icmp6NdMessageRouterSolicitation
+            case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
+                return Icmp6NdMessageRouterAdvertisement
+            case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
+                return Icmp6NdMessageNeighborSolicitation
+            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
+                return Icmp6NdMessageNeighborAdvertisement
+            case Icmp6Type.MLD2__REPORT:
+                return Icmp6Mld2MessageReport
+            case _:
+                return Icmp6MessageUnknown
 
     @override
     def _validate_integrity(self) -> None:
@@ -100,40 +127,14 @@ class Icmp6Parser(Icmp6, ProtoParser):
         Validate integrity of the ICMPv6 packet before parsing it.
         """
 
-        if not ICMP6__HEADER__LEN <= self._ip6__dlen <= len(self._frame):
+        if not (ICMP6__HEADER__LEN <= self._ip6__dlen <= len(self._frame)):
             raise Icmp6IntegrityError(
                 "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen <= "
                 f"len(self._frame)' must be met. Got: {ICMP6__HEADER__LEN=}, "
                 f"{self._ip6__dlen=}, {len(self._frame)=}"
             )
 
-        match Icmp6Type.from_int(self._frame[0]):
-            case Icmp6Type.DESTINATION_UNREACHABLE:
-                Icmp6MessageDestinationUnreachable.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ECHO_REQUEST:
-                Icmp6MessageEchoRequest.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ECHO_REPLY:
-                Icmp6MessageEchoReply.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ND__ROUTER_SOLICITATION:
-                Icmp6NdMessageRouterSolicitation.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                Icmp6NdMessageRouterAdvertisement.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                Icmp6NdMessageNeighborSolicitation.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                Icmp6NdMessageNeighborAdvertisement.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case Icmp6Type.MLD2__REPORT:
-                Icmp6Mld2MessageReport.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
-
-            case _:
-                Icmp6MessageUnknown.validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
+        self._message_class().validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
         if inet_cksum(self._frame[: self._ip6__dlen], init=self._ip6__pshdr_sum):
             raise Icmp6IntegrityError(
@@ -146,51 +147,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
         Parse the ICMPv6 packet.
         """
 
-        match Icmp6Type.from_bytes(self._frame[0:1]):
-            case Icmp6Type.DESTINATION_UNREACHABLE:
-                self._message = Icmp6MessageDestinationUnreachable.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ECHO_REQUEST:
-                self._message = Icmp6MessageEchoRequest.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ECHO_REPLY:
-                self._message = Icmp6MessageEchoReply.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ND__ROUTER_SOLICITATION:
-                self._message = Icmp6NdMessageRouterSolicitation.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                self._message = Icmp6NdMessageRouterAdvertisement.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                self._message = Icmp6NdMessageNeighborSolicitation.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                self._message = Icmp6NdMessageNeighborAdvertisement.from_buffer(
-                    self._frame,
-                )
-
-            case Icmp6Type.MLD2__REPORT:
-                self._message = Icmp6Mld2MessageReport.from_buffer(
-                    self._frame,
-                )
-
-            case _:
-                self._message = Icmp6MessageUnknown.from_buffer(
-                    self._frame,
-                )
+        self._message = self._message_class().from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:
