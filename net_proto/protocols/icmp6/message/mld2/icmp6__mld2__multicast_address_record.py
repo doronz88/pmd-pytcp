@@ -95,7 +95,7 @@ ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__STRUCT = "! BBH 16s"
 
 class Icmp6Mld2MulticastAddressRecordType(ProtoEnumByte):
     """
-    The ICMPv6 MLDv2 Multicast Address Record 'type' values.
+    The ICMPv6 MLDv2 Multicast Address Record 'type' field values.
     """
 
     MODE_IS_INCLUDE = 1
@@ -109,7 +109,7 @@ class Icmp6Mld2MulticastAddressRecordType(ProtoEnumByte):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
     """
-    The ICMPv6 MLDv2 Multicast Address Record support.
+    The ICMPv6 MLDv2 Multicast Address Record.
     """
 
     type: Icmp6Mld2MulticastAddressRecordType
@@ -221,7 +221,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 MLDv2 Multicast Address Record from bytes.
+        Initialize the ICMPv6 MLDv2 Multicast Address Record from buffer.
         """
 
         type_, aux_data_len, number_of_sources, multicast_address = struct.unpack(
