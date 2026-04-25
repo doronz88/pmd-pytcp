@@ -23,7 +23,7 @@
 
 
 """
-Module contains IPv4 Nop (No Operation) option support code.
+This module contains the IPv4 Nop (No Operation) option support code.
 
 net_proto/protocols/ip4/options/ip4__option__nop.py
 
@@ -36,7 +36,7 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 
-# The IPv4 Nop (No Operation) option [RFC 793].
+# The IPv4 Nop (No Operation) option [RFC 791].
 
 # +-+-+-+-+-+-+-+-+
 # |    Type = 1   |
