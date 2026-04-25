@@ -25,7 +25,7 @@
 """
 This module contains the ICMPv6 Destination Unreachable message support class.
 
-net_proto/protocols/icmp6/message/icmp6_message__destination_unreachable.py
+net_proto/protocols/icmp6/message/icmp6__message__destination_unreachable.py
 
 ver 3.0.4
 """
@@ -49,7 +49,7 @@ from net_proto.protocols.ip6.ip6__header import (
     IP6__PAYLOAD__MAX_LEN,
 )
 
-# The ICMPv6 Destination Unreachable message (1/0-6) [RFC4443].
+# The ICMPv6 Destination Unreachable message (1/0-6) [RFC 4443].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |     Type      |     Code      |           Checksum            |
@@ -62,14 +62,10 @@ from net_proto.protocols.ip6.ip6__header import (
 ICMP6__DESTINATION_UNREACHABLE__LEN = 8
 ICMP6__DESTINATION_UNREACHABLE__STRUCT = "! BBH L"
 
-ICMP6_DESTINATION_UNREACHABLE_ORIGINAL_DATAGRAM_LEN = (
-    IP6__MIN_MTU - IP6__HEADER__LEN - ICMP6__DESTINATION_UNREACHABLE__LEN
-)
-
 
 class Icmp6DestinationUnreachableCode(Icmp6Code):
     """
-    The ICMPv6 Destination Unreachable message 'code' values.
+    The ICMPv6 Destination Unreachable 'code' field values.
     """
 
     NO_ROUTE = 0
@@ -85,7 +81,7 @@ class Icmp6DestinationUnreachableCode(Icmp6Code):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6MessageDestinationUnreachable(Icmp6Message):
     """
-    The ICMPv6 Destination Unreachable message base.
+    The ICMPv6 Destination Unreachable message.
     """
 
     type: Icmp6Type = field(
@@ -157,6 +153,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
 
         return memoryview(buffer)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__DESTINATION_UNREACHABLE__LEN,
