@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv6 Frag header class.
+This module contains the IPv6 Frag header.
 
 net_proto/protocols/ip6_frag/ip6_frag__header.py
 
@@ -40,7 +40,7 @@ from net_proto.lib.enums import IpProto
 from net_proto.lib.int_checks import is_8_byte_alligned, is_uint13, is_uint32
 from net_proto.lib.proto_struct import ProtoStruct
 
-# The IPv6 packet Fragmentation Extension header [RFC 2460].
+# The IPv6 packet Fragmentation Extension header [RFC 8200].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # | Next header   |       0       |         Offset          |0|0|M|
@@ -72,9 +72,9 @@ class Ip6FragHeader(ProtoStruct):
 
         assert isinstance(self.next, IpProto), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"
 
-        assert is_uint13(self.offset >> 3), (
-            f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). " f"Got: {self.offset!r}"
-        )
+        assert is_uint13(
+            self.offset >> 3
+        ), f"The 'offset' field must be a 13-bit unsigned integer (in 8-byte units). Got: {self.offset!r}"
 
         assert is_8_byte_alligned(self.offset), f"The 'offset' field must be 8-byte aligned. Got: {self.offset!r}"
 
@@ -135,7 +135,7 @@ class Ip6FragHeaderProperties(ABC):
     @property
     def next(self) -> IpProto:
         """
-        Get the IPv6 Frag 'next' field.
+        Get the IPv6 Frag header 'next' field.
         """
 
         return self._header.next
@@ -143,7 +143,7 @@ class Ip6FragHeaderProperties(ABC):
     @property
     def offset(self) -> int:
         """
-        Get the IPv6 Frag 'offset' field.
+        Get the IPv6 Frag header 'offset' field.
         """
 
         return self._header.offset
@@ -151,7 +151,7 @@ class Ip6FragHeaderProperties(ABC):
     @property
     def flag_mf(self) -> bool:
         """
-        Get the IPv6 Frag 'flag_mf' field.
+        Get the IPv6 Frag header 'flag_mf' field.
         """
 
         return self._header.flag_mf
@@ -159,7 +159,7 @@ class Ip6FragHeaderProperties(ABC):
     @property
     def id(self) -> int:
         """
-        Get the IPv6 Frag 'id' field.
+        Get the IPv6 Frag header 'id' field.
         """
 
         return self._header.id
