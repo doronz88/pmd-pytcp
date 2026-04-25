@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv6 Frag base class.
+This module contains the IPv6 Frag protocol base class.
 
 net_proto/protocols/ip6_frag/ip6_frag__base.py
 
@@ -42,7 +42,7 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
 
 class Ip6Frag(Proto, Ip6FragHeaderProperties):
     """
-    The IPv6 Frag base.
+    The IPv6 Frag protocol base.
     """
 
     _header: Ip6FragHeader
@@ -77,7 +77,7 @@ class Ip6Frag(Proto, Ip6FragHeaderProperties):
         Get the IPv6 Frag packet representation string.
         """
 
-        return f"{type(self).__name__}(header={self._header!r}, " f"payload={self._payload!r})"
+        return f"{type(self).__name__}(header={self._header!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
