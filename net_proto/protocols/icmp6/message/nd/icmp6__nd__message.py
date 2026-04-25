@@ -23,7 +23,7 @@
 
 
 """
-This module contains the ICMPv6 ND (Neighbor Discovery) messages support class.
+This module contains the ICMPv6 ND (Neighbor Discovery) message base class.
 
 net_proto/protocols/icmp6/message/nd/icmp6__nd__message.py
 
@@ -71,7 +71,8 @@ class Icmp6NdMessage(Icmp6Message):
     @property
     def option_pi(self) -> list[NdPrefixInfo]:
         """
-        Get the value of the ICMPv6 ND Pi option if present.
+        Get the prefix info entries from every ICMPv6 ND Pi option
+        present, returning an empty list if none are present.
         """
 
         return self.options.pi
