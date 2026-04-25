@@ -102,8 +102,8 @@ class Icmp6MessageEchoReply(Icmp6Message):
         assert is_uint16(self.seq), f"The 'seq' field must be a 16-bit unsigned integer. Got: {self.seq!r}"
 
         assert isinstance(
-            self.data, (bytes, memoryview)
-        ), f"The 'data' field must be bytes or memoryview. Got: {type(self.data)!r}"
+            self.data, (bytes, bytearray, memoryview)
+        ), f"The 'data' field must be bytes, bytearray or memoryview. Got: {type(self.data)!r}"
 
         assert len(self.data) <= IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REPLY__LEN, (
             f"The 'data' field length must be a 16-bit unsigned integer less than "

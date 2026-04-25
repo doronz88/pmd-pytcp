@@ -195,7 +195,7 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'data' field must be bytes or memoryview. Got: {type(value)!r}",
+            f"The 'data' field must be bytes, bytearray or memoryview. Got: {type(value)!r}",
             msg="Unexpected 'data' type assert message.",
         )
 
