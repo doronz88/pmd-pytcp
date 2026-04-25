@@ -23,7 +23,7 @@
 
 
 """
-This module contain the IPv4 protocol assembler classes.
+This module contains the IPv4 protocol assembler classes.
 
 net_proto/protocols/ip4/ip4__assembler.py
 
@@ -147,7 +147,7 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
         ip4_frag__options: Ip4Options = Ip4Options(),
         ip4_frag__proto: IpProto = IpProto.RAW,
         ip4_frag__payload: Buffer = bytes(),
-    ):
+    ) -> None:
         """
         Initialize the IPv4 (Frag) packet assembler.
         """
