@@ -52,7 +52,7 @@ from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__multicast_address_recor
 )
 from net_proto.protocols.ip6.ip6__header import IP6__PAYLOAD__MAX_LEN
 
-# The ICMPv6 MLDv2 Report message (143/0) [RFC3810].
+# The ICMPv6 MLDv2 Report message (143/0) [RFC 3810].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |      Type     |      Code     |           Checksum            |
@@ -83,7 +83,7 @@ ICMP6__MLD2__REPORT__STRUCT = "! BBH HH"
 
 class Icmp6Mld2ReportCode(Icmp6Code):
     """
-    The ICMPv6 MLD2 Report message 'code' values.
+    The ICMPv6 MLDv2 Report 'code' field values.
     """
 
     DEFAULT = 0
@@ -124,7 +124,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @override
     def __len__(self) -> int:
         """
-        Get the ICMPv6 MLD2 Report message length.
+        Get the ICMPv6 MLDv2 Report message length.
         """
 
         return ICMP6__MLD2__REPORT__LEN + sum(len(record) for record in self.records)
@@ -132,7 +132,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @override
     def __str__(self) -> str:
         """
-        Get the ICMPv6 MLD2 Report message log string.
+        Get the ICMPv6 MLDv2 Report message log string.
         """
 
         records_part = ", records " + ", ".join(str(record) for record in self.records) if self.records else ""
@@ -153,11 +153,12 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @property
     def number_of_records(self) -> int:
         """
-        Get the ICMPv6 MLDv2 Multicast Address Records number.
+        Get the ICMPv6 MLDv2 Report message 'number_of_records' field.
         """
 
         return len(self.records)
 
+    @override
     def _pack_header(
         self,
         buffer_len: int = ICMP6__MLD2__REPORT__LEN,
@@ -240,7 +241,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the ICMPv6 MLDv2 Report message from bytes.
+        Initialize the ICMPv6 MLDv2 Report message from buffer.
         """
 
         type_, code, cksum, _, number_of_records = struct.unpack(
