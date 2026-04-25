@@ -23,7 +23,7 @@
 
 
 """
-This module contains the IPv6 packet base class.
+This module contains the IPv6 protocol base class.
 
 net_proto/protocols/ip6/ip6__base.py
 
