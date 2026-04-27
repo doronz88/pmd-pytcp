@@ -23,7 +23,7 @@
 
 
 """
-This module contains the Raw protocol assembler class.
+This module contains the Raw protocol assembler.
 
 net_proto/protocols/raw/raw__assembler.py
 
