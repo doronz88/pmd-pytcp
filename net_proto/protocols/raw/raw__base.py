@@ -103,7 +103,7 @@ class Raw(Proto):
     @property
     def ether_type(self) -> EtherType:
         """
-        Get the Ethernet protocol number.
+        Get the Raw packet '_ether_type' attribute.
         """
 
         return self._ether_type
@@ -111,7 +111,7 @@ class Raw(Proto):
     @property
     def ip_proto(self) -> IpProto:
         """
-        Get the IP protocol number.
+        Get the Raw packet '_ip_proto' attribute.
         """
 
         return self._ip_proto
