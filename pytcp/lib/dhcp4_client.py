@@ -1,37 +1,37 @@
-############################################################################
-#                                                                          #
-#  PyTCP - Python TCP/IP stack                                             #
-#  Copyright (C) 2020-present Sebastian Majewski                           #
-#                                                                          #
-#  This program is free software: you can redistribute it and/or modify    #
-#  it under the terms of the GNU General Public License as published by    #
-#  the Free Software Foundation, either version 3 of the License, or       #
-#  (at your option) any later version.                                     #
-#                                                                          #
-#  This program is distributed in the hope that it will be useful,         #
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of          #
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the           #
-#  GNU General Public License for more details.                            #
-#                                                                          #
-#  You should have received a copy of the GNU General Public License       #
-#  along with this program.  If not, see <https://www.gnu.org/licenses/>.  #
-#                                                                          #
-#  Author's email: ccie18643@gmail.com                                     #
-#  Github repository: https://github.com/ccie18643/PyTCP                   #
-#                                                                          #
-############################################################################
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
 
-# pylint: disable=expression-not-assigned
 
 """
-Module contains simple DHCPv4 client that is used internally by the stack.
+This module contains a simple DHCPv4 client used internally by the stack.
 
-pytcp/protocols/dhcp4/client.py
+pytcp/lib/dhcp4_client.py
 
 ver 3.0.3
 """
 
 import random
+from typing import override
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
@@ -69,32 +69,73 @@ from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
 class Dhcp4Client:
     """
-    Class supporting DHCPv4 client operation.
+    The DHCPv4 client.
     """
 
+    @override
     def __init__(self, *, mac_address: MacAddress, timeout__sec: int = 5) -> None:
         """
-        Class constructor.
+        Initialize the DHCPv4 client.
         """
 
         self._mac_address = mac_address
         self._timeout__sec = timeout__sec
 
-        self._xid = random.randint(0, 0xFFFFFFFF)
-
     def fetch(self) -> Ip4Host | None:
         """
-        IPv4 DHCP client.
+        Run the DHCPv4 DISCOVER/REQUEST handshake and return the leased host.
         """
 
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
-        client_socket.bind(("0.0.0.0", 68))
-        client_socket.connect(("255.255.255.255", 67))
+        xid = random.randint(0, 0xFFFFFFFF)
 
-        # Send DHCP Discover to broadcast address.
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        try:
+            client_socket.bind(("0.0.0.0", 68))
+            client_socket.connect(("255.255.255.255", 67))
+
+            self._send_discover(client_socket, xid=xid)
+            if (offer := self._recv_offer(client_socket)) is None:
+                return None
+
+            if offer.srv_id is None:
+                __debug__ and log(
+                    "dhcp4",
+                    "<WARN>Didn't receive DHCP Offer message - missing server identifier</>",
+                )
+                return None
+
+            self._send_request(
+                client_socket,
+                xid=xid,
+                srv_id=offer.srv_id,
+                yiaddr=offer.yiaddr,
+            )
+            if (ack := self._recv_ack(client_socket)) is None:
+                return None
+
+            if ack.subnet_mask is None:
+                __debug__ and log(
+                    "dhcp4",
+                    "<WARN>Didn't receive DHCP Ack message - missing subnet mask</>",
+                )
+                return None
+
+            ip4_host = Ip4Host((ack.yiaddr, ack.subnet_mask))
+            if ack.router:
+                ip4_host.gateway = ack.router[0]
+
+            return ip4_host
+        finally:
+            client_socket.close()
+
+    def _send_discover(self, client_socket: socket, *, xid: int) -> None:
+        """
+        Build and send the DHCP DISCOVER packet.
+        """
+
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
-            dhcp4__xid=self._xid,
+            dhcp4__xid=xid,
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -113,30 +154,42 @@ class Dhcp4Client:
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
-        # Wait for DHCP Offer.
+    def _recv_offer(self, client_socket: socket) -> Dhcp4Parser | None:
+        """
+        Receive and validate the DHCP OFFER reply.
+        """
+
         try:
             dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP Offer message - timeout</>")
-            client_socket.close()
             return None
 
         if dhcp4_packet_rx.message_type != Dhcp4MessageType.OFFER:
             __debug__ and log(
                 "dhcp4",
-                "<WARN>Didn't receive DHCP Offer message - message type errori</>",
+                "<WARN>Didn't receive DHCP Offer message - message type error</>",
             )
-            client_socket.close()
             return None
 
-        srv_id = dhcp4_packet_rx.srv_id
-        yiaddr = dhcp4_packet_rx.yiaddr
+        return dhcp4_packet_rx
 
-        # Send DHCP Request packet to server.
+    def _send_request(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        srv_id: Ip4Address,
+        yiaddr: Ip4Address,
+    ) -> None:
+        """
+        Build and send the DHCP REQUEST packet.
+        """
+
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
-            dhcp4__xid=self._xid,
+            dhcp4__xid=xid,
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -147,7 +200,7 @@ class Dhcp4Client:
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
-                Dhcp4OptionServerId(srv_id or Ip4Address()),
+                Dhcp4OptionServerId(srv_id),
                 Dhcp4OptionReqIpAddr(yiaddr),
                 Dhcp4OptionHostName("PyTCP"),
                 Dhcp4OptionEnd(),
@@ -156,13 +209,16 @@ class Dhcp4Client:
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
-        # Wait for the DHCP Ack packet from server.
+    def _recv_ack(self, client_socket: socket) -> Dhcp4Parser | None:
+        """
+        Receive and validate the DHCP ACK reply.
+        """
+
         try:
             dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
             __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
         except TimeoutError:
             __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP ACK message - timeout</>")
-            client_socket.close()
             return None
 
         if dhcp4_packet_rx.message_type != Dhcp4MessageType.ACK:
@@ -170,20 +226,6 @@ class Dhcp4Client:
                 "dhcp4",
                 "<WARN>Didn't receive DHCP ACK message - message type error</>",
             )
-            client_socket.close()
             return None
 
-        client_socket.close()
-
-        assert dhcp4_packet_rx.subnet_mask is not None
-
-        ip4_host = Ip4Host(
-            (
-                Ip4Address(dhcp4_packet_rx.yiaddr),
-                Ip4Mask(dhcp4_packet_rx.subnet_mask),
-            )
-        )
-        if dhcp4_packet_rx.router is not None:
-            ip4_host.gateway = Ip4Address(dhcp4_packet_rx.router[0])
-
-        return ip4_host
+        return dhcp4_packet_rx

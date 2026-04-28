@@ -122,45 +122,6 @@ class TestDhcp4ClientInit(TestCase):
             msg="Dhcp4Client._timeout__sec must equal the caller-supplied value.",
         )
 
-    def test__dhcp4_client__init_generates_xid_in_uint32_range(self) -> None:
-        """
-        Ensure the transaction ID is drawn from the 32-bit unsigned
-        integer range — 'random.randint(0, 0xFFFFFFFF)' in the source.
-        """
-
-        client = Dhcp4Client(mac_address=MacAddress("02:00:00:00:00:01"))
-
-        self.assertGreaterEqual(
-            client._xid,
-            0,
-            msg="Dhcp4Client._xid must be >= 0.",
-        )
-        self.assertLessEqual(
-            client._xid,
-            0xFFFFFFFF,
-            msg="Dhcp4Client._xid must be <= 0xFFFFFFFF (UINT32 max).",
-        )
-
-    def test__dhcp4_client__init_uses_random_randint_for_xid(self) -> None:
-        """
-        Ensure the transaction ID is produced by 'random.randint' with
-        the canonical (0, 0xFFFFFFFF) arguments. Pinning the PRNG call
-        shape guards against accidental reseeding or range changes.
-        """
-
-        with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
-            return_value=0xDEADBEEF,
-        ) as mock_randint:
-            client = Dhcp4Client(mac_address=MacAddress("02:00:00:00:00:01"))
-
-        mock_randint.assert_called_once_with(0, 0xFFFFFFFF)
-        self.assertEqual(
-            client._xid,
-            0xDEADBEEF,
-            msg="Dhcp4Client._xid must be populated from random.randint(0, 0xFFFFFFFF).",
-        )
-
     def test__dhcp4_client__init_keyword_only_arguments(self) -> None:
         """
         Ensure the constructor arguments are keyword-only — passing the
@@ -547,15 +508,14 @@ class TestDhcp4ClientFetchAckWrongMessageType(TestCase):
 
 class TestDhcp4ClientFetchOfferSrvIdNone(TestCase):
     """
-    The 'Dhcp4Client.fetch()' fallback for a missing Server-ID option.
+    The 'Dhcp4Client.fetch()' rejection of an Offer without Server-ID.
     """
 
-    def test__dhcp4_client__fetch_handles_offer_without_srv_id(self) -> None:
+    def test__dhcp4_client__fetch_returns_none_on_offer_without_srv_id(self) -> None:
         """
-        Ensure the happy path still yields a lease when the Offer's
-        'srv_id' attribute is None; the source falls back to
-        'Ip4Address()' for the Server-ID option in the outgoing Request
-        ('srv_id or Ip4Address()' expression).
+        Ensure 'fetch()' returns None when the Offer omits the
+        Server-ID option (RFC 2131 §3.1 requires it). The Request must
+        not be sent and the socket must be closed.
         """
 
         offer = SimpleNamespace(
@@ -565,11 +525,54 @@ class TestDhcp4ClientFetchOfferSrvIdNone(TestCase):
             subnet_mask=Ip4Mask("255.255.255.0"),
             router=None,
         )
-        ack = SimpleNamespace(
-            message_type=Dhcp4MessageType.ACK,
-            srv_id=None,
+
+        sock = _build_mock_socket(offer_payload=b"offer")
+        parser = _make_parser_factory(offer=offer)
+
+        client = Dhcp4Client(mac_address=MacAddress("02:00:00:00:00:01"))
+
+        with (
+            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
+            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
+            patch("pytcp.lib.dhcp4_client.log"),
+        ):
+            result = client.fetch()
+
+        self.assertIsNone(
+            result,
+            msg="fetch() must return None when the Offer omits the Server-ID option.",
+        )
+        sock.close.assert_called_once_with()
+        self.assertEqual(
+            sock.send.call_count,
+            1,
+            msg="Only the Discover packet must be sent when the Offer's srv_id is missing.",
+        )
+
+
+class TestDhcp4ClientFetchAckMissingSubnetMask(TestCase):
+    """
+    The 'Dhcp4Client.fetch()' rejection of an Ack without Subnet Mask.
+    """
+
+    def test__dhcp4_client__fetch_returns_none_on_ack_without_subnet_mask(self) -> None:
+        """
+        Ensure 'fetch()' returns None when the Ack omits the Subnet
+        Mask option. The socket must still be closed.
+        """
+
+        offer = SimpleNamespace(
+            message_type=Dhcp4MessageType.OFFER,
+            srv_id=Ip4Address("10.0.0.254"),
             yiaddr=Ip4Address("10.0.0.100"),
             subnet_mask=Ip4Mask("255.255.255.0"),
+            router=None,
+        )
+        ack = SimpleNamespace(
+            message_type=Dhcp4MessageType.ACK,
+            srv_id=Ip4Address("10.0.0.254"),
+            yiaddr=Ip4Address("10.0.0.100"),
+            subnet_mask=None,
             router=None,
         )
 
@@ -585,9 +588,94 @@ class TestDhcp4ClientFetchOfferSrvIdNone(TestCase):
         ):
             result = client.fetch()
 
-        assert result is not None
+        self.assertIsNone(
+            result,
+            msg="fetch() must return None when the Ack omits the Subnet Mask option.",
+        )
+        sock.close.assert_called_once_with()
+
+
+class TestDhcp4ClientFetchXid(TestCase):
+    """
+    The 'Dhcp4Client.fetch()' transaction-ID generation tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build the happy-path Offer/Ack sentinels and the matching
+        socket / parser stubs reused by every xid test in this class.
+        """
+
+        self._offer = SimpleNamespace(
+            message_type=Dhcp4MessageType.OFFER,
+            srv_id=Ip4Address("10.0.0.254"),
+            yiaddr=Ip4Address("10.0.0.100"),
+            subnet_mask=Ip4Mask("255.255.255.0"),
+            router=[Ip4Address("10.0.0.1")],
+        )
+        self._ack = SimpleNamespace(
+            message_type=Dhcp4MessageType.ACK,
+            srv_id=Ip4Address("10.0.0.254"),
+            yiaddr=Ip4Address("10.0.0.100"),
+            subnet_mask=Ip4Mask("255.255.255.0"),
+            router=[Ip4Address("10.0.0.1")],
+        )
+
+    def test__dhcp4_client__fetch_uses_random_randint_for_xid(self) -> None:
+        """
+        Ensure each 'fetch()' call draws a fresh xid via
+        'random.randint(0, 0xFFFFFFFF)'. Pinning the PRNG call shape
+        guards against accidental reseeding or range changes.
+        """
+
+        sock = _build_mock_socket(offer_payload=b"offer", ack_payload=b"ack")
+        parser = _make_parser_factory(offer=self._offer, ack=self._ack)
+        client = Dhcp4Client(mac_address=MacAddress("02:00:00:00:00:01"))
+
+        with (
+            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
+            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
+            patch("pytcp.lib.dhcp4_client.log"),
+            patch(
+                "pytcp.lib.dhcp4_client.random.randint",
+                return_value=0xDEADBEEF,
+            ) as mock_randint,
+        ):
+            client.fetch()
+
+        mock_randint.assert_called_once_with(0, 0xFFFFFFFF)
+
+    def test__dhcp4_client__fetch_regenerates_xid_per_call(self) -> None:
+        """
+        Ensure successive 'fetch()' calls draw a new xid each time so
+        a stale Offer from a previous transaction cannot be matched
+        against a fresh handshake.
+        """
+
+        sock = _build_mock_socket(
+            offer_payload=b"offer-1",
+            ack_payload=b"ack-1",
+        )
+        sock.recv__mv.side_effect = [b"offer-1", b"ack-1", b"offer-2", b"ack-2"]
+        parser = MagicMock(name="Dhcp4Parser")
+        parser.side_effect = [self._offer, self._ack, self._offer, self._ack]
+
+        client = Dhcp4Client(mac_address=MacAddress("02:00:00:00:00:01"))
+
+        with (
+            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
+            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
+            patch("pytcp.lib.dhcp4_client.log"),
+            patch(
+                "pytcp.lib.dhcp4_client.random.randint",
+                return_value=0xDEADBEEF,
+            ) as mock_randint,
+        ):
+            client.fetch()
+            client.fetch()
+
         self.assertEqual(
-            result.address,
-            Ip4Address("10.0.0.100"),
-            msg="fetch() must still complete when the Offer's srv_id is None (falls back to Ip4Address()).",
+            mock_randint.call_count,
+            2,
+            msg="random.randint must be called once per fetch() to regenerate the xid.",
         )
