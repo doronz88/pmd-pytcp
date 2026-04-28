@@ -23,9 +23,9 @@
 
 
 """
-This module contains helper functions for the IP related operations.
+This module contains helper functions for IP-related operations.
 
-pycp/lib/ip_helper.py
+pytcp/lib/ip_helper.py
 
 ver 3.0.4
 """
@@ -44,23 +44,6 @@ from pytcp import stack
 from pytcp.socket import AddressFamily, SocketType
 
 
-def ip_version(
-    *,
-    ip_address: str,
-) -> IpVersion | None:
-    """
-    Return version of the IP address string.
-    """
-
-    try:
-        return Ip6Address(ip_address).version
-    except Ip6AddressFormatError:
-        try:
-            return Ip4Address(ip_address).version
-        except Ip4AddressFormatError:
-            return None
-
-
 def str_to_ip(ip_address: str, /) -> Ip6Address | Ip4Address | None:
     """
     Convert string to the appropriate version of the IP address.
@@ -73,6 +56,18 @@ def str_to_ip(ip_address: str, /) -> Ip6Address | Ip4Address | None:
             return Ip4Address(ip_address)
         except Ip4AddressFormatError:
             return None
+
+
+def ip_version(
+    *,
+    ip_address: str,
+) -> IpVersion | None:
+    """
+    Return version of the IP address string.
+    """
+
+    parsed = str_to_ip(ip_address)
+    return None if parsed is None else parsed.version
 
 
 def pick_local_ip_address[T: IpAddress](*, remote_ip_address: T) -> T:
@@ -102,21 +97,20 @@ def pick_local_ip6_address(
 ) -> Ip6Address:
     """
     Pick an appropriate source IPv6 address based on the provided destination IPv6 address.
+
+    Selection policy: prefer the address of a local network the destination belongs to;
+    otherwise fall back to the first local network with a default gateway set;
+    otherwise return the unspecified address.
     """
 
-    # If the destination belongs to any of the local networks,
-    # pick a source address from that network.
     for ip6_host in stack.packet_handler.ip6_host:
         if remote_ip6_address in ip6_host.network:
             return ip6_host.address
 
-    # If the destination is an external address, pick the source address from the first
-    # network that has a default gateway set.
     for ip6_host in stack.packet_handler.ip6_host:
         if ip6_host.gateway:
             return ip6_host.address
 
-    # In case everything else fails, return the unspecified address.
     return Ip6Address()
 
 
@@ -126,21 +120,20 @@ def pick_local_ip4_address(
 ) -> Ip4Address:
     """
     Pick an appropriate source IPv4 address based on the provided destination IPv4 address.
+
+    Selection policy: prefer the address of a local network the destination belongs to;
+    otherwise fall back to the first local network with a default gateway set;
+    otherwise return the unspecified address.
     """
 
-    # If the destination belongs to any of the local networks,
-    # pick a source address from that network.
     for ip4_host in stack.packet_handler.ip4_host:
         if remote_ip4_address in ip4_host.network:
             return ip4_host.address
 
-    # If the destination is an external address, pick the source address from the first
-    # network that has a default gateway set.
     for ip4_host in stack.packet_handler.ip4_host:
         if ip4_host.gateway:
             return ip4_host.address
 
-    # In case everything else fails, return the unspecified address.
     return Ip4Address()
 
 
@@ -153,10 +146,10 @@ def pick_local_port() -> int:
         socket.local_port for socket in stack.sockets.values()
     }
 
-    if len(available_ephemeral_ports):
+    if available_ephemeral_ports:
         return available_ephemeral_ports.pop()
 
-    raise OSError("[Errno 98] Address already in use - [Unable to find free " "local ephemeral port]")
+    raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
 
 
 def is_address_in_use(
@@ -170,12 +163,8 @@ def is_address_in_use(
     Check if the IP address and port combination is already in use.
     """
 
-    from pytcp.socket.tcp__socket import TcpSocket
-    from pytcp.socket.udp__socket import UdpSocket
-
     for opened_socket in stack.sockets.values():
         if opened_socket.family == address_family and opened_socket.type == socket_type:
-            opened_socket = cast(TcpSocket | UdpSocket, opened_socket)
             if (
                 opened_socket.local_ip_address.is_unspecified
                 or opened_socket.local_ip_address == local_ip_address
