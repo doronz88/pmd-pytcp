@@ -23,7 +23,7 @@
 
 
 """
-This module contains classes used to store the packet processing statistics.
+This module contains the classes used to store the packet processing statistics.
 
 pytcp/lib/packet_stats.py
 
@@ -36,7 +36,7 @@ from dataclasses import dataclass
 @dataclass(slots=True)
 class PacketStats:
     """
-    Base class for packet statistics data store.
+    The packet statistics data store base class.
     """
 
 
