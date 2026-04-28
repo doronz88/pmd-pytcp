@@ -23,7 +23,7 @@
 
 
 """
-This module contains the TCP packet header class.
+This module contains the TCP packet header.
 
 net_proto/protocols/tcp/tcp__header.py
 
@@ -64,7 +64,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 
 TCP__HEADER__LEN = 20
 TCP__HEADER__STRUCT = "! HH L L HH HH"
-TCP__MIN_MSS = 536  # The minimum recommended value of the  Maximum Segment Size (RFC 879).
+TCP__MIN_MSS = 536  # The minimum recommended value of the Maximum Segment Size (RFC 879).
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -97,9 +97,9 @@ class TcpHeader(ProtoStruct):
         Ensure integrity of the TCP header fields.
         """
 
-        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport}"
+        assert is_uint16(self.sport), f"The 'sport' field must be a 16-bit unsigned integer. Got: {self.sport!r}"
 
-        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. Got: {self.dport}"
+        assert is_uint16(self.dport), f"The 'dport' field must be a 16-bit unsigned integer. Got: {self.dport!r}"
 
         assert is_uint32(self.seq), f"The 'seq' field must be a 32-bit unsigned integer. Got: {self.seq!r}"
 

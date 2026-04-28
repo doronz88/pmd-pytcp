@@ -103,7 +103,7 @@ class TestTcpHeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'sport' under UINT_16__MIN.",
         )
 
@@ -120,7 +120,7 @@ class TestTcpHeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'sport' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'sport' over UINT_16__MAX.",
         )
 
@@ -137,7 +137,7 @@ class TestTcpHeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'dport' under UINT_16__MIN.",
         )
 
@@ -154,7 +154,7 @@ class TestTcpHeaderAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'dport' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'dport' over UINT_16__MAX.",
         )
 
