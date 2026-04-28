@@ -33,7 +33,7 @@ ver 3.0.3
 import random
 from typing import override
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
+from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
