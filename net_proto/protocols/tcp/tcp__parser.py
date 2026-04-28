@@ -23,7 +23,7 @@
 
 
 """
-This module contains the TCP packet parser class.
+This module contains the TCP packet parser.
 
 net_proto/protocols/tcp/tcp__parser.py
 
@@ -74,7 +74,7 @@ class TcpParser(Tcp, ProtoParser):
         Validate integrity of the TCP packet before parsing it.
         """
 
-        if not TCP__HEADER__LEN <= self._ip__payload_len <= len(self._frame):
+        if not (TCP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
             raise TcpIntegrityError(
                 "The condition 'TCP__HEADER__LEN <= self._ip__payload_len <= "
                 f"len(self._frame)' must be met. Got: {TCP__HEADER__LEN=}, "
@@ -82,7 +82,7 @@ class TcpParser(Tcp, ProtoParser):
             )
 
         hlen = (self._frame[12] & 0b11110000) >> 2
-        if not TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= len(self._frame):
+        if not (TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= len(self._frame)):
             raise TcpIntegrityError(
                 "The condition 'TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= "
                 f"len(self._frame)' must be met. Got: {TCP__HEADER__LEN=}, {hlen=}, "
@@ -116,12 +116,12 @@ class TcpParser(Tcp, ProtoParser):
 
         if (value := self._header.sport) == 0:
             raise TcpSanityError(
-                f"The 'sport' field must be greater than 0. Got: {value}",
+                f"The 'sport' field must be greater than 0. Got: {value!r}",
             )
 
         if (value := self._header.dport) == 0:
             raise TcpSanityError(
-                f"The 'dport' field must be greater than 0. Got: {value}",
+                f"The 'dport' field must be greater than 0. Got: {value!r}",
             )
 
         if self._header.flag_syn and self._header.flag_fin:
