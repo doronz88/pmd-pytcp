@@ -23,7 +23,7 @@
 
 
 """
-This module contains base class for all of the subsystems used by the stack.
+This module contains the base class for all of the subsystems used by the stack.
 
 pytcp/lib/subsystem.py
 
@@ -40,11 +40,12 @@ SUBSYSTEM_SLEEP_TIME__SEC = 0.1
 
 class Subsystem(ABC):
     """
-    Base class for the 'user space' services and clients.
+    The user-space services and clients base class.
     """
 
     _subsystem_name: str
     _event__stop_subsystem: threading.Event
+    _thread: threading.Thread | None
 
     def __init__(self, *, info: str | None = None) -> None:
         """
@@ -57,6 +58,7 @@ class Subsystem(ABC):
         )
 
         self._event__stop_subsystem = threading.Event()
+        self._thread = None
 
     def start(self) -> None:
         """
@@ -66,7 +68,8 @@ class Subsystem(ABC):
         __debug__ and log("stack", f"Starting {self._subsystem_name}")
 
         self._event__stop_subsystem.clear()
-        threading.Thread(target=self._thread__subsystem).start()
+        self._thread = threading.Thread(target=self._thread__subsystem)
+        self._thread.start()
         self._start()
 
     def stop(self) -> None:
@@ -77,6 +80,8 @@ class Subsystem(ABC):
         __debug__ and log("stack", f"Stopping {self._subsystem_name}")
 
         self._event__stop_subsystem.set()
+        if self._thread is not None:
+            self._thread.join()
         self._stop()
 
     def _start(self) -> None:
@@ -91,7 +96,7 @@ class Subsystem(ABC):
 
     def _thread__subsystem(self) -> None:
         """
-        Thread responsible for executing the subsystem operations.
+        Run the subsystem loop until the stop event is set.
         """
 
         __debug__ and log("stack", f"Started {self._subsystem_name}")
