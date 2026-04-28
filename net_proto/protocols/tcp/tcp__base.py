@@ -67,6 +67,18 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
         Get the TCP packet log string.
         """
 
+        any_flag_set = (
+            self._header.flag_ns
+            or self._header.flag_cwr
+            or self._header.flag_ece
+            or self._header.flag_urg
+            or self._header.flag_ack
+            or self._header.flag_psh
+            or self._header.flag_rst
+            or self._header.flag_syn
+            or self._header.flag_fin
+        )
+
         return (
             f"TCP {self._header.sport} > {self._header.dport}, "
             f"{'N' if self._header.flag_ns else ''}{'C' if self._header.flag_cwr else ''}"
@@ -74,23 +86,7 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
             f"{'A' if self._header.flag_ack else ''}{'P' if self._header.flag_psh else ''}"
             f"{'R' if self._header.flag_rst else ''}{'S' if self._header.flag_syn else ''}"
             f"{'F' if self._header.flag_fin else ''}"
-            f"{
-                ', '
-                if any(
-                    {
-                        self._header.flag_ns,
-                        self._header.flag_cwr,
-                        self._header.flag_ece,
-                        self._header.flag_urg,
-                        self._header.flag_ack,
-                        self._header.flag_psh,
-                        self._header.flag_rst,
-                        self._header.flag_syn,
-                        self._header.flag_fin,
-                    }
-                )
-                else ''
-            }"
+            f"{', ' if any_flag_set else ''}"
             f"seq {self._header.seq}, ack {self._header.ack}, win {self._header.win}, "
             f"{f'urg {self._header.urg}, ' if self._header.flag_urg else ''}"
             f"len {len(self._header) + len(self._options) + len(self._payload)} "
@@ -104,9 +100,7 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
         Get the TCP packet representation string.
         """
 
-        return (
-            f"{type(self).__name__}(header={self._header!r}, " f"options={self._options!r}, payload={self._payload!r})"
-        )
+        return f"{type(self).__name__}(header={self._header!r}, options={self._options!r}, payload={self._payload!r})"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
