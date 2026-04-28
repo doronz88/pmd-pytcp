@@ -65,7 +65,7 @@ class TestTcpOptionSackAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            (f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value}"),
+            (f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value!r}"),
             msg="Unexpected assertion message for 'blocks' over TCP__OPTION__SACK__MAX_BLOCK_NUM.",
         )
 

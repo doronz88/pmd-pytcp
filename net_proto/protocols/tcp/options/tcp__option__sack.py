@@ -88,7 +88,7 @@ class TcpSackBlock:
 
         struct.pack_into(
             TCP__OPTION__SACK__BLOCK_STRUCT,
-            buffer := bytearray(self.__len__()),
+            buffer := bytearray(len(self)),
             0,
             self.left,
             self.right,
@@ -129,9 +129,8 @@ class TcpOptionSack(TcpOption):
         """
 
         # Ensure the number of blocks is within the allowed range.
-        assert len(self.blocks) <= TCP__OPTION__SACK__MAX_BLOCK_NUM, (
-            f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} "
-            f"elements. Got: {len(self.blocks)}"
+        assert (value := len(self.blocks)) <= TCP__OPTION__SACK__MAX_BLOCK_NUM, (
+            f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value!r}"
         )
 
         # Hack to bypass the 'frozen=True' dataclass decorator.
@@ -156,7 +155,7 @@ class TcpOptionSack(TcpOption):
         """
 
         struct.pack_into(
-            f"{TCP__OPTION__SACK__STRUCT}",
+            TCP__OPTION__SACK__STRUCT,
             buffer := bytearray(TCP__OPTION__SACK__LEN),
             0,
             int(self.type),
@@ -196,14 +195,16 @@ class TcpOptionSack(TcpOption):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Sack option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= TCP__OPTION__LEN, (
+            f"The minimum length of the TCP Sack option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.SACK), (
-            f"The TCP Sack option type must be {TcpOptionType.SACK!r}. " f"Got: {TcpOptionType.from_int(value)!r}"
-        )
+        assert (value := buffer[0]) == int(
+            TcpOptionType.SACK
+        ), f"The TCP Sack option type must be {TcpOptionType.SACK!r}. Got: {TcpOptionType.from_int(value)!r}"
 
         cls._validate_integrity(buffer)
 
@@ -217,7 +218,7 @@ class TcpOptionSack(TcpOption):
                 )
                 for offset in range(
                     TCP__OPTION__LEN,
-                    buffer[1] - TCP__OPTION__LEN,
+                    buffer[1],
                     TCP__OPTION__SACK__BLOCK_LEN,
                 )
             ]
