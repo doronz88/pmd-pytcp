@@ -27,12 +27,12 @@ This package contains the PyTCP socket interface.
 
 pytcp/socket/__init__.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from abc import ABC
 from types import TracebackType
-from typing import Any
+from typing import Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
@@ -100,9 +100,7 @@ SOCK_RAW = SocketType.RAW
 
 class socket(ABC):
     """
-    Base class for all socket classes. It contains only the methods that are relevant
-    for the BSD socket API. The rest of the methods and actual socket logic are
-    implemented in the derived classes.
+    The BSD socket API base class.
     """
 
     _address_family: AddressFamily
@@ -160,23 +158,24 @@ class socket(ABC):
         Exit the socket runtime context.
         """
 
+    @override
     def __str__(self) -> str:
         """
         Get socket log string.
         """
 
-        return (
-            f"{self._address_family}/{self._socket_type}/{self._ip_proto}/"
-            f"{self._local_ip_address}/{self._local_port}/"
-            f"{self._remote_ip_address}/{self._remote_port}"
-        )
+        proto = f"{self._address_family}/{self._socket_type}/{self._ip_proto}"
+        local = f"{self._local_ip_address}/{self._local_port}"
+        remote = f"{self._remote_ip_address}/{self._remote_port}"
+        return f"{proto}/{local}/{remote}"
 
+    @override
     def __repr__(self) -> str:
         """
         Get socket string representation.
         """
 
-        return self.__str__()
+        return str(self)
 
     @property
     def socket_id(self) -> SocketId:
@@ -196,7 +195,7 @@ class socket(ABC):
     @property
     def address_family(self) -> AddressFamily:
         """
-        Get the '_family' attribute.
+        Get the '_address_family' attribute.
         """
 
         return self._address_family
@@ -204,7 +203,7 @@ class socket(ABC):
     @property
     def socket_type(self) -> SocketType:
         """
-        Get the '_type' attribute.
+        Get the '_socket_type' attribute.
         """
 
         return self._socket_type
@@ -212,7 +211,7 @@ class socket(ABC):
     @property
     def ip_proto(self) -> IpProto:
         """
-        Get the '_proto' attribute.
+        Get the '_ip_proto' attribute.
         """
 
         return self._ip_proto
@@ -256,7 +255,7 @@ class socket(ABC):
     @property
     def family(self) -> AddressFamily:
         """
-        Get the '_family' attribute.
+        Get the '_address_family' attribute.
         """
 
         return self._address_family
@@ -264,7 +263,7 @@ class socket(ABC):
     @property
     def type(self) -> SocketType:
         """
-        Get the '_type' attribute.
+        Get the '_socket_type' attribute.
         """
 
         return self._socket_type
@@ -272,7 +271,7 @@ class socket(ABC):
     @property
     def proto(self) -> IpProto:
         """
-        Get the '_proto' attribute.
+        Get the '_ip_proto' attribute.
         """
 
         return self._ip_proto
