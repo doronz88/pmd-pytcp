@@ -41,8 +41,7 @@ def _apply_styles(s: str, /) -> str:
     Substitute every supported style token in 's' with its ANSI escape.
 
     Hardcoded chain of 'str.replace' calls. Faster than iterating a
-    {token: escape} dict because each '.replace' is a single C call
-    and the Python-level loop overhead is gone.
+    {token: escape} dict because each '.replace' is a single C call.
     """
 
     return (
