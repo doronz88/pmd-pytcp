@@ -695,10 +695,8 @@ class TestSocketGetSockName(TestCase):
 
     def test__socket__getpeername_returns_str_port_tuple(self) -> None:
         """
-        Ensure 'getpeername()' returns a '(str_ip, port)' tuple built
-        from the remote address. Note the base implementation reuses
-        the local port here — this test pins the current contract so
-        any intentional fix is a deliberate, reviewed change.
+        Ensure 'getpeername()' returns a '(remote_str_ip, remote_port)'
+        tuple matching the BSD socket API contract.
         """
 
         s = _StubSocket(
@@ -708,8 +706,8 @@ class TestSocketGetSockName(TestCase):
         )
         self.assertEqual(
             s.getpeername(),
-            ("10.0.0.2", 1024),
-            msg="socket.getpeername() must return a (remote_str_ip, local_port) tuple (current base-class shape).",
+            ("10.0.0.2", 2048),
+            msg="socket.getpeername() must return a (remote_str_ip, remote_port) tuple.",
         )
 
 

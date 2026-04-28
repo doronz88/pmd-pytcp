@@ -289,7 +289,7 @@ class socket(ABC):
         Get the remote address and port.
         """
 
-        return str(self._remote_ip_address), self._local_port
+        return str(self._remote_ip_address), self._remote_port
 
     def bind(
         self,
