@@ -391,7 +391,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         """
 
         handler = _make_packet_handler()
-        handler.send_ip4_packet = lambda **_: TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL
+        handler.send_ip4_packet = lambda **_: TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
         with patch("pytcp.socket.raw__socket.stack.packet_handler", handler):
             s = RawSocket(family=AddressFamily.INET4)
             with patch(

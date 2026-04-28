@@ -301,7 +301,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip4__dst": HOST_B__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__mtu_ok__send=1,
@@ -362,7 +362,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip4__dst": HOST_C__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__mtu_ok__send=1,
@@ -381,7 +381,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip4__dst": HOST_C__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__mtu_ok__send=1,
@@ -478,7 +478,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip6__dst": HOST_B__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__mtu_ok__send=1,
@@ -536,7 +536,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip6__dst": HOST_C__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP6,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__mtu_ok__send=1,
@@ -555,7 +555,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ip6__dst": HOST_C__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__mtu_ok__send=1,
@@ -630,7 +630,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 "ethernet__dst": MAC__UNSPECIFIED,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet__pre_assemble=1,
                 ethernet__src_spec=1,

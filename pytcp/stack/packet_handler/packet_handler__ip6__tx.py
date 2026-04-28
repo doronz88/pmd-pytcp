@@ -103,7 +103,7 @@ class PacketHandlerIp6Tx(ABC):
         # drop the packet.
         if not self._ip6_support:
             self._packet_stats_tx.ip6__no_proto_support__drop += 1
-            return TxStatus.DROPED__IP6__NO_PROTOCOL_SUPPORT
+            return TxStatus.DROPPED__IP6__NO_PROTOCOL_SUPPORT
 
         # Validate source address.
         result = self.__validate_src_ip6_address(
@@ -183,7 +183,7 @@ class PacketHandlerIp6Tx(ABC):
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, stack "
                 f"doesn't own IPv6 address {ip6__src}, dropping</>",
             )
-            return TxStatus.DROPED__IP6__SRC_NOT_OWNED
+            return TxStatus.DROPPED__IP6__SRC_NOT_OWNED
 
         # If packet is a response to multicast then replace source address with link
         # local address of the stack.
@@ -203,7 +203,7 @@ class PacketHandlerIp6Tx(ABC):
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, no stack "
                 "link local unicast IPv6 address available</>",
             )
-            return TxStatus.DROPED__IP6__SRC_MULTICAST
+            return TxStatus.DROPPED__IP6__SRC_MULTICAST
 
         # If source is unspecified and destination belongs to any of local networks
         # then pick source address from that network.
@@ -269,7 +269,7 @@ class PacketHandlerIp6Tx(ABC):
                 "ip6",
                 f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
             )
-            return TxStatus.DROPED__IP6__SRC_UNSPECIFIED
+            return TxStatus.DROPPED__IP6__SRC_UNSPECIFIED
 
         # If nothing above applies return the src address intact.
         return ip6__src
@@ -291,7 +291,7 @@ class PacketHandlerIp6Tx(ABC):
                 "ip6",
                 f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
             )
-            return TxStatus.DROPED__IP6__DST_UNSPECIFIED
+            return TxStatus.DROPPED__IP6__DST_UNSPECIFIED
 
         return ip6__dst
 

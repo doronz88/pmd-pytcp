@@ -407,7 +407,7 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         status.
         """
 
-        handler = _make_packet_handler(tx_status=TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL)
+        handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
         with patch("pytcp.socket.udp__socket.stack.packet_handler", handler):
             s = self._connected_socket()
             self.assertEqual(s.send(b"data"), 0, msg="send() must return 0 when the packet is dropped.")

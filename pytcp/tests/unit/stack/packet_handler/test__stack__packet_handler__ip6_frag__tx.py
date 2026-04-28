@@ -161,12 +161,12 @@ class TestPacketHandlerIp6FragTx(TestCase):
 
         handler = _StubHandler(
             interface_mtu=200,
-            ip6_tx_status=TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
+            ip6_tx_status=TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
         )
         status = handler._phtx_ip6_frag(ip6_packet_tx=self._build_ip6_packet(payload_size=400))
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
             msg="Worst per-fragment status must propagate to the caller.",
         )

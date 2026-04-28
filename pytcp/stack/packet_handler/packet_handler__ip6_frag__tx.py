@@ -113,13 +113,13 @@ class PacketHandlerIp6FragTx(ABC):
 
         # Return the most severe code.
         for tx_status in [
-            TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
-            TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP6,
-            TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL,
+            TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6,
+            TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
         ]:
             if tx_status in ip6_tx_status:
                 return tx_status
 
-        return TxStatus.DROPED__IP6__EXT_FRAG_UNKNOWN
+        return TxStatus.DROPPED__IP6__EXT_FRAG_UNKNOWN

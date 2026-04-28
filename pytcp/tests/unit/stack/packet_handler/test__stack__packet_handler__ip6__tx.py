@@ -127,7 +127,7 @@ class TestPacketHandlerIp6TxGating(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP6__NO_PROTOCOL_SUPPORT)
+        self.assertEqual(status, TxStatus.DROPPED__IP6__NO_PROTOCOL_SUPPORT)
         self.assertEqual(handler._packet_stats_tx.ip6__no_proto_support__drop, 1)
 
 
@@ -150,7 +150,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP6__SRC_NOT_OWNED)
+        self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_NOT_OWNED)
         self.assertEqual(self._handler._packet_stats_tx.ip6__src_not_owned__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__src_multicast_replaced(self) -> None:
@@ -178,7 +178,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP6__SRC_MULTICAST)
+        self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_MULTICAST)
         self.assertEqual(handler._packet_stats_tx.ip6__src_multicast__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__src_unspec_local_dst_replaced(self) -> None:
@@ -220,7 +220,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP6__SRC_UNSPECIFIED)
+        self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_UNSPECIFIED)
         self.assertEqual(handler._packet_stats_tx.ip6__src_unspecified__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__dst_unspecified_drops(self) -> None:
@@ -234,7 +234,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP6__DST_UNSPECIFIED)
+        self.assertEqual(status, TxStatus.DROPPED__IP6__DST_UNSPECIFIED)
         self.assertEqual(self._handler._packet_stats_tx.ip6__dst_unspecified__drop, 1)
 
 

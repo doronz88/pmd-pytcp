@@ -132,8 +132,8 @@ class TestPacketHandlerArpTx(TestCase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ARP__NO_PROTOCOL_SUPPORT,
-            msg="ARP TX with IPv4 disabled must return DROPED__ARP__NO_PROTOCOL_SUPPORT.",
+            TxStatus.DROPPED__ARP__NO_PROTOCOL_SUPPORT,
+            msg="ARP TX with IPv4 disabled must return DROPPED__ARP__NO_PROTOCOL_SUPPORT.",
         )
         self.assertEqual(
             handler._packet_stats_tx.arp__no_proto_support__drop,

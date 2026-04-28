@@ -134,8 +134,8 @@ class TestPacketHandlerIp4TxGating(TestCase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__IP4__NO_PROTOCOL_SUPPORT,
-            msg="IP4 TX with support disabled must return DROPED__IP4__NO_PROTOCOL_SUPPORT.",
+            TxStatus.DROPPED__IP4__NO_PROTOCOL_SUPPORT,
+            msg="IP4 TX with support disabled must return DROPPED__IP4__NO_PROTOCOL_SUPPORT.",
         )
         self.assertEqual(handler._packet_stats_tx.ip4__no_proto_support__drop, 1)
 
@@ -159,7 +159,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP4__SRC_NOT_OWNED)
+        self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_NOT_OWNED)
         self.assertEqual(self._handler._packet_stats_tx.ip4__src_not_owned__drop, 1)
 
     def test__stack__packet_handler__ip4__tx__src_multicast_replaced(self) -> None:
@@ -191,7 +191,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP4__SRC_MULTICAST)
+        self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_MULTICAST)
         self.assertEqual(handler._packet_stats_tx.ip4__src_multicast__drop, 1)
 
     def test__stack__packet_handler__ip4__tx__src_limited_broadcast_replaced(self) -> None:
@@ -270,7 +270,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         self.assertEqual(handler._packet_stats_tx.ip4__src_unspecified__send, 1)
         self.assertNotEqual(
             status,
-            TxStatus.DROPED__IP4__SRC_UNSPECIFIED,
+            TxStatus.DROPPED__IP4__SRC_UNSPECIFIED,
             msg="DHCP UDP 68->67 must bypass the unspecified-src drop.",
         )
 
@@ -287,7 +287,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP4__SRC_UNSPECIFIED)
+        self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_UNSPECIFIED)
         self.assertEqual(handler._packet_stats_tx.ip4__src_unspecified__drop, 1)
 
 
@@ -308,7 +308,7 @@ class TestPacketHandlerIp4TxDstValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(status, TxStatus.DROPED__IP4__DST_UNSPECIFIED)
+        self.assertEqual(status, TxStatus.DROPPED__IP4__DST_UNSPECIFIED)
         self.assertEqual(handler._packet_stats_tx.ip4__dst_unspecified__drop, 1)
 
 
@@ -408,14 +408,14 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
                 ip4__payload=payload,
             )
 
-        # The handler returns DROPED__IP4__UNKNOWN on L3 (because the
+        # The handler returns DROPPED__IP4__UNKNOWN on L3 (because the
         # outbound_tx_status set is empty), documenting that the L3
         # fragmentation path intentionally does not report per-fragment
         # enqueue status.
         self.assertEqual(
             status,
-            TxStatus.DROPED__IP4__UNKNOWN,
-            msg="L3 fragmentation path returns DROPED__IP4__UNKNOWN because per-frag TX status is not tracked.",
+            TxStatus.DROPPED__IP4__UNKNOWN,
+            msg="L3 fragmentation path returns DROPPED__IP4__UNKNOWN because per-frag TX status is not tracked.",
         )
         self.assertGreaterEqual(
             mock_tx_ring.enqueue.call_count,

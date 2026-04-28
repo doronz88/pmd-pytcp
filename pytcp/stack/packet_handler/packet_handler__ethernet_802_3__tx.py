@@ -103,7 +103,7 @@ class PacketHandlerEthernet8023Tx(ABC):
             "ether",
             f"{ethernet_802_3_packet_tx.tracker} - <WARN>No valid destination MAC could " "be obtained, dropping</>",
         )
-        return TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL
+        return TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL
 
     @staticmethod
     def __send_out_packet(

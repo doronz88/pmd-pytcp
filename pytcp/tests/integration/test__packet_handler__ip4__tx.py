@@ -106,7 +106,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP4__SRC_NOT_OWNED,
+            "_expected__tx_status": TxStatus.DROPPED__IP4__SRC_NOT_OWNED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__src_not_owned__drop=1,
@@ -163,7 +163,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP4__SRC_MULTICAST,
+            "_expected__tx_status": TxStatus.DROPPED__IP4__SRC_MULTICAST,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__src_multicast__drop=1,
@@ -220,7 +220,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP4__SRC_LIMITED_BROADCAST,
+            "_expected__tx_status": TxStatus.DROPPED__IP4__SRC_LIMITED_BROADCAST,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__src_limited_broadcast__drop=1,
@@ -363,7 +363,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": HOST_A__IP4_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP4__SRC_UNSPECIFIED,
+            "_expected__tx_status": TxStatus.DROPPED__IP4__SRC_UNSPECIFIED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__src_unspecified__drop=1,
@@ -377,7 +377,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip4__dst": IP4__UNSPECIFIED,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP4__DST_UNSPECIFIED,
+            "_expected__tx_status": TxStatus.DROPPED__IP4__DST_UNSPECIFIED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip4__pre_assemble=1,
                 ip4__dst_unspecified__drop=1,
@@ -1042,7 +1042,7 @@ class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
 
     def test__packet_handler__ip4__tx__no_ip4_support(self) -> None:
         """
-        Ensure '_phtx_ip4' returns 'DROPED__IP4__NO_PROTOCOL_SUPPORT'
+        Ensure '_phtx_ip4' returns 'DROPPED__IP4__NO_PROTOCOL_SUPPORT'
         and bumps 'ip4__no_proto_support__drop' without emitting any
         frame when IPv4 support is disabled.
         """
@@ -1054,8 +1054,8 @@ class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
 
         self.assertEqual(
             tx_status,
-            TxStatus.DROPED__IP4__NO_PROTOCOL_SUPPORT,
-            msg="_phtx_ip4 must return DROPED__IP4__NO_PROTOCOL_SUPPORT when IPv4 disabled.",
+            TxStatus.DROPPED__IP4__NO_PROTOCOL_SUPPORT,
+            msg="_phtx_ip4 must return DROPPED__IP4__NO_PROTOCOL_SUPPORT when IPv4 disabled.",
         )
 
         self.assertEqual(

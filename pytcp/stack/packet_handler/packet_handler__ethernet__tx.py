@@ -137,7 +137,7 @@ class PacketHandlerEthernetTx(ABC):
                             f"gateway set for {ip6_host} source address, "
                             "dropping</>",
                         )
-                        return TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP6
+                        return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6
                     if mac_address := stack.nd_cache.find_entry(ip6_address=ip6_host.gateway):
                         ethernet_packet_tx.dst = mac_address
                         self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send += 1
@@ -150,7 +150,7 @@ class PacketHandlerEthernetTx(ABC):
                         self.__send_out_packet(ethernet_packet_tx)
                         return TxStatus.PASSED__ETHERNET__TO_TX_RING
                     self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop += 1
-                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
+                    return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC
             # from ICMPv6 ND cache.
@@ -173,7 +173,7 @@ class PacketHandlerEthernetTx(ABC):
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 f"MAC could be obtained from ND cache, dropping</>",
             )
-            return TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS
+            return TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS
 
         # Check if we can obtain destination MAC based on IPv4 header data.
         if isinstance(ethernet_packet_tx.payload, (Ip4Assembler, Ip4FragAssembler)):
@@ -237,7 +237,7 @@ class PacketHandlerEthernetTx(ABC):
                             f"gateway set for {ip4_host} source address, "
                             "dropping</>",
                         )
-                        return TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4
+                        return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4
                     if mac_address := stack.arp_cache.find_entry(
                         ip4_address=ip4_host.gateway,
                     ):
@@ -252,7 +252,7 @@ class PacketHandlerEthernetTx(ABC):
                         self.__send_out_packet(ethernet_packet_tx)
                         return TxStatus.PASSED__ETHERNET__TO_TX_RING
                     self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop += 1
-                    return TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
+                    return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC from
             # ARP cache, drop otherwise.
@@ -275,7 +275,7 @@ class PacketHandlerEthernetTx(ABC):
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 "MAC could be obtained from ARP cache, dropping</>",
             )
-            return TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS
+            return TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
         self._packet_stats_tx.ethernet__dst_unspec__drop += 1
@@ -283,7 +283,7 @@ class PacketHandlerEthernetTx(ABC):
             "ether",
             f"{ethernet_packet_tx.tracker} - <WARN>No valid destination MAC could " "be obtained, dropping</>",
         )
-        return TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL
+        return TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
 
     @staticmethod
     def __send_out_packet(ethernet_packet_tx: EthernetAssembler) -> None:

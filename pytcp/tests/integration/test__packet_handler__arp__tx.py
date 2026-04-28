@@ -243,7 +243,7 @@ class TestPacketHandlerArpTxNoIp4Support(NetworkTestCase):
 
     def test__packet_handler__arp__tx__no_ip4_support(self) -> None:
         """
-        Ensure '_phtx_arp' returns 'DROPED__ARP__NO_PROTOCOL_SUPPORT'
+        Ensure '_phtx_arp' returns 'DROPPED__ARP__NO_PROTOCOL_SUPPORT'
         and bumps the 'arp__no_proto_support__drop' stat without
         emitting any frame when IPv4 support is disabled.
         """
@@ -260,8 +260,8 @@ class TestPacketHandlerArpTxNoIp4Support(NetworkTestCase):
 
         self.assertEqual(
             tx_status,
-            TxStatus.DROPED__ARP__NO_PROTOCOL_SUPPORT,
-            msg="'_phtx_arp' must return 'DROPED__ARP__NO_PROTOCOL_SUPPORT' when IPv4 is disabled.",
+            TxStatus.DROPPED__ARP__NO_PROTOCOL_SUPPORT,
+            msg="'_phtx_arp' must return 'DROPPED__ARP__NO_PROTOCOL_SUPPORT' when IPv4 is disabled.",
         )
 
         self.assertEqual(

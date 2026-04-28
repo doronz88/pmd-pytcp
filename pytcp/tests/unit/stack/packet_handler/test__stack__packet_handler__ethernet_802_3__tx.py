@@ -195,7 +195,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
     def test__stack__packet_handler__ethernet_802_3__tx__drops_when_dst_unspecified(self) -> None:
         """
         Ensure the handler drops the packet when the destination MAC is
-        unspecified, returns 'DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL',
+        unspecified, returns 'DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL',
         and does not enqueue to the TX ring.
         """
 
@@ -205,8 +205,8 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
-            msg="Handler must return DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL when dst is unspecified.",
+            TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
+            msg="Handler must return DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL when dst is unspecified.",
         )
         self.assertEqual(
             self._handler._packet_stats_tx.ethernet_802_3__dst_unspec__drop,
@@ -230,7 +230,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
+            TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
             msg="Handler with no kwargs must drop the packet (dst defaults to unspecified).",
         )
         self.assertEqual(

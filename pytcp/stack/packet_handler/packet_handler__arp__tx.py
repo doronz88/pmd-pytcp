@@ -89,7 +89,7 @@ class PacketHandlerArpTx(ABC):
         # drop the packet.
         if not self._ip4_support:
             self._packet_stats_tx.arp__no_proto_support__drop += 1
-            return TxStatus.DROPED__ARP__NO_PROTOCOL_SUPPORT
+            return TxStatus.DROPPED__ARP__NO_PROTOCOL_SUPPORT
 
         match arp__oper:
             case ArpOperation.REQUEST:

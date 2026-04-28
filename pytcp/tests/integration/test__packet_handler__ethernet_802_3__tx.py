@@ -102,7 +102,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__dst": MAC__UNSPECIFIED,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet_802_3__pre_assemble=1,
                 ethernet_802_3__src_spec=1,
@@ -116,7 +116,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ethernet_802_3__dst": MAC__UNSPECIFIED,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
+            "_expected__tx_status": TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ethernet_802_3__pre_assemble=1,
                 ethernet_802_3__src_unspec__fill=1,

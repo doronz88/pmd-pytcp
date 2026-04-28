@@ -107,7 +107,7 @@ class PacketHandlerIp4Tx(ABC):
         # the packet.
         if not self._ip4_support:
             self._packet_stats_tx.ip4__no_proto_support__drop += 1
-            return TxStatus.DROPED__IP4__NO_PROTOCOL_SUPPORT
+            return TxStatus.DROPPED__IP4__NO_PROTOCOL_SUPPORT
 
         # Validate source address.
         result = self.__validate_src_ip4_address(
@@ -198,17 +198,17 @@ class PacketHandlerIp4Tx(ABC):
 
         # Return the most severe code.
         for tx_status in [
-            TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
-            TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4,
-            TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL,
+            TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4,
+            TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP4__TO_TX_RING,
         ]:
             if tx_status in outbound_tx_status:
                 return tx_status
 
-        return TxStatus.DROPED__IP4__UNKNOWN
+        return TxStatus.DROPPED__IP4__UNKNOWN
 
     def __validate_src_ip4_address(
         self,
@@ -238,7 +238,7 @@ class PacketHandlerIp4Tx(ABC):
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, stack "
                 f"doesn't own IPv4 address {ip4__src}, dropping</>",
             )
-            return TxStatus.DROPED__IP4__SRC_NOT_OWNED
+            return TxStatus.DROPPED__IP4__SRC_NOT_OWNED
 
         # If packet is a response to multicast then replace source address with
         # primary address of the stack.
@@ -258,7 +258,7 @@ class PacketHandlerIp4Tx(ABC):
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, no stack "
                 f"primary unicast IPv4 address available, dropping</>",
             )
-            return TxStatus.DROPED__IP4__SRC_MULTICAST
+            return TxStatus.DROPPED__IP4__SRC_MULTICAST
 
         # If packet is a response to limited broadcast then replace source address
         # with primary address of the stack.
@@ -279,7 +279,7 @@ class PacketHandlerIp4Tx(ABC):
                 f"{tracker} - <WARN>Unable to sent out IPv4 packet, no stack "
                 f"primary unicast IPv4 address available, dropping</>",
             )
-            return TxStatus.DROPED__IP4__SRC_LIMITED_BROADCAST
+            return TxStatus.DROPPED__IP4__SRC_LIMITED_BROADCAST
 
         # If packet is a response to network broadcast then replace source address
         # with first stack address that belongs to appropriate subnet.
@@ -346,7 +346,7 @@ class PacketHandlerIp4Tx(ABC):
                 "ip4",
                 f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
             )
-            return TxStatus.DROPED__IP4__SRC_UNSPECIFIED
+            return TxStatus.DROPPED__IP4__SRC_UNSPECIFIED
 
         # If nothing above applies return the src address intact.
         return ip4__src
@@ -368,7 +368,7 @@ class PacketHandlerIp4Tx(ABC):
                 "ip4",
                 f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
             )
-            return TxStatus.DROPED__IP4__DST_UNSPECIFIED
+            return TxStatus.DROPPED__IP4__DST_UNSPECIFIED
 
         return ip4__dst
 

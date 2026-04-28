@@ -110,7 +110,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP6__SRC_NOT_OWNED,
+            "_expected__tx_status": TxStatus.DROPPED__IP6__SRC_NOT_OWNED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__src_not_owned__drop=1,
@@ -164,7 +164,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP6__SRC_MULTICAST,
+            "_expected__tx_status": TxStatus.DROPPED__IP6__SRC_MULTICAST,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__src_multicast__drop=1,
@@ -258,7 +258,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": HOST_A__IP6_ADDRESS,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP6__SRC_UNSPECIFIED,
+            "_expected__tx_status": TxStatus.DROPPED__IP6__SRC_UNSPECIFIED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__src_unspecified__drop=1,
@@ -272,7 +272,7 @@ from pytcp.tests.lib.network_testcase import (
                 "ip6__dst": IP6__UNSPECIFIED,
             },
             "_expected__frames_tx": [],
-            "_expected__tx_status": TxStatus.DROPED__IP6__DST_UNSPECIFIED,
+            "_expected__tx_status": TxStatus.DROPPED__IP6__DST_UNSPECIFIED,
             "_expected__packet_stats_tx": PacketStatsTx(
                 ip6__pre_assemble=1,
                 ip6__dst_unspecified__drop=1,
@@ -469,7 +469,7 @@ class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
 
     def test__packet_handler__ip6__tx__no_ip6_support(self) -> None:
         """
-        Ensure '_phtx_ip6' returns 'DROPED__IP6__NO_PROTOCOL_SUPPORT'
+        Ensure '_phtx_ip6' returns 'DROPPED__IP6__NO_PROTOCOL_SUPPORT'
         and bumps 'ip6__no_proto_support__drop' without emitting any
         frame when IPv6 support is disabled.
         """
@@ -481,8 +481,8 @@ class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
 
         self.assertEqual(
             tx_status,
-            TxStatus.DROPED__IP6__NO_PROTOCOL_SUPPORT,
-            msg="_phtx_ip6 must return DROPED__IP6__NO_PROTOCOL_SUPPORT when IPv6 disabled.",
+            TxStatus.DROPPED__IP6__NO_PROTOCOL_SUPPORT,
+            msg="_phtx_ip6 must return DROPPED__IP6__NO_PROTOCOL_SUPPORT when IPv6 disabled.",
         )
 
         self.assertEqual(

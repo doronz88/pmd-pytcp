@@ -250,8 +250,8 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_RESOLUTION_FAIL,
-            msg="Handler must return DROPED__ETHERNET__DST_RESOLUTION_FAIL for Raw payload with unspecified dst.",
+            TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL,
+            msg="Handler must return DROPPED__ETHERNET__DST_RESOLUTION_FAIL for Raw payload with unspecified dst.",
         )
         self._tx_ring.enqueue.assert_not_called()
         self.assertEqual(
@@ -327,7 +327,7 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_ND_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
             msg="IPv6 localnet ND cache miss must drop with DST_ND_CACHE_MISS.",
         )
         self._tx_ring.enqueue.assert_not_called()
@@ -368,7 +368,7 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP6,
+            TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6,
             msg="IPv6 extnet without a gateway must drop with DST_NO_GATEWAY_IP6.",
         )
 
@@ -385,7 +385,7 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             msg="IPv6 extnet with a gateway but ND miss must drop with DST_GATEWAY_ND_CACHE_MISS.",
         )
 
@@ -493,7 +493,7 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_ARP_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
             msg="IPv4 localnet ARP cache miss must drop with DST_ARP_CACHE_MISS.",
         )
 
@@ -533,7 +533,7 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_NO_GATEWAY_IP4,
+            TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4,
             msg="IPv4 extnet without a gateway must drop with DST_NO_GATEWAY_IP4.",
         )
 
@@ -550,7 +550,7 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
 
         self.assertEqual(
             status,
-            TxStatus.DROPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
+            TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
             msg="IPv4 extnet with a gateway but ARP miss must drop with DST_GATEWAY_ARP_CACHE_MISS.",
         )
 
