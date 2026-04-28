@@ -31,7 +31,6 @@ ver 3.0.3
 """
 
 import random
-from typing import override
 
 from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
@@ -72,7 +71,6 @@ class Dhcp4Client:
     The DHCPv4 client.
     """
 
-    @override
     def __init__(self, *, mac_address: MacAddress, timeout__sec: int = 5) -> None:
         """
         Initialize the DHCPv4 client.
