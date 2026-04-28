@@ -23,7 +23,7 @@
 
 
 """
-This module contains TCP Nop (No Operation) option support code.
+This module contains the TCP Nop (No Operation) option support code.
 
 net_proto/protocols/tcp/options/tcp__option__nop.py
 
@@ -93,13 +93,15 @@ class TcpOptionNop(TcpOption):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__NOP__LEN, (
-            f"The minimum length of the TCP Nop option must be " f"{TCP__OPTION__NOP__LEN} byte. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= TCP__OPTION__NOP__LEN, (
+            f"The minimum length of the TCP Nop option must be {TCP__OPTION__NOP__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.NOP), (
-            f"The TCP Nop option type must be {TcpOptionType.NOP!r}. " f"Got: {TcpOptionType.from_int(value)!r}"
-        )
+        assert (value := buffer[0]) == int(
+            TcpOptionType.NOP
+        ), f"The TCP Nop option type must be {TcpOptionType.NOP!r}. Got: {TcpOptionType.from_int(value)!r}"
 
         return cls()
