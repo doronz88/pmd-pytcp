@@ -32,7 +32,7 @@ ver 3.0.3
 
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, override
 
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import Subsystem
@@ -122,6 +122,7 @@ class Timer(Subsystem):
 
     _event__stop_subsystem: threading.Event
 
+    @override
     def __init__(self) -> None:
         """
         Class constructor.
@@ -132,6 +133,7 @@ class Timer(Subsystem):
         self._tasks = []
         self._timers = {}
 
+    @override
     def _subsystem_loop(self) -> None:
         """
         Execute registered methods on every timer tick.

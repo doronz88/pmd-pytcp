@@ -63,6 +63,7 @@ class TxRing(Subsystem):
 
     _tx_ring: queue.Queue[EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler]
 
+    @override
     def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
         """
         Initialize access to TX file descriptor and the outbound queue.

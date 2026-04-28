@@ -85,6 +85,7 @@ class NdCache(Subsystem):
 
     _event__stop_subsystem: threading.Event
 
+    @override
     def __init__(self) -> None:
         """
         Initialize IPv6 ND Cache.

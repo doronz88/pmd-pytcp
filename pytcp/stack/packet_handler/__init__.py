@@ -105,6 +105,7 @@ class PacketHandler(Subsystem, ABC):
     _ip4_frag_flows: dict[IpFragFlowId, IpFragData]
     _ip_configuration_in_progress: Semaphore
 
+    @override
     def __init__(
         self,
         *,
@@ -464,6 +465,7 @@ class PacketHandlerL2(
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
 
+    @override
     def __init__(
         self,
         *,

@@ -54,6 +54,7 @@ class RxRing(Subsystem):
     _rx_ring: queue.Queue[PacketRx]
     _selector: selectors.DefaultSelector
 
+    @override
     def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
         """
         Initialize access to RX file descriptor and the inbound queue.
