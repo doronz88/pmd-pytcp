@@ -85,10 +85,8 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Ensure integrity of the DHCPv4 Router option fields.
         """
 
-        # Ensure that the 'routers' field is a list.
         assert isinstance(self.routers, list), f"The 'routers' field must be a list. Got: {type(self.routers)!r}"
 
-        # Ensure that each element of the  'routers' field is an Ip4Address instance.
         assert all(isinstance(item, Ip4Address) for item in self.routers), (
             f"The 'routers' field must be a list of Ip4Address elements. "
             f"Got: {[type(element) for element in self.routers]!r}"
@@ -157,14 +155,12 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Initialize the DHCPv4 Router option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Router option must be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.ROUTER), (
             f"The DHCPv4 Router option type must be {Dhcp4OptionType.ROUTER!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

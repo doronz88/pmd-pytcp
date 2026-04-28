@@ -123,14 +123,12 @@ class TcpOptionSackperm(TcpOption):
         Initialize the TCP Sackperm option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Sackperm option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             TcpOptionType.SACKPERM
         ), f"The TCP Sackperm option type must be {TcpOptionType.SACKPERM!r}. Got: {TcpOptionType.from_int(value)!r}"

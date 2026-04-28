@@ -79,7 +79,6 @@ class TcpOptionWscale(TcpOption):
         Ensure integrity of the TCP Wscale option fields.
         """
 
-        # Ensure that the 'wscale' field is less than or equal to the allowed maximum.
         assert is_uint8(self.wscale), (
             f"The 'wscale' field must be an 8-bit unsigned integer less than "
             f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {self.wscale!r}"
@@ -141,14 +140,12 @@ class TcpOptionWscale(TcpOption):
         Initialize the TCP Wscale option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Wscale option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             TcpOptionType.WSCALE
         ), f"The TCP Wscale option type must be {TcpOptionType.WSCALE!r}. Got: {TcpOptionType.from_int(value)!r}"

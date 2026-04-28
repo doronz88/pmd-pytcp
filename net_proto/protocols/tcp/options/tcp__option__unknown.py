@@ -69,12 +69,10 @@ class TcpOptionUnknown(TcpOption):
         Ensure integrity of the TCP unknown option fields.
         """
 
-        # Ensure the 'type' field is a valid TcpOptionType enum member.
         assert isinstance(
             self.type, TcpOptionType
         ), f"The 'type' field must be a TcpOptionType. Got: {type(self.type)!r}"
 
-        # Ensure the 'type' field is not a known TcpOptionType.
         assert (
             int(self.type) not in TcpOptionType.get_known_values()
         ), f"The 'type' field must not be a known TcpOptionType. Got: {self.type!r}"
@@ -82,7 +80,6 @@ class TcpOptionUnknown(TcpOption):
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", TCP__OPTION__LEN + len(self.data))
 
-        # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(self.len), f"The 'len' field must be an 8-bit unsigned integer. Got: {self.len!r}"
 
     @override
@@ -131,14 +128,12 @@ class TcpOptionUnknown(TcpOption):
         Initialize the unknown TCP option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= TCP__OPTION__LEN, (
             f"The minimum length of the unknown TCP option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is not known.
         assert (
             value := buffer[0]
         ) not in TcpOptionType.get_known_values(), (

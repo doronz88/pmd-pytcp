@@ -96,14 +96,12 @@ class Dhcp4OptionEnd(Dhcp4Option):
         Initialize the DHCPv4 End option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= DHCP4__OPTION__END__LEN, (
             f"The minimum length of the DHCPv4 End option must be {DHCP4__OPTION__END__LEN} byte. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             Dhcp4OptionType.END
         ), f"The DHCPv4 End option type must be {Dhcp4OptionType.END!r}. Got: {Dhcp4OptionType.from_int(value)!r}"

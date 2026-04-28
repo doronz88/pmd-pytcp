@@ -79,7 +79,6 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         Ensure integrity of the DHCPv4 Message Type option fields.
         """
 
-        # Ensure the 'message_type' field is Dhcp4MessageType.
         assert isinstance(
             self.message_type, Dhcp4MessageType
         ), f"The 'message_type' field must be a Dhcp4MessageType. Got: {type(self.message_type)!r}"
@@ -136,13 +135,11 @@ class Dhcp4OptionMessageType(Dhcp4Option):
         Initialize the DHCPv4 Message Type option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Message Type option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.MESSAGE_TYPE), (
             f"The DHCPv4 Message Type option type must be {Dhcp4OptionType.MESSAGE_TYPE!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

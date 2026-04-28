@@ -76,7 +76,6 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Ensure integrity of the DHCPv4 Client Identifier option fields.
         """
 
-        # Ensure that the 'client_id' field is bytes.
         assert isinstance(
             self.client_id, (bytes, bytearray)
         ), f"The 'client_id' field must be bytes. Got: {type(self.client_id)!r}"
@@ -131,13 +130,11 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Initialize the DHCPv4 Client Identifier option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Client Identifier option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.CLIENT_ID), (
             f"The DHCPv4 Client Identifier option type must be {Dhcp4OptionType.CLIENT_ID!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

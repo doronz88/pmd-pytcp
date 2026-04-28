@@ -81,7 +81,6 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Ensure integrity of the DHCPv4 Subnet Mask option fields.
         """
 
-        # Ensure that the 'subnet_mask' field is an Ip4Mask instance.
         assert isinstance(
             self.subnet_mask, Ip4Mask
         ), f"The 'subnet_mask' field must be an Ip4Mask. Got: {type(self.subnet_mask)!r}"
@@ -138,13 +137,11 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Initialize the DHCPv4 Subnet Mask option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Subnet Mask option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.SUBNET_MASK), (
             f"The DHCPv4 Subnet Mask option type must be {Dhcp4OptionType.SUBNET_MASK!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

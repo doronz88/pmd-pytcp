@@ -69,12 +69,10 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Ensure integrity of the DHCPv4 unknown option fields.
         """
 
-        # Ensure the 'type' field is a valid Dhcp4OptionType enum member.
         assert isinstance(
             self.type, Dhcp4OptionType
         ), f"The 'type' field must be a Dhcp4OptionType. Got: {type(self.type)!r}"
 
-        # Ensure the 'type' field is not a known Dhcp4OptionType.
         assert (
             int(self.type) not in Dhcp4OptionType.get_known_values()
         ), f"The 'type' field must not be a known Dhcp4OptionType. Got: {self.type!r}"
@@ -82,7 +80,6 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
 
-        # Ensure the 'len' field is a valid 8-bit unsigned integer.
         assert is_uint8(
             self.len - DHCP4__OPTION__LEN
         ), f"The 'len' field must be an 8-bit unsigned integer. Got: {self.len!r}"
@@ -133,14 +130,12 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Initialize the unknown DHCPv4 option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the unknown DHCPv4 option must be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is not known.
         assert (
             value := buffer[0]
         ) not in Dhcp4OptionType.get_known_values(), (

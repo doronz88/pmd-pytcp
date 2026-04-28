@@ -80,12 +80,10 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Ensure integrity of the DHCPv4 Parameter Request List option fields.
         """
 
-        # Ensure that the 'param_req_list' field is a list.
         assert isinstance(
             self.param_req_list, list
         ), f"The 'param_req_list' field must be a list. Got: {type(self.param_req_list)!r}"
 
-        # Ensure that each element of the 'param_req_list' field is a Dhcp4OptionType instance.
         assert all(isinstance(item, Dhcp4OptionType) for item in self.param_req_list), (
             f"The 'param_req_list' field must be a list of Dhcp4OptionType elements. "
             f"Got: {[type(element) for element in self.param_req_list]!r}"
@@ -148,13 +146,11 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Initialize the DHCPv4 Parameter Request List option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Parameter Request List option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.PARAM_REQ_LIST), (
             f"The DHCPv4 Parameter Request List option type must be {Dhcp4OptionType.PARAM_REQ_LIST!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

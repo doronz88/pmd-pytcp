@@ -92,14 +92,12 @@ class TcpOptionNop(TcpOption):
         Initialize the TCP Nop option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= TCP__OPTION__NOP__LEN, (
             f"The minimum length of the TCP Nop option must be {TCP__OPTION__NOP__LEN} byte. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             TcpOptionType.NOP
         ), f"The TCP Nop option type must be {TcpOptionType.NOP!r}. Got: {TcpOptionType.from_int(value)!r}"

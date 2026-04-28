@@ -81,7 +81,6 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Ensure integrity of the DHCPv4 Requested IP Address option fields.
         """
 
-        # Ensure that the 'req_ip_addr' field is Ip4Address instance.
         assert isinstance(
             self.req_ip_addr, Ip4Address
         ), f"The 'req_ip_addr' field must be an Ip4Address. Got: {type(self.req_ip_addr)!r}"
@@ -138,13 +137,11 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
         Initialize the DHCPv4 Requested IP Address option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Requested IP Address option must "
             f"be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.REQ_IP_ADDR), (
             f"The DHCPv4 Requested IP Address option type must be {Dhcp4OptionType.REQ_IP_ADDR!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"

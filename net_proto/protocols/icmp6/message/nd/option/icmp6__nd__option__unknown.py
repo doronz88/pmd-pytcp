@@ -129,13 +129,11 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         Initialize the unknown ICMPv6 ND option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the unknown ICMPv6 ND option must be "
             f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is not known.
         assert (
             value := buffer[0]
         ) not in Icmp6NdOptionType.get_known_values(), (

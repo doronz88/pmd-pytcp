@@ -96,14 +96,12 @@ class Dhcp4OptionPad(Dhcp4Option):
         Initialize the DHCPv4 Pad option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= DHCP4__OPTION__PAD__LEN, (
             f"The minimum length of the DHCPv4 Pad option must be {DHCP4__OPTION__PAD__LEN} byte. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             Dhcp4OptionType.PAD
         ), f"The DHCPv4 Pad option type must be {Dhcp4OptionType.PAD!r}. Got: {Dhcp4OptionType.from_int(value)!r}"

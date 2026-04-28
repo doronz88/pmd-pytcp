@@ -128,7 +128,6 @@ class TcpOptionSack(TcpOption):
         Ensure integrity of the TCP Sack option fields.
         """
 
-        # Ensure the number of blocks is within the allowed range.
         assert (value := len(self.blocks)) <= TCP__OPTION__SACK__MAX_BLOCK_NUM, (
             f"The 'blocks' field must have at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} " f"elements. Got: {value!r}"
         )
@@ -194,14 +193,12 @@ class TcpOptionSack(TcpOption):
         Initialize the TCP Sack option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= TCP__OPTION__LEN, (
             f"The minimum length of the TCP Sack option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(
             TcpOptionType.SACK
         ), f"The TCP Sack option type must be {TcpOptionType.SACK!r}. Got: {TcpOptionType.from_int(value)!r}"

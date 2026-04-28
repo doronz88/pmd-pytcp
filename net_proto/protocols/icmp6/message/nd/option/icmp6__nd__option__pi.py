@@ -193,12 +193,10 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         Initialize the ICMPv6 ND Pi option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
             f"The minimum length of the ICMPv6 ND Pi option must be " f"{ICMP6__ND__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Icmp6NdOptionType.PI), (
             f"The ICMPv6 ND Pi option type must be {Icmp6NdOptionType.PI!r}. "
             f"Got: {Icmp6NdOptionType.from_int(value)!r}"

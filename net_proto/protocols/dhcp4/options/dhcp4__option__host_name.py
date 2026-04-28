@@ -76,7 +76,6 @@ class Dhcp4OptionHostName(Dhcp4Option):
         Ensure integrity of the DHCPv4 Host Name option fields.
         """
 
-        # Ensure that the 'host_name' field is str.
         assert isinstance(self.host_name, str), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
 
         # Hack to bypass the 'frozen=True' dataclass decorator.
@@ -129,14 +128,12 @@ class Dhcp4OptionHostName(Dhcp4Option):
         Initialize the DHCPv4 Host Name option from buffer.
         """
 
-        # Ensure we got enough bytes to parse the option header.
         assert (
             value := len(buffer)
         ) >= DHCP4__OPTION__LEN, (
             f"The minimum length of the DHCPv4 Host Name option must be {DHCP4__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        # Ensure the option type is the expected value.
         assert (value := buffer[0]) == int(Dhcp4OptionType.HOST_NAME), (
             f"The DHCPv4 Host Name option type must be {Dhcp4OptionType.HOST_NAME!r}. "
             f"Got: {Dhcp4OptionType.from_int(value)!r}"
