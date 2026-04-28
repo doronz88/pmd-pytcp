@@ -23,7 +23,7 @@
 
 
 """
-This module contains the TCP packet assembler class.
+This module contains the TCP packet assembler.
 
 net_proto/protocols/tcp/tcp__assembler.py
 
@@ -48,7 +48,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TcpHeader
 
 class TcpAssembler(Tcp, ProtoAssembler):
     """
-    The TCP packet base.
+    The TCP packet assembler.
     """
 
     _payload: Buffer
@@ -76,7 +76,7 @@ class TcpAssembler(Tcp, ProtoAssembler):
         echo_tracker: Tracker | None = None,
     ) -> None:
         """
-        Initialize the TCP packet parser.
+        Initialize the TCP packet assembler.
         """
 
         assert (
