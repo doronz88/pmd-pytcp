@@ -63,7 +63,7 @@ class TestTcpOptionMssAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'mss' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'mss' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'mss' under UINT_16__MIN.",
         )
 
@@ -80,7 +80,7 @@ class TestTcpOptionMssAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'mss' field must be a 16-bit unsigned integer. Got: {value}",
+            f"The 'mss' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'mss' over UINT_16__MAX.",
         )
 
