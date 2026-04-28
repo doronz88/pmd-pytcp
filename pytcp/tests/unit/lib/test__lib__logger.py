@@ -35,63 +35,38 @@ import time
 from unittest import TestCase
 from unittest.mock import patch
 
-from pytcp.lib.logger import START_TIME, STYLES, log
+from pytcp.lib.logger import LOG__START_TIME, log
 
 
-class TestLoggerConstants(TestCase):
+class TestLoggerStartTime(TestCase):
     """
-    The 'logger' module constants tests.
+    The 'logger.LOG__START_TIME' module constant tests.
     """
 
     def test__logger__start_time_is_float(self) -> None:
         """
-        Ensure 'START_TIME' was captured as a float at import time, so
-        timestamp deltas computed inside 'log()' stay numeric.
+        Ensure 'LOG__START_TIME' was captured as a float at import time,
+        so timestamp deltas computed inside 'log()' stay numeric.
         """
 
         self.assertIsInstance(
-            START_TIME,
+            LOG__START_TIME,
             float,
-            msg="logger.START_TIME must be a float captured at module import.",
+            msg="logger.LOG__START_TIME must be a float captured at module import.",
         )
 
     def test__logger__start_time_not_in_future(self) -> None:
         """
-        Ensure 'START_TIME' is not set in the future relative to the
-        current wall-clock reading — guards against a typo that would
-        swap 'time.time()' for some other arithmetic.
+        Ensure 'LOG__START_TIME' is not set in the future relative to
+        the current wall-clock reading — guards against a typo that
+        would swap 'time.time()' for some other arithmetic.
         """
 
         self.assertLessEqual(
-            START_TIME,
+            LOG__START_TIME,
             time.time(),
-            msg="logger.START_TIME must be <= the current wall-clock time.",
+            msg="logger.LOG__START_TIME must be <= the current wall-clock time.",
         )
-
-    def test__logger__styles_has_reset_token(self) -> None:
-        """
-        Ensure the style table exposes the '</>' reset token mapped to the
-        canonical ANSI reset escape.
-        """
-
-        self.assertEqual(
-            STYLES["</>"],
-            "\33[0m",
-            msg="STYLES['</>'] must map to the ANSI reset escape ('\\33[0m').",
-        )
-
-    def test__logger__styles_all_values_are_ansi_escapes(self) -> None:
-        """
-        Ensure every value in the style table starts with the ESC
-        character so replacement produces valid terminal escapes.
-        """
-
-        for token, value in STYLES.items():
-            with self.subTest(token=token):
-                self.assertTrue(
-                    value.startswith("\33"),
-                    msg=f"STYLES[{token!r}] must start with the ESC character.",
-                )
 
 
 class TestLoggerChannelGate(TestCase):
@@ -246,14 +221,14 @@ class TestLoggerPlainOutput(TestCase):
             msg="log() must substitute the '</>' style token before output.",
         )
         self.assertIn(
-            STYLES["<g>"],
+            "\33[32m",
             output,
-            msg="log() must emit the ANSI escape for the '<g>' style token.",
+            msg="log() must emit the ANSI green escape for the '<g>' style token.",
         )
         self.assertIn(
-            STYLES["</>"],
+            "\33[0m",
             output,
-            msg="log() must emit the ANSI escape for the '</>' style token.",
+            msg="log() must emit the ANSI reset escape for the '</>' style token.",
         )
 
     def test__logger__plain_message_substitutes_caller_message_styles(self) -> None:
@@ -278,7 +253,7 @@ class TestLoggerPlainOutput(TestCase):
             msg="log() must substitute in-message style tokens before output.",
         )
         self.assertIn(
-            STYLES["<WARN>"],
+            "\33[1m\33[93m",
             output,
             msg="log() must emit the ANSI escape for an in-message '<WARN>' token.",
         )

@@ -23,7 +23,7 @@
 
 
 """
-This module contains methods supporting the stack logging.
+This module contains the methods supporting the stack logging.
 
 pytcp/lib/logger.py
 
@@ -33,30 +33,39 @@ ver 3.0.4
 import inspect
 import time
 
-STYLES = {
-    "</>": "\33[0m",
-    "<WARN>": "\33[1m\33[93m",
-    "<CRIT>": "\33[41m",
-    "<INFO>": "\33[1m",
-    "<B>": "\33[1m",
-    "<I>": "\33[3m",
-    "<U>": "\33[4m",
-    "<r>": "\33[31m",
-    "<lr>": "\33[91m",
-    "<g>": "\33[32m",
-    "<lg>": "\33[92m",
-    "<y>": "\33[33m",
-    "<ly>": "\33[93m",
-    "<b>": "\33[34m",
-    "<lb>": "\33[94m",
-    "<c>": "\33[36m",
-    "<lc>": "\33[96m",
-    "<v>": "\33[35m",
-    "<lv>": "\33[95m",
-}
+LOG__START_TIME = time.time()
 
 
-START_TIME = time.time()
+def _apply_styles(s: str, /) -> str:
+    """
+    Substitute every supported style token in 's' with its ANSI escape.
+
+    Hardcoded chain of 'str.replace' calls. Faster than iterating a
+    {token: escape} dict because each '.replace' is a single C call
+    and the Python-level loop overhead is gone.
+    """
+
+    return (
+        s.replace("</>", "\33[0m")
+        .replace("<WARN>", "\33[1m\33[93m")
+        .replace("<CRIT>", "\33[41m")
+        .replace("<INFO>", "\33[1m")
+        .replace("<B>", "\33[1m")
+        .replace("<I>", "\33[3m")
+        .replace("<U>", "\33[4m")
+        .replace("<r>", "\33[31m")
+        .replace("<lr>", "\33[91m")
+        .replace("<g>", "\33[32m")
+        .replace("<lg>", "\33[92m")
+        .replace("<y>", "\33[33m")
+        .replace("<ly>", "\33[93m")
+        .replace("<b>", "\33[34m")
+        .replace("<lb>", "\33[94m")
+        .replace("<c>", "\33[36m")
+        .replace("<lc>", "\33[96m")
+        .replace("<v>", "\33[35m")
+        .replace("<lv>", "\33[95m")
+    )
 
 
 def log(
@@ -67,30 +76,27 @@ def log(
     inspect_depth: int = 1,
 ) -> bool:
     """
-    Log a message if the channel and severity match the configured values.
+    Log a message if the channel matches one of the configured channels.
     """
 
     from pytcp.stack import LOG__CHANNEL, LOG__DEBUG, LOG__OUTPUT
 
-    if channel in LOG__CHANNEL:
-        if LOG__DEBUG:
-            frame_info = inspect.stack()[inspect_depth]
-            caller_class = frame_info.frame.f_locals["self"].__class__.__name__
-            caller_method = frame_info.function
-            caller_info = f"{caller_class}.{caller_method}"
-            output = (
-                f" <g>{(time.time() - START_TIME):07.02f}</> | "
-                f"<b>{channel.upper():7}</> | <c>{caller_info}</> | "
-                f"{message}"
-            )
+    if channel not in LOG__CHANNEL:
+        return False
+
+    prefix = f" <g>{(time.time() - LOG__START_TIME):07.02f}</> | <b>{channel.upper():7}</>"
+
+    if LOG__DEBUG:
+        frame_info = inspect.stack()[inspect_depth]
+        caller_self = frame_info.frame.f_locals.get("self")
+        if caller_self is not None:
+            caller_info = f"{caller_self.__class__.__name__}.{frame_info.function}"
         else:
-            output = f" <g>{(time.time() - START_TIME):07.02f}</> | " f"<b>{channel.upper():7}</> | {message}"
+            caller_info = frame_info.function
+        output = f"{prefix} | <c>{caller_info}</> | {message}"
+    else:
+        output = f"{prefix} | {message}"
 
-        for key, value in STYLES.items():
-            output = output.replace(key, value)
+    print(_apply_styles(output), file=LOG__OUTPUT)
 
-        print(output, file=LOG__OUTPUT)
-
-        return True
-
-    return False
+    return True
