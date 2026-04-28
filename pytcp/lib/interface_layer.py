@@ -23,7 +23,7 @@
 
 
 """
-This module contains enum representing the interface layer.
+This module contains the enum representing the interface layer.
 
 pytcp/lib/interface_layer.py
 
@@ -35,7 +35,7 @@ from enum import Enum, auto
 
 class InterfaceLayer(Enum):
     """
-    Enum representing the interface layer type.
+    The interface layer type.
     """
 
     L2 = auto()  # Layer 2 (TAP)
