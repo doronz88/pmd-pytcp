@@ -23,7 +23,7 @@
 
 
 """
-This module contains the UDP packet header class.
+This module contains the UDP packet header.
 
 net_proto/protocols/udp/udp__header.py
 
@@ -106,7 +106,7 @@ class UdpHeader(ProtoStruct):
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize UDP header from buffer.
+        Initialize the UDP header from buffer.
         """
 
         sport, dport, plen, cksum = struct.unpack(UDP__HEADER__STRUCT, buffer[:UDP__HEADER__LEN])
