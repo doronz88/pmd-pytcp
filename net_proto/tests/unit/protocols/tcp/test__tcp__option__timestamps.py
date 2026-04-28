@@ -91,7 +91,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value}",
+            f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'tsval' under UINT_32__MIN.",
         )
 
@@ -109,7 +109,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value}",
+            f"The 'tsval' field must be a 32-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'tsval' over UINT_32__MAX.",
         )
 
@@ -127,7 +127,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value}",
+            f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'tsecr' under UINT_32__MIN.",
         )
 
@@ -145,7 +145,7 @@ class TestTcpOptionTimestampsAsserts(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value}",
+            f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'tsecr' over UINT_32__MAX.",
         )
 

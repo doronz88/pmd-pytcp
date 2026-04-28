@@ -94,10 +94,10 @@ class TcpOptionTimestamps(TcpOption):
         """
 
         # Ensure the 'tsval' field is 32-bit unsigned integer.
-        assert is_uint32(self.tsval), f"The 'tsval' field must be a 32-bit unsigned integer. " f"Got: {self.tsval}"
+        assert is_uint32(self.tsval), f"The 'tsval' field must be a 32-bit unsigned integer. Got: {self.tsval!r}"
 
         # Ensure the 'tsecr' field is 32-bit unsigned integer.
-        assert is_uint32(self.tsecr), f"The 'tsecr' field must be a 32-bit unsigned integer. " f"Got: {self.tsecr}"
+        assert is_uint32(self.tsecr), f"The 'tsecr' field must be a 32-bit unsigned integer. Got: {self.tsecr!r}"
 
     @override
     def __str__(self) -> str:
@@ -134,8 +134,7 @@ class TcpOptionTimestamps(TcpOption):
         # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
-                f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} "
-                f"bytes. Got: {value!r}"
+                f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} bytes. Got: {value!r}"
             )
 
         # Raise integrity error if there is not enough bytes to parse the option.
@@ -153,8 +152,10 @@ class TcpOptionTimestamps(TcpOption):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Timestamps option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= TCP__OPTION__LEN, (
+            f"The minimum length of the TCP Timestamps option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
