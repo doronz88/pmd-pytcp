@@ -65,8 +65,8 @@ class TestTcpOptionWscaleAsserts(TestCase):
         self.assertEqual(
             str(error.exception),
             (
-                "The 'wscale' field must be a 8-bit unsigned integer less than "
-                f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {value}"
+                "The 'wscale' field must be an 8-bit unsigned integer less than "
+                f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {value!r}"
             ),
             msg="Unexpected assertion message for 'wscale' under UINT_8__MIN.",
         )
@@ -86,8 +86,8 @@ class TestTcpOptionWscaleAsserts(TestCase):
         self.assertEqual(
             str(error.exception),
             (
-                "The 'wscale' field must be a 8-bit unsigned integer less than "
-                f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {value}"
+                "The 'wscale' field must be an 8-bit unsigned integer less than "
+                f"or equal to {TCP__OPTION__WSCALE__MAX_VALUE}. Got: {value!r}"
             ),
             msg="Unexpected assertion message for 'wscale' over TCP__OPTION__WSCALE__MAX_VALUE.",
         )
