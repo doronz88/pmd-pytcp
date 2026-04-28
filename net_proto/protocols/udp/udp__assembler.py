@@ -23,7 +23,7 @@
 
 
 """
-This module contains the UDP packet assembler class.
+This module contains the UDP packet assembler.
 
 net_proto/protocols/udp/udp__assembler.py
 
@@ -45,7 +45,7 @@ class UdpAssembler(Udp, ProtoAssembler):
     The UDP packet assembler.
     """
 
-    _payload: bytes
+    _payload: Buffer
 
     def __init__(
         self,
