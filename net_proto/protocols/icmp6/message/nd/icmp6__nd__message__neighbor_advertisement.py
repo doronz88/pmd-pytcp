@@ -107,7 +107,7 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Neighbor Advertisement message fields.
+        Ensure integrity of the ICMPv6 ND Neighbor Advertisement message fields.
         """
 
         assert isinstance(

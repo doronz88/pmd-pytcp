@@ -90,7 +90,7 @@ class TcpOptionTimestamps(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Timestamps option fields.
+        Ensure integrity of the TCP Timestamps option fields.
         """
 
         # Ensure the 'tsval' field is 32-bit unsigned integer.

@@ -78,7 +78,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 IP Address Lease Time option fields.
+        Ensure integrity of the DHCPv4 IP Address Lease Time option fields.
         """
 
         # Ensure the 'lease_time' field is 32-bit unsigned integer.

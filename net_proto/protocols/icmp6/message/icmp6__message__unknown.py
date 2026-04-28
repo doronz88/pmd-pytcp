@@ -60,7 +60,7 @@ class Icmp6MessageUnknown(Icmp6Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 unknown message fields.
+        Ensure integrity of the ICMPv6 unknown message fields.
         """
 
         assert isinstance(self.type, Icmp6Type), f"The 'type' field must be an Icmp6Type. Got: {type(self.type)!r}"

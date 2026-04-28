@@ -66,7 +66,7 @@ class Ip4OptionUnknown(Ip4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the IPv4 unknown option fields.
+        Ensure integrity of the IPv4 unknown option fields.
         """
 
         # Ensure the 'type' field is a valid Ip4OptionType enum member.
@@ -79,7 +79,7 @@ class Ip4OptionUnknown(Ip4Option):
             int(self.type) not in Ip4OptionType.get_known_values()
         ), f"The 'type' field must not be a known Ip4OptionType. Got: {self.type!r}"
 
-        # Update the option 'len' field based on the length of the 'data' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", IP4__OPTION__LEN + len(self.data))
 
         # Ensure the 'len' field is a valid 8-bit unsigned integer.

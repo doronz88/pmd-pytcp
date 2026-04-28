@@ -95,7 +95,7 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Router Solicitation message fields.
+        Ensure integrity of the ICMPv6 ND Router Solicitation message fields.
         """
 
         assert isinstance(

@@ -87,7 +87,7 @@ class Icmp4MessageEchoReply(Icmp4Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 Echo Reply message fields.
+        Ensure integrity of the ICMPv4 Echo Reply message fields.
         """
 
         assert isinstance(

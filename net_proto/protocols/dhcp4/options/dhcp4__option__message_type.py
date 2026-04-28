@@ -76,7 +76,7 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Message Type option fields.
+        Ensure integrity of the DHCPv4 Message Type option fields.
         """
 
         # Ensure the 'message_type' field is Dhcp4MessageType.

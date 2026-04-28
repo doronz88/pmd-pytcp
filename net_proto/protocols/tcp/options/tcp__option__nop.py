@@ -66,7 +66,7 @@ class TcpOptionNop(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Nop option fields.
+        Ensure integrity of the TCP Nop option fields.
         """
 
     @override

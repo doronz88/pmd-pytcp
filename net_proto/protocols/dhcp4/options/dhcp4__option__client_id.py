@@ -73,7 +73,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Client Identifier option fields.
+        Ensure integrity of the DHCPv4 Client Identifier option fields.
         """
 
         # Ensure that the 'client_id' field is bytes.
@@ -81,7 +81,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
             self.client_id, (bytes, bytearray)
         ), f"The 'client_id' field must be bytes. Got: {type(self.client_id)!r}"
 
-        # Update the option 'len' field based on the length of the 'client_id' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.client_id))
 
     @override
@@ -98,14 +98,16 @@ class Dhcp4OptionClientId(Dhcp4Option):
         Get the DHCPv4 Client Identifier option as a memoryview.
         """
 
+        buffer = bytearray(len(self))
+
         struct.pack_into(
-            DHCP4__OPTION__CLIENT_ID__STRUCT + f"{len(self.client_id)}s",
-            buffer := bytearray(len(self)),
+            DHCP4__OPTION__CLIENT_ID__STRUCT,
+            buffer,
             0,
             int(self.type),
             len(self.client_id),
-            bytes(self.client_id),
         )
+        buffer[DHCP4__OPTION__LEN:] = bytes(self.client_id)
 
         return memoryview(buffer)
 

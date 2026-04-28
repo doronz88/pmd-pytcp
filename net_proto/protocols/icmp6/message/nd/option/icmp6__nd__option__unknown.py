@@ -66,7 +66,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND unknown option fields.
+        Ensure integrity of the ICMPv6 ND unknown option fields.
         """
 
         assert isinstance(

@@ -66,7 +66,7 @@ class TcpOptionUnknown(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP unknown option fields.
+        Ensure integrity of the TCP unknown option fields.
         """
 
         # Ensure the 'type' field is a valid TcpOptionType enum member.
@@ -79,7 +79,7 @@ class TcpOptionUnknown(TcpOption):
             int(self.type) not in TcpOptionType.get_known_values()
         ), f"The 'type' field must not be a known TcpOptionType. Got: {self.type!r}"
 
-        # Update the option 'len' field based on the length of the 'data' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", TCP__OPTION__LEN + len(self.data))
 
         # Ensure the 'len' field is a valid 8-bit unsigned integer.

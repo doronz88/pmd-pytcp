@@ -78,7 +78,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option fields.
+        Ensure integrity of the DHCPv4 Subnet Mask option fields.
         """
 
         # Ensure that the 'subnet_mask' field is an Ip4Mask instance.

@@ -125,7 +125,7 @@ class TcpOptionSack(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Sack option fields.
+        Ensure integrity of the TCP Sack option fields.
         """
 
         # Ensure the number of blocks is within the allowed range.

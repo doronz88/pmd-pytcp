@@ -59,7 +59,7 @@ class Icmp4MessageUnknown(Icmp4Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 unknown message fields.
+        Ensure integrity of the ICMPv4 unknown message fields.
         """
 
         assert isinstance(self.type, Icmp4Type), f"The 'type' field must be an Icmp4Type. Got: {type(self.type)!r}"

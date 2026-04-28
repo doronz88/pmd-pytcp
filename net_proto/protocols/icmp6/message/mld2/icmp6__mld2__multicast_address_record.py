@@ -122,7 +122,7 @@ class Icmp6Mld2MulticastAddressRecord(ProtoStruct):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 MLDv2 Multicast Address Record fields.
+        Ensure integrity of the ICMPv6 MLDv2 Multicast Address Record fields.
         """
 
         assert (

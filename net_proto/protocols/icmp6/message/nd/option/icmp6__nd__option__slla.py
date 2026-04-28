@@ -77,7 +77,7 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Slla option fields.
+        Ensure integrity of the ICMPv6 ND Slla option fields.
         """
 
         assert isinstance(self.slla, MacAddress), f"The 'slla' field must be a MacAddress. Got: {type(self.slla)!r}"

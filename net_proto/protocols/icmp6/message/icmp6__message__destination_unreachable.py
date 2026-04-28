@@ -97,7 +97,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 Destination Unreachable message fields.
+        Ensure integrity of the ICMPv6 Destination Unreachable message fields.
         """
 
         assert isinstance(

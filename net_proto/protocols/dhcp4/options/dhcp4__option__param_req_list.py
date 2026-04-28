@@ -52,6 +52,8 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
 
 
 DHCP4__OPTION__PARAM_REQ_LIST__STRUCT = "! BB"
+DHCP4__OPTION__PARAM_REQ_LIST__ELEMENT__LEN = 1
+DHCP4__OPTION__PARAM_REQ_LIST__ELEMENT__STRUCT = "! B"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
@@ -75,7 +77,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Parameter Request List option fields.
+        Ensure integrity of the DHCPv4 Parameter Request List option fields.
         """
 
         # Ensure that the 'param_req_list' field is a list.
@@ -89,7 +91,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
             f"Got: {[type(element) for element in self.param_req_list]!r}"
         )
 
-        # Update the option 'len' field based on the length of the 'param_req_list' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.param_req_list))
 
     @override
@@ -106,14 +108,23 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         Get the DHCPv4 Parameter Request List option as a memoryview.
         """
 
+        buffer = bytearray(len(self))
+
         struct.pack_into(
-            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT + f"{len(self.param_req_list)}s",
-            buffer := bytearray(len(self)),
+            DHCP4__OPTION__PARAM_REQ_LIST__STRUCT,
+            buffer,
             0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            bytes([int(option) for option in self.param_req_list]),
         )
+
+        for index, option in enumerate(self.param_req_list):
+            struct.pack_into(
+                DHCP4__OPTION__PARAM_REQ_LIST__ELEMENT__STRUCT,
+                buffer,
+                DHCP4__OPTION__LEN + index * DHCP4__OPTION__PARAM_REQ_LIST__ELEMENT__LEN,
+                int(option),
+            )
 
         return memoryview(buffer)
 

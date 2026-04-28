@@ -67,7 +67,7 @@ class Ip6FragHeader(ProtoStruct):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the IPv6 Frag header fields.
+        Ensure integrity of the IPv6 Frag header fields.
         """
 
         assert isinstance(self.next, IpProto), f"The 'next' field must be an IpProto. Got: {type(self.next)!r}"

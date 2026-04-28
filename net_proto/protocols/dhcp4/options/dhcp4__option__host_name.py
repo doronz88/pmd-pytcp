@@ -73,13 +73,13 @@ class Dhcp4OptionHostName(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Host Name option fields.
+        Ensure integrity of the DHCPv4 Host Name option fields.
         """
 
         # Ensure that the 'host_name' field is str.
         assert isinstance(self.host_name, str), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
 
-        # Update the option 'len' field based on the length of the 'host_name' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.host_name))
 
     @override
@@ -96,14 +96,16 @@ class Dhcp4OptionHostName(Dhcp4Option):
         Get the DHCPv4 Host Name option as a memoryview.
         """
 
+        buffer = bytearray(len(self))
+
         struct.pack_into(
-            DHCP4__OPTION__HOST_NAME__STRUCT + f"{len(self.host_name)}s",
-            buffer := bytearray(len(self)),
+            DHCP4__OPTION__HOST_NAME__STRUCT,
+            buffer,
             0,
             int(self.type),
             len(self.host_name),
-            self.host_name.encode("utf-8"),
         )
+        buffer[DHCP4__OPTION__LEN:] = self.host_name.encode("utf-8")
 
         return memoryview(buffer)
 

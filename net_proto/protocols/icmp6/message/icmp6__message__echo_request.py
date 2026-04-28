@@ -88,7 +88,7 @@ class Icmp6MessageEchoRequest(Icmp6Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 Echo Request message fields.
+        Ensure integrity of the ICMPv6 Echo Request message fields.
         """
 
         assert isinstance(

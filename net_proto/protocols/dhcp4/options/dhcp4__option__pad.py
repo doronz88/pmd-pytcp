@@ -70,7 +70,7 @@ class Dhcp4OptionPad(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Pad option fields.
+        Ensure integrity of the DHCPv4 Pad option fields.
         """
 
     @override

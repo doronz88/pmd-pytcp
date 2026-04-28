@@ -109,7 +109,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Pi option fields.
+        Ensure integrity of the ICMPv6 ND Pi option fields.
         """
 
         assert isinstance(self.flag_l, bool), f"The 'flag_l' field must be a boolean. Got: {type(self.flag_l)!r}"

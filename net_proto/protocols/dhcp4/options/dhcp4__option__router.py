@@ -57,6 +57,8 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
 
 
 DHCP4__OPTION__ROUTER__STRUCT = "! BB"
+DHCP4__OPTION__ROUTER__ELEMENT__LEN = 4
+DHCP4__OPTION__ROUTER__ELEMENT__STRUCT = "! 4s"
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
@@ -80,7 +82,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Router option fields.
+        Ensure integrity of the DHCPv4 Router option fields.
         """
 
         # Ensure that the 'routers' field is a list.
@@ -92,7 +94,7 @@ class Dhcp4OptionRouter(Dhcp4Option):
             f"Got: {[type(element) for element in self.routers]!r}"
         )
 
-        # Update the option 'len' field based on the length of the 'routers' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.routers) * 4)
 
     @override
@@ -109,14 +111,23 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Get the DHCPv4 Router option as a memoryview.
         """
 
+        buffer = bytearray(len(self))
+
         struct.pack_into(
-            DHCP4__OPTION__ROUTER__STRUCT + f"{len(self.routers) * 4}s",
-            buffer := bytearray(len(self)),
+            DHCP4__OPTION__ROUTER__STRUCT,
+            buffer,
             0,
             int(self.type),
             self.len - DHCP4__OPTION__LEN,
-            b"".join(bytes(router) for router in self.routers),
         )
+
+        for index, router in enumerate(self.routers):
+            struct.pack_into(
+                DHCP4__OPTION__ROUTER__ELEMENT__STRUCT,
+                buffer,
+                DHCP4__OPTION__LEN + index * DHCP4__OPTION__ROUTER__ELEMENT__LEN,
+                bytes(router),
+            )
 
         return memoryview(buffer)
 

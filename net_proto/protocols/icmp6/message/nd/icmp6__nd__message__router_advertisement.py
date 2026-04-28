@@ -105,7 +105,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Router Advertisement message fields.
+        Ensure integrity of the ICMPv6 ND Router Advertisement message fields.
         """
 
         assert isinstance(

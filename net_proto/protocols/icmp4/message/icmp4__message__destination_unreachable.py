@@ -133,7 +133,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv4 Destination Unreachable message fields.
+        Ensure integrity of the ICMPv4 Destination Unreachable message fields.
         """
 
         assert isinstance(

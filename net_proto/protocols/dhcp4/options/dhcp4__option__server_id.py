@@ -78,7 +78,7 @@ class Dhcp4OptionServerId(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Server Identifier option fields.
+        Ensure integrity of the DHCPv4 Server Identifier option fields.
         """
 
         # Ensure that the 'server_id' field is an Ip4Address instance.

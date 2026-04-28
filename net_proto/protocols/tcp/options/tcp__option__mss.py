@@ -75,7 +75,7 @@ class TcpOptionMss(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Mss option fields.
+        Ensure integrity of the TCP Mss option fields.
         """
 
         # Ensure the 'mss' field is a 16-bit unsigned integer.

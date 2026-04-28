@@ -76,7 +76,7 @@ class TcpOptionWscale(TcpOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the TCP Wscale option fields.
+        Ensure integrity of the TCP Wscale option fields.
         """
 
         # Ensure that the 'wscale' field is less than or equal to the allowed maximum.

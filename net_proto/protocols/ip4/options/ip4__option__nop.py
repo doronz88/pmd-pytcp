@@ -67,7 +67,7 @@ class Ip4OptionNop(Ip4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the IPv4 Nop option fields.
+        Ensure integrity of the IPv4 Nop option fields.
         """
 
     @override

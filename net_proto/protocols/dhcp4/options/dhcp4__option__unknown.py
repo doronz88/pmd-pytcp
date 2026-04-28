@@ -66,7 +66,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 unknown option fields.
+        Ensure integrity of the DHCPv4 unknown option fields.
         """
 
         # Ensure the 'type' field is a valid Dhcp4OptionType enum member.
@@ -79,7 +79,7 @@ class Dhcp4OptionUnknown(Dhcp4Option):
             int(self.type) not in Dhcp4OptionType.get_known_values()
         ), f"The 'type' field must not be a known Dhcp4OptionType. Got: {self.type!r}"
 
-        # Update the option 'len' field based on the length of the 'data' field.
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.data))
 
         # Ensure the 'len' field is a valid 8-bit unsigned integer.

@@ -77,7 +77,7 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the ICMPv6 ND Tlla option fields.
+        Ensure integrity of the ICMPv6 ND Tlla option fields.
         """
 
         assert isinstance(self.tlla, MacAddress), f"The 'tlla' field must be a MacAddress. Got: {type(self.tlla)!r}"

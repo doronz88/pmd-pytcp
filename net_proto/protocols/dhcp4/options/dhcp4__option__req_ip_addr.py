@@ -78,7 +78,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @override
     def __post_init__(self) -> None:
         """
-        Validate the DHCPv4 Requested IP Address option fields.
+        Ensure integrity of the DHCPv4 Requested IP Address option fields.
         """
 
         # Ensure that the 'req_ip_addr' field is Ip4Address instance.
