@@ -23,8 +23,7 @@
 
 
 """
-This module contains classes used in the IPv4/IPv6 packet fragmentation and reassembly
-processes.
+This module contains the classes used in the IPv4/IPv6 packet fragmentation and reassembly processes.
 
 pytcp/lib/ip_frag.py
 
@@ -37,10 +36,10 @@ from dataclasses import dataclass, field
 from net_addr import Ip4Address, Ip6Address
 
 
-@dataclass(kw_only=True, frozen=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True)
 class IpFragFlowId:
     """
-    Class stores the IPv4/IPv6 packet fragmentation flow ID.
+    The IPv4/IPv6 packet fragmentation flow ID.
     """
 
     src: Ip6Address | Ip4Address
@@ -48,15 +47,15 @@ class IpFragFlowId:
     id: int
 
 
-@dataclass(kw_only=True, frozen=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True)
 class IpFragData:
     """
-    Class stores the IPv4/IPv6 packet fragmentation data.
+    The IPv4/IPv6 packet fragmentation data.
     """
 
-    timestamp: float = field(default_factory=time.time, init=False)
+    timestamp: float = field(repr=False, init=False, default_factory=time.time)
     header: bytes
-    last: bool = field(default=False, init=False)
+    last: bool = field(repr=False, init=False, default=False)
     payload: dict[int, bytes]
 
     def received_last_frag(self) -> None:
@@ -64,4 +63,5 @@ class IpFragData:
         Set the last fragment flag.
         """
 
+        # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "last", True)
