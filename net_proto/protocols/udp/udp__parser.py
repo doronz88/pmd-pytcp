@@ -23,7 +23,7 @@
 
 
 """
-This module contains the UDP packet parser class.
+This module contains the UDP packet parser.
 
 net_proto/protocols/udp/udp__parser.py
 
@@ -81,7 +81,7 @@ class UdpParser(Udp, ProtoParser):
             )
 
         plen = int.from_bytes(self._frame[4:6])
-        if not UDP__HEADER__LEN <= plen == self._ip__payload_len <= len(self._frame):
+        if not (UDP__HEADER__LEN <= plen == self._ip__payload_len <= len(self._frame)):
             raise UdpIntegrityError(
                 "The condition 'UDP__HEADER__LEN <= plen == self._ip__payload_len "
                 f"<= len(self._frame)' must be met. Got: {UDP__HEADER__LEN=}, "
@@ -110,10 +110,10 @@ class UdpParser(Udp, ProtoParser):
 
         if (value := self.sport) == 0:
             raise UdpSanityError(
-                f"The 'sport' field must be greater than 0. Got: {value}",
+                f"The 'sport' field must be greater than 0. Got: {value!r}",
             )
 
         if (value := self.dport) == 0:
             raise UdpSanityError(
-                f"The 'dport' field must be greater than 0. Got: {value}",
+                f"The 'dport' field must be greater than 0. Got: {value!r}",
             )
