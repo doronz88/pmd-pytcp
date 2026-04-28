@@ -106,8 +106,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
 
                 self.assertEqual(
                     str(error.exception),
-                    f"The 'type' field must not be a core TcpOptionType. Got: {enum_value!r}",
-                    msg=f"Unexpected assertion message for core 'type'={enum_value!r}.",
+                    f"The 'type' field must not be a known TcpOptionType. Got: {enum_value!r}",
+                    msg=f"Unexpected assertion message for known 'type'={enum_value!r}.",
                 )
 
     def test__tcp__option__unknown__len__8bit_integer(self) -> None:
