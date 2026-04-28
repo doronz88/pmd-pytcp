@@ -31,17 +31,18 @@ ver 3.0.4
 """
 
 from enum import IntEnum
+from typing import override
 
 
 class NameEnum(IntEnum):
     """
-    Enum with the overloaded '__str__()' method to print the enum's
-    name instead of its value.
+    IntEnum subclass that prints the member name instead of its integer value.
     """
 
+    @override
     def __str__(self) -> str:
         """
         Get the enum's name as a string.
         """
 
-        return str(self.name)
+        return self.name
