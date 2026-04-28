@@ -93,7 +93,7 @@ class TcpOptionSackperm(TcpOption):
             TCP__OPTION__SACKPERM__STRUCT,
             buffer := bytearray(len(self)),
             0,
-            self.type.value,
+            int(self.type),
             self.len,
         )
 
@@ -108,7 +108,7 @@ class TcpOptionSackperm(TcpOption):
         # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__SACKPERM__LEN:
             raise TcpIntegrityError(
-                f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} " f"bytes. Got: {value!r}"
+                f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} bytes. Got: {value!r}"
             )
 
         # The Sackperm option has no data, so the length should be exactly 2
@@ -124,15 +124,16 @@ class TcpOptionSackperm(TcpOption):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__LEN, (
-            f"The minimum length of the TCP Sackperm option must be " f"{TCP__OPTION__LEN} bytes. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= TCP__OPTION__LEN, (
+            f"The minimum length of the TCP Sackperm option must be {TCP__OPTION__LEN} bytes. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.SACKPERM), (
-            f"The TCP Sackperm option type must be {TcpOptionType.SACKPERM!r}. "
-            f"Got: {TcpOptionType.from_int(value)!r}"
-        )
+        assert (value := buffer[0]) == int(
+            TcpOptionType.SACKPERM
+        ), f"The TCP Sackperm option type must be {TcpOptionType.SACKPERM!r}. Got: {TcpOptionType.from_int(value)!r}"
 
         cls._validate_integrity(buffer)
 
