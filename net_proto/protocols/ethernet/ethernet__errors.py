@@ -30,6 +30,8 @@ net_proto/protocols/ethernet/ethernet__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class EthernetIntegrityError(PacketIntegrityError):
     Exception raised when Ethernet packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[Ethernet] " + message)
 
@@ -47,5 +50,6 @@ class EthernetSanityError(PacketSanityError):
     Exception raised when Ethernet packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[Ethernet] " + message)

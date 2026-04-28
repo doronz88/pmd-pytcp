@@ -30,6 +30,8 @@ net_proto/protocols/icmp4/icmp4__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class Icmp4IntegrityError(PacketIntegrityError):
     Exception raised when ICMPv4 packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[ICMPv4] " + message)
 
@@ -47,5 +50,6 @@ class Icmp4SanityError(PacketSanityError):
     Exception raised when ICMPv4 packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[ICMPv4] " + message)

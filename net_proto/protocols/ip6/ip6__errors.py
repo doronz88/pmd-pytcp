@@ -30,6 +30,8 @@ net_proto/protocols/ip6/ip6__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class Ip6IntegrityError(PacketIntegrityError):
     Exception raised when IPv6 packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[IPv6] " + message)
 
@@ -47,5 +50,6 @@ class Ip6SanityError(PacketSanityError):
     Exception raised when IPv6 packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[IPv6] " + message)

@@ -30,6 +30,8 @@ net_proto/protocols/ethernet_802_3/ethernet_802_3__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class Ethernet8023IntegrityError(PacketIntegrityError):
     Exception raised when Ethernet 802.3 packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[Ethernet 802.3] " + message)
 
@@ -47,5 +50,6 @@ class Ethernet8023SanityError(PacketSanityError):
     Exception raised when Ethernet 802.3 packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[Ethernet 802.3] " + message)

@@ -30,6 +30,8 @@ net_proto/protocols/arp/arp__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class ArpIntegrityError(PacketIntegrityError):
     Exception raised when ARP packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[ARP] " + message)
 
@@ -47,5 +50,6 @@ class ArpSanityError(PacketSanityError):
     Exception raised when ARP packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[ARP] " + message)

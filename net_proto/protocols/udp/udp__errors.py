@@ -30,6 +30,8 @@ net_proto/protocols/udp/udp__errors.py
 ver 3.0.4
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class UdpIntegrityError(PacketIntegrityError):
     Exception raised when UDP packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[UDP] " + message)
 
@@ -47,5 +50,6 @@ class UdpSanityError(PacketSanityError):
     Exception raised when UDP packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[UDP] " + message)
