@@ -23,19 +23,21 @@
 
 
 """
-This module contains definition of the TX status codes.
+This module contains the definition of the TX status codes.
 
 pytcp/lib/tx_status.py
 
 ver 3.0.4
 """
 
-from enum import IntEnum, auto
+from enum import auto
+
+from pytcp.lib.name_enum import NameEnum
 
 
-class TxStatus(IntEnum):
+class TxStatus(NameEnum):
     """
-    TX status codes.
+    The TX status codes.
     """
 
     PASSED__ETHERNET__TO_TX_RING = auto()
@@ -85,10 +87,3 @@ class TxStatus(IntEnum):
     DROPPED__ICMP4__UNKNOWN = auto()
 
     DROPPED__ICMP6__UNKNOWN = auto()
-
-    def __str__(self) -> str:
-        """
-        Get the enum as a string.
-        """
-
-        return str(self.name)
