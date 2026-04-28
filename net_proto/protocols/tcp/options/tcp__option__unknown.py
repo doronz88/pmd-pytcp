@@ -114,7 +114,7 @@ class TcpOptionUnknown(TcpOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown TCP option integrity before parsing it.
+        Ensure integrity of the unknown TCP option before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.

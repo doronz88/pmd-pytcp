@@ -114,7 +114,7 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Subnet Mask option integrity before parsing it.
+        Ensure integrity of the DHCPv4 Subnet Mask option before parsing it.
         """
 
         # Raise integrity error if the option length value is incorrect.

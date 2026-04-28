@@ -170,7 +170,7 @@ class Icmp6NdOptionPi(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the ICMPv6 ND Pi option integrity before parsing it.
+        Ensure integrity of the ICMPv6 ND Pi option before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.

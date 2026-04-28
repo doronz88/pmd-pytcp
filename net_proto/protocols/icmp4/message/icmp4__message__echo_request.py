@@ -166,7 +166,7 @@ class Icmp4MessageEchoRequest(Icmp4Message):
     @override
     def validate_sanity(self) -> None:
         """
-        Validate the ICMPv4 Echo Request message sanity after parsing it.
+        Ensure sanity of the ICMPv4 Echo Request message after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -175,7 +175,7 @@ class Icmp4MessageEchoRequest(Icmp4Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
-        Validate the integrity of the ICMPv4 Echo Request message before parsing it.
+        Ensure integrity of the ICMPv4 Echo Request message before parsing it.
         """
 
         if not (ICMP4__ECHO_REQUEST__LEN <= ip4__payload_len <= len(frame)):

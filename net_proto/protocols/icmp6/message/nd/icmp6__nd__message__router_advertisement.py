@@ -200,8 +200,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
     @override
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 ND Router Advertisement message sanity after
-        parsing it.
+        Ensure sanity of the ICMPv6 ND Router Advertisement message after parsing it.
         """
 
         if ip6__hop != 255:
@@ -226,8 +225,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 ND Router Advertisement message
-        before parsing it.
+        Ensure integrity of the ICMPv6 ND Router Advertisement message before parsing it.
         """
 
         if not (ICMP6__ND__ROUTER_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)):

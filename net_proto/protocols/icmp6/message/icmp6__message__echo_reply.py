@@ -167,7 +167,7 @@ class Icmp6MessageEchoReply(Icmp6Message):
     @override
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 Echo Reply message sanity after parsing it.
+        Ensure sanity of the ICMPv6 Echo Reply message after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -176,7 +176,7 @@ class Icmp6MessageEchoReply(Icmp6Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 Echo Reply message before parsing it.
+        Ensure integrity of the ICMPv6 Echo Reply message before parsing it.
         """
 
         if not (ICMP6__ECHO_REPLY__LEN <= ip6__dlen <= len(frame)):

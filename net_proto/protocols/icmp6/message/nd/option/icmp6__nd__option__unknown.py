@@ -112,7 +112,7 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown ICMPv6 ND option integrity before parsing it.
+        Ensure integrity of the unknown ICMPv6 ND option before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.

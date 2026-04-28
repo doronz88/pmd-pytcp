@@ -178,8 +178,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
     @override
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 Destination Unreachable message sanity after
-        parsing it.
+        Ensure sanity of the ICMPv6 Destination Unreachable message after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -188,8 +187,7 @@ class Icmp6MessageDestinationUnreachable(Icmp6Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate the ICMPv6 Destination Unreachable message integrity before
-        parsing it.
+        Ensure integrity of the ICMPv6 Destination Unreachable message before parsing it.
         """
 
         if not (ICMP6__DESTINATION_UNREACHABLE__LEN <= ip6__dlen <= len(frame)):

@@ -70,7 +70,7 @@ class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the Ethernet 802.3 packet before parsing it.
+        Ensure integrity of the Ethernet 802.3 packet before parsing it.
         """
 
         if len(self._frame) < ETHERNET_802_3__HEADER__LEN:
@@ -106,7 +106,7 @@ class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the Ethernet 802.3 packet after parsing it.
+        Ensure sanity of the Ethernet 802.3 packet after parsing it.
         """
 
         # Currently no sanity checks are implemented for the Ethernet 802.3

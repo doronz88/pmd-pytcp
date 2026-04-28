@@ -67,7 +67,7 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the IPv6 Frag packet before parsing it.
+        Ensure integrity of the IPv6 Frag packet before parsing it.
         """
 
         if len(self._frame) < IP6_FRAG__HEADER__LEN:
@@ -88,7 +88,7 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the IPv6 Frag packet after parsing it.
+        Ensure sanity of the IPv6 Frag packet after parsing it.
         """
 
         # Currently no sanity checks are implemented for the IPv6 Frag protocol.

@@ -114,7 +114,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Client Identifier option integrity before parsing it.
+        Ensure integrity of the DHCPv4 Client Identifier option before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.

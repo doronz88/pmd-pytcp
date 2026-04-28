@@ -114,7 +114,7 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 IP Address Lease Time option integrity before parsing it.
+        Ensure integrity of the DHCPv4 IP Address Lease Time option before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.

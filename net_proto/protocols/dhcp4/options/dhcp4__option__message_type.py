@@ -112,7 +112,7 @@ class Dhcp4OptionMessageType(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Message Type option integrity before parsing it.
+        Ensure integrity of the DHCPv4 Message Type option before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.

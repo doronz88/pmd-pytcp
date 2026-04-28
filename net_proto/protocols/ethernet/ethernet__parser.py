@@ -70,7 +70,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the Ethernet packet before parsing it.
+        Ensure integrity of the Ethernet packet before parsing it.
         """
 
         if len(self._frame) < ETHERNET__HEADER__LEN:
@@ -90,7 +90,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the Ethernet packet after parsing it.
+        Ensure sanity of the Ethernet packet after parsing it.
         """
 
         if (value := int(self._header.type)) < 0x0600:

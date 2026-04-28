@@ -63,7 +63,7 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the DHCPv4 packet before parsing it.
+        Ensure integrity of the DHCPv4 packet before parsing it.
         """
 
         if len(self._frame) < DHCP4__HEADER__LEN:
@@ -88,5 +88,5 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the DHCPv4 packet after parsing it.
+        Ensure sanity of the DHCPv4 packet after parsing it.
         """

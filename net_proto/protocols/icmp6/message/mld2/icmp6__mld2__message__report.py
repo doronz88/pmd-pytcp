@@ -196,7 +196,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @override
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 MLDv2 Report message sanity after parsing it.
+        Ensure sanity of the ICMPv6 MLDv2 Report message after parsing it.
         """
 
         if ip6__hop != 1:
@@ -208,8 +208,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 MLDv2 Report message before
-        parsing it.
+        Ensure integrity of the ICMPv6 MLDv2 Report message before parsing it.
         """
 
         if not (ICMP6__MLD2__REPORT__LEN <= ip6__dlen <= len(frame)):

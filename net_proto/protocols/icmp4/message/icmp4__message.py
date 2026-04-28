@@ -85,7 +85,7 @@ class Icmp4Message(ProtoStruct):
     @abstractmethod
     def validate_sanity(self) -> None:
         """
-        Validate the ICMPv4 message sanity.
+        Ensure sanity of the ICMPv4 message.
         """
 
         raise NotImplementedError
@@ -94,7 +94,7 @@ class Icmp4Message(ProtoStruct):
     @abstractmethod
     def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
-        Validate the ICMPv4 message integrity.
+        Ensure integrity of the ICMPv4 message.
         """
 
         raise NotImplementedError

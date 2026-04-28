@@ -95,7 +95,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the ICMPv4 packet before parsing it.
+        Ensure integrity of the ICMPv4 packet before parsing it.
         """
 
         if not (ICMP4__HEADER__LEN <= self._ip4__payload_len <= len(self._frame)):
@@ -123,7 +123,7 @@ class Icmp4Parser(Icmp4, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the ICMPv4 packet after parsing it.
+        Ensure sanity of the ICMPv4 packet after parsing it.
         """
 
         self._message.validate_sanity()

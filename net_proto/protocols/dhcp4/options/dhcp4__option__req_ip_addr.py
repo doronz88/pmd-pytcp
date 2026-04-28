@@ -114,7 +114,7 @@ class Dhcp4OptionReqIpAddr(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Requested IP Address option integrity before parsing it.
+        Ensure integrity of the DHCPv4 Requested IP Address option before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.

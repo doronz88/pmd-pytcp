@@ -131,7 +131,7 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the DHCPv4 Parameter Request List option integrity before parsing it.
+        Ensure integrity of the DHCPv4 Parameter Request List option before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.

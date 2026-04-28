@@ -124,7 +124,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the ICMPv6 packet before parsing it.
+        Ensure integrity of the ICMPv6 packet before parsing it.
         """
 
         if not (ICMP6__HEADER__LEN <= self._ip6__dlen <= len(self._frame)):
@@ -152,7 +152,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the ICMPv6 packet after parsing it.
+        Ensure sanity of the ICMPv6 packet after parsing it.
         """
 
         self._message.validate_sanity(

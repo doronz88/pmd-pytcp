@@ -110,7 +110,7 @@ class Icmp6NdOptionTlla(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the ICMPv6 ND Tlla option integrity before parsing it.
+        Ensure integrity of the ICMPv6 ND Tlla option before parsing it.
         """
 
         # Raise integrity error when the option length value is incorrect.

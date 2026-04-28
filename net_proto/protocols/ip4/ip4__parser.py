@@ -69,7 +69,7 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the IPv4 packet before parsing it.
+        Ensure integrity of the IPv4 packet before parsing it.
         """
 
         if len(self._frame) < IP4__HEADER__LEN:
@@ -114,7 +114,7 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the IPv4 packet after parsing it.
+        Ensure sanity of the IPv4 packet after parsing it.
         """
 
         if (ttl := self.ttl) == 0:

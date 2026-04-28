@@ -67,7 +67,7 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the IPv6 packet before parsing it.
+        Ensure integrity of the IPv6 packet before parsing it.
         """
 
         if len(self._frame) < IP6__HEADER__LEN:
@@ -99,7 +99,7 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the IPv6 packet after parsing it.
+        Ensure sanity of the IPv6 packet after parsing it.
         """
 
         if (hop := self.hop) == 0:

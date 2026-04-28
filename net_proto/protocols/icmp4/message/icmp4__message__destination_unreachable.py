@@ -237,8 +237,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
     @override
     def validate_sanity(self) -> None:
         """
-        Validate the ICMPv4 Destination Unreachable message sanity after
-        parsing it.
+        Ensure sanity of the ICMPv4 Destination Unreachable message after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -247,7 +246,7 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
-        Validate the ICMPv4 Destination Unreachable message integrity before parsing it.
+        Ensure integrity of the ICMPv4 Destination Unreachable message before parsing it.
         """
 
         if not (ICMP4__DESTINATION_UNREACHABLE__LEN <= ip4__payload_len <= len(frame)):

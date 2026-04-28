@@ -91,7 +91,7 @@ class Icmp6Message(ProtoStruct):
     @abstractmethod
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 message sanity.
+        Ensure sanity of the ICMPv6 message.
         """
 
         raise NotImplementedError
@@ -100,7 +100,7 @@ class Icmp6Message(ProtoStruct):
     @abstractmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate the ICMPv6 message integrity.
+        Ensure integrity of the ICMPv6 message.
         """
 
         raise NotImplementedError

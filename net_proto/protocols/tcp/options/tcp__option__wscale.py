@@ -118,7 +118,7 @@ class TcpOptionWscale(TcpOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the TCP Wscale option integrity before parsing it.
+        Ensure integrity of the TCP Wscale option before parsing it.
         """
 
         # Raise an exception if the TCP Wscale option length value is incorrect.

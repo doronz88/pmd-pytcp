@@ -73,7 +73,7 @@ class ArpParser(Arp, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the ARP packet before parsing it.
+        Ensure integrity of the ARP packet before parsing it.
         """
 
         if len(self._frame) < ARP__HEADER__LEN:
@@ -104,7 +104,7 @@ class ArpParser(Arp, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the ARP packet after parsing it.
+        Ensure sanity of the ARP packet after parsing it.
         """
 
         if self._header.oper.is_unknown:

@@ -114,7 +114,7 @@ class Ip4OptionUnknown(Ip4Option):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Validate the unknown IPv4 option integrity before parsing it.
+        Ensure integrity of the unknown IPv4 option before parsing it.
         """
 
         # Raise integrity error if there is not enough bytes to parse the option.

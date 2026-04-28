@@ -127,7 +127,7 @@ class Icmp6MessageUnknown(Icmp6Message):
     @override
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
-        Validate the ICMPv6 unknown message sanity after parsing it.
+        Ensure sanity of the ICMPv6 unknown message after parsing it.
         """
 
         # Currently no sanity checks are implemented.
@@ -136,7 +136,7 @@ class Icmp6MessageUnknown(Icmp6Message):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
         """
-        Validate integrity of the ICMPv6 unknown message before parsing it.
+        Ensure integrity of the ICMPv6 unknown message before parsing it.
         """
 
         # Currently no integrity checks are implemented.

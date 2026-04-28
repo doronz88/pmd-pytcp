@@ -70,7 +70,7 @@ class UdpParser(Udp, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the UDP packet before parsing it.
+        Ensure integrity of the UDP packet before parsing it.
         """
 
         if not (UDP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
@@ -105,7 +105,7 @@ class UdpParser(Udp, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the UDP packet after parsing it.
+        Ensure sanity of the UDP packet after parsing it.
         """
 
         if (value := self.sport) == 0:

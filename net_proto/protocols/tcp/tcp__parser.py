@@ -71,7 +71,7 @@ class TcpParser(Tcp, ProtoParser):
     @override
     def _validate_integrity(self) -> None:
         """
-        Validate integrity of the TCP packet before parsing it.
+        Ensure integrity of the TCP packet before parsing it.
         """
 
         if not (TCP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
@@ -111,7 +111,7 @@ class TcpParser(Tcp, ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Validate sanity of the TCP packet after parsing it.
+        Ensure sanity of the TCP packet after parsing it.
         """
 
         if (value := self._header.sport) == 0:
