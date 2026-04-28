@@ -116,7 +116,6 @@ class Dhcp4OptionUnknown(Dhcp4Option):
         Ensure integrity of the unknown DHCPv4 option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The unknown DHCPv4 option length value must be less than or equal to "

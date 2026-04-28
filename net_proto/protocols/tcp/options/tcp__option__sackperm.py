@@ -105,7 +105,6 @@ class TcpOptionSackperm(TcpOption):
         Ensure integrity of the TCP Sackperm option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__SACKPERM__LEN:
             raise TcpIntegrityError(
                 f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} bytes. Got: {value!r}"

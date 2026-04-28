@@ -116,14 +116,12 @@ class Dhcp4OptionLeaseTime(Dhcp4Option):
         Ensure integrity of the DHCPv4 IP Address Lease Time option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__LEASE_TIME__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 IP Address Lease Time option length value must be "
                 f"{DHCP4__OPTION__LEASE_TIME__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 IP Address Lease Time option length value must be less than or equal "

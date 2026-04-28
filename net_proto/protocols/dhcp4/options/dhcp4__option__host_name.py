@@ -114,7 +114,6 @@ class Dhcp4OptionHostName(Dhcp4Option):
         Ensure integrity of the DHCPv4 Host Name option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Host Name option length value must be less than or equal "

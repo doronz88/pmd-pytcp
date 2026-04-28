@@ -111,13 +111,11 @@ class TcpOptionMss(TcpOption):
         Ensure integrity of the TCP Mss option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Mss option length value must be less than or equal to "

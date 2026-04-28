@@ -120,13 +120,11 @@ class TcpOptionWscale(TcpOption):
         Ensure integrity of the TCP Wscale option before parsing it.
         """
 
-        # Raise an exception if the TCP Wscale option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__WSCALE__LEN:
             raise TcpIntegrityError(
                 f"The TCP Wscale option length value must be {TCP__OPTION__WSCALE__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Wscale option length value must be less than or equal to "

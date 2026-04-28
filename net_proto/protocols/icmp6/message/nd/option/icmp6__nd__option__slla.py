@@ -113,14 +113,12 @@ class Icmp6NdOptionSlla(Icmp6NdOption):
         Ensure integrity of the ICMPv6 ND Slla option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1] << 3) != ICMP6__ND__OPTION__SLLA__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Slla option length value must be "
                 f"{ICMP6__ND__OPTION__SLLA__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Slla option length value must be less than or equal to "

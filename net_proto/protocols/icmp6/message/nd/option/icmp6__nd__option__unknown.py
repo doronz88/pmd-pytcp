@@ -115,7 +115,6 @@ class Icmp6NdOptionUnknown(Icmp6NdOption):
         Ensure integrity of the unknown ICMPv6 ND option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 "The unknown ICMPv6 ND option length value must be less than or equal to "

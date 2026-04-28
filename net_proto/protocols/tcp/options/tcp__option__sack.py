@@ -172,14 +172,12 @@ class TcpOptionSack(TcpOption):
         Ensure integrity of the TCP Sack option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Sack option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
-        # Raise integrity error when the option length doesn't align properly with block size.
         if (value := buffer[1] - TCP__OPTION__LEN) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
                 "The TCP Sack option blocks length value must be a multiple of "

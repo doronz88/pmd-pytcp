@@ -116,14 +116,12 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
         Ensure integrity of the DHCPv4 Subnet Mask option before parsing it.
         """
 
-        # Raise integrity error if the option length value is incorrect.
         if (value := DHCP4__OPTION__LEN + buffer[1]) != DHCP4__OPTION__SUBNET_MASK__LEN:
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Subnet Mask option length value must be "
                 f"{DHCP4__OPTION__SUBNET_MASK__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Subnet Mask option length value must be less than or equal "

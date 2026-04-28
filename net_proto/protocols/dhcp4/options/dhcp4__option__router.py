@@ -135,14 +135,12 @@ class Dhcp4OptionRouter(Dhcp4Option):
         Ensure integrity of the DHCPv4 Router option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Router option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
-        # Raise integrity error when the option length value (less header) is not a multiple of 4.
         if (value := buffer[1] % 4) != 0:
             raise Dhcp4IntegrityError(
                 f"The DHCPv4 Router option length value (less header) must be a multiple of 4. Got: {value!r}"

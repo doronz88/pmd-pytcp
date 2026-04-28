@@ -129,13 +129,11 @@ class TcpOptionTimestamps(TcpOption):
         Ensure integrity of the TCP Timestamps option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Timestamps option length value must be less than or equal to "

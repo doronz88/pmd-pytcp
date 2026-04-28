@@ -173,13 +173,11 @@ class Icmp6NdOptionPi(Icmp6NdOption):
         Ensure integrity of the ICMPv6 ND Pi option before parsing it.
         """
 
-        # Raise integrity error when the option length value is incorrect.
         if (value := buffer[1] << 3) != ICMP6__ND__OPTION__PI__LEN:
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND Pi option length value must be {ICMP6__ND__OPTION__PI__LEN} " f"bytes. Got: {value!r}"
             )
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1] << 3) > len(buffer):
             raise Icmp6IntegrityError(
                 "The ICMPv6 ND Pi option length value must be less than or equal to the "

@@ -114,7 +114,6 @@ class Ip4OptionUnknown(Ip4Option):
         Ensure integrity of the unknown IPv4 option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The unknown IPv4 option length value must be less than or equal to "

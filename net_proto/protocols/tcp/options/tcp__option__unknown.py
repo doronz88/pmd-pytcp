@@ -114,7 +114,6 @@ class TcpOptionUnknown(TcpOption):
         Ensure integrity of the unknown TCP option before parsing it.
         """
 
-        # Raise integrity error if there is not enough bytes to parse the option.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The unknown TCP option length value must be less than or equal to "
