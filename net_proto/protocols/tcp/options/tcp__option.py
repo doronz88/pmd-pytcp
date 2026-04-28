@@ -40,7 +40,7 @@ TCP__OPTION__LEN = 2
 
 class TcpOptionType(ProtoOptionType):
     """
-    TCP option types.
+    The TCP option 'type' field values.
     """
 
     EOL = 0
