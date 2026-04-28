@@ -49,7 +49,7 @@ TCP__OPTION__EOL__STRUCT = "! B"
 @dataclass(frozen=True, kw_only=False, slots=True)
 class TcpOptionEol(TcpOption):
     """
-    The TCP Eol (End of Option List) option support.
+    The TCP Eol (End of Option List) option support class.
     """
 
     type: TcpOptionType = field(
@@ -72,7 +72,7 @@ class TcpOptionEol(TcpOption):
     @override
     def __str__(self) -> str:
         """
-        Get the the TCP Eol option log string.
+        Get the TCP Eol option log string.
         """
 
         return "eol"
@@ -93,13 +93,15 @@ class TcpOptionEol(TcpOption):
         """
 
         # Ensure we got enough bytes to parse the option header.
-        assert (value := len(buffer)) >= TCP__OPTION__EOL__LEN, (
-            f"The minimum length of the TCP Eol option must be " f"{TCP__OPTION__EOL__LEN} byte. Got: {value!r}"
+        assert (
+            value := len(buffer)
+        ) >= TCP__OPTION__EOL__LEN, (
+            f"The minimum length of the TCP Eol option must be {TCP__OPTION__EOL__LEN} byte. Got: {value!r}"
         )
 
         # Ensure the option type is the expected value.
-        assert (value := buffer[0]) == int(TcpOptionType.EOL), (
-            f"The TCP Eol option type must be {TcpOptionType.EOL!r}. " f"Got: {TcpOptionType.from_int(value)!r}"
-        )
+        assert (value := buffer[0]) == int(
+            TcpOptionType.EOL
+        ), f"The TCP Eol option type must be {TcpOptionType.EOL!r}. Got: {TcpOptionType.from_int(value)!r}"
 
         return cls()
