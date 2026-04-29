@@ -1349,6 +1349,22 @@ class TcpSession:
             if packet_rx_md.tcp__seq == self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
                 self._process_ack_packet(packet_rx_md)
                 return
+            # RFC 9293 §3.10.7.4: an unacceptable ACK (acknowledging
+            # data we have never sent, i.e. ACK > SND.MAX) must elicit
+            # an empty-ACK reply containing our current SND.NXT and
+            # RCV.NXT, and the offending segment is discarded; the
+            # connection state is unchanged. This catches forged or
+            # stale ACKs that none of the inner branches above match.
+            # (ACK < SND.UNA is a stale duplicate per RFC §3.10.7.4
+            # and is silently discarded - the existing fall-through
+            # handles that path.)
+            if packet_rx_md.tcp__ack > self._snd_max:
+                self._transmit_packet(flag_ack=True)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Sent empty ACK reply for unacceptable "
+                    f"ACK={packet_rx_md.tcp__ack} > SND.MAX={self._snd_max}",
+                )
             return
 
         # Got FIN + ACK packet -> Send ACK packet (let delayed ACK mechanism
