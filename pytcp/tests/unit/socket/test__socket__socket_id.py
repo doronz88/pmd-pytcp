@@ -23,7 +23,7 @@
 
 
 """
-This module contains tests for the 'SocketId' identificator dataclass.
+This module contains tests for the 'SocketId' identifier dataclass.
 
 pytcp/tests/unit/socket/test__socket__socket_id.py
 

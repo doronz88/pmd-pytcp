@@ -23,11 +23,11 @@
 
 
 """
-This module contains class representing the Socket identificator.
+This module contains the class representing the Socket identifier.
 
-pytcp/lib/socket_id.py
+pytcp/socket/socket_id.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class SocketId:
     """
-    Store the Socket identificator data.
+    The Socket identifier.
     """
 
     address_family: AddressFamily
