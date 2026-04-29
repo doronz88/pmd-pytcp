@@ -23,11 +23,11 @@
 
 
 """
-This module contains interface class for the UDP Parser -> UDP Socket communication.
+This module contains the interface class for the UDP Parser -> UDP Socket communication.
 
 pytcp/socket/udp__metadata.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class UdpMetadata:
     """
-    Store the UDP metadata taken from the received packet.
+    The UDP socket metadata taken from the received packet.
     """
 
     ip__ver: IpVersion
