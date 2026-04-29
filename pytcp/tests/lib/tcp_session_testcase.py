@@ -38,7 +38,7 @@ ver 3.0.4
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from unittest.mock import _patch, patch
 
 from net_addr import Ip4Address, Ip6Address
@@ -104,13 +104,16 @@ class TcpSessionTestCase(NetworkTestCase):
     _patches: list[_patch]
     _interface_mtu_was_set: bool
     _interface_mtu_prior: object
+    _sockets_prior: dict[Any, Any]
 
     def setUp(self) -> None:
         """
         Install a 'FakeTimer' over 'stack.timer' on top of the parent
         mock-network setup, set 'stack.interface_mtu' so 'TcpSession'
-        construction succeeds, and initialize the patch tracking list
-        so per-test 'mock.patch' handles get torn down deterministically.
+        construction succeeds, snapshot+clear the module-global
+        'stack.sockets' dict so tests start with no leftover socket
+        registrations, and initialize the patch tracking list so
+        per-test 'mock.patch' handles get torn down deterministically.
         """
 
         super().setUp()
@@ -121,6 +124,13 @@ class TcpSessionTestCase(NetworkTestCase):
         self._interface_mtu_was_set = hasattr(stack, "interface_mtu") and "interface_mtu" in stack.__dict__
         self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
         stack.interface_mtu = 1500
+
+        # 'stack.sockets' is a module-level dict that accumulates
+        # registrations across tests if not cleared. Snapshot the prior
+        # contents, then start each test with an empty dict; tearDown
+        # restores so unrelated tests outside this class are unaffected.
+        self._sockets_prior = cast(dict[Any, Any], dict(stack.sockets))
+        stack.sockets.clear()
 
         self._patches = []
 
@@ -138,6 +148,9 @@ class TcpSessionTestCase(NetworkTestCase):
             stack.interface_mtu = cast(int, self._interface_mtu_prior)
         else:
             stack.__dict__.pop("interface_mtu", None)
+
+        stack.sockets.clear()
+        stack.sockets.update(self._sockets_prior)
 
         super().tearDown()
 
