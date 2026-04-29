@@ -36,7 +36,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address
+from net_addr import Ip4Address, IpVersion
+from pytcp.socket.tcp__metadata import TcpMetadata
 from pytcp.socket.tcp__session import (
     FsmState,
     SysCall,
@@ -246,6 +247,44 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
             FsmState.CLOSED,
             msg="CLOSE from SYN_SENT must transition to FsmState.CLOSED.",
         )
+
+    def test__tcp_session__syn_sent_simultaneous_open_to_syn_rcvd(self) -> None:
+        """
+        Ensure a bare SYN packet received while in SYN_SENT triggers
+        the simultaneous-open branch — the FSM transitions to
+        SYN_RCVD and a SYN+ACK is sent. RFC 793 §3.4.
+        """
+
+        session = self._make_session()
+        session._state = FsmState.SYN_SENT
+
+        metadata = TcpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            tcp__local_port=8080,
+            tcp__remote_port=44444,
+            tcp__flag_syn=True,
+            tcp__flag_ack=False,
+            tcp__flag_fin=False,
+            tcp__flag_rst=False,
+            tcp__seq=12345,
+            tcp__ack=0,
+            tcp__win=65535,
+            tcp__wscale=0,
+            tcp__mss=1460,
+            tcp__data=memoryview(b""),
+        )
+
+        with patch.object(session, "_transmit_packet") as mock_transmit:
+            session.tcp_fsm(packet_rx_md=metadata)
+
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg="A bare SYN in SYN_SENT must transition to SYN_RCVD (simultaneous open).",
+        )
+        mock_transmit.assert_called_once_with(flag_syn=True, flag_ack=True)
 
 
 class TestTcpFsmEstablished(_TcpSessionFsmFixture):

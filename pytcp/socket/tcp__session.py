@@ -918,7 +918,7 @@ class TcpSession:
                 {
                     packet_rx_md.tcp__flag_ack,
                     packet_rx_md.tcp__flag_fin,
-                    packet_rx_md.tcp__flag_syn,
+                    packet_rx_md.tcp__flag_rst,
                 }
             )
         ):
