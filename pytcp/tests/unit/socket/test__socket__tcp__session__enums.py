@@ -66,14 +66,20 @@ class TestTcpSessionModuleConstants(TestCase):
 
     def test__tcp_session__retransmit_max_count(self) -> None:
         """
-        Ensure 'PACKET_RETRANSMIT_MAX_COUNT' stays at the canonical 3
-        retries before the session escalates to connection-failure.
+        Ensure 'PACKET_RETRANSMIT_MAX_COUNT' stays at 6 retries so the
+        connection-abort timeout reaches 2**7 - 1 = 127 s under the
+        RFC 6298 §2 doubling cadence, satisfying the RFC 1122 §4.2.3.5
+        R2 floor of >= 100 s incorporated by RFC 9293 §3.8.3.
         """
 
         self.assertEqual(
             PACKET_RETRANSMIT_MAX_COUNT,
-            3,
-            msg="PACKET_RETRANSMIT_MAX_COUNT must remain 3 retries.",
+            6,
+            msg=(
+                "PACKET_RETRANSMIT_MAX_COUNT must remain 6 - lower "
+                "values violate the RFC 1122 §4.2.3.5 R2 floor "
+                "(>= 100 s before connection abort)."
+            ),
         )
 
     def test__tcp_session__time_wait_delay(self) -> None:

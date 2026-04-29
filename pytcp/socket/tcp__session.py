@@ -52,8 +52,14 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__socket import TcpSocket
 
 
-PACKET_RETRANSMIT_TIMEOUT = 1000  # Retransmit data if ACK not received
-PACKET_RETRANSMIT_MAX_COUNT = 3  # If data is not acked, retransmit it this many times before resetting the session.
+PACKET_RETRANSMIT_TIMEOUT = 1000  # Initial RTO in milliseconds (RFC 6298 §2.1).
+# RFC 1122 §4.2.3.5 R2 (incorporated by RFC 9293 §3.8.3) mandates that the
+# connection-abort timeout be at least 100 s. With the exponential-backoff
+# cadence of 1, 2, 4, 8, 16, 32, 64 s per retransmit, six retries reach
+# t = 2**7 - 1 = 127 s before abort, just past the R2 floor and matching the
+# Linux 'tcp_syn_retries = 6' default. A lower count (e.g. 3 -> ~15 s) would
+# violate the R2 floor and abort connections far sooner than the spec allows.
+PACKET_RETRANSMIT_MAX_COUNT = 6
 TIME_WAIT_DELAY = 30000  # 30s delay for the TIME_WAIT state, default is 30-120s
 DELAYED_ACK_DELAY = 100  # Delay between consecutive delayed ACK outbound packets
 
