@@ -815,8 +815,13 @@ class TcpSession:
                 }
             )
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
+            # Packet sanity check. RFC 9293 §3.10.7.2 step 3 explicitly
+            # permits piggybacked data on the initial SYN ("any other
+            # incoming control or data (combined with SYN) will be
+            # processed in the SYN-RECEIVED state"), so the data field
+            # is intentionally NOT gated here; it is queued into the
+            # child session's receive buffer below.
+            if packet_rx_md.tcp__ack == 0:
                 # Create new session in LISTEN state and assign it to
                 # listening socket.
                 tcp_session = TcpSession(
@@ -852,8 +857,19 @@ class TcpSession:
                 )
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
-                # Make note of the remote SEQ number.
-                self._rcv_nxt = packet_rx_md.tcp__seq + packet_rx_md.tcp__flag_syn
+                # Make note of the remote SEQ number, advancing past the
+                # SYN's one byte AND every byte of any piggybacked payload
+                # so the SYN+ACK we emit acknowledges the data and the
+                # peer does not have to retransmit it (RFC 9293 §3.10.7.2
+                # step 3).
+                self._rcv_nxt = packet_rx_md.tcp__seq + packet_rx_md.tcp__flag_syn + len(packet_rx_md.tcp__data)
+                if packet_rx_md.tcp__data:
+                    self._enqueue_rx_buffer(packet_rx_md.tcp__data)
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - Queued {len(packet_rx_md.tcp__data)} bytes "
+                        "of SYN-piggybacked data for delivery after ESTABLISHED",
+                    )
                 # Send SYN + ACK packet (this actually will be done in SYN_SENT
                 # state) / change state to SYN_RCVD.
                 self._change_state(FsmState.SYN_RCVD)
