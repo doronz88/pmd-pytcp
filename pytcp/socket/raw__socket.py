@@ -23,11 +23,11 @@
 
 
 """
-This module contains BSD like Raw socket interface for the stack.
+This module contains the BSD-like Raw socket interface for the stack.
 
 pytcp/socket/raw__socket.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 class RawSocket(socket):
     """
-    Support for IPv6/IPv4 Raw socket operations.
+    The IPv6/IPv4 Raw socket.
     """
 
     _socket_type = SocketType.RAW
@@ -71,7 +71,7 @@ class RawSocket(socket):
         protocol: IpProto | None = None,
     ) -> None:
         """
-        Class constructor.
+        Initialize the IPv6/IPv4 Raw socket.
         """
 
         assert type is SocketType.RAW
@@ -179,7 +179,7 @@ class RawSocket(socket):
         if (remote_port := address[1]) not in range(0, 65536):
             raise OverflowError("connect(): port must be 0-65535. - [Port out of range]")
 
-        # Set local and remote ip addresses aproprietely
+        # Set local and remote ip addresses appropriately
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
@@ -200,7 +200,7 @@ class RawSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified:
-            raise OSError("[Errno 89] Destination address require - " "[Socket has no destination address set]")
+            raise OSError("[Errno 89] Destination address required - " "[Socket has no destination address set]")
 
         match self._address_family:
             case AddressFamily.INET6:
@@ -232,7 +232,7 @@ class RawSocket(socket):
         Send the data to remote host.
         """
 
-        # Set local and remote ip addresses aproprietely
+        # Set local and remote ip addresses appropriately
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
@@ -267,7 +267,7 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        # TODO - Implement support for buffsize
+        # TODO - Implement support for bufsize
 
         if self._packet_rx_md_ready.acquire(timeout=timeout):
             data_rx = self._packet_rx_md.pop(0).raw__data
@@ -284,7 +284,7 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        # TODO - Implement support for buffsize
+        # TODO - Implement support for bufsize
 
         if self._packet_rx_md_ready.acquire(timeout=timeout):
             packet_rx_md = self._packet_rx_md.pop(0)
