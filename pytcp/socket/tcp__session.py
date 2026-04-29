@@ -1060,6 +1060,25 @@ class TcpSession:
                 self._change_state(FsmState.FIN_WAIT_1)
             return
 
+        # Got SYN-bearing segment in a synchronized state -> Send a challenge ACK
+        # per RFC 9293 §3.10.7.4 (folding RFC 5961 §4). A SYN flag set on a segment
+        # from an already-established 4-tuple is either a legitimate handshake
+        # retransmit by the peer (because they did not see our third-leg ACK),
+        # a stale segment from a prior connection, or a blind injection attack.
+        # In all three cases we respond with an ACK keyed to our current SND.NXT
+        # / RCV.NXT; the legitimate peer accepts it and proceeds, the stale
+        # segment is harmless, and the attacker learns nothing about our state.
+        # The branch must precede the receive-window check below because a
+        # retransmitted SYN+ACK carries SEG.SEQ = peer_ISS, one byte before our
+        # current RCV.NXT, and would otherwise be silently dropped.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-established (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got packet that doesn't fit into receive window.
         if packet_rx_md and not self._rcv_nxt <= packet_rx_md.tcp__seq <= self._rcv_nxt + self._rcv_wnd - len(
             packet_rx_md.tcp__data
