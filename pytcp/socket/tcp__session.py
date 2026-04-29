@@ -501,6 +501,7 @@ class TcpSession:
         flag_ack: bool = False,
         flag_fin: bool = False,
         flag_rst: bool = False,
+        flag_psh: bool = False,
         data: bytes = b"",
     ) -> None:
         """
@@ -519,6 +520,7 @@ class TcpSession:
             tcp__flag_ack=flag_ack,
             tcp__flag_fin=flag_fin,
             tcp__flag_rst=flag_rst,
+            tcp__flag_psh=flag_psh,
             tcp__seq=seq,
             tcp__ack=ack,
             tcp__win=self._rcv_wnd,
@@ -616,11 +618,21 @@ class TcpSession:
                 if transmit_data_len:
                     with self._lock__tx_buffer:
                         transmit_data = self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + transmit_data_len]
+                    # RFC 1122 §4.2.2.2: PSH MUST be set on the last
+                    # segment of a write. The current segment drains
+                    # the buffer iff 'transmit_data_len ==
+                    # remaining_data_len'; that is the marker for "this
+                    # is the last segment of the buffered write".
+                    is_last_segment_of_write = transmit_data_len == remaining_data_len
                     __debug__ and log(
                         "tcp-ss",
                         f"[{self}] - Transmitting data segment: seq {self._snd_nxt} len {len(transmit_data)}",
                     )
-                    self._transmit_packet(flag_ack=True, data=bytes(transmit_data))
+                    self._transmit_packet(
+                        flag_ack=True,
+                        flag_psh=is_last_segment_of_write,
+                        data=bytes(transmit_data),
+                    )
                 return
 
         # Check if we need to (re)transmit final FIN packet.
