@@ -1,0 +1,123 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains modular 32-bit arithmetic helpers for TCP sequence
+and acknowledgement numbers, per RFC 9293 §3.4.
+
+pytcp/lib/tcp_seq.py
+
+ver 3.0.4
+"""
+
+from net_proto.lib.int_checks import UINT_32__MAX, is_uint32
+
+# RFC 9293 §3.4 defines TCP sequence and acknowledgement numbers as 32-bit
+# unsigned integers compared modulo 2**32. A value 'a' is "less than" 'b' iff
+# the unsigned forward distance (b - a) & 0xFFFFFFFF lies in (0, 2**31).
+# At the diametric midpoint distance == 2**31 the forward and backward arcs
+# are equal length, so the sign of the relation is genuinely ambiguous; we
+# break the tie by raw numerical order so that 'lt32' / 'gt32' / equality
+# remain mutually exclusive (trichotomy). Plain Python '<' on raw seq numbers
+# breaks the moment either side crosses 2**32-1, hence this module.
+
+SEQ32__HALF = 0x8000_0000
+
+
+def lt32(a: int, b: int, /) -> bool:
+    """
+    Return True if 'a' is strictly before 'b' in modular 32-bit
+    sequence-number space, per RFC 9293 §3.4.
+    """
+
+    assert is_uint32(a), f"The 'a' argument must be a 32-bit unsigned integer. Got: {a!r}"
+    assert is_uint32(b), f"The 'b' argument must be a 32-bit unsigned integer. Got: {b!r}"
+
+    diff = (b - a) & UINT_32__MAX
+    if diff == SEQ32__HALF:
+        return a < b
+    return 0 < diff < SEQ32__HALF
+
+
+def le32(a: int, b: int, /) -> bool:
+    """
+    Return True if 'a' is before or equal to 'b' in modular 32-bit
+    sequence-number space, per RFC 9293 §3.4.
+    """
+
+    assert is_uint32(a), f"The 'a' argument must be a 32-bit unsigned integer. Got: {a!r}"
+    assert is_uint32(b), f"The 'b' argument must be a 32-bit unsigned integer. Got: {b!r}"
+
+    diff = (b - a) & UINT_32__MAX
+    if diff == SEQ32__HALF:
+        return a < b
+    return diff < SEQ32__HALF
+
+
+def gt32(a: int, b: int, /) -> bool:
+    """
+    Return True if 'a' is strictly after 'b' in modular 32-bit
+    sequence-number space, per RFC 9293 §3.4.
+    """
+
+    return lt32(b, a)
+
+
+def ge32(a: int, b: int, /) -> bool:
+    """
+    Return True if 'a' is after or equal to 'b' in modular 32-bit
+    sequence-number space, per RFC 9293 §3.4.
+    """
+
+    return le32(b, a)
+
+
+def add32(a: int, n: int, /) -> int:
+    """
+    Return 'a + n' reduced to a 32-bit unsigned value.
+    """
+
+    return (a + n) & UINT_32__MAX
+
+
+def sub32(a: int, n: int, /) -> int:
+    """
+    Return 'a - n' reduced to a 32-bit unsigned value.
+    """
+
+    return (a - n) & UINT_32__MAX
+
+
+def in_range32(x: int, lo: int, hi: int, /) -> bool:
+    """
+    Return True if 'x' lies within the closed inclusive modular range
+    [lo, hi] interpreted in forward direction (lo -> hi), wrapping at
+    2**32 if necessary. When lo == hi, only x == lo qualifies.
+    """
+
+    assert is_uint32(x), f"The 'x' argument must be a 32-bit unsigned integer. Got: {x!r}"
+    assert is_uint32(lo), f"The 'lo' argument must be a 32-bit unsigned integer. Got: {lo!r}"
+    assert is_uint32(hi), f"The 'hi' argument must be a 32-bit unsigned integer. Got: {hi!r}"
+
+    return ((x - lo) & UINT_32__MAX) <= ((hi - lo) & UINT_32__MAX)
