@@ -308,7 +308,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event__rx_buffer.release()
+        session._event__rx_buffer.set()
 
         self.assertEqual(
             session.receive(),
@@ -329,7 +329,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event__rx_buffer.release()
+        session._event__rx_buffer.set()
 
         first = session.receive(byte_count=5)
         self.assertEqual(
@@ -352,7 +352,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._state = FsmState.CLOSE_WAIT
-        session._event__rx_buffer.release()
+        session._event__rx_buffer.set()
 
         self.assertEqual(
             session.receive(),
@@ -370,25 +370,59 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         with self.assertRaises(TimeoutError):
             session.receive(timeout=0.01)
 
-    def test__tcp_session__receive_re_releases_when_buffer_nonempty(self) -> None:
+    def test__tcp_session__receive_leaves_event_set_when_buffer_nonempty(self) -> None:
         """
-        Ensure receive() re-releases the '_event__rx_buffer' semaphore
+        Ensure receive() leaves the '_event__rx_buffer' event set
         when the buffer still has data after the read, so the next
         call does not block unnecessarily.
         """
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event__rx_buffer.release()
+        session._event__rx_buffer.set()
 
         session.receive(byte_count=5)
 
-        # Second receive must not block because the event was re-released.
+        # Second receive must not block because the event is still set.
         self.assertEqual(
             session.receive(byte_count=6, timeout=0.01),
             b" world",
-            msg="receive() must re-release the rx semaphore when leftover data remains.",
+            msg="receive() must leave the rx event set when leftover data remains.",
         )
+
+    def test__tcp_session__rx_buffer_event_does_not_over_release(self) -> None:
+        """
+        Ensure the rx-buffer signal is not over-released when an FSM
+        handler signals 'data available' on top of '_enqueue_rx_buffer'
+        already having signalled. Over-release would leave a phantom
+        permit on the rx event so a subsequent 'receive()' on an empty
+        buffer would 'succeed' and return b"" -- masking the no-data
+        condition as a legitimate remote-end EOF.
+        """
+
+        session = self._make_session()
+        session._state = FsmState.ESTABLISHED  # so empty buffer is not interpreted as EOF
+
+        # Data arrives via _enqueue_rx_buffer (signals once on empty -> has-data).
+        session._enqueue_rx_buffer(memoryview(b"data"))
+        # FSM handler also signals (mirrors the .release() / .set() on lines 663,
+        # 1121, 1136 of tcp__session.py).
+        session._event__rx_buffer.set()
+
+        # Drain the legitimate data.
+        self.assertEqual(
+            session.receive(),
+            b"data",
+            msg="receive() must drain the buffer that _enqueue_rx_buffer wrote.",
+        )
+
+        # Buffer is now empty and state is ESTABLISHED. A correctly-handled
+        # rx event must NOT have a phantom permit; receive() must time out.
+        with self.assertRaises(
+            TimeoutError,
+            msg="receive() on an empty buffer in ESTABLISHED must time out, not return phantom EOF.",
+        ):
+            session.receive(timeout=0.01)
 
 
 class TestTcpSessionCloseSyscall(_TcpSessionSyscallFixture):

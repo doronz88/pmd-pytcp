@@ -46,7 +46,7 @@ from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
 
 if TYPE_CHECKING:
-    from threading import Lock, RLock, Semaphore
+    from threading import Event, Lock, RLock, Semaphore
 
     from pytcp.socket.tcp__metadata import TcpMetadata
     from pytcp.socket.tcp__socket import TcpSocket
@@ -270,7 +270,7 @@ class TcpSession:
 
         # Used to inform RECV syscall that there is new data in buffer ready
         # to be picked up.
-        self._event__rx_buffer: Semaphore = threading.Semaphore(0)
+        self._event__rx_buffer: Event = threading.Event()
 
         # Used to ensure that only single event can run FSM at given time.
         self._lock__fsm: RLock = threading.RLock()
@@ -415,7 +415,7 @@ class TcpSession:
 
         # Wait till there is any data in the buffer (this will get bypassed
         # when FSM goes into CLOSE_WAIT or CLOSED).
-        if not self._event__rx_buffer.acquire(timeout=timeout):
+        if not self._event__rx_buffer.wait(timeout=timeout):
             raise TimeoutError("TCP session receive operation timed out while waiting for data.")
 
         # If there is no data in RX buffer and remote end closed connection
@@ -435,13 +435,15 @@ class TcpSession:
             rx_buffer = self._rx_buffer[:byte_count]
             del self._rx_buffer[:byte_count]
 
-            # If there is any data left in buffer or the remote end closed
-            # connection then release the rx_buffer event.
-            if self._rx_buffer or self._state in {
+            # Clear the event only when the buffer is fully drained AND
+            # the remote end is still open; otherwise leave it set so the
+            # next receive() either picks up leftover data or returns the
+            # EOF empty-bytes signal without blocking.
+            if not self._rx_buffer and self._state not in {
                 FsmState.CLOSE_WAIT,
                 FsmState.CLOSED,
             }:
-                self._event__rx_buffer.release()
+                self._event__rx_buffer.clear()
 
         return bytes(rx_buffer)
 
@@ -547,11 +549,9 @@ class TcpSession:
 
         with self._lock__rx_buffer:
             self._rx_buffer.extend(data)
-            # If rx_buffer event has not been released yet
-            # (it could be released if some data were siting in buffer already)
-            # then release it.
-            if not self._event__rx_buffer._value:  # pylint: disable=protected-access
-                self._event__rx_buffer.release()
+            # 'Event.set()' is idempotent so this is safe whether the
+            # event was already set by a sibling FSM handler or not.
+            self._event__rx_buffer.set()
 
     def _transmit_data(self) -> None:
         """
@@ -659,7 +659,7 @@ class TcpSession:
                     FsmState.CLOSE_WAIT,
                 }:
                     self._connection_error = ConnError.TIMEOUT
-                    self._event__rx_buffer.release()
+                    self._event__rx_buffer.set()
                 # If in SYN_SENT state inform CONNECT syscall that the
                 # connection related event happened.
                 if self._state is FsmState.SYN_SENT:
@@ -1119,7 +1119,7 @@ class TcpSession:
                     self._transmit_packet(flag_ack=True)
                 # Let application know that remote peer closed connection
                 # (let receive syscall bypass semaphore).
-                self._event__rx_buffer.release()
+                self._event__rx_buffer.set()
                 # Change state to CLOSE_WAIT.
                 self._change_state(FsmState.CLOSE_WAIT)
             return
@@ -1134,7 +1134,7 @@ class TcpSession:
             if packet_rx_md.tcp__seq == self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
                 # Let application know that remote peer closed connection
                 # (let receive syscall bypass semaphore).
-                self._event__rx_buffer.release()
+                self._event__rx_buffer.set()
                 # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
             return
