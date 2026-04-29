@@ -63,6 +63,14 @@ PACKET_RETRANSMIT_MAX_COUNT = 6
 TIME_WAIT_DELAY = 30000  # 30s delay for the TIME_WAIT state, default is 30-120s
 DELAYED_ACK_DELAY = 100  # Delay between consecutive delayed ACK outbound packets
 
+# RFC 9293 §3.8.6.1 / RFC 1122 §4.2.2.17 zero-window persist timer.
+# The first probe fires after the current RTO (initial = PACKET_RETRANSMIT_TIMEOUT),
+# subsequent probes back off exponentially up to PERSIST_TIMEOUT_MAX (60 s);
+# RFC 1122 §4.2.2.17 requires probes to continue indefinitely while the peer's
+# window stays at zero, so the timer never gives up - only the connection's R2
+# timeout (handled by '_retransmit_packet_timeout') tears the session down.
+PERSIST_TIMEOUT_MAX = 60_000
+
 
 class TcpSessionError(Exception):
     """
@@ -255,6 +263,14 @@ class TcpSession:
         # '_snd_ini' so it is strictly less than 'SND.UNA' after the handshake
         # completes, which means "no partial in flight yet".
         self._snd_sml: int = self._snd_ini
+
+        # Zero-window persist timer state per RFC 9293 §3.8.6.1.
+        # '_persist_active' indicates whether the persist timer is currently
+        # running; '_persist_timeout' tracks the current back-off interval
+        # (initial = PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
+        # PERSIST_TIMEOUT_MAX).
+        self._persist_active: bool = False
+        self._persist_timeout: int = PACKET_RETRANSMIT_TIMEOUT
 
         ###
         # Other variables.
@@ -667,6 +683,39 @@ class TcpSession:
                     # partials until this one is ACK'd.
                     if is_partial:
                         self._snd_sml = self._snd_nxt
+                else:
+                    # Zero-window state: peer has buffered no receive
+                    # space but we have data ready to send. Manage the
+                    # persist timer per RFC 9293 §3.8.6.1: arm the timer
+                    # on first entry into the state, then on each
+                    # expiry emit a 1-byte probe at SND.UNA and re-arm
+                    # with double the timeout (capped at
+                    # PERSIST_TIMEOUT_MAX). RFC 1122 §4.2.2.17 makes
+                    # probing mandatory because without it the
+                    # connection would stall indefinitely whenever the
+                    # peer temporarily closed its window.
+                    persist_timer = f"{self}-persist"
+                    if not self._persist_active:
+                        self._persist_active = True
+                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                        stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - Persist: zero-window, armed timer " f"with timeout {self._persist_timeout} ms",
+                        )
+                    elif stack.timer.is_expired(persist_timer):
+                        with self._lock__tx_buffer:
+                            probe_data = bytes(self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + 1])
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - Persist: emitting 1-byte probe at seq {self._snd_nxt}",
+                        )
+                        self._transmit_packet(flag_ack=True, data=probe_data)
+                        # The probe is by definition a partial; track
+                        # it for Nagle so subsequent partials defer.
+                        self._snd_sml = self._snd_nxt
+                        self._persist_timeout = min(self._persist_timeout * 2, PERSIST_TIMEOUT_MAX)
+                        stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
                 return
 
         # Check if we need to (re)transmit final FIN packet.
@@ -800,6 +849,14 @@ class TcpSession:
                 f"[{self}] - Updated sending window size {self._snd_wnd} -> {packet_rx_md.tcp__win << self._snd_wsc}",
             )
             self._snd_wnd = packet_rx_md.tcp__win << self._snd_wsc
+        # If peer has reopened their receive window, deactivate the
+        # persist timer and reset the back-off interval so the next
+        # zero-window event starts fresh at the initial RTO
+        # (RFC 9293 §3.8.6.1).
+        if self._snd_wnd > 0 and self._persist_active:
+            __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
+            self._persist_active = False
+            self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
         # Enlarge effective sending window.
         self._snd_ewn = min(self._snd_ewn << 1, self._snd_wnd)
         __debug__ and log(
