@@ -881,6 +881,39 @@ class TcpSession:
             self._transmit_data()
             return
 
+        # RFC 9293 §3.10.7.3 step 1: ACK acceptability check.
+        # Any incoming segment with ACK set whose SEG.ACK falls outside
+        # (SND.UNA, SND.MAX] must elicit '<SEQ=SEG.ACK><CTL=RST>' and the
+        # segment itself must be discarded; the RST emit is suppressed if
+        # the offending segment also carries the RST bit, to avoid RST/RST
+        # loops. This check applies regardless of the SYN / FIN / RST
+        # combination on the segment - it must precede the per-flag
+        # branches below, matching the order RFC 9293 §3.10.7.3
+        # prescribes (step 1 ACK, step 2 RST, step 3 security, step 4 SYN).
+        # We bypass '_transmit_packet' for this RST because that helper
+        # rewrites '_snd_nxt' from its 'seq' argument, which would corrupt
+        # our state by latching the offending peer's ACK number into our
+        # send sequence space; the RST itself consumes no sequence space
+        # and must leave session bookkeeping untouched.
+        if packet_rx_md and packet_rx_md.tcp__flag_ack and not (self._snd_una < packet_rx_md.tcp__ack <= self._snd_max):
+            if not packet_rx_md.tcp__flag_rst:
+                stack.packet_handler.send_tcp_packet(
+                    ip__local_address=self._local_ip_address,
+                    ip__remote_address=self._remote_ip_address,
+                    tcp__local_port=self._local_port,
+                    tcp__remote_port=self._remote_port,
+                    tcp__flag_rst=True,
+                    tcp__seq=packet_rx_md.tcp__ack,
+                    tcp__ack=0,
+                    tcp__win=self._rcv_wnd,
+                )
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - SYN_SENT: rejected segment with unacceptable "
+                    f"ACK={packet_rx_md.tcp__ack}, sent RST (RFC 9293 §3.10.7.3)",
+                )
+            return
+
         # Got SYN + ACK packet -> Send ACK / change state to ESTABLISHED.
         if (
             packet_rx_md
