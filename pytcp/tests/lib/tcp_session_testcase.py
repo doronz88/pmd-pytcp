@@ -64,6 +64,13 @@ TCP_FLAG_NAMES: tuple[str, ...] = (
     "NS",
 )
 
+# Sentinel used by '_assert_segment' to distinguish "caller supplied no
+# expected value, skip this check" from "caller explicitly asserted the
+# field is None / absent". 'None' alone is ambiguous because option
+# fields ('mss', 'wscale') legitimately use 'None' to mean "option not
+# present on the wire".
+_UNSET: object = object()
+
 
 @dataclass(frozen=True, slots=True)
 class TcpProbe:
@@ -95,12 +102,15 @@ class TcpSessionTestCase(NetworkTestCase):
 
     _timer: FakeTimer
     _patches: list[_patch]
+    _interface_mtu_was_set: bool
+    _interface_mtu_prior: object
 
     def setUp(self) -> None:
         """
         Install a 'FakeTimer' over 'stack.timer' on top of the parent
-        mock-network setup and initialize the patch tracking list so
-        per-test 'mock.patch' handles get torn down deterministically.
+        mock-network setup, set 'stack.interface_mtu' so 'TcpSession'
+        construction succeeds, and initialize the patch tracking list
+        so per-test 'mock.patch' handles get torn down deterministically.
         """
 
         super().setUp()
@@ -108,17 +118,26 @@ class TcpSessionTestCase(NetworkTestCase):
         self._timer = FakeTimer()
         stack.mock__init(mock__timer=cast(stack.Timer, self._timer))
 
+        self._interface_mtu_was_set = hasattr(stack, "interface_mtu") and "interface_mtu" in stack.__dict__
+        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
+        stack.interface_mtu = 1500
+
         self._patches = []
 
     def tearDown(self) -> None:
         """
-        Stop any 'mock.patch' handle started by '_start_patch' before
-        deferring to the parent teardown, so test-only patches do not
-        leak between tests.
+        Stop any 'mock.patch' handle started by '_start_patch', restore
+        'stack.interface_mtu' to its pre-test value, then defer to the
+        parent teardown so test-only state does not leak between tests.
         """
 
         while self._patches:
             self._patches.pop().stop()
+
+        if self._interface_mtu_was_set:
+            stack.interface_mtu = cast(int, self._interface_mtu_prior)
+        else:
+            stack.__dict__.pop("interface_mtu", None)
 
         super().tearDown()
 
@@ -185,6 +204,11 @@ class TcpSessionTestCase(NetworkTestCase):
             if getattr(packet_rx.tcp, f"flag_{name.lower()}"):
                 flags.add(name)
 
+        # Read the option presence via the underlying TcpOptions container
+        # ('_options.mss' / '_options.wscale' return None when absent),
+        # not via the parser's 'OptionsProperties' mixin (which substitutes
+        # defaults like TCP__MIN_MSS=536 / wscale=0 and so cannot distinguish
+        # 'option absent' from 'option present with the default value').
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -194,8 +218,8 @@ class TcpSessionTestCase(NetworkTestCase):
             ack=packet_rx.tcp.ack,
             flags=frozenset(flags),
             win=packet_rx.tcp.win,
-            mss=packet_rx.tcp.mss,
-            wscale=packet_rx.tcp.wscale,
+            mss=packet_rx.tcp._options.mss,
+            wscale=packet_rx.tcp._options.wscale,
             payload=bytes(packet_rx.tcp.payload),
         )
 
@@ -203,71 +227,73 @@ class TcpSessionTestCase(NetworkTestCase):
         self,
         probe: TcpProbe,
         *,
-        flags: Iterable[str] | None = None,
-        seq: int | None = None,
-        ack: int | None = None,
-        payload: bytes | None = None,
-        win: int | None = None,
-        mss: int | None = None,
-        wscale: int | None = None,
-        sport: int | None = None,
-        dport: int | None = None,
+        flags: object = _UNSET,
+        seq: object = _UNSET,
+        ack: object = _UNSET,
+        payload: object = _UNSET,
+        win: object = _UNSET,
+        mss: object = _UNSET,
+        wscale: object = _UNSET,
+        sport: object = _UNSET,
+        dport: object = _UNSET,
     ) -> None:
         """
         Assert that the given 'TcpProbe' matches every supplied field.
-        Fields left as 'None' are not checked, so callers express only
-        the invariants relevant to the test.
+        Fields left at the '_UNSET' sentinel are not checked. Pass
+        'None' explicitly to assert that an option-bearing field
+        ('mss', 'wscale') is absent from the wire.
         """
 
-        if flags is not None:
+        if flags is not _UNSET:
+            assert flags is not None, "'flags' must be an iterable of flag names, not None."
             self.assertEqual(
                 probe.flags,
-                frozenset(flags),
+                frozenset(cast(Iterable[str], flags)),
                 msg=f"Unexpected TCP flag set on outbound segment: {probe!r}",
             )
-        if seq is not None:
+        if seq is not _UNSET:
             self.assertEqual(
                 probe.seq,
                 seq,
                 msg=f"Unexpected TCP seq on outbound segment: {probe!r}",
             )
-        if ack is not None:
+        if ack is not _UNSET:
             self.assertEqual(
                 probe.ack,
                 ack,
                 msg=f"Unexpected TCP ack on outbound segment: {probe!r}",
             )
-        if payload is not None:
+        if payload is not _UNSET:
             self.assertEqual(
                 probe.payload,
                 payload,
                 msg=f"Unexpected TCP payload on outbound segment: {probe!r}",
             )
-        if win is not None:
+        if win is not _UNSET:
             self.assertEqual(
                 probe.win,
                 win,
                 msg=f"Unexpected TCP advertised window on outbound segment: {probe!r}",
             )
-        if mss is not None:
+        if mss is not _UNSET:
             self.assertEqual(
                 probe.mss,
                 mss,
                 msg=f"Unexpected TCP MSS option on outbound segment: {probe!r}",
             )
-        if wscale is not None:
+        if wscale is not _UNSET:
             self.assertEqual(
                 probe.wscale,
                 wscale,
                 msg=f"Unexpected TCP WSCALE option on outbound segment: {probe!r}",
             )
-        if sport is not None:
+        if sport is not _UNSET:
             self.assertEqual(
                 probe.sport,
                 sport,
                 msg=f"Unexpected TCP sport on outbound segment: {probe!r}",
             )
-        if dport is not None:
+        if dport is not _UNSET:
             self.assertEqual(
                 probe.dport,
                 dport,
