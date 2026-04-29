@@ -833,13 +833,25 @@ class TcpSession:
         # retransmit happens and peer is jumping to previously received SEQ).
         if self._snd_nxt < self._snd_una <= self._snd_max:
             self._snd_nxt = self._snd_una
-        # Make note of the remote SEQ number.
-        self._rcv_nxt = (
+        # Update the next-expected receive sequence number, with two
+        # protections drawn from RFC 9293 §3.4 / §3.10.7.4:
+        #   1. Use 'max(...)' so a stale-duplicate segment whose tail
+        #      lies entirely BEFORE our current RCV.NXT cannot REWIND
+        #      RCV.NXT backward and corrupt the connection's seq
+        #      tracking.
+        #   2. Compute the overlap prefix - the count of already-
+        #      received bytes at the front of this segment - so the
+        #      enqueue path below can slice them off and avoid
+        #      double-delivering bytes the application has already
+        #      seen on a previous segment.
+        seg_end = (
             packet_rx_md.tcp__seq
             + len(packet_rx_md.tcp__data)
             + packet_rx_md.tcp__flag_syn
             + packet_rx_md.tcp__flag_fin
         )
+        overlap_prefix = max(0, self._rcv_nxt - packet_rx_md.tcp__seq)
+        self._rcv_nxt = max(self._rcv_nxt, seg_end)
         # In case packet contains data enqueue it. RFC 1122 §4.2.3.2 governs
         # how we acknowledge it: count pending unacked segments since the
         # last ACK, force an inline ACK once two segments are pending
@@ -852,11 +864,14 @@ class TcpSession:
         # (the third-leg ACK was emitted from within SYN_SENT, which
         # does not arm the timer), so 'is_expired' would return True on
         # the very next tick and an immediate ACK would slip out.
-        if packet_rx_md.tcp__data:
-            self._enqueue_rx_buffer(packet_rx_md.tcp__data)
+        if packet_rx_md.tcp__data and overlap_prefix < len(packet_rx_md.tcp__data):
+            new_data = packet_rx_md.tcp__data[overlap_prefix:]
+            self._enqueue_rx_buffer(new_data)
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Enqueued {len(packet_rx_md.tcp__data)} bytes starting at {packet_rx_md.tcp__seq}",
+                f"[{self}] - Enqueued {len(new_data)} bytes starting at "
+                f"{packet_rx_md.tcp__seq + overlap_prefix} "
+                f"(sliced {overlap_prefix} overlap byte(s))",
             )
             self._delayed_ack_segments_pending += 1
             if self._delayed_ack_segments_pending >= 2:
@@ -1302,17 +1317,45 @@ class TcpSession:
             )
             return
 
-        # Got packet that doesn't fit into receive window.
-        if packet_rx_md and not self._rcv_nxt <= packet_rx_md.tcp__seq <= self._rcv_nxt + self._rcv_wnd - len(
-            packet_rx_md.tcp__data
-        ):
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + "
-                f"{len(packet_rx_md.tcp__data)} doesn't fit into receive "
-                "window, dropping",
-            )
-            return
+        # Receive-window acceptability check per RFC 9293 §3.10.7.4.
+        # A segment is acceptable if any portion of its sequence space
+        # falls within the receive window. The strict bound used
+        # previously (RCV.NXT <= SEG.SEQ <= RCV.NXT + RCV.WND - len)
+        # rejected overlapping retransmits whose tail extended past
+        # RCV.NXT, in violation of the spec's "A receiver should be
+        # tolerant of overlap in segments" mandate (§3.10.7.4 sequence
+        # acceptability table). Use the spec's actual rule:
+        #
+        #   SEG.LEN == 0:
+        #     RCV.WND > 0 -> RCV.NXT <= SEG.SEQ <= RCV.NXT + RCV.WND
+        #     RCV.WND == 0 -> SEG.SEQ == RCV.NXT
+        #   SEG.LEN > 0:
+        #     RCV.WND > 0 -> SEG.SEQ < RCV.NXT + RCV.WND AND
+        #                    SEG.SEQ + SEG.LEN > RCV.NXT
+        #     RCV.WND == 0 -> not acceptable
+        #
+        # SEG.LEN here counts data plus the SYN / FIN flag bytes that
+        # also consume sequence space.
+        if packet_rx_md is not None:
+            seg_len = len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
+            seg_end = packet_rx_md.tcp__seq + seg_len
+            if seg_len == 0:
+                if self._rcv_wnd > 0:
+                    acceptable = self._rcv_nxt <= packet_rx_md.tcp__seq <= self._rcv_nxt + self._rcv_wnd
+                else:
+                    acceptable = packet_rx_md.tcp__seq == self._rcv_nxt
+            else:
+                if self._rcv_wnd > 0:
+                    acceptable = packet_rx_md.tcp__seq < self._rcv_nxt + self._rcv_wnd and seg_end > self._rcv_nxt
+                else:
+                    acceptable = False
+            if not acceptable:
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + "
+                    f"{seg_len} doesn't fit into receive window, dropping",
+                )
+                return
 
         # Got ACK packet.
         if (
@@ -1345,8 +1388,19 @@ class TcpSession:
                 if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
                     self._transmit_packet(flag_ack=True)
                 return
-            # Regular data/ACK packet -> Process data.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
+            # Regular data/ACK packet -> Process data. Match either an
+            # exactly in-order segment ('SEG.SEQ == RCV.NXT', which
+            # covers both new-data segments and bare ACKs of our sent
+            # data) OR an overlap-with-new-bytes segment ('SEG.SEQ <
+            # RCV.NXT < SEG.SEQ + SEG.LEN', covering retransmits whose
+            # tail extends past RCV.NXT) per RFC 9293 §3.10.7.4. The
+            # already-received prefix of an overlap segment is sliced
+            # off inside '_process_ack_packet'.
+            seg_seq = packet_rx_md.tcp__seq
+            seg_end = seg_seq + len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
+            in_order = seg_seq == self._rcv_nxt
+            overlap_with_new = seg_seq < self._rcv_nxt < seg_end
+            if (in_order or overlap_with_new) and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
                 self._process_ack_packet(packet_rx_md)
                 return
             # RFC 9293 §3.10.7.4: an unacceptable ACK (acknowledging
