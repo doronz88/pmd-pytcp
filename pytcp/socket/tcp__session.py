@@ -990,8 +990,10 @@ class TcpSession:
                 self._change_state(FsmState.ESTABLISHED)
                 # Inform the listening socket that session has been established
                 # so accept call can pick it up.
-                self._socket._parent_socket._tcp_accept.append(self._socket)  # pylint: disable=protected-access
-                self._socket._parent_socket._event_tcp_session_established.release()  # pylint: disable=protected-access
+                parent_socket = self._socket._parent_socket  # pylint: disable=protected-access
+                assert parent_socket is not None, "child TcpSocket must always have a parent_socket set"
+                parent_socket._tcp_accept.append(self._socket)  # pylint: disable=protected-access
+                parent_socket._event__tcp_session_established.release()  # pylint: disable=protected-access
                 # Inform connect syscall that connection related event happened,
                 # this is needed only in case of tcp simultaneous open.
                 self._event__connect.release()

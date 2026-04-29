@@ -131,6 +131,7 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         self.assertEqual(s.local_port, 0, msg="local_port must start at 0.")
         self.assertEqual(s.remote_port, 0, msg="remote_port must start at 0.")
         self.assertIsNone(s.tcp_session, msg="A fresh socket must have no TcpSession attached.")
+        self.assertIsNone(s.parent_socket, msg="A fresh socket must have no parent socket attached.")
         self.assertIs(
             s.state,
             FsmState.CLOSED,
@@ -466,7 +467,7 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         child.remote_ip_address = Ip4Address("10.0.0.5")
         child.remote_port = 12345
         s._tcp_accept.append(child)
-        s._event_tcp_session_established.release()
+        s._event__tcp_session_established.release()
 
         result_socket, result_addr = s.accept()
 
@@ -517,13 +518,14 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
 
     def test__tcp_socket__send_requires_destination(self) -> None:
         """
-        Ensure send() on a socket with no remote IP raises 'OSError'
-        with a 'Destination address require' message.
+        Ensure send() on a socket with no remote IP raises
+        'BrokenPipeError' (matching the CPython EPIPE shape) so the
+        caller sees the same exception as a normal TCP send-after-FIN.
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
         s._tcp_session = MagicMock()
-        with self.assertRaises(OSError):
+        with self.assertRaises(BrokenPipeError):
             s.send(b"data")
 
     def test__tcp_socket__send_returns_bytes_sent(self) -> None:

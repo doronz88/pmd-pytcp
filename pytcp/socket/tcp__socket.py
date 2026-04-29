@@ -23,11 +23,11 @@
 
 
 """
-This module contains BSD like TCP socket interface for the stack.
+This module contains the BSD-like TCP socket interface for the stack.
 
 pytcp/socket/tcp__socket.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 class TcpSocket(socket):
     """
-    Support for IPv6/IPv4 TCP socket operations.
+    The IPv6/IPv4 TCP socket.
     """
 
     _socket_type = SocketType.STREAM
@@ -80,21 +80,21 @@ class TcpSocket(socket):
         tcp_session: TcpSession | None = None,
     ) -> None:
         """
-        Class constructor.
+        Initialize the IPv6/IPv4 TCP socket.
         """
 
         assert type is SocketType.STREAM
         assert protocol is IpProto.TCP
 
         self._address_family = family
-        self._event_tcp_session_established: Semaphore = threading.Semaphore(0)
+        self._event__tcp_session_established: Semaphore = threading.Semaphore(0)
         self._tcp_accept: list[socket] = []
-        self._tcp_session: TcpSession | None
+        self._tcp_session: TcpSession | None = tcp_session
+        self._parent_socket: TcpSocket | None = None
 
         # Create established socket based on established TCP session, called by
         # listening sockets only.
         if tcp_session:
-            self._tcp_session = tcp_session
             self._local_ip_address = tcp_session.local_ip_address
             self._remote_ip_address = tcp_session.remote_ip_address
             self._local_port = tcp_session.local_port
@@ -114,7 +114,6 @@ class TcpSocket(socket):
 
             self._local_port = 0
             self._remote_port = 0
-            self._tcp_session = None
 
         __debug__ and log("socket", f"<g>[{self}]</> - Create socket")
 
@@ -132,7 +131,7 @@ class TcpSocket(socket):
     @property
     def tcp_session(self) -> TcpSession | None:
         """
-        Getter for the '_tcp_session' attribute.
+        Get the '_tcp_session' attribute.
         """
 
         return self._tcp_session
@@ -140,7 +139,7 @@ class TcpSocket(socket):
     @property
     def parent_socket(self) -> TcpSocket | None:
         """
-        Getter for the '_parent_socket' attribute.
+        Get the '_parent_socket' attribute.
         """
 
         return self._parent_socket
@@ -162,10 +161,10 @@ class TcpSocket(socket):
                 else Ip4Address(remote_address[0])
             )
         except (Ip6AddressFormatError, Ip4AddressFormatError) as error:
-            raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]") from error
+            raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]") from error
 
         if remote_ip_address.is_unspecified:
-            raise ConnectionRefusedError("[Errno 111] Connection refused - " "[Unspecified remote IP address]")
+            raise ConnectionRefusedError("[Errno 111] Connection refused - [Unspecified remote IP address]")
 
         local_ip_address = self._local_ip_address
 
@@ -173,7 +172,7 @@ class TcpSocket(socket):
             local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
 
             if local_ip_address.is_unspecified:
-                raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]")
+                raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]")
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
 
@@ -192,7 +191,7 @@ class TcpSocket(socket):
 
         # Check if "bound" already.
         if self._local_port in range(1, 65536):
-            raise OSError("[Errno 22] Invalid argument - " "[Socket bound to specific port already]")
+            raise OSError("[Errno 22] Invalid argument - [Socket bound to specific port already]")
 
         local_ip_address: Ip6Address | Ip4Address
 
@@ -203,10 +202,10 @@ class TcpSocket(socket):
                         Ip6Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
                         )
                 except Ip6AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
+                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
             case AddressFamily.INET4:
                 try:
@@ -214,10 +213,10 @@ class TcpSocket(socket):
                         Ip4Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
                         )
                 except Ip4AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
+                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
         # Sanity check on local port number
         if address[1] not in range(0, 65536):
@@ -231,7 +230,7 @@ class TcpSocket(socket):
                 address_family=self._address_family,
                 socket_type=self._socket_type,
             ):
-                raise OSError("[Errno 98] Address already in use - " "[Local address already in use]")
+                raise OSError("[Errno 98] Address already in use - [Local address already in use]")
         else:
             local_port = pick_local_port()
 
@@ -261,7 +260,7 @@ class TcpSocket(socket):
         if (local_port := self._local_port) not in range(1, 65536):
             local_port = pick_local_port()
 
-        # Set local and remote ip addresses aproprietely.
+        # Set local and remote ip addresses appropriately.
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
@@ -289,14 +288,14 @@ class TcpSocket(socket):
         except TcpSessionError as error:
             if str(error) == "Connection refused":
                 raise ConnectionRefusedError(
-                    "[Errno 111] Connection refused - " "[Received RST packet from remote host]"
+                    "[Errno 111] Connection refused - [Received RST packet from remote host]"
                 ) from error
             if str(error) == "Connection timeout":
                 raise TimeoutError(
-                    "[Errno 110] Connection timed out - " "[No valid response received from remote host]"
+                    "[Errno 110] Connection timed out - [No valid response received from remote host]"
                 ) from error
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Bound")
+        __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
     def listen(self) -> None:
         """
@@ -313,7 +312,7 @@ class TcpSocket(socket):
 
         __debug__ and log(
             "socket",
-            f"<g>[{self}]</> - Socket starting to listen for inbound " "connections",
+            f"<g>[{self}]</> - Socket starting to listen for inbound connections",
         )
 
         stack.sockets[self.socket_id] = self
@@ -327,7 +326,7 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Waiting for inbound connection")
 
-        if not self._event_tcp_session_established.acquire(timeout=timeout):
+        if not self._event__tcp_session_established.acquire(timeout=timeout):
             raise TimeoutError("TCP Socket - Accept operation timed out.")
 
         socket = cast(TcpSocket, self._tcp_accept.pop(0))
@@ -348,7 +347,7 @@ class TcpSocket(socket):
         # The 'send' call requires 'connect' call to be run prior to it.
 
         if self._remote_ip_address.is_unspecified or self._remote_port == 0:
-            raise OSError("send(): Destination address require")
+            raise BrokenPipeError("[Errno 32] Broken pipe - [Socket has no destination address set]")
 
         assert self._tcp_session is not None
 
@@ -379,7 +378,7 @@ class TcpSocket(socket):
             else:
                 __debug__ and log(
                     "socket",
-                    f"<g>[{self}]</> - Received empty data byte string, remote " "end closed connection",
+                    f"<g>[{self}]</> - Received empty data byte string, remote end closed connection",
                 )
             return data_rx
 
