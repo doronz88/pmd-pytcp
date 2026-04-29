@@ -23,11 +23,11 @@
 
 
 """
-This module contains interface class for the TCP Parser -> TCP Socket communication.
+This module contains the interface class for the TCP Parser -> TCP Socket communication.
 
 pytcp/socket/tcp__metadata.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class TcpMetadata:
     """
-    Store the TCP metadata taken from the received packet.
+    The TCP socket metadata taken from the received packet.
     """
 
     ip__ver: IpVersion
@@ -66,7 +66,7 @@ class TcpMetadata:
     tcp__mss: int
     tcp__data: memoryview
 
-    tracker: Tracker | None
+    tracker: Tracker | None = None
 
     @property
     def socket_id(self) -> SocketId:
