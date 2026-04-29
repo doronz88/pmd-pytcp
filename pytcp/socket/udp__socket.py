@@ -33,7 +33,7 @@ ver 3.0.3
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from net_addr import (
     Ip4Address,
@@ -142,6 +142,7 @@ class UdpSocket(socket):
     ##  BSD socket API methods.  ##
     ###############################
 
+    @override
     def bind(self, address: tuple[str, int]) -> None:
         """
         Bind the socket to local address.
@@ -204,6 +205,7 @@ class UdpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
 
+    @override
     def connect(self, address: tuple[str, int]) -> None:
         """
         Connect local socket to remote socket.
@@ -237,6 +239,7 @@ class UdpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
+    @override
     def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
@@ -267,6 +270,7 @@ class UdpSocket(socket):
 
         return sent_data_len
 
+    @override
     def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         """
         Send the data to remote host.
@@ -308,6 +312,7 @@ class UdpSocket(socket):
 
         return sent_data_len
 
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
@@ -315,6 +320,7 @@ class UdpSocket(socket):
 
         return bytes(self.recv__mv(bufsize=bufsize, timeout=timeout))
 
+    @override
     def recv__mv(self, bufsize: int | None = None, timeout: float | None = None) -> memoryview:
         """
         Read data from socket as a memoryview.
@@ -336,16 +342,18 @@ class UdpSocket(socket):
 
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
+    @override
     def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
         """
 
-        _bytes, (remote_ip, remote_port) = self.recvfrom__vm(bufsize=bufsize, timeout=timeout)
+        _bytes, (remote_ip, remote_port) = self.recvfrom__mv(bufsize=bufsize, timeout=timeout)
 
         return bytes(_bytes), (remote_ip, remote_port)
 
-    def recvfrom__vm(
+    @override
+    def recvfrom__mv(
         self, bufsize: int | None = None, timeout: float | None = None
     ) -> tuple[memoryview, tuple[str, int]]:
         """
@@ -369,6 +377,7 @@ class UdpSocket(socket):
             )
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
+    @override
     def close(self) -> None:
         """
         Close socket.

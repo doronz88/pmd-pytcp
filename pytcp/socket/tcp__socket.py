@@ -33,7 +33,7 @@ ver 3.0.4
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 from net_addr import (
     Ip4Address,
@@ -180,6 +180,7 @@ class TcpSocket(socket):
     ##  BSD socket API methods.  ##
     ###############################
 
+    @override
     def bind(self, address: tuple[str, int]) -> None:
         """
         Bind the socket to local address.
@@ -242,6 +243,7 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound socket")
 
+    @override
     def connect(self, address: tuple[str, int]) -> None:
         """
         Connect local socket to remote socket.
@@ -297,6 +299,7 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
+    @override
     def listen(self) -> None:
         """
         Starts to listen for incoming connections.
@@ -318,6 +321,7 @@ class TcpSocket(socket):
         stack.sockets[self.socket_id] = self
         self._tcp_session.listen()
 
+    @override
     def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
         """
         Wait for the established inbound connection, once available return
@@ -339,6 +343,7 @@ class TcpSocket(socket):
 
         return socket, (str(socket.remote_ip_address), socket.remote_port)
 
+    @override
     def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
@@ -362,6 +367,7 @@ class TcpSocket(socket):
         )
         return bytes_sent
 
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Receive data from socket.
@@ -385,6 +391,7 @@ class TcpSocket(socket):
         except TimeoutError as error:
             raise TimeoutError("TCP Socket - Receive operation timed out.") from error
 
+    @override
     def close(self) -> None:
         """
         Close socket and the TCP session(s) it owns.

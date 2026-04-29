@@ -33,7 +33,7 @@ ver 3.0.4
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 from net_addr import (
     Ip4Address,
@@ -127,6 +127,7 @@ class RawSocket(socket):
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
 
+    @override
     def bind(self, address: tuple[str, int]) -> None:
         """
         Bind the socket to local address.
@@ -166,6 +167,7 @@ class RawSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
 
+    @override
     def connect(self, address: tuple[str, int]) -> None:
         """
         Connect local socket to remote socket.
@@ -193,6 +195,7 @@ class RawSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
+    @override
     def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
@@ -227,6 +230,7 @@ class RawSocket(socket):
 
         return sent_data_len
 
+    @override
     def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         """
         Send the data to remote host.
@@ -262,6 +266,7 @@ class RawSocket(socket):
 
         return sent_data_len
 
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
@@ -279,6 +284,7 @@ class RawSocket(socket):
 
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
+    @override
     def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
@@ -302,6 +308,7 @@ class RawSocket(socket):
 
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
+    @override
     def close(self) -> None:
         """
         Close socket.
