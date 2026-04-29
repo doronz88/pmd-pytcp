@@ -24,11 +24,11 @@
 # pyright: reportPrivateUsage=false
 
 """
-This module contains class supporting TCP finite state machine.
+This module contains the class supporting TCP finite state machine.
 
 pytcp/socket/tcp__session.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ import random
 import threading
 from collections.abc import Callable
 from enum import auto
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp import stack
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 
 PACKET_RETRANSMIT_TIMEOUT = 1000  # Retransmit data if ACK not received
-PACKET_RETRANSMIT_MAX_COUNT = 3  # If data is not acked, retransit it 5 times
+PACKET_RETRANSMIT_MAX_COUNT = 3  # If data is not acked, retransmit it this many times before resetting the session.
 TIME_WAIT_DELAY = 30000  # 30s delay for the TIME_WAIT state, default is 30-120s
 DELAYED_ACK_DELAY = 100  # Delay between consecutive delayed ACK outbound packets
 
@@ -149,7 +149,7 @@ def trace_win(self: TcpSession) -> None:
 
 class TcpSession:
     """
-    Class defining all the TCP session parameters.
+    The TCP session.
     """
 
     def __init__(
@@ -162,7 +162,7 @@ class TcpSession:
         socket: TcpSocket,
     ) -> None:
         """
-        Class constructor.
+        Initialize the TCP session.
         """
 
         ###
@@ -262,24 +262,24 @@ class TcpSession:
         # the TX buffer pointers.
         self._tx_buffer_seq_mod: int = self._snd_ini
 
-        # TCP FSM (Finite FsmState Machine) state.
+        # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED
 
         # Used to inform CONNECT syscall that connection related event happened.
-        self._event_connect: Semaphore = threading.Semaphore(0)
+        self._event__connect: Semaphore = threading.Semaphore(0)
 
         # Used to inform RECV syscall that there is new data in buffer ready
         # to be picked up.
-        self._event_rx_buffer: Semaphore = threading.Semaphore(0)
+        self._event__rx_buffer: Semaphore = threading.Semaphore(0)
 
         # Used to ensure that only single event can run FSM at given time.
-        self._lock_fsm: RLock = threading.RLock()
+        self._lock__fsm: RLock = threading.RLock()
 
         # Used to ensure only single event has access to RX buffer at given time.
-        self._lock_rx_buffer: Lock = threading.Lock()
+        self._lock__rx_buffer: Lock = threading.Lock()
 
         # Used to ensure only single event has access to TX buffer at given time.
-        self._lock_tx_buffer: Lock = threading.Lock()
+        self._lock__tx_buffer: Lock = threading.Lock()
 
         # Indicates that CLOSE syscall is in progress, this lets to finish
         # sending data before FIN packet is transmitted.
@@ -294,17 +294,18 @@ class TcpSession:
         # Setup timer to execute FSM time event every millisecond.
         stack.timer.register_method(method=self.tcp_fsm, kwargs={"timer": True})
 
+    @override
     def __str__(self) -> str:
         """
-        String representation.
+        Get the TCP session string representation.
         """
 
-        return f"{self._local_ip_address}/{self._local_port}/" f"{self._remote_ip_address}/{self._remote_port}"
+        return f"{self._local_ip_address}/{self._local_port}/{self._remote_ip_address}/{self._remote_port}"
 
     @property
     def local_ip_address(self) -> Ip6Address | Ip4Address:
         """
-        Get value of the '_local_ip_address' attribute.
+        Get the '_local_ip_address' attribute.
         """
 
         return self._local_ip_address
@@ -312,7 +313,7 @@ class TcpSession:
     @property
     def remote_ip_address(self) -> Ip6Address | Ip4Address:
         """
-        Get value of the '_remote_ip_address' attribute.
+        Get the '_remote_ip_address' attribute.
         """
 
         return self._remote_ip_address
@@ -320,7 +321,7 @@ class TcpSession:
     @property
     def local_port(self) -> int:
         """
-        Get value of the '_local_port' attribute.
+        Get the '_local_port' attribute.
         """
 
         return self._local_port
@@ -328,7 +329,7 @@ class TcpSession:
     @property
     def remote_port(self) -> int:
         """
-        Get value of the '_remote_port' attribute.
+        Get the '_remote_port' attribute.
         """
 
         return self._remote_port
@@ -336,7 +337,7 @@ class TcpSession:
     @property
     def socket(self) -> TcpSocket:
         """
-        Get value of the '_socket' attribute.
+        Get the '_socket' attribute.
         """
 
         return self._socket
@@ -344,7 +345,7 @@ class TcpSession:
     @property
     def state(self) -> FsmState:
         """
-        Get value of the '_state' attribute.
+        Get the '_state' attribute.
         """
 
         return self._state
@@ -352,7 +353,7 @@ class TcpSession:
     @property
     def _tx_buffer_nxt(self) -> int:
         """
-        Get value of the 'snd_nxt' number relative to TX buffer.
+        Get the 'snd_nxt' number relative to TX buffer.
         """
 
         return max(self._snd_nxt - self._tx_buffer_seq_mod, 0)
@@ -360,7 +361,7 @@ class TcpSession:
     @property
     def _tx_buffer_una(self) -> int:
         """
-        Get value of the 'snd_una' number relative to TX buffer.
+        Get the 'snd_una' number relative to TX buffer.
         """
 
         return max(self._snd_una - self._tx_buffer_seq_mod, 0)
@@ -388,7 +389,7 @@ class TcpSession:
         )
 
         self.tcp_fsm(syscall=SysCall.CONNECT)
-        self._event_connect.acquire()
+        self._event__connect.acquire()
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.REFUSED:
             raise TcpSessionError("Connection refused")
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.TIMEOUT:
@@ -400,11 +401,11 @@ class TcpSession:
         """
 
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
-            with self._lock_tx_buffer:
+            with self._lock__tx_buffer:
                 self._tx_buffer.extend(data)
                 return len(data)
 
-        # This error should be risen when session is locally or fully closed.
+        # This error should be raised when session is locally or fully closed.
         raise TcpSessionError("TCP session not in ESTABLISHED or CLOSE_WAIT state")
 
     def receive(self, *, byte_count: int | None = None, timeout: float | None = None) -> bytes:
@@ -414,7 +415,7 @@ class TcpSession:
 
         # Wait till there is any data in the buffer (this will get bypassed
         # when FSM goes into CLOSE_WAIT or CLOSED).
-        if not self._event_rx_buffer.acquire(timeout=timeout):
+        if not self._event__rx_buffer.acquire(timeout=timeout):
             raise TimeoutError("TCP session receive operation timed out while waiting for data.")
 
         # If there is no data in RX buffer and remote end closed connection
@@ -425,7 +426,7 @@ class TcpSession:
         }:
             return b""
 
-        with self._lock_rx_buffer:
+        with self._lock__rx_buffer:
             if byte_count is None:
                 byte_count = len(self._rx_buffer)
             else:
@@ -440,7 +441,7 @@ class TcpSession:
                 FsmState.CLOSE_WAIT,
                 FsmState.CLOSED,
             }:
-                self._event_rx_buffer.release()
+                self._event__rx_buffer.release()
 
         return bytes(rx_buffer)
 
@@ -451,8 +452,7 @@ class TcpSession:
 
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - <ly>[{self._state}]</> - got <r>CLOSE</> syscall, "
-            "{len(self._tx_buffer)} bytes in TX buffer",
+            f"[{self}] - <ly>[{self._state}]</> - got <r>CLOSE</> syscall, {len(self._tx_buffer)} bytes in TX buffer",
         )
 
         self.tcp_fsm(syscall=SysCall.CLOSE)
@@ -546,13 +546,13 @@ class TcpSession:
 
         assert isinstance(data, memoryview)  # memoryview: check to ensure data gets here as memoryview not bytes.
 
-        with self._lock_rx_buffer:
+        with self._lock__rx_buffer:
             self._rx_buffer.extend(data)
             # If rx_buffer event has not been released yet
             # (it could be released if some data were siting in buffer already)
             # then release it.
-            if not self._event_rx_buffer._value:  # pylint: disable=protected-access
-                self._event_rx_buffer.release()
+            if not self._event__rx_buffer._value:  # pylint: disable=protected-access
+                self._event__rx_buffer.release()
 
     def _transmit_data(self) -> None:
         """
@@ -566,7 +566,7 @@ class TcpSession:
         if self._state is FsmState.SYN_SENT and self._snd_nxt == self._snd_ini:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting initial SYN packet_rx_md: " f"seq {self._snd_nxt}",
+                f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_nxt}",
             )
             self._transmit_packet(flag_syn=True)
             return
@@ -575,7 +575,7 @@ class TcpSession:
         if self._state is FsmState.SYN_RCVD and self._snd_nxt == self._snd_ini:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting initial SYN + ACK packet_rx_md: " f"seq {self._snd_nxt}",
+                f"[{self}] - Transmitting initial SYN + ACK packet_rx_md: seq {self._snd_nxt}",
             )
             self._transmit_packet(flag_syn=True, flag_ack=True)
             return
@@ -598,11 +598,11 @@ class TcpSession:
                     f"{transmit_data_len} to be sent",
                 )
                 if transmit_data_len:
-                    with self._lock_tx_buffer:
+                    with self._lock__tx_buffer:
                         transmit_data = self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + transmit_data_len]
                     __debug__ and log(
                         "tcp-ss",
-                        f"[{self}] - Transmitting data segment: " f"seq {self._snd_nxt} len {len(transmit_data)}",
+                        f"[{self}] - Transmitting data segment: seq {self._snd_nxt} len {len(transmit_data)}",
                     )
                     self._transmit_packet(flag_ack=True, data=bytes(transmit_data))
                 return
@@ -611,7 +611,7 @@ class TcpSession:
         if self._state in {FsmState.FIN_WAIT_1, FsmState.LAST_ACK} and self._snd_nxt != self._snd_fin:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting final FIN packet_rx_md: " f"seq {self._snd_nxt}",
+                f"[{self}] - Transmitting final FIN packet_rx_md: seq {self._snd_nxt}",
             )
             self._transmit_packet(flag_fin=True, flag_ack=True)
             return
@@ -644,7 +644,7 @@ class TcpSession:
                     self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
                     __debug__ and log(
                         "tcp-ss",
-                        f"[{self}] - Packet retransmit counter expired, " f"resetting session",
+                        f"[{self}] - Packet retransmit counter expired, resetting session",
                     )
                 else:
                     __debug__ and log(
@@ -660,12 +660,12 @@ class TcpSession:
                     FsmState.CLOSE_WAIT,
                 }:
                     self._connection_error = ConnError.TIMEOUT
-                    self._event_rx_buffer.release()
+                    self._event__rx_buffer.release()
                 # If in SYN_SENT state inform CONNECT syscall that the
                 # connection related event happened.
                 if self._state is FsmState.SYN_SENT:
                     self._connection_error = ConnError.TIMEOUT
-                    self._event_connect.release()
+                    self._event__connect.release()
                 # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
                 return
@@ -677,14 +677,14 @@ class TcpSession:
                 self._tx_buffer_seq_mod -= 1
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Got retansmit timeout, sending segment "
+                f"[{self}] - Got retransmit timeout, sending segment "
                 f"{self._snd_nxt}, resetting snd_ewn to {self._snd_ewn}",
             )
             return
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
         """
-        Retransmit packet after rceiving request from peer.
+        Retransmit packet after receiving request from peer.
         """
 
         self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
@@ -721,10 +721,10 @@ class TcpSession:
             self._enqueue_rx_buffer(packet_rx_md.tcp__data)
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Enqueued {len(packet_rx_md.tcp__data)} bytes " f"starting at {packet_rx_md.tcp__seq}",
+                f"[{self}] - Enqueued {len(packet_rx_md.tcp__data)} bytes starting at {packet_rx_md.tcp__seq}",
             )
         # Purge acked data from TX buffer.
-        with self._lock_tx_buffer:
+        with self._lock__tx_buffer:
             del self._tx_buffer[: self._tx_buffer_una]
         self._tx_buffer_seq_mod += self._tx_buffer_una
         __debug__ and log(
@@ -735,15 +735,14 @@ class TcpSession:
         if self._snd_wnd != packet_rx_md.tcp__win << self._snd_wsc:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Updated sending window size {self._snd_wnd} "
-                f"-> {packet_rx_md.tcp__win << self._snd_wsc}",
+                f"[{self}] - Updated sending window size {self._snd_wnd} -> {packet_rx_md.tcp__win << self._snd_wsc}",
             )
             self._snd_wnd = packet_rx_md.tcp__win << self._snd_wsc
         # Enlarge effective sending window.
         self._snd_ewn = min(self._snd_ewn << 1, self._snd_wnd)
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - Updated effective sending window " f"to {self._snd_ewn}",
+            f"[{self}] - Updated effective sending window to {self._snd_ewn}",
         )
         # Purge expired tx packet retransmit requests.
         for seq in list(self._tx_retransmit_request_counter):
@@ -751,7 +750,7 @@ class TcpSession:
                 self._tx_retransmit_request_counter.pop(seq)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Purged expired TX packet retransmit " f"request counter for {seq}",
+                    f"[{self}] - Purged expired TX packet retransmit request counter for {seq}",
                 )
         # Purge expired tx packet retransmit timeouts.
         for seq in list(self._tx_retransmit_timeout_counter):
@@ -759,7 +758,7 @@ class TcpSession:
                 self._tx_retransmit_timeout_counter.pop(seq)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Purged expired TX packet retransmit " f"timeout for {seq}",
+                    f"[{self}] - Purged expired TX packet retransmit timeout for {seq}",
                 )
         # Purge expired rx retransmit requests.
         for seq in list(self._rx_retransmit_request_counter):
@@ -767,13 +766,13 @@ class TcpSession:
                 self._rx_retransmit_request_counter.pop(seq)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Purged expired RX packet retransmit " f"request counter for {seq}",
+                    f"[{self}] - Purged expired RX packet retransmit request counter for {seq}",
                 )
         # Bring next packet from ooo_packet_queue if available.
         if ooo_packet := self._ooo_packet_queue.pop(self._rcv_nxt, None):
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - <lg>Retrieving packet {self._rcv_nxt} from " "Out of Order queue</>",
+                f"[{self}] - <lg>Retrieving packet {self._rcv_nxt} from Out of Order queue</>",
             )
             self.tcp_fsm(ooo_packet)
 
@@ -893,7 +892,7 @@ class TcpSession:
                 self._snd_wsc = packet_rx_md.tcp__wscale
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Initialized remote window scale " f"at {self._snd_wsc}",
+                    f"[{self}] - Initialized remote window scale at {self._snd_wsc}",
                 )
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
@@ -908,7 +907,7 @@ class TcpSession:
                 # Change state to ESTABLISHED.
                 self._change_state(FsmState.ESTABLISHED)
                 # Inform connect syscall that connection related event happened.
-                self._event_connect.release()
+                self._event__connect.release()
                 return
 
         # Got SYN packet -> Send SYN + ACK packet / change state to SYN_RCVD.
@@ -943,7 +942,7 @@ class TcpSession:
                 self._change_state(FsmState.CLOSED)
                 # Inform connect syscall that connection related event happened.
                 self._connection_error = ConnError.REFUSED
-                self._event_connect.release()
+                self._event__connect.release()
             return
 
         # Got CLOSE syscall -> Change state to CLOSE.
@@ -959,7 +958,7 @@ class TcpSession:
         timer: bool | None,
     ) -> None:
         """
-        TCP FSM ESTABLISHED state handler.
+        TCP FSM SYN_RCVD state handler.
         """
 
         # Got timer event -> Resend SYN packet if its timer expired.
@@ -995,7 +994,7 @@ class TcpSession:
                 self._socket._parent_socket._event_tcp_session_established.release()  # pylint: disable=protected-access
                 # Inform connect syscall that connection related event happened,
                 # this is needed only in case of tcp simultaneous open.
-                self._event_connect.release()
+                self._event__connect.release()
                 return
 
         # Got RST + ACK packet -> Change state to CLOSED.
@@ -1028,7 +1027,7 @@ class TcpSession:
                 self._change_state(FsmState.CLOSED)
             return
 
-        # Got CLOSE sycall -> Send FIN packet (this actually will be done in
+        # Got CLOSE syscall -> Send FIN packet (this actually will be done in
         # SYN_SENT state) / change state to FIN_WAIT_1.
         if syscall is SysCall.CLOSE:
             self._change_state(FsmState.FIN_WAIT_1)
@@ -1119,7 +1118,7 @@ class TcpSession:
                     self._transmit_packet(flag_ack=True)
                 # Let application know that remote peer closed connection
                 # (let receive syscall bypass semaphore).
-                self._event_rx_buffer.release()
+                self._event__rx_buffer.release()
                 # Change state to CLOSE_WAIT.
                 self._change_state(FsmState.CLOSE_WAIT)
             return
@@ -1134,7 +1133,7 @@ class TcpSession:
             if packet_rx_md.tcp__seq == self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
                 # Let application know that remote peer closed connection
                 # (let receive syscall bypass semaphore).
-                self._event_rx_buffer.release()
+                self._event__rx_buffer.release()
                 # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
             return
@@ -1481,7 +1480,7 @@ class TcpSession:
         """
 
         # Process event.
-        with self._lock_fsm:
+        with self._lock__fsm:
             match self._state:
                 case FsmState.CLOSED:
                     self._tcp_fsm_closed(syscall=syscall)

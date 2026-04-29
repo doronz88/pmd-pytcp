@@ -165,7 +165,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
                 """
 
                 session._connection_error = ConnError.REFUSED
-                session._event_connect.release()
+                session._event__connect.release()
 
             mock_fsm.side_effect = fsm_side_effect
 
@@ -196,7 +196,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
                 """
 
                 session._connection_error = ConnError.TIMEOUT
-                session._event_connect.release()
+                session._event__connect.release()
 
             mock_fsm.side_effect = fsm_side_effect
 
@@ -226,7 +226,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
                 """
 
                 session._state = FsmState.ESTABLISHED
-                session._event_connect.release()
+                session._event__connect.release()
 
             mock_fsm.side_effect = fsm_side_effect
             session.connect()
@@ -308,7 +308,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event_rx_buffer.release()
+        session._event__rx_buffer.release()
 
         self.assertEqual(
             session.receive(),
@@ -329,7 +329,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event_rx_buffer.release()
+        session._event__rx_buffer.release()
 
         first = session.receive(byte_count=5)
         self.assertEqual(
@@ -352,7 +352,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         session._state = FsmState.CLOSE_WAIT
-        session._event_rx_buffer.release()
+        session._event__rx_buffer.release()
 
         self.assertEqual(
             session.receive(),
@@ -372,14 +372,14 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
     def test__tcp_session__receive_re_releases_when_buffer_nonempty(self) -> None:
         """
-        Ensure receive() re-releases the '_event_rx_buffer' semaphore
+        Ensure receive() re-releases the '_event__rx_buffer' semaphore
         when the buffer still has data after the read, so the next
         call does not block unnecessarily.
         """
 
         session = self._make_session()
         session._rx_buffer.extend(b"hello world")
-        session._event_rx_buffer.release()
+        session._event__rx_buffer.release()
 
         session.receive(byte_count=5)
 
