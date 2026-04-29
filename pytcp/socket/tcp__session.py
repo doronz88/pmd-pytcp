@@ -464,14 +464,13 @@ class TcpSession:
 
         old_state = self._state
         self._state = state
-        if old_state:
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - <ly>[{old_state} -> {self._state}]</>",
-            )
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - <ly>[{old_state} -> {self._state}]</>",
+        )
 
         # Unregister session.
-        if self._state in {FsmState.CLOSED}:
+        if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
