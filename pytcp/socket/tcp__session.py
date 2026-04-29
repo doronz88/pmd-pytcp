@@ -1005,6 +1005,27 @@ class TcpSession:
             self._transmit_data()
             return
 
+        # Got SYN-bearing segment without RST in SYN_RCVD -> Send a challenge
+        # ACK per RFC 9293 §3.10.7.4 step 1 / step 4 (folding RFC 5961 §4).
+        # SYN_RECEIVED is a synchronized state per RFC 9293; the peer's
+        # original SYN's sequence space has already been consumed
+        # ('RCV.NXT = peer.ISN + 1'), so any SYN arriving here has SEG.SEQ
+        # one byte before our window and is therefore "unacceptable" per
+        # step 1 - the spec form of that response is the same challenge ACK
+        # step 4 prescribes for SYN-on-synchronized:
+        #   <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+        # The branch matches SYN-bearing segments that do NOT also carry RST
+        # so the existing RST+ACK and RST branches below still take priority
+        # for tear-down semantics. This is the symmetric analog of the
+        # SYN-on-established branch in '_tcp_fsm_established'.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-syn_rcvd (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got ACK packet -> Change state to ESTABLISHED.
         if (
             packet_rx_md
