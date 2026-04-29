@@ -116,12 +116,12 @@ class RawSocket(socket):
                 else Ip4Address(remote_address[0])
             )
         except (Ip6AddressFormatError, Ip4AddressFormatError) as error:
-            raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]") from error
+            raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]") from error
 
         if self._local_ip_address.is_unspecified:
             local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
             if local_ip_address.is_unspecified:
-                raise gaierror("[Errno -2] Name or service not known - " "[Malformed remote IP address]")
+                raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]")
         else:
             local_ip_address = self._local_ip_address
 
@@ -144,10 +144,10 @@ class RawSocket(socket):
                         Ip6Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
                         )
                 except Ip6AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
+                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
             case AddressFamily.INET4:
                 try:
@@ -155,10 +155,10 @@ class RawSocket(socket):
                         Ip4Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - " "[Local IP address not owned by stack]"
+                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
                         )
                 except Ip4AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - " "[Malformed local IP address]") from error
+                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
         stack.sockets.pop(self.socket_id, None)
         self._local_ip_address = local_ip_address
@@ -200,7 +200,7 @@ class RawSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified:
-            raise OSError("[Errno 89] Destination address required - " "[Socket has no destination address set]")
+            raise OSError("[Errno 89] Destination address required - [Socket has no destination address set]")
 
         match self._address_family:
             case AddressFamily.INET6:
@@ -273,7 +273,7 @@ class RawSocket(socket):
             data_rx = self._packet_rx_md.pop(0).raw__data
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - Received {len(data_rx)} " "bytes of data",
+                f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
             )
             return bytes(data_rx)  # Note: Conversion: memoryview -> bytes
 
@@ -290,7 +290,7 @@ class RawSocket(socket):
             packet_rx_md = self._packet_rx_md.pop(0)
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - Received " f"{len(packet_rx_md.raw__data)} bytes of data",
+                f"<B><g>[{self}]</> - Received {len(packet_rx_md.raw__data)} bytes of data",
             )
             return (
                 bytes(packet_rx_md.raw__data),  # Note: Conversion: memoryview -> bytes
