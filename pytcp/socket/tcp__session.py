@@ -248,6 +248,14 @@ class TcpSession:
         # don't use wscale for backward compatibility.
         self._snd_wsc: int = 0
 
+        # Sequence number of the byte after the most recent sub-MSS ("partial")
+        # segment we transmitted. Used by Nagle's algorithm with the Minshall
+        # modification (RFC 1122 §4.2.3.4) to defer a subsequent partial segment
+        # while a previous partial is still unacknowledged. Initialized to
+        # '_snd_ini' so it is strictly less than 'SND.UNA' after the handshake
+        # completes, which means "no partial in flight yet".
+        self._snd_sml: int = self._snd_ini
+
         ###
         # Other variables.
         ###
@@ -616,6 +624,27 @@ class TcpSession:
                     f"{transmit_data_len} to be sent",
                 )
                 if transmit_data_len:
+                    # Nagle's algorithm with the Minshall modification
+                    # (RFC 1122 §4.2.3.4). Defer a partial (sub-MSS)
+                    # segment when a previous partial segment is still
+                    # unacknowledged - this avoids generating tinygrams
+                    # for a series of small writes while still allowing
+                    # the trailing fragment of a single large write to
+                    # fire immediately. We track the post-end seq of
+                    # the most recent partial in '_snd_sml'; if it is
+                    # still ahead of 'SND.UNA', a previous partial is
+                    # in flight and we defer until either it gets ACK'd
+                    # or the buffered amount reaches a full MSS.
+                    is_partial = transmit_data_len < self._snd_mss
+                    prev_partial_in_flight = self._snd_sml > self._snd_una
+                    if is_partial and prev_partial_in_flight:
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - Nagle: deferring {transmit_data_len}-byte "
+                            f"partial segment - previous partial at seq {self._snd_sml} "
+                            f"still unacked (SND.UNA={self._snd_una})",
+                        )
+                        return
                     with self._lock__tx_buffer:
                         transmit_data = self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + transmit_data_len]
                     # RFC 1122 §4.2.2.2: PSH MUST be set on the last
@@ -633,6 +662,11 @@ class TcpSession:
                         flag_psh=is_last_segment_of_write,
                         data=bytes(transmit_data),
                     )
+                    # If we just sent a partial, record its post-end
+                    # seq so the Minshall check can defer subsequent
+                    # partials until this one is ACK'd.
+                    if is_partial:
+                        self._snd_sml = self._snd_nxt
                 return
 
         # Check if we need to (re)transmit final FIN packet.
