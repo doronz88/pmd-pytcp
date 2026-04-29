@@ -170,7 +170,24 @@ class PacketHandlerTcpRx(ABC):
             return
 
         # In case packet doesn't match any session send RST packet
-        # in response to it.
+        # in response to it. RFC 9293 §3.10.7.1 (CLOSED state, but the
+        # same rules apply to any unmatched segment) prescribes two
+        # different response shapes depending on whether the offending
+        # segment carries the ACK bit:
+        #
+        #   - ACK bit OFF: <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
+        #     (We synthesize an ACK number so the offending sender's
+        #      acceptability check accepts our RST.)
+        #
+        #   - ACK bit ON:  <SEQ=SEG.ACK><CTL=RST>
+        #     (We echo the offending segment's ACK number as our SEQ
+        #      so it is accepted by the sender's checks. The ACK flag
+        #      is intentionally NOT set; the response is a bare RST.)
+        #
+        # The previous unconditional 'RST,ACK with SEQ=0, ACK=SEG.SEQ+1'
+        # form was correct only for ACK-less offending segments; for
+        # ACK-bearing ones (such as SYN+ACK or rogue bare ACK arriving
+        # at a listening port) the spec requires the bare-RST form.
         self._packet_stats_rx.tcp__no_socket_match__respond_rst += 1
         __debug__ and log(
             "tcp",
@@ -178,14 +195,29 @@ class PacketHandlerTcpRx(ABC):
             f"closed port {packet_rx.tcp.dport}, responding with TCP RST "
             "packet.",
         )
-        self._phtx_tcp(
-            ip__src=packet_rx.ip.dst,
-            ip__dst=packet_rx.ip.src,
-            tcp__sport=packet_rx.tcp.dport,
-            tcp__dport=packet_rx.tcp.sport,
-            tcp__seq=0,
-            tcp__ack=packet_rx.tcp.seq + packet_rx.tcp.flag_syn + packet_rx.tcp.flag_fin + len(packet_rx.tcp.payload),
-            tcp__flag_rst=True,
-            tcp__flag_ack=True,
-            echo_tracker=packet_rx.tracker,
-        )
+        if packet_rx.tcp.flag_ack:
+            self._phtx_tcp(
+                ip__src=packet_rx.ip.dst,
+                ip__dst=packet_rx.ip.src,
+                tcp__sport=packet_rx.tcp.dport,
+                tcp__dport=packet_rx.tcp.sport,
+                tcp__seq=packet_rx.tcp.ack,
+                tcp__ack=0,
+                tcp__flag_rst=True,
+                tcp__flag_ack=False,
+                echo_tracker=packet_rx.tracker,
+            )
+        else:
+            self._phtx_tcp(
+                ip__src=packet_rx.ip.dst,
+                ip__dst=packet_rx.ip.src,
+                tcp__sport=packet_rx.tcp.dport,
+                tcp__dport=packet_rx.tcp.sport,
+                tcp__seq=0,
+                tcp__ack=(
+                    packet_rx.tcp.seq + packet_rx.tcp.flag_syn + packet_rx.tcp.flag_fin + len(packet_rx.tcp.payload)
+                ),
+                tcp__flag_rst=True,
+                tcp__flag_ack=True,
+                echo_tracker=packet_rx.tracker,
+            )

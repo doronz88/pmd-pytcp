@@ -227,13 +227,16 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
             msg="Unmatched RST must NOT trigger a reply.",
         )
 
-    def test__stack__packet_handler__tcp__rx__no_match_sends_rst(self) -> None:
+    def test__stack__packet_handler__tcp__rx__no_match_ack_less_sends_rst_ack(self) -> None:
         """
-        Ensure a TCP segment that matches no socket and is not an RST
-        elicits a TCP RST+ACK reply.
+        Ensure an ACK-LESS TCP segment that matches no socket elicits
+        a 'RST+ACK' reply per RFC 9293 §3.10.7.1: '<SEQ=0>
+        <ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>'. The 'SEG.LEN' term covers
+        SYN, FIN, and the payload length, so an ACK-less segment with
+        seq=100 and payload b"hi" (2 bytes) yields ACK=102.
         """
 
-        packet_rx = _packet_rx_from_ip4_tcp(flag_ack=True, seq=100, payload=b"hi")
+        packet_rx = _packet_rx_from_ip4_tcp(flag_syn=True, seq=100, payload=b"hi")
         self._handler._phrx_tcp(packet_rx)
 
         self.assertEqual(
@@ -247,7 +250,55 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         self.assertEqual(call["ip__dst"], HOST_A__IP4)
         self.assertEqual(call["tcp__sport"], 80)
         self.assertEqual(call["tcp__dport"], 12345)
-        self.assertTrue(call["tcp__flag_rst"])
-        self.assertTrue(call["tcp__flag_ack"])
-        # ACK must cover the incoming seq + syn + fin + payload len (100 + 0 + 0 + 2).
-        self.assertEqual(call["tcp__ack"], 102)
+        self.assertTrue(call["tcp__flag_rst"], msg="RFC 9293 §3.10.7.1 requires RST flag set.")
+        self.assertTrue(
+            call["tcp__flag_ack"],
+            msg="ACK-less offending segment requires the 'RST,ACK' response form per RFC 9293 §3.10.7.1.",
+        )
+        self.assertEqual(call["tcp__seq"], 0, msg="RFC 9293 §3.10.7.1 ACK-less form: '<SEQ=0>'.")
+        self.assertEqual(
+            call["tcp__ack"],
+            103,
+            msg=(
+                "RFC 9293 §3.10.7.1 ACK-less form: ACK = SEG.SEQ + " "SEG.LEN (100 + 1 SYN + 0 FIN + 2 payload = 103)."
+            ),
+        )
+
+    def test__stack__packet_handler__tcp__rx__no_match_ack_bearing_sends_bare_rst(self) -> None:
+        """
+        Ensure an ACK-BEARING TCP segment that matches no socket
+        elicits a bare 'RST' reply per RFC 9293 §3.10.7.1:
+        '<SEQ=SEG.ACK><CTL=RST>' - the ACK flag is intentionally NOT
+        set on the response, and the response's SEQ echoes the
+        offending segment's ACK so the sender's acceptability check
+        accepts the RST.
+        """
+
+        packet_rx = _packet_rx_from_ip4_tcp(flag_ack=True, seq=100, ack=0xCAFE, payload=b"hi")
+        self._handler._phrx_tcp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.tcp__no_socket_match__respond_rst,
+            1,
+            msg="Unmatched non-RST segment must be counted in tcp__no_socket_match__respond_rst.",
+        )
+        self.assertEqual(len(self._handler.tcp_tx_calls), 1)
+        call = self._handler.tcp_tx_calls[0]
+        self.assertEqual(call["ip__src"], STACK__IP4_ADDRESS)
+        self.assertEqual(call["ip__dst"], HOST_A__IP4)
+        self.assertEqual(call["tcp__sport"], 80)
+        self.assertEqual(call["tcp__dport"], 12345)
+        self.assertTrue(call["tcp__flag_rst"], msg="RFC 9293 §3.10.7.1 requires RST flag set.")
+        self.assertFalse(
+            call["tcp__flag_ack"],
+            msg=(
+                "ACK-bearing offending segment requires the bare 'RST' "
+                "response form (no ACK flag) per RFC 9293 §3.10.7.1."
+            ),
+        )
+        self.assertEqual(
+            call["tcp__seq"],
+            0xCAFE,
+            msg="RFC 9293 §3.10.7.1 ACK-bearing form: '<SEQ=SEG.ACK>' echoes the offending segment's ACK number.",
+        )
+        self.assertEqual(call["tcp__ack"], 0, msg="Bare RST carries no ACK number.")
