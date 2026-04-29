@@ -406,6 +406,17 @@ class TcpSession:
         The 'SEND' syscall.
         """
 
+        # RFC 9293 §3.10.6: once the application has called CLOSE,
+        # any subsequent SEND must be rejected with a closing-error
+        # response. The state-only check below is not enough because
+        # 'close()' is deferred - it sets '_closing = True' but does
+        # not transition the FSM out of ESTABLISHED until the next
+        # timer tick after the TX buffer drains. Without this guard,
+        # the post-close-but-pre-tick window would silently accept
+        # writes that get serialised onto the wire ahead of the FIN.
+        if self._closing:
+            raise TcpSessionError("TCP session is closing")
+
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
             with self._lock__tx_buffer:
                 self._tx_buffer.extend(data)
