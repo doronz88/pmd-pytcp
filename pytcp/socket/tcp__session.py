@@ -272,6 +272,12 @@ class TcpSession:
         self._persist_active: bool = False
         self._persist_timeout: int = PACKET_RETRANSMIT_TIMEOUT
 
+        # Number of in-order data segments received since we last transmitted
+        # an ACK. Tracks the RFC 1122 §4.2.3.2 "ACK every other segment"
+        # rule: when this reaches 2 we force an inline ACK rather than
+        # waiting for the delayed-ACK timer to fire.
+        self._delayed_ack_segments_pending: int = 0
+
         ###
         # Other variables.
         ###
@@ -561,6 +567,13 @@ class TcpSession:
         if flag_fin:
             self._snd_fin = self._snd_nxt
 
+        # Whenever we send an ACK-bearing segment (which may also carry
+        # data) the peer's pending sequence space is implicitly
+        # acknowledged via the piggybacked ACK field, so the
+        # every-other-segment counter resets to zero.
+        if flag_ack:
+            self._delayed_ack_segments_pending = 0
+
         # If in ESTABLISHED state then reset ACK delay timer.
         if self._state is FsmState.ESTABLISHED:
             stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=DELAYED_ACK_DELAY)
@@ -827,13 +840,39 @@ class TcpSession:
             + packet_rx_md.tcp__flag_syn
             + packet_rx_md.tcp__flag_fin
         )
-        # In case packet contains data enqueue it.
+        # In case packet contains data enqueue it. RFC 1122 §4.2.3.2 governs
+        # how we acknowledge it: count pending unacked segments since the
+        # last ACK, force an inline ACK once two segments are pending
+        # ("every other segment"), and otherwise arm the delayed-ACK
+        # timer so the ACK fires within DELAYED_ACK_DELAY rather than
+        # immediately. Arming the timer here (rather than only inside
+        # '_transmit_packet') ensures the FIRST inbound data segment
+        # after the handshake is properly delayed - without this, the
+        # delayed-ACK timer would not yet be in 'stack.timer._timers'
+        # (the third-leg ACK was emitted from within SYN_SENT, which
+        # does not arm the timer), so 'is_expired' would return True on
+        # the very next tick and an immediate ACK would slip out.
         if packet_rx_md.tcp__data:
             self._enqueue_rx_buffer(packet_rx_md.tcp__data)
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Enqueued {len(packet_rx_md.tcp__data)} bytes starting at {packet_rx_md.tcp__seq}",
             )
+            self._delayed_ack_segments_pending += 1
+            if self._delayed_ack_segments_pending >= 2:
+                # RFC 1122 §4.2.3.2: ACK every other segment in a stream
+                # of full-sized segments. '_transmit_packet' will reset
+                # the counter via the 'flag_ack' branch below.
+                self._transmit_packet(flag_ack=True)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Sent inline ACK (every-other-segment, {self._rcv_nxt})",
+                )
+            else:
+                # First pending segment: ensure the delayed-ACK timer is
+                # armed so the timer-driven '_delayed_ack' will fire the
+                # ACK after DELAYED_ACK_DELAY rather than immediately.
+                stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=DELAYED_ACK_DELAY)
         # Purge acked data from TX buffer.
         with self._lock__tx_buffer:
             del self._tx_buffer[: self._tx_buffer_una]
