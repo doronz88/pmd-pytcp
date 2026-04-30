@@ -632,7 +632,25 @@ class TcpSession:
         sliding window mechanism.
         """
 
-        assert self._snd_una <= self._snd_nxt <= self._snd_una + self._snd_ewn, "*** SEQ outside of TCP sliding window"
+        # RFC 9293 §3.8.6 / RFC 1122 §4.2.2.16: a sender MUST be
+        # robust against peer window shrinking. When the peer ACKs
+        # less data than is in flight while simultaneously
+        # advertising a smaller window, the right edge
+        # (SND.UNA + SND.EWN) can fall below SND.NXT and the
+        # invariant 'SND.UNA <= SND.NXT <= SND.UNA + SND.EWN' is
+        # legitimately violated. The RFC requires the sender to
+        # absorb the shrink: refuse to push more data, wait for the
+        # peer to reopen the window or for RTO to fire, and let
+        # the normal retransmit machinery cover the unacknowledged
+        # bytes within SND.UNA..SND.UNA+SND.WND.
+        if not (self._snd_una <= self._snd_nxt <= self._snd_una + self._snd_ewn):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Peer-shrunk usable window: SND.NXT={self._snd_nxt} "
+                f"is outside [{self._snd_una}, {self._snd_una + self._snd_ewn}]; "
+                "deferring further transmission until peer reopens or RTO fires",
+            )
+            return
 
         # Check if we need to (re)transmit initial SYN packet.
         if self._state is FsmState.SYN_SENT and self._snd_nxt == self._snd_ini:
@@ -669,7 +687,7 @@ class TcpSession:
                     f"{remaining_data_len} left in buffer, "
                     f"{transmit_data_len} to be sent",
                 )
-                if transmit_data_len:
+                if transmit_data_len > 0:
                     # Nagle's algorithm with the Minshall modification
                     # (RFC 1122 §4.2.3.4). Defer a partial (sub-MSS)
                     # segment when a previous partial segment is still
