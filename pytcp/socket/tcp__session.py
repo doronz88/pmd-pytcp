@@ -1748,13 +1748,17 @@ class TcpSession:
                 return
             return
 
-        # Got RST packet -> Change state to CLOSED.
+        # Got RST packet -> Change state to CLOSED. Per RFC 9293
+        # §3.10.7.4, any RST in a synchronized state aborts the
+        # connection regardless of the ACK flag - conformant TCPs
+        # always set ACK on RST per RFC convention, so excluding
+        # 'tcp__flag_ack' from the predicate would (and previously
+        # did) make this branch never fire in real traffic.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst})
+            and packet_rx_md.tcp__flag_rst
             and not any(
                 {
-                    packet_rx_md.tcp__flag_ack,
                     packet_rx_md.tcp__flag_fin,
                     packet_rx_md.tcp__flag_syn,
                 }
