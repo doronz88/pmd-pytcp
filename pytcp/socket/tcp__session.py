@@ -808,13 +808,20 @@ class TcpSession:
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
         """
-        Retransmit packet after receiving request from peer.
+        Retransmit packet after receiving fast-retransmit request from
+        peer (RFC 5681 §3.2: third duplicate ACK, one-shot per loss
+        event).
         """
 
         self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
             self._tx_retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
         )
-        if self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] > 1:
+        # Fire the fast retransmit exactly once per loss event, on the
+        # arrival of the third duplicate ACK. Earlier dup-ACKs (counts
+        # 1, 2) are below the RFC threshold; later ones (counts 4, 5,
+        # ...) inflate cwnd per RFC 5681 §3.2 step 4, but MUST NOT
+        # cause the lost segment to be retransmitted again.
+        if self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3:
             self._snd_nxt = self._snd_una
             __debug__ and log(
                 "tcp-ss",
