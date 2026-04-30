@@ -1,0 +1,1053 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false
+
+
+"""
+This module contains integration tests for the normal TCP connection
+termination paths in the 'TcpSession' state machine - the active-close
+4-way handshake (ESTABLISHED → FIN_WAIT_1 → FIN_WAIT_2 → TIME_WAIT)
+and the passive-close path (ESTABLISHED → CLOSE_WAIT → LAST_ACK →
+CLOSED) per RFC 9293 §3.10.4.
+
+The simultaneous-close path (ESTABLISHED → FIN_WAIT_1 → CLOSING →
+TIME_WAIT) is covered by 'close__simultaneous.py'; the TIME_WAIT
+expiry mechanics are covered by 'close__time_wait.py'.
+
+Reference RFCs:
+    RFC 9293 §3.10.4    CLOSE Call
+    RFC 9293 §3.5       Closing a Connection
+    RFC 9293 §3.10.7.5  TIME-WAIT state segment processing
+
+pytcp/tests/integration/socket/test__socket__tcp__session__close__normal.py
+
+ver 3.0.4
+"""
+
+from net_addr import Ip4Address
+from pytcp import stack
+from pytcp.socket import AddressFamily
+from pytcp.socket.tcp__session import (
+    FsmState,
+    SysCall,
+    TcpSession,
+)
+from pytcp.socket.tcp__socket import TcpSocket
+from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    STACK__IP4_HOST,
+)
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+
+# Deterministic addressing.
+STACK__IP: Ip4Address = STACK__IP4_HOST.address
+STACK__PORT: int = 12345
+PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
+PEER__PORT: int = 80
+
+# Initial sequence numbers chosen well clear of the 32-bit wrap.
+LOCAL__ISS: int = 0x0000_1000
+PEER__ISS: int = 0x0000_2000
+
+# Peer's advertised receive window on its SYN+ACK reply.
+PEER__WIN: int = 64240
+
+# Peer's MSS option value on its SYN+ACK reply.
+PEER__MSS: int = 1460
+
+
+class TestTcpClose__Normal(TcpSessionTestCase):
+    """
+    Integration tests for the normal active-close and passive-close
+    paths through the TCP FSM.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__close_active__textbook_4way_close_walks_through_fin_wait_1_fin_wait_2_time_wait(self) -> None:
+        """
+        Ensure that an application-driven 'close()' on an idle
+        ESTABLISHED session walks the FSM through the canonical
+        active-close 4-way handshake described by RFC 9293 §3.10.4 /
+        §3.5, with each transition emitting (or accepting) the
+        wire-level segment shape the spec mandates.
+
+        The textbook trajectory:
+
+            ESTABLISHED
+                | local 'close()'
+                v                                   send FIN+ACK -->
+            FIN_WAIT_1
+                |                                   <-- receive ACK
+                v                                       (of our FIN)
+            FIN_WAIT_2
+                |                                   <-- receive FIN+ACK
+                v                                       (peer's close)
+            TIME_WAIT                               send ACK -->
+                |                                       (of peer's FIN)
+                | (TIME_WAIT_DELAY elapses)
+                v
+            CLOSED
+
+        RFC 9293 §3.10.4 (CLOSE Call, ESTABLISHED state):
+
+            "Queue this until all preceding SENDs have been segmentized,
+             then form a FIN segment and send it.  In any case, enter
+             FIN-WAIT-1 state."
+
+        and §3.10.7.4 (FIN-WAIT-1 segment processing):
+
+            "If our FIN is now acknowledged, then enter FIN-WAIT-2 ..."
+            "If the FIN bit is set, ... acknowledge the segment, ...
+             and enter the TIME-WAIT state."
+
+        Scenario:
+
+            1. Drive the active-open handshake to ESTABLISHED. The
+               TX buffer is empty - no in-flight data complicates the
+               close.
+            2. Application calls 'session.close()'. This sets the
+               '_closing' flag in '_tcp_fsm_established's CLOSE-syscall
+               branch (line 1504-1506); state is still ESTABLISHED at
+               this point.
+            3. Tick #1: ESTABLISHED's timer branch sees
+               '_closing AND not _tx_buffer' and transitions to
+               FIN_WAIT_1. NO segment is emitted on this tick - the
+               transition only flips state; the FIN goes out from the
+               FIN_WAIT_1 timer handler on the next tick.
+            4. Tick #2: FIN_WAIT_1's '_transmit_data' enters the
+               '_state in {FIN_WAIT_1, LAST_ACK} and _snd_nxt !=
+               _snd_fin' branch (line 770) and emits the FIN+ACK at
+               SEQ = LOCAL__ISS + 1, ACK = PEER__ISS + 1, no payload.
+            5. Peer ACKs our FIN with ack = LOCAL__ISS + 2 (covering
+               the FIN's one byte of sequence space). FIN_WAIT_1's
+               handler processes the ACK and, seeing 'ack >= _snd_fin',
+               transitions to FIN_WAIT_2.
+            6. Peer sends its FIN+ACK with seq = PEER__ISS + 1,
+               ack = LOCAL__ISS + 2. FIN_WAIT_2's handler emits our
+               final ACK (ACK = PEER__ISS + 2, covering peer's FIN
+               byte) and transitions to TIME_WAIT.
+
+        Assertions on each step's wire shape and state:
+
+            * Tick #1 emits no segments.
+            * Tick #2 emits exactly one FIN+ACK with the spec'd
+              SEQ/ACK/flags/payload.
+            * After peer's ACK of our FIN: state is FIN_WAIT_2; no
+              segment emitted (ACKs of FIN do not require a reply).
+            * After peer's FIN+ACK: state is TIME_WAIT; exactly one
+              outbound bare-ACK with ack = PEER__ISS + 2 emerges.
+
+        This test passes on current code as a positive-control
+        regression guard. It exercises the canonical happy path
+        through the entire active-close subgraph, which is the
+        common case for a client-initiated graceful shutdown.
+        Future changes to '_tcp_fsm_established's CLOSE-syscall
+        branch, '_tcp_fsm_fin_wait_1', '_tcp_fsm_fin_wait_2', or the
+        FIN-emit branch in '_transmit_data' are all caught here.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Setup precondition: idle ESTABLISHED, no in-flight data.
+        self.assertEqual(
+            len(session._tx_buffer),
+            0,
+            msg="Setup precondition: TX buffer must be empty before close().",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: state must be ESTABLISHED before close().",
+        )
+
+        # Application calls close(). _closing flag is set; state
+        # is still ESTABLISHED at this exact moment (the transition
+        # happens on the next timer tick).
+        session.close()
+        self.assertTrue(
+            session._closing,
+            msg=(
+                "After close() in ESTABLISHED, '_closing' must be "
+                "set (line 1505 of _tcp_fsm_established's CLOSE branch)."
+            ),
+        )
+
+        # Tick #1: ESTABLISHED's timer branch sees _closing AND empty
+        # buffer; transitions to FIN_WAIT_1. No segment emitted on
+        # this tick - the FIN fires from the FIN_WAIT_1 handler on
+        # the next tick.
+        transition_tx = self._advance(ms=1)
+        self.assertEqual(
+            transition_tx,
+            [],
+            msg=(
+                "The ESTABLISHED -> FIN_WAIT_1 transition tick must "
+                "emit no segment - state changes only; the FIN goes "
+                "out from FIN_WAIT_1's timer handler on the next "
+                "tick."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=(
+                "After the transition tick, state must be FIN_WAIT_1 "
+                "('_closing AND not _tx_buffer' triggers the "
+                "transition in '_tcp_fsm_established's timer branch)."
+            ),
+        )
+
+        # Tick #2: FIN_WAIT_1's timer handler emits the FIN+ACK.
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg=(
+                "FIN_WAIT_1's first timer tick must emit exactly one "
+                "FIN+ACK segment via '_transmit_data's "
+                "FIN-retransmit branch (line 770)."
+            ),
+        )
+        fin_seg = self._parse_tx(fin_tx[0])
+        self._assert_segment(
+            fin_seg,
+            flags=frozenset({"FIN", "ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 1,
+            ack=PEER__ISS + 1,
+            payload=b"",
+        )
+
+        # Peer ACKs our FIN. ack = LOCAL__ISS + 2 covers the FIN's
+        # one byte of sequence space.
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        peer_ack_inline = self._drive_rx(frame=peer_ack_of_fin)
+        self.assertEqual(
+            peer_ack_inline,
+            [],
+            msg=(
+                "Peer's ACK of our FIN must not elicit any inline "
+                "TX - ACK of an ACK is not a thing in TCP. The "
+                "session simply transitions FIN_WAIT_1 -> FIN_WAIT_2."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg=(
+                "After peer's ACK of our FIN (with 'ack >= _snd_fin'), "
+                "state must transition to FIN_WAIT_2 per RFC 9293 "
+                "§3.10.7.4."
+            ),
+        )
+
+        # Peer sends its own FIN+ACK to close its half of the
+        # connection. seq = PEER__ISS + 1 (no peer data was sent),
+        # ack = LOCAL__ISS + 2 (still covers our FIN).
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        peer_fin_inline = self._drive_rx(frame=peer_fin)
+        self.assertEqual(
+            len(peer_fin_inline),
+            1,
+            msg=(
+                "Peer's FIN+ACK must elicit exactly one outbound ACK "
+                "(acknowledging peer's FIN byte). FIN_WAIT_2 -> "
+                "TIME_WAIT transition per RFC 9293 §3.10.7.4."
+            ),
+        )
+        final_ack = self._parse_tx(peer_fin_inline[0])
+        self._assert_segment(
+            final_ack,
+            flags=frozenset({"ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 2,
+            ack=PEER__ISS + 2,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=(
+                "After receiving peer's FIN+ACK in FIN_WAIT_2, state "
+                "must transition to TIME_WAIT per RFC 9293 §3.10.7.4."
+            ),
+        )
+
+    def test__close_passive__peer_fin_first_walks_through_close_wait_last_ack_closed(self) -> None:
+        """
+        Ensure that when the peer initiates the close (sends FIN
+        before our application calls 'close()'), the FSM walks
+        through the canonical passive-close path described by
+        RFC 9293 §3.10.4 / §3.5, with each transition emitting the
+        wire-level segment shape the spec mandates.
+
+        The textbook trajectory:
+
+            ESTABLISHED                              <-- receive FIN+ACK
+                |                                        (peer's close)
+                v                                    send ACK -->
+            CLOSE_WAIT                                   (of peer's FIN)
+                |
+                | local 'close()' (after application
+                |  drains '_rx_buffer' and chooses
+                |  to close its half too)
+                v                                    send FIN+ACK -->
+            LAST_ACK
+                |                                    <-- receive ACK
+                v                                        (of our FIN)
+            CLOSED
+
+        RFC 9293 §3.10.4 (CLOSE Call, CLOSE-WAIT state):
+
+            "Queue this request until all preceding SENDs have been
+             segmentized; then send a FIN segment, enter LAST-ACK
+             state."
+
+        and §3.10.7.4 (ESTABLISHED segment processing, FIN bit):
+
+            "If the FIN bit is set, signal the user 'connection
+             closing' and return any pending RECEIVEs with same
+             message, advance RCV.NXT over the FIN, and send an
+             acknowledgment for the FIN.  Note that FIN implies
+             PUSH for any segment text not yet delivered to the
+             user."
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer sends FIN+ACK with no data
+               (seq=PEER__ISS+1, ack=LOCAL__ISS+1). The FIN consumes
+               one byte of sequence space.
+            3. The ESTABLISHED FIN+ACK handler runs '_process_ack_packet'
+               (which advances 'RCV.NXT' to PEER__ISS+2 because
+               'seg_end' includes the FIN flag), notifies the
+               application via '_event__rx_buffer.set()', and
+               transitions to CLOSE_WAIT. The current FIN+ACK
+               handler emits an inline ACK only when the FIN-bearing
+               segment also carries data; for a pure FIN it relies
+               on the delayed-ACK timer to fire the ACK on the
+               first CLOSE_WAIT tick.
+            4. Tick #1 (post-FIN): CLOSE_WAIT's timer branch runs
+               '_delayed_ack', which fires the bare ACK acknowledging
+               peer's FIN at ack=PEER__ISS+2.
+            5. Application calls 'session.close()'. CLOSE_WAIT's
+               CLOSE-syscall branch sets '_closing = True'; state
+               stays CLOSE_WAIT.
+            6. Tick #2: CLOSE_WAIT's timer branch sees
+               '_closing AND not _tx_buffer' and transitions to
+               LAST_ACK. No segment emitted on this tick.
+            7. Tick #3: LAST_ACK's timer branch enters
+               '_transmit_data's FIN-emit branch (line 770) and
+               emits FIN+ACK at seq=LOCAL__ISS+1, ack=PEER__ISS+2.
+            8. Peer ACKs our FIN with ack=LOCAL__ISS+2. LAST_ACK's
+               handler transitions to CLOSED.
+
+        Assertions on each step's wire shape and state:
+
+            * Peer's FIN+ACK arrival produces no inline TX
+              (delayed-ACK governs).
+            * Tick #1 emits exactly one bare ACK acknowledging
+              peer's FIN.
+            * After 'close()' but before tick #2: state still
+              CLOSE_WAIT, '_closing' set.
+            * Tick #2 emits no segment (state-only transition).
+            * Tick #3 emits exactly one FIN+ACK with the spec'd
+              SEQ/ACK/flags/payload.
+            * After peer's ACK of our FIN: state is CLOSED, the
+              socket is unregistered from 'stack.sockets'.
+
+        This test passes on current code as a positive-control
+        regression guard for the canonical passive-close subgraph.
+        Future changes to '_tcp_fsm_established's FIN+ACK branch,
+        '_tcp_fsm_close_wait', '_tcp_fsm_last_ack', or the FIN-emit
+        branch in '_transmit_data' are all caught here. It also
+        documents the (RFC-permitted) choice to delay the FIN's
+        ACK rather than sending it inline.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: state must be ESTABLISHED before peer initiates close.",
+        )
+
+        # Peer sends FIN+ACK to close its half. No data; the FIN
+        # alone consumes one byte of sequence space.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        fin_inline = self._drive_rx(frame=peer_fin)
+        self.assertEqual(
+            fin_inline,
+            [],
+            msg=(
+                "Peer's pure FIN+ACK (no data) must not produce an "
+                "inline ACK from the ESTABLISHED FIN+ACK branch - "
+                "the inline ACK fires only when the FIN-bearing "
+                "segment also carries data; a delayed-ACK from the "
+                "first CLOSE_WAIT tick covers the pure-FIN case."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg=("After peer's FIN+ACK in ESTABLISHED, state must " "transition to CLOSE_WAIT per RFC 9293 §3.10.7.4."),
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 2,
+            msg=(
+                "'RCV.NXT' must advance past the FIN's one byte of "
+                "sequence space - '_process_ack_packet' adds "
+                "'flag_fin' into 'seg_end' (line 893)."
+            ),
+        )
+
+        # Tick #1: CLOSE_WAIT's timer branch fires the delayed ACK
+        # acknowledging peer's FIN.
+        delayed_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(delayed_ack_tx),
+            1,
+            msg=(
+                "First CLOSE_WAIT tick must emit exactly one bare ACK "
+                "acknowledging peer's FIN. The delayed-ACK timer is "
+                "not yet armed at this point, so 'is_expired' returns "
+                "True and the ACK fires immediately."
+            ),
+        )
+        delayed_ack = self._parse_tx(delayed_ack_tx[0])
+        self._assert_segment(
+            delayed_ack,
+            flags=frozenset({"ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 1,
+            ack=PEER__ISS + 2,
+            payload=b"",
+        )
+
+        # Application calls close().
+        session.close()
+        self.assertTrue(
+            session._closing,
+            msg=(
+                "After close() in CLOSE_WAIT, '_closing' must be set "
+                "(line 1772 of '_tcp_fsm_close_wait's CLOSE branch)."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg=(
+                "close() in CLOSE_WAIT only sets '_closing'; the "
+                "transition to LAST_ACK happens on the next timer "
+                "tick when the buffer is observed empty."
+            ),
+        )
+
+        # Tick #2: CLOSE_WAIT -> LAST_ACK transition. No segment.
+        transition_tx = self._advance(ms=1)
+        self.assertEqual(
+            transition_tx,
+            [],
+            msg=(
+                "The CLOSE_WAIT -> LAST_ACK transition tick must "
+                "emit no segment - state changes only; the FIN goes "
+                "out from LAST_ACK's timer handler on the next tick."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg=(
+                "After the transition tick, state must be LAST_ACK "
+                "('_closing AND not _tx_buffer' triggers the "
+                "transition in '_tcp_fsm_close_wait's timer branch, "
+                "line 1706)."
+            ),
+        )
+
+        # Tick #3: LAST_ACK's timer handler emits our FIN+ACK.
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg=(
+                "LAST_ACK's first timer tick must emit exactly one "
+                "FIN+ACK segment via '_transmit_data's FIN-retransmit "
+                "branch (line 770)."
+            ),
+        )
+        fin_seg = self._parse_tx(fin_tx[0])
+        self._assert_segment(
+            fin_seg,
+            flags=frozenset({"FIN", "ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 1,
+            ack=PEER__ISS + 2,
+            payload=b"",
+        )
+
+        # Peer ACKs our FIN with ack = LOCAL__ISS + 2.
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        peer_ack_inline = self._drive_rx(frame=peer_ack_of_fin)
+        self.assertEqual(
+            peer_ack_inline,
+            [],
+            msg=(
+                "Peer's ACK of our FIN must not elicit any inline TX "
+                "- LAST_ACK's ACK handler simply transitions to CLOSED."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=("After peer's ACK of our FIN in LAST_ACK, state must " "be CLOSED per RFC 9293 §3.10.7.4."),
+        )
+        self.assertNotIn(
+            socket_id,
+            stack.sockets,
+            msg=(
+                "On transition to CLOSED, '_change_state' must "
+                "unregister the socket from 'stack.sockets' (line "
+                "540) so the 4-tuple can be reused."
+            ),
+        )
+
+    def test__close_active__pending_tx_data_drains_before_fin_is_emitted(self) -> None:
+        """
+        Ensure that an application-driven 'close()' on an ESTABLISHED
+        session with unacknowledged data still in the TX buffer does
+        NOT preempt the in-flight data: the buffered bytes must be
+        transmitted (and on PyTCP's stricter implementation, also
+        acknowledged by the peer) before the FIN segment goes out.
+        The FIN's SEQ must follow the last data byte so the peer's
+        cumulative-ACK arithmetic is consistent.
+
+        RFC 9293 §3.10.4 (CLOSE Call, ESTABLISHED state):
+
+            "Queue this until all preceding SENDs have been
+             segmentized, then form a FIN segment and send it.  In
+             any case, enter FIN-WAIT-1 state."
+
+        The "queue this until" clause is the key contract: an
+        application that has called 'send(data)' followed by 'close()'
+        must see its data delivered to the peer with the FIN as the
+        terminator, not as a flag interleaved with or preempting the
+        data. PyTCP implements a stricter variant: the
+        ESTABLISHED -> FIN_WAIT_1 transition fires only when
+        '_closing AND not _tx_buffer' (line 1339), which means the
+        buffer must drain AND the data must be acknowledged. This
+        is RFC-compliant (the RFC's "queue this" clause permits any
+        arbitrary delay before forming the FIN, not just "until
+        segmentized") and avoids the edge case of a FIN getting
+        retransmit-tangled with unacked data.
+
+        Scenario:
+
+            1. Drive the active-open handshake to ESTABLISHED.
+               Pre-set '_snd_ewn = PEER__WIN' so the data send is
+               not throttled by slow-start.
+            2. Application sends 2 * MSS of data ("A"*1460 + "B"*1460).
+               The bytes go into '_tx_buffer'; nothing is on the wire
+               yet.
+            3. Application calls 'session.close()'. '_closing' is set;
+               state stays ESTABLISHED. The buffer still holds 2920
+               bytes of unsent data.
+            4. Tick #1: '_transmit_data' emits the first data segment
+               ('A'*1460) at SEQ=LOCAL__ISS+1. The closing transition
+               does NOT fire because '_tx_buffer' is non-empty.
+            5. Tick #2: '_transmit_data' emits the second data segment
+               ('B'*1460) at SEQ=LOCAL__ISS+1+1460. Still no FIN; still
+               ESTABLISHED.
+            6. Peer ACKs both segments cumulatively
+               (ack=LOCAL__ISS+1+2920). '_tx_buffer' purges all 2920
+               bytes.
+            7. Tick #3: '_transmit_data' is a no-op (buffer empty);
+               then '_closing AND not _tx_buffer' triggers the
+               transition to FIN_WAIT_1. No segment emitted on this
+               tick.
+            8. Tick #4: FIN_WAIT_1's '_transmit_data' enters the
+               FIN-emit branch (line 770) and emits FIN+ACK at
+               SEQ=LOCAL__ISS+1+2920 (the byte AFTER the last data
+               byte we sent). The FIN consumes one byte of sequence
+               space, so '_snd_fin' lands at LOCAL__ISS+1+2920+1.
+
+        Assertions on each step's wire shape and state:
+
+            * Tick #1 emits exactly one data segment with payload
+              'A'*1460 at SEQ=LOCAL__ISS+1; flags include neither
+              FIN nor SYN; state stays ESTABLISHED.
+            * Tick #2 emits exactly one data segment with payload
+              'B'*1460 at SEQ=LOCAL__ISS+1+1460; no FIN; state
+              stays ESTABLISHED.
+            * Peer's cumulative ACK drains '_tx_buffer' to zero
+              and advances 'SND.UNA' to LOCAL__ISS+1+2920.
+            * Tick #3 emits no segment but transitions ESTABLISHED
+              -> FIN_WAIT_1.
+            * Tick #4 emits exactly one FIN+ACK at
+              SEQ=LOCAL__ISS+1+2920 (immediately after the data
+              tail) with no payload; state stays FIN_WAIT_1
+              awaiting peer's ACK of the FIN.
+
+        This test passes on current code as a positive-control
+        regression guard for the ordering invariant that data
+        precedes FIN. Future changes to the close-syscall branch
+        in '_tcp_fsm_established' or to the closing-transition
+        condition that allowed the FIN to be emitted before
+        '_tx_buffer' drained would be caught here - the FIN's
+        SEQ would land inside or before the data range, breaking
+        the cumulative-ACK arithmetic and risking peer rejection
+        of either the data or the FIN.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        # Application enqueues 2 * MSS of data.
+        payload_a = b"A" * 1460
+        payload_b = b"B" * 1460
+        session.send(data=payload_a + payload_b)
+
+        # Application calls close() while data is still in '_tx_buffer'.
+        session.close()
+        self.assertTrue(
+            session._closing,
+            msg="Setup precondition: '_closing' must be set after close().",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "close() with a non-empty TX buffer must not transition "
+                "out of ESTABLISHED - the FIN must follow the data."
+            ),
+        )
+        self.assertEqual(
+            len(session._tx_buffer),
+            2 * 1460,
+            msg="Setup precondition: '_tx_buffer' must hold 2 MSS of unsent data.",
+        )
+
+        # Tick #1: first data segment fires. No FIN.
+        seg1_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(seg1_tx),
+            1,
+            msg="Tick #1 must emit exactly one segment (the first data segment).",
+        )
+        seg1 = self._parse_tx(seg1_tx[0])
+        self._assert_segment(
+            seg1,
+            seq=LOCAL__ISS + 1,
+            payload=payload_a,
+        )
+        self.assertNotIn(
+            "FIN",
+            seg1.flags,
+            msg=(
+                "First data segment MUST NOT carry FIN - the FIN may "
+                "only appear after all queued data is segmentized "
+                "(RFC 9293 §3.10.4 'Queue this until all preceding "
+                "SENDs have been segmentized')."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="State must remain ESTABLISHED while data is still in '_tx_buffer'.",
+        )
+
+        # Tick #2: second data segment fires. Still no FIN.
+        seg2_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(seg2_tx),
+            1,
+            msg="Tick #2 must emit exactly one segment (the second data segment).",
+        )
+        seg2 = self._parse_tx(seg2_tx[0])
+        self._assert_segment(
+            seg2,
+            seq=LOCAL__ISS + 1 + len(payload_a),
+            payload=payload_b,
+        )
+        self.assertNotIn(
+            "FIN",
+            seg2.flags,
+            msg=(
+                "Second data segment MUST NOT carry FIN - the FIN "
+                "follows the data tail, not riding on the last data "
+                "segment."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="State must remain ESTABLISHED until '_tx_buffer' drains.",
+        )
+
+        # Peer cumulatively ACKs both segments.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 2 * 1460,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        peer_ack_inline = self._drive_rx(frame=peer_ack)
+        self.assertEqual(
+            peer_ack_inline,
+            [],
+            msg=(
+                "Peer's cumulative ACK must not produce inline TX; "
+                "data drain alone does not trigger the FIN immediately."
+            ),
+        )
+        self.assertEqual(
+            len(session._tx_buffer),
+            0,
+            msg="'_tx_buffer' must be drained after the peer's cumulative ACK.",
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + 2 * 1460,
+            msg="'SND.UNA' must advance to cover all ACKed data.",
+        )
+
+        # Tick #3: empty-buffer transition to FIN_WAIT_1. No segment.
+        transition_tx = self._advance(ms=1)
+        self.assertEqual(
+            transition_tx,
+            [],
+            msg=(
+                "The ESTABLISHED -> FIN_WAIT_1 transition tick (after "
+                "buffer drain) must emit no segment; the FIN goes out "
+                "from FIN_WAIT_1's timer handler on the next tick."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=(
+                "After the buffer drains, '_closing AND not _tx_buffer' "
+                "fires the ESTABLISHED -> FIN_WAIT_1 transition."
+            ),
+        )
+
+        # Tick #4: FIN+ACK fires at SEQ immediately after the data
+        # tail.
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg=(
+                "FIN_WAIT_1's first timer tick must emit exactly one "
+                "FIN+ACK segment via '_transmit_data's FIN-retransmit "
+                "branch."
+            ),
+        )
+        fin_seg = self._parse_tx(fin_tx[0])
+        self._assert_segment(
+            fin_seg,
+            flags=frozenset({"FIN", "ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 1 + 2 * 1460,
+            ack=PEER__ISS + 1,
+            payload=b"",
+        )
+        self.assertEqual(
+            session._snd_fin,
+            LOCAL__ISS + 1 + 2 * 1460 + 1,
+            msg=(
+                "After emitting the FIN, '_snd_fin' must equal the "
+                "post-FIN 'SND.NXT' (data_end + 1) - this is what "
+                "FIN_WAIT_1's ACK-acceptance check uses to recognise "
+                "the peer's ACK of our FIN."
+            ),
+        )
+
+    def test__close_passive__data_bearing_fin_elicits_inline_cumulative_ack(self) -> None:
+        """
+        Ensure that a peer FIN+ACK that ALSO carries data is handled
+        as a single atomic event: the data is enqueued into
+        '_rx_buffer', RCV.NXT advances past both the data and the
+        FIN's one byte of sequence space, an inline cumulative ACK
+        fires immediately (not delayed), and the FSM transitions to
+        CLOSE_WAIT. The data must remain in '_rx_buffer' so the
+        application can drain it via 'recv()' even after the peer
+        has closed its half.
+
+        RFC 9293 §3.10.7.4 (ESTABLISHED segment processing, sequencing
+        across data and FIN):
+
+            "If the FIN bit is set, signal the user 'connection
+             closing' and return any pending RECEIVEs with same
+             message, advance RCV.NXT over the FIN, and send an
+             acknowledgment for the FIN.  Note that FIN implies
+             PUSH for any segment text not yet delivered to the
+             user."
+
+        and from §3.10.4 (CLOSE-WAIT semantics):
+
+            "CLOSE-WAIT - represents waiting for a connection
+             termination request from the local user."
+
+        The PyTCP implementation collapses the data-with-FIN case
+        into a single inline ACK (rather than letting the delayed-
+        ACK timer cover it), which is the RFC's recommended path
+        for FIN-bearing segments per the "send an acknowledgment
+        for the FIN" clause and the "PUSH" semantics that imply
+        immediate delivery.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer sends FIN+ACK with a payload (b"final-data",
+               10 bytes) at SEQ=PEER__ISS+1. The segment carries
+               BOTH new data AND the FIN.
+            3. Drive RX. The ESTABLISHED FIN+ACK branch runs
+               '_process_ack_packet' (which advances RCV.NXT to
+               PEER__ISS+1+10+1 because 'seg_end' includes both
+               data length and 'flag_fin'), then takes the
+               'if packet_rx_md.tcp__data' branch (line 1478) to
+               emit an INLINE ACK acknowledging both the data and
+               the FIN, and transitions to CLOSE_WAIT.
+
+        Assertions on the inline ACK:
+
+            * Exactly one inline TX frame produced by the FIN
+              arrival.
+            * Flags = {ACK} (no FIN, no SYN, no RST).
+            * 'ack = PEER__ISS + 1 + 10 + 1' - the cumulative
+              acknowledgement covers all 10 data bytes AND the
+              FIN's one-byte sequence consumption.
+            * 'seq = LOCAL__ISS + 1' - we have not advanced our
+              own send sequence (no data sent on our side).
+            * 'payload = b""' - bare ACK.
+            * Advertised window = 65535 - 10 (the new buffer
+              occupancy after the data was enqueued; per the
+              receive-window-shrink fix from commit 'f3c3392').
+
+        Side assertions on session state:
+
+            * State is CLOSE_WAIT.
+            * 'RCV.NXT == PEER__ISS + 1 + 10 + 1' - past the data
+              and the FIN.
+            * '_rx_buffer == b"final-data"' - the application can
+              still recv() the data even though the peer has
+              closed its half.
+            * '_event__rx_buffer' is set (so 'recv()' can wake up
+              and observe both the data and the connection-closing
+              signal).
+
+        This test passes on current code as a positive-control
+        regression guard for the data-with-FIN inline-ACK path
+        (line 1478 of '_tcp_fsm_established'). It catches any
+        future change that:
+          - Defers the ACK to the delayed-ACK timer when data is
+            present (would break the "send an acknowledgment for
+            the FIN" RFC clause).
+          - Discards the data when the FIN flag is set (a real
+            risk during refactors that branch on FIN before
+            looking at payload).
+          - Computes 'ack' without including the FIN's one-byte
+            sequence consumption (would leave the peer
+            retransmitting the FIN forever).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Peer sends FIN+ACK with a payload. The segment carries
+        # both new data and the connection-close signal.
+        peer_payload = b"final-data"
+        peer_fin_with_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK", "PSH"),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        inline_tx = self._drive_rx(frame=peer_fin_with_data)
+
+        # The inline ACK fires immediately for FIN-bearing segments
+        # with data per RFC 9293 §3.10.7.4 and the explicit
+        # 'if packet_rx_md.tcp__data' branch in
+        # '_tcp_fsm_established's FIN+ACK handler (line 1478).
+        self.assertEqual(
+            len(inline_tx),
+            1,
+            msg=(
+                "Peer's data-bearing FIN+ACK must produce exactly one "
+                "inline ACK - RFC 9293 §3.10.7.4 mandates 'send an "
+                "acknowledgment for the FIN' and the data-bearing "
+                "branch fires the ACK without waiting for the "
+                "delayed-ACK timer."
+            ),
+        )
+        ack = self._parse_tx(inline_tx[0])
+        self._assert_segment(
+            ack,
+            flags=frozenset({"ACK"}),
+            sport=STACK__PORT,
+            dport=PEER__PORT,
+            seq=LOCAL__ISS + 1,
+            ack=PEER__ISS + 1 + len(peer_payload) + 1,
+            payload=b"",
+            win=65535 - len(peer_payload),
+        )
+
+        # State assertions: the FSM has moved to CLOSE_WAIT, the
+        # data is in '_rx_buffer' awaiting application recv(), and
+        # RCV.NXT has advanced past both data and FIN.
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg=(
+                "After peer's data-bearing FIN+ACK in ESTABLISHED, "
+                "state must transition to CLOSE_WAIT per RFC 9293 "
+                "§3.10.7.4."
+            ),
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 1 + len(peer_payload) + 1,
+            msg=(
+                "'RCV.NXT' must advance past BOTH the data ("
+                f"{len(peer_payload)} bytes) AND the FIN's one byte "
+                "of sequence space - '_process_ack_packet' adds "
+                "'len(tcp__data) + flag_fin' into 'seg_end' so a "
+                "single update covers both."
+            ),
+        )
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            peer_payload,
+            msg=(
+                "The data piggybacked on peer's FIN must be enqueued "
+                "into '_rx_buffer' so the application can recv() it "
+                "even after the peer has closed its half. Discarding "
+                "the data because of the FIN flag would break the "
+                "'FIN implies PUSH' RFC clause and lose application "
+                "bytes."
+            ),
+        )
+        self.assertTrue(
+            session._event__rx_buffer.is_set(),
+            msg=(
+                "The '_event__rx_buffer' must be set on the FIN+ACK "
+                "branch (line 1482 of '_tcp_fsm_established') so a "
+                "blocked 'recv()' wakes up and observes both the "
+                "final data and the connection-closing signal."
+            ),
+        )
