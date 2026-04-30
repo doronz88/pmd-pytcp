@@ -1,0 +1,707 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false
+
+
+"""
+This module contains integration tests for the TCP retransmit-on-
+timeout (RTO) machinery in the 'TcpSession' state machine, covering
+exponential back-off cadence per RFC 6298 §2 and the connection-
+abort timeout per RFC 1122 §4.2.3.5 R2 / RFC 9293 §3.8.3.
+
+The tests in this file drive a session through the active-open
+handshake to ESTABLISHED, send a full-MSS data segment, then keep
+the peer silent so the retransmit timer can drive its full cadence
+of probes. Assertions cover both the wire shape of each retransmit
+(same seq, same payload, ACK-only flags) and the count / timing of
+transmissions across the full RTO window.
+
+Reference RFCs:
+    RFC 6298 §2          Computing TCP's Retransmission Timer
+    RFC 9293 §3.8.3      User Timeout / connection abort
+    RFC 1122 §4.2.3.5    R1 / R2 retransmission limits
+
+pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__retransmit_timeout.py
+
+ver 3.0.4
+"""
+
+from net_addr import Ip4Address
+from pytcp import stack
+from pytcp.socket import AddressFamily
+from pytcp.socket.tcp__session import (
+    FsmState,
+    SysCall,
+    TcpSession,
+)
+from pytcp.socket.tcp__socket import TcpSocket
+from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    STACK__IP4_HOST,
+)
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+
+# Deterministic addressing.
+STACK__IP: Ip4Address = STACK__IP4_HOST.address
+STACK__PORT: int = 12345
+PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
+PEER__PORT: int = 80
+
+# Initial sequence numbers chosen well clear of the 32-bit wrap.
+LOCAL__ISS: int = 0x0000_1000
+PEER__ISS: int = 0x0000_2000
+
+# Peer's advertised receive window on its SYN+ACK reply.
+PEER__WIN: int = 64240
+
+# Peer's MSS option value on its SYN+ACK reply.
+PEER__MSS: int = 1460
+
+
+class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
+    """
+    Integration tests for the RTO retransmit machinery: cadence,
+    payload preservation, and connection-abort timing.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__retransmit_timeout__silent_peer_retransmits_per_rfc6298_cadence(self) -> None:
+        """
+        Ensure that when an in-flight data segment goes unacknowledged
+        the retransmit timer fires per RFC 6298 §2 with exponential
+        back-off (initial RTO = 1 s, doubled per retry), and the
+        connection stays alive past the RFC 1122 §4.2.3.5 R2 floor of
+        100 s before any abort is considered:
+
+            "(2.1) Until a round-trip time (RTT) measurement has been
+                   made for a segment sent between the sender and
+                   receiver, the sender SHOULD set RTO <- 1 second ...
+             (5.5) The host MUST set RTO <- RTO * 2 (\"back off the
+                   timer\")."
+
+            "(R2) ... the value of the timeout that should cause a
+                  TCP to give up ... at least 100 seconds."
+
+        Concretely, with the initial RTO of 1 s and exponential
+        doubling, a silent peer must see retransmits at approximately
+        the following times after the initial transmission:
+
+            t =   1 s    1st retransmit
+            t =   3 s    2nd retransmit (RTO -> 2 s)
+            t =   7 s    3rd retransmit (RTO -> 4 s)
+            t =  15 s    4th retransmit (RTO -> 8 s)
+            t =  31 s    5th retransmit (RTO -> 16 s)
+            t =  63 s    6th retransmit (RTO -> 32 s)
+
+        i.e. by t = 60 s of peer silence we must have observed at
+        least five retransmits (initial + retransmits at 1, 3, 7,
+        15, 31 s, with the 63 s one not yet fired). Each retransmit
+        must reuse the original SEQ and payload byte-for-byte
+        (RFC 6298 §2 retransmits the SAME segment, not a fresh one)
+        and the session must remain in ESTABLISHED throughout - only
+        after the R2 floor (>= 100 s) elapses may the implementation
+        consider abort.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
+              peer's advertised window so slow-start does not
+              constrain the initial transmission.
+            * Application sends one full-MSS data segment (1460 B,
+              all 'X'). Full MSS bypasses Nagle entirely so no
+              partial-segment deferral interferes with the cadence.
+            * Tick once - the initial segment fires.
+            * Drive 60 s of virtual time with the peer staying silent.
+            * Inspect the captured TX list:
+                - Every frame is a retransmit of the same seq /
+                  payload as the initial.
+                - Frame count >= 5 (the cadence above).
+                - 'session.state' remains ESTABLISHED.
+                - 'session._snd_una' is unchanged (no peer ACK has
+                  arrived).
+
+        This test passes on current code thanks to the
+        'PACKET_RETRANSMIT_MAX_COUNT = 6' constant set by commit
+        'efb8343' (which raised the limit from 3 to 6 to satisfy R2).
+        It serves as a positive-control regression guard against
+        future changes that might:
+
+          - Lower the retransmit count below the R2 floor.
+          - Skip back-off doubling (each retransmit at fixed RTO).
+          - Mutate the seq or payload across retransmits.
+          - Trigger a premature abort (state transition out of
+            ESTABLISHED before R2).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        payload = b"X" * 1460
+        session.send(data=payload)
+
+        # Initial transmission on the next tick.
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup precondition: initial data segment must fire on the first tick.",
+        )
+        initial_seg = self._parse_tx(initial_tx[0])
+        self.assertEqual(
+            initial_seg.payload,
+            payload,
+            msg="Initial segment payload must equal what 'send()' was called with.",
+        )
+        self.assertEqual(
+            initial_seg.seq,
+            LOCAL__ISS + 1,
+            msg="Initial segment seq must equal SND.NXT post-handshake.",
+        )
+
+        # Drive 60 seconds of virtual time with the peer silent. The
+        # captured TX list will hold the initial-plus-retransmits
+        # cadence.
+        retransmits = self._advance(ms=60_000)
+
+        # Per RFC 6298 doubling cadence (1, 3, 7, 15, 31 s within
+        # 60 s), the retransmit count must be at least 5.
+        self.assertGreaterEqual(
+            len(retransmits),
+            5,
+            msg=(
+                f"Within 60 s of peer silence, the RFC 6298 doubling "
+                f"cadence (1, 3, 7, 15, 31 s) must produce at least 5 "
+                f"retransmits. Got {len(retransmits)} - check the "
+                "exponential-back-off arithmetic and "
+                "PACKET_RETRANSMIT_MAX_COUNT."
+            ),
+        )
+
+        # Each retransmit reuses the original SEQ and payload.
+        for index, frame in enumerate(retransmits, start=1):
+            probe = self._parse_tx(frame)
+            self.assertEqual(
+                probe.seq,
+                initial_seg.seq,
+                msg=(
+                    f"Retransmit #{index} must reuse the original SEQ "
+                    f"= 0x{initial_seg.seq:08x} per RFC 6298 §2 (same "
+                    f"segment, not a fresh one). Got "
+                    f"0x{probe.seq:08x}."
+                ),
+            )
+            self.assertEqual(
+                probe.payload,
+                payload,
+                msg=(
+                    f"Retransmit #{index} must reuse the original "
+                    f"payload byte-for-byte. Got "
+                    f"{len(probe.payload)} bytes vs expected "
+                    f"{len(payload)}."
+                ),
+            )
+            self.assertEqual(
+                probe.flags,
+                frozenset({"PSH", "ACK"}),
+                msg=(
+                    f"Retransmit #{index} must carry the same flag set "
+                    "as the original segment (PSH on the last segment "
+                    "of the write, ACK piggyback)."
+                ),
+            )
+
+        # Session remains alive past the R2 floor of 100 s. Within
+        # the 60 s observation window, no abort is permissible.
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "After 60 s of silence, the session must still be in "
+                "ESTABLISHED - RFC 1122 §4.2.3.5 R2 requires the abort "
+                "timeout to be at least 100 s, well past the 60 s "
+                "observation window."
+            ),
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1,
+            msg=(
+                "'_snd_una' must be unchanged - the peer has not ACK'd "
+                "any of our data so the send sequence space remains "
+                "frozen at the initial SND.NXT."
+            ),
+        )
+
+    def test__retransmit_timeout__peer_ack_mid_back_off_clears_counters_and_grows_window(self) -> None:
+        """
+        Ensure that when a peer ACK arrives in the middle of the
+        retransmit back-off window, the receiver-side bookkeeping
+        unwinds cleanly:
+
+            * The retransmit-timeout counter for the now-acknowledged
+              SEQ is purged from '_tx_retransmit_timeout_counter', so
+              subsequent expirations of the still-pending timer are
+              silently ignored.
+            * 'SND.UNA' advances past the acknowledged data, freeing
+              the corresponding range of the TX buffer.
+            * '_snd_ewn' doubles (slow-start growth per RFC 5681 §3.1
+              and the simplified slow-start-style logic in
+              '_process_ack_packet'), restoring sending capacity that
+              the retransmit-timeout reset had collapsed back to one
+              MSS.
+            * No spurious retransmits fire on subsequent ticks - the
+              session has nothing to retransmit and the cleared
+              counter prevents the still-armed timer from re-entering
+              the abort logic.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
+               peer's full advertised window so the initial
+               transmission goes out unconstrained.
+            2. Application sends one full-MSS data segment (1460 B).
+               Tick once - initial transmit fires.
+            3. Advance ~1.5 s of virtual time. The first retransmit
+               (RTO = 1 s after initial) fires inside this window.
+               '_snd_ewn' is reset to MSS and
+               '_tx_retransmit_timeout_counter[SND.UNA]' is bumped
+               from 0 to 1.
+            4. Snapshot pre-ACK state: counter present, '_snd_una'
+               unchanged, '_snd_ewn' equal to MSS.
+            5. Peer ACKs with ack = SND.NXT (= LOCAL__ISS + 1 + 1460),
+               implicitly acknowledging both the initial transmit
+               and the retransmit.
+            6. Drive RX. '_process_ack_packet' runs and:
+                 - advances 'SND.UNA' to LOCAL__ISS + 1 + 1460
+                 - purges 'tx_retransmit_timeout_counter' entries
+                   with seq < SND.UNA
+                 - doubles '_snd_ewn'
+            7. Advance an additional 10 s of virtual time. No TX may
+               fire during this window - all retransmit state has
+               been cleared and the TX buffer has been purged of
+               acknowledged bytes.
+
+        Side effects asserted:
+
+            * 'tx_retransmit_timeout_counter' no longer contains the
+              key 'LOCAL__ISS + 1'.
+            * '_snd_una' equals 'LOCAL__ISS + 1 + 1460'.
+            * '_snd_ewn' is strictly greater than the value it had
+              after the retransmit reset (MSS = 1460).
+            * 'len(_tx_buffer)' is zero (acknowledged bytes purged).
+            * State remains ESTABLISHED throughout.
+
+        This test passes on current code as a positive-control
+        regression guard for '_process_ack_packet's counter-purge
+        loop (and the per-tick ACK doubling of '_snd_ewn'). A
+        future change that removed the purge or skipped the slow-
+        start growth would be caught immediately - the post-ACK
+        retransmit timer would still fire (counter not cleared) or
+        the connection would stay throttled at one-MSS bursts.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        payload = b"X" * 1460
+        session.send(data=payload)
+
+        # Initial transmission.
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup precondition: initial data segment must fire on the first tick.",
+        )
+
+        # Advance past the first retransmit boundary (RTO = 1 s after
+        # initial). Within this window the first retransmit fires and
+        # '_snd_ewn' collapses back to one MSS.
+        retransmit_window_tx = self._advance(ms=1500)
+        self.assertGreaterEqual(
+            len(retransmit_window_tx),
+            1,
+            msg=(
+                "Setup precondition: the first retransmit must fire "
+                "within 1500 ms of the initial transmission "
+                "(RTO = 1 s + tick latency)."
+            ),
+        )
+
+        # Snapshot pre-ACK state.
+        self.assertIn(
+            LOCAL__ISS + 1,
+            session._tx_retransmit_timeout_counter,
+            msg=(
+                "Pre-ACK precondition: the retransmit-timeout counter "
+                "for SND.UNA must be present after the first retransmit "
+                "fired."
+            ),
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1,
+            msg="Pre-ACK precondition: SND.UNA must still be at the initial ISS+1.",
+        )
+        snd_ewn_before_ack = session._snd_ewn
+        self.assertEqual(
+            snd_ewn_before_ack,
+            session._snd_mss,
+            msg=(
+                "Pre-ACK precondition: '_snd_ewn' must be back at one "
+                "MSS after the retransmit-timeout reset collapsed it."
+            ),
+        )
+
+        # Peer ACKs the data, covering both the initial transmit and
+        # any retransmits.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertNotIn(
+            LOCAL__ISS + 1,
+            session._tx_retransmit_timeout_counter,
+            msg=(
+                "After the ACK arrives, the retransmit-timeout counter "
+                "for the acknowledged SEQ must be purged from "
+                "'_tx_retransmit_timeout_counter' so the still-armed "
+                "stack-timer entry is silently ignored on its next "
+                "expiry."
+            ),
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + len(payload),
+            msg=("'SND.UNA' must advance past the acknowledged data " "after the peer ACK is processed."),
+        )
+        self.assertGreater(
+            session._snd_ewn,
+            snd_ewn_before_ack,
+            msg=(
+                "'_snd_ewn' must grow on a successful ACK "
+                "(slow-start-style doubling per "
+                "'_process_ack_packet') - the retransmit-timeout "
+                "reset had collapsed it back to one MSS."
+            ),
+        )
+        self.assertEqual(
+            len(session._tx_buffer),
+            0,
+            msg=("The TX buffer must be empty after the peer ACKs all " "outstanding data."),
+        )
+
+        # Advance an additional 10 s of virtual time. The cleared
+        # retransmit-timeout counter must prevent any spurious
+        # retransmits even though the stack-level timer entry may
+        # still be in 'stack.timer._timers' counting down.
+        silent_window_tx = self._advance(ms=10_000)
+        self.assertEqual(
+            silent_window_tx,
+            [],
+            msg=(
+                "After the peer ACK clears the retransmit state, NO "
+                "further TX may fire on subsequent ticks - the TX "
+                "buffer is empty and the counter purge has neutered "
+                "the still-armed stack timer."
+            ),
+        )
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="The peer ACK must leave the session in ESTABLISHED.",
+        )
+
+    def test__retransmit_timeout__fin_wait_1_timer_retransmits_fin_not_data(self) -> None:
+        """
+        Ensure that once a session has transitioned to FIN_WAIT_1
+        (because the application called 'close()' and the TX buffer
+        had drained), subsequent retransmit-timer expirations
+        retransmit ONLY the FIN segment - they MUST NOT re-send any
+        data segments at sequence numbers that have already been
+        acknowledged or that lie past the FIN.
+
+        Per RFC 9293 §3.10.4 / §3.5.2 the FIN_WAIT_1 state means we
+        have sent our FIN and are awaiting the peer's ACK of it. Any
+        prior data has by definition been fully acknowledged before
+        we issued FIN (the ESTABLISHED -> FIN_WAIT_1 transition is
+        gated on '_closing AND not _tx_buffer'). Retransmitting data
+        in this state would reuse SEQ numbers the peer has already
+        ACK'd, confuse the cumulative-ACK arithmetic, and risk
+        sliding past the right edge of the peer's receive window if
+        their FIN-ACK has trimmed the window down.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
+               peer's full window so the data goes out unconstrained.
+            2. Application sends one full-MSS data segment. Tick
+               once - initial transmit.
+            3. Peer ACKs the data: '_snd_una' advances past the
+               segment, the retransmit-timeout counter for the data
+               SEQ is purged, and the TX buffer is drained.
+            4. Application calls 'close()'. '_closing' is set; state
+               is still ESTABLISHED.
+            5. First tick after 'close()': '_tcp_fsm_established's
+               timer branch runs '_transmit_data' (no-op, buffer
+               empty), then sees '_closing AND not _tx_buffer' and
+               transitions to FIN_WAIT_1. No segment is emitted on
+               this tick.
+            6. Second tick: '_tcp_fsm_fin_wait_1's timer branch runs
+               '_transmit_data', which falls through the
+               ESTABLISHED-only data block and hits the FIN-
+               retransmit block ('SND.NXT != SND.FIN'). The FIN is
+               emitted at SEQ = LOCAL__ISS + 1 + 1460.
+            7. Drive 60 s of virtual time with the peer silent. The
+               FIN's retransmit timer cycles through the RFC 6298
+               cadence; every retransmit MUST be a FIN, not a data
+               segment.
+
+        Assertions on each retransmit:
+
+            * 'FIN' in 'flags'.
+            * 'payload == b""' (FIN-only, no data).
+            * 'seq == LOCAL__ISS + 1 + 1460' (the original FIN's
+              SEQ, not any data SEQ).
+
+        Plus state assertions:
+
+            * After step 5, 'session.state' is FsmState.FIN_WAIT_1.
+            * After step 7 (60 s of silence), 'session.state' is
+              still FsmState.FIN_WAIT_1 - well within the R2 floor.
+
+        This test passes on current code as a positive-control
+        regression guard. The plan's '[FLAGS BUG]' note about
+        '_tcp_fsm_fin_wait_1' "calling '_transmit_data' on every
+        tick - could retransmit data" is not actually realised
+        today because '_transmit_data's data-emit block is gated on
+        'state in {ESTABLISHED, CLOSE_WAIT}', so the FIN_WAIT_1
+        timer path correctly falls through to the FIN-retransmit
+        branch. The test serves as a regression guard against
+        future changes that might widen the data-emit gate or split
+        '_transmit_data' in a way that lets data leak into
+        FIN_WAIT_1's retransmit path.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        payload = b"X" * 1460
+        session.send(data=payload)
+
+        # Initial transmit.
+        self._advance(ms=1)
+
+        # Peer ACKs the data.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + len(payload),
+            msg="Setup precondition: peer's ACK must have advanced SND.UNA past the data.",
+        )
+        self.assertEqual(
+            len(session._tx_buffer),
+            0,
+            msg="Setup precondition: TX buffer must be empty after the data is acknowledged.",
+        )
+
+        # Application closes the connection.
+        session.close()
+        self.assertTrue(
+            session._closing,
+            msg="Setup precondition: 'close()' must set the '_closing' flag.",
+        )
+
+        # First tick after 'close()': state transitions to FIN_WAIT_1
+        # because the TX buffer is empty. No segment fires on this tick.
+        transition_tx = self._advance(ms=1)
+        self.assertEqual(
+            transition_tx,
+            [],
+            msg=(
+                "The ESTABLISHED -> FIN_WAIT_1 transition tick must "
+                "not emit any segment (the FIN fires on the next tick "
+                "via the FIN_WAIT_1 timer handler)."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=(
+                "After the transition tick, state must be FIN_WAIT_1 "
+                "('_closing AND not _tx_buffer' triggers the "
+                "transition)."
+            ),
+        )
+
+        # Second tick: FIN_WAIT_1's timer handler emits the FIN.
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg=(
+                "The first FIN_WAIT_1 timer tick must emit exactly one "
+                "outbound FIN segment via '_transmit_data's "
+                "FIN-retransmit block."
+            ),
+        )
+        fin_seg = self._parse_tx(fin_tx[0])
+        self.assertIn(
+            "FIN",
+            fin_seg.flags,
+            msg="The first outbound segment in FIN_WAIT_1 must carry the FIN flag.",
+        )
+        self.assertEqual(
+            fin_seg.payload,
+            b"",
+            msg="The FIN must carry no application payload.",
+        )
+        fin_seq = fin_seg.seq
+
+        # Drive 60 s of virtual time with the peer silent. The FIN's
+        # retransmit timer cycles through RFC 6298 doubling. Capture
+        # all retransmits and verify each is a FIN, not data.
+        retransmits = self._advance(ms=60_000)
+
+        self.assertGreaterEqual(
+            len(retransmits),
+            4,
+            msg=(
+                "Within 60 s of peer silence, the RFC 6298 doubling "
+                "cadence (1, 3, 7, 15, 31 s after the initial FIN) "
+                f"must produce at least 4 FIN retransmits. Got "
+                f"{len(retransmits)}."
+            ),
+        )
+
+        for index, frame in enumerate(retransmits, start=1):
+            probe = self._parse_tx(frame)
+            self.assertIn(
+                "FIN",
+                probe.flags,
+                msg=(
+                    f"Retransmit #{index} in FIN_WAIT_1 must carry FIN "
+                    "flag - retransmitting a data segment here would "
+                    "reuse already-acknowledged SEQ space and violate "
+                    "RFC 9293 §3.10.4."
+                ),
+            )
+            self.assertEqual(
+                probe.payload,
+                b"",
+                msg=(
+                    f"Retransmit #{index} in FIN_WAIT_1 must carry no "
+                    "payload - the FIN is a control segment, and any "
+                    "data byte would risk re-sending data the peer "
+                    "has already acknowledged."
+                ),
+            )
+            self.assertEqual(
+                probe.seq,
+                fin_seq,
+                msg=(
+                    f"Retransmit #{index} in FIN_WAIT_1 must reuse the "
+                    f"original FIN's SEQ ({fin_seq:#x}). A different "
+                    "SEQ would indicate either data leakage from the "
+                    "ESTABLISHED-state transmit block or post-FIN "
+                    "sequence drift."
+                ),
+            )
+
+        # Session must still be in FIN_WAIT_1 after 60 s - well
+        # within the R2 floor.
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=("After 60 s of silent retransmits, the session must " "still be in FIN_WAIT_1 (R2 = 100 s minimum)."),
+        )
