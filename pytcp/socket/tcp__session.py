@@ -1484,19 +1484,30 @@ class TcpSession:
                 self._change_state(FsmState.CLOSE_WAIT)
             return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # (folding RFC 5961 §3.2 blind-RST attack mitigation). The
+        # three-way classification:
+        #   1) seq == RCV.NXT             -> reset connection
+        #   2) seq in window, != RCV.NXT  -> challenge ACK
+        #   3) seq out of receive window  -> silently drop
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            # Packet sanity check.
             if packet_rx_md.tcp__seq == self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
-                # Let application know that remote peer closed connection
-                # (let receive syscall bypass semaphore).
+                # Case (1): Let application know that remote peer
+                # closed connection (let receive syscall bypass
+                # semaphore) and change state to CLOSED.
                 self._event__rx_buffer.set()
-                # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
+            elif self._rcv_nxt < packet_rx_md.tcp__seq < self._rcv_nxt + self._rcv_wnd:
+                # Case (2): in-window but mismatched seq - emit a
+                # challenge ACK so a legitimate peer can retransmit
+                # the RST at the correct seq, while a blind off-path
+                # attacker cannot leverage the silent drop.
+                self._transmit_packet(flag_ack=True)
+            # Case (3): out of window -> fall through (silent drop).
             return
 
         # Got CLOSE syscall -> Send FIN packet (this actually will be done in
