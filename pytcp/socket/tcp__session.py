@@ -1037,16 +1037,16 @@ class TcpSession:
                     ),
                     tcp_session=self,
                 )
-                # Initialize session parameters.
+                # Initialize session parameters. Per RFC 7323 §2.2,
+                # WSCALE is only legal when offered bilaterally - and
+                # PyTCP currently never advertises WSCALE on its own
+                # outbound SYN / SYN+ACK ('_transmit_packet' hard-codes
+                # 'tcp__wscale=0'), so any peer-advertised WSCALE on
+                # the inbound segment MUST be ignored. '_snd_wsc' stays
+                # at the no-scaling default of 0 and the peer's
+                # advertised window is applied raw.
                 self._snd_mss = min(packet_rx_md.tcp__mss, stack.interface_mtu - 40)
-                self._snd_wnd = (
-                    packet_rx_md.tcp__win << self._snd_wsc
-                )  # For SYN / SYN + ACK packets this is initialized with wscale=0.
-                self._snd_wsc = packet_rx_md.tcp__wscale
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Initialized remote window scale at {self._snd_wsc}",
-                )
+                self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
                 # Make note of the remote SEQ number, advancing past the
@@ -1130,16 +1130,16 @@ class TcpSession:
         ):
             # Packet sanity check.
             if packet_rx_md.tcp__ack == self._snd_nxt and not packet_rx_md.tcp__data:
-                # Initialize session parameters.
+                # Initialize session parameters. Per RFC 7323 §2.2,
+                # WSCALE is only legal when offered bilaterally - and
+                # PyTCP currently never advertises WSCALE on its own
+                # outbound SYN / SYN+ACK ('_transmit_packet' hard-codes
+                # 'tcp__wscale=0'), so any peer-advertised WSCALE on
+                # the inbound segment MUST be ignored. '_snd_wsc' stays
+                # at the no-scaling default of 0 and the peer's
+                # advertised window is applied raw.
                 self._snd_mss = min(packet_rx_md.tcp__mss, stack.interface_mtu - 40)
-                self._snd_wnd = (
-                    packet_rx_md.tcp__win << self._snd_wsc
-                )  # For SYN / SYN + ACK packets this is initialized with wscale=0.
-                self._snd_wsc = packet_rx_md.tcp__wscale
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Initialized remote window scale at {self._snd_wsc}",
-                )
+                self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
                 # Process ACK packet.
