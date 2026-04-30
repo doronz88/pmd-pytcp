@@ -312,7 +312,10 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             payload=b"",
             mss=None,
             wscale=None,
-            win=65535,
+            # Advertised window reflects '_rx_buffer' occupancy per
+            # RFC 9293 §3.8.6: 65535 max minus the 2 * 1460 bytes
+            # delivered to the buffer after the gap-fill drain.
+            win=65535 - 2 * 1460,
         )
 
         # Both payloads delivered in original order.
@@ -760,7 +763,11 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             payload=b"",
             mss=None,
             wscale=None,
-            win=65535,
+            # Advertised window reflects '_rx_buffer' occupancy per
+            # RFC 9293 §3.8.6: 65535 max minus the 11 bytes of
+            # 'b"hello world"' now in the buffer (the overlap
+            # prefix is sliced away, not double-enqueued).
+            win=65535 - len(overlap_payload),
         )
 
         # The receive buffer must contain exactly the original 5

@@ -798,7 +798,11 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             payload=b"",
             mss=1460,
             wscale=None,
-            win=65535,
+            # Advertised window reflects '_rx_buffer' occupancy per
+            # RFC 9293 §3.8.6: 65535 max minus the SYN-piggybacked
+            # bytes now sitting in the buffer awaiting ESTABLISHED
+            # delivery to the application.
+            win=65535 - len(payload),
         )
 
         # The listening socket still accepts further connections.

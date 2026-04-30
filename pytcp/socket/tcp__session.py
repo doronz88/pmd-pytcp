@@ -218,8 +218,13 @@ class TcpSession:
         # Maximum segment size.
         self._rcv_mss: int = stack.interface_mtu - 40
 
-        # Window size.
-        self._rcv_wnd: int = 65535
+        # Maximum receive-window size advertised to the peer. The
+        # actual '_rcv_wnd' value put on outbound segments is
+        # derived from this and current '_rx_buffer' occupancy via
+        # the '_rcv_wnd' property, so the peer's flow-control loop
+        # sees backpressure as the application falls behind on
+        # 'recv()' (RFC 9293 §3.8.6).
+        self._rcv_wnd_max: int = 65535
 
         # Window scale.
         self._rcv_wsc: int = 0
@@ -385,6 +390,18 @@ class TcpSession:
         """
 
         return self._state
+
+    @property
+    def _rcv_wnd(self) -> int:
+        """
+        Get the current receive-window advertisement: the configured
+        maximum minus bytes currently sitting in '_rx_buffer'. The
+        advertised window MUST shrink as inbound data accumulates so
+        the peer's flow-control loop can throttle their send rate
+        when the application is slow to consume (RFC 9293 §3.8.6).
+        """
+
+        return max(0, self._rcv_wnd_max - len(self._rx_buffer))
 
     @property
     def _tx_buffer_nxt(self) -> int:

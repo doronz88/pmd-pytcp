@@ -308,7 +308,10 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             payload=b"",
             mss=None,
             wscale=None,
-            win=65535,
+            # Advertised window reflects '_rx_buffer' occupancy per
+            # RFC 9293 §3.8.6: 65535 max minus the bytes still
+            # waiting to be drained by 'recv()'.
+            win=65535 - len(payload),
         )
 
         # After the ACK fires, '_rcv_una' must catch up with '_rcv_nxt'.
@@ -470,7 +473,10 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             payload=b"",
             mss=None,
             wscale=None,
-            win=65535,
+            # Advertised window reflects '_rx_buffer' occupancy per
+            # RFC 9293 §3.8.6: 65535 max minus the 2 * 1460 bytes
+            # of back-to-back segments still in the buffer.
+            win=65535 - 2 * 1460,
         )
 
         # Both payloads delivered in order.
