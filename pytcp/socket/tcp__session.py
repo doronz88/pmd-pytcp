@@ -41,6 +41,7 @@ from enum import auto
 from typing import TYPE_CHECKING, Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
+from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
@@ -1063,7 +1064,16 @@ class TcpSession:
                 # the inbound segment MUST be ignored. '_snd_wsc' stays
                 # at the no-scaling default of 0 and the peer's
                 # advertised window is applied raw.
-                self._snd_mss = min(packet_rx_md.tcp__mss, stack.interface_mtu - 40)
+                # Clamp the effective send-MSS to RFC 879 / RFC 6691
+                # bounds: at most 'mtu - 40' (so we never fragment on
+                # the local link), at least 'TCP__MIN_MSS = 536' (the
+                # SMSS floor that 'option absent' would yield - any
+                # smaller peer-advertised value, including the
+                # malformed 0, is treated as 'option absent').
+                self._snd_mss = max(
+                    TCP__MIN_MSS,
+                    min(packet_rx_md.tcp__mss, stack.interface_mtu - 40),
+                )
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
@@ -1156,7 +1166,16 @@ class TcpSession:
                 # the inbound segment MUST be ignored. '_snd_wsc' stays
                 # at the no-scaling default of 0 and the peer's
                 # advertised window is applied raw.
-                self._snd_mss = min(packet_rx_md.tcp__mss, stack.interface_mtu - 40)
+                # Clamp the effective send-MSS to RFC 879 / RFC 6691
+                # bounds: at most 'mtu - 40' (so we never fragment on
+                # the local link), at least 'TCP__MIN_MSS = 536' (the
+                # SMSS floor that 'option absent' would yield - any
+                # smaller peer-advertised value, including the
+                # malformed 0, is treated as 'option absent').
+                self._snd_mss = max(
+                    TCP__MIN_MSS,
+                    min(packet_rx_md.tcp__mss, stack.interface_mtu - 40),
+                )
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
