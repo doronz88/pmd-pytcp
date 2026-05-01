@@ -269,6 +269,24 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
             ),
         )
 
+        # Peer ACKs the first segment. This advances SND.UNA past
+        # the wrap and clears the Minshall partial-in-flight gate
+        # (RFC 1122 §4.2.3.4) so the second send's partial does
+        # not get deferred. Without this ACK the post-migration
+        # Minshall check would see '_snd_sml=3 > _snd_una=0xFFFF_FFFF'
+        # modularly (correctly) and defer Send #2 - which is the
+        # right Nagle behaviour but unrelated to the seq-wrap
+        # contract this test is exercising.
+        peer_ack_seg1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2001,
+            ack=0x0000_0003,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_seg1)
+
         # Send #2: 4 more bytes. Per spec the segment carries
         # seq = 3 (the wrapped value).
         session.send(data=b"BBBB")
@@ -1089,19 +1107,24 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
             peer_iss=0x0000_2000,
         )
 
-        # Pre-position RCV.NXT near the 32-bit ceiling so the
-        # window right edge straddles the wrap.
+        # Pre-position RCV.NXT near the 32-bit ceiling. We will
+        # send peer data at exactly RCV.NXT so the segment is
+        # in-order; its 'seg_end' wraps past the 32-bit ceiling,
+        # which is what exercises the receive-window
+        # acceptability check's modular right-edge computation.
         session._rcv_nxt = 0xFFFF_FFE0
         session._rcv_una = 0xFFFF_FFE0
         session._rcv_ini = 0xFFFF_FFE0
 
-        # Peer sends 50 bytes at seq 0x10 - modularly 0x30 bytes
-        # past RCV.NXT, well inside the window.
+        # Peer sends 50 bytes at seq=RCV.NXT (=0xFFFF_FFE0). The
+        # segment's right edge wraps past 0xFFFF_FFFF to 0x12,
+        # exercising 'add32' on the seg_end computation and
+        # 'lt32 / gt32' on the receive-window acceptability test.
         peer_payload = b"X" * 50
         peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=0x0000_0010,
+            seq=0xFFFF_FFE0,
             ack=0x0000_1001,
             flags=("ACK",),
             win=PEER__WIN,
@@ -1109,21 +1132,23 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_data)
 
+        # Modularly 50 bytes past 0xFFFF_FFE0 is 0x12 (with 32
+        # bytes consumed from 0xFFFF_FFE0 to 0xFFFF_FFFF + 1
+        # phantom, then 18 bytes from 0x0 to 0x12).
         self.assertEqual(
             session._rcv_nxt,
-            0x0000_0042,
+            0x0000_0012,
             msg=(
-                "An in-window peer data segment whose seq is "
-                "modularly past RCV.NXT but numerically below it "
-                "(due to RCV.NXT being near the 32-bit ceiling) "
-                "MUST be accepted and advance RCV.NXT modularly. "
-                "Current code's raw '<=' / '<' comparators in the "
-                "receive-window acceptability check reject the "
-                "segment because '0xFFFF_FFE0 <= 0x10' is False "
-                "numerically. Fix: migrate the receive-window "
-                "acceptability check (right-edge computation + "
-                "comparators) to 'add32' / 'in_range32' / "
-                "'le32' / 'lt32'."
+                "An in-order peer data segment whose 'seg_end' "
+                "wraps past the 32-bit ceiling MUST be accepted "
+                "and advance RCV.NXT modularly to the wrapped "
+                "right edge. Current code's raw '+' on "
+                "'self._rcv_nxt + self._rcv_wnd' overflows past "
+                "2**32 and the raw '>' on 'seg_end > "
+                "self._rcv_nxt' rejects the segment because "
+                "'0x12 > 0xFFFF_FFE0' is numerically False. Fix: "
+                "migrate the receive-window acceptability check "
+                "to 'add32' / 'lt32' / 'gt32'."
             ),
         )
         self.assertEqual(
