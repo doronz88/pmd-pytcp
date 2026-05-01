@@ -45,6 +45,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
+from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import add32, gt32, in_range32, le32, lt32
 
 if TYPE_CHECKING:
@@ -273,6 +274,16 @@ class TcpSession:
         # ingestion of inbound SACK blocks into the scoreboard
         # (phase 4).
         self._send_sack: bool = False
+
+        # SACK scoreboard tracking peer-SACKed-but-not-yet-
+        # cumulatively-acked send-side ranges per RFC 2018 §3 /
+        # RFC 6675 §3. Updated by '_ingest_sack_info' on every
+        # ACK that carries a SACK option (gated on
+        # '_send_sack'); pruned by '_prune_sack_scoreboard'
+        # when SND.UNA advances. Phase 5 will consult it via
+        # 'pytcp.lib.tcp_loss_recovery' for NextSeg / IsLost /
+        # Pipe.
+        self._sack_scoreboard: SackScoreboard = SackScoreboard()
 
         ###
         # Sending window parameters.
@@ -746,6 +757,36 @@ class TcpSession:
                 break
         return blocks
 
+    def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Ingest peer's SACK blocks from 'packet_rx_md' into the
+        send-side scoreboard, gated on '_send_sack' (bilateral
+        negotiation succeeded). Per RFC 2018 §5 ("be liberal in
+        what we accept") blocks whose edges fall outside
+        '[SND.UNA, SND.MAX]' or are degenerate ('left >= right')
+        are silently dropped - they cannot describe legitimate
+        in-flight bytes.
+        """
+
+        if not self._send_sack:
+            return
+
+        for left, right in packet_rx_md.tcp__sack_blocks:
+            if le32(self._snd_una, left) and le32(right, self._snd_max) and lt32(left, right):
+                self._sack_scoreboard.add_block(left, right)
+
+    def _prune_sack_scoreboard(self) -> None:
+        """
+        Drop scoreboard blocks whose right edge is at or below
+        the current 'SND.UNA' - the cumulative ACK has absorbed
+        them and they cannot inform any further loss recovery
+        (RFC 6675 §3 / RFC 2018 §3). Gated on '_send_sack' so the
+        pruning is a no-op on connections without bilateral SACK.
+        """
+
+        if self._send_sack:
+            self._sack_scoreboard.prune_below(self._snd_una)
+
     def _enqueue_rx_buffer(self, data: memoryview) -> None:
         """
         Process the incoming segment and enqueue the data
@@ -988,6 +1029,14 @@ class TcpSession:
         event).
         """
 
+        # Ingest any SACK blocks carried on this dup-ACK before the
+        # count-based fast-retransmit decision. SND.UNA does not
+        # advance on a dup-ACK so no prune is needed here; the
+        # scoreboard simply accumulates new blocks. Phase 5's
+        # RFC 6675 NextSeg / IsLost machinery will consult the
+        # scoreboard on top of the count threshold.
+        self._ingest_sack_info(packet_rx_md)
+
         self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
             self._tx_retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
         )
@@ -1015,6 +1064,12 @@ class TcpSession:
         # uses numerical order, which is wrong across the wrap.
         if lt32(self._snd_una, packet_rx_md.tcp__ack):
             self._snd_una = packet_rx_md.tcp__ack
+        # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
+        # §3: prune any blocks now absorbed by the cumulative ACK,
+        # then ingest fresh blocks the peer reported on this
+        # segment. Both are no-ops when '_send_sack' is False.
+        self._prune_sack_scoreboard()
+        self._ingest_sack_info(packet_rx_md)
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
         if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):

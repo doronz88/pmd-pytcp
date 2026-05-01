@@ -328,7 +328,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [],
             msg=(
                 "A fresh ESTABLISHED session must start with an empty "
@@ -361,7 +361,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [],
             msg=(
                 "With '_send_sack = False' the scoreboard MUST remain "
@@ -1025,7 +1025,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self._drive_rx(frame=peer_dup_ack)
 
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [(sacked_left, sacked_right)],
             msg=(
                 "An inbound SACK block describing in-window bytes "
@@ -1095,7 +1095,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
         self._drive_rx(frame=first_ack)
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [(sacked_left, sacked_right)],
             msg="Setup precondition: scoreboard must hold the SACK block before the cum-ACK advance.",
         )
@@ -1117,7 +1117,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             msg="Setup precondition: cumulative-ACK must advance SND.UNA past the sacked range.",
         )
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [],
             msg=(
                 "The scoreboard MUST be pruned once the cumulative ACK "
@@ -1181,7 +1181,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self._drive_rx(frame=out_of_window_ack)
 
         self.assertEqual(
-            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            session._sack_scoreboard.blocks(),
             [],
             msg=(
                 "A SACK block whose edges fall outside "

@@ -65,6 +65,7 @@ class TcpMetadata:
     tcp__wscale: int
     tcp__mss: int
     tcp__sackperm: bool
+    tcp__sack_blocks: tuple[tuple[int, int], ...]
     tcp__data: memoryview
 
     tracker: Tracker | None = None

@@ -62,6 +62,7 @@ def _make_ip4_metadata(**overrides: object) -> TcpMetadata:
         "tcp__wscale": 0,
         "tcp__mss": 1460,
         "tcp__sackperm": False,
+        "tcp__sack_blocks": (),
         "tcp__data": memoryview(b""),
         "tracker": None,
     }
@@ -104,6 +105,7 @@ class TestTcpMetadataFields(TestCase):
         self.assertEqual(md.tcp__wscale, 0, msg="tcp__wscale must be stored verbatim.")
         self.assertEqual(md.tcp__mss, 1460, msg="tcp__mss must be stored verbatim.")
         self.assertFalse(md.tcp__sackperm, msg="tcp__sackperm must be stored verbatim.")
+        self.assertEqual(md.tcp__sack_blocks, (), msg="tcp__sack_blocks must be stored verbatim.")
         self.assertEqual(bytes(md.tcp__data), b"", msg="tcp__data must be stored verbatim.")
         self.assertIsNone(md.tracker, msg="tracker must be stored verbatim.")
 

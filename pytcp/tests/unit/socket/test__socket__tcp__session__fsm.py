@@ -274,6 +274,7 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
             tcp__wscale=0,
             tcp__mss=1460,
             tcp__sackperm=False,
+            tcp__sack_blocks=(),
             tcp__data=memoryview(b""),
         )
 

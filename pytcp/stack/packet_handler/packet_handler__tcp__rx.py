@@ -125,6 +125,11 @@ class PacketHandlerTcpRx(ABC):
             tcp__wscale=packet_rx.tcp.wscale,
             tcp__mss=packet_rx.tcp.mss,
             tcp__sackperm=packet_rx.tcp.sackperm,
+            tcp__sack_blocks=(
+                ()
+                if (sack_blocks := packet_rx.tcp._options.sack) is None
+                else tuple((block.left, block.right) for block in sack_blocks)
+            ),
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,
         )
