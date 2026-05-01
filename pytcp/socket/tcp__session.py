@@ -45,7 +45,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
-from pytcp.lib.tcp_loss_recovery import next_seg
+from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import add32, gt32, in_range32, le32, lt32
 
@@ -285,6 +285,16 @@ class TcpSession:
         # 'pytcp.lib.tcp_loss_recovery' for NextSeg / IsLost /
         # Pipe.
         self._sack_scoreboard: SackScoreboard = SackScoreboard()
+
+        # RFC 6675 §5 RecoveryPoint - the SND.MAX value at the
+        # moment the most recent fast-retransmit fired. Zero
+        # means "not currently in recovery"; while non-zero it
+        # gates further fast-retransmit triggers (the one-shot
+        # rule from RFC 5681 §3.2). Cleared by
+        # '_process_ack_packet' once 'SND.UNA' advances past
+        # 'recovery_point' - the loss event is fully recovered
+        # and a new round of dup-ACKs can re-enter recovery.
+        self._recovery_point: int = 0
 
         ###
         # Sending window parameters.
@@ -1031,50 +1041,78 @@ class TcpSession:
         """
 
         # Ingest any SACK blocks carried on this dup-ACK before the
-        # count-based fast-retransmit decision. SND.UNA does not
-        # advance on a dup-ACK so no prune is needed here; the
-        # scoreboard simply accumulates new blocks. Phase 5's
-        # RFC 6675 NextSeg / IsLost machinery will consult the
-        # scoreboard on top of the count threshold.
+        # fast-retransmit decision so IsLost() sees the latest
+        # peer-reported scoreboard state. SND.UNA does not advance
+        # on a dup-ACK so no prune is needed here.
         self._ingest_sack_info(packet_rx_md)
 
         self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
             self._tx_retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
         )
-        # Fire the fast retransmit exactly once per loss event, on the
-        # arrival of the third duplicate ACK. Earlier dup-ACKs (counts
-        # 1, 2) are below the RFC threshold; later ones (counts 4, 5,
-        # ...) inflate cwnd per RFC 5681 §3.2 step 4, but MUST NOT
-        # cause the lost segment to be retransmitted again.
-        if self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3:
-            # RFC 6675 §3 NextSeg() chooses the smallest unsacked
-            # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
-            # lost. When bilateral SACK is enabled and the
-            # scoreboard's contents satisfy IsLost, NextSeg
-            # returns the actual gap; in single-gap scenarios
-            # this equals 'SND.UNA' (matching the count-based
-            # path), but the SACK-driven choice scales to multi-
-            # gap recovery in future work. When SACK is
-            # disabled or the scoreboard is below IsLost
-            # thresholds, fall back to '_snd_una' so the
-            # count-based RFC 5681 path remains intact for
-            # non-SACK peers.
-            ns = (
-                next_seg(
-                    scoreboard=self._sack_scoreboard,
-                    snd_una=self._snd_una,
-                    snd_max=self._snd_max,
-                    mss=self._snd_mss,
-                )
-                if self._send_sack
-                else None
+
+        # RFC 5681 §3.2 / RFC 6675 §5: enter recovery exactly
+        # once per loss event. While 'recovery_point > 0' we are
+        # still recovering from an earlier trigger; further
+        # dup-ACKs inflate cwnd per RFC 5681 §3.2 step 4 but
+        # MUST NOT re-fire the retransmit.
+        if self._recovery_point != 0:
+            return
+
+        # Two independent triggers, either of which enters
+        # recovery:
+        #   - Count-based (RFC 5681 §3.2): the third duplicate
+        #     ACK at the same 'ack' value.
+        #   - SACK byte-rule (RFC 6675 §3 IsLost): the
+        #     receiver has reported MORE THAN '(dup_thresh - 1)
+        #     * SMSS' bytes SACKed above SND.UNA. This rule
+        #     can fire on the very first dup-ACK if peer
+        #     reports a single large SACK block, recovering
+        #     faster than the count-based threshold on bursty
+        #     loss patterns.
+        count_trigger = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3
+        sack_trigger = self._send_sack and is_lost(
+            self._snd_una,
+            scoreboard=self._sack_scoreboard,
+            snd_una=self._snd_una,
+            mss=self._snd_mss,
+        )
+        if not (count_trigger or sack_trigger):
+            return
+
+        # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
+        # within the loss event do not re-trigger; '_process_ack_packet'
+        # clears it once the cumulative ACK has fully recovered.
+        # Setting to 'max(SND.MAX, 1)' guarantees the marker is
+        # non-zero even when SND.MAX wraps to 0; the actual
+        # comparison is modular.
+        self._recovery_point = self._snd_max if self._snd_max != 0 else 1
+
+        # RFC 6675 §3 NextSeg() chooses the smallest unsacked
+        # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
+        # lost. When bilateral SACK is enabled and the
+        # scoreboard's contents satisfy IsLost, NextSeg returns
+        # the actual gap; in single-gap scenarios this equals
+        # 'SND.UNA' (matching the count-based path). When SACK
+        # is disabled or the scoreboard is below IsLost
+        # thresholds, fall back to '_snd_una' so the count-based
+        # RFC 5681 path remains intact for non-SACK peers.
+        ns = (
+            next_seg(
+                scoreboard=self._sack_scoreboard,
+                snd_una=self._snd_una,
+                snd_max=self._snd_max,
+                mss=self._snd_mss,
             )
-            self._snd_nxt = ns if ns is not None else self._snd_una
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Got retransmit request, sending segment "
-                f"{self._snd_nxt}, keeping snd_ewn at {self._snd_ewn}",
-            )
+            if self._send_sack
+            else None
+        )
+        self._snd_nxt = ns if ns is not None else self._snd_una
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Got retransmit request, sending segment "
+            f"{self._snd_nxt}, keeping snd_ewn at {self._snd_ewn}, "
+            f"recovery_point {self._recovery_point}",
+        )
 
     def _process_ack_packet(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -1093,6 +1131,17 @@ class TcpSession:
         # segment. Both are no-ops when '_send_sack' is False.
         self._prune_sack_scoreboard()
         self._ingest_sack_info(packet_rx_md)
+        # Exit recovery once SND.UNA has advanced to or past the
+        # RecoveryPoint marker (RFC 6675 §5). The loss event is
+        # now fully recovered; subsequent dup-ACKs are eligible
+        # to re-enter recovery via either trigger.
+        if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Exiting recovery: SND.UNA={self._snd_una} "
+                f"reached RecoveryPoint={self._recovery_point}",
+            )
+            self._recovery_point = 0
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
         if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):

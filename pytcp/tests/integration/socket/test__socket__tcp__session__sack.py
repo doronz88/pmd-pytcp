@@ -1395,3 +1395,156 @@ class TestTcpSession__Sack(TcpSessionTestCase):
                 "still considered in flight."
             ),
         )
+
+    def test__sack__byte_rule_triggers_fast_retransmit_on_first_dup_sack(self) -> None:
+        """
+        Ensure that the RFC 6675 §3 IsLost byte-rule fires fast
+        retransmit on the FIRST SACK-bearing dup-ACK when peer
+        reports MORE THAN '(dup_thresh - 1) * SMSS' bytes
+        SACKed above SND.UNA. This is the SACK-aware shortcut
+        around RFC 5681 §3.2's count-based threshold: with rich
+        SACK info, the receiver-evidence is already strong
+        enough to declare loss after one dup-ACK, recovering
+        faster on bursty / contiguous-loss patterns.
+
+        RFC 6675 §3 (IsLost):
+
+            "This routine returns whether the given sequence
+             number is considered to be lost. ... The routine
+             returns true when either DupThresh discontiguous
+             SACKed sequences have arrived above 'SeqNum' or
+             more than (DupThresh - 1) * SMSS bytes with
+             sequence numbers greater than 'SeqNum' have been
+             SACKed."
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral
+               SACK negotiation.
+            2. Application sends 4*MSS bytes; drain so SND.MAX =
+               LOCAL__ISS + 1 + 4*MSS.
+            3. Peer sends ONE SACK-bearing dup-ACK reporting a
+               single contiguous SACK block of '2*MSS + 1'
+               bytes - just over the byte-rule threshold of
+               '(3-1)*MSS = 2*MSS'.
+            4. The byte-rule fires; '_recovery_point' is set;
+               '_snd_nxt' rewinds to SND.UNA via NextSeg.
+            5. Next timer tick: one outbound retransmit fires
+               at SEQ=SND.UNA.
+            6. A SECOND dup-ACK with the same SACK info MUST
+               NOT re-fire the retransmit (one-shot per loss
+               event guarded by '_recovery_point').
+
+        Assertions:
+
+            * '_recovery_point' is non-zero after the 1st
+              dup-SACK (we entered recovery via byte rule).
+            * Exactly one outbound retransmit segment fires on
+              the next tick.
+            * Retransmit's SEQ equals SND.UNA, payload is the
+              first MSS bytes of our outstanding data.
+            * A 2nd dup-SACK followed by a tick produces no
+              additional retransmit.
+
+        Passes today as a positive control / regression guard
+        for the byte-rule trigger and the '_recovery_point'
+        one-shot. Without phase 5b's IsLost branch, the
+        sender would wait for the 3rd dup-ACK before firing -
+        a measurable latency penalty on contiguous-loss
+        patterns where peer can pack many sacked bytes into
+        one block.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (4 * mss))
+        for _ in range(4):
+            self._advance(ms=1)
+        self.assertEqual(
+            session._snd_max,
+            LOCAL__ISS + 1 + 4 * mss,
+            msg="Setup precondition: all 4 MSS-sized segments must drain.",
+        )
+
+        # Single SACK block carrying '2*MSS + 1' bytes - just
+        # over the byte-rule threshold.
+        sacked_left = LOCAL__ISS + 1 + mss
+        sacked_right = sacked_left + 2 * mss + 1
+        self.assertLessEqual(
+            sacked_right,
+            LOCAL__ISS + 1 + 4 * mss,
+            msg="Setup precondition: the test SACK block must lie within [SND.UNA, SND.MAX].",
+        )
+        first_dup_sack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(sacked_left, sacked_right)],
+        )
+        self._drive_rx(frame=first_dup_sack)
+
+        # Byte-rule fired; we entered recovery.
+        self.assertNotEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "The IsLost byte-rule MUST fire fast retransmit on "
+                "the first dup-SACK when peer reports > 2*MSS "
+                "bytes SACKed above SND.UNA - '_recovery_point' "
+                "must be non-zero (RFC 6675 §3, RFC 5681 §3.2)."
+            ),
+        )
+
+        # Next tick fires the retransmit at SND.UNA (the gap
+        # in this single-gap scenario; NextSeg returns SND.UNA).
+        retransmit_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(retransmit_tx),
+            1,
+            msg="Setup expectation: exactly one outbound retransmit on the next tick after byte-rule trigger.",
+        )
+        retransmit_probe = self._parse_tx(retransmit_tx[0])
+        self._assert_segment(
+            retransmit_probe,
+            flags=frozenset({"ACK"}),
+            seq=LOCAL__ISS + 1,
+            payload=b"X" * mss,
+        )
+
+        # A second dup-SACK during recovery MUST NOT re-enter
+        # recovery. The '_recovery_point' guard suppresses the
+        # re-trigger; '_recovery_point' must remain at the same
+        # non-zero value from the original entry. (Subsequent
+        # outbound data may still flow through '_transmit_data'
+        # past SND.NXT - that is normal sliding-window
+        # operation, not a re-fire of the retransmit.)
+        recovery_point_after_first = session._recovery_point
+        second_dup_sack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(sacked_left, sacked_right)],
+        )
+        self._drive_rx(frame=second_dup_sack)
+        self.assertEqual(
+            session._recovery_point,
+            recovery_point_after_first,
+            msg=(
+                "A second dup-SACK during recovery MUST NOT re-enter "
+                "recovery - '_recovery_point' stays unchanged at the "
+                "original SND.MAX marker (RFC 5681 §3.2 step 4 / "
+                "RFC 6675 §5 one-shot)."
+            ),
+        )
