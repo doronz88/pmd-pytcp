@@ -608,3 +608,75 @@ class TestTcpSeq__InRangeAsserts(TestCase):
 
         with self.assertRaises(AssertionError):
             in_range32(0, 0, UINT_32__MAX + 1)
+
+
+class TestTcpSeqAdd32__Variadic(TestCase):
+    """
+    The 'add32' variadic-form tests: confirm the single-arg, two-
+    arg, and N-arg cases all reduce modulo 2**32 correctly. Modular
+    addition is associative, so the variadic form's semantics
+    match repeated binary application.
+    """
+
+    def test__lib__tcp_seq__add32__single_arg_returns_self(self) -> None:
+        """
+        Ensure 'add32(a)' (no trailing operands) returns 'a'
+        unchanged - the empty-rest sum is 0.
+        """
+
+        self.assertEqual(
+            add32(123456),
+            123456,
+            msg=("add32 with a single operand and no trailing args " "must return that operand unchanged."),
+        )
+
+    def test__lib__tcp_seq__add32__three_arg_form_matches_chained_binary(self) -> None:
+        """
+        Ensure 'add32(a, b, c)' matches the chained binary form
+        'add32(add32(a, b), c)'.
+        """
+
+        a, b, c = 0xFFFF_FF00, 0x100, 0x50
+        self.assertEqual(
+            add32(a, b, c),
+            add32(add32(a, b), c),
+            msg=("add32(a, b, c) must equal add32(add32(a, b), c) - " "modular addition is associative."),
+        )
+
+    def test__lib__tcp_seq__add32__four_arg_form_wraps_correctly(self) -> None:
+        """
+        Ensure 'add32(seq, len, flag_syn, flag_fin)' - the canonical
+        TCP session usage pattern - wraps modulo 2**32 when the
+        cumulative sum exceeds the 32-bit ceiling.
+        """
+
+        # seq just below the wrap, plus a 4-byte payload, plus
+        # flag_syn=1, plus flag_fin=0.
+        result = add32(0xFFFF_FFFE, 4, 1, 0)
+        # Expected: (0xFFFF_FFFE + 4 + 1 + 0) mod 2**32 = 3.
+        self.assertEqual(
+            result,
+            3,
+            msg=(
+                "add32 over a 4-operand sum that crosses the 32-bit "
+                "wrap must return the modular reduction (= 3 here)."
+            ),
+        )
+
+    def test__lib__tcp_seq__add32__five_arg_form_associative(self) -> None:
+        """
+        Ensure five-operand variadic add equals iterative binary
+        accumulation - sanity check on the implementation's
+        'sum(rest)' fold.
+        """
+
+        operands = [0xDEAD_BEEF, 0x1, 0x2, 0x3, 0x4]
+        result = add32(*operands)
+        expected = operands[0]
+        for operand in operands[1:]:
+            expected = (expected + operand) & UINT_32__MAX
+        self.assertEqual(
+            result,
+            expected,
+            msg=("Variadic add32 must equal iterative binary fold " "for any operand count."),
+        )

@@ -93,12 +93,21 @@ def ge32(a: int, b: int, /) -> bool:
     return le32(b, a)
 
 
-def add32(a: int, n: int, /) -> int:
+def add32(a: int, /, *rest: int) -> int:
     """
-    Return 'a + n' reduced to a 32-bit unsigned value.
+    Return 'a + sum(rest)' reduced to a 32-bit unsigned value.
+
+    Variadic form: any number of trailing operands are summed and
+    the total reduced modulo 2**32. Modular addition is
+    associative, so the variadic semantics match repeated binary
+    application: 'add32(a, b, c) == add32(add32(a, b), c)'. The
+    common 'tcp__session.py' pattern of summing a base seq with a
+    payload length and one or two flag bits ('seq + len(data) +
+    flag_syn + flag_fin') becomes a single readable call:
+    'add32(seq, len(data), flag_syn, flag_fin)'.
     """
 
-    return (a + n) & UINT_32__MAX
+    return (a + sum(rest)) & UINT_32__MAX
 
 
 def sub32(a: int, n: int, /) -> int:
