@@ -1051,3 +1051,229 @@ class TestTcpClose__Normal(TcpSessionTestCase):
                 "final data and the connection-closing signal."
             ),
         )
+
+    def test__close_passive__close_wait_pre_fin_data_retransmit_elicits_ack_per_rfc_3_10_7_4(self) -> None:
+        """
+        Ensure that when a peer retransmits previously-received
+        pre-FIN data while we are in CLOSE_WAIT, we respond with
+        an ACK reply per RFC 9293 §3.10.7.4 step 1, rather than
+        silently dropping the segment. The retransmit's payload
+        is unacceptable (SEG.SEQ + SEG.LEN <= RCV.NXT - all bytes
+        already cumulatively-acknowledged before peer's FIN), but
+        the spec requires unacceptable segments to elicit an ACK
+        so peer's retransmit machinery sees fresh activity and
+        can stop retransmitting.
+
+        RFC 9293 §3.10.7.4 step 1:
+
+            "If an incoming segment is not acceptable, an
+             acknowledgment should be sent in reply (unless the
+             RST bit is set, if so drop the segment and return):
+             <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>. After sending
+             the acknowledgment, drop the unacceptable segment
+             and return."
+
+        The CLOSE_WAIT handler in PyTCP today has no receive-
+        window acceptability check at the top and no fallback
+        ACK for unacceptable segments; only segments matching
+        one of the four explicit branches (suspected-retransmit
+        dup-ACK, OOO data, regular bare ACK, RST) elicit any
+        outbound activity. A pre-FIN data retransmit fits NONE
+        of those branches (its seq is below RCV.NXT and it
+        carries data), so it falls through silently. Peer's
+        retransmit timer fires repeatedly until RTO clears the
+        connection - wasted bandwidth and visible peer-side
+        latency.
+
+        Same gap exists in CLOSING / FIN_WAIT_1 / FIN_WAIT_2 /
+        LAST_ACK; this test pins the CLOSE_WAIT case as the
+        canonical example. The fix is structurally shared with
+        the ESTABLISHED Phase 7 DSACK handler: extract the
+        receive-window acceptability check + always-ACK reply
+        into a helper and apply it to all synchronized states.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer sends 50 bytes of data. Drain so the bytes
+               are delivered to '_rx_buffer' and the delayed
+               ACK fires (RCV.NXT advances to PEER__ISS + 1 +
+               50; RCV.UNA == RCV.NXT).
+            3. Peer sends FIN. We transition to CLOSE_WAIT;
+               RCV.NXT advances past the FIN to PEER__ISS + 1
+               + 50 + 1; we ACK the FIN.
+            4. Application sends 4 bytes (so SND.MAX >
+               SND.UNA - the test exercises the unacceptable-
+               segment-with-piggybacked-ACK case where peer's
+               retransmit HAS ack info that would advance our
+               SND.UNA if processed; per RFC 9293 §3.10.7.4
+               step 1 that ACK info MUST NOT be processed
+               because the segment is unacceptable and
+               dropped).
+            5. Peer retransmits the original 50-byte data
+               segment with seq = PEER__ISS + 1 (below our
+               RCV.NXT) AND ack = LOCAL__ISS + 1 + 4 (cum-
+               ACKing our 4-byte send). The segment is
+               unacceptable per RFC 9293 §3.10.7.4 receive-
+               window check.
+            6. Inspect the inline TX. Per RFC 9293 §3.10.7.4
+               step 1 we MUST emit one ACK reply.
+
+        Required wire shape of the ACK reply:
+
+            seq       = LOCAL__ISS + 1 + 4    (= our SND.NXT)
+            ack       = PEER__ISS + 1 + 50 + 1 (= our RCV.NXT,
+                                               post-FIN)
+            flags     = {ACK}
+            payload   = b""
+
+        Side effects asserted:
+
+            * Exactly one outbound ACK fires.
+            * 'session._snd_una' is unchanged (peer's piggy-
+              backed ACK info was NOT processed - the
+              unacceptable segment was dropped at the
+              acceptability check, before the ACK-field
+              processing in §3.10.7.4 step 5).
+            * 'session._rcv_nxt' is unchanged (data not re-
+              delivered, no overlap recompute).
+            * 'session._rx_buffer' contents unchanged (the
+              data is already in there from step 2; the
+              retransmit MUST NOT double-deliver).
+            * 'session.state' remains CLOSE_WAIT.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait' has no
+        receive-window acceptability check and no fall-through
+        unacceptable-segment ACK reply. The retransmit falls
+        through to the end of the handler (the 'return' just
+        below the 'Regular data/ACK packet' branch) without
+        emitting any outbound segment. Today this test fails
+        at the 'len(retransmit_tx) == 1' assertion - the
+        actual count is 0.
+
+        Fix outline (separate commit): extract the receive-
+        window acceptability check from
+        '_tcp_fsm_established' into a helper
+        '_check_segment_acceptability(packet_rx_md)' that
+        returns True/False and emits the RFC 9293 §3.10.7.4
+        step 1 ACK reply when False. Apply the helper at the
+        top of '_tcp_fsm_close_wait' (and ideally
+        '_tcp_fsm_fin_wait_1', '_fin_wait_2', '_closing',
+        '_last_ack' - same RFC mandate).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Peer sends 50 bytes of data.
+        peer_payload = b"X" * 50
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        self._drive_rx(frame=peer_data)
+        # Drain the delayed ACK.
+        self._advance(ms=200)
+
+        # Peer sends FIN. We transition to CLOSE_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 50,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: peer's FIN must put session in CLOSE_WAIT.",
+        )
+
+        # Application sends 4 bytes so SND.MAX > SND.UNA. This
+        # gives peer's retransmit-with-piggybacked-ACK something
+        # to potentially (incorrectly) advance SND.UNA against;
+        # per RFC the ACK info MUST be ignored because the
+        # segment fails the acceptability check.
+        session._snd_ewn = PEER__WIN
+        session.send(data=b"OUT!")
+        self._advance(ms=1)
+
+        snd_una_before = session._snd_una
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+        rx_buffer_before = bytes(session._rx_buffer)
+
+        # Peer retransmits the original 50-byte data segment
+        # with a piggybacked ACK that would advance SND.UNA if
+        # processed (it cum-ACKs our 4-byte send). The segment
+        # is unacceptable per RFC 9293 §3.10.7.4 - SEG.SEQ +
+        # SEG.LEN = PEER__ISS + 1 + 50 = current RCV.NXT - 1
+        # (just below RCV.NXT, fully duplicate).
+        retransmit = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 4,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        retransmit_tx = self._drive_rx(frame=retransmit)
+
+        self.assertEqual(
+            len(retransmit_tx),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 1: an unacceptable "
+                "segment in CLOSE_WAIT MUST elicit an ACK reply "
+                "carrying our current SND.NXT and RCV.NXT, so "
+                "peer's retransmit machinery sees fresh activity "
+                "and can stop retransmitting. PyTCP today drops "
+                "the segment silently; peer keeps retransmitting "
+                "until RTO."
+            ),
+        )
+        ack_probe = self._parse_tx(retransmit_tx[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertEqual(
+            session._snd_una,
+            snd_una_before,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 1 the unacceptable "
+                "segment is dropped BEFORE the ACK-field processing "
+                "step 5; peer's piggybacked ACK info MUST NOT "
+                "advance SND.UNA."
+            ),
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            rcv_nxt_before,
+            msg="RCV.NXT must not advance on a fully-duplicate segment.",
+        )
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            rx_buffer_before,
+            msg=(
+                "Already-delivered data must not be re-enqueued "
+                "into '_rx_buffer'; the retransmit's payload "
+                "duplicates bytes the application has already "
+                "consumed (or will, on next 'recv()')."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="State must remain CLOSE_WAIT after a fully-duplicate retransmit.",
+        )
