@@ -89,6 +89,7 @@ class TcpProbe:
     win: int
     mss: int | None
     wscale: int | None
+    sackperm: bool
     payload: bytes
 
 
@@ -233,6 +234,7 @@ class TcpSessionTestCase(NetworkTestCase):
             win=packet_rx.tcp.win,
             mss=packet_rx.tcp._options.mss,
             wscale=packet_rx.tcp._options.wscale,
+            sackperm=bool(packet_rx.tcp._options.sackperm),
             payload=bytes(packet_rx.tcp.payload),
         )
 
@@ -247,6 +249,7 @@ class TcpSessionTestCase(NetworkTestCase):
         win: object = _UNSET,
         mss: object = _UNSET,
         wscale: object = _UNSET,
+        sackperm: object = _UNSET,
         sport: object = _UNSET,
         dport: object = _UNSET,
     ) -> None:
@@ -299,6 +302,12 @@ class TcpSessionTestCase(NetworkTestCase):
                 probe.wscale,
                 wscale,
                 msg=f"Unexpected TCP WSCALE option on outbound segment: {probe!r}",
+            )
+        if sackperm is not _UNSET:
+            self.assertEqual(
+                probe.sackperm,
+                sackperm,
+                msg=f"Unexpected TCP SACK-permitted option on outbound segment: {probe!r}",
             )
         if sport is not _UNSET:
             self.assertEqual(

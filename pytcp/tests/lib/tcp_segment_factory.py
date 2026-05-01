@@ -40,6 +40,7 @@ from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
 from net_proto.protocols.tcp.options.tcp__option__nop import TcpOptionNop
+from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from net_proto.protocols.tcp.options.tcp__options import TcpOption, TcpOptions
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
@@ -65,6 +66,7 @@ def _build_tcp_assembler(
     win: int,
     mss: int | None,
     wscale: int | None,
+    sackperm: bool,
     payload: Buffer,
     paws_ts: object,
     sack_block: object,
@@ -93,7 +95,7 @@ def _build_tcp_assembler(
     unknown = flag_set - TCP_FLAGS__VALID
     assert not unknown, f"Unknown TCP flag name(s) {sorted(unknown)!r}; supported: {sorted(TCP_FLAGS__VALID)!r}"
 
-    options = _build_options(mss=mss, wscale=wscale)
+    options = _build_options(mss=mss, wscale=wscale, sackperm=sackperm)
 
     return TcpAssembler(
         tcp__sport=sport,
@@ -115,12 +117,12 @@ def _build_tcp_assembler(
     )
 
 
-def _build_options(*, mss: int | None, wscale: int | None) -> TcpOptions:
+def _build_options(*, mss: int | None, wscale: int | None, sackperm: bool) -> TcpOptions:
     """
-    Build a 'TcpOptions' container holding the requested MSS and
-    WSCALE options, padding with NOPs so the total option block
-    length is a multiple of 4 bytes (TCP requires 4-byte alignment
-    of the data offset).
+    Build a 'TcpOptions' container holding the requested MSS,
+    WSCALE, and SACK-permitted options, padding with NOPs so the
+    total option block length is a multiple of 4 bytes (TCP
+    requires 4-byte alignment of the data offset).
     """
 
     options: list[TcpOption] = []
@@ -130,6 +132,9 @@ def _build_options(*, mss: int | None, wscale: int | None) -> TcpOptions:
 
     if wscale is not None:
         options.append(TcpOptionWscale(wscale=wscale))
+
+    if sackperm:
+        options.append(TcpOptionSackperm())
 
     pad_count = (-sum(len(opt) for opt in options)) % 4
     options.extend(TcpOptionNop() for _ in range(pad_count))
@@ -151,6 +156,7 @@ def build_tcp4(
     win: int = 65535,
     mss: int | None = None,
     wscale: int | None = None,
+    sackperm: bool = False,
     payload: Buffer = b"",
     paws_ts: object = None,
     sack_block: object = None,
@@ -170,6 +176,7 @@ def build_tcp4(
         win=win,
         mss=mss,
         wscale=wscale,
+        sackperm=sackperm,
         payload=payload,
         paws_ts=paws_ts,
         sack_block=sack_block,
@@ -206,6 +213,7 @@ def build_tcp6(
     win: int = 65535,
     mss: int | None = None,
     wscale: int | None = None,
+    sackperm: bool = False,
     payload: Buffer = b"",
     paws_ts: object = None,
     sack_block: object = None,
@@ -225,6 +233,7 @@ def build_tcp6(
         win=win,
         mss=mss,
         wscale=wscale,
+        sackperm=sackperm,
         payload=payload,
         paws_ts=paws_ts,
         sack_block=sack_block,
