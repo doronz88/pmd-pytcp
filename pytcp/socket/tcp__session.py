@@ -216,8 +216,15 @@ class TcpSession:
         # Sequence number we acked.
         self._rcv_una: int = 0
 
+        # IP+TCP header overhead for MSS calculation. RFC 8200's
+        # IPv6 fixed header is 40 bytes (vs IPv4's 20); the TCP
+        # header is 20 bytes regardless. The MSS is the largest
+        # TCP segment that fits in 'interface_mtu' once both
+        # headers are subtracted.
+        self._ip_tcp_overhead: int = (40 if isinstance(local_ip_address, Ip6Address) else 20) + 20
+
         # Maximum segment size.
-        self._rcv_mss: int = stack.interface_mtu - 40
+        self._rcv_mss: int = stack.interface_mtu - self._ip_tcp_overhead
 
         # Maximum receive-window size advertised to the peer. The
         # actual '_rcv_wnd' value put on outbound segments is
@@ -1072,7 +1079,7 @@ class TcpSession:
                 # malformed 0, is treated as 'option absent').
                 self._snd_mss = max(
                     TCP__MIN_MSS,
-                    min(packet_rx_md.tcp__mss, stack.interface_mtu - 40),
+                    min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
                 )
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
@@ -1174,7 +1181,7 @@ class TcpSession:
                 # malformed 0, is treated as 'option absent').
                 self._snd_mss = max(
                     TCP__MIN_MSS,
-                    min(packet_rx_md.tcp__mss, stack.interface_mtu - 40),
+                    min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
                 )
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
