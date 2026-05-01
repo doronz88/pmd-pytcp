@@ -43,6 +43,11 @@ from net_proto import (
     Tracker,
 )
 from net_proto.protocols.tcp.options.tcp__option import TcpOption
+from net_proto.protocols.tcp.options.tcp__option__sack import (
+    TcpOptionSack,
+    TcpSackBlock,
+)
+from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -108,6 +113,8 @@ class PacketHandlerTcpTx(ABC):
         tcp__flag_fin: bool = False,
         tcp__mss: int | None = None,
         tcp__wscale: int | None = None,
+        tcp__sackperm: bool = False,
+        tcp__sack_blocks: list[tuple[int, int]] | None = None,
         tcp__win: int = 0,
         tcp__urg: int = 0,
         tcp__payload: bytes = bytes(),
@@ -121,8 +128,8 @@ class PacketHandlerTcpTx(ABC):
 
         # Build the option list cumulatively so multiple options
         # can co-exist on the wire (an MSS-only SYN, a WSCALE-only
-        # SYN, or - the canonical post-WSCALE-implementation case -
-        # a SYN carrying BOTH MSS and WSCALE). The previous
+        # SYN, a SYN carrying MSS + SACK-Permitted + WSCALE, or a
+        # post-handshake ACK carrying a SACK option). The previous
         # write-then-overwrite pattern broke the dual-option case
         # by losing the MSS when WSCALE was also requested. Pad
         # with NOPs at the end so the total option block length
@@ -134,11 +141,19 @@ class PacketHandlerTcpTx(ABC):
             self._packet_stats_tx.tcp__opt_mss += 1
             opts.append(TcpOptionMss(mss=tcp__mss))
 
+        if tcp__sackperm:
+            self._packet_stats_tx.tcp__opt_sackperm += 1
+            opts.append(TcpOptionSackperm())
+
         if tcp__wscale:
             self._packet_stats_tx.tcp__opt_nop += 1
             self._packet_stats_tx.tcp__opt_wscale += 1
             opts.append(TcpOptionNop())
             opts.append(TcpOptionWscale(wscale=tcp__wscale))
+
+        if tcp__sack_blocks:
+            self._packet_stats_tx.tcp__opt_sack += 1
+            opts.append(TcpOptionSack(blocks=[TcpSackBlock(left, right) for left, right in tcp__sack_blocks]))
 
         pad_count = (-sum(len(opt) for opt in opts)) % 4
         opts.extend(TcpOptionNop() for _ in range(pad_count))
@@ -230,6 +245,8 @@ class PacketHandlerTcpTx(ABC):
         tcp__win: int = 0,
         tcp__wscale: int | None = None,
         tcp__mss: int | None = None,
+        tcp__sackperm: bool = False,
+        tcp__sack_blocks: list[tuple[int, int]] | None = None,
         tcp__payload: bytes = bytes(),
     ) -> TxStatus:
         """
@@ -251,5 +268,7 @@ class PacketHandlerTcpTx(ABC):
             tcp__win=tcp__win,
             tcp__wscale=tcp__wscale,
             tcp__mss=tcp__mss,
+            tcp__sackperm=tcp__sackperm,
+            tcp__sack_blocks=tcp__sack_blocks,
             tcp__payload=tcp__payload,
         )

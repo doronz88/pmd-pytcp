@@ -64,6 +64,7 @@ class TcpMetadata:
     tcp__win: int
     tcp__wscale: int
     tcp__mss: int
+    tcp__sackperm: bool
     tcp__data: memoryview
 
     tracker: Tracker | None = None

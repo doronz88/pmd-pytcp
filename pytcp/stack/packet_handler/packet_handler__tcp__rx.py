@@ -75,6 +75,8 @@ class PacketHandlerTcpRx(ABC):
             tcp__flag_fin: bool = False,
             tcp__mss: int | None = None,
             tcp__wscale: int | None = None,
+            tcp__sackperm: bool = False,
+            tcp__sack_blocks: list[tuple[int, int]] | None = None,
             tcp__win: int = 0,
             tcp__urg: int = 0,
             tcp__payload: bytes = bytes(),
@@ -122,6 +124,7 @@ class PacketHandlerTcpRx(ABC):
             tcp__win=packet_rx.tcp.win,
             tcp__wscale=packet_rx.tcp.wscale,
             tcp__mss=packet_rx.tcp.mss,
+            tcp__sackperm=packet_rx.tcp.sackperm,
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,
         )

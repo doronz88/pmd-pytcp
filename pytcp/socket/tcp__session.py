@@ -254,6 +254,26 @@ class TcpSession:
         # post-handshake outbound 'win' is not shifted either.
         self._advertise_wscale: bool = True
 
+        # Whether to advertise SACK-Permitted on this session's
+        # outbound SYN / SYN+ACK per RFC 2018 §2. Defaults True
+        # (modern default - SACK enables RFC 6675 Conservative
+        # Loss Recovery); flip False before CONNECT / LISTEN to
+        # opt out. The bilateral-non-offer rule mirrors WSCALE:
+        # a session that did not advertise will not enable SACK
+        # even if peer offered it, and a session that did
+        # advertise will not enable SACK unless peer also
+        # offered.
+        self._advertise_sack: bool = True
+
+        # Whether SACK is enabled for this session, set after
+        # bilateral SACK-Permitted negotiation succeeds in
+        # '_tcp_fsm_listen' / '_tcp_fsm_syn_sent'. Gates the
+        # emission of SACK options on outbound ACKs over an
+        # OOO-buffered receive queue (RFC 2018 §3) and the
+        # ingestion of inbound SACK blocks into the scoreboard
+        # (phase 4).
+        self._send_sack: bool = False
+
         ###
         # Sending window parameters.
         ###
@@ -616,6 +636,33 @@ class TcpSession:
         else:
             tcp__wscale = None
 
+        # SACK-Permitted option presence per RFC 2018 §2:
+        # active-open SYN emits iff we advertise (peer's view is
+        # not yet known); passive-open SYN+ACK emits iff the
+        # bilateral negotiation succeeded ('_send_sack' is set
+        # in '_tcp_fsm_listen' on peer's SYN). Non-SYN segments
+        # never carry the option (RFC 2018 §2: "MUST NOT be sent
+        # on non-SYN segments").
+        if flag_syn and not flag_ack:
+            tcp__sackperm = self._advertise_sack
+        elif flag_syn and flag_ack:
+            tcp__sackperm = self._send_sack
+        else:
+            tcp__sackperm = False
+
+        # SACK option blocks per RFC 2018 §3-§4: emitted on
+        # non-SYN ACKs iff the bilateral negotiation succeeded
+        # AND the OOO queue holds at least one buffered range.
+        # An empty OOO queue means we have no out-of-order
+        # information to advertise, and an empty SACK option is
+        # illegal per RFC 2018 §3 (length must cover at least one
+        # 8-byte block).
+        tcp__sack_blocks: list[tuple[int, int]] | None
+        if not flag_syn and self._send_sack and self._ooo_packet_queue:
+            tcp__sack_blocks = self._build_sack_blocks()
+        else:
+            tcp__sack_blocks = None
+
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -631,6 +678,8 @@ class TcpSession:
             tcp__win=tcp__win,
             tcp__mss=self._rcv_mss if flag_syn else None,
             tcp__wscale=tcp__wscale,
+            tcp__sackperm=tcp__sackperm,
+            tcp__sack_blocks=tcp__sack_blocks,
             tcp__payload=data,
         )
         self._rcv_una = self._rcv_nxt
@@ -677,6 +726,25 @@ class TcpSession:
             f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
             f"dlen {len(data)}",
         )
+
+    def _build_sack_blocks(self) -> list[tuple[int, int]]:
+        """
+        Compute the SACK option block list reflecting the current
+        '_ooo_packet_queue' contents. Each buffered metadata yields
+        one '(seq, seq + len(data))' '[left, right)' half-open
+        range, modular-32 reduced. The returned list is capped at
+        RFC 2018 §3's maximum of 4 blocks per option (each block is
+        8 bytes; combined with the option header and an outbound
+        MSS+WSCALE-bearing options block this fits within the 40-
+        byte TCP options limit).
+        """
+
+        blocks: list[tuple[int, int]] = []
+        for seq, packet_rx_md in self._ooo_packet_queue.items():
+            blocks.append((seq, add32(seq, len(packet_rx_md.tcp__data))))
+            if len(blocks) >= 4:
+                break
+        return blocks
 
     def _enqueue_rx_buffer(self, data: memoryview) -> None:
         """
@@ -1167,6 +1235,15 @@ class TcpSession:
                 else:
                     self._rcv_wsc = 0
                     self._snd_wsc = 0
+                # SACK bilateral negotiation per RFC 2018 §2:
+                # passive-open mirrors peer's offer. SACK is
+                # enabled iff we are configured to advertise AND
+                # peer's SYN carried SACK-Permitted. The flag
+                # gates both the SYN+ACK we emit next (which
+                # carries SACK-Permitted iff '_send_sack') and
+                # subsequent SACK-option emission on outbound
+                # ACKs over an OOO-buffered queue.
+                self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
                 # Make note of the remote SEQ number, advancing past the
@@ -1299,6 +1376,11 @@ class TcpSession:
                     # Bilateral non-offer: no scaling on either side.
                     self._rcv_wsc = 0
                     self._snd_wsc = 0
+                # SACK bilateral negotiation per RFC 2018 §2:
+                # active-open mirrors peer's offer. SACK is
+                # enabled iff WE advertised on the SYN we sent
+                # AND peer echoed SACK-Permitted on the SYN+ACK.
+                self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
                 # Send initial ACK packet.
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(

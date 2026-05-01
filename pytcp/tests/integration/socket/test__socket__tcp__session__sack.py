@@ -459,7 +459,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             sackperm=True,
         )
         self.assertTrue(
-            session._advertise_sack,  # type: ignore[attr-defined]
+            session._advertise_sack,
             msg="The default value of 'TcpSession._advertise_sack' must be True.",
         )
 
@@ -510,7 +510,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
         self.assertTrue(
-            session._send_sack,  # type: ignore[attr-defined]
+            session._send_sack,
             msg=(
                 "After bilateral SACK-Permitted negotiation the session "
                 "must record success in '_send_sack = True' so the FSM "
@@ -579,7 +579,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         # Sanity: bilateral negotiation must have succeeded so the
         # SACK-emit path is enabled.
         self.assertTrue(
-            session._send_sack,  # type: ignore[attr-defined]
+            session._send_sack,
             msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
         )
 
@@ -650,7 +650,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
         self.assertTrue(
-            session._send_sack,  # type: ignore[attr-defined]
+            session._send_sack,
             msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
         )
 

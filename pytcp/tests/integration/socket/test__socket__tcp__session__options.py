@@ -386,6 +386,12 @@ class TestTcpSession__Options(TcpSessionTestCase):
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
+        # Mirror the WSCALE asymmetric-guard pattern: the modern
+        # default flips '_advertise_sack' to True, but this scenario
+        # specifically tests "we did not advertise SACK-Permitted -
+        # peer's offer is silently ignored", so opt out before
+        # CONNECT.
+        session._advertise_sack = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         # Inspect our outbound SYN.
