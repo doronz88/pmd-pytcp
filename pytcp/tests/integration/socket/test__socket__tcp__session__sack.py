@@ -1548,3 +1548,126 @@ class TestTcpSession__Sack(TcpSessionTestCase):
                 "RFC 6675 §5 one-shot)."
             ),
         )
+
+    def test__sack__recovery_skips_already_sacked_bytes(self) -> None:
+        """
+        Ensure that during fast-retransmit recovery the sender
+        skips over peer-SACKed ranges in 'SND.NXT' so subsequent
+        outbound segments do not redundantly retransmit bytes
+        peer already received. RFC 6675 §5 multi-gap recovery:
+        the scoreboard tells the sender what NOT to resend, and
+        '_transmit_data' consults it before each transmission
+        during recovery.
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral
+               SACK negotiation.
+            2. Application sends 4*MSS bytes (segments 1, 2, 3,
+               4); drain so SND.MAX = LOCAL__ISS + 1 + 4*MSS.
+            3. Peer sends three dup-ACKs each reporting the
+               same SACK block covering segments 2 and 3
+               '[LOCAL__ISS + 1 + MSS, LOCAL__ISS + 1 + 3*MSS)'.
+               Segments 1 and 4 are presumed lost / out-of-
+               order.
+            4. The third dup-ACK triggers fast retransmit
+               (count rule). '_snd_nxt' rewinds to SND.UNA.
+            5. Tick #1: outbound retransmit at SEQ = SND.UNA
+               (segment 1, the first gap).
+            6. After segment 1 is sent, SND.NXT = SND.UNA + MSS
+               which sits inside the SACKed block. On tick #2,
+               '_advance_snd_nxt_past_sacked' jumps SND.NXT to
+               the right edge of the SACKed block (= SND.UNA +
+               3*MSS = segment 4's start).
+            7. Tick #2 outbound: SEQ = SND.UNA + 3*MSS
+               (segment 4), NOT SND.UNA + MSS (segment 2).
+
+        Assertions:
+
+            * After 3 dup-ACKs: '_recovery_point' is non-zero.
+            * Tick #1 retransmit has SEQ = SND.UNA.
+            * Tick #2 retransmit has SEQ = SND.UNA + 3*MSS
+              (the segment-4 boundary), demonstrating the
+              skip past sacked segments 2 and 3.
+
+        Passes today as a positive control / regression guard
+        for the recovery-side SACK-skip logic. Without the
+        skip, tick #2 would resend segment 2 - bandwidth wasted
+        on bytes peer already SACKed.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (4 * mss))
+        for _ in range(4):
+            self._advance(ms=1)
+        self.assertEqual(
+            session._snd_max,
+            LOCAL__ISS + 1 + 4 * mss,
+            msg="Setup precondition: all 4 MSS-sized segments must drain.",
+        )
+
+        # Three dup-ACKs each reporting the same SACK block
+        # covering segments 2 and 3 (= [SND.UNA+MSS, SND.UNA+3*MSS)).
+        # Single-block ingestion coalesces (idempotent) so the
+        # scoreboard ends with one entry, but the count-rule
+        # fires on the 3rd dup-ACK.
+        sacked_left = LOCAL__ISS + 1 + 1 * mss
+        sacked_right = LOCAL__ISS + 1 + 3 * mss
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                sack_blocks=[(sacked_left, sacked_right)],
+            )
+            self._drive_rx(frame=dup_ack)
+
+        self.assertNotEqual(
+            session._recovery_point,
+            0,
+            msg="Setup precondition: 3 dup-ACKs must enter recovery via count rule.",
+        )
+
+        # Tick #1: retransmit segment 1 (= the gap at SND.UNA).
+        retransmit_1_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(retransmit_1_tx),
+            1,
+            msg="Tick #1 must produce exactly one retransmit at the SND.UNA gap.",
+        )
+        retransmit_1_probe = self._parse_tx(retransmit_1_tx[0])
+        self._assert_segment(
+            retransmit_1_probe,
+            flags=frozenset({"ACK"}),
+            seq=LOCAL__ISS + 1,
+            payload=b"X" * mss,
+        )
+
+        # Tick #2: '_advance_snd_nxt_past_sacked' jumps SND.NXT
+        # past the SACKed block (segments 2 and 3) so the next
+        # outbound segment carries SEQ = SND.UNA + 3*MSS, NOT
+        # SND.UNA + MSS (which would re-send bytes peer already
+        # has).
+        retransmit_2_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(retransmit_2_tx),
+            1,
+            msg="Tick #2 must produce one segment - past the SACKed range.",
+        )
+        retransmit_2_probe = self._parse_tx(retransmit_2_tx[0])
+        self._assert_segment(
+            retransmit_2_probe,
+            flags=frozenset({"ACK", "PSH"}),
+            seq=LOCAL__ISS + 1 + 3 * mss,
+            payload=b"X" * mss,
+        )

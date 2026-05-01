@@ -798,6 +798,31 @@ class TcpSession:
         if self._send_sack:
             self._sack_scoreboard.prune_below(self._snd_una)
 
+    def _advance_snd_nxt_past_sacked(self) -> None:
+        """
+        During fast-retransmit recovery, advance 'SND.NXT' past
+        any peer-SACKed range that contains it so the next
+        transmission does not redundantly re-send bytes peer
+        already received. RFC 6675 §5 multi-gap recovery: the
+        sender consults the scoreboard to skip SACKed regions
+        and only retransmits genuine gaps. Walks the scoreboard
+        in modular order from 'SND.UNA'; since the scoreboard
+        coalesces adjacent blocks on insert a single pass
+        suffices. No-op when not in recovery, when SACK is
+        disabled, or when 'SND.NXT == SND.MAX' (everything we
+        intended to send has been sent).
+        """
+
+        if self._recovery_point == 0 or not self._send_sack:
+            return
+
+        for left, right in sorted(
+            self._sack_scoreboard.blocks(),
+            key=lambda b: (b[0] - self._snd_una) & 0xFFFF_FFFF,
+        ):
+            if le32(left, self._snd_nxt) and lt32(self._snd_nxt, right):
+                self._snd_nxt = right
+
     def _enqueue_rx_buffer(self, data: memoryview) -> None:
         """
         Process the incoming segment and enqueue the data
@@ -864,6 +889,17 @@ class TcpSession:
 
         # Make sure we in the state that allows sending data out.
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
+            # During fast-retransmit recovery, advance SND.NXT past
+            # any peer-SACKed range so the next transmit does not
+            # re-send bytes peer already received. RFC 6675 §5
+            # multi-gap recovery semantics: with the scoreboard
+            # tracking SACKed regions, the sender can skip them
+            # entirely and only retransmit genuine gaps. Outside
+            # recovery this is a no-op (the high-water-mark
+            # invariant 'SND.NXT == SND.MAX' holds, and
+            # 'is_sacked(SND.MAX)' is always False since peer
+            # cannot SACK bytes we never sent).
+            self._advance_snd_nxt_past_sacked()
             remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
             usable_window = self._snd_ewn - self._tx_buffer_nxt
             transmit_data_len = min(self._snd_mss, usable_window, remaining_data_len)
