@@ -359,3 +359,159 @@ class TestTcpParserOperation(TestCase):
             bytes(tcp_parser.payload),
             msg=f"packet_rx.frame and parser.payload must match for case: {self._description}",
         )
+
+
+class TestTcpParserOperation__ReservedBits(TestCase):
+    """
+    The TCP packet parser must silently accept any value in the three
+    reserved bits between 'hlen' and the 'NS' flag, per RFC 9293 §3.1:
+
+        "Reserved (Rsrvd): A 4-bit field reserved for future use.
+         Must be zero in generated segments and must be ignored in
+         received segments, if corresponding future features are
+         unimplemented by the sending or receiving host."
+
+    Wire layout of the 16-bit hlen|flags word (big-endian):
+
+        hlen (4 bits) | rsrvd (3 bits) | NS (1 bit) | CWR (1) | ECE (1)
+        | URG (1) | ACK (1) | PSH (1) | RST (1) | SYN (1) | FIN (1)
+
+    The reserved bits occupy positions 9, 10, 11 (mask 0x0E00 of the
+    16-bit word, or equivalently bits 1, 2, 3 of byte 12 - mask 0x0E).
+    Setting all three to 1 should produce an identical 'TcpHeader' to
+    the all-zero baseline, because:
+
+        1. 'TcpHeader' has no field for the reserved bits.
+        2. The parser at 'tcp__header.py:182-200' bit-shifts mask out
+           hlen and the 9 named flags only - the reserved bits are
+           never extracted.
+        3. The parser's '_validate_integrity' has no reserved-bit
+           check, so a non-zero value does not raise.
+
+    This test locks in the spec-correct "silently ignore" behaviour
+    against a future tightening (e.g. someone adding a "reserved bits
+    must be zero" assertion to '_validate_integrity').
+    """
+
+    # Baseline TCP wire frame: 20 bytes, no payload, no options,
+    # FIN+ACK, all reserved bits zero. Same fixture as the second
+    # parametrized case in 'TestTcpParserOperation' above:
+    #   sport=1111, dport=2222, seq=3333, ack=4444,
+    #   hlen=20, flags=AF, win=5555, urg=0
+    # Original cksum 0x6ed5 (valid for pshdr_sum=0).
+    _BASELINE_FRAME: bytes = b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x50\x11\x15\xb3\x6e\xd5\x00\x00"
+
+    # Same frame, but with all three reserved bits set:
+    #   Bytes 12-13 : 0x5e11 -> hlen=20, rsrvd=0b111, flags=AF
+    #                 (was 0x5011 -> rsrvd=0b000)
+    # Cksum recomputed: the 16-bit one's-complement sum (without
+    # the cksum field) was originally 0x912a; adding 0x0e00 yields
+    # 0x9f2a; one's-complement is 0x60d5. Bytes 16-17 : 0x60d5.
+    _RSRVD_BITS_FRAME: bytes = b"\x04\x57\x08\xae\x00\x00\x0d\x05\x00\x00\x11\x5c\x5e\x11\x15\xb3\x60\xd5\x00\x00"
+
+    _BASELINE_HEADER: TcpHeader = TcpHeader(
+        sport=1111,
+        dport=2222,
+        seq=3333,
+        ack=4444,
+        hlen=20,
+        flag_ns=False,
+        flag_cwr=False,
+        flag_ece=False,
+        flag_urg=False,
+        flag_ack=True,
+        flag_psh=False,
+        flag_rst=False,
+        flag_syn=False,
+        flag_fin=True,
+        win=5555,
+        cksum=0x60D5,
+        urg=0,
+    )
+
+    def _packet_rx(self, frame: bytes, /) -> PacketRx:
+        """
+        Wrap the frame in a 'PacketRx' with a stub IP layer carrying
+        'payload_len = len(frame)' and 'pshdr_sum = 0', matching the
+        parametrized parent's setUp.
+        """
+
+        packet_rx = PacketRx(frame)
+        packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(frame),
+            pshdr_sum=0,
+        )
+        return packet_rx
+
+    def test__tcp__parser__reserved_bits__set_value_does_not_raise(self) -> None:
+        """
+        Ensure the TCP parser accepts a frame whose three reserved
+        bits are all set, raising no integrity / sanity error. RFC
+        9293 §3.1 mandates that received reserved bits 'must be
+        ignored', not rejected.
+        """
+
+        # Constructing TcpParser runs the full integrity / parse /
+        # sanity pipeline. If the reserved bits triggered a check
+        # anywhere along the way, this would raise.
+        TcpParser(self._packet_rx(self._RSRVD_BITS_FRAME))
+
+    def test__tcp__parser__reserved_bits__set_value_yields_baseline_header(self) -> None:
+        """
+        Ensure the parsed 'TcpHeader' from a reserved-bits-set frame
+        is equal to the parsed 'TcpHeader' from the all-zero baseline
+        in every field except 'cksum'. The cksum differs by
+        construction (the wire bytes are different so the segment's
+        valid checksum is different too); every other field reflects
+        what the parser DID extract, and equality there confirms the
+        reserved bits had no effect on the parse.
+        """
+
+        baseline_parser = TcpParser(self._packet_rx(self._BASELINE_FRAME))
+        rsrvd_parser = TcpParser(self._packet_rx(self._RSRVD_BITS_FRAME))
+
+        # Compare every field except cksum (which legitimately
+        # differs by 0x0e00's checksum delta). The 'replace' trick
+        # would normally apply, but TcpHeader is frozen; instead
+        # we assert field-by-field via a dict view.
+        baseline_fields = {
+            field: getattr(baseline_parser.header, field)
+            for field in baseline_parser.header.__dataclass_fields__
+            if field != "cksum"
+        }
+        rsrvd_fields = {
+            field: getattr(rsrvd_parser.header, field)
+            for field in rsrvd_parser.header.__dataclass_fields__
+            if field != "cksum"
+        }
+        self.assertEqual(
+            rsrvd_fields,
+            baseline_fields,
+            msg=(
+                "Parsed header from a reserved-bits-set frame must "
+                "equal the all-zero-baseline header in every field "
+                "except 'cksum'. RFC 9293 §3.1: 'must be ignored in "
+                "received segments'."
+            ),
+        )
+
+    def test__tcp__parser__reserved_bits__cksum_field_reflects_wire(self) -> None:
+        """
+        Sanity: the parsed header's 'cksum' value equals the cksum
+        on the wire (here 0x60d5) - just confirming the test
+        fixture's hand-computed checksum is correct and the parser
+        is happy with it (no integrity error from a bad checksum
+        would have surfaced as a TcpIntegrityError already).
+        """
+
+        rsrvd_parser = TcpParser(self._packet_rx(self._RSRVD_BITS_FRAME))
+
+        self.assertEqual(
+            rsrvd_parser.header,
+            self._BASELINE_HEADER,
+            msg=(
+                "Parsed header from the reserved-bits-set frame must "
+                "match the hand-computed expected header (with "
+                "cksum=0x60d5)."
+            ),
+        )
