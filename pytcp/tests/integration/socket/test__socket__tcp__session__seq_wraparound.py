@@ -679,3 +679,604 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
             peer_payload,
             msg="Peer's payload must be delivered to '_rx_buffer'.",
         )
+
+
+class TestTcpSeqWraparound__Purge(TcpSessionTestCase):
+    """
+    Tests for the retransmit-counter purge loops in
+    '_process_ack_packet' across the 32-bit wrap. Three internal
+    dicts are keyed by seq: '_tx_retransmit_request_counter',
+    '_tx_retransmit_timeout_counter', '_rx_retransmit_request_counter'.
+    Each is purged on every cum-ACK advance via a 'seq < ack' loop;
+    the raw '<' fails to recognise wraparound and lets stale entries
+    accumulate indefinitely.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__retransmit_counter_purge_across_wrap(self) -> None:
+        """
+        Ensure that the per-seq retransmit-counter dicts in
+        '_process_ack_packet' are correctly purged when the
+        cumulative ACK advances PAST a key that lies modularly
+        below the new SND.UNA but numerically above it (the wrap
+        case).
+
+        Per RFC 9293 §3.4 the purge condition "this seq has been
+        cumulatively acknowledged" is a modular comparison
+        ('seq is before ack in modular order'); the current
+        implementation uses raw Python '<', which is wrong across
+        the wrap and lets stale entries leak.
+
+        Scenario:
+
+            1. Drive a normal handshake to ESTABLISHED.
+            2. Pre-populate '_tx_retransmit_timeout_counter' with
+               an entry at 'seq = 0xFFFF_FFE0' simulating a
+               retransmit timer for a segment we previously sent
+               near the wrap.
+            3. Pre-position session state so SND.UNA straddles
+               the wrap and a peer ACK at 'ack = 0x0000_0010' is
+               modularly above the entry but numerically below.
+            4. Drive the peer ACK. '_process_ack_packet' runs
+               its three purge loops - the entry MUST be removed
+               because its seq is modularly before the new
+               SND.UNA.
+
+        Assertions:
+
+            * '_tx_retransmit_timeout_counter' is empty after the
+              ACK is processed.
+
+        [FLAGS BUG] - 'TcpSession._process_ack_packet' uses raw
+        Python '<' on the dict keys:
+
+            for seq in list(self._tx_retransmit_timeout_counter):
+                if seq < packet_rx_md.tcp__ack:
+                    self._tx_retransmit_timeout_counter.pop(seq)
+
+        With seq=0xFFFF_FFE0 and ack=0x10, '0xFFFF_FFE0 < 0x10'
+        is numerically False - the entry leaks. After the fix
+        ('lt32(seq, packet_rx_md.tcp__ack)') the modular forward
+        distance is 0x30 (small + positive + < HALF), so 'lt32'
+        returns True and the entry is correctly removed.
+
+        On current code this test fails: the counter still
+        contains the stale 0xFFFF_FFE0 key.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0x0000_1000,
+            peer_iss=0x0000_2000,
+        )
+
+        # Pre-position SND.UNA / SND.MAX to straddle the wrap;
+        # entry at 0xFFFF_FFE0 lies just at SND.UNA.
+        session._snd_una = 0xFFFF_FFE0
+        session._snd_nxt = 0x0000_0010
+        session._snd_max = 0x0000_0010
+        session._tx_buffer_seq_mod = 0xFFFF_FFE0
+
+        # Plant a stale retransmit-timeout entry.
+        session._tx_retransmit_timeout_counter[0xFFFF_FFE0] = 1
+
+        # Peer ACK: cumulatively ACKs everything up to 0x0000_0010
+        # (modularly 0x30 bytes past the entry). The purge MUST
+        # drop the stale key.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2001,
+            ack=0x0000_0010,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._tx_retransmit_timeout_counter,
+            {},
+            msg=(
+                "After a cum-ACK advance modularly past a "
+                "retransmit-counter entry, the entry MUST be "
+                "purged. Current code's raw '<' compares "
+                "0xFFFF_FFE0 < 0x10 numerically, which is False, "
+                "so the stale entry leaks across the wrap. Fix: "
+                "migrate the three purge loops in "
+                "'_process_ack_packet' to 'lt32' from "
+                "'pytcp.lib.tcp_seq'."
+            ),
+        )
+
+
+class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
+    """
+    Tests for ACK acceptability across the 32-bit wrap in the
+    half-close FSM states (CLOSE_WAIT, FIN_WAIT_1, FIN_WAIT_2,
+    CLOSING, LAST_ACK). Each handler uses the chained Python
+    comparator 'self._snd_una <= ack <= self._snd_max', which
+    fails across the wrap exactly as the ESTABLISHED handler did
+    before commit '91abbc4' migrated it. The migration was not
+    extended to the half-close family; this test is the forcing
+    function for that extension.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__close_wait_inbound_ack_across_wrap_advances_snd_una(self) -> None:
+        """
+        Ensure that a peer ACK whose value is modularly inside
+        '[SND.UNA, SND.MAX]' but numerically outside (because the
+        send-sequence range straddles the wrap) is accepted as
+        in-window in CLOSE_WAIT and advances SND.UNA to the ack
+        value.
+
+        Setup mirrors the ESTABLISHED test: pre-position SND.UNA
+        near the 32-bit ceiling and SND.MAX past the wrap, then
+        drive peer's FIN to transition the session to CLOSE_WAIT,
+        then send a peer ACK with a modular-acceptable value.
+
+        Scenario:
+
+            1. Drive a normal handshake to ESTABLISHED at a tame
+               ISS.
+            2. Peer sends FIN; we transition to CLOSE_WAIT.
+            3. Pre-position the session's send-sequence state so
+               the in-window range crosses the wrap:
+                 SND.UNA = 0xFFFF_FFFE
+                 SND.MAX = 0x0000_0010
+               (18 modular bytes of in-flight data straddling the
+               wrap.)
+            4. Peer sends an ACK at 'ack = 0x05'. Modularly this
+               is 7 bytes past SND.UNA, well within the in-flight
+               range. RFC 9293 §3.10.7.4 mandates SND.UNA advance
+               to 0x05.
+
+        Assertions:
+
+            * 'session._snd_una' advances to 0x05 after the peer
+              ACK.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait' uses the
+        chained Python comparator 'self._snd_una <= ack <=
+        self._snd_max' to gate the regular-data/ACK branch. With
+        SND.UNA=0xFFFF_FFFE and ack=0x05 the chain evaluates to
+        '0xFFFF_FFFE <= 0x05' = False, so the chain
+        short-circuits and the segment is silently dropped -
+        SND.UNA does not advance. Same gap exists in
+        '_tcp_fsm_fin_wait_1', '_tcp_fsm_fin_wait_2',
+        '_tcp_fsm_closing', '_tcp_fsm_last_ack'. The fix
+        migrates each chain to 'le32' from 'pytcp.lib.tcp_seq'
+        ('le32(SND.UNA, ack) AND le32(ack, SND.MAX)').
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0x0000_1000,
+            peer_iss=0x0000_2000,
+        )
+
+        # Drive peer FIN to enter CLOSE_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2001,
+            ack=0x0000_1001,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.CLOSE_WAIT, f"Setup failed: expected CLOSE_WAIT, got {session.state!r}."
+
+        # Pre-position send-sequence state to straddle the wrap.
+        session._snd_una = 0xFFFF_FFFE
+        session._snd_nxt = 0x0000_0010
+        session._snd_max = 0x0000_0010
+        session._tx_buffer_seq_mod = 0xFFFF_FFFE
+
+        # Peer sends the in-window ACK. Note seq advances past
+        # peer's FIN to keep RCV.NXT consistent.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2002,
+            ack=0x0000_0005,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._snd_una,
+            0x0000_0005,
+            msg=(
+                "Peer's in-window ACK at ack=0x05 with "
+                "SND.UNA=0xFFFF_FFFE and SND.MAX=0x10 in CLOSE_WAIT "
+                "MUST advance SND.UNA modularly to 0x05 per RFC "
+                "9293 §3.10.7.4. Current code's chained '<=' "
+                "rejects across the wrap. Fix: migrate "
+                "'_tcp_fsm_close_wait' (and the other half-close "
+                "handlers) to 'le32'."
+            ),
+        )
+
+
+class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
+    """
+    Tests for the receive-window acceptability check
+    ('RCV.NXT <= SEG.SEQ < RCV.NXT + RCV.WND') across the 32-bit
+    wrap. The right-edge expression 'self._rcv_nxt + self._rcv_wnd'
+    is raw Python addition that overflows past 2**32 when
+    'self._rcv_nxt' is near the wrap; the resulting comparison
+    rejects in-window segments whose seq numerically exceeds
+    2**32 even though they are modularly inside the window.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__receive_window_right_edge_across_wrap_accepts_segment(self) -> None:
+        """
+        Ensure that a peer data segment whose 'seq' lies modularly
+        within the receive window 'RCV.NXT <= SEQ < RCV.NXT +
+        RCV.WND' is accepted even when 'RCV.NXT + RCV.WND'
+        straddles the 32-bit wrap.
+
+        Setup: pre-position 'self._rcv_nxt = 0xFFFF_FFE0' and
+        leave 'self._rcv_wnd_max = 65535' (modular). The window
+        right edge is '0xFFFF_FFE0 + 0xFFFF = 0x1_0000_FFDF'
+        numerically, which Python represents as a 33-bit int -
+        the modular right edge wraps to '0x0000_FFDF'.
+
+        Peer sends a 50-byte segment at 'seq = 0x0000_0010'.
+        Modularly: 0x10 lies 0x30 bytes past RCV.NXT and well
+        within the 65535-byte window. RFC 9293 §3.10.7.4 says
+        the segment is acceptable.
+
+        Numerically: '0xFFFF_FFE0 <= 0x0000_0010' is False, so
+        the chained comparator
+        'self._rcv_nxt <= packet_rx_md.tcp__seq <= self._rcv_nxt +
+        self._rcv_wnd' rejects the segment as out-of-window.
+        Today's code drops it silently.
+
+        Assertions:
+
+            * After the segment arrives: 'session._rcv_nxt'
+              advances modularly to '0x0000_0010 + 50 = 0x0000_0042'.
+            * The segment's bytes appear in 'session._rx_buffer'.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_established' computes
+        'seg_end = packet_rx_md.tcp__seq + seg_len' and tests
+        'self._rcv_nxt + self._rcv_wnd' with raw Python addition,
+        then compares with raw '<' / '<='. Across the wrap this
+        family of expressions is wrong. The fix migrates each
+        right-edge expression to 'add32' and each comparator to
+        'lt32' / 'le32' / 'in_range32'.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0x0000_1000,
+            peer_iss=0x0000_2000,
+        )
+
+        # Pre-position RCV.NXT near the 32-bit ceiling so the
+        # window right edge straddles the wrap.
+        session._rcv_nxt = 0xFFFF_FFE0
+        session._rcv_una = 0xFFFF_FFE0
+        session._rcv_ini = 0xFFFF_FFE0
+
+        # Peer sends 50 bytes at seq 0x10 - modularly 0x30 bytes
+        # past RCV.NXT, well inside the window.
+        peer_payload = b"X" * 50
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_0010,
+            ack=0x0000_1001,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        self._drive_rx(frame=peer_data)
+
+        self.assertEqual(
+            session._rcv_nxt,
+            0x0000_0042,
+            msg=(
+                "An in-window peer data segment whose seq is "
+                "modularly past RCV.NXT but numerically below it "
+                "(due to RCV.NXT being near the 32-bit ceiling) "
+                "MUST be accepted and advance RCV.NXT modularly. "
+                "Current code's raw '<=' / '<' comparators in the "
+                "receive-window acceptability check reject the "
+                "segment because '0xFFFF_FFE0 <= 0x10' is False "
+                "numerically. Fix: migrate the receive-window "
+                "acceptability check (right-edge computation + "
+                "comparators) to 'add32' / 'in_range32' / "
+                "'le32' / 'lt32'."
+            ),
+        )
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            peer_payload,
+            msg="In-window data must be delivered to '_rx_buffer'.",
+        )
+
+
+class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
+    """
+    Tests for the FIN-ack '>=' check in the half-close states.
+    'self._snd_fin' is the seq number of the FIN segment we sent;
+    the handler tests 'tcp__ack >= self._snd_fin' to detect that
+    peer has cumulatively acked our FIN. The raw '>=' fails
+    across the wrap, so a wrap-spanning peer ACK that legitimately
+    covers our FIN is treated as not-yet-cum-acked and the FSM
+    fails to transition out of FIN_WAIT_1.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__fin_wait_1_fin_ack_across_wrap_transitions_to_fin_wait_2(self) -> None:
+        """
+        Ensure that when our FIN seq is near the 32-bit ceiling
+        and peer's cumulative ACK has wrapped past it, the
+        FIN_WAIT_1 handler recognises the FIN as ACKed and
+        transitions to FIN_WAIT_2.
+
+        Setup: drive to FIN_WAIT_1, pre-position '_snd_fin' near
+        the wrap, then deliver a peer ACK whose value is
+        modularly past '_snd_fin' but numerically below.
+
+        Scenario:
+
+            1. Drive a normal handshake to ESTABLISHED.
+            2. Application calls close(); we transition to
+               FIN_WAIT_1 and emit FIN.
+            3. Pre-position the session's send-sequence state:
+                 SND.FIN = 0xFFFF_FFFF
+                 SND.UNA = 0xFFFF_FFFE
+                 SND.MAX = 0x0000_0000  (post-wrap, 1 byte after FIN)
+               In modular terms our FIN occupies seq 0xFFFF_FFFF
+               and peer's expected ACK is 0x0000_0000.
+            4. Peer sends ACK at 'ack = 0x0000_0001' (covers FIN
+               plus one phantom byte modularly).
+            5. The FIN_WAIT_1 handler MUST recognise 'ack >=
+               SND.FIN' modularly and transition to FIN_WAIT_2.
+
+        Assertions:
+
+            * 'session.state is FsmState.FIN_WAIT_2' after the
+              ACK is processed.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_fin_wait_1' uses raw
+        '>=':
+
+            if packet_rx_md.tcp__ack >= self._snd_fin:
+                self._change_state(FsmState.FIN_WAIT_2)
+
+        With SND.FIN=0xFFFF_FFFF and ack=0x01, '0x01 >=
+        0xFFFF_FFFF' is numerically False. The transition does
+        not fire and the session sticks in FIN_WAIT_1 until RTO.
+        Same gap appears in 'FIN_WAIT_2' / 'CLOSING' transitions
+        that test 'ack >= SND.FIN'. Fix: migrate to
+        'ge32(packet_rx_md.tcp__ack, self._snd_fin)' from
+        'pytcp.lib.tcp_seq'.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0x0000_1000,
+            peer_iss=0x0000_2000,
+        )
+
+        # Drive close() - we send FIN, transition to FIN_WAIT_1.
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        assert session.state is FsmState.FIN_WAIT_1, f"Setup failed: expected FIN_WAIT_1, got {session.state!r}."
+
+        # Pre-position state so SND.FIN straddles the wrap. The
+        # FIN occupies 1 byte of seq space at SND.FIN; peer's
+        # expected ACK is SND.FIN + 1.
+        session._snd_fin = 0xFFFF_FFFF
+        session._snd_una = 0xFFFF_FFFE
+        session._snd_nxt = 0x0000_0000
+        session._snd_max = 0x0000_0000
+        session._tx_buffer_seq_mod = 0xFFFF_FFFE
+
+        # Peer ACK covers our FIN (and one byte past, modularly
+        # making the cum-ACK 0x01).
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2001,
+            ack=0x0000_0000,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg=(
+                "When peer's cum-ACK is modularly >= SND.FIN, "
+                "the FIN_WAIT_1 handler MUST transition to "
+                "FIN_WAIT_2. Current code's raw '>=' compares "
+                "0x00 >= 0xFFFF_FFFF numerically (False), so the "
+                "transition never fires near the wrap. Fix: "
+                "migrate to 'ge32' from 'pytcp.lib.tcp_seq'."
+            ),
+        )
