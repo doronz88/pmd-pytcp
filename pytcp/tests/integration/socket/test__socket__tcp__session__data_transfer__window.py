@@ -450,6 +450,12 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
+        # PyTCP defaults to advertising WSCALE on outbound SYN
+        # (RFC 7323 §2.2 / §2.3 throughput-friendly default).
+        # This test deliberately exercises the asymmetric-non-offer
+        # path, so opt out of advertising via the
+        # '_advertise_wscale' flag before driving CONNECT.
+        session._advertise_wscale = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         # Initial SYN fires on the first tick. Inspect it to confirm

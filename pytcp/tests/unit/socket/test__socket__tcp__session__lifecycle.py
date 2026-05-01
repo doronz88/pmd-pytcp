@@ -173,8 +173,13 @@ class TestTcpSessionInit(_TcpSessionFixture):
         )
         self.assertEqual(
             session._rcv_wsc,
-            0,
-            msg="TcpSession._rcv_wsc must default to 0 (no scaling).",
+            7,
+            msg=(
+                "TcpSession._rcv_wsc must default to 7 (the throughput-"
+                "friendly WSCALE shift advertised on outbound SYN per "
+                "RFC 7323 §2.2; matches the Linux/FreeBSD default and "
+                "yields a max advertised window of 65535 << 7 ~= 8 MB)."
+            ),
         )
         self.assertEqual(
             session._snd_mss,

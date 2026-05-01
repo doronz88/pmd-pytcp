@@ -235,8 +235,24 @@ class TcpSession:
         # 'recv()' (RFC 9293 §3.8.6).
         self._rcv_wnd_max: int = 65535
 
-        # Window scale.
-        self._rcv_wsc: int = 0
+        # Window scale advertised on outbound SYN / SYN+ACK per
+        # RFC 7323 §2.2. Default 7 yields a maximum advertised
+        # window of '65535 << 7 ~= 8 MB', matching the Linux /
+        # FreeBSD default. Set to 0 if the bilateral negotiation
+        # fails (peer didn't offer / we opted out via
+        # '_advertise_wscale = False'); the field is then both
+        # the wire-level shift count AND the post-handshake
+        # right-shift applied to the outbound 'win' field.
+        self._rcv_wsc: int = 7
+
+        # Whether to advertise WSCALE on this session's outbound
+        # SYN / SYN+ACK. Defaults True (the modern, throughput-
+        # friendly behaviour); test code or constrained-buffer
+        # profiles can opt out by setting False before CONNECT
+        # / LISTEN. When False, the bilateral-non-offer rule
+        # forces '_rcv_wsc = 0' on handshake completion so the
+        # post-handshake outbound 'win' is not shifted either.
+        self._advertise_wscale: bool = True
 
         ###
         # Sending window parameters.
@@ -576,6 +592,30 @@ class TcpSession:
         seq = seq if seq is not None else self._snd_nxt
         ack = self._rcv_nxt if flag_ack else 0
 
+        # WSCALE shift on outbound 'win' field per RFC 7323 §2.3:
+        # post-handshake segments use 'rcv_wnd >> rcv_wsc'; the
+        # SYN segment itself uses an unshifted value (RFC 7323
+        # §2.2's "WSopt is not used to scale the value in the
+        # window field of the SYN segment itself"). The SYN+ACK
+        # is also a "SYN segment" for this rule.
+        if flag_syn:
+            tcp__win = min(self._rcv_wnd, 0xFFFF)
+        else:
+            tcp__win = self._rcv_wnd >> self._rcv_wsc
+
+        # WSCALE option presence on outbound SYN / SYN+ACK is
+        # gated on '_advertise_wscale' per RFC 7323 §2.2's
+        # bilateral non-offer rule. The packet-handler TX path
+        # treats 'tcp__wscale=0' as "no option" (falsy guard),
+        # which is the bilateral-non-offer wire form.
+        tcp__wscale: int | None
+        if flag_syn and self._advertise_wscale:
+            tcp__wscale = self._rcv_wsc
+        elif flag_syn:
+            tcp__wscale = 0
+        else:
+            tcp__wscale = None
+
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -588,9 +628,9 @@ class TcpSession:
             tcp__flag_psh=flag_psh,
             tcp__seq=seq,
             tcp__ack=ack,
-            tcp__win=self._rcv_wnd,
+            tcp__win=tcp__win,
             tcp__mss=self._rcv_mss if flag_syn else None,
-            tcp__wscale=0 if flag_syn else None,
+            tcp__wscale=tcp__wscale,
             tcp__payload=data,
         )
         self._rcv_una = self._rcv_nxt
@@ -1104,14 +1144,6 @@ class TcpSession:
                     ),
                     tcp_session=self,
                 )
-                # Initialize session parameters. Per RFC 7323 §2.2,
-                # WSCALE is only legal when offered bilaterally - and
-                # PyTCP currently never advertises WSCALE on its own
-                # outbound SYN / SYN+ACK ('_transmit_packet' hard-codes
-                # 'tcp__wscale=0'), so any peer-advertised WSCALE on
-                # the inbound segment MUST be ignored. '_snd_wsc' stays
-                # at the no-scaling default of 0 and the peer's
-                # advertised window is applied raw.
                 # Clamp the effective send-MSS to RFC 879 / RFC 6691
                 # bounds: at most 'mtu - 40' (so we never fragment on
                 # the local link), at least 'TCP__MIN_MSS = 536' (the
@@ -1123,6 +1155,18 @@ class TcpSession:
                     min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
                 )
                 self._snd_wnd = packet_rx_md.tcp__win
+                # WSCALE bilateral negotiation per RFC 7323 §2.2:
+                # passive-open mirrors peer's offer. If peer's SYN
+                # carries WSCALE AND we are configured to advertise,
+                # store peer's wscale as '_snd_wsc' (we WILL emit
+                # WSCALE on the SYN+ACK we send next). Otherwise,
+                # both directions clear to 0 - peer's non-offer
+                # forces us to non-offer too.
+                if self._advertise_wscale and packet_rx_md.tcp__wscale:
+                    self._snd_wsc = packet_rx_md.tcp__wscale
+                else:
+                    self._rcv_wsc = 0
+                    self._snd_wsc = 0
                 self._rcv_ini = packet_rx_md.tcp__seq
                 self._snd_ewn = self._snd_mss
                 # Make note of the remote SEQ number, advancing past the
@@ -1206,14 +1250,6 @@ class TcpSession:
         ):
             # Packet sanity check.
             if packet_rx_md.tcp__ack == self._snd_nxt and not packet_rx_md.tcp__data:
-                # Initialize session parameters. Per RFC 7323 §2.2,
-                # WSCALE is only legal when offered bilaterally - and
-                # PyTCP currently never advertises WSCALE on its own
-                # outbound SYN / SYN+ACK ('_transmit_packet' hard-codes
-                # 'tcp__wscale=0'), so any peer-advertised WSCALE on
-                # the inbound segment MUST be ignored. '_snd_wsc' stays
-                # at the no-scaling default of 0 and the peer's
-                # advertised window is applied raw.
                 # Clamp the effective send-MSS to RFC 879 / RFC 6691
                 # bounds: at most 'mtu - 40' (so we never fragment on
                 # the local link), at least 'TCP__MIN_MSS = 536' (the
@@ -1224,6 +1260,12 @@ class TcpSession:
                     TCP__MIN_MSS,
                     min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
                 )
+                # Initial '_snd_wnd' = peer's literal SYN+ACK win
+                # (unshifted per RFC 7323 §2.2 - "WSopt is not used
+                # to scale the value in the window field of the SYN
+                # segment itself"). Subsequent post-handshake
+                # segments will be shifted by '_snd_wsc' inside
+                # '_process_ack_packet'.
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
                 # Bootstrap RCV.NXT from peer's ISN before
@@ -1239,8 +1281,24 @@ class TcpSession:
                     len(packet_rx_md.tcp__data),
                 )
                 self._snd_ewn = self._snd_mss
-                # Process ACK packet.
+                # Process ACK packet (uses '_snd_wsc=0' still, so
+                # the SYN+ACK's win is preserved unshifted).
                 self._process_ack_packet(packet_rx_md)
+                # WSCALE bilateral negotiation per RFC 7323 §2.2:
+                # store peer's wscale only if WE offered our own.
+                # The check 'packet_rx_md.tcp__wscale != 0' is the
+                # parser's way of signalling the option was present
+                # on the wire (the parser substitutes 0 when the
+                # option is absent via 'TcpOptions.wscale or 0').
+                # Set '_snd_wsc' AFTER '_process_ack_packet' so the
+                # SYN+ACK's literal 'win' value is used unshifted
+                # per scenario #6's invariant.
+                if self._advertise_wscale and packet_rx_md.tcp__wscale:
+                    self._snd_wsc = packet_rx_md.tcp__wscale
+                else:
+                    # Bilateral non-offer: no scaling on either side.
+                    self._rcv_wsc = 0
+                    self._snd_wsc = 0
                 # Send initial ACK packet.
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(

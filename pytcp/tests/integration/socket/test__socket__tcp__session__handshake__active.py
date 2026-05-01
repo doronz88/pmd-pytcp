@@ -221,8 +221,8 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ack=0,
             payload=b"",
             mss=1460,  # RFC 6691 - MTU(1500) - IPv4 hdr(20) - TCP hdr(20).
-            wscale=None,  # No WSCALE option on the wire ('_phtx_tcp' guards on truthy wscale, so 0 omits the option).
-            win=65535,
+            wscale=7,  # PyTCP's default WSCALE shift; advertised on outbound SYN per RFC 7323 §2.2.
+            win=65535,  # SYN's own win is unshifted per RFC 7323 §2.2.
         )
         self.assertEqual(
             session._snd_nxt,

@@ -42,6 +42,7 @@ from net_proto import (
     TcpOptionWscale,
     Tracker,
 )
+from net_proto.protocols.tcp.options.tcp__option import TcpOption
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -118,22 +119,31 @@ class PacketHandlerTcpTx(ABC):
 
         self._packet_stats_tx.tcp__pre_assemble += 1
 
-        # TODO: This code does not seem to be correct,
-        # need to ba able to stack options.
-
-        options = TcpOptions()
+        # Build the option list cumulatively so multiple options
+        # can co-exist on the wire (an MSS-only SYN, a WSCALE-only
+        # SYN, or - the canonical post-WSCALE-implementation case -
+        # a SYN carrying BOTH MSS and WSCALE). The previous
+        # write-then-overwrite pattern broke the dual-option case
+        # by losing the MSS when WSCALE was also requested. Pad
+        # with NOPs at the end so the total option block length
+        # is a multiple of 4 bytes (TCP requires 4-byte alignment
+        # of the data offset).
+        opts: list[TcpOption] = []
 
         if tcp__mss:
             self._packet_stats_tx.tcp__opt_mss += 1
-            options = TcpOptions(TcpOptionMss(mss=tcp__mss))
+            opts.append(TcpOptionMss(mss=tcp__mss))
 
         if tcp__wscale:
             self._packet_stats_tx.tcp__opt_nop += 1
             self._packet_stats_tx.tcp__opt_wscale += 1
-            options = TcpOptions(
-                TcpOptionNop(),
-                TcpOptionWscale(wscale=tcp__wscale),
-            )
+            opts.append(TcpOptionNop())
+            opts.append(TcpOptionWscale(wscale=tcp__wscale))
+
+        pad_count = (-sum(len(opt) for opt in opts)) % 4
+        opts.extend(TcpOptionNop() for _ in range(pad_count))
+
+        options = TcpOptions(*opts)
 
         tcp_packet_tx = TcpAssembler(
             tcp__sport=tcp__sport,
