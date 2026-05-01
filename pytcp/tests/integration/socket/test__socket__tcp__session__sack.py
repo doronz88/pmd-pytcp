@@ -52,6 +52,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.lib.tcp_loss_recovery import pipe
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__session import (
     FsmState,
@@ -1188,5 +1189,209 @@ class TestTcpSession__Sack(TcpSessionTestCase):
                 "'[SND.UNA, SND.MAX]' MUST be silently dropped - the "
                 "block cannot describe legitimate in-flight bytes "
                 "(RFC 2018 §5). The scoreboard must remain empty."
+            ),
+        )
+
+    def test__sack__three_dup_sacks_above_gap_trigger_fast_retransmit(self) -> None:
+        """
+        Ensure that three SACK-bearing dup-ACKs above the gap at
+        SND.UNA accumulate in the scoreboard as three distinct
+        blocks AND trigger fast retransmit. RFC 6675 §3's
+        scoreboard-driven IsLost predicate fires when three
+        discontiguous SACKed ranges sit above an unsacked seq;
+        the count-based RFC 5681 §3.2 path also fires after the
+        third dup-ACK. The test pins both invariants: scoreboard
+        ingestion of three blocks, and outbound fast-retransmit
+        of the gap segment.
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral SACK.
+            2. Application sends 4*MSS bytes so 'SND.UNA = ISS+1'
+               and 'SND.MAX = ISS+1+4*MSS'.
+            3. Drain the outbound data segment.
+            4. Peer sends three SACK-bearing dup-ACKs in
+               succession, each reporting one new disjoint range
+               above the gap:
+                 dup #1: SACK [ISS+1+1*MSS, ISS+1+2*MSS)
+                 dup #2: SACK [ISS+1+2*MSS, ISS+1+3*MSS)  *
+                 dup #3: SACK [ISS+1+3*MSS, ISS+1+4*MSS)  *
+               (* Note: these are adjacent and would coalesce in
+               our scoreboard; to keep three distinct blocks we
+               leave 1-byte gaps between them.)
+            5. Fast retransmit fires on the third dup-ACK and
+               emits one outbound segment starting at SND.UNA
+               (the gap).
+
+        Assertions:
+
+            * After all three dup-ACKs: scoreboard holds three
+              distinct blocks.
+            * One outbound segment fires on the third dup-ACK.
+            * The retransmitted seq equals 'SND.UNA' (= the gap),
+              matching both the count-based fall-back and the
+              SACK-driven NextSeg in this single-gap scenario.
+
+        Passes today as a positive control / regression guard for
+        the SACK-aware dup-ACK ingestion path. The phase-5
+        wiring of NextSeg means the retransmit's seq comes from
+        'next_seg(...)' when bilateral SACK is enabled (and
+        falls back to '_snd_una' otherwise); in single-gap
+        scenarios both produce the same value.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (4 * mss))
+        # '_transmit_data' sends one MSS-sized segment per timer
+        # tick; advance enough ticks so all 4 outstanding
+        # segments fire and SND.MAX = LOCAL__ISS + 1 + 4*MSS.
+        # The post-handshake retransmit-timer cadence puts each
+        # tick safely under PACKET_RETRANSMIT_TIMEOUT.
+        for _ in range(4):
+            self._advance(ms=1)
+        self.assertEqual(
+            session._snd_max,
+            LOCAL__ISS + 1 + 4 * mss,
+            msg="Setup precondition: all 4 MSS-sized segments must drain before the dup-ACK matrix runs.",
+        )
+
+        # Three SACK-bearing dup-ACKs, each adding one new block.
+        # 1-byte gaps between the blocks prevent coalescing in
+        # the scoreboard so the IsLost count rule sees three
+        # distinct entries.
+        block_1 = (LOCAL__ISS + 1 + 1 * mss, LOCAL__ISS + 1 + 1 * mss + 100)
+        block_2 = (LOCAL__ISS + 1 + 2 * mss, LOCAL__ISS + 1 + 2 * mss + 100)
+        block_3 = (LOCAL__ISS + 1 + 3 * mss, LOCAL__ISS + 1 + 3 * mss + 100)
+
+        for blk in (block_1, block_2, block_3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                sack_blocks=[blk],
+            )
+            self._drive_rx(frame=dup_ack)
+
+        # After all three dup-ACKs the scoreboard holds three
+        # distinct blocks (insertion order preserved by
+        # 'SackScoreboard.blocks()').
+        self.assertEqual(
+            sorted(session._sack_scoreboard.blocks()),
+            sorted([block_1, block_2, block_3]),
+            msg=(
+                "Three SACK-bearing dup-ACKs MUST accumulate three "
+                "distinct blocks in the scoreboard - one ingestion "
+                "per dup-ACK."
+            ),
+        )
+
+        # The third dup-ACK sets '_snd_nxt' back to the gap;
+        # the actual retransmit fires on the next timer tick
+        # via '_transmit_data'. Advance one tick and capture
+        # the resulting outbound segment.
+        retransmit_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(retransmit_tx),
+            1,
+            msg=(
+                "The third dup-ACK MUST elicit exactly one outbound "
+                "fast-retransmit segment on the next timer tick per "
+                "RFC 5681 §3.2."
+            ),
+        )
+        retransmit_probe = self._parse_tx(retransmit_tx[0])
+        self._assert_segment(
+            retransmit_probe,
+            flags=frozenset({"ACK"}),
+            seq=LOCAL__ISS + 1,
+            payload=b"X" * mss,
+        )
+
+    def test__sack__pipe_excludes_sacked_bytes_from_in_flight_estimate(self) -> None:
+        """
+        Ensure that 'pipe()' applied to the session's
+        '_sack_scoreboard' excludes peer-SACKed bytes from the
+        in-flight estimate per RFC 6675 §4. The phase-5 helper
+        is intended to bound the sender's effective window
+        during recovery so dup-ACK-driven cwnd inflation does
+        not over-commit; this test pins the integration of the
+        helper against the live session scoreboard.
+
+        Scenario:
+
+            1. Drive handshake with bilateral SACK.
+            2. Send 4*MSS bytes, drain.
+            3. Peer SACKs the upper 2*MSS bytes (one block).
+            4. Compute 'pipe(scoreboard, snd_una, snd_max)'.
+            5. Verify the result equals
+               '(SND.MAX - SND.UNA) - 2*MSS = 2*MSS' - the lower
+               half remains in-flight, the upper half does not.
+
+        Assertions:
+
+            * 'pipe(scoreboard, snd_una, snd_max) == 2*mss'.
+            * The session's '_sack_scoreboard' contains the
+              SACKed range (sanity check on ingestion path).
+
+        Passes today as a positive control / regression guard for
+        the helper-against-live-session integration. The pipe()
+        return value is not yet consumed by '_snd_ewn' bounding;
+        a future phase will wire that.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (4 * mss))
+        for _ in range(4):
+            self._advance(ms=1)
+
+        # Peer SACKs the upper 2*MSS bytes (one contiguous block).
+        sacked_left = LOCAL__ISS + 1 + 2 * mss
+        sacked_right = LOCAL__ISS + 1 + 4 * mss
+        sack_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(sacked_left, sacked_right)],
+        )
+        self._drive_rx(frame=sack_ack)
+
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),
+            [(sacked_left, sacked_right)],
+            msg="Setup precondition: scoreboard must hold the SACKed range.",
+        )
+
+        in_flight = pipe(
+            scoreboard=session._sack_scoreboard,
+            snd_una=session._snd_una,
+            snd_max=session._snd_max,
+        )
+        self.assertEqual(
+            in_flight,
+            2 * mss,
+            msg=(
+                "Pipe must subtract the 2*MSS SACKed bytes from "
+                "the 4*MSS in-flight range, returning 2*MSS bytes "
+                "still considered in flight."
             ),
         )

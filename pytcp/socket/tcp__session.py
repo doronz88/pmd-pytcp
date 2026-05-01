@@ -45,6 +45,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
+from pytcp.lib.tcp_loss_recovery import next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import add32, gt32, in_range32, le32, lt32
 
@@ -1046,7 +1047,29 @@ class TcpSession:
         # ...) inflate cwnd per RFC 5681 §3.2 step 4, but MUST NOT
         # cause the lost segment to be retransmitted again.
         if self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3:
-            self._snd_nxt = self._snd_una
+            # RFC 6675 §3 NextSeg() chooses the smallest unsacked
+            # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
+            # lost. When bilateral SACK is enabled and the
+            # scoreboard's contents satisfy IsLost, NextSeg
+            # returns the actual gap; in single-gap scenarios
+            # this equals 'SND.UNA' (matching the count-based
+            # path), but the SACK-driven choice scales to multi-
+            # gap recovery in future work. When SACK is
+            # disabled or the scoreboard is below IsLost
+            # thresholds, fall back to '_snd_una' so the
+            # count-based RFC 5681 path remains intact for
+            # non-SACK peers.
+            ns = (
+                next_seg(
+                    scoreboard=self._sack_scoreboard,
+                    snd_una=self._snd_una,
+                    snd_max=self._snd_max,
+                    mss=self._snd_mss,
+                )
+                if self._send_sack
+                else None
+            )
+            self._snd_nxt = ns if ns is not None else self._snd_una
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Got retransmit request, sending segment "
