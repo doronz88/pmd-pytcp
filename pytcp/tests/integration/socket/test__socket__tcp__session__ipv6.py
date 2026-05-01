@@ -63,6 +63,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     STACK__IP6_HOST,
 )
+from pytcp.tests.lib.tcp_segment_factory import build_tcp6
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
 # Deterministic IPv6 addressing.
@@ -224,4 +225,257 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             session.state,
             FsmState.SYN_SENT,
             msg="State must be SYN_SENT after the outbound SYN fires.",
+        )
+
+    def test__ipv6__active_handshake_completes_to_established_with_ipv6_correct_snd_mss(self) -> None:
+        """
+        Ensure that the canonical active-open three-way handshake
+        completes to ESTABLISHED over the IPv6 carrier and that the
+        post-handshake '_snd_mss' is calibrated against the IPv6-
+        correct overhead (mtu - 60), not the IPv4 value (mtu - 40).
+
+        Scenario:
+
+            1. Build an IPv6 session and emit our outbound SYN.
+            2. Peer replies with a SYN+ACK over IPv6, carrying a
+               jumbo MSS=9000 to exercise the upper-bound clamp.
+            3. Drive RX. Handshake completes to ESTABLISHED.
+
+        Assertions:
+
+            * State is ESTABLISHED.
+            * '_snd_mss' is clamped to '1500 - 60 = 1440' - the
+              IPv6 correct value, NOT 1460 (the IPv4 value the
+              old code would have produced).
+            * 'RCV.NXT' has advanced past peer's SYN's one byte.
+
+        This test passes after the IPv6-MSS-overhead fix from commit
+        'ba4c624'; on the prior code it would have asserted
+        '_snd_mss == 1460' and the IPv6 over-clamp bug would have
+        gone undetected for the active-open path. Locks in the
+        post-handshake correctness as a regression guard.
+        """
+
+        session = self._make_active_session_ip6(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="IPv6 active handshake must complete to ESTABLISHED.",
+        )
+        self.assertEqual(
+            session._snd_mss,
+            1500 - 60,
+            msg=(
+                "Post-handshake '_snd_mss' on an IPv6 session must "
+                "be 'mtu - 60 = 1440' (peer offered 9000, clamped "
+                "down by our local IPv6 ceiling). Catching 1460 "
+                "here would mean the IPv4-overhead clamp leaked "
+                "into the IPv6 path."
+            ),
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 1,
+            msg="'RCV.NXT' must advance past peer's SYN's one byte of sequence space.",
+        )
+
+    def test__ipv6__data_transfer_round_trip(self) -> None:
+        """
+        Ensure that bidirectional data transfer over an IPv6 ESTABLISHED
+        session works end-to-end: application 'send()' produces an
+        IPv6/TCP frame at the correct seq, peer's data segment is
+        delivered to '_rx_buffer'.
+
+        Scenario:
+
+            1. Drive IPv6 active handshake to ESTABLISHED. Pre-set
+               '_snd_ewn = PEER__WIN' so the send is unconstrained.
+            2. Application sends 'b"ipv6-hello"' (10 bytes).
+            3. Tick once: outbound IPv6/TCP segment fires.
+            4. Peer sends 5 bytes 'b"world"' as a data segment.
+            5. Drive RX. Bytes are enqueued into '_rx_buffer'.
+
+        Assertions:
+
+            * Outbound segment is IPv6 (sanity), seq=LOCAL__ISS+1,
+              payload=b"ipv6-hello".
+            * '_rx_buffer' contains b"world" after peer's segment.
+            * 'RCV.NXT' advanced by 5.
+
+        Positive control regression guard for IPv6 data-transfer.
+        """
+
+        session = self._make_active_session_ip6(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        session._snd_ewn = PEER__WIN
+
+        # Application send.
+        outbound_payload = b"ipv6-hello"
+        session.send(data=outbound_payload)
+        send_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(send_tx),
+            1,
+            msg="Application send() must produce exactly one outbound segment.",
+        )
+        outbound_probe = self._parse_tx(send_tx[0])
+        self.assertIsInstance(
+            outbound_probe.ip_src,
+            Ip6Address,
+            msg="Outbound data segment must be carried over IPv6.",
+        )
+        self._assert_segment(
+            outbound_probe,
+            seq=LOCAL__ISS + 1,
+            payload=outbound_payload,
+        )
+
+        # Peer data.
+        inbound_payload = b"world"
+        peer_data = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(outbound_payload),
+            flags=("ACK", "PSH"),
+            win=PEER__WIN,
+            payload=inbound_payload,
+        )
+        self._drive_rx(frame=peer_data)
+
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            inbound_payload,
+            msg="Peer's data must be delivered to '_rx_buffer' over IPv6.",
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 1 + len(inbound_payload),
+            msg="'RCV.NXT' must advance by len(inbound_payload).",
+        )
+
+    def test__ipv6__active_close_walks_through_fin_wait_1_2_time_wait(self) -> None:
+        """
+        Ensure the canonical active-close 4-way handshake walks
+        ESTABLISHED -> FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT over
+        the IPv6 carrier with the same wire-level shape as the
+        IPv4 case (just on the v6 transport).
+
+        Same trajectory as 'close__normal.py' scenario #1 but on
+        IPv6 to lock in IP-version-agnostic close handling.
+
+        Scenario:
+
+            1. Drive IPv6 active handshake to ESTABLISHED.
+            2. close() then tick (transition) + tick (FIN+ACK fires).
+            3. Peer ACKs our FIN; state -> FIN_WAIT_2.
+            4. Peer FIN+ACK; state -> TIME_WAIT.
+
+        Assertions:
+
+            * Each outbound segment is carried over IPv6 (sanity).
+            * State transitions match the IPv4 canonical sequence.
+            * Final ACK in response to peer's FIN has 'ack =
+              PEER__ISS + 2' (covering peer's FIN byte).
+
+        Positive control regression guard for IPv6 close-path.
+        """
+
+        session = self._make_active_session_ip6(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        self.assertIs(session.state, FsmState.ESTABLISHED)
+
+        # close + tick (transition) + tick (FIN+ACK fires).
+        session.close()
+        self._advance(ms=1)
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(len(fin_tx), 1, msg="FIN+ACK must fire on second tick.")
+        fin_probe = self._parse_tx(fin_tx[0])
+        self.assertIsInstance(
+            fin_probe.ip_src,
+            Ip6Address,
+            msg="Outbound FIN+ACK must be carried over IPv6.",
+        )
+        self.assertIn("FIN", fin_probe.flags, msg="FIN flag must be set.")
+
+        # Peer ACKs our FIN -> FIN_WAIT_2.
+        peer_ack_of_fin = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        self.assertIs(session.state, FsmState.FIN_WAIT_2)
+
+        # Peer FIN+ACK -> TIME_WAIT, we emit the final ACK.
+        peer_fin = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        final_ack_tx = self._drive_rx(frame=peer_fin)
+        self.assertEqual(
+            len(final_ack_tx),
+            1,
+            msg="Peer FIN+ACK in FIN_WAIT_2 must elicit one final ACK.",
+        )
+        final_ack_probe = self._parse_tx(final_ack_tx[0])
+        self.assertIsInstance(
+            final_ack_probe.ip_src,
+            Ip6Address,
+            msg="Final ACK must be carried over IPv6.",
+        )
+        self._assert_segment(
+            final_ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=LOCAL__ISS + 2,
+            ack=PEER__ISS + 2,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg="State must be TIME_WAIT after peer's FIN+ACK in FIN_WAIT_2.",
         )
