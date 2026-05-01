@@ -45,6 +45,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
+from pytcp.lib.tcp_seq import add32, gt32, in_range32, le32, lt32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -415,9 +416,18 @@ class TcpSession:
     def _tx_buffer_nxt(self) -> int:
         """
         Get the 'snd_nxt' number relative to TX buffer.
+
+        Uses modular subtraction (RFC 9293 §3.4) so the returned
+        offset is correct across the 32-bit wrap. Plain integer
+        subtraction yields a large negative when 'snd_nxt' has
+        wrapped past 'tx_buffer_seq_mod' (e.g. snd_nxt=3,
+        seq_mod=0xFFFF_FFFF -> raw diff=-0xFFFF_FFFC, modular
+        diff=4); the legacy 'max(diff, 0)' clamp would then
+        wrongly yield 0 and the next 'transmit_data' call would
+        try to re-send the already-sent prefix.
         """
 
-        return max(self._snd_nxt - self._tx_buffer_seq_mod, 0)
+        return (self._snd_nxt - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
 
     @property
     def _tx_buffer_una(self) -> int:
@@ -425,7 +435,7 @@ class TcpSession:
         Get the 'snd_una' number relative to TX buffer.
         """
 
-        return max(self._snd_una - self._tx_buffer_seq_mod, 0)
+        return (self._snd_una - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
 
     def listen(self) -> None:
         """
@@ -584,8 +594,16 @@ class TcpSession:
             tcp__payload=data,
         )
         self._rcv_una = self._rcv_nxt
-        self._snd_nxt = seq + len(data) + flag_syn + flag_fin
-        self._snd_max = max(self._snd_max, self._snd_nxt)
+        # Per RFC 9293 §3.4 sequence numbers are 32-bit modular -
+        # use 'add32' (variadic) for the post-segment SND.NXT
+        # update so the value remains within the 32-bit unsigned
+        # range past the wrap.
+        self._snd_nxt = add32(seq, len(data), flag_syn, flag_fin)
+        # Modular 'max': SND.MAX advances iff SND.NXT is "ahead"
+        # of it in the modular 32-bit sense. Plain 'max()' would
+        # use numerical order, which is wrong across the wrap.
+        if lt32(self._snd_max, self._snd_nxt):
+            self._snd_max = self._snd_nxt
         self._tx_buffer_seq_mod += flag_syn + flag_fin
 
         # In case packet caries FIN flag make note of its SEQ number.
@@ -651,11 +669,17 @@ class TcpSession:
         # peer to reopen the window or for RTO to fire, and let
         # the normal retransmit machinery cover the unacknowledged
         # bytes within SND.UNA..SND.UNA+SND.WND.
-        if not (self._snd_una <= self._snd_nxt <= self._snd_una + self._snd_ewn):
+        # Modular window-edge check (RFC 9293 §3.4): SND.NXT must
+        # fall within the closed interval [SND.UNA, SND.UNA+SND.EWN]
+        # in modular 32-bit space. Plain '<=' chained comparison
+        # would wrongly reject a SND.NXT that has wrapped past
+        # SND.UNA but is still in-window.
+        right_edge = add32(self._snd_una, self._snd_ewn)
+        if not in_range32(self._snd_nxt, self._snd_una, right_edge):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Peer-shrunk usable window: SND.NXT={self._snd_nxt} "
-                f"is outside [{self._snd_una}, {self._snd_una + self._snd_ewn}]; "
+                f"is outside [{self._snd_una}, {right_edge}]; "
                 "deferring further transmission until peer reopens or RTO fires",
             )
             return
@@ -878,10 +902,14 @@ class TcpSession:
         """
 
         # Make note of the local SEQ that has been acked by peer.
-        self._snd_una = max(self._snd_una, packet_rx_md.tcp__ack)
+        # Modular 'max': SND.UNA advances iff peer's ack is
+        # "ahead" of it in the 32-bit modular sense. Plain 'max()'
+        # uses numerical order, which is wrong across the wrap.
+        if lt32(self._snd_una, packet_rx_md.tcp__ack):
+            self._snd_una = packet_rx_md.tcp__ack
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
-        if self._snd_nxt < self._snd_una <= self._snd_max:
+        if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):
             self._snd_nxt = self._snd_una
         # Update the next-expected receive sequence number, with two
         # protections drawn from RFC 9293 §3.4 / §3.10.7.4:
@@ -894,14 +922,27 @@ class TcpSession:
         #      enqueue path below can slice them off and avoid
         #      double-delivering bytes the application has already
         #      seen on a previous segment.
-        seg_end = (
-            packet_rx_md.tcp__seq
-            + len(packet_rx_md.tcp__data)
-            + packet_rx_md.tcp__flag_syn
-            + packet_rx_md.tcp__flag_fin
+        # Modular 'seg_end' computation per RFC 9293 §3.4: each
+        # operand contributes one or more sequence numbers, and
+        # the sum wraps modulo 2**32.
+        seg_end = add32(
+            packet_rx_md.tcp__seq,
+            len(packet_rx_md.tcp__data),
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_fin,
         )
-        overlap_prefix = max(0, self._rcv_nxt - packet_rx_md.tcp__seq)
-        self._rcv_nxt = max(self._rcv_nxt, seg_end)
+        # Modular overlap-prefix: how many bytes at the front of
+        # this segment we have already received (RCV.NXT - seq,
+        # in modular 32-bit space; clamped to 0 if the segment is
+        # entirely new).
+        if lt32(packet_rx_md.tcp__seq, self._rcv_nxt):
+            overlap_prefix = (self._rcv_nxt - packet_rx_md.tcp__seq) & 0xFFFF_FFFF
+        else:
+            overlap_prefix = 0
+        # Modular 'max' on RCV.NXT: advance iff the segment's end
+        # is ahead of our current RCV.NXT in modular order.
+        if lt32(self._rcv_nxt, seg_end):
+            self._rcv_nxt = seg_end
         # In case packet contains data enqueue it. RFC 1122 §4.2.3.2 governs
         # how we acknowledge it: count pending unacked segments since the
         # last ACK, force an inline ACK once two segments are pending
@@ -1185,6 +1226,18 @@ class TcpSession:
                 )
                 self._snd_wnd = packet_rx_md.tcp__win
                 self._rcv_ini = packet_rx_md.tcp__seq
+                # Bootstrap RCV.NXT from peer's ISN before
+                # '_process_ack_packet' runs - the modular 'max'
+                # inside that helper cannot bootstrap from
+                # uninitialized 'rcv_nxt = 0' to a peer ISN near
+                # the 32-bit wrap (modular distance 0 -> high seq
+                # goes the "wrong way"). Mirror the passive-open
+                # path's explicit assignment.
+                self._rcv_nxt = add32(
+                    packet_rx_md.tcp__seq,
+                    packet_rx_md.tcp__flag_syn,
+                    len(packet_rx_md.tcp__data),
+                )
                 self._snd_ewn = self._snd_mss
                 # Process ACK packet.
                 self._process_ack_packet(packet_rx_md)
@@ -1448,7 +1501,12 @@ class TcpSession:
                 return
             # Packet with higher SEQ than what we are expecting -> Store it and
             # send 'fast retransmit' request (don't send more than two).
-            if packet_rx_md.tcp__seq > self._rcv_nxt and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
+            # Modular comparators per RFC 9293 §3.4.
+            if (
+                gt32(packet_rx_md.tcp__seq, self._rcv_nxt)
+                and le32(self._snd_una, packet_rx_md.tcp__ack)
+                and le32(packet_rx_md.tcp__ack, self._snd_max)
+            ):
                 self._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
                 self._rx_retransmit_request_counter[self._rcv_nxt] = (
                     self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
@@ -1463,24 +1521,34 @@ class TcpSession:
             # RCV.NXT < SEG.SEQ + SEG.LEN', covering retransmits whose
             # tail extends past RCV.NXT) per RFC 9293 §3.10.7.4. The
             # already-received prefix of an overlap segment is sliced
-            # off inside '_process_ack_packet'.
+            # off inside '_process_ack_packet'. All seq/ack
+            # comparisons are modular per RFC 9293 §3.4.
             seg_seq = packet_rx_md.tcp__seq
-            seg_end = seg_seq + len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
+            seg_end = add32(
+                seg_seq,
+                len(packet_rx_md.tcp__data),
+                packet_rx_md.tcp__flag_syn,
+                packet_rx_md.tcp__flag_fin,
+            )
             in_order = seg_seq == self._rcv_nxt
-            overlap_with_new = seg_seq < self._rcv_nxt < seg_end
-            if (in_order or overlap_with_new) and self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max:
+            overlap_with_new = lt32(seg_seq, self._rcv_nxt) and lt32(self._rcv_nxt, seg_end)
+            if (
+                (in_order or overlap_with_new)
+                and le32(self._snd_una, packet_rx_md.tcp__ack)
+                and le32(packet_rx_md.tcp__ack, self._snd_max)
+            ):
                 self._process_ack_packet(packet_rx_md)
                 return
             # RFC 9293 §3.10.7.4: an unacceptable ACK (acknowledging
-            # data we have never sent, i.e. ACK > SND.MAX) must elicit
-            # an empty-ACK reply containing our current SND.NXT and
-            # RCV.NXT, and the offending segment is discarded; the
-            # connection state is unchanged. This catches forged or
-            # stale ACKs that none of the inner branches above match.
-            # (ACK < SND.UNA is a stale duplicate per RFC §3.10.7.4
-            # and is silently discarded - the existing fall-through
-            # handles that path.)
-            if packet_rx_md.tcp__ack > self._snd_max:
+            # data we have never sent, i.e. ACK > SND.MAX modularly)
+            # must elicit an empty-ACK reply containing our current
+            # SND.NXT and RCV.NXT, and the offending segment is
+            # discarded; the connection state is unchanged. This
+            # catches forged or stale ACKs that none of the inner
+            # branches above match. (ACK < SND.UNA is a stale
+            # duplicate per RFC §3.10.7.4 and is silently discarded
+            # - the existing fall-through handles that path.)
+            if gt32(packet_rx_md.tcp__ack, self._snd_max):
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(
                     "tcp-ss",
