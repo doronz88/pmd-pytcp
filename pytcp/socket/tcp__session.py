@@ -334,10 +334,22 @@ class TcpSession:
         # Maximum segment size.
         self._snd_mss: int = 536
 
-        # Window size.
+        # Peer-advertised receive window. Initialised to one SMSS
+        # (not 0, not 65535) so the conservative-start path can
+        # emit a single segment before peer's first ACK reveals
+        # the real window size. Updated to peer's advertised value
+        # (shifted by '_snd_wsc' once WSCALE negotiation finishes)
+        # in '_process_ack_packet'.
         self._snd_wnd: int = self._snd_mss
 
-        # Effective window size, used as simple congestion management mechanism.
+        # Effective send window - PyTCP's simplified congestion-
+        # control variable that conflates RFC 5681 cwnd and
+        # ssthresh. Doubles on each cum-ACK in
+        # '_process_ack_packet' (slow-start reuse, no congestion-
+        # avoidance phase) and is reset to one SMSS on RTO in
+        # '_retransmit_packet_timeout'. The min() clamp against
+        # '_snd_wnd' enforces the receiver-imposed flow-control
+        # ceiling.
         self._snd_ewn: int = self._snd_mss
 
         # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
@@ -353,9 +365,16 @@ class TcpSession:
         self._snd_sml: Seq32 = self._snd_ini
 
         # Zero-window persist timer state per RFC 9293 §3.8.6.1.
-        # '_persist_active' indicates whether the persist timer is currently
-        # running; '_persist_timeout' tracks the current back-off interval
-        # (initial = PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
+        # '_persist_active' is the sentinel that tells the timer
+        # branch in '_tcp_fsm_established' whether a persist probe
+        # is scheduled. False means "no probe pending" (we last
+        # saw a non-zero peer window); True means "armed and
+        # counting down toward the next zero-window probe". The
+        # flag flips True when peer advertises 'tcp__win == 0' on
+        # an ACK while we still have data to send; it flips False
+        # when peer reopens the window. '_persist_timeout' carries
+        # the current back-off interval (initial =
+        # PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
         # PERSIST_TIMEOUT_MAX).
         self._persist_active: bool = False
         self._persist_timeout: int = PACKET_RETRANSMIT_TIMEOUT
@@ -389,7 +408,13 @@ class TcpSession:
         # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED
 
-        # Used to inform CONNECT syscall that connection related event happened.
+        # Wakes the blocked CONNECT syscall once the FSM has reached
+        # a terminal handshake outcome (ESTABLISHED, refused, or
+        # timed out). 'Semaphore(0)' rather than 'threading.Event'
+        # because we want the wake-up to be one-shot per CONNECT
+        # call: 'Event' stays set, so a second CONNECT would
+        # observe a stale signal; 'Semaphore' counts releases and
+        # acquires, naturally consuming the signal.
         self._event__connect: Semaphore = threading.Semaphore(0)
 
         # Used to inform RECV syscall that there is new data in buffer ready
@@ -591,10 +616,13 @@ class TcpSession:
             rx_buffer = self._rx_buffer[:byte_count]
             del self._rx_buffer[:byte_count]
 
-            # Clear the event only when the buffer is fully drained AND
-            # the remote end is still open; otherwise leave it set so the
-            # next receive() either picks up leftover data or returns the
-            # EOF empty-bytes signal without blocking.
+            # Clear the event only when the buffer is fully drained
+            # AND the remote end is still open. When the remote
+            # closed (CLOSE_WAIT or CLOSED), leave the event set so
+            # the next 'receive()' returns 'b""' immediately - the
+            # BSD-socket EOF semantics, where a connection-closed
+            # state must be re-readable as zero bytes without
+            # blocking the caller.
             if not self._rx_buffer and self._state not in {
                 FsmState.CLOSE_WAIT,
                 FsmState.CLOSED,
@@ -719,6 +747,14 @@ class TcpSession:
             tcp__sack_blocks=tcp__sack_blocks,
             tcp__payload=data,
         )
+        # Mark RCV.UNA = RCV.NXT: the segment we just emitted
+        # acknowledged everything up to RCV.NXT (via the piggybacked
+        # 'ack' field if 'flag_ack' is set, or trivially otherwise),
+        # so there is no longer any pending RX byte the peer is
+        # unaware we received. '_delayed_ack' uses the
+        # 'RCV.UNA != RCV.NXT' inequality as the gate for firing the
+        # next delayed ACK; resetting them to equal here disarms
+        # that gate until the next inbound data segment.
         self._rcv_una = self._rcv_nxt
         # Per RFC 9293 §3.4 sequence numbers are 32-bit modular -
         # use 'add32' (variadic) for the post-segment SND.NXT
@@ -1107,10 +1143,22 @@ class TcpSession:
                 # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
                 return
+            # RFC 5681 §3.1: on RTO, ssthresh is set to FlightSize/2
+            # (not tracked in PyTCP's simplified cwnd model) and the
+            # congestion window collapses to one SMSS for slow-start
+            # re-entry. The window then re-grows on each cum-ACK via
+            # '_process_ack_packet'. PyTCP conflates cwnd and the
+            # effective send window into '_snd_ewn'; the reset to
+            # '_snd_mss' here is the slow-start re-entry.
             self._snd_ewn = self._snd_mss
             self._snd_nxt = self._snd_una
-            # In case we need to retransmit packt containing SYN flag adjust
-            # tx_buffer_seq_mod so it doesn't reflect SYN flag yet.
+            # SYN and FIN consume one byte of sequence space but do
+            # not occupy a slot in the TX buffer. After
+            # '_transmit_packet' fired the original SYN/FIN it
+            # incremented '_tx_buffer_seq_mod' by 1 to account for
+            # that phantom byte; on retransmit we walk the offset
+            # back so the packet builder finds the pre-SYN/FIN
+            # alignment again.
             if self._snd_nxt in {self._snd_ini, self._snd_fin}:
                 self._tx_buffer_seq_mod -= 1
             __debug__ and log(
@@ -1333,7 +1381,14 @@ class TcpSession:
             __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
             self._persist_active = False
             self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
-        # Enlarge effective sending window.
+        # RFC 5681 §3.1 slow-start: each cum-ACK doubles the
+        # congestion window up to the receiver-advertised window
+        # ceiling. PyTCP's simplified model conflates cwnd and
+        # ssthresh into a single doubling-then-clamped variable;
+        # a proper RFC 5681 implementation would switch to
+        # congestion avoidance (linear +1 SMSS per RTT) once
+        # cwnd > ssthresh, but that distinction is deferred (see
+        # '.claude/rules/tcp_sack_implementation.md' §7.1).
         self._snd_ewn = min(self._snd_ewn << 1, self._snd_wnd)
         __debug__ and log(
             "tcp-ss",
@@ -1412,8 +1467,19 @@ class TcpSession:
             # is intentionally NOT gated here; it is queued into the
             # child session's receive buffer below.
             if packet_rx_md.tcp__ack == 0:
-                # Create new session in LISTEN state and assign it to
-                # listening socket.
+                # Listener fork pattern (RFC 9293 §3.10.7.2). The
+                # current 'self' object is the LISTEN-state session.
+                # On peer's SYN we mutate it IN PLACE into the new
+                # connection's child session (rebinding its 4-tuple
+                # to the peer below) and create a FRESH session that
+                # takes over the listening role on the original
+                # socket. The result: one peer-specific child session
+                # transitioning to SYN_RCVD, plus an unchanged
+                # listening session ready to accept the next SYN.
+                # The pivot relies on TcpSocket / TcpSession holding
+                # mutable references to each other - callers that
+                # cached 'listen_socket._tcp_session' BEFORE the SYN
+                # arrived must re-resolve it after the drive.
                 tcp_session = TcpSession(
                     local_ip_address=self._local_ip_address,
                     local_port=self._local_port,
@@ -1423,8 +1489,9 @@ class TcpSession:
                 )
                 tcp_session.listen()
                 self._socket._tcp_session = tcp_session  # pylint: disable=protected-access
-                # Adjust this session to match incoming connection and assign
-                # it to new socket.
+                # Re-bind 'self' to the peer's 4-tuple and create a
+                # new TcpSocket that exposes this child session to
+                # the application's eventual 'accept()' caller.
                 self._local_ip_address = packet_rx_md.ip__local_address
                 self._local_port = packet_rx_md.tcp__local_port
                 self._remote_ip_address = packet_rx_md.ip__remote_address
@@ -1482,8 +1549,10 @@ class TcpSession:
                         f"[{self}] - Queued {len(packet_rx_md.tcp__data)} bytes "
                         "of SYN-piggybacked data for delivery after ESTABLISHED",
                     )
-                # Send SYN + ACK packet (this actually will be done in SYN_SENT
-                # state) / change state to SYN_RCVD.
+                # Change state to SYN_RCVD; the actual SYN+ACK packet
+                # is emitted from that state on the next timer tick by
+                # '_transmit_data', which detects 'SND.NXT == SND.INI'
+                # in SYN_RCVD and fires the SYN+ACK.
                 self._change_state(FsmState.SYN_RCVD)
                 return
 
@@ -1756,8 +1825,10 @@ class TcpSession:
                 self._change_state(FsmState.CLOSED)
             return
 
-        # Got CLOSE syscall -> Send FIN packet (this actually will be done in
-        # SYN_SENT state) / change state to FIN_WAIT_1.
+        # Got CLOSE syscall in SYN_RCVD -> change state to FIN_WAIT_1;
+        # the FIN packet is emitted from that state on the next timer
+        # tick. The pre-handshake-completion close is legal per
+        # RFC 9293 §3.10.4 (CLOSE in SYN-RECEIVED).
         if syscall is SysCall.CLOSE:
             self._change_state(FsmState.FIN_WAIT_1)
             return
@@ -1985,8 +2056,13 @@ class TcpSession:
             # Case (3): out of window -> fall through (silent drop).
             return
 
-        # Got CLOSE syscall -> Send FIN packet (this actually will be done in
-        # SYN_SENT state) / change state to FIN_WAIT_1.
+        # Got CLOSE syscall in ESTABLISHED -> mark the session
+        # closing; the actual transition to FIN_WAIT_1 (and the FIN
+        # emission from there) is deferred until the TX buffer
+        # drains, per RFC 9293 §3.10.4 ("a CLOSE call should ...
+        # cause outstanding SENDs to be transmitted"). The
+        # ESTABLISHED timer branch checks 'self._closing and not
+        # self._tx_buffer' to fire the state change.
         if syscall is SysCall.CLOSE:
             self._closing = True
             return
@@ -2299,8 +2375,12 @@ class TcpSession:
                 self._change_state(FsmState.CLOSED)
             return
 
-        # Got CLOSE syscall -> Send FIN packet (this actually will be done in
-        # SYN_SENT state) / change state to LAST_ACK.
+        # Got CLOSE syscall in CLOSE_WAIT -> mark the session closing
+        # so the post-half-close FIN emission can fire from LAST_ACK
+        # once the TX buffer drains, per RFC 9293 §3.10.4. The actual
+        # transition to LAST_ACK is deferred via the timer-branch
+        # 'self._closing and not self._tx_buffer' check (mirrors the
+        # ESTABLISHED CLOSE handler above).
         if syscall is SysCall.CLOSE:
             self._closing = True
             return
