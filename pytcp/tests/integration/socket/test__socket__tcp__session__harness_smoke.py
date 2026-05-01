@@ -192,15 +192,41 @@ class TestTcpSegmentFactory(TestCase):
         with self.assertRaises(NotImplementedError):
             build_tcp4(sport=1, dport=2, paws_ts=(0, 0))
 
-    def test__factory__sack_block_slot_raises_not_implemented(self) -> None:
+    def test__factory__sack_blocks_round_trip_through_parser(self) -> None:
         """
-        Ensure the reserved 'sack_block' slot raises
-        'NotImplementedError' so future SACK work has a clear failing
-        call site.
+        Ensure 'build_tcp4' encodes the requested 'sack_blocks=' as a
+        TCP SACK option (RFC 2018 §3) that round-trips through the
+        parser as a list of '(left, right)' pairs in the supplied
+        order.
         """
 
-        with self.assertRaises(NotImplementedError):
-            build_tcp4(sport=1, dport=2, sack_block=[(0, 1)])
+        from net_proto.lib.packet_rx import PacketRx
+        from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
+        from net_proto.protocols.ip4.ip4__parser import Ip4Parser
+        from net_proto.protocols.tcp.tcp__parser import TcpParser
+
+        frame = build_tcp4(
+            sport=12345,
+            dport=80,
+            seq=0x1000,
+            ack=0x2001,
+            flags=("ACK",),
+            sack_blocks=[(0x2010, 0x2020), (0x2030, 0x2050)],
+        )
+
+        packet_rx = PacketRx(frame)
+        EthernetParser(packet_rx)
+        Ip4Parser(packet_rx)
+        TcpParser(packet_rx)
+
+        sack = packet_rx.tcp._options.sack
+        self.assertIsNotNone(sack, msg="The factory must emit a SACK option when 'sack_blocks=' is supplied.")
+        assert sack is not None  # for mypy
+        self.assertEqual(
+            [(block.left, block.right) for block in sack],
+            [(0x2010, 0x2020), (0x2030, 0x2050)],
+            msg="Round-tripped SACK blocks must match the supplied (left, right) pairs in order.",
+        )
 
 
 class TestTcpSessionTestCaseHarness(TcpSessionTestCase):

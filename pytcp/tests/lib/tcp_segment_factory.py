@@ -40,6 +40,10 @@ from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
 from net_proto.protocols.tcp.options.tcp__option__nop import TcpOptionNop
+from net_proto.protocols.tcp.options.tcp__option__sack import (
+    TcpOptionSack,
+    TcpSackBlock,
+)
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from net_proto.protocols.tcp.options.tcp__options import TcpOption, TcpOptions
@@ -67,15 +71,15 @@ def _build_tcp_assembler(
     mss: int | None,
     wscale: int | None,
     sackperm: bool,
+    sack_blocks: Iterable[tuple[int, int]] | None,
     payload: Buffer,
     paws_ts: object,
-    sack_block: object,
 ) -> TcpAssembler:
     """
     Build the inner 'TcpAssembler' carrying the requested header
     fields, options, and payload. Validates the 'flags' set against
     the supported names and raises 'NotImplementedError' for the
-    PAWS / SACK option slots reserved for future tests.
+    PAWS option slot reserved for future tests.
     """
 
     if paws_ts is not None:
@@ -84,18 +88,11 @@ def _build_tcp_assembler(
             "the TCP assembler does not emit the option."
         )
 
-    if sack_block is not None:
-        raise NotImplementedError(
-            "SACK blocks are not supported by 'tcp_segment_factory' yet; "
-            "TCP session SACK behaviour is out of scope per the integration "
-            "test plan."
-        )
-
     flag_set = frozenset(flags)
     unknown = flag_set - TCP_FLAGS__VALID
     assert not unknown, f"Unknown TCP flag name(s) {sorted(unknown)!r}; supported: {sorted(TCP_FLAGS__VALID)!r}"
 
-    options = _build_options(mss=mss, wscale=wscale, sackperm=sackperm)
+    options = _build_options(mss=mss, wscale=wscale, sackperm=sackperm, sack_blocks=sack_blocks)
 
     return TcpAssembler(
         tcp__sport=sport,
@@ -117,11 +114,17 @@ def _build_tcp_assembler(
     )
 
 
-def _build_options(*, mss: int | None, wscale: int | None, sackperm: bool) -> TcpOptions:
+def _build_options(
+    *,
+    mss: int | None,
+    wscale: int | None,
+    sackperm: bool,
+    sack_blocks: Iterable[tuple[int, int]] | None,
+) -> TcpOptions:
     """
     Build a 'TcpOptions' container holding the requested MSS,
-    WSCALE, and SACK-permitted options, padding with NOPs so the
-    total option block length is a multiple of 4 bytes (TCP
+    WSCALE, SACK-permitted, and SACK options, padding with NOPs so
+    the total option block length is a multiple of 4 bytes (TCP
     requires 4-byte alignment of the data offset).
     """
 
@@ -135,6 +138,9 @@ def _build_options(*, mss: int | None, wscale: int | None, sackperm: bool) -> Tc
 
     if sackperm:
         options.append(TcpOptionSackperm())
+
+    if sack_blocks is not None:
+        options.append(TcpOptionSack(blocks=[TcpSackBlock(left, right) for left, right in sack_blocks]))
 
     pad_count = (-sum(len(opt) for opt in options)) % 4
     options.extend(TcpOptionNop() for _ in range(pad_count))
@@ -157,9 +163,9 @@ def build_tcp4(
     mss: int | None = None,
     wscale: int | None = None,
     sackperm: bool = False,
+    sack_blocks: Iterable[tuple[int, int]] | None = None,
     payload: Buffer = b"",
     paws_ts: object = None,
-    sack_block: object = None,
 ) -> bytes:
     """
     Build an Ethernet/IPv4/TCP frame with the supplied TCP fields and
@@ -177,9 +183,9 @@ def build_tcp4(
         mss=mss,
         wscale=wscale,
         sackperm=sackperm,
+        sack_blocks=sack_blocks,
         payload=payload,
         paws_ts=paws_ts,
-        sack_block=sack_block,
     )
 
     ip4 = Ip4Assembler(
@@ -214,9 +220,9 @@ def build_tcp6(
     mss: int | None = None,
     wscale: int | None = None,
     sackperm: bool = False,
+    sack_blocks: Iterable[tuple[int, int]] | None = None,
     payload: Buffer = b"",
     paws_ts: object = None,
-    sack_block: object = None,
 ) -> bytes:
     """
     Build an Ethernet/IPv6/TCP frame with the supplied TCP fields and
@@ -234,9 +240,9 @@ def build_tcp6(
         mss=mss,
         wscale=wscale,
         sackperm=sackperm,
+        sack_blocks=sack_blocks,
         payload=payload,
         paws_ts=paws_ts,
-        sack_block=sack_block,
     )
 
     ip6 = Ip6Assembler(

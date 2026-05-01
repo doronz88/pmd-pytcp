@@ -90,6 +90,7 @@ class TcpProbe:
     mss: int | None
     wscale: int | None
     sackperm: bool
+    sack_blocks: tuple[tuple[int, int], ...]
     payload: bytes
 
 
@@ -219,10 +220,15 @@ class TcpSessionTestCase(NetworkTestCase):
                 flags.add(name)
 
         # Read the option presence via the underlying TcpOptions container
-        # ('_options.mss' / '_options.wscale' return None when absent),
-        # not via the parser's 'OptionsProperties' mixin (which substitutes
-        # defaults like TCP__MIN_MSS=536 / wscale=0 and so cannot distinguish
-        # 'option absent' from 'option present with the default value').
+        # ('_options.mss' / '_options.wscale' / '_options.sack' return None
+        # when absent), not via the parser's 'OptionsProperties' mixin (which
+        # substitutes defaults like TCP__MIN_MSS=536 / wscale=0 and so cannot
+        # distinguish 'option absent' from 'option present with the default
+        # value').
+        sack_blocks_raw = packet_rx.tcp._options.sack
+        sack_blocks: tuple[tuple[int, int], ...] = (
+            () if sack_blocks_raw is None else tuple((block.left, block.right) for block in sack_blocks_raw)
+        )
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -235,6 +241,7 @@ class TcpSessionTestCase(NetworkTestCase):
             mss=packet_rx.tcp._options.mss,
             wscale=packet_rx.tcp._options.wscale,
             sackperm=bool(packet_rx.tcp._options.sackperm),
+            sack_blocks=sack_blocks,
             payload=bytes(packet_rx.tcp.payload),
         )
 
@@ -250,6 +257,7 @@ class TcpSessionTestCase(NetworkTestCase):
         mss: object = _UNSET,
         wscale: object = _UNSET,
         sackperm: object = _UNSET,
+        sack_blocks: object = _UNSET,
         sport: object = _UNSET,
         dport: object = _UNSET,
     ) -> None:
@@ -308,6 +316,15 @@ class TcpSessionTestCase(NetworkTestCase):
                 probe.sackperm,
                 sackperm,
                 msg=f"Unexpected TCP SACK-permitted option on outbound segment: {probe!r}",
+            )
+        if sack_blocks is not _UNSET:
+            expected_blocks: tuple[tuple[int, int], ...] = (
+                () if sack_blocks is None else tuple(cast(Iterable[tuple[int, int]], sack_blocks))
+            )
+            self.assertEqual(
+                probe.sack_blocks,
+                expected_blocks,
+                msg=f"Unexpected TCP SACK blocks on outbound segment: {probe!r}",
             )
         if sport is not _UNSET:
             self.assertEqual(
