@@ -1532,6 +1532,19 @@ class TcpSession:
             self._transmit_data()
             return
 
+        # Got SYN-bearing segment in a synchronized state -> Send a
+        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4
+        # ('irrespective of the sequence number, TCP endpoints MUST
+        # send a challenge ACK to the remote peer'). Mirrors the
+        # ESTABLISHED / SYN_RCVD branches.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-fin_wait_1 (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got ACK (acking our FIN) packet -> Change state to FIN_WAIT_2.
         if (
             packet_rx_md
@@ -1604,6 +1617,16 @@ class TcpSession:
         TCP FSM FIN_WAIT_2 state handler.
         """
 
+        # Got SYN-bearing segment in a synchronized state -> Send a
+        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-fin_wait_2 (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got ACK packet -> Process data.
         if (
             packet_rx_md
@@ -1666,6 +1689,16 @@ class TcpSession:
         TCP FSM CLOSING state handler.
         """
 
+        # Got SYN-bearing segment in a synchronized state -> Send a
+        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-closing (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got ACK packet -> Change state to TIME_WAIT.
         if (
             packet_rx_md
@@ -1716,6 +1749,16 @@ class TcpSession:
             self._delayed_ack()
             if self._closing and not self._tx_buffer:
                 self._change_state(FsmState.LAST_ACK)
+            return
+
+        # Got SYN-bearing segment in a synchronized state -> Send a
+        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-close_wait (RFC 9293 §3.10.7.4)",
+            )
             return
 
         # Got ACK packet.
@@ -1803,6 +1846,16 @@ class TcpSession:
             self._transmit_data()
             return
 
+        # Got SYN-bearing segment in a synchronized state -> Send a
+        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-last_ack (RFC 9293 §3.10.7.4)",
+            )
+            return
+
         # Got ACK packet -> Change state to CLOSED.
         if (
             packet_rx_md
@@ -1863,6 +1916,19 @@ class TcpSession:
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",
+            )
+            return
+
+        # Got SYN-bearing segment in TIME_WAIT -> Send a challenge
+        # ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4. PyTCP does not
+        # implement the Timestamp Option (PAWS), so RFC 9293's
+        # TIME_WAIT-special connection-recycling path is unreachable
+        # and the default challenge-ACK behaviour applies.
+        if packet_rx_md and packet_rx_md.tcp__flag_syn:
+            self._transmit_packet(flag_ack=True)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Sent challenge ACK for SYN-in-time_wait (RFC 9293 §3.10.7.4)",
             )
             return
 
