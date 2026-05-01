@@ -35,7 +35,7 @@ ver 3.0.4
 
 from net_proto.lib.int_checks import is_uint32
 from pytcp.lib.tcp_sack import SackScoreboard
-from pytcp.lib.tcp_seq import le32, lt32, sub32
+from pytcp.lib.tcp_seq import Seq32, le32, lt32, sub32
 
 # RFC 6675 §3 default DupThresh (matches RFC 5681's count-based
 # fast-retransmit threshold).
@@ -43,11 +43,11 @@ TCP__DUP_THRESH: int = 3
 
 
 def is_lost(
-    seq: int,
+    seq: Seq32,
     /,
     *,
     scoreboard: SackScoreboard,
-    snd_una: int,
+    snd_una: Seq32,
     mss: int,
     dup_thresh: int = TCP__DUP_THRESH,
 ) -> bool:
@@ -96,11 +96,11 @@ def is_lost(
 def next_seg(
     *,
     scoreboard: SackScoreboard,
-    snd_una: int,
-    snd_max: int,
+    snd_una: Seq32,
+    snd_max: Seq32,
     mss: int,
     dup_thresh: int = TCP__DUP_THRESH,
-) -> int | None:
+) -> Seq32 | None:
     """
     RFC 6675 §3 NextSeg() procedure (rule 1). Return the smallest
     seq in '[SND.UNA, SND.MAX)' that is not yet SACKed AND is
@@ -124,8 +124,8 @@ def next_seg(
 def pipe(
     *,
     scoreboard: SackScoreboard,
-    snd_una: int,
-    snd_max: int,
+    snd_una: Seq32,
+    snd_max: Seq32,
 ) -> int:
     """
     RFC 6675 §4 Pipe() estimate: bytes the sender believes are

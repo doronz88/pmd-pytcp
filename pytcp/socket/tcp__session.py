@@ -47,7 +47,7 @@ from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
 from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
-from pytcp.lib.tcp_seq import add32, gt32, in_range32, le32, lt32
+from pytcp.lib.tcp_seq import Seq32, add32, gt32, in_range32, le32, lt32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -211,13 +211,13 @@ class TcpSession:
         ###
 
         # Initial sequence number.
-        self._rcv_ini: int = 0
+        self._rcv_ini: Seq32 = 0
 
         # Next sequence number to be received.
-        self._rcv_nxt: int = 0
+        self._rcv_nxt: Seq32 = 0
 
         # Sequence number we acked.
-        self._rcv_una: int = 0
+        self._rcv_una: Seq32 = 0
 
         # IP+TCP header overhead for MSS calculation. RFC 8200's
         # IPv6 fixed header is 40 bytes (vs IPv4's 20); the TCP
@@ -294,26 +294,26 @@ class TcpSession:
         # '_process_ack_packet' once 'SND.UNA' advances past
         # 'recovery_point' - the loss event is fully recovered
         # and a new round of dup-ACKs can re-enter recovery.
-        self._recovery_point: int = 0
+        self._recovery_point: Seq32 = 0
 
         ###
         # Sending window parameters.
         ###
 
         # Initial sequence number.
-        self._snd_ini: int = random.randint(0, 0xFFFFFFFF)
+        self._snd_ini: Seq32 = random.randint(0, 0xFFFFFFFF)
 
         # Next sequence number to be sent.
-        self._snd_nxt: int = self._snd_ini
+        self._snd_nxt: Seq32 = self._snd_ini
 
         # Maximum sequence number ever sent.
-        self._snd_max: int = self._snd_ini
+        self._snd_max: Seq32 = self._snd_ini
 
         # Sequence number not yet acknowledged by peer.
-        self._snd_una: int = self._snd_ini
+        self._snd_una: Seq32 = self._snd_ini
 
         # Sequence number of the FIN packet we sent.
-        self._snd_fin: int = 0
+        self._snd_fin: Seq32 = 0
 
         # Maximum segment size.
         self._snd_mss: int = 536
@@ -334,7 +334,7 @@ class TcpSession:
         # while a previous partial is still unacknowledged. Initialized to
         # '_snd_ini' so it is strictly less than 'SND.UNA' after the handshake
         # completes, which means "no partial in flight yet".
-        self._snd_sml: int = self._snd_ini
+        self._snd_sml: Seq32 = self._snd_ini
 
         # Zero-window persist timer state per RFC 9293 §3.8.6.1.
         # '_persist_active' indicates whether the persist timer is currently
@@ -368,7 +368,7 @@ class TcpSession:
 
         # Used to help translate local_seq_send and snd_una numbers to
         # the TX buffer pointers.
-        self._tx_buffer_seq_mod: int = self._snd_ini
+        self._tx_buffer_seq_mod: Seq32 = self._snd_ini
 
         # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED

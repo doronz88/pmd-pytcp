@@ -33,6 +33,17 @@ ver 3.0.4
 
 from net_proto.lib.int_checks import UINT_32__MAX, is_uint32
 
+# Documentation type alias for 32-bit modular sequence numbers (RFC 9293
+# §3.4). PEP 695 transparent alias: mypy treats 'Seq32' as 'int' so plain
+# integers pass through every API without runtime wrapping or boundary
+# friction; the alias only signals to the reader "this value is a TCP seq
+# / ack number and MUST be compared via the helpers in this module, not
+# Python's built-in comparison operators". Use for parameters, return
+# values, and dataclass fields that hold a seq number; do not use for
+# byte counts, lengths, or window sizes.
+type Seq32 = int
+
+
 # RFC 9293 §3.4 defines TCP sequence and acknowledgement numbers as 32-bit
 # unsigned integers compared modulo 2**32. A value 'a' is "less than" 'b' iff
 # the unsigned forward distance (b - a) & 0xFFFFFFFF lies in (0, 2**31).
@@ -45,7 +56,7 @@ from net_proto.lib.int_checks import UINT_32__MAX, is_uint32
 SEQ32__HALF = 0x8000_0000
 
 
-def lt32(a: int, b: int, /) -> bool:
+def lt32(a: Seq32, b: Seq32, /) -> bool:
     """
     Return True if 'a' is strictly before 'b' in modular 32-bit
     sequence-number space, per RFC 9293 §3.4.
@@ -60,7 +71,7 @@ def lt32(a: int, b: int, /) -> bool:
     return 0 < diff < SEQ32__HALF
 
 
-def le32(a: int, b: int, /) -> bool:
+def le32(a: Seq32, b: Seq32, /) -> bool:
     """
     Return True if 'a' is before or equal to 'b' in modular 32-bit
     sequence-number space, per RFC 9293 §3.4.
@@ -75,7 +86,7 @@ def le32(a: int, b: int, /) -> bool:
     return diff < SEQ32__HALF
 
 
-def gt32(a: int, b: int, /) -> bool:
+def gt32(a: Seq32, b: Seq32, /) -> bool:
     """
     Return True if 'a' is strictly after 'b' in modular 32-bit
     sequence-number space, per RFC 9293 §3.4.
@@ -84,7 +95,7 @@ def gt32(a: int, b: int, /) -> bool:
     return lt32(b, a)
 
 
-def ge32(a: int, b: int, /) -> bool:
+def ge32(a: Seq32, b: Seq32, /) -> bool:
     """
     Return True if 'a' is after or equal to 'b' in modular 32-bit
     sequence-number space, per RFC 9293 §3.4.
@@ -93,7 +104,7 @@ def ge32(a: int, b: int, /) -> bool:
     return le32(b, a)
 
 
-def add32(a: int, /, *rest: int) -> int:
+def add32(a: Seq32, /, *rest: int) -> Seq32:
     """
     Return 'a + sum(rest)' reduced to a 32-bit unsigned value.
 
@@ -110,7 +121,7 @@ def add32(a: int, /, *rest: int) -> int:
     return (a + sum(rest)) & UINT_32__MAX
 
 
-def sub32(a: int, n: int, /) -> int:
+def sub32(a: Seq32, n: int, /) -> Seq32:
     """
     Return 'a - n' reduced to a 32-bit unsigned value.
     """
@@ -118,7 +129,7 @@ def sub32(a: int, n: int, /) -> int:
     return (a - n) & UINT_32__MAX
 
 
-def in_range32(x: int, lo: int, hi: int, /) -> bool:
+def in_range32(x: Seq32, lo: Seq32, hi: Seq32, /) -> bool:
     """
     Return True if 'x' lies within the closed inclusive modular range
     [lo, hi] interpreted in forward direction (lo -> hi), wrapping at

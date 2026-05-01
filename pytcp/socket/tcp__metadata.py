@@ -35,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from pytcp.lib.tcp_seq import Seq32
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
 
@@ -59,13 +60,13 @@ class TcpMetadata:
     tcp__flag_ack: bool
     tcp__flag_fin: bool
     tcp__flag_rst: bool
-    tcp__seq: int
-    tcp__ack: int
+    tcp__seq: Seq32
+    tcp__ack: Seq32
     tcp__win: int
     tcp__wscale: int
     tcp__mss: int
     tcp__sackperm: bool
-    tcp__sack_blocks: tuple[tuple[int, int], ...]
+    tcp__sack_blocks: tuple[tuple[Seq32, Seq32], ...]
     tcp__data: memoryview
 
     tracker: Tracker | None = None

@@ -33,7 +33,7 @@ ver 3.0.4
 """
 
 from net_proto.lib.int_checks import UINT_32__MAX, is_uint32
-from pytcp.lib.tcp_seq import ge32, in_range32, le32, lt32, sub32
+from pytcp.lib.tcp_seq import Seq32, ge32, in_range32, le32, lt32, sub32
 
 
 class SackScoreboard:
@@ -55,7 +55,7 @@ class SackScoreboard:
     ambiguity at the diametric midpoint.
     """
 
-    _blocks: list[tuple[int, int]]
+    _blocks: list[tuple[Seq32, Seq32]]
 
     def __init__(self) -> None:
         """
@@ -64,7 +64,7 @@ class SackScoreboard:
 
         self._blocks = []
 
-    def add_block(self, left: int, right: int) -> None:
+    def add_block(self, left: Seq32, right: Seq32) -> None:
         """
         Add a '[left, right)' SACK block to the scoreboard, merging
         it with any existing block it overlaps or is adjacent to per
@@ -87,7 +87,7 @@ class SackScoreboard:
         # disjoint from the new range - are kept as-is. This is the
         # full transitive merge: a single new block can coalesce a
         # whole chain of formerly-disjoint blocks if it bridges them.
-        survivors: list[tuple[int, int]] = []
+        survivors: list[tuple[Seq32, Seq32]] = []
         for block_left, block_right in self._blocks:
             if _overlaps_or_touches(left, right, block_left, block_right):
                 left, right = _merge(left, right, block_left, block_right)
@@ -97,7 +97,7 @@ class SackScoreboard:
         survivors.append((left, right))
         self._blocks = survivors
 
-    def is_sacked(self, seq: int) -> bool:
+    def is_sacked(self, seq: Seq32) -> bool:
         """
         Return True iff 'seq' falls in any tracked block, i.e. the
         peer has SACK-acknowledged that byte.
@@ -110,7 +110,7 @@ class SackScoreboard:
                 return True
         return False
 
-    def prune_below(self, snd_una: int) -> None:
+    def prune_below(self, snd_una: Seq32) -> None:
         """
         Drop blocks entirely below 'snd_una' (the cumulative ACK has
         absorbed them) and trim the left edge of any block that
@@ -120,7 +120,7 @@ class SackScoreboard:
 
         assert is_uint32(snd_una), f"The 'snd_una' argument must be a 32-bit unsigned integer. Got: {snd_una!r}"
 
-        survivors: list[tuple[int, int]] = []
+        survivors: list[tuple[Seq32, Seq32]] = []
         for left, right in self._blocks:
             if le32(right, snd_una):
                 continue
@@ -129,7 +129,7 @@ class SackScoreboard:
             survivors.append((left, right))
         self._blocks = survivors
 
-    def blocks(self) -> list[tuple[int, int]]:
+    def blocks(self) -> list[tuple[Seq32, Seq32]]:
         """
         Return a snapshot of the tracked '[left, right)' blocks in
         insertion order. The caller may reorder for SACK option
@@ -138,7 +138,7 @@ class SackScoreboard:
 
         return list(self._blocks)
 
-    def first_gap(self, snd_una: int) -> int | None:
+    def first_gap(self, snd_una: Seq32) -> Seq32 | None:
         """
         Return the lowest seq >= 'snd_una' that is NOT covered by
         any tracked block, walking through contiguous coverage that
@@ -174,7 +174,7 @@ class SackScoreboard:
         return cursor
 
 
-def _overlaps_or_touches(a_left: int, a_right: int, b_left: int, b_right: int) -> bool:
+def _overlaps_or_touches(a_left: Seq32, a_right: Seq32, b_left: Seq32, b_right: Seq32) -> bool:
     """
     Return True iff '[a_left, a_right)' and '[b_left, b_right)'
     overlap or are exactly adjacent (one's right edge equals the
@@ -194,7 +194,7 @@ def _overlaps_or_touches(a_left: int, a_right: int, b_left: int, b_right: int) -
     return False
 
 
-def _merge(a_left: int, a_right: int, b_left: int, b_right: int) -> tuple[int, int]:
+def _merge(a_left: Seq32, a_right: Seq32, b_left: Seq32, b_right: Seq32) -> tuple[Seq32, Seq32]:
     """
     Return the modular union of '[a_left, a_right)' and
     '[b_left, b_right)' as a single '[left, right)' block. The
