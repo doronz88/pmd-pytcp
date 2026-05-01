@@ -257,56 +257,51 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
 
-    def test__sack__inbound_sack_option_does_not_yet_update_scoreboard_state(self) -> None:
+    def test__sack__inbound_sack_blocks_silently_consumed_when_send_sack_disabled(self) -> None:
         """
-        Ensure that an inbound SACK option does not yet drive any
-        loss-recovery side effect on our send side: PyTCP today has
-        no '_sack_scoreboard' attribute on 'TcpSession', no
-        RFC 6675 NextSeg / IsLost / Pipe machinery, and no
-        SACK-aware fast-retransmit path. Wire-level decoding is in
-        place (covered by the previous test); the FSM stops short
-        of acting on what it sees.
+        Ensure that when the bilateral SACK negotiation has NOT
+        succeeded ('_send_sack = False'), an inbound ACK carrying
+        SACK blocks is silently consumed: the scoreboard is not
+        updated, no scoreboard-driven TX fires, and the send-side
+        counters do not move. Per RFC 2018 §3, SACK information is
+        meaningful only when the option was offered bilaterally
+        during connection establishment; outside that envelope the
+        receiver SHOULD ignore inbound SACK info.
 
-        The phased SACK plan adds the scoreboard in phase 2 and
-        wires the ingestion path in phase 4. Until then this test
-        documents - and protects - the wire-level passthrough as
-        the contract: SACK information arrives, gets decoded, and
-        is dropped on the floor.
+        The phase-1 'inbound_sack_option_does_not_crash_parser'
+        test pinned the wire-level passthrough; this one pins the
+        FSM-level no-effect when '_send_sack = False'. After phase
+        4 wiring, '_sack_scoreboard' exists on every 'TcpSession'
+        instance, so this test is now a regression guard for the
+        ingestion gate.
 
         Scenario:
 
-            1. Drive the active-open handshake to ESTABLISHED.
+            1. Drive the active-open handshake WITHOUT bilateral
+               SACK ('peer_sackperm=False' default), so
+               'session._send_sack' ends up False.
             2. Application sends 200 bytes so we have outstanding
-               unacked TX bytes the SACK option could theoretically
-               reference.
-            3. Drain the outbound data segment so the wire state
-               settles.
+               unacked TX bytes the SACK option could reference.
+            3. Drain the outbound data segment.
             4. Peer sends a dup-ACK carrying a SACK block claiming
-               to have received bytes that lie strictly above
-               'SND.UNA' inside our outstanding range. RFC 6675's
-               NextSeg / IsLost would, in the future, treat this
-               block as evidence of loss - but only once the
-               scoreboard exists to record it.
-            5. Inspect session state. The scoreboard attribute is
-               not present. The send-side counters are unchanged
-               from the pre-ACK snapshot. No fast retransmit fires.
+               receipt of the upper half of our outstanding range.
+            5. Inspect session state.
 
         Assertions:
 
-            * 'TcpSession' instance has no '_sack_scoreboard'
-              attribute - the scoreboard is introduced in phase 2.
-            * '_snd_una', '_snd_nxt', '_snd_max' unchanged after
-              the SACK-bearing dup-ACK.
-            * No outbound TX (no fast retransmit, no challenge ACK,
-              no anomalous reply).
+            * 'session._send_sack is False'.
+            * 'session._sack_scoreboard.blocks() == []' - the
+              ingestion gate refused to update the scoreboard.
+            * '_snd_una', '_snd_nxt', '_snd_max' unchanged.
+            * No outbound TX (no fast retransmit, no anomalous
+              reply).
             * 'session.state is FsmState.ESTABLISHED'.
 
         Passes today as a positive control / regression guard for
-        the absence of half-baked SACK scoreboard state. The first
-        phase-2 commit that introduces 'SackScoreboard' will need
-        to drop the no-attribute assertion (or replace it with the
-        new scoreboard's empty-state invariant), making this test
-        a load-bearing tripwire for phase 2 wiring.
+        the '_send_sack' ingestion gate after phase 4 lands. A
+        future change that ingests SACK info unconditionally
+        (regardless of bilateral negotiation outcome) would be
+        caught by the empty-scoreboard assertion here.
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -325,14 +320,19 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         snd_max_before = session._snd_max
 
         self.assertFalse(
-            hasattr(session, "_sack_scoreboard"),
+            session._send_sack,
             msg=(
-                "TcpSession must NOT have a '_sack_scoreboard' "
-                "attribute today - the scoreboard is introduced in "
-                "phase 2 of the SACK plan. If this assertion fails "
-                "the scoreboard has shipped and this test should "
-                "be replaced with the empty-state invariant of the "
-                "new scoreboard."
+                "Setup precondition: bilateral SACK negotiation must "
+                "have failed (peer didn't offer) so '_send_sack' is "
+                "False - this test pins the ingestion-gate behaviour."
+            ),
+        )
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [],
+            msg=(
+                "A fresh ESTABLISHED session must start with an empty "
+                "SACK scoreboard - nothing has been peer-SACKed yet."
             ),
         )
 
@@ -355,10 +355,20 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             inline_tx,
             [],
             msg=(
-                "SACK information today is informational only; the "
-                "session must not synthesise any reply (no fast "
-                "retransmit, no challenge ACK, no scoreboard-driven "
-                "TX). Phase 5 will change that."
+                "An inbound dup-ACK without bilateral SACK must not "
+                "synthesise any reply; SACK info is informational and "
+                "the count-based dup-ACK threshold has not been met."
+            ),
+        )
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [],
+            msg=(
+                "With '_send_sack = False' the scoreboard MUST remain "
+                "empty even when peer sends SACK blocks - the "
+                "ingestion gate per RFC 2018 §3 refuses to record "
+                "SACK info on a connection where bilateral "
+                "negotiation failed."
             ),
         )
         self.assertEqual(
@@ -373,8 +383,8 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             snd_nxt_before,
             msg=(
                 "SND.NXT must not be perturbed by a SACK-bearing "
-                "dup-ACK; only fast-retransmit / NextSeg-driven "
-                "logic touches SND.NXT, and neither exists yet."
+                "dup-ACK below the count-based fast-retransmit "
+                "threshold."
             ),
         )
         self.assertEqual(
@@ -383,7 +393,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             msg=(
                 "SND.MAX must not be perturbed by a SACK-bearing "
                 "dup-ACK; nothing on the SACK ingestion path "
-                "extends the sent-bytes high-water mark today."
+                "extends the sent-bytes high-water mark."
             ),
         )
         self.assertIs(
@@ -933,4 +943,250 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             syn_ack_probe,
             flags=frozenset({"SYN", "ACK"}),
             sackperm=False,
+        )
+
+    def test__sack__inbound_sack_block_updates_scoreboard(self) -> None:
+        """
+        Ensure that when bilateral SACK is enabled and peer sends
+        an ACK carrying a SACK block describing receipt of bytes
+        in our outstanding (unacked) range, the session ingests
+        that block into '_sack_scoreboard' per RFC 2018 §3-§4.
+        Without this, the scoreboard cannot inform RFC 6675's
+        NextSeg / IsLost / Pipe machinery in phase 5.
+
+        RFC 2018 §4 (Generating the SACK option):
+
+            "Each contiguous block of data queued at the data
+             receiver is defined in the SACK option by two 32-bit
+             unsigned integers in network byte order: ... Left
+             Edge of Block ... Right Edge of Block ... This is the
+             sequence number immediately following the last
+             sequence number of this block."
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral SACK.
+            2. Application sends 200 bytes so 'SND.UNA = ISS+1' and
+               'SND.MAX = ISS+1+200'.
+            3. Drain the outbound data segment.
+            4. Peer sends a dup-ACK (cumulative ack unchanged at
+               'ISS+1') carrying a SACK block
+               '[ISS+1+100, ISS+1+200)' reporting receipt of the
+               upper half of our outstanding bytes.
+            5. Inspect 'session._sack_scoreboard.blocks()'.
+
+        Assertions:
+
+            * '_sack_scoreboard.blocks() == [(ISS+1+100, ISS+1+200)]'
+              after the SACK-bearing dup-ACK is processed.
+            * '_send_sack is True' (precondition).
+
+        [FLAGS BUG] - 'TcpSession' has no '_sack_scoreboard'
+        attribute today (it's introduced in phase 4) and
+        '_process_ack_packet' has no SACK-block ingestion path.
+        The fix wires the ingestion: 'TcpMetadata' grows
+        'tcp__sack_blocks' populated from
+        'packet_rx.tcp._options.sack' in
+        'packet_handler__tcp__rx.py'; '_process_ack_packet' / the
+        dup-ACK '_retransmit_packet_request' branch loops over the
+        blocks and calls 'self._sack_scoreboard.add_block(left,
+        right)' for each block whose edges fall inside
+        '[SND.UNA, SND.MAX]' (RFC 2018 §5: be liberal in what we
+        accept; out-of-window blocks are dropped).
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+        self.assertTrue(
+            session._send_sack,
+            msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
+        )
+
+        # Bypass slow-start so the application's send drains in
+        # one outbound segment.
+        session._snd_ewn = PEER__WIN
+        session.send(data=b"X" * 200)
+        self._advance(ms=1)
+
+        sacked_left = LOCAL__ISS + 1 + 100
+        sacked_right = LOCAL__ISS + 1 + 200
+        peer_dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(sacked_left, sacked_right)],
+        )
+        self._drive_rx(frame=peer_dup_ack)
+
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [(sacked_left, sacked_right)],
+            msg=(
+                "An inbound SACK block describing in-window bytes "
+                "must be ingested into the scoreboard so RFC 6675's "
+                "NextSeg / IsLost / Pipe wrappers (phase 5) can "
+                "consult it."
+            ),
+        )
+
+    def test__sack__cumulative_ack_prunes_scoreboard_below_snd_una(self) -> None:
+        """
+        Ensure that when peer's cumulative ACK advances 'SND.UNA'
+        past a SACK-recorded range, the corresponding block is
+        pruned from the scoreboard. The scoreboard's contract
+        per RFC 6675 §3 is that it tracks bytes we sent that are
+        unacked-but-sacked; once cumulatively-acked, those bytes
+        are no longer in flight and the scoreboard entry is dead.
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral SACK.
+            2. Application sends 200 bytes.
+            3. Drain the outbound data segment.
+            4. Peer sends a dup-ACK with SACK block
+               '[ISS+1+100, ISS+1+200)' - scoreboard ingests it.
+            5. Peer sends a normal ACK with cumulative ack
+               'ISS+1+200' (advancing SND.UNA past the entire
+               sacked range).
+            6. Inspect '_sack_scoreboard.blocks()' - empty.
+
+        Assertions:
+
+            * After the cumulative ACK, '_snd_una' has advanced
+              to 'ISS+1+200'.
+            * '_sack_scoreboard.blocks() == []' - prune_below has
+              dropped the now-redundant entry.
+
+        [FLAGS BUG] - both '_sack_scoreboard' and the
+        prune-on-cumulative-ack path are introduced in phase 4.
+        The fix wires 'prune_below(self._snd_una)' inside
+        '_process_ack_packet' immediately after the SND.UNA
+        update so blocks below the new cumulative-ack high-water
+        mark are dropped before subsequent block ingestion.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        session.send(data=b"X" * 200)
+        self._advance(ms=1)
+
+        # First ACK ingests a SACK block.
+        sacked_left = LOCAL__ISS + 1 + 100
+        sacked_right = LOCAL__ISS + 1 + 200
+        first_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(sacked_left, sacked_right)],
+        )
+        self._drive_rx(frame=first_ack)
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [(sacked_left, sacked_right)],
+            msg="Setup precondition: scoreboard must hold the SACK block before the cum-ACK advance.",
+        )
+
+        # Second ACK: cumulative-ack advances past the sacked range.
+        second_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 200,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=second_ack)
+
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + 200,
+            msg="Setup precondition: cumulative-ACK must advance SND.UNA past the sacked range.",
+        )
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [],
+            msg=(
+                "The scoreboard MUST be pruned once the cumulative ACK "
+                "absorbs the sacked range - 'prune_below(SND.UNA)' "
+                "drops blocks whose right edge lies at or below the "
+                "new SND.UNA per RFC 6675 §3 / RFC 2018 §3."
+            ),
+        )
+
+    def test__sack__out_of_window_sack_block_silently_dropped(self) -> None:
+        """
+        Ensure that an inbound SACK block whose edges fall outside
+        '[SND.UNA, SND.MAX]' is silently dropped. Such a block
+        cannot describe legitimate in-flight bytes - the receiver
+        cannot have SACKed bytes we never sent. RFC 2018 §5
+        ("being liberal in what we accept") permits silently
+        ignoring it without dropping the segment.
+
+        Scenario:
+
+            1. Drive handshake with bilateral SACK.
+            2. Send 200 bytes so 'SND.MAX = ISS+1+200'.
+            3. Drain.
+            4. Peer sends an ACK with SACK block
+               '[ISS+1+1000, ISS+1+1100)' - well past 'SND.MAX'.
+            5. Inspect '_sack_scoreboard.blocks()' - empty.
+
+        Assertions:
+
+            * '_sack_scoreboard.blocks() == []' - the out-of-
+              window block was filtered out and never reached
+              the scoreboard.
+
+        [FLAGS BUG] - the scoreboard does not yet exist (phase 4).
+        After the implementation lands the ingestion path must
+        gate every block on
+        'le32(SND.UNA, left) AND le32(right, SND.MAX) AND
+        lt32(left, right)'; blocks failing the gate are silently
+        dropped.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        session.send(data=b"X" * 200)
+        self._advance(ms=1)
+
+        out_of_window_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(LOCAL__ISS + 1 + 1000, LOCAL__ISS + 1 + 1100)],
+        )
+        self._drive_rx(frame=out_of_window_ack)
+
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),  # type: ignore[attr-defined]
+            [],
+            msg=(
+                "A SACK block whose edges fall outside "
+                "'[SND.UNA, SND.MAX]' MUST be silently dropped - the "
+                "block cannot describe legitimate in-flight bytes "
+                "(RFC 2018 §5). The scoreboard must remain empty."
+            ),
         )
