@@ -1671,3 +1671,283 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             seq=LOCAL__ISS + 1 + 3 * mss,
             payload=b"X" * mss,
         )
+
+    def test__sack__dsack__fully_duplicate_segment_elicits_dsack_in_outbound_ack(self) -> None:
+        """
+        Ensure that when peer retransmits a segment whose entire
+        payload range we have already received and cumulatively
+        acknowledged, the next outbound ACK carries a DSACK
+        report per RFC 2883 §4 - the duplicated range is encoded
+        as the FIRST SACK block.
+
+        RFC 2883 §4 (Reporting Full Duplicate Segments):
+
+            "If the data receiver receives a duplicate of a
+             previously received segment, it MUST ... send a
+             D-SACK option in the next acknowledgement. The
+             D-SACK block is the first SACK block in the
+             SACK option."
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral
+               SACK negotiation.
+            2. Peer sends segment 1 (50 bytes) - we deliver and
+               eventually acknowledge.
+            3. Drain the delayed-ACK so RCV.NXT is settled at
+               'PEER__ISS + 1 + 50' from peer's view.
+            4. Peer re-sends the SAME segment (= fully
+               duplicate retransmit). Inline drive: one
+               outbound ACK with a SACK option whose FIRST
+               block reports the duplicate range.
+
+        Assertions:
+
+            * Exactly one inline outbound ACK fires on the
+              duplicate-segment arrival.
+            * The ACK's SACK option contains exactly one block
+              equal to '(PEER__ISS + 1, PEER__ISS + 1 + 50)' -
+              the DSACK report of the duplicated range.
+            * Session state remains ESTABLISHED.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        # Peer sends segment 1 (50 bytes).
+        payload = b"abcdefghij" * 5  # 50 bytes
+        seg1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=payload,
+        )
+        self._drive_rx(frame=seg1)
+        # Drain the delayed-ACK so the receive state settles
+        # before we test the duplicate path. (The delayed-ACK
+        # interval is 100ms by default; advance well past it.)
+        self._advance(ms=200)
+
+        rx_buffer_before = bytes(session._rx_buffer)
+        rcv_nxt_before = session._rcv_nxt
+
+        # Peer re-sends segment 1 - fully duplicate.
+        seg1_dup = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=payload,
+        )
+        dup_tx = self._drive_rx(frame=seg1_dup)
+
+        self.assertEqual(
+            len(dup_tx),
+            1,
+            msg=(
+                "A fully-duplicate inbound segment MUST elicit "
+                "exactly one outbound ACK so peer's retransmit "
+                "machinery sees fresh activity (RFC 2883 §4)."
+            ),
+        )
+        dup_ack_probe = self._parse_tx(dup_tx[0])
+        self._assert_segment(
+            dup_ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=rcv_nxt_before,
+            sack_blocks=[(PEER__ISS + 1, PEER__ISS + 1 + 50)],
+        )
+        # Sanity: rx_buffer is unchanged - the duplicate brought
+        # no new bytes and the FSM did not double-deliver.
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            rx_buffer_before,
+            msg="A fully-duplicate segment must NOT re-enqueue bytes into '_rx_buffer'.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Duplicate-segment receipt must not perturb the FSM state.",
+        )
+
+    def test__sack__dsack__inbound_dsack_below_snd_una_detected_and_not_ingested(self) -> None:
+        """
+        Ensure that when peer sends an ACK whose SACK option's
+        first block reports a range entirely below SND.UNA, the
+        sender recognises the DSACK signature (RFC 2883 §4),
+        increments '_dsack_received', and does NOT add the
+        DSACK range to the loss-recovery scoreboard.
+
+        RFC 2883 §4 (Recognising D-SACK signatures):
+
+            "First, the data sender determines whether or not
+             the SACK information includes a D-SACK option ...
+             If the SACK option contains an SACK block ...
+             where the right edge of that block ... is less
+             than or equal to the cumulative acknowledgement
+             ... then that information represents a duplicate
+             segment received by the data receiver."
+
+        Scenario:
+
+            1. Drive handshake with bilateral SACK; pre-set
+               '_snd_ewn = PEER__WIN' and send 2*MSS bytes;
+               drain so SND.MAX = LOCAL__ISS + 1 + 2*MSS.
+            2. Peer sends an ACK whose cumulative-ACK advances
+               SND.UNA to 'LOCAL__ISS + 1 + 2*MSS' AND whose
+               SACK option carries one block
+               '[LOCAL__ISS + 1, LOCAL__ISS + 1 + 100)' - a
+               range entirely below the new SND.UNA, signalling
+               peer received those bytes twice.
+
+        Assertions:
+
+            * After the ACK: 'session._dsack_received == 1'.
+            * 'session._sack_scoreboard.blocks() == []' - the
+              DSACK block was NOT ingested into the scoreboard
+              (it would never produce useful in-flight info
+              since it is below SND.UNA).
+            * 'session._snd_una == LOCAL__ISS + 1 + 2 * mss'
+              - the cumulative ACK still advanced normally.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (2 * mss))
+        for _ in range(2):
+            self._advance(ms=1)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 2 * mss,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(LOCAL__ISS + 1, LOCAL__ISS + 1 + 100)],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._dsack_received,
+            1,
+            msg=(
+                "An inbound SACK option whose first block lies "
+                "entirely below SND.UNA MUST be recognised as a "
+                "DSACK report and increment '_dsack_received'."
+            ),
+        )
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),
+            [],
+            msg=(
+                "A DSACK block describes already-acknowledged "
+                "bytes; it MUST NOT be added to the in-flight "
+                "scoreboard."
+            ),
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + 2 * mss,
+            msg="Cumulative-ACK advancement must proceed normally despite the DSACK report.",
+        )
+
+    def test__sack__dsack__inbound_dsack_contained_in_outer_block_detected(self) -> None:
+        """
+        Ensure that the second DSACK signature per RFC 2883 §4
+        is recognised: when the first SACK block lies entirely
+        within a subsequent SACK block in the same option, the
+        first block is a DSACK marker (peer received those bytes
+        twice and is reporting the duplicate alongside the
+        normal SACK info).
+
+        RFC 2883 §4 (Recognising D-SACK signatures):
+
+            "If the SACK option contains an SACK block ... that
+             reports duplicate contiguous sequence space inside
+             a SACK block ... then ... that information
+             represents a duplicate segment."
+
+        Scenario:
+
+            1. Drive handshake with bilateral SACK; send 4*MSS,
+               drain so SND.MAX = LOCAL__ISS + 1 + 4*MSS.
+            2. Peer sends an ACK with TWO SACK blocks:
+                  block 1 (DSACK):  [LOCAL__ISS + 1 + MSS,
+                                     LOCAL__ISS + 1 + MSS + 100)
+                  block 2 (outer): [LOCAL__ISS + 1 + MSS,
+                                     LOCAL__ISS + 1 + 3*MSS)
+               Block 1 is entirely contained within block 2.
+            3. The sender recognises block 1 as DSACK
+               (contained-in-outer) and ingests only block 2
+               into the scoreboard.
+
+        Assertions:
+
+            * 'session._dsack_received == 1'.
+            * Scoreboard contains only the outer block (block 2).
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+        session.send(data=b"X" * (4 * mss))
+        for _ in range(4):
+            self._advance(ms=1)
+
+        outer_left = LOCAL__ISS + 1 + mss
+        outer_right = LOCAL__ISS + 1 + 3 * mss
+        dsack_inner_left = outer_left
+        dsack_inner_right = outer_left + 100
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[
+                (dsack_inner_left, dsack_inner_right),  # DSACK marker
+                (outer_left, outer_right),  # outer covers it
+            ],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._dsack_received,
+            1,
+            msg=(
+                "An inbound SACK option whose first block lies "
+                "entirely within a subsequent block MUST be "
+                "recognised as a DSACK report (RFC 2883 §4 "
+                "second signature)."
+            ),
+        )
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),
+            [(outer_left, outer_right)],
+            msg=(
+                "The outer SACK block must be ingested into the "
+                "scoreboard normally; only the contained DSACK "
+                "marker is excluded."
+            ),
+        )

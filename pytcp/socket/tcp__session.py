@@ -296,6 +296,22 @@ class TcpSession:
         # and a new round of dup-ACKs can re-enter recovery.
         self._recovery_point: Seq32 = 0
 
+        # RFC 2883 DSACK: when peer retransmits data we already
+        # received (fully-duplicate segment OR overlap prefix of
+        # a partially-duplicate segment) we record the duplicate
+        # range here so the next outbound ACK's SACK option
+        # carries it as the FIRST block. 'None' means no DSACK
+        # is pending. 'Build' clears it after consumption.
+        self._pending_dsack: tuple[Seq32, Seq32] | None = None
+
+        # Counter of inbound DSACK occurrences detected by the
+        # sender side. Incremented in '_ingest_sack_info' when
+        # the first SACK block looks like a DSACK marker (right
+        # edge below SND.UNA OR contained within a later block).
+        # Useful for spurious-retransmit observability; phase 7
+        # does not yet wire it into RTO / cwnd.
+        self._dsack_received: int = 0
+
         ###
         # Sending window parameters.
         ###
@@ -672,15 +688,14 @@ class TcpSession:
         else:
             tcp__sackperm = False
 
-        # SACK option blocks per RFC 2018 §3-§4: emitted on
-        # non-SYN ACKs iff the bilateral negotiation succeeded
-        # AND the OOO queue holds at least one buffered range.
-        # An empty OOO queue means we have no out-of-order
-        # information to advertise, and an empty SACK option is
-        # illegal per RFC 2018 §3 (length must cover at least one
-        # 8-byte block).
+        # SACK option blocks per RFC 2018 §3-§4 / RFC 2883 §4:
+        # emitted on non-SYN ACKs iff the bilateral negotiation
+        # succeeded AND we have at least one block to report -
+        # either an OOO-queue entry OR a pending DSACK report.
+        # An empty SACK option is illegal per RFC 2018 §3
+        # (length must cover at least one 8-byte block).
         tcp__sack_blocks: list[tuple[int, int]] | None
-        if not flag_syn and self._send_sack and self._ooo_packet_queue:
+        if not flag_syn and self._send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
             tcp__sack_blocks = self._build_sack_blocks()
         else:
             tcp__sack_blocks = None
@@ -751,21 +766,25 @@ class TcpSession:
 
     def _build_sack_blocks(self) -> list[tuple[int, int]]:
         """
-        Compute the SACK option block list reflecting the current
-        '_ooo_packet_queue' contents. Each buffered metadata yields
-        one '(seq, seq + len(data))' '[left, right)' half-open
-        range, modular-32 reduced. The returned list is capped at
-        RFC 2018 §3's maximum of 4 blocks per option (each block is
-        8 bytes; combined with the option header and an outbound
-        MSS+WSCALE-bearing options block this fits within the 40-
-        byte TCP options limit).
+        Compute the SACK option block list for the next outbound
+        ACK. Layout per RFC 2018 §4 / RFC 2883 §4: when a DSACK
+        report is pending it MUST appear as the FIRST block (the
+        signal the sender uses to recognise this as a DSACK-
+        bearing option), followed by the OOO-queue ranges in
+        insertion order. The returned list is capped at RFC 2018
+        §3's maximum of 4 blocks per option. The pending DSACK
+        is consumed (cleared) by this call so it appears on
+        exactly one outbound ACK.
         """
 
         blocks: list[tuple[int, int]] = []
+        if self._pending_dsack is not None:
+            blocks.append(self._pending_dsack)
+            self._pending_dsack = None
         for seq, packet_rx_md in self._ooo_packet_queue.items():
-            blocks.append((seq, add32(seq, len(packet_rx_md.tcp__data))))
             if len(blocks) >= 4:
                 break
+            blocks.append((seq, add32(seq, len(packet_rx_md.tcp__data))))
         return blocks
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
@@ -777,12 +796,44 @@ class TcpSession:
         '[SND.UNA, SND.MAX]' or are degenerate ('left >= right')
         are silently dropped - they cannot describe legitimate
         in-flight bytes.
+
+        Also recognises RFC 2883 DSACK reports: the FIRST SACK
+        block is treated as a DSACK marker (and excluded from
+        scoreboard ingestion) when either of the RFC 2883 §4
+        signatures holds:
+
+          1. Below cum-ACK: 'right <= SND.UNA'. Peer is
+             reporting a duplicate of bytes already
+             cumulatively acknowledged.
+          2. Contained-in-other: the first block lies inside
+             one of the subsequent blocks. Peer is reporting
+             a duplicate of bytes already SACKed.
+
+        On detection '_dsack_received' is incremented for
+        observability; the spurious-retransmit / RTO-management
+        consumers of this counter are out of scope for phase 7.
         """
 
         if not self._send_sack:
             return
 
-        for left, right in packet_rx_md.tcp__sack_blocks:
+        blocks = list(packet_rx_md.tcp__sack_blocks)
+        if not blocks:
+            return
+
+        # RFC 2883 DSACK detection on the first block.
+        first_left, first_right = blocks[0]
+        is_dsack = le32(first_right, self._snd_una)
+        if not is_dsack:
+            for outer_left, outer_right in blocks[1:]:
+                if le32(outer_left, first_left) and le32(first_right, outer_right):
+                    is_dsack = True
+                    break
+        if is_dsack:
+            self._dsack_received += 1
+            blocks = blocks[1:]
+
+        for left, right in blocks:
             if le32(self._snd_una, left) and le32(right, self._snd_max) and lt32(left, right):
                 self._sack_scoreboard.add_block(left, right)
 
@@ -1210,6 +1261,15 @@ class TcpSession:
             overlap_prefix = (self._rcv_nxt - packet_rx_md.tcp__seq) & 0xFFFF_FFFF
         else:
             overlap_prefix = 0
+        # RFC 2883 DSACK: stash the duplicate-prefix range so the
+        # next outbound ACK reports it as the FIRST SACK block.
+        # The range is '[seg_seq, seg_seq + overlap_prefix)' which
+        # equals '[seg_seq, OLD RCV.NXT)' (RCV.NXT advances later).
+        if self._send_sack and overlap_prefix > 0:
+            self._pending_dsack = (
+                packet_rx_md.tcp__seq,
+                add32(packet_rx_md.tcp__seq, overlap_prefix),
+            )
         # Modular 'max' on RCV.NXT: advance iff the segment's end
         # is ahead of our current RCV.NXT in modular order.
         if lt32(self._rcv_nxt, seg_end):
@@ -1779,6 +1839,24 @@ class TcpSession:
                     f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + "
                     f"{seg_len} doesn't fit into receive window, dropping",
                 )
+                # RFC 2883 DSACK case 1: a fully-duplicate data
+                # segment - one whose entire payload lies below
+                # RCV.NXT - is unacceptable per the receive-
+                # window check above, but the segment IS valid
+                # evidence of a peer retransmit. Emit a DSACK
+                # report on the next outbound ACK so peer can
+                # detect spurious retransmits / reordering. The
+                # ACK itself is sent here so peer's retransmit
+                # machinery sees fresh activity even though we
+                # delivered no new bytes.
+                if (
+                    self._send_sack
+                    and len(packet_rx_md.tcp__data) > 0
+                    and lt32(packet_rx_md.tcp__seq, self._rcv_nxt)
+                    and le32(seg_end, self._rcv_nxt)
+                ):
+                    self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
+                    self._transmit_packet(flag_ack=True)
                 return
 
         # Got ACK packet.
