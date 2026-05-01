@@ -826,6 +826,86 @@ class TcpSession:
             blocks.append((seq, add32(seq, len(packet_rx_md.tcp__data))))
         return blocks
 
+    def _check_segment_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
+        """
+        Apply the RFC 9293 §3.10.7.4 step 1 receive-window
+        acceptability check to an inbound segment. Return True
+        when the segment is acceptable (caller should continue
+        processing); return False when the segment is
+        unacceptable (caller MUST drop and return - this method
+        has already emitted the mandated ACK reply).
+
+        Acceptability table (RFC 9293 §3.10.7.4):
+
+            SEG.LEN == 0:
+              RCV.WND > 0  -> RCV.NXT <= SEG.SEQ <= RCV.NXT+RCV.WND
+              RCV.WND == 0 -> SEG.SEQ == RCV.NXT
+            SEG.LEN > 0:
+              RCV.WND > 0  -> SEG.SEQ < RCV.NXT+RCV.WND AND
+                              SEG.SEQ + SEG.LEN > RCV.NXT
+              RCV.WND == 0 -> not acceptable
+
+        SEG.LEN here counts data plus the SYN / FIN flag bytes
+        that also consume sequence space. All comparisons are
+        modular per RFC 9293 §3.4.
+
+        On unacceptable segments the spec mandates an ACK reply
+        carrying our current SND.NXT / RCV.NXT, EXCEPT when the
+        segment carries RST (RFC 9293 §3.10.7.4 step 1 explicit
+        RST clause: 'unless the RST bit is set, if so drop the
+        segment and return' - replying with an ACK to a blind
+        RST would amplify a possible attack).
+
+        RFC 2883 DSACK case 1: when bilateral SACK is enabled
+        and the unacceptable segment is a fully-duplicate data
+        retransmit (entirely below RCV.NXT), stash the
+        duplicated range as a pending DSACK so the next
+        outbound ACK reports it as the FIRST SACK block.
+        """
+
+        seg_len = len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
+        seg_end = add32(packet_rx_md.tcp__seq, seg_len)
+        if seg_len == 0:
+            if self._rcv_wnd > 0:
+                acceptable = in_range32(packet_rx_md.tcp__seq, self._rcv_nxt, add32(self._rcv_nxt, self._rcv_wnd))
+            else:
+                acceptable = packet_rx_md.tcp__seq == self._rcv_nxt
+        else:
+            if self._rcv_wnd > 0:
+                acceptable = lt32(packet_rx_md.tcp__seq, add32(self._rcv_nxt, self._rcv_wnd)) and gt32(
+                    seg_end, self._rcv_nxt
+                )
+            else:
+                acceptable = False
+
+        if acceptable:
+            return True
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + " f"{seg_len} doesn't fit into receive window, dropping",
+        )
+        # RFC 9293 §3.10.7.4 step 1 RST exception: an
+        # unacceptable RST is dropped silently to avoid an
+        # ACK-amplification path against blind off-path
+        # attackers.
+        if packet_rx_md.tcp__flag_rst:
+            return False
+        # RFC 2883 DSACK case 1: stash the duplicate range so
+        # the ACK below reports it as the FIRST SACK block.
+        if (
+            self._send_sack
+            and len(packet_rx_md.tcp__data) > 0
+            and lt32(packet_rx_md.tcp__seq, self._rcv_nxt)
+            and le32(seg_end, self._rcv_nxt)
+        ):
+            self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
+        # RFC 9293 §3.10.7.4 step 1: ACK the unacceptable
+        # segment so peer's retransmit machinery sees fresh
+        # activity and can stop retransmitting.
+        self._transmit_packet(flag_ack=True)
+        return False
+
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
         """
         Ingest peer's SACK blocks from 'packet_rx_md' into the
@@ -1883,71 +1963,11 @@ class TcpSession:
             )
             return
 
-        # Receive-window acceptability check per RFC 9293 §3.10.7.4.
-        # A segment is acceptable if any portion of its sequence space
-        # falls within the receive window. The strict bound used
-        # previously (RCV.NXT <= SEG.SEQ <= RCV.NXT + RCV.WND - len)
-        # rejected overlapping retransmits whose tail extended past
-        # RCV.NXT, in violation of the spec's "A receiver should be
-        # tolerant of overlap in segments" mandate (§3.10.7.4 sequence
-        # acceptability table). Use the spec's actual rule:
-        #
-        #   SEG.LEN == 0:
-        #     RCV.WND > 0 -> RCV.NXT <= SEG.SEQ <= RCV.NXT + RCV.WND
-        #     RCV.WND == 0 -> SEG.SEQ == RCV.NXT
-        #   SEG.LEN > 0:
-        #     RCV.WND > 0 -> SEG.SEQ < RCV.NXT + RCV.WND AND
-        #                    SEG.SEQ + SEG.LEN > RCV.NXT
-        #     RCV.WND == 0 -> not acceptable
-        #
-        # SEG.LEN here counts data plus the SYN / FIN flag bytes that
-        # also consume sequence space.
-        if packet_rx_md is not None:
-            seg_len = len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
-            seg_end = add32(packet_rx_md.tcp__seq, seg_len)
-            # All seq comparisons modular per RFC 9293 §3.4.
-            # 'in_range32(x, lo, hi)' is the canonical RFC §3.10.7.4
-            # 'lo <= x <= hi' acceptability test in modular space;
-            # the data-bearing case uses 'lt32 / gt32' for the
-            # exclusive 'SEG.SEQ < RCV.NXT + RCV.WND AND
-            # SEG.SEQ + SEG.LEN > RCV.NXT' shape.
-            if seg_len == 0:
-                if self._rcv_wnd > 0:
-                    acceptable = in_range32(packet_rx_md.tcp__seq, self._rcv_nxt, add32(self._rcv_nxt, self._rcv_wnd))
-                else:
-                    acceptable = packet_rx_md.tcp__seq == self._rcv_nxt
-            else:
-                if self._rcv_wnd > 0:
-                    acceptable = lt32(packet_rx_md.tcp__seq, add32(self._rcv_nxt, self._rcv_wnd)) and gt32(
-                        seg_end, self._rcv_nxt
-                    )
-                else:
-                    acceptable = False
-            if not acceptable:
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + "
-                    f"{seg_len} doesn't fit into receive window, dropping",
-                )
-                # RFC 2883 DSACK case 1: a fully-duplicate data
-                # segment - one whose entire payload lies below
-                # RCV.NXT - is unacceptable per the receive-
-                # window check above, but the segment IS valid
-                # evidence of a peer retransmit. Emit a DSACK
-                # report on the next outbound ACK so peer can
-                # detect spurious retransmits / reordering. The
-                # ACK itself is sent here so peer's retransmit
-                # machinery sees fresh activity even though we
-                # delivered no new bytes.
-                if (
-                    self._send_sack
-                    and len(packet_rx_md.tcp__data) > 0
-                    and lt32(packet_rx_md.tcp__seq, self._rcv_nxt)
-                    and le32(seg_end, self._rcv_nxt)
-                ):
-                    self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
-                    self._transmit_packet(flag_ack=True)
-                return
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check; on unacceptable segments the helper emits the
+        # mandated ACK reply and returns False, the caller drops.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
+            return
 
         # Got ACK packet.
         if (
@@ -2351,6 +2371,15 @@ class TcpSession:
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-close_wait (RFC 9293 §3.10.7.4)",
             )
+            return
+
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check. The same helper used in ESTABLISHED catches
+        # fully-duplicate retransmits of pre-FIN data and out-of-
+        # window forward segments, emits the mandated ACK reply
+        # so peer's retransmit machinery sees fresh activity, and
+        # returns False for the caller to drop.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
             return
 
         # Got ACK packet.
