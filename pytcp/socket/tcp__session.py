@@ -1835,6 +1835,7 @@ class TcpSession:
     def _tcp_fsm_time_wait(
         self,
         *,
+        packet_rx_md: TcpMetadata | None,
         timer: bool | None,
     ) -> None:
         """
@@ -1844,6 +1845,26 @@ class TcpSession:
         # Got timer event -> Run TIME_WAIT delay.
         if timer and stack.timer.is_expired(f"{self}-time_wait"):
             self._change_state(FsmState.CLOSED)
+            return
+
+        # Got peer FIN retransmit -> Acknowledge it and restart the
+        # TIME_WAIT timer per RFC 9293 §3.10.7.5: 'The only thing
+        # that can arrive in this state is a retransmission of the
+        # remote FIN. Acknowledge it, and restart the 2 MSL
+        # timeout.' The FIN's seq does not advance with retransmits,
+        # so peer is replaying the same byte of sequence space we
+        # already accepted (RCV.NXT - 1).
+        if packet_rx_md and packet_rx_md.tcp__flag_fin and packet_rx_md.tcp__seq + 1 == self._rcv_nxt:
+            self._transmit_packet(flag_ack=True)
+            stack.timer.register_timer(
+                name=f"{self}-time_wait",
+                timeout=TIME_WAIT_DELAY,
+            )
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",
+            )
+            return
 
     def tcp_fsm(
         self,
@@ -1895,4 +1916,4 @@ class TcpSession:
                 case FsmState.LAST_ACK:
                     self._tcp_fsm_last_ack(packet_rx_md=packet_rx_md, timer=timer)
                 case FsmState.TIME_WAIT:
-                    self._tcp_fsm_time_wait(timer=timer)
+                    self._tcp_fsm_time_wait(packet_rx_md=packet_rx_md, timer=timer)
