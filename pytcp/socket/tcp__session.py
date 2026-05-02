@@ -67,6 +67,12 @@ PACKET_RETRANSMIT_MAX_COUNT = 6
 TIME_WAIT_DELAY = 30000  # 30s delay for the TIME_WAIT state, default is 30-120s
 DELAYED_ACK_DELAY = 100  # Delay between consecutive delayed ACK outbound packets
 
+# RFC 5961 §3 / §4 challenge-ACK rate limit. The receiver SHOULD NOT
+# emit more than one challenge ACK per sliding 1-second window, so a
+# burst of unacceptable segments cannot amplify into an outbound ACK
+# flood. Linux's default value matches.
+CHALLENGE_ACK_RATE_LIMIT_MS = 1000
+
 # RFC 9293 §3.8.6.1 / RFC 1122 §4.2.2.17 zero-window persist timer.
 # The first probe fires after the current RTO (initial = PACKET_RETRANSMIT_TIMEOUT),
 # subsequent probes back off exponentially up to PERSIST_TIMEOUT_MAX (60 s);
@@ -915,9 +921,41 @@ class TcpSession:
             self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
         # RFC 9293 §3.10.7.4 step 1: ACK the unacceptable
         # segment so peer's retransmit machinery sees fresh
-        # activity and can stop retransmitting.
-        self._transmit_packet(flag_ack=True)
+        # activity and can stop retransmitting. Rate-limited
+        # per RFC 5961 §3 so a burst of unacceptable segments
+        # cannot amplify into an outbound ACK flood.
+        self._emit_challenge_ack()
         return False
+
+    def _emit_challenge_ack(self) -> None:
+        """
+        RFC 5961 §3 / §4 rate-limited challenge-ACK emission.
+        Fires '_transmit_packet(flag_ack=True)' at most once per
+        sliding 1-second window so a burst of inbound segments
+        (unacceptable seq, unacceptable ack, blind SYN-in-
+        synchronized-state, etc.) cannot amplify into an outbound
+        ACK flood. Subsequent calls within the window are
+        suppressed; the caller's intended observable behaviour
+        ('an ACK was emitted in response to this segment') is
+        sacrificed in favour of the global rate-limit invariant
+        which RFC 5961 mandates as a SHOULD-level requirement.
+
+        Implementation: a per-session 'stack.timer' entry named
+        '<session>-challenge_ack' acts as the sliding-window
+        gate. 'is_expired' returns True when the entry has fired
+        or was never registered - either way we are outside the
+        rate-limit window and may emit; otherwise we suppress.
+        """
+
+        rate_limit_timer = f"{self}-challenge_ack"
+        if not stack.timer.is_expired(rate_limit_timer):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Challenge ACK suppressed by RFC 5961 §3 rate limit",
+            )
+            return
+        self._transmit_packet(flag_ack=True)
+        stack.timer.register_timer(name=rate_limit_timer, timeout=CHALLENGE_ACK_RATE_LIMIT_MS)
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -1877,7 +1915,7 @@ class TcpSession:
         # for tear-down semantics. This is the symmetric analog of the
         # SYN-on-established branch in '_tcp_fsm_established'.
         if packet_rx_md and packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-syn_rcvd (RFC 9293 §3.10.7.4)",
@@ -1988,7 +2026,7 @@ class TcpSession:
         # retransmitted SYN+ACK carries SEG.SEQ = peer_ISS, one byte before our
         # current RCV.NXT, and would otherwise be silently dropped.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-established (RFC 9293 §3.10.7.4)",
@@ -2072,7 +2110,7 @@ class TcpSession:
             # duplicate per RFC §3.10.7.4 and is silently discarded
             # - the existing fall-through handles that path.)
             if gt32(packet_rx_md.tcp__ack, self._snd_max):
-                self._transmit_packet(flag_ack=True)
+                self._emit_challenge_ack()
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Sent empty ACK reply for unacceptable "
@@ -2128,8 +2166,9 @@ class TcpSession:
                 # Case (2): in-window but mismatched seq - emit a
                 # challenge ACK so a legitimate peer can retransmit
                 # the RST at the correct seq, while a blind off-path
-                # attacker cannot leverage the silent drop.
-                self._transmit_packet(flag_ack=True)
+                # attacker cannot leverage the silent drop. Rate-
+                # limited per RFC 5961 §3.
+                self._emit_challenge_ack()
             # Case (3): out of window -> fall through (silent drop).
             return
 
@@ -2166,7 +2205,7 @@ class TcpSession:
         # send a challenge ACK to the remote peer'). Mirrors the
         # ESTABLISHED / SYN_RCVD branches.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-fin_wait_1 (RFC 9293 §3.10.7.4)",
@@ -2254,7 +2293,7 @@ class TcpSession:
         # Got SYN-bearing segment in a synchronized state -> Send a
         # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-fin_wait_2 (RFC 9293 §3.10.7.4)",
@@ -2332,7 +2371,7 @@ class TcpSession:
         # Got SYN-bearing segment in a synchronized state -> Send a
         # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-closing (RFC 9293 §3.10.7.4)",
@@ -2380,7 +2419,7 @@ class TcpSession:
             # RCV.NXT. The strict-equality predecessor of this
             # branch silently dropped these.
             if gt32(packet_rx_md.tcp__ack, self._snd_max):
-                self._transmit_packet(flag_ack=True)
+                self._emit_challenge_ack()
             return
 
         # Got RST + ACK packet -> Change state to CLOSED.
@@ -2420,7 +2459,7 @@ class TcpSession:
         # Got SYN-bearing segment in a synchronized state -> Send a
         # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-close_wait (RFC 9293 §3.10.7.4)",
@@ -2530,7 +2569,7 @@ class TcpSession:
         # Got SYN-bearing segment in a synchronized state -> Send a
         # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-last_ack (RFC 9293 §3.10.7.4)",
@@ -2610,7 +2649,7 @@ class TcpSession:
         # TIME_WAIT-special connection-recycling path is unreachable
         # and the default challenge-ACK behaviour applies.
         if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._transmit_packet(flag_ack=True)
+            self._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-time_wait (RFC 9293 §3.10.7.4)",
