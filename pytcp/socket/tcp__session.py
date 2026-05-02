@@ -2147,14 +2147,26 @@ class TcpSession:
                 self._process_ack_packet(packet_rx_md)
                 # Change state to ESTABLISHED.
                 self._change_state(FsmState.ESTABLISHED)
-                # Inform the listening socket that session has been established
-                # so accept call can pick it up.
+                # Passive-open path: inform the listening socket so
+                # accept() can pick up the child. Simultaneous-open
+                # path (active-open with peer's SYN crossing ours)
+                # has no parent socket - the session itself is the
+                # application-visible one; only the connect-event
+                # release matters there. The 'is not None' gate
+                # handles both paths uniformly without an assert
+                # that would crash the active-open simultaneous-open
+                # handshake.
                 parent_socket = self._socket._parent_socket  # pylint: disable=protected-access
-                assert parent_socket is not None, "child TcpSocket must always have a parent_socket set"
-                parent_socket._tcp_accept.append(self._socket)  # pylint: disable=protected-access
-                parent_socket._event__tcp_session_established.release()  # pylint: disable=protected-access
-                # Inform connect syscall that connection related event happened,
-                # this is needed only in case of tcp simultaneous open.
+                if parent_socket is not None:
+                    parent_socket._tcp_accept.append(self._socket)  # pylint: disable=protected-access
+                    parent_socket._event__tcp_session_established.release()  # pylint: disable=protected-access
+                # Inform connect syscall that connection related
+                # event happened. Required for the active-open
+                # simultaneous-open path (where the application
+                # thread is blocked on '_event__connect.acquire()');
+                # harmless on the passive-open path because no
+                # caller is blocked on that semaphore there
+                # ('Semaphore.release()' just increments the count).
                 self._event__connect.release()
                 return
 
