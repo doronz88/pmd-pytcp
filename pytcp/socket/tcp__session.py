@@ -1235,6 +1235,15 @@ class TcpSession:
             # '_snd_mss' here is the slow-start re-entry.
             self._snd_ewn = self._snd_mss
             self._snd_nxt = self._snd_una
+            # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
+            # event, distinct from the dup-ACK-driven fast-
+            # retransmit recovery. The RFC 6675 §5 RecoveryPoint
+            # marker (the SND.MAX at fast-retransmit entry) is
+            # meaningless once SND.NXT has been rewound to
+            # SND.UNA above; leaving it set would inhibit the
+            # next dup-ACK from re-entering recovery via the
+            # one-shot guard in '_retransmit_packet_request'.
+            self._recovery_point = 0
             # SYN and FIN consume one byte of sequence space but do
             # not occupy a slot in the TX buffer. After
             # '_transmit_packet' fired the original SYN/FIN it
