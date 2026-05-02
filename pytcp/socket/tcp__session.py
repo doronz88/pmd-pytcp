@@ -714,6 +714,16 @@ class TcpSession:
         # is also a "SYN segment" for this rule.
         if flag_syn:
             tcp__win = min(self._rcv_wnd, 0xFFFF)
+        elif 0 < self._rcv_wnd < self._rcv_mss:
+            # RFC 1122 §4.2.3.3 receiver SWS avoidance: when the
+            # available receive-window is non-zero but smaller
+            # than one MSS, advertise zero so peer's persist-
+            # probe loop fires rather than peer sending a sub-
+            # MSS segment that wastes per-byte header overhead.
+            # The next window update fires once the application
+            # has consumed at least one MSS of buffer space and
+            # '_rcv_wnd >= _rcv_mss' again.
+            tcp__win = 0
         else:
             tcp__win = self._rcv_wnd >> self._rcv_wsc
 
