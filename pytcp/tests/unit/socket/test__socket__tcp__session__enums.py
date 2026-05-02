@@ -185,14 +185,18 @@ class TestConnError(TestCase):
 
     def test__tcp_session__conn_error_members(self) -> None:
         """
-        Ensure 'ConnError' exposes the three connection-failure codes
-        used by the session: NONE, REFUSED, TIMEOUT.
+        Ensure 'ConnError' exposes the four connection-failure codes
+        used by the session: NONE, REFUSED, TIMEOUT, CANCELED.
+        'CANCELED' added to support 'close()' issued mid-handshake
+        from a different thread than the one blocked on 'connect()';
+        signals the canceled-error so the blocked caller raises
+        'TcpSessionError("Connection canceled")' on unblock.
         """
 
         self.assertEqual(
             {member.name for member in ConnError},
-            {"NONE", "REFUSED", "TIMEOUT"},
-            msg="ConnError must expose exactly NONE, REFUSED, TIMEOUT.",
+            {"NONE", "REFUSED", "TIMEOUT", "CANCELED"},
+            msg="ConnError must expose exactly NONE, REFUSED, TIMEOUT, CANCELED.",
         )
 
 

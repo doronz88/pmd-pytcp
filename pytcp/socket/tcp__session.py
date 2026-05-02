@@ -124,6 +124,7 @@ class ConnError(NameEnum):
     NONE = auto()
     REFUSED = auto()
     TIMEOUT = auto()
+    CANCELED = auto()
 
 
 def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:

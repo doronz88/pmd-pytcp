@@ -1659,3 +1659,232 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "blocked active-open CONNECT caller unblocks."
             ),
         )
+
+    def test__active_open__close_in_syn_sent_unblocks_connect_with_canceled(self) -> None:
+        """
+        Ensure that 'close()' issued mid-handshake from SYN_SENT
+        releases the connect-event semaphore with the dedicated
+        'ConnError.CANCELED' signal, so a blocked
+        'TcpSession.connect()' caller (typically a different
+        thread) unblocks with
+        'TcpSessionError("Connection canceled")' rather than
+        hanging forever on the dead session.
+
+        RFC 9293 §3.10.4 (CLOSE call) governs the close-during-
+        connect transition. PyTCP's SYN_SENT close handler
+        moves state to CLOSED but does not signal the blocked
+        connect caller; without an explicit unblock the calling
+        thread sits on '_event__connect.acquire()' until the
+        application is killed.
+
+        Threat model: a multi-threaded application with one
+        thread blocked on 'connect()' and another that calls
+        'close()' (e.g. shutdown initiated from a control
+        plane) hangs the connect thread. PyTCP doesn't ship a
+        wrapper that triggers this today, but downstream users
+        wrapping the session in 'asyncio' / 'concurrent.futures'
+        could trip the race.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent's CLOSE
+        syscall handler (line ~2049):
+
+            if syscall is SysCall.CLOSE:
+                self._change_state(FsmState.CLOSED)
+                return
+
+        … doesn't set '_connection_error' and doesn't release
+        '_event__connect'. The session is unregistered from
+        'stack.sockets' but the connect-blocked thread is left
+        hanging.
+
+        Severity: LOW (rare race - requires multi-threaded
+        app to exhibit) but real correctness gap.
+
+        Fix outline (separate commit):
+
+          - Add 'ConnError.CANCELED' enum value (semantically
+            distinct from REFUSED 'peer-side rejection' and
+            TIMEOUT 'R2 expired').
+          - Add a corresponding branch in 'TcpSession.connect()'
+            so the canceled-error raises
+            'TcpSessionError("Connection canceled")'.
+          - SYN_SENT close handler: set
+            '_connection_error = ConnError.CANCELED', call
+            '_event__connect.release()', then transition to
+            CLOSED.
+
+        Scenario:
+
+            1. Build active-open session with LOCAL__ISS.
+               Issue CONNECT. Tick once to emit SYN. State =
+               SYN_SENT. '_event__connect' is NOT yet
+               released.
+            2. Issue CLOSE syscall while still in SYN_SENT.
+
+        Assertions:
+
+            * State is CLOSED.
+            * 'session._connection_error is ConnError.CANCELED'.
+            * 'session._event__connect.acquire(timeout=0)' is
+              True.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN must fire on the first tick.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="Setup precondition: state must be SYN_SENT.",
+        )
+        self.assertFalse(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "Setup precondition: connect-event semaphore must "
+                "not be released while the handshake is in progress."
+            ),
+        )
+
+        # Issue CLOSE syscall while in SYN_SENT (simulating a
+        # different thread calling 'session.close()' while the
+        # connect-thread is blocked on '_event__connect').
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=("CLOSE in SYN_SENT must transition to CLOSED per " "RFC 9293 §3.10.4."),
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.CANCELED,
+            msg=(
+                "CLOSE in SYN_SENT MUST record "
+                "'ConnError.CANCELED' so the blocked CONNECT "
+                "caller raises "
+                "'TcpSessionError(\"Connection canceled\")' on "
+                "unblock. Today the SYN_SENT CLOSE handler only "
+                "calls '_change_state(CLOSED)' without setting "
+                "'_connection_error'."
+            ),
+        )
+        self.assertTrue(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "On CLOSE in SYN_SENT, '_event__connect' MUST be "
+                "released so the blocked CONNECT caller unblocks. "
+                "Today the SYN_SENT CLOSE handler doesn't release "
+                "the semaphore; multi-threaded apps that close a "
+                "connecting session deadlock the connect thread."
+            ),
+        )
+
+    def test__active_open__close_in_syn_rcvd_unblocks_connect_with_canceled(self) -> None:
+        """
+        Ensure that 'close()' issued mid-handshake from
+        SYN_RCVD (reached via simultaneous open) releases the
+        connect-event semaphore with 'ConnError.CANCELED' so a
+        blocked CONNECT caller unblocks. Same gap class as the
+        SYN_SENT sibling above.
+
+        SYN_RCVD's CLOSE handler currently transitions to
+        FIN_WAIT_1 to drive the post-half-close FIN exchange,
+        but doesn't signal the blocked CONNECT caller. The
+        eventual transition to CLOSED via the FIN exchange
+        also doesn't release '_event__connect' (none of the
+        FIN_WAIT_1 / FIN_WAIT_2 / TIME_WAIT handlers do), so
+        the CONNECT caller remains blocked through the entire
+        graceful-close lifecycle.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd's CLOSE
+        syscall handler (line ~2207):
+
+            if syscall is SysCall.CLOSE:
+                self._change_state(FsmState.FIN_WAIT_1)
+                return
+
+        … doesn't set '_connection_error' or release
+        '_event__connect'.
+
+        Fix outline: same shape as SYN_SENT's CLOSE handler
+        fix - set 'CANCELED', release semaphore, then
+        transition.
+
+        Scenario:
+
+            1. Drive active-open to SYN_SENT, emit SYN.
+            2. Peer's bare SYN crosses ours -> SYN_RCVD
+               (simultaneous open).
+            3. Issue CLOSE while in SYN_RCVD.
+
+        Assertions:
+
+            * State is FIN_WAIT_1.
+            * 'session._connection_error is
+              ConnError.CANCELED'.
+            * 'session._event__connect.acquire(timeout=0)' is
+              True.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # Drive SYN_SENT -> SYN_RCVD via peer's bare SYN
+        # (simultaneous-open trigger).
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg="Setup precondition: state must be SYN_RCVD.",
+        )
+
+        # Issue CLOSE syscall while in SYN_RCVD.
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=(
+                "CLOSE in SYN_RCVD must transition to FIN_WAIT_1 "
+                "per RFC 9293 §3.10.4 (so the FIN exchange can "
+                "drive the post-half-close cleanup)."
+            ),
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.CANCELED,
+            msg=(
+                "CLOSE in SYN_RCVD MUST record "
+                "'ConnError.CANCELED' so the blocked CONNECT "
+                "caller raises "
+                "'TcpSessionError(\"Connection canceled\")' on "
+                "unblock."
+            ),
+        )
+        self.assertTrue(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "On CLOSE in SYN_RCVD, '_event__connect' MUST be "
+                "released so the blocked CONNECT caller unblocks. "
+                "Today the handler only changes state to FIN_WAIT_1 "
+                "without releasing the semaphore; the eventual "
+                "CLOSED transition (via the FIN exchange) also "
+                "doesn't release it, so the CONNECT caller is "
+                "stuck for the entire graceful-close lifecycle."
+            ),
+        )
