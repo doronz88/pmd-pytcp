@@ -61,6 +61,7 @@ from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__session import (
+    PACKET_RETRANSMIT_TIMEOUT,
     FsmState,
     SysCall,
     TcpSession,
@@ -1485,5 +1486,293 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
                 "segment via the broken acceptability check and stays "
                 "in SYN_SENT (or transitions to CLOSED if the bogus "
                 "RST also drives an internal abort)."
+            ),
+        )
+
+
+class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
+    """
+    Tests the '_snd_fin = 0' sentinel collision in
+    '_retransmit_packet_timeout's TX-buffer offset rewind. The
+    rewind walks 'self._tx_buffer_seq_mod' back by one when
+    'self._snd_nxt in {self._snd_ini, self._snd_fin}', the
+    rationale being that SYN and FIN consume one byte of seq
+    space without a TX-buffer slot. But when no FIN has been
+    sent, '_snd_fin' is the literal value 0 used as a sentinel;
+    once 'SND.UNA' wraps modulo 2**32 to exactly 0 and an RTO
+    fires, the rewind sets 'SND.NXT = 0', the set membership
+    fires its FIN branch on the sentinel value, and the
+    walk-back silently corrupts the offset translation.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__rto_after_snd_una_wraps_to_zero_does_not_corrupt_tx_buffer_offset(self) -> None:
+        """
+        Ensure that when 'SND.UNA' wraps modulo 2**32 to exactly
+        0 and an RTO fires before any FIN has been sent, the
+        retransmit fires the queued data byte cleanly - the
+        '_snd_fin = 0' sentinel value MUST NOT be confused for
+        a real FIN seq matching 'SND.NXT == 0'.
+
+        RFC 9293 §3.4 (Sequence Numbers) defines seq as 32-bit
+        modular; values legitimately reach 0 after a wrap. RFC
+        9293 §3.10.7.4 (RTO retransmit) does not require any
+        special handling at SND.NXT == 0; the retransmit simply
+        re-sends the unacked segment.
+
+        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout'
+        line 1335:
+
+            if self._snd_nxt in {self._snd_ini, self._snd_fin}:
+                self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+
+        The walk-back is correct for SYN retransmit
+        ('snd_nxt == snd_ini') and FIN retransmit
+        ('snd_nxt == snd_fin'), since SYN and FIN each consume
+        one byte of seq space without occupying a TX-buffer
+        slot - the 'snd_ini' / 'snd_fin' increment that
+        '_transmit_packet' applied to '_tx_buffer_seq_mod' must
+        be unwound on retransmit. But '_snd_fin' is initialised
+        to '0' as the "no FIN sent yet" sentinel
+        (tcp__session.py:338). Once 'SND.UNA' wraps to exactly
+        0 (which it WILL during a connection that crosses the
+        seq boundary - the wrap-by-byte advancement guarantees
+        landing on the 0 value as it crosses), an RTO triggered
+        with 'SND.UNA == 0' rewinds 'SND.NXT' to 0 and the set
+        check fires the FIN branch on the sentinel. The
+        walk-back of '_tx_buffer_seq_mod' shifts the
+        seq-to-buffer-offset translation by one byte, and the
+        next '_transmit_data' call slices '_tx_buffer[1:]'
+        instead of '_tx_buffer[0:]'. In this single-byte test
+        scenario, '_tx_buffer_nxt' becomes 1, 'remaining_data_len'
+        becomes 0, and the retransmit silently fails to fire -
+        the connection then cycles RTOs until R2 abort. In a
+        multi-byte segment scenario the byte-0 elision shifts
+        the entire payload by one position, silently corrupting
+        peer's view of the data stream (TCP checksum still
+        validates, since it covers the corrupted bytes).
+
+        Severity: LOW probability (requires a long-lived
+        connection that crosses the seq wrap with an
+        unfortunately-timed RTO at exactly 'SND.UNA == 0') but
+        HIGH impact (silent data corruption / data-loss).
+
+        Fix outline (separate commit):
+
+          - Replace the sentinel pattern with a separate
+            'self._fin_sent: bool = False' flag, set to True
+            in '_transmit_packet' alongside
+            'self._snd_fin = self._snd_nxt' on 'flag_fin'.
+          - Update the rewind check at line 1335:
+
+              if self._snd_nxt == self._snd_ini or (
+                  self._fin_sent and self._snd_nxt == self._snd_fin
+              ):
+                  self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+
+          - Other readers of '_snd_fin' do not need changes -
+            they are reached only after a FIN has been sent, so
+            the value is a real seq there.
+
+        Scenario:
+
+            1. Force ISS = 0xFFFF_FFFE (handshake-time seq
+               offset; post-SYN+ACK SND.UNA lands at
+               0xFFFF_FFFF, one byte before the wrap).
+            2. Drive the active-open handshake to ESTABLISHED.
+               Bypass slow-start by setting '_snd_ewn' to
+               peer's window so a 1-byte send fires immediately.
+            3. send(b"A"). One outbound segment with
+               seq = 0xFFFF_FFFF. Post-segment SND.NXT wraps
+               modularly to 0; SND.MAX = 0.
+            4. Peer ACKs the byte (ack = 0). SND.UNA advances
+               to 0; '_tx_buffer' is purged;
+               '_tx_buffer_seq_mod' = 0.
+            5. send(b"B"). One outbound segment with seq = 0.
+               Post-segment SND.NXT = 1; SND.MAX = 1. Peer
+               does not ACK.
+            6. Advance the virtual clock by
+               'PACKET_RETRANSMIT_TIMEOUT' ms. The RTO timer
+               for seq 0 expires; the FSM tick fires
+               '_retransmit_packet_timeout' which rewinds
+               SND.NXT to SND.UNA (= 0), then runs
+               '_transmit_data' to emit the retransmit.
+
+        Assertions:
+
+            * The retransmit tick produces exactly one
+              outbound segment.
+            * The segment's seq is 0 and its payload is b"B".
+            * '_tx_buffer_seq_mod' is unchanged (0) - the
+              FIN-sentinel branch did not fire.
+
+        On current code this test fails at the segment-count
+        assertion: zero outbound segments, because the
+        '_tx_buffer_seq_mod' walk-back makes 'remaining_data_len'
+        compute as 0 inside '_transmit_data' and the retransmit
+        path silently exits.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0xFFFF_FFFE,
+            peer_iss=0x0000_2000,
+        )
+        # Bypass slow-start so the 1-byte sends fire immediately.
+        session._snd_ewn = PEER__WIN
+
+        # Step 3: send 1 byte at SND.NXT = 0xFFFF_FFFF.
+        session.send(data=b"A")
+        seg1_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(seg1_tx),
+            1,
+            msg="Setup precondition: first send must produce one outbound segment.",
+        )
+        self.assertEqual(
+            session._snd_nxt,
+            0,
+            msg=("Setup precondition: post-send-1 SND.NXT must wrap " "modulo 2**32 to 0."),
+        )
+
+        # Step 4: peer ACKs the byte. SND.UNA wraps to 0.
+        peer_ack_seg1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2001,
+            ack=0,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_seg1)
+        self.assertEqual(
+            session._snd_una,
+            0,
+            msg=(
+                "Setup precondition: post-ACK SND.UNA must equal 0 - "
+                "the wrap value that triggers the sentinel collision."
+            ),
+        )
+        self.assertEqual(
+            session._tx_buffer_seq_mod,
+            0,
+            msg=(
+                "Setup precondition: '_tx_buffer_seq_mod' must "
+                "have advanced to 0 after the cum-ACK purged the "
+                "first byte."
+            ),
+        )
+
+        # Step 5: send 1 byte at SND.NXT = 0. Peer does not ACK.
+        session.send(data=b"B")
+        seg2_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(seg2_tx),
+            1,
+            msg="Setup precondition: second send must produce one outbound segment.",
+        )
+        seg2_probe = self._parse_tx(seg2_tx[0])
+        self._assert_segment(
+            seg2_probe,
+            seq=0,
+            payload=b"B",
+        )
+
+        # Step 6: advance the virtual clock to fire the RTO.
+        # 'PACKET_RETRANSMIT_TIMEOUT' is the initial RTO (1000 ms).
+        # Advance one extra ms past the timeout so the timer fires
+        # cleanly on the boundary tick.
+        retransmit_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+
+        # Pick out the retransmit segments from the advance window.
+        # Multiple ticks fire while we advance; only the RTO tick
+        # produces a TX. The fix produces exactly one retransmit
+        # segment with the correct content; the bug produces zero.
+        retransmit_segments = [self._parse_tx(frame) for frame in retransmit_tx]
+        self.assertEqual(
+            len(retransmit_segments),
+            1,
+            msg=(
+                "After the RTO fires, exactly one retransmit segment "
+                "MUST be emitted re-sending the unacked byte at "
+                "seq=0. Today the rewind at "
+                "'tcp__session.py:1335' walks '_tx_buffer_seq_mod' "
+                "back by one because '_snd_fin == 0 == SND.NXT' "
+                "fires the FIN branch on the sentinel value. The "
+                "walk-back makes '_tx_buffer_nxt' overshoot by one, "
+                "'remaining_data_len' compute as 0, and "
+                "'_transmit_data' silently fail to emit the "
+                "retransmit. The connection then cycles RTOs until "
+                "R2 abort, with the queued byte never reaching the "
+                "wire. Fix: replace the '_snd_fin = 0' sentinel "
+                f"with a separate '_fin_sent: bool' flag. Got: {retransmit_segments!r}"
+            ),
+        )
+        self._assert_segment(
+            retransmit_segments[0],
+            seq=0,
+            payload=b"B",
+        )
+
+        # Belt-and-braces: '_tx_buffer_seq_mod' must NOT have been
+        # decremented by the buggy rewind. The fix preserves the
+        # value at 0; the bug subtracts 1 to 0xFFFF_FFFF.
+        self.assertEqual(
+            session._tx_buffer_seq_mod,
+            0,
+            msg=(
+                "After the RTO, '_tx_buffer_seq_mod' MUST be "
+                "unchanged at 0 - the rewind's FIN-walk-back must "
+                "NOT fire when no FIN has been sent. Today the "
+                "sentinel collision walks it back to 0xFFFF_FFFF, "
+                "corrupting the seq-to-buffer-offset translation."
             ),
         )
