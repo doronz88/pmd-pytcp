@@ -2285,13 +2285,44 @@ class TcpSession:
                 }
             )
         ):
-            # Suspected retransmit request -> Reset TX window
-            # and local SEQ number.
+            # Inbound ACK with the dup-ACK wire shape ('seq ==
+            # RCV.NXT, ack == SND.UNA, no data'). Per RFC 5681 §2(e)
+            # the segment is a TRUE duplicate ACK only when the
+            # advertised window matches the previous ACK; if peer's
+            # window changed, the segment is a window update per
+            # RFC 9293 §3.10.7.4 step 5 and MUST update SND.WND
+            # without contributing to the fast-retransmit threshold
+            # (otherwise three standalone wnd-updates at the same
+            # SEG.ACK would spuriously trigger fast-retransmit on
+            # the third one). SND.EWN is intentionally left alone
+            # on the wnd-update path: cwnd grows on cum-ACK progress
+            # per RFC 5681 §3.1, not on wnd-update. SACK info is
+            # still ingested in case peer piggybacked OOO state on
+            # the wnd-update.
             if (
                 packet_rx_md.tcp__seq == self._rcv_nxt
                 and packet_rx_md.tcp__ack == self._snd_una
                 and not packet_rx_md.tcp__data
             ):
+                new_wnd = packet_rx_md.tcp__win << self._snd_wsc
+                if new_wnd != self._snd_wnd:
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - Updated sending window size " f"{self._snd_wnd} -> {new_wnd} (wnd-update)",
+                    )
+                    self._snd_wnd = new_wnd
+                    if self._snd_wnd > 0 and self._persist_active:
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - Persist: peer reopened window via wnd-update, deactivating timer",
+                        )
+                        self._persist_active = False
+                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                    self._ingest_sack_info(packet_rx_md)
+                    return
+                # Window unchanged -> true duplicate ACK per RFC
+                # 5681 §2(e). Hand off to the fast-retransmit
+                # machinery.
                 self._retransmit_packet_request(packet_rx_md)
                 return
             # Packet with higher SEQ than what we are expecting -> Store it and
@@ -2762,13 +2793,44 @@ class TcpSession:
                 }
             )
         ):
-            # Suspected retransmit request -> Reset TX window
-            # and local SEQ number.
+            # Inbound ACK with the dup-ACK wire shape ('seq ==
+            # RCV.NXT, ack == SND.UNA, no data'). Per RFC 5681 §2(e)
+            # the segment is a TRUE duplicate ACK only when the
+            # advertised window matches the previous ACK; if peer's
+            # window changed, the segment is a window update per
+            # RFC 9293 §3.10.7.4 step 5 and MUST update SND.WND
+            # without contributing to the fast-retransmit threshold
+            # (otherwise three standalone wnd-updates at the same
+            # SEG.ACK would spuriously trigger fast-retransmit on
+            # the third one). SND.EWN is intentionally left alone
+            # on the wnd-update path: cwnd grows on cum-ACK progress
+            # per RFC 5681 §3.1, not on wnd-update. SACK info is
+            # still ingested in case peer piggybacked OOO state on
+            # the wnd-update.
             if (
                 packet_rx_md.tcp__seq == self._rcv_nxt
                 and packet_rx_md.tcp__ack == self._snd_una
                 and not packet_rx_md.tcp__data
             ):
+                new_wnd = packet_rx_md.tcp__win << self._snd_wsc
+                if new_wnd != self._snd_wnd:
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - Updated sending window size " f"{self._snd_wnd} -> {new_wnd} (wnd-update)",
+                    )
+                    self._snd_wnd = new_wnd
+                    if self._snd_wnd > 0 and self._persist_active:
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - Persist: peer reopened window via wnd-update, deactivating timer",
+                        )
+                        self._persist_active = False
+                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                    self._ingest_sack_info(packet_rx_md)
+                    return
+                # Window unchanged -> true duplicate ACK per RFC
+                # 5681 §2(e). Hand off to the fast-retransmit
+                # machinery.
                 self._retransmit_packet_request(packet_rx_md)
                 return
             # OOO data above RCV.NXT in CLOSE_WAIT is doubly-
