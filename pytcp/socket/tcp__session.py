@@ -349,6 +349,19 @@ class TcpSession:
         # post-wrap FIN seq. See the comment on '_snd_fin' above.
         self._fin_sent: bool = False
 
+        # 'True' once any segment has been processed from peer
+        # (peer's SYN in the passive-open path, peer's SYN+ACK
+        # in the active-open path). Gates the R2-abort RST
+        # emission so an aborting session that DID hear from
+        # peer signals the abort even when 'RCV.NXT' happens to
+        # equal 0 (which it does when peer's ISN was exactly
+        # 0xFFFF_FFFF and 'add32(peer_isn, 1)' wraps). Without
+        # the explicit flag, the previous 'self._rcv_nxt > 0'
+        # gate would suppress the RST whenever peer's ISN hit
+        # the wrap-point sentinel - probability 2**-32 but a
+        # real correctness gap.
+        self._peer_contacted: bool = False
+
         # Maximum segment size.
         self._snd_mss: int = 536
 
@@ -1352,8 +1365,16 @@ class TcpSession:
             f"{self}-retransmit_seq-{self._snd_una}"
         ):
             if self._tx_retransmit_timeout_counter[self._snd_una] == PACKET_RETRANSMIT_MAX_COUNT:
-                # Send RST packet if we received any packet from peer already.
-                if self._rcv_nxt > 0:
+                # Send RST to peer iff peer was actually contacted
+                # (i.e. we processed at least one inbound segment
+                # post-handshake-start). The check uses the explicit
+                # '_peer_contacted' flag rather than 'RCV.NXT > 0'
+                # because 'RCV.NXT' is a Seq32 that legitimately
+                # takes the value 0 when peer's ISN happened to be
+                # 0xFFFF_FFFF ('add32(peer_isn, 1)' wraps to 0); a
+                # raw '> 0' comparison would suppress the RST in
+                # that case.
+                if self._peer_contacted:
                     self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
                     __debug__ and log(
                         "tcp-ss",
@@ -1824,6 +1845,11 @@ class TcpSession:
                     packet_rx_md.tcp__flag_syn,
                     len(packet_rx_md.tcp__data),
                 )
+                # Mark peer as contacted so the R2-abort RST
+                # gate in '_retransmit_packet_timeout' fires
+                # the RST even when 'RCV.NXT' happens to equal
+                # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
+                self._peer_contacted = True
                 if packet_rx_md.tcp__data:
                     self._enqueue_rx_buffer(packet_rx_md.tcp__data)
                     __debug__ and log(
@@ -1941,6 +1967,11 @@ class TcpSession:
                     packet_rx_md.tcp__flag_syn,
                     len(packet_rx_md.tcp__data),
                 )
+                # Mark peer as contacted so the R2-abort RST
+                # gate in '_retransmit_packet_timeout' fires
+                # the RST even when 'RCV.NXT' happens to equal
+                # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
+                self._peer_contacted = True
                 self._snd_ewn = self._snd_mss
                 # Process ACK packet (uses '_snd_wsc=0' still, so
                 # the SYN+ACK's win is preserved unshifted).
