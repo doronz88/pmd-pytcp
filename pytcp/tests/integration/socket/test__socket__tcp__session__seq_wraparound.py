@@ -1776,3 +1776,229 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
                 "corrupting the seq-to-buffer-offset translation."
             ),
         )
+
+
+class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
+    """
+    Tests the 'self._rcv_nxt > 0' sentinel collision in
+    '_retransmit_packet_timeout's R2-abort RST emission. The
+    abort path emits a RST to peer iff '_rcv_nxt > 0', the
+    rationale being '_rcv_nxt' is initialised to 0 and becomes
+    non-zero once peer's first segment is processed (via
+    'add32(peer_isn, 1)' on peer's SYN). But when peer's ISN
+    is exactly 0xFFFF_FFFF, 'add32(0xFFFF_FFFF, 1) == 0' so
+    '_rcv_nxt' stays at the sentinel value despite peer having
+    been contacted - the RST is silently suppressed.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=(iss + 1) % SEQ32__MOD,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__seq_wraparound__r2_abort_with_peer_isn_at_seq_max_emits_rst(self) -> None:
+        """
+        Ensure that when peer's ISN is exactly 0xFFFF_FFFF -
+        making 'RCV.NXT == 0' after the handshake (the wrap of
+        peer's ISN+1) - the R2 connection-abort path still
+        emits a RST to peer per RFC 9293 §3.10.7.4. The abort
+        gate '_rcv_nxt > 0' uses raw integer comparison on a
+        Seq32 value; with peer's ISN at the wrap point, the
+        gate wrongly evaluates False because the post-wrap
+        Seq32 value 0 is indistinguishable from the
+        no-peer-contact sentinel 0.
+
+        RFC 9293 §3.10.7.4 / RFC 1122 §4.2.3.5 R2 (connection-
+        abort timeout):
+
+            "[The implementation] MUST give up retransmission
+             only after this much time. The minimum value of
+             R2 SHOULD be at least 100 seconds."
+
+        On abort, the session emits 'RST+ACK' to peer to
+        notify them of the unilateral close. Suppressing the
+        RST leaves peer's TCP in ESTABLISHED until their own
+        R2 fires - they pin local resources unnecessarily.
+
+        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout'
+        line 1356:
+
+            if self._rcv_nxt > 0:
+                self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
+
+        '_rcv_nxt' is initialised to 0 at __init__ (line 223)
+        and assigned via 'add32(peer_isn, ...)' on peer's first
+        segment. With peer's ISN at exactly 0xFFFF_FFFF,
+        'add32(0xFFFF_FFFF, 1) == 0' so '_rcv_nxt' STAYS at 0
+        post-handshake. The 'rcv_nxt > 0' gate evaluates False
+        and the RST emit is silently skipped. The state
+        transitions to CLOSED but peer is left dangling.
+
+        Severity: vanishingly low probability (2**-32 per
+        handshake) but a real correctness gap. This is also
+        the LAST raw '>' against a Seq32 in 'tcp__session.py';
+        closing it makes the file's invariant clean ("every
+        Seq32 comparison uses modular helpers OR a boolean
+        flag - no raw '>' / '<' anywhere on a Seq32") which is
+        the load-bearing maintenance invariant that prevents
+        the next sentinel collision from being introduced.
+
+        Fix outline (separate commit):
+
+            Replace '_rcv_nxt > 0' with a separate '_peer_contacted:
+            bool' field. Set True at the two sites where peer's
+            first segment is processed:
+
+              - '_tcp_fsm_listen' SYN handler (passive open)
+              - '_tcp_fsm_syn_sent' SYN+ACK handler (active open)
+
+            Update the abort gate to check the boolean.
+
+        Scenario:
+
+            1. Force peer ISN = 0xFFFF_FFFF (the only value
+               that triggers the wrap collision).
+            2. Drive active-open handshake to ESTABLISHED.
+               Verify 'RCV.NXT == 0' post-wrap.
+            3. send(b"X"). One outbound segment fires.
+            4. Peer stays silent. Advance the virtual clock
+               through the full RFC 6298 doubling cadence
+               (1, 3, 7, 15, 31, 63, 127 s); the seventh
+               retransmit attempt at t = 127 s is the R2 abort
+               (counter has reached PACKET_RETRANSMIT_MAX_COUNT
+               = 6 by then).
+
+        Assertions:
+
+            * After handshake: 'RCV.NXT == 0' (sanity - the
+              post-wrap value the bug hinges on).
+            * On R2 abort: exactly one RST+ACK emitted at
+              seq = SND.UNA (= LOCAL__ISS + 1).
+            * State transitions to CLOSED.
+            * '_connection_error' is ConnError.TIMEOUT.
+
+        On current code this test fails at the RST count
+        assertion: zero RST frames in the captured TX list
+        because '_rcv_nxt > 0' wrongly evaluates False on the
+        post-wrap sentinel value.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=0x0000_1000,
+            peer_iss=0xFFFF_FFFF,
+        )
+        # Sanity - the wrap precondition the bug hinges on.
+        self.assertEqual(
+            session._rcv_nxt,
+            0,
+            msg=(
+                "Setup precondition: post-handshake 'RCV.NXT' "
+                "must equal 'add32(peer_isn=0xFFFF_FFFF, 1) == 0' "
+                "- the post-wrap Seq32 value that the buggy gate "
+                "wrongly treats as 'no peer contact'."
+            ),
+        )
+
+        # Bypass slow-start so the first send fires immediately.
+        session._snd_ewn = PEER__WIN
+
+        # Send a byte. Peer stays silent. RTO machinery starts.
+        session.send(data=b"X")
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup precondition: initial send must produce one outbound segment.",
+        )
+
+        # Advance through the full RFC 6298 doubling cadence to
+        # reach R2. Cumulative retransmit boundaries:
+        #   t = 1   s   1st retransmit (counter -> 1)
+        #   t = 3   s   2nd retransmit (counter -> 2)
+        #   t = 7   s   3rd retransmit (counter -> 3)
+        #   t = 15  s   4th retransmit (counter -> 4)
+        #   t = 31  s   5th retransmit (counter -> 5)
+        #   t = 63  s   6th retransmit (counter -> 6 == MAX)
+        #   t = 127 s   R2 abort fires
+        # Advance to just past 127 s (130 s) so the R2 boundary
+        # falls inside the captured TX window.
+        abort_tx = self._advance(ms=130_000)
+        abort_segments = [self._parse_tx(frame) for frame in abort_tx]
+
+        # The R2 abort emits exactly one RST+ACK if peer was
+        # contacted. The data retransmits before the abort are
+        # also in the captured TX list; pick out the RST frame.
+        rst_segments = [seg for seg in abort_segments if "RST" in seg.flags]
+        self.assertEqual(
+            len(rst_segments),
+            1,
+            msg=(
+                "On R2 abort with peer contacted (handshake "
+                "completed), exactly one RST+ACK MUST be emitted "
+                "at seq = SND.UNA per RFC 9293 §3.10.7.4 to "
+                "signal peer that we are aborting the connection. "
+                "Today the gate at 'tcp__session.py:1356' is the "
+                "raw '_rcv_nxt > 0' comparison; with peer's ISN "
+                "at 0xFFFF_FFFF, the post-handshake 'RCV.NXT' "
+                "value is 0 (the sentinel) so the gate wrongly "
+                "skips the RST emit. Peer is left in ESTABLISHED "
+                "until their own R2 fires (~100 s+ later). Fix: "
+                "replace '_rcv_nxt > 0' with a dedicated "
+                f"'_peer_contacted: bool' flag. Got: {rst_segments!r}"
+            ),
+        )
+        self._assert_segment(
+            rst_segments[0],
+            flags=frozenset({"RST", "ACK"}),
+            seq=session._snd_una,
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="On R2 abort, the session MUST transition to CLOSED.",
+        )
