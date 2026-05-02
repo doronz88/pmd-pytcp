@@ -804,3 +804,201 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg="Overlap handling must not transition the session out of ESTABLISHED.",
         )
+
+    def test__data_transfer_out_of_order__five_ooo_segments_emit_at_least_three_dup_acks(self) -> None:
+        """
+        Ensure that when the peer delivers a burst of out-of-order
+        segments past a single gap, PyTCP-as-receiver emits AT LEAST
+        three duplicate ACKs at the still-expected RCV.NXT - the
+        threshold required to trigger peer's RFC 5681 §3.2 fast-
+        retransmit. RFC 5681 §4.2 "Generating Acknowledgments" is
+        explicit on the receiver-side requirement:
+
+            "A TCP receiver MUST send an immediate duplicate ACK when
+             an out-of-order segment arrives. The purpose of this ACK
+             is to inform the sender that a segment was received out
+             of order and which sequence number is expected. ... This
+             ACK should not be delayed."
+
+        and RFC 5681 §3.2 "Fast Retransmit/Fast Recovery" pins the
+        sender-side threshold:
+
+            "When the third duplicate ACK is received, a TCP MUST
+             set ssthresh ... and retransmit what appears to be the
+             missing segment."
+
+        Without at least three dup-ACKs from the receiver, the sender
+        peer cannot trigger fast-retransmit and must wait for the
+        retransmit timeout (RTO) - typically 1 second on the first
+        loss, growing exponentially via RFC 6298 back-off. The
+        per-loss recovery delay drops by ~1-2 orders of magnitude
+        when fast-retransmit is reachable, so the threshold is
+        load-bearing for any workload where loss is non-zero (lossy
+        WAN, mobile / wireless, congested links).
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_established' line ~2347
+        in the OOO-segment branch caps outbound dup-ACKs at 2 per
+        gap via the '_rx_retransmit_request_counter[rcv_nxt] <= 2'
+        gate:
+
+            self._rx_retransmit_request_counter[self._rcv_nxt] = (
+                self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
+            )
+            if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
+                self._transmit_packet(flag_ack=True)
+
+        The cap is documented in the inline comment at line 432-434
+        as intentional ("Keeps track of us sending 'fast retransmit
+        request' packets so we can limit their count to 2"), but the
+        threshold is wrong: peer needs 3 dup-ACKs, not 2. The
+        asymmetry is internally inconsistent - PyTCP's own sender-
+        side count-trigger at '_retransmit_packet_request' line ~2293
+        correctly fires on the THIRD dup-ACK
+        ('count_trigger = ... == 3'), so PyTCP-as-sender expects 3
+        from peer but PyTCP-as-receiver emits at most 2 to peer.
+
+        SACK does not save the gap either. Each of the 2 emitted
+        ACKs carries a SACK option block reflecting what is in our
+        OOO queue at the time:
+
+          - 1st ACK: SACK block for {seg1}.
+          - 2nd ACK: SACK blocks for {seg1, seg2}.
+          - (counter > 2: no further ACKs, no further SACK
+            information delivered to peer.)
+
+        Peer's RFC 6675 §3 IsLost() byte rule fires when MORE THAN
+        '(DupThresh - 1) * SMSS' bytes are reported SACKed. With
+        DupThresh = 3 and SMSS = 1460, that's > 2920 bytes. With at
+        most 2 full-MSS segments reported (= 2920 bytes exactly,
+        not strictly more), the byte rule does not fire either.
+        Peer falls back to RTO regardless of SACK negotiation.
+
+        Severity: HIGH performance impact. Affects every PyTCP-as-
+        receiver connection on a lossy link. The bug only "hides"
+        in lossless test environments where the OOO branch is
+        rarely exercised.
+
+        Fix outline (separate commit): remove the cap-at-2 gate
+        entirely. The OOO segments are naturally rate-limited by
+        peer's send cadence (peer emits at most one segment per
+        SMSS-worth of cwnd), so PyTCP's outbound dup-ACKs cannot
+        exceed peer's outbound segment rate; there is no ACK-flood
+        risk to mitigate. The '_rx_retransmit_request_counter' dict
+        and its purge-on-cum-ACK plumbing become dead state and can
+        be removed in the same commit.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Disable bilateral SACK to focus on the count-based
+               RFC 5681 §3.2 path (the SACK byte-rule analysis above
+               applies independently; this test pins the count
+               path).
+            3. Peer delivers 5 OOO segments past the gap at
+               RCV.NXT = PEER__ISS + 1 (gap = 1000 bytes; each OOO
+               segment is 100 bytes at offsets 1000, 1100, 1200,
+               1300, 1400 past PEER__ISS + 1).
+            4. Count outbound ACK frames carrying ack ==
+               PEER__ISS + 1 (the still-expected RCV.NXT).
+
+        Assertions:
+
+            * Outbound dup-ACK count >= 3.
+            * Each outbound dup-ACK has the canonical shape:
+              flags={"ACK"}, ack=PEER__ISS+1, seq=LOCAL__ISS+1,
+              payload=b"".
+            * State stays ESTABLISHED.
+
+        On current code this test fails: only 2 dup-ACKs are
+        emitted (the cap-at-2 logic), peer's fast-retransmit cannot
+        trigger, peer falls back to RTO. The number-of-dup-ACKs
+        assertion is what fires.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Pin the count-based path: disable bilateral SACK so the SACK
+        # byte-rule analysis is out of scope for this test. The same
+        # cap-at-2 gate would inhibit SACK byte-rule recovery too, but
+        # the count-rule is the cleaner failure to pin first.
+        session._send_sack = False
+        # Clear handshake-residual frames (our SYN, our third-leg ACK)
+        # so 'self._frames_tx' below contains only the OOO-burst's
+        # outbound dup-ACKs. The third-leg ACK has the same shape as
+        # a dup-ACK ('ack == PEER__ISS + 1, seq == LOCAL__ISS + 1,
+        # flags={"ACK"}'), so leaving it in would inflate the count.
+        self._frames_tx.clear()
+
+        # 5 OOO segments past a 1000-byte gap, each 100 bytes.
+        # RCV.NXT stays at PEER__ISS + 1 throughout (the gap is at
+        # the start of peer's stream).
+        ooo_segment_count = 5
+        gap_size = 1000
+        ooo_payload_size = 100
+
+        for i in range(ooo_segment_count):
+            seg_seq = PEER__ISS + 1 + gap_size + i * ooo_payload_size
+            ooo_seg = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=seg_seq,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                payload=b"X" * ooo_payload_size,
+            )
+            self._drive_rx(frame=ooo_seg)
+
+        # Count outbound ACK frames at the still-expected RCV.NXT
+        # (= PEER__ISS + 1). Each is a dup-ACK from peer's
+        # perspective.
+        dup_ack_count = 0
+        for frame in self._frames_tx:
+            probe = self._parse_tx(frame)
+            if probe.ack == PEER__ISS + 1 and probe.seq == LOCAL__ISS + 1:
+                self.assertEqual(
+                    probe.flags,
+                    frozenset({"ACK"}),
+                    msg=(
+                        "Each outbound dup-ACK during the gap MUST be "
+                        "a bare ACK with no other flags set. "
+                        f"Got: {probe.flags!r}"
+                    ),
+                )
+                self.assertEqual(
+                    probe.payload,
+                    b"",
+                    msg=(
+                        "Each outbound dup-ACK during the gap MUST "
+                        "carry no payload (it is a control segment). "
+                        f"Got {len(probe.payload)} bytes."
+                    ),
+                )
+                dup_ack_count += 1
+
+        self.assertGreaterEqual(
+            dup_ack_count,
+            3,
+            msg=(
+                "Per RFC 5681 §4.2, the receiver MUST send an "
+                "immediate duplicate ACK on every out-of-order "
+                "segment arrival, and per RFC 5681 §3.2 the sender "
+                "peer requires at least 3 duplicate ACKs to trigger "
+                "fast-retransmit. With "
+                f"{ooo_segment_count} OOO segments delivered past "
+                "the gap, the receiver MUST emit at least 3 "
+                "duplicate ACKs at the still-expected RCV.NXT. "
+                "Today '_tcp_fsm_established' line ~2347 caps the "
+                "count at 2 via "
+                "'_rx_retransmit_request_counter[rcv_nxt] <= 2'; "
+                "peer's fast-retransmit never fires from PyTCP-"
+                "generated dup-ACKs and peer must wait for RTO. Fix: "
+                "remove the cap-at-2 gate; OOO arrivals are rate-"
+                "limited by peer's send cadence and cannot flood. "
+                f"Got dup-ACK count: {dup_ack_count}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="OOO-burst handling must not transition the session out of ESTABLISHED.",
+        )
