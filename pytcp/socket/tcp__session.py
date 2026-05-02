@@ -2696,17 +2696,27 @@ class TcpSession:
             ):
                 self._retransmit_packet_request(packet_rx_md)
                 return
-            # Packet with higher SEQ than what we are expecting -> Store it and
-            # send 'fast retransmit' request.
+            # OOO data above RCV.NXT in CLOSE_WAIT is doubly-
+            # illegal: peer FIN'd (so they shouldn't send more
+            # data) AND the bytes can never reach the
+            # application even if we buffered them (RCV.NXT
+            # cannot advance past peer's FIN seq + 1, so the OOO
+            # queue would never drain). Don't store, don't
+            # accumulate dup-ACK retransmit-request state, just
+            # ACK to nudge peer's retransmit machinery toward
+            # backoff. Distinct from ESTABLISHED's OOO branch
+            # which queues the segment with DSACK case-2
+            # detection (commit 'b69e8b1') because RCV.NXT in
+            # ESTABLISHED can still advance to fill the gap.
             if gt32(packet_rx_md.tcp__seq, self._rcv_nxt) and in_range32(
                 packet_rx_md.tcp__ack, self._snd_una, self._snd_max
             ):
-                self._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
-                self._rx_retransmit_request_counter[self._rcv_nxt] = (
-                    self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
+                self._transmit_packet(flag_ack=True)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - OOO post-FIN data in CLOSE_WAIT (RFC violation by peer); "
+                    f"acked at RCV.NXT={self._rcv_nxt} without queueing",
                 )
-                if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
-                    self._transmit_packet(flag_ack=True)
                 return
             # Regular ACK packet (no data) -> ACK-field processing.
             if (
