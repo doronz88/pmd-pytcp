@@ -543,3 +543,111 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             FsmState.CLOSING,
             msg=("Per RFC §3.10.7.4 step 5 the unacceptable ACK is " "discarded; state must remain CLOSING."),
         )
+
+    def test__close_simultaneous__closing_unacceptable_segment_elicits_ack_per_rfc_3_10_7_4(self) -> None:
+        """
+        Ensure that CLOSING honours RFC 9293 §3.10.7.4 step 1
+        and emits an ACK reply on unacceptable inbound segments
+        (sequence-number-side acceptability, distinct from the
+        ACK-field-side 'ack > SND.NXT' empty-reply that the
+        previous test pins). Sibling-state coverage for the
+        gap class fixed in CLOSE_WAIT (commit '7f0d18b') and
+        ESTABLISHED (Phase 7 + 'df96d27').
+
+        Setup: drive simultaneous close to CLOSING. Then peer
+        retransmits its pre-close data segment (seq below our
+        RCV.NXT, fully duplicate). Today silent drop, after fix
+        ACK reply.
+
+        [FLAGS BUG] - '_tcp_fsm_closing' has the empty-ACK
+        fallback for 'ack > SND.MAX' (added '95a2a4e') but not
+        the receive-window acceptability check that catches
+        unacceptable seq numbers. Same fix shape as the sibling
+        states: route through '_check_segment_acceptability'.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        peer_payload = b"X" * 50
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        self._drive_rx(frame=peer_data)
+        self._advance(ms=200)
+
+        # Application close() -> two ticks: state transition then
+        # FIN emit. Final state: FIN_WAIT_1 with SND.FIN = LOCAL__ISS+1+50+1 = ?
+        # No wait — peer didn't ACK our 0 outbound bytes, so our
+        # SND.MAX = LOCAL__ISS + 1 still. After close() and 2 ticks:
+        # SND.NXT = SND.MAX = LOCAL__ISS + 2 (the +1 byte for FIN).
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Setup precondition: close() must transition to FIN_WAIT_1.",
+        )
+
+        # Peer's simultaneous FIN+ACK with ack=LOCAL__ISS+1 (does
+        # NOT cover our FIN). State -> CLOSING.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 50,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="Setup precondition: simultaneous FIN must transition to CLOSING.",
+        )
+
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        # Peer retransmits the original 50-byte data segment - seq
+        # below RCV.NXT, fully duplicate. Per RFC 9293 §3.10.7.4
+        # step 1 we MUST emit an ACK reply.
+        retransmit = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=peer_payload,
+        )
+        retransmit_tx = self._drive_rx(frame=retransmit)
+
+        self.assertEqual(
+            len(retransmit_tx),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 1: an unacceptable segment "
+                "in CLOSING MUST elicit an ACK reply. PyTCP today "
+                "drops it silently because '_tcp_fsm_closing' has "
+                "no acceptability check at the top."
+            ),
+        )
+        ack_probe = self._parse_tx(retransmit_tx[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="State must remain CLOSING after a fully-duplicate retransmit.",
+        )

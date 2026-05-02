@@ -2231,6 +2231,12 @@ class TcpSession:
             )
             return
 
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check; on unacceptable segments the helper emits the
+        # mandated ACK reply and returns False, the caller drops.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
+            return
+
         # Got ACK (acking our FIN) packet -> Change state to FIN_WAIT_2.
         if (
             packet_rx_md
@@ -2319,6 +2325,12 @@ class TcpSession:
             )
             return
 
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check; on unacceptable segments the helper emits the
+        # mandated ACK reply and returns False, the caller drops.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
+            return
+
         # Got ACK packet -> Process data.
         if (
             packet_rx_md
@@ -2395,6 +2407,12 @@ class TcpSession:
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-closing (RFC 9293 §3.10.7.4)",
             )
+            return
+
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check; on unacceptable segments the helper emits the
+        # mandated ACK reply and returns False, the caller drops.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
             return
 
         # Got ACK packet -> ESTABLISHED-style ACK processing per
@@ -2593,6 +2611,12 @@ class TcpSession:
                 "tcp-ss",
                 f"[{self}] - Sent challenge ACK for SYN-in-last_ack (RFC 9293 §3.10.7.4)",
             )
+            return
+
+        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        # check; on unacceptable segments the helper emits the
+        # mandated ACK reply and returns False, the caller drops.
+        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
             return
 
         # Got ACK packet -> Change state to CLOSED.
