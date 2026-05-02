@@ -1439,13 +1439,19 @@ class TcpSession:
             # incremented '_tx_buffer_seq_mod' by 1 to account for
             # that phantom byte; on retransmit we walk the offset
             # back so the packet builder finds the pre-SYN/FIN
-            # alignment again. The FIN branch is gated on
-            # '_fin_sent' to prevent the sentinel '_snd_fin = 0'
-            # from colliding with a post-wrap 'SND.NXT == 0'
-            # (which would otherwise walk '_tx_buffer_seq_mod'
-            # back spuriously and silently corrupt subsequent
-            # transmissions).
-            if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == self._snd_fin):
+            # alignment again. The FIN branch compares against
+            # 'sub32(_snd_fin, 1)' because '_snd_fin' carries the
+            # post-FIN-seq (assigned in '_transmit_packet' AFTER
+            # 'SND.NXT' was already advanced past the FIN's byte),
+            # while the rewind above sets 'SND.NXT = SND.UNA =
+            # FIN_seq = _snd_fin - 1' on the canonical "FIN sent,
+            # peer ACKed everything before it but not the FIN"
+            # path. The branch is gated on '_fin_sent' to prevent
+            # the sentinel '_snd_fin = 0' from colliding with a
+            # post-wrap 'SND.NXT == 0xFFFF_FFFF' (which would
+            # otherwise walk '_tx_buffer_seq_mod' back spuriously
+            # and silently corrupt subsequent transmissions).
+            if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == sub32(self._snd_fin, 1)):
                 self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
             __debug__ and log(
                 "tcp-ss",
