@@ -219,3 +219,26 @@ class Timer(Subsystem):
         __debug__ and log("timer", f"<r>Unregistering timers with prefix: {prefix!r}</>")
 
         self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
+
+    def unregister_method(self, method: Callable[..., None], /) -> None:
+        """
+        Unregister every 'TimerTask' previously installed by
+        'register_method' whose stored method matches the supplied
+        bound method. Used by 'TcpSession._change_state' on the
+        transition to CLOSED to drop the per-millisecond 'tcp_fsm'
+        callback so a long-running stack does not (a) keep
+        invoking the FSM on a dead session every tick or (b) hold
+        the 'TcpSession' instance alive against GC via the bound-
+        method reference. Companion to 'unregister_timers_with_prefix'
+        which handles the named-delay-timer half of the same
+        per-session registration.
+
+        Bound methods compare equal when their underlying
+        '__self__' and '__func__' are identical, so passing
+        'session.tcp_fsm' removes exactly the registration that
+        'session.__init__' made.
+        """
+
+        __debug__ and log("timer", f"<r>Unregistering method: {method.__name__}</>")
+
+        self._tasks = [task for task in self._tasks if task._method != method]

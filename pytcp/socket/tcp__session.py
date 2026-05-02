@@ -686,6 +686,17 @@ class TcpSession:
             # '<session>-challenge_ack'); the prefix scan pops them
             # uniformly without per-suffix bookkeeping.
             stack.timer.unregister_timers_with_prefix(f"{self}-")
+            # Drop the per-millisecond 'tcp_fsm' callback that
+            # '__init__' registered via 'stack.timer.register_method'.
+            # Without this, the 'TimerTask' survives forever -
+            # firing 'self.tcp_fsm(timer=True)' once per tick on a
+            # dead session (CPU drain growing linearly with
+            # dead-session count) and pinning the entire
+            # 'TcpSession' instance in memory via the bound-method
+            # reference (preventing GC). Companion to the prefix
+            # scan above which handles the named-delay-timer half
+            # of the same per-session registration.
+            stack.timer.unregister_method(self.tcp_fsm)
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
     def _transmit_packet(

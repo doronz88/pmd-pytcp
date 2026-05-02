@@ -57,6 +57,7 @@ class _TcpSessionFixture(TestCase):
             register_timer=lambda **_: None,
             is_expired=lambda _: False,
             unregister_timers_with_prefix=lambda _: None,
+            unregister_method=lambda _: None,
         )
         self._timer_patch = patch(
             "pytcp.socket.tcp__session.stack.timer",

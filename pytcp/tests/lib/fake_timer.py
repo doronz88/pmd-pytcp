@@ -158,6 +158,15 @@ class FakeTimer:
 
         self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
 
+    def unregister_method(self, method: Callable[..., None], /) -> None:
+        """
+        Unregister every '_FakeTimerTask' whose stored 'method'
+        matches the supplied bound method. Mirrors the production
+        'Timer.unregister_method' API.
+        """
+
+        self._tasks = [task for task in self._tasks if task.method != method]
+
     def advance(self, ms: int) -> None:
         """
         Advance the virtual clock by 'ms' milliseconds, ticking every
