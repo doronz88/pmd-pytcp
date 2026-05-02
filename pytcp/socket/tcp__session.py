@@ -957,6 +957,49 @@ class TcpSession:
         self._emit_challenge_ack()
         return False
 
+    def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
+        """
+        RFC 9293 §3.10.7.4 / RFC 5961 §3.2 three-way RST handling
+        for synchronized states. Returns True when the inbound
+        RST is in-window AND its 'seq' exactly matches RCV.NXT
+        (case 1: caller MUST reset the connection via state ->
+        CLOSED). Returns False otherwise; if the segment was
+        in-window but its seq did not match RCV.NXT (case 2),
+        this method has already emitted a rate-limited challenge
+        ACK so a legitimate peer can retransmit at the right
+        seq, while a blind off-path attacker cannot leverage the
+        silent drop. Out-of-window RSTs (case 3) fall through to
+        silent drop with no reply.
+
+        The 'ack' field is also validated against
+        '[SND.UNA, SND.MAX]' for case 1 to preserve the
+        defensive guard the per-state RST handlers carried
+        previously; an RST whose ack value implausibly points
+        at unsent data is treated like a case-3 out-of-window
+        drop. RFC 9293 does not strictly require this guard but
+        the conservative behaviour is harmless and matches the
+        pre-helper code's invariant.
+        """
+
+        seq = packet_rx_md.tcp__seq
+        # The 'ack' field is only meaningful when the ACK flag is
+        # set (RFC 9293 §3.1). A bare RST carries no ack value;
+        # the in-range guard is skipped in that case so the
+        # case-1 reset path remains reachable for peer TCPs that
+        # send bare RST instead of the more common RST+ACK.
+        ack_acceptable = (not packet_rx_md.tcp__flag_ack) or in_range32(
+            packet_rx_md.tcp__ack, self._snd_una, self._snd_max
+        )
+        if seq == self._rcv_nxt and ack_acceptable:
+            return True
+        if lt32(self._rcv_nxt, seq) and lt32(seq, add32(self._rcv_nxt, self._rcv_wnd)):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - In-window mismatched RST (seq={seq}, RCV.NXT={self._rcv_nxt}); challenge-ACK",
+            )
+            self._emit_challenge_ack()
+        return False
+
     def _emit_challenge_ack(self) -> None:
         """
         RFC 5961 §3 / §4 rate-limited challenge-ACK emission.
@@ -2221,34 +2264,21 @@ class TcpSession:
             return
 
         # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
-        # (folding RFC 5961 §3.2 blind-RST attack mitigation). The
-        # three-way classification:
-        #   1) seq == RCV.NXT             -> reset connection
-        #   2) seq in window, != RCV.NXT  -> challenge ACK
-        #   3) seq out of receive window  -> silently drop
+        # (folding RFC 5961 §3.2 blind-RST attack mitigation) via
+        # the shared '_check_rst_acceptability' helper which runs
+        # the three-way classification (case 1 reset / case 2
+        # challenge ACK / case 3 silent drop). On case 1 we
+        # additionally wake any blocked 'recv()' caller so the
+        # application sees the connection-reset signal without
+        # blocking forever on the rx-buffer event.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Case (1): Let application know that remote peer
-                # closed connection (let receive syscall bypass
-                # semaphore) and change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
                 self._event__rx_buffer.set()
                 self._change_state(FsmState.CLOSED)
-            elif lt32(self._rcv_nxt, packet_rx_md.tcp__seq) and lt32(
-                packet_rx_md.tcp__seq, add32(self._rcv_nxt, self._rcv_wnd)
-            ):
-                # Case (2): in-window but mismatched seq - emit a
-                # challenge ACK so a legitimate peer can retransmit
-                # the RST at the correct seq, while a blind off-path
-                # attacker cannot leverage the silent drop. Rate-
-                # limited per RFC 5961 §3.
-                self._emit_challenge_ack()
-            # Case (3): out of window -> fall through (silent drop).
             return
 
         # Got CLOSE syscall in ESTABLISHED -> mark the session
@@ -2360,17 +2390,14 @@ class TcpSession:
                     self._change_state(FsmState.CLOSING)
             return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # three-way classification via the shared helper.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
                 self._change_state(FsmState.CLOSED)
             return
 
@@ -2450,17 +2477,14 @@ class TcpSession:
                 stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
                 return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # three-way classification via the shared helper.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
                 self._change_state(FsmState.CLOSED)
             return
 
@@ -2533,17 +2557,14 @@ class TcpSession:
                 self._emit_challenge_ack()
             return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # three-way classification via the shared helper.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
                 self._change_state(FsmState.CLOSED)
             return
 
@@ -2629,12 +2650,13 @@ class TcpSession:
                 return
             return
 
-        # Got RST packet -> Change state to CLOSED. Per RFC 9293
-        # §3.10.7.4, any RST in a synchronized state aborts the
-        # connection regardless of the ACK flag - conformant TCPs
-        # always set ACK on RST per RFC convention, so excluding
-        # 'tcp__flag_ack' from the predicate would (and previously
-        # did) make this branch never fire in real traffic.
+        # Got RST packet -> Process per RFC 9293 §3.10.7.4
+        # three-way classification via the shared helper. Any RST
+        # in a synchronized state aborts the connection regardless
+        # of the ACK flag - conformant TCPs always set ACK on RST
+        # per RFC convention, so excluding 'tcp__flag_ack' from
+        # the predicate would (and previously did) make this
+        # branch never fire in real traffic.
         if (
             packet_rx_md
             and packet_rx_md.tcp__flag_rst
@@ -2645,9 +2667,7 @@ class TcpSession:
                 }
             )
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt:
-                # Change state to CLOSED
+            if self._check_rst_acceptability(packet_rx_md):
                 self._change_state(FsmState.CLOSED)
             return
 
@@ -2718,17 +2738,14 @@ class TcpSession:
                 self._emit_challenge_ack()
             return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # three-way classification via the shared helper.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
                 self._change_state(FsmState.CLOSED)
             return
 
