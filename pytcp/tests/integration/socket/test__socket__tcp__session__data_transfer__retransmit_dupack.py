@@ -720,3 +720,162 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "event."
             ),
         )
+
+    def test__dupack__rto_during_fast_retransmit_recovery_clears_recovery_point(self) -> None:
+        """
+        Ensure that when an RTO fires while we are still inside a
+        fast-retransmit recovery episode, the '_recovery_point'
+        marker is cleared so subsequent dup-ACKs can re-enter
+        recovery on a fresh loss event. Per RFC 5681 §3.1, RTO
+        is a hard reset (cwnd collapses to one SMSS, slow-start
+        re-entry); it represents a 'lost the entire window'
+        event distinct from the dup-ACK-driven fast-retransmit
+        recovery. The RFC 6675 §5 RecoveryPoint marker (the
+        SND.MAX at fast-retransmit entry) becomes meaningless
+        after RTO: SND.NXT has been rewound to SND.UNA and the
+        old SND.MAX no longer corresponds to any in-flight
+        boundary.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. Pre-set
+               '_snd_ewn = PEER__WIN' so slow-start does not
+               constrain the test setup.
+            2. Application sends 1 MSS of data. Drain so the
+               segment fires.
+            3. Peer sends three dup-ACKs back-to-back. The
+               third triggers fast-retransmit:
+                   _recovery_point = SND.MAX (non-zero)
+                   _snd_nxt = SND.UNA
+            4. Drain the fast-retransmit segment. The segment's
+               retransmit timer is now at 2000ms (RFC 6298
+               exponential back-off; counter incremented once
+               by the original send + once by the fast-
+               retransmit re-arm).
+            5. Advance 3 seconds. The retransmit timer expires;
+               '_retransmit_packet_timeout' fires, collapsing
+               '_snd_ewn' to one SMSS and rewinding 'SND.NXT'
+               to 'SND.UNA' for slow-start re-entry.
+            6. Assert: '_recovery_point' is back at zero. A
+               subsequent loss event will be eligible to enter
+               recovery again.
+
+        Assertions:
+
+            * After the RTO firing: 'session._recovery_point == 0'.
+            * Sanity: 'session.state is FsmState.ESTABLISHED'
+              (we have not exhausted PACKET_RETRANSMIT_MAX_COUNT
+              retries; the connection is still alive).
+            * Sanity: 'session._snd_ewn == session._snd_mss'
+              (cwnd collapsed to one SMSS per RFC 5681 §3.1).
+
+        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout' (the
+        RTO handler near line 1190) collapses '_snd_ewn' and
+        rewinds 'SND.NXT' but does NOT reset '_recovery_point'.
+        It stays at the old SND.MAX from the fast-retransmit
+        entry. The next dup-ACK following the RTO retransmit
+        will hit the 'if self._recovery_point != 0: return'
+        guard at the top of '_retransmit_packet_request' and
+        SILENTLY SKIP fast-retransmit. Recovery-exit is then
+        gated on 'SND.UNA crosses the stale _recovery_point'
+        which - after RTO has reset SND.NXT to SND.UNA -
+        requires many ACKs of forward-progress data before
+        '_recovery_point' clears. Until then, fast-retransmit
+        is structurally inhibited.
+
+        Fix outline (separate commit): in
+        '_retransmit_packet_timeout', after the abort check but
+        before the '_snd_nxt = _snd_una' rewind, set
+        'self._recovery_point = 0'. The recovery state is
+        meaningless after RTO; the next dup-ACK should evaluate
+        recovery entry afresh.
+
+        Same recovery-point lifecycle gap exists on state
+        transitions out of ESTABLISHED (e.g. peer FIN -> we
+        enter CLOSE_WAIT but '_recovery_point' stays set -
+        post-half-close 'send()' that experiences loss is
+        blocked from fast-retransmit until the stale marker
+        clears). That's a related-but-separate bug class
+        ('_change_state' should clear loss-recovery state on
+        leaving ESTABLISHED) and tracked separately.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        # Send 1 MSS and drain so the original segment is on the
+        # wire and its RTO timer is armed.
+        payload = b"X" * 1460
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Three dup-ACKs back-to-back. The third triggers fast-
+        # retransmit.
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+        self.assertNotEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "Setup precondition: the third dup-ACK MUST trigger "
+                "fast-retransmit and set '_recovery_point' to a "
+                "non-zero marker (the SND.MAX at recovery entry). "
+                "Without this precondition the rest of the test is "
+                "vacuous."
+            ),
+        )
+
+        # Drain the fast-retransmit segment.
+        self._advance(ms=1)
+
+        # Wait long enough for the RTO timer on the retransmit to
+        # fire. The retransmit re-armed the timer at 2000ms (one
+        # back-off doubling); 3 seconds is comfortably past that.
+        self._advance(ms=3000)
+
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "After RTO fires, '_recovery_point' MUST be cleared "
+                "to zero - RTO is a hard reset per RFC 5681 §3.1 and "
+                "the old recovery marker (SND.MAX at fast-retransmit "
+                "entry) is meaningless once SND.NXT has been rewound "
+                "to SND.UNA. Today PyTCP leaves '_recovery_point' "
+                "set; the next dup-ACK skips fast-retransmit via the "
+                "one-shot guard at the top of "
+                "'_retransmit_packet_request'. Fix: clear "
+                "'self._recovery_point = 0' inside "
+                "'_retransmit_packet_timeout'."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "Sanity: after one RTO retry the connection must "
+                "still be in ESTABLISHED - PACKET_RETRANSMIT_MAX_COUNT "
+                "is 6, we have only used 2 retries (initial + fast-"
+                "retransmit + 1 RTO)."
+            ),
+        )
+        self.assertEqual(
+            session._snd_ewn,
+            session._snd_mss,
+            msg=(
+                "Sanity: RTO MUST collapse '_snd_ewn' to one SMSS "
+                "per RFC 5681 §3.1 (slow-start re-entry). If this "
+                "assertion fails the RTO did not actually fire, "
+                "and the '_recovery_point' assertion above is "
+                "vacuous."
+            ),
+        )
