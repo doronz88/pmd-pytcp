@@ -1463,3 +1463,199 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             FsmState.SYN_RCVD,
             msg="State must transition to SYN_RCVD per RFC 9293 §3.10.7.3.",
         )
+
+    def test__active_open__simultaneous_open_completes_to_established_without_parent_socket(self) -> None:
+        """
+        Ensure the simultaneous-open path completes the three-way
+        handshake to ESTABLISHED when peer's third-leg ACK
+        arrives, releasing the connect-event semaphore so the
+        blocked active-open caller unblocks. The session has NO
+        parent socket (it was created via 'TcpSocket(family=...)'
+        directly, not via the listener-fork pattern), so the
+        SYN_RCVD ACK-only handler MUST NOT assert
+        '_parent_socket is not None'.
+
+        RFC 9293 §3.5.1 Figure 8 (Simultaneous Connection
+        Synchronization):
+
+            "TCP A                                            TCP B
+             1.  CLOSED                                       CLOSED
+             2.  SYN-SENT  --> <SEQ=100><CTL=SYN>             ...
+             3.  SYN-RECEIVED <-- <SEQ=300><CTL=SYN>          <-- SYN-SENT
+             ...
+             5.  ESTABLISHED <-- <SEQ=300><ACK=101><CTL=SYN,ACK> <-- SYN-RECEIVED
+             ..."
+
+        Step 5 (peer's third leg) is what this test drives. The
+        FSM must transition to ESTABLISHED and unblock the
+        active-open CONNECT caller.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd' lines
+        ~2148-2158 unconditionally fetch and assert the
+        parent socket:
+
+            self._change_state(FsmState.ESTABLISHED)
+            parent_socket = self._socket._parent_socket
+            assert parent_socket is not None, "child TcpSocket must always have a parent_socket set"
+            parent_socket._tcp_accept.append(self._socket)
+            parent_socket._event__tcp_session_established.release()
+            self._event__connect.release()
+            return
+
+        For active-open simultaneous-open the socket has no
+        parent ('_parent_socket = None' set in
+        'TcpSocket.__init__'); the assert fires and the test
+        crashes with an 'AssertionError'. This bug was hidden
+        before commit '9ecdd42' (Bug C fix) because the
+        simultaneous-open SYN+ACK we previously emitted carried
+        'ack=0' (the uninitialised '_rcv_nxt' default), peer's
+        TCP rejected it, and the third-leg ACK never arrived -
+        so this code path was unreachable. Closing Bug C made
+        the path reachable in this new way.
+
+        Severity: HIGH for simultaneous-open scenarios. The path
+        was 'silently broken' before; now it 'crashes with
+        AssertionError'. Either way the active-open caller
+        cannot complete a simultaneous-open handshake.
+
+        The comment immediately AFTER the assert
+        ("'_event__connect.release()': this is needed only in
+        case of tcp simultaneous open") acknowledges that
+        simultaneous open exists, but the assert above
+        contradicts that awareness - the parent_socket lookup
+        is unconditional even though the comment knows
+        simultaneous open won't have one.
+
+        Fix outline (separate commit):
+
+            Gate the parent-socket plumbing on its presence:
+
+                self._change_state(FsmState.ESTABLISHED)
+                parent_socket = self._socket._parent_socket
+                if parent_socket is not None:
+                    parent_socket._tcp_accept.append(self._socket)
+                    parent_socket._event__tcp_session_established.release()
+                self._event__connect.release()
+                return
+
+            Active-open simultaneous-open has no parent socket
+            but DOES need the connect-event release; passive-
+            open listener-fork has both. The 'if not None'
+            gate handles both paths uniformly.
+
+        Scenario:
+
+            1. Build active-open session with LOCAL__ISS.
+               Issue CONNECT. Tick once to emit SYN. State
+               = SYN_SENT.
+            2. Peer sends bare SYN (simultaneous-open
+               trigger). Post-Bug-C-fix the handler
+               bootstraps peer state, emits SYN+ACK, and
+               transitions to SYN_RCVD.
+            3. Peer sends third-leg ACK (acks our SYN+ACK).
+               Drive RX.
+
+        Assertions:
+
+            * Driving the third-leg ACK must NOT raise
+              (today: AssertionError fires).
+            * State is ESTABLISHED.
+            * 'session._event__connect.acquire(timeout=0)'
+              returns True (semaphore released, blocked
+              CONNECT would unblock).
+            * '_socket._parent_socket' is None (sanity check
+              of the precondition that distinguishes active-
+              from passive-open).
+        """
+
+        # Step 1: drive active-open to SYN_SENT and emit SYN.
+        session = self._make_active_session(iss=LOCAL__ISS)
+        # Sanity precondition: the socket has no parent. This is
+        # what makes the simultaneous-open path different from
+        # the listener-fork path.
+        self.assertIsNone(
+            session._socket._parent_socket,
+            msg=(
+                "Setup precondition: an active-open socket has "
+                "no parent (it was created directly via "
+                "'TcpSocket(family=...)' rather than via the "
+                "listener-fork pattern in '_tcp_fsm_listen')."
+            ),
+        )
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN must fire on the first tick.",
+        )
+
+        # Step 2: peer sends bare SYN (simultaneous open). This
+        # transitions us to SYN_RCVD and emits SYN+ACK. Already
+        # tested by 'test__active_open__simultaneous_open_bootstraps_peer_state_from_bare_syn';
+        # we just drive past it here.
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg="Setup precondition: peer's bare SYN must transition session to SYN_RCVD.",
+        )
+
+        # Step 3: peer sends third-leg ACK to our SYN+ACK.
+        # Today this raises AssertionError on the
+        # 'parent_socket is not None' assert; post-fix it
+        # transitions cleanly to ESTABLISHED.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,  # == _rcv_nxt
+            ack=LOCAL__ISS + 1,  # == _snd_nxt (post-SYN+ACK at _snd_ini)
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        # The drive itself MUST NOT raise. Wrap in 'try' so the
+        # test failure carries a specific message rather than
+        # an opaque traceback if the AssertionError propagates.
+        try:
+            self._drive_rx(frame=peer_ack)
+        except AssertionError as exc:
+            self.fail(
+                "Driving peer's third-leg ACK in simultaneous-open "
+                "SYN_RCVD raised 'AssertionError' from the production "
+                "code's 'assert parent_socket is not None' at "
+                f"'_tcp_fsm_syn_rcvd' line ~2153: {exc}. The active-"
+                "open simultaneous-open path has no parent socket; "
+                "the SYN_RCVD ACK-only handler must gate the parent-"
+                "socket plumbing on 'parent_socket is not None' so "
+                "it skips it cleanly for the active-open path while "
+                "preserving it for passive-open."
+            )
+
+        # Spec: state transitions to ESTABLISHED.
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "After peer's third-leg ACK in simultaneous-open "
+                "SYN_RCVD, state MUST transition to ESTABLISHED "
+                "per RFC 9293 §3.5.1 figure 8 step 5."
+            ),
+        )
+        # Spec: connect-event semaphore released.
+        self.assertTrue(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "On simultaneous-open completion, "
+                "'_event__connect' MUST be released so the "
+                "blocked active-open CONNECT caller unblocks."
+            ),
+        )
