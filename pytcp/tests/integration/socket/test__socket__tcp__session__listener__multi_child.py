@@ -395,7 +395,7 @@ class TestTcpListener__MultiChild(TcpSessionTestCase):
         # lands, this same kwarg will be the one the helper
         # accepts.
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
-        listen_sock._backlog = 2  # type: ignore[attr-defined]
+        listen_sock._backlog = 2
 
         # Two peers complete handshakes. After this loop,
         # 'len(_tcp_accept) == 2' which equals the backlog.
@@ -551,7 +551,7 @@ class TestTcpListener__MultiChild(TcpSessionTestCase):
         """
 
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
-        listen_sock._backlog = 1  # type: ignore[attr-defined]
+        listen_sock._backlog = 1
 
         # Peer A completes handshake.
         syn_a = build_tcp4(

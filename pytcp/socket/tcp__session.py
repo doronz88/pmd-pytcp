@@ -1642,6 +1642,29 @@ class TcpSession:
             # is intentionally NOT gated here; it is queued into the
             # child session's receive buffer below.
             if packet_rx_md.tcp__ack == 0:
+                # Accept-queue admission gate (POSIX 'listen(backlog)'
+                # semantics). When the parent listening socket's
+                # accept queue is at capacity, drop the SYN silently.
+                # The peer's TCP will retransmit the SYN per its
+                # standard retry cycle; if the application has
+                # drained a slot via 'accept()' by the time the
+                # retransmit lands, the handshake completes
+                # normally. Linux and BSD both default to silent
+                # drop on overflow (POSIX leaves the choice
+                # implementation-defined). The cap protects the
+                # listening process from accept-queue exhaustion -
+                # one of the oldest TCP-stack DoS classes -
+                # without requiring application changes.
+                # pylint: disable=protected-access
+                accept_q_len = len(self._socket._tcp_accept)
+                accept_q_cap = self._socket._backlog
+                if accept_q_len >= accept_q_cap:
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - Accept queue full " f"({accept_q_len}/{accept_q_cap}); " "dropping SYN silently",
+                    )
+                    return
+                # pylint: enable=protected-access
                 # Listener fork pattern (RFC 9293 §3.10.7.2). The
                 # current 'self' object is the LISTEN-state session.
                 # On peer's SYN we mutate it IN PLACE into the new

@@ -63,6 +63,18 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
+# Default cap on the listening socket's '_tcp_accept' queue when
+# the application calls 'listen()' without an explicit 'backlog'.
+# POSIX requires the implementation to accept at least 5; BSD and
+# Linux have historically defaulted to higher values (Linux's
+# tcp_max_syn_backlog is 4096 on modern kernels). PyTCP picks a
+# conservative middle ground that still accommodates the existing
+# 5-peer multi-child regression test, leaves headroom for typical
+# small-stack workloads, and keeps the per-listener memory ceiling
+# bounded for network-exposed deployments.
+TCP__DEFAULT_BACKLOG: int = 16
+
+
 class TcpSocket(socket):
     """
     The IPv6/IPv4 TCP socket.
@@ -89,6 +101,13 @@ class TcpSocket(socket):
         self._address_family = family
         self._event__tcp_session_established: Semaphore = threading.Semaphore(0)
         self._tcp_accept: list[socket] = []
+        # Cap on '_tcp_accept' length, set by 'listen(backlog=...)'.
+        # Initialised to the default so listening sockets created
+        # outside the 'listen()' call path (e.g. the integration-
+        # test helpers, or future paths that bypass the BSD API)
+        # still have a finite cap. Re-set by 'listen()' when the
+        # caller passes an explicit value.
+        self._backlog: int = TCP__DEFAULT_BACKLOG
         self._tcp_session: TcpSession | None = tcp_session
         self._parent_socket: TcpSocket | None = None
 
@@ -300,11 +319,22 @@ class TcpSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
     @override
-    def listen(self) -> None:
+    def listen(self, *, backlog: int = TCP__DEFAULT_BACKLOG) -> None:
         """
         Starts to listen for incoming connections.
+
+        'backlog' bounds the accept queue ('self._tcp_accept');
+        SYNs received while the queue is at capacity are silently
+        dropped at '_tcp_fsm_listen's admission gate so the peer's
+        TCP retry cycle drives the recovery once the application
+        has drained a slot via 'accept()'. Mirrors POSIX
+        'listen(2)' semantics. Per-stack default is
+        'TCP__DEFAULT_BACKLOG'.
         """
 
+        assert backlog > 0, f"The 'backlog' argument must be positive. Got: {backlog!r}"
+
+        self._backlog = backlog
         self._tcp_session = TcpSession(
             local_ip_address=self._local_ip_address,
             local_port=self._local_port,
@@ -315,7 +345,7 @@ class TcpSocket(socket):
 
         __debug__ and log(
             "socket",
-            f"<g>[{self}]</> - Socket starting to listen for inbound connections",
+            f"<g>[{self}]</> - Socket starting to listen for inbound connections " f"(backlog={backlog})",
         )
 
         stack.sockets[self.socket_id] = self

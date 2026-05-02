@@ -349,7 +349,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def listen(self) -> None:
+    def listen(self, *, backlog: int = 16) -> None:
         """
         The 'listen()' socket API placeholder.
         """
