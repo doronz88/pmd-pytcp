@@ -1412,8 +1412,17 @@ class TcpSession:
             # re-entry. The window then re-grows on each cum-ACK via
             # '_process_ack_packet'. PyTCP conflates cwnd and the
             # effective send window into '_snd_ewn'; the reset to
-            # '_snd_mss' here is the slow-start re-entry.
-            self._snd_ewn = self._snd_mss
+            # 'min(_snd_mss, _snd_wnd)' here is the slow-start
+            # re-entry clamped by peer's flow-control. RFC 9293
+            # §3.8.6.1 / RFC 1122 §4.2.2.16 require respecting
+            # peer's advertised window across all transmissions
+            # including retransmits; without the '_snd_wnd' clamp
+            # an RTO firing while peer has advertised a 0-window
+            # would emit a data segment in violation of peer's
+            # flow-control. The clamp lets '_transmit_data' fall
+            # through to the persist branch when peer's window is
+            # closed (RFC 9293 §3.8.6.1 zero-window probing).
+            self._snd_ewn = min(self._snd_mss, self._snd_wnd)
             self._snd_nxt = self._snd_una
             # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
             # event, distinct from the dup-ACK-driven fast-
