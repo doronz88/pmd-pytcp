@@ -419,6 +419,182 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
 
+    def test__active_open__bare_rst_in_syn_sent_dropped_silently_per_rfc_9293_3_10_7_3(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) arriving in SYN_SENT is dropped silently per RFC
+        9293 §3.10.7.3 step 2, regardless of the seq/ack values
+        carried on the segment. SYN_SENT's RST handling is
+        DIFFERENT from the synchronized states' rule precisely
+        because we have no way to validate that a bare RST was
+        issued in response to OUR SYN versus injected by an
+        off-path attacker - the spec mandates we wait for the
+        explicit RST+ACK confirmation.
+
+        RFC 9293 §3.10.7.3 step 2 (SYN-SENT, RST handling):
+
+            "If the RST bit is set,
+              If the ACK was acceptable then signal the user
+              'error: connection reset', drop the segment, enter
+              CLOSED state, delete TCB, and return.
+              Otherwise (no ACK), drop the segment and return."
+
+        Note the explicit "Otherwise (no ACK), drop the segment
+        and return" clause: bare RST in SYN_SENT is dropped, not
+        accepted. This DIFFERS from the synchronized-state rule
+        in §3.10.7.4 where bare RST IS valid (subject to the
+        SEG.SEQ window check). The asymmetry is deliberate:
+
+          - Synchronized states have an established RCV.NXT, so a
+            bare RST's seq can be window-validated against the
+            same 32-bit window an attacker would need to guess.
+          - SYN_SENT has no established window yet. The only way
+            to bind the RST to OUR connection is via SEG.ACK
+            (which must equal SND.NXT = ISS + 1). A bare RST has
+            no acceptable-ACK path, so the only safe action is to
+            drop it.
+
+        This test acts as a positive-control regression guard
+        against a future "uniform fix" that loosens the SYN_SENT
+        predicate from 'all({tcp__flag_rst, tcp__flag_ack})' to
+        bare 'tcp__flag_rst' alongside the (correct) loosening
+        in the five synchronized-state branches (ESTABLISHED /
+        FIN_WAIT_1 / FIN_WAIT_2 / CLOSING / LAST_ACK). The
+        SYN_SENT branch's strict 'all({rst, ack})' predicate is
+        intentional and must NOT be uniformly relaxed.
+
+        The danger is concrete: today the SYN_SENT branch has an
+        inner sanity check 'tcp__seq == 0 and tcp__ack ==
+        self._snd_nxt'. A bare RST with ack = LOCAL__ISS + 1
+        carries an "acceptable-looking" ack value (the ACK flag
+        is cleared, so the value is a wire-level field whose
+        contents the spec says should be ignored). Today's outer
+        predicate filters out bare RSTs before the inner check
+        ever runs. If the predicate is loosened uniformly, the
+        bare RST enters the branch, the inner check
+        ('seq==0 and ack==SND.NXT') passes for a peer that
+        constructs the segment to look acceptable, and the
+        connection silently transitions to CLOSED - giving an
+        off-path blind-RST attacker a tool to abort embryonic
+        connections.
+
+        Scenario:
+
+            1. Drive into SYN_SENT and emit our SYN.
+            2. Peer sends a BARE RST (flags={"RST"}, ACK flag
+               CLEARED) at SEQ = 0 and ACK = LOCAL__ISS + 1
+               (the value that, paired with the ACK flag, would
+               make the canonical RST+ACK acceptable).
+            3. Drive RX. The session MUST stay in SYN_SENT, MUST
+               NOT release the connect-event semaphore, MUST NOT
+               record any '_connection_error', and MUST NOT
+               unregister the socket from 'stack.sockets'.
+
+        Assertions:
+
+            * State remains SYN_SENT.
+            * '_connection_error' is still 'ConnError.NONE'.
+            * '_event__connect.acquire(timeout=0)' returns False
+              (semaphore was not released by an erroneous abort).
+            * Socket still registered in 'stack.sockets'.
+            * No outbound segment is produced.
+
+        This test PASSES on current code as a positive-control
+        regression guard. It is the companion to the five
+        '[FLAGS BUG]' bare-RST tests in close__rst.py /
+        close__simultaneous.py: those motivate loosening the
+        predicate in five branches, this test pins the SYN_SENT
+        branch's strict-ACK predicate as INTENTIONAL.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        socket_id = session.socket.socket_id
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: exactly one SYN must have been emitted before the bare RST.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="Setup precondition: state must be SYN_SENT after the SYN was emitted.",
+        )
+
+        # Peer sends a BARE RST with an "acceptable-looking" ack
+        # value but the ACK flag CLEARED. Today the outer
+        # 'all({rst, ack})' predicate filters this out before the
+        # inner sanity check; the test pins that filter.
+        bare_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0,
+            ack=LOCAL__ISS + 1,
+            flags=("RST",),
+            win=0,
+        )
+        rst_inline = self._drive_rx(frame=bare_rst)
+
+        self.assertEqual(
+            rst_inline,
+            [],
+            msg=(
+                "A bare RST in SYN_SENT must produce NO outbound "
+                "segment - it is dropped silently per RFC 9293 "
+                "§3.10.7.3 step 2 ('Otherwise (no ACK), drop the "
+                "segment and return')."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg=(
+                "A bare RST in SYN_SENT MUST NOT transition the "
+                "session to CLOSED. RFC 9293 §3.10.7.3 step 2 "
+                "explicitly requires 'no ACK -> drop the segment'. "
+                "If this assertion fails, the SYN_SENT RST predicate "
+                "has been over-broadened (likely as part of a "
+                "uniform 'all({rst, ack}) -> tcp__flag_rst' rewrite "
+                "that conflated the synchronized-state rule with "
+                "SYN_SENT's stricter rule). The fix for the five "
+                "synchronized-state RST branches MUST NOT be applied "
+                "to SYN_SENT - the strict-ACK predicate at line "
+                "~2092 is intentional. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.NONE,
+            msg=(
+                "'_connection_error' must remain ConnError.NONE - a "
+                "dropped bare RST does not signal the user an error. "
+                "If this fires, the SYN_SENT RST handler ran "
+                "erroneously on a segment it should have ignored."
+            ),
+        )
+        self.assertFalse(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "The connect-event semaphore must NOT be released by "
+                "a bare RST in SYN_SENT - the connection has not been "
+                "refused, just spuriously poked. A blocked 'connect()' "
+                "caller must remain blocked until the legitimate "
+                "RST+ACK refusal or the R2 timeout fires."
+            ),
+        )
+        self.assertIn(
+            socket_id,
+            stack.sockets,
+            msg=(
+                "The socket must remain registered in 'stack.sockets' - "
+                "a dropped bare RST does not delete the TCB. If this "
+                "fires, the SYN_SENT branch erroneously called "
+                "'_change_state(CLOSED)' which unregisters the socket."
+            ),
+        )
+
     def test__active_open__silent_peer_retransmits_per_rfc6298_until_r2(self) -> None:
         """
         Ensure that when the peer never replies to our SYN, the
