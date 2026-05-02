@@ -2098,6 +2098,32 @@ class TcpSession:
                 and le32(self._snd_una, packet_rx_md.tcp__ack)
                 and le32(packet_rx_md.tcp__ack, self._snd_max)
             ):
+                # RFC 2883 DSACK case 2: detect overlap of the
+                # inbound segment with any existing OOO-queue
+                # entry BEFORE the dict store overwrites or adds.
+                # The overlap range is stashed in
+                # '_pending_dsack' so the next outbound ACK
+                # reports it as the FIRST SACK block per RFC 2883
+                # §4 - the peer's spurious-retransmit detector
+                # (RFC 3522 / 4015 Eifel) uses this to roll back
+                # a needless cwnd halving when its RTO fired
+                # spuriously and retransmitted bytes that were
+                # already buffered on our side. Only the first
+                # contiguous overlap is reported per ACK; any
+                # additional disjoint overlaps are still
+                # representable through the regular OOO-queue
+                # blocks that follow the DSACK marker.
+                if self._send_sack:
+                    seg_left = packet_rx_md.tcp__seq
+                    seg_right = add32(seg_left, len(packet_rx_md.tcp__data))
+                    for existing_seq, existing_md in self._ooo_packet_queue.items():
+                        existing_left = existing_seq
+                        existing_right = add32(existing_left, len(existing_md.tcp__data))
+                        ovl_left = existing_left if ge32(existing_left, seg_left) else seg_left
+                        ovl_right = existing_right if le32(existing_right, seg_right) else seg_right
+                        if lt32(ovl_left, ovl_right):
+                            self._pending_dsack = (ovl_left, ovl_right)
+                            break
                 self._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
                 self._rx_retransmit_request_counter[self._rcv_nxt] = (
                     self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
