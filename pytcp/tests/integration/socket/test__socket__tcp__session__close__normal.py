@@ -1808,3 +1808,201 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             FsmState.LAST_ACK,
             msg="State must remain LAST_ACK after an unacceptable ACK.",
         )
+
+    def test__close_passive__close_wait_post_fin_data_elicits_ack_without_enqueue(self) -> None:
+        """
+        Ensure that when peer (RFC-violatingly) sends data after
+        their own FIN - i.e. an in-window segment in CLOSE_WAIT
+        with 'seq == RCV.NXT' carrying payload - the receiver
+        emits an empty ACK so peer's retransmit machinery sees
+        fresh activity, but does NOT enqueue the data into
+        '_rx_buffer' (RFC 9293 §3.10.7.4 step 7 lists ESTABLISHED,
+        FIN-WAIT-1, FIN-WAIT-2 as the states that deliver segment
+        text - CLOSE_WAIT is NOT listed) and does NOT advance
+        RCV.NXT past it.
+
+        RFC 9293 §3.10.7.4 step 7 (Segment Text Processing):
+
+            "ESTABLISHED, FIN-WAIT-1, FIN-WAIT-2 STATE:
+             Once in the ESTABLISHED state, it is possible to
+             deliver segment text to user RECEIVE buffers."
+
+        The list omits CLOSE-WAIT, CLOSING, LAST-ACK, and
+        TIME-WAIT - all post-half-close states where the local
+        application has been signalled EOF and MUST NOT receive
+        further bytes. A peer that sends data past their own
+        FIN is RFC-violating; the receiver must not pass those
+        bytes up to the application (BSD socket semantics:
+        recv() returns b"" once peer FIN'd; appending fresh
+        data after EOF would break that contract). But the
+        receiver still needs to acknowledge the segment was
+        received so peer's retransmit timer backs off; without
+        an ACK reply, peer's TCP retransmits indefinitely until
+        their R2 fires.
+
+        The "ACK without enqueue" pattern is the conservative
+        BSD-stack approach. The stricter alternative (RST on
+        post-FIN data, treating it as a protocol error per
+        RFC 9293 §3.10.7.2's "any other incoming control or
+        data ... will be processed in the SYN-RECEIVED state"
+        clause read very strictly) is also legal but more
+        aggressive; PyTCP follows the conservative path
+        elsewhere (e.g. SYN piggybacked data on listener
+        handshake is queued, not dropped or RST'd) so this
+        test pins the conservative variant.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer sends FIN+ACK at seq=PEER__ISS+1, ack=
+               LOCAL__ISS+1. Session transitions ESTABLISHED ->
+               CLOSE_WAIT; RCV.NXT advances to PEER__ISS+2.
+            3. Peer (RFC-violatingly) sends a fresh data
+               segment at seq=PEER__ISS+2 (= RCV.NXT) carrying
+               b"X" * 50.
+            4. Snapshot '_rx_buffer' before; should remain
+               unchanged after.
+            5. Drive RX. Inspect inline TX list.
+
+        Assertions:
+
+            * Exactly one outbound ACK fires inline.
+            * The ACK carries 'ack=PEER__ISS+2' (= current
+              RCV.NXT, NOT advanced past peer's post-FIN data).
+            * 'session._rx_buffer' is unchanged - the data
+              must NOT be enqueued past peer's FIN (would
+              corrupt application's post-EOF view of the
+              stream).
+            * 'session._rcv_nxt' is unchanged at PEER__ISS+2 -
+              accepting the post-FIN data into the receive
+              sequence space would violate RFC 9293's "FIN
+              consumes the last byte of the sequence space"
+              invariant.
+            * Session state stays CLOSE_WAIT.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait's regular
+        ACK branch (line ~2711) gates the '_process_ack_packet'
+        call on 'not packet_rx_md.tcp__data', so any data-
+        bearing in-order segment falls through to bare 'return'
+        without an ACK reply. The upstream
+        '_check_segment_acceptability' DID accept the segment
+        (in window, len > 0, RCV.WND > 0) but only emits an ACK
+        on UNACCEPTABLE inputs. Net effect: silent drop. Peer
+        retransmits indefinitely until their own R2 fires
+        (~100 s+ later).
+
+        Fix outline (separate commit):
+
+            Drop the 'not packet_rx_md.tcp__data' clause from
+            the regular-data branch and add an explicit "data
+            in CLOSE_WAIT" path that processes the ACK field
+            but does NOT enqueue or advance RCV.NXT, then emits
+            the cum-ACK so peer's retransmit timer backs off.
+
+        Severity: LOW. Only affects RFC-violating peers
+        (sending data past their own FIN) but the silent-drop
+        behaviour wastes peer-side bandwidth on the
+        retransmit-storm and pins peer's TCP in ESTABLISHED
+        until their R2 expires.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Step 2: peer FIN+ACK -> CLOSE_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: state must be CLOSE_WAIT after peer FIN.",
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 2,
+            msg=("Setup precondition: RCV.NXT must have advanced past " "peer's FIN to PEER__ISS+2."),
+        )
+        rx_buffer_before = bytes(session._rx_buffer)
+        rcv_nxt_before = session._rcv_nxt
+
+        # Step 3: peer sends post-FIN data at seq == RCV.NXT.
+        # RFC violation by peer, but PyTCP must respond
+        # gracefully.
+        post_fin_data = b"X" * 50
+        peer_post_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,  # == RCV.NXT
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=post_fin_data,
+        )
+        post_fin_tx = self._drive_rx(frame=peer_post_fin)
+
+        # Spec: exactly one ACK fires inline.
+        self.assertEqual(
+            len(post_fin_tx),
+            1,
+            msg=(
+                "Peer's post-FIN data segment in CLOSE_WAIT MUST "
+                "elicit exactly one outbound ACK so peer's "
+                "retransmit machinery backs off. Today the "
+                "regular-data branch's 'not packet_rx_md.tcp__data' "
+                "clause makes the segment fall through to silent "
+                "drop. Fix: drop the clause and add an explicit "
+                f"'data in CLOSE_WAIT' ACK-without-enqueue path. Got: {post_fin_tx!r}"
+            ),
+        )
+        ack_probe = self._parse_tx(post_fin_tx[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=rcv_nxt_before,
+        )
+
+        # Spec: '_rx_buffer' is unchanged - the data must not
+        # leak past peer's FIN into the application's view of
+        # the stream.
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            rx_buffer_before,
+            msg=(
+                "Peer's post-FIN data MUST NOT be enqueued into "
+                "'_rx_buffer'. Application's recv() returns b\"\" "
+                "after peer's FIN signals EOF; appending fresh "
+                "bytes after that signal breaks BSD socket "
+                "semantics. RFC 9293 §3.10.7.4 step 7 lists only "
+                "ESTABLISHED / FIN-WAIT-1 / FIN-WAIT-2 as the "
+                "states that deliver segment text - CLOSE_WAIT "
+                "is NOT among them."
+            ),
+        )
+
+        # Spec: 'RCV.NXT' is unchanged - accepting the data into
+        # the receive sequence space would violate the "FIN
+        # consumes the last byte of seq space" invariant.
+        self.assertEqual(
+            session._rcv_nxt,
+            rcv_nxt_before,
+            msg=(
+                "Peer's post-FIN data MUST NOT advance RCV.NXT - "
+                "RCV.NXT was set to 'peer_fin_seq + 1' when peer's "
+                "FIN was processed; advancing it further would "
+                "treat post-FIN bytes as legitimate sequence space."
+            ),
+        )
+
+        # Spec: state stays CLOSE_WAIT - the post-FIN data is
+        # an anomaly, not a state-transition trigger.
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="State must remain CLOSE_WAIT after post-FIN data.",
+        )
