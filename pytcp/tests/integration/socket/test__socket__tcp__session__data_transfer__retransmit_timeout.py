@@ -1034,3 +1034,166 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
                 f"peer's flow-control. Got: {data_segments!r}"
             ),
         )
+
+    def test__retransmit_timeout__fin_retransmit_does_not_drift_tx_buffer_seq_mod(self) -> None:
+        """
+        Ensure that retransmitting the FIN segment after RTO leaves
+        '_tx_buffer_seq_mod' unchanged. The FIN consumes one byte of
+        sequence space but no slot in the TX buffer; on the original
+        send '_transmit_packet' bumps '_tx_buffer_seq_mod' by 1 to
+        account for that phantom byte. On every subsequent retransmit
+        the same bump fires again, so '_retransmit_packet_timeout'
+        MUST walk the anchor back by 1 BEFORE the retransmit-driven
+        '_transmit_data' call to keep '_tx_buffer_seq_mod' aligned
+        with the post-original-FIN value across the entire
+        retransmit cycle.
+
+        Per RFC 9293 §3.4 sequence numbers are 32-bit modular and
+        every TX-side anchor MUST stay aligned with 'SND.NXT' minus
+        unsent-buffer offset; otherwise the next 'send()' or
+        retransmit reads the wrong slice of '_tx_buffer'.
+
+        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout' line
+        ~1448:
+
+            if self._snd_nxt == self._snd_ini or (
+                self._fin_sent and self._snd_nxt == self._snd_fin
+            ):
+                self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+
+        '_snd_fin' is assigned at '_transmit_packet' line ~853 AFTER
+        'self._snd_nxt = add32(seq, len(data), flag_syn, flag_fin)'
+        has already advanced past the FIN's seq, so '_snd_fin =
+        post-FIN-seq = FIN_seq + 1'. After RTO the rewind line ~1426
+        sets '_snd_nxt = _snd_una', and on the canonical "FIN went
+        out, peer ACKed everything before it but not the FIN" path
+        '_snd_una == FIN_seq == _snd_fin - 1'. The check
+        'self._snd_nxt == self._snd_fin' is therefore ALWAYS False
+        in the path it was meant to catch - the second branch is
+        unreachable. The walk-back never fires and the next
+        '_transmit_packet' (FIN retransmit) re-bumps
+        '_tx_buffer_seq_mod' by 1 without compensation. Each
+        subsequent retransmit drifts by another +1.
+
+        Severity: LOW in current usage. FIN_WAIT_1 / LAST_ACK only
+        reach '_transmit_data' with an empty TX buffer, so the
+        corrupted offset is not read for new content, and modular
+        'add32' / 'sub32' arithmetic recovers the anchor when the
+        peer eventually ACKs the FIN. But the invariant is still
+        broken; a future change that writes to '_tx_buffer' from
+        FIN_WAIT_1 / LAST_ACK (or that introduces a half-duplex
+        path where post-FIN data could be queued) would silently
+        corrupt the read offset. The dead-code branch also
+        misleads anyone reading the rewind logic.
+
+        Fix outline (separate commit):
+
+            Compare against the FIN's seq (pre-bump), not
+            post-FIN-seq:
+
+                if self._snd_nxt == self._snd_ini or (
+                    self._fin_sent
+                    and self._snd_nxt == sub32(self._snd_fin, 1)
+                ):
+                    self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+
+            After rewind, 'self._snd_nxt == _snd_una == FIN_seq ==
+            sub32(_snd_fin, 1)' - the branch fires, the anchor walks
+            back by 1, and the post-retransmit '_tx_buffer_seq_mod'
+            stays at its post-original-FIN value across the entire
+            retransmit cycle.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. 'close()' with an empty TX buffer. First tick
+               transitions to FIN_WAIT_1; second tick emits the FIN.
+            3. Snapshot '_tx_buffer_seq_mod' immediately after the
+               original FIN sent.
+            4. Drive three RTO cycles (1 s, 3 s, 7 s of cumulative
+               virtual time) with the peer silent. Each cycle MUST
+               emit exactly one FIN retransmit at the original
+               FIN's seq.
+            5. After each retransmit, '_tx_buffer_seq_mod' MUST
+               equal the snapshot value taken in step 3.
+
+        On current code the snapshot-equality assertion fails: the
+        anchor drifts by +1 per retransmit (1 -> 2 -> 3).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Empty TX buffer; close immediately.
+        session.close()
+        # First tick: ESTABLISHED -> FIN_WAIT_1 (no segment emitted).
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Setup precondition: empty-buffer close transitions to FIN_WAIT_1 on the first tick.",
+        )
+        # Second tick: FIN emitted by the FIN_WAIT_1 timer branch.
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg="Setup precondition: the FIN_WAIT_1 timer tick after close() must emit exactly one FIN.",
+        )
+        original_fin = self._parse_tx(fin_tx[0])
+        self.assertIn(
+            "FIN",
+            original_fin.flags,
+            msg="Setup precondition: the segment emitted in step 2 must carry the FIN flag.",
+        )
+
+        # Snapshot the post-original-FIN anchor. This is the value
+        # every subsequent retransmit MUST preserve.
+        baseline_seq_mod = session._tx_buffer_seq_mod
+
+        # Drive three RTO cycles with the peer silent. Cumulative
+        # delays: 1 s, 1+2=3 s, 1+2+4=7 s. We advance a small
+        # margin past each boundary so the timer fires.
+        for cycle, cumulative_ms in enumerate((1_000, 3_000, 7_000), start=1):
+            already_advanced_ms = (0, 1_000, 3_000)[cycle - 1]
+            delta_ms = cumulative_ms - already_advanced_ms + 1
+            retransmits = self._advance(ms=delta_ms)
+            self.assertEqual(
+                len(retransmits),
+                1,
+                msg=(
+                    f"RTO cycle #{cycle}: the FIN_WAIT_1 retransmit "
+                    f"machinery MUST emit exactly one FIN retransmit "
+                    f"per cycle. Got {len(retransmits)}."
+                ),
+            )
+            probe = self._parse_tx(retransmits[0])
+            self.assertEqual(
+                probe.seq,
+                original_fin.seq,
+                msg=(
+                    f"RTO cycle #{cycle}: the FIN retransmit MUST "
+                    f"reuse the original FIN's seq "
+                    f"(0x{original_fin.seq:08x}). A different seq "
+                    f"would indicate post-FIN sequence drift. "
+                    f"Got 0x{probe.seq:08x}."
+                ),
+            )
+            self.assertEqual(
+                session._tx_buffer_seq_mod,
+                baseline_seq_mod,
+                msg=(
+                    f"RTO cycle #{cycle}: '_tx_buffer_seq_mod' MUST "
+                    f"equal its post-original-FIN value "
+                    f"(0x{baseline_seq_mod:08x}). Today the rewind "
+                    f"check 'self._snd_nxt == self._snd_fin' in "
+                    f"'_retransmit_packet_timeout' is unreachable "
+                    f"because '_snd_fin' holds post-FIN-seq while "
+                    f"the rewind sets '_snd_nxt = _snd_una = "
+                    f"FIN_seq = _snd_fin - 1'; the walk-back never "
+                    f"fires and the next '_transmit_packet' "
+                    f"re-bumps '_tx_buffer_seq_mod' by 1 per "
+                    f"retransmit. Got 0x{session._tx_buffer_seq_mod:08x} "
+                    f"(drift "
+                    f"+{(session._tx_buffer_seq_mod - baseline_seq_mod) & 0xFFFFFFFF})."
+                ),
+            )
