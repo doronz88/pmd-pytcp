@@ -876,3 +876,161 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg="Session must remain ESTABLISHED through the RTO retransmit.",
         )
+
+    def test__retransmit_timeout__rto_with_peer_zero_window_respects_flow_control(self) -> None:
+        """
+        Ensure that when an RTO fires while peer has advertised
+        a 0-window, the retransmit path respects peer's flow-
+        control: '_snd_ewn' must collapse to 0 (clamped to
+        '_snd_wnd'), and no MSS-sized data segment must hit the
+        wire. The persist machinery handles probing while the
+        window is closed (RFC 9293 §3.8.6.1 / RFC 1122
+        §4.2.2.17).
+
+        RFC 9293 §3.8.6.1 (Zero-Window Probing):
+
+            "The transmitting host SHOULD send the first
+             zero-window probe when a zero window has existed
+             for the retransmission timeout period ... and
+             SHOULD increase exponentially the interval between
+             successive probes."
+
+        RFC 1122 §4.2.2.16 (right-edge of window):
+
+            "[The TCP sender] MUST be robust against window
+             shrinking, which may cause the 'usable window' ...
+             to become negative."
+
+        Both RFCs implicitly require the sender to respect the
+        receiver's advertised window across retransmits. The
+        RTO mechanism does NOT exempt itself from this
+        constraint; RFC 6298 §5 (retransmit) does not say "send
+        regardless of window."
+
+        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout'
+        line 1378-1380:
+
+            self._snd_ewn = self._snd_mss
+            self._snd_nxt = self._snd_una
+
+        '_snd_ewn = self._snd_mss' is unconditional. It does
+        NOT clamp to '_snd_wnd'. If peer advertised a 0-window
+        before this RTO fired (typical when peer's app is slow
+        to drain their receive buffer), the post-RTO
+        'transmit_data_len = min(MSS, _snd_ewn=MSS,
+        remaining)' computes as a positive number; the
+        retransmit then sends data despite peer's
+        flow-control restriction.
+
+        Severity: MEDIUM. Real RFC-conformance gap. Fires on
+        every RTO that occurs while peer's window is 0.
+        Probability is non-trivial in workloads where peer's
+        application is slow.
+
+        Fix outline (separate commit):
+
+            self._snd_ewn = min(self._snd_mss, self._snd_wnd)
+            self._snd_nxt = self._snd_una
+
+        Post-fix the RTO + 0-window scenario flows like:
+
+          - RTO: '_snd_ewn = min(MSS, 0) = 0'.
+          - '_transmit_data' sees 'transmit_data_len = 0' and
+            falls to the persist branch, which arms the
+            persist timer; no data segment goes out.
+          - Persist machinery handles probing as designed
+            (RFC 9293 §3.8.6.1).
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. Bypass
+               slow-start by setting '_snd_ewn = PEER__WIN' so
+               the initial send fires at full MSS (or as much
+               as we ask).
+            2. send(b"X" * 100). One outbound segment fires at
+               seq = LOCAL__ISS + 1.
+            3. Simulate peer advertising 0-window AFTER we
+               sent. We set 'session._snd_wnd = 0' and
+               'session._snd_ewn = 0' directly because the
+               '_process_ack_packet' path for an ACK that
+               doesn't advance SND.UNA gets intercepted by
+               ESTABLISHED's dup-ACK branch (which doesn't
+               update '_snd_wnd'). The state-direct setup is
+               equivalent to peer's "ACK with new-data + win=0"
+               having been processed.
+            4. Advance past 'PACKET_RETRANSMIT_TIMEOUT' so the
+               RTO timer for our unacked segment fires.
+
+        Assertions:
+
+            * Post-RTO 'session._snd_ewn == 0' (clamped to
+              peer's 0-window).
+            * No data-bearing outbound segment fires during
+              the RTO advance window. Pre-fix the test would
+              see a 100-byte retransmit emitted in violation
+              of peer's flow-control.
+
+        On current code this test fails at the assertion that
+        no data-bearing segment fires - one 100-byte segment
+        gets emitted post-RTO despite peer's 0-window.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Bypass slow-start so the initial send fires at full MSS.
+        session._snd_ewn = PEER__WIN
+
+        # Step 2: send 100 bytes. One segment fires.
+        payload = b"X" * 100
+        session.send(data=payload)
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup precondition: initial send must produce one outbound segment.",
+        )
+
+        # Step 3: simulate peer's 0-window state. State-direct
+        # because the ACK-only "ack==SND.UNA + win=0" frame would
+        # be intercepted by ESTABLISHED's dup-ACK branch which
+        # doesn't update '_snd_wnd'. This is equivalent to peer
+        # having processed a fresh ACK that advances SND.UNA AND
+        # advertises win=0.
+        session._snd_wnd = 0
+        session._snd_ewn = 0
+
+        # Step 4: advance past PACKET_RETRANSMIT_TIMEOUT so the
+        # RTO timer for the unacked segment fires.
+        rto_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+
+        # Spec: post-RTO '_snd_ewn' must reflect peer's 0-window.
+        self.assertEqual(
+            session._snd_ewn,
+            0,
+            msg=(
+                "After RTO with peer's 0-window, '_snd_ewn' MUST "
+                "be 0 (clamped to '_snd_wnd'). Today "
+                "'_retransmit_packet_timeout' sets '_snd_ewn = "
+                "self._snd_mss' unconditionally, ignoring peer's "
+                "advertised window. Fix: clamp via "
+                "'_snd_ewn = min(self._snd_mss, self._snd_wnd)'."
+            ),
+        )
+
+        # Spec: no data-bearing segment fires; persist machinery
+        # handles probing once the window is closed. (Persist
+        # probes are 1-byte and may or may not fire depending on
+        # exact timing; we assert no MSS-class data segment.)
+        rto_segments = [self._parse_tx(frame) for frame in rto_tx]
+        data_segments = [seg for seg in rto_segments if len(seg.payload) > 1]
+        self.assertEqual(
+            data_segments,
+            [],
+            msg=(
+                "After RTO with peer's 0-window, NO data-bearing "
+                "segment larger than 1 byte may be emitted - peer's "
+                "advertised window forbids it (RFC 9293 §3.8.6.1 / "
+                "RFC 1122 §4.2.2.16). Today the RTO retransmit "
+                "fires a full 100-byte segment in violation of "
+                f"peer's flow-control. Got: {data_segments!r}"
+            ),
+        )
