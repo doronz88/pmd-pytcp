@@ -2118,35 +2118,34 @@ class TcpSession:
                 self._event__connect.release()
                 return
 
-        # Got RST + ACK packet -> Change state to CLOSED.
+        # Got RST packet (bare RST or RST+ACK) -> Process per RFC
+        # 9293 §3.10.7.4 three-way classification via the shared
+        # helper. Mirrors CLOSE_WAIT's predicate shape (commit
+        # '991931e'); the helper skips the 'ack' in-range guard
+        # for bare RST so both forms reach the case-1 reset path.
+        # On case-1 reset the connect-event semaphore is released
+        # with 'ConnError.REFUSED' so any active-open caller
+        # blocked on '_event__connect.acquire()' (typical for the
+        # simultaneous-open path that reaches SYN_RCVD via peer's
+        # bare SYN crossing our outbound SYN) unblocks with the
+        # canonical "connection refused" signal. The release on
+        # an already-non-blocked semaphore is harmless
+        # ('Semaphore.release()' just increments the counter), so
+        # the same path applies uniformly to passive-open
+        # listener-fork children where no caller is blocked.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
-            and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
-        ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                # Change state to CLOSED.
-                self._change_state(FsmState.CLOSED)
-            return
-
-        # Got RST packet -> Change state to CLOSED.
-        if (
-            packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst})
+            and packet_rx_md.tcp__flag_rst
             and not any(
                 {
-                    packet_rx_md.tcp__flag_ack,
                     packet_rx_md.tcp__flag_fin,
                     packet_rx_md.tcp__flag_syn,
                 }
             )
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and packet_rx_md.tcp__ack == 0:
-                # Change state to CLOSED.
+            if self._check_rst_acceptability(packet_rx_md):
+                self._connection_error = ConnError.REFUSED
+                self._event__connect.release()
                 self._change_state(FsmState.CLOSED)
             return
 
