@@ -53,6 +53,7 @@ from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__session import (
+    PACKET_RETRANSMIT_TIMEOUT,
     FsmState,
     SysCall,
     TcpSession,
@@ -704,4 +705,174 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             session.state,
             FsmState.FIN_WAIT_1,
             msg=("After 60 s of silent retransmits, the session must " "still be in FIN_WAIT_1 (R2 = 100 s minimum)."),
+        )
+
+    def test__retransmit_timeout__sub_mss_partial_segment_retransmits_despite_nagle(self) -> None:
+        """
+        Ensure that when an in-flight sub-MSS ("partial") segment
+        goes unacknowledged the RTO retransmits it on the timer
+        boundary, even though Nagle's Minshall variant
+        (RFC 1122 §4.2.3.4) ordinarily defers a fresh partial
+        while a previous partial is still in flight. RFC 1122
+        §4.2.3.4 governs FRESH transmits to avoid generating
+        tinygrams when a stream of small writes accumulates; it
+        does NOT apply to retransmits, which are by definition
+        re-sending the very same partial that is "in flight".
+
+        RFC 1122 §4.2.3.4 (Sender's SWS Avoidance / Nagle):
+
+            "[The sender] SHOULD NOT send small segments if there
+             is unacknowledged data."
+
+        and §4.2.3.4 explanatory text on "send" being the
+        application-driven generation:
+
+            "[The Nagle algorithm] solves the small-packet
+             problem by delaying transmission ... when the user
+             passes data to TCP, TCP will ... wait until either
+             one MSS of data ... or all unacknowledged data has
+             been ACKed."
+
+        RFC 6298 (RTO retransmission) does NOT defer to Nagle:
+        the retransmit machinery re-sends "the earliest segment
+        that has not been acknowledged" once the RTO timer
+        fires, regardless of segment size or Nagle state.
+
+        [FLAGS BUG] - 'TcpSession._transmit_data' applies the
+        Nagle gate (line ~1183) unconditionally before any
+        outbound segment, including RTO-driven retransmits:
+
+            is_partial = transmit_data_len < self._snd_mss
+            prev_partial_in_flight = gt32(self._snd_sml, self._snd_una)
+            if is_partial and prev_partial_in_flight:
+                return  # defer
+
+        On RTO retransmit:
+
+          - '_retransmit_packet_timeout' rewinds 'SND.NXT' to
+            'SND.UNA' (= the partial we want to re-send).
+          - Control falls through to '_transmit_data' on the
+            same FSM tick.
+          - 'is_partial' is True (the segment IS a partial -
+            we're retransmitting the original partial).
+          - 'prev_partial_in_flight = gt32(_snd_sml, _snd_una)'
+            is True (the partial we sent originally is still in
+            flight - that's why we're retransmitting).
+          - Nagle defers.
+
+        The retransmit counter ('_tx_retransmit_timeout_counter')
+        only increments inside '_transmit_packet', which never
+        runs because the deferral exits '_transmit_data' before
+        reaching it. The RFC 1122 §4.2.3.5 R2 floor (=
+        'PACKET_RETRANSMIT_MAX_COUNT') is therefore never
+        reached either. The connection HANGS indefinitely until
+        an external timeout kills it.
+
+        Severity: HIGH. Affects every connection that loses an
+        unacked sub-MSS segment - typical for interactive
+        traffic (SSH keystrokes, RPC control messages, HTTP
+        chunked headers, partial database commits). Not a
+        seq-wrap-rare class; this is everyday workload.
+
+        Fix outline (separate commit):
+
+            Detect "we are retransmitting" via a modular check:
+            'lt32(self._snd_nxt, self._snd_max)'. The RTO
+            handler rewinds 'SND.NXT' to 'SND.UNA' while
+            leaving 'SND.MAX' at the high-water mark, so this
+            inequality is True iff the next segment to send
+            covers ground we have already transmitted. Skip
+            the Nagle gate when retransmitting:
+
+                is_retransmit = lt32(self._snd_nxt, self._snd_max)
+                ...
+                if is_partial and prev_partial_in_flight and not is_retransmit:
+                    return  # defer
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. Pre-set
+               '_snd_ewn' to peer's advertised window so
+               slow-start does not constrain the initial send.
+            2. Application sends 100 bytes (sub-MSS partial).
+               One outbound segment with seq = ISS + 1, payload
+               b"X" * 100.
+            3. Peer stays silent. Wait
+               'PACKET_RETRANSMIT_TIMEOUT' (1 s) plus a tick
+               for the boundary.
+            4. The RTO MUST fire and the segment MUST be
+               retransmitted byte-for-byte at the same seq.
+
+        Assertions:
+
+            * Initial send produces exactly one segment
+              (sanity).
+            * After the RTO advance: exactly one retransmit
+              segment is captured, with matching seq/payload.
+            * Session is still in ESTABLISHED.
+
+        On current code this test fails at the retransmit
+        segment-count assertion: zero retransmits emitted
+        because the Nagle gate defers, the retransmit counter
+        does not increment, R2 is never reached, and the
+        connection is silently stuck.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Bypass slow-start so the partial fires on the first tick.
+        session._snd_ewn = PEER__WIN
+
+        # Step 2: send a 100-byte sub-MSS partial.
+        partial_payload = b"X" * 100
+        session.send(data=partial_payload)
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup precondition: initial send must produce exactly one outbound segment.",
+        )
+        initial_probe = self._parse_tx(initial_tx[0])
+        self._assert_segment(
+            initial_probe,
+            seq=LOCAL__ISS + 1,
+            payload=partial_payload,
+        )
+
+        # Step 3: peer stays silent. Advance past the initial RTO.
+        # 'PACKET_RETRANSMIT_TIMEOUT' is 1000 ms (the initial
+        # RTO); +1 ms past the boundary so the timer fires on
+        # the boundary tick.
+        retransmit_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        retransmit_segments = [self._parse_tx(frame) for frame in retransmit_tx]
+
+        # Step 4: the RTO MUST fire one retransmit. Today the
+        # Nagle gate defers and zero retransmits emit.
+        self.assertEqual(
+            len(retransmit_segments),
+            1,
+            msg=(
+                "After the RTO timer expires on a sub-MSS partial "
+                "in flight, exactly one retransmit segment MUST be "
+                "emitted carrying the same seq and payload as the "
+                "original. Today '_transmit_data's Nagle gate "
+                "(RFC 1122 §4.2.3.4 Minshall variant) treats the "
+                "RTO retransmit identically to a fresh partial "
+                "transmit, observes 'prev_partial_in_flight=True' "
+                "(the partial we are retransmitting IS still in "
+                "flight), and defers indefinitely. The retransmit "
+                "counter never increments, R2 is never reached, "
+                "and the connection is silently stuck. Affects "
+                "every interactive workload that drops a sub-MSS "
+                f"segment. Got: {retransmit_segments!r}"
+            ),
+        )
+        self._assert_segment(
+            retransmit_segments[0],
+            seq=LOCAL__ISS + 1,
+            payload=partial_payload,
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Session must remain ESTABLISHED through the RTO retransmit.",
         )
