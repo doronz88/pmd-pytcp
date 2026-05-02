@@ -1703,7 +1703,17 @@ class TcpSession:
         # our state by latching the offending peer's ACK number into our
         # send sequence space; the RST itself consumes no sequence space
         # and must leave session bookkeeping untouched.
-        if packet_rx_md and packet_rx_md.tcp__flag_ack and not (self._snd_una < packet_rx_md.tcp__ack <= self._snd_max):
+        # Modular '(SND.UNA, SND.MAX]' check per RFC 9293 §3.4.
+        # The chained Python '<' / '<=' fails across the 32-bit
+        # wrap when the SYN consumed seq 0xFFFF_FFFF and SND.MAX
+        # has wrapped to 0; the modular helpers fire the
+        # acceptability test correctly regardless of where in
+        # the seq space the ISS happens to fall.
+        if (
+            packet_rx_md
+            and packet_rx_md.tcp__flag_ack
+            and not (lt32(self._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, self._snd_max))
+        ):
             if not packet_rx_md.tcp__flag_rst:
                 stack.packet_handler.send_tcp_packet(
                     ip__local_address=self._local_ip_address,
