@@ -2708,13 +2708,35 @@ class TcpSession:
                 if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
                     self._transmit_packet(flag_ack=True)
                 return
-            # Regular data/ACK packet -> Process data.
+            # Regular ACK packet (no data) -> ACK-field processing.
             if (
                 packet_rx_md.tcp__seq == self._rcv_nxt
                 and in_range32(packet_rx_md.tcp__ack, self._snd_una, self._snd_max)
                 and not packet_rx_md.tcp__data
             ):
                 self._process_ack_packet(packet_rx_md)
+                return
+            # In-window data segment -> peer is RFC-violatingly
+            # sending data after their own FIN (RFC 9293 §3.10.7.4
+            # step 7 omits CLOSE_WAIT from the states that deliver
+            # segment text to the application). ACK to stop peer's
+            # retransmit machinery but do NOT enqueue the data or
+            # advance RCV.NXT - appending fresh bytes after the
+            # FIN's EOF signal would break BSD socket semantics
+            # (recv() returns b"" once peer FIN'd; bytes appearing
+            # after that violate the contract). The cum-ACK we
+            # emit carries our current RCV.NXT (= peer's FIN seq
+            # + 1, unchanged), which signals peer "we acknowledge
+            # receipt but cannot consume past your FIN".
+            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
+                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
+            ):
+                self._transmit_packet(flag_ack=True)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Post-FIN data in CLOSE_WAIT (RFC violation by peer); "
+                    f"acked at RCV.NXT={self._rcv_nxt} without enqueue",
+                )
                 return
             return
 
