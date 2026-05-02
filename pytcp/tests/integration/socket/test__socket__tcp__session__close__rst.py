@@ -1117,3 +1117,149 @@ class TestTcpClose__Rst(TcpSessionTestCase):
                 "pop every per-session entry."
             ),
         )
+
+    def test__close_rst__session_teardown_unregisters_tcp_fsm_callback_task(self) -> None:
+        """
+        Ensure that when a session terminates (state -> CLOSED),
+        the 'TimerTask' that 'TcpSession.__init__' registered to
+        drive the per-millisecond 'tcp_fsm' callback is removed
+        from 'stack.timer._tasks'. Today the task remains
+        forever; its bound-method reference holds the
+        'TcpSession' instance alive against garbage collection
+        and the timer keeps invoking 'tcp_fsm(timer=True)' on
+        every tick on a dead session - hitting
+        '_tcp_fsm_closed' as a no-op but still consuming CPU
+        per tick per dead session.
+
+        Companion to commit '93b99e4' / 'ea28db4' which closed
+        the parallel '_timers'-dict leak (named-delay-timer
+        entries leaked the same way until '_change_state'
+        learned to pop them on CLOSED). The 'tcp_fsm' task is
+        the OTHER half of the timer-side per-session
+        registration (the named-delay-timer half is
+        'register_timer'; this half is 'register_method'); the
+        cleanup in '_change_state' did not extend to it.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. The session's
+               '__init__' has already registered 'self.tcp_fsm'
+               with 'stack.timer.register_method(method=...)'
+               so 'stack.timer._tasks' contains a
+               '_FakeTimerTask' whose 'method' attribute is
+               'session.tcp_fsm'.
+            2. Sanity-check: filter '_tasks' to entries bound
+               to 'session' and confirm exactly one match.
+            3. Peer sends a clean RST. State -> CLOSED via
+               '_tcp_fsm_established's RST handler.
+            4. Inspect '_tasks' AFTER the session has reached
+               CLOSED. Per spec, no task bound to 'session'
+               should remain.
+
+        Assertions:
+
+            * After CLOSED: count of session-bound tasks in
+              'stack.timer._tasks' is zero.
+
+        [FLAGS BUG] - 'TcpSession._change_state' (line ~660
+        area) on CLOSED transition unregisters the socket
+        ('stack.sockets.pop') and the named-delay-timer entries
+        ('stack.timer.unregister_timers_with_prefix' added in
+        commit 'ea28db4') but does NOT remove the 'TimerTask'
+        bound to the session's 'tcp_fsm'.
+
+        The 'register_method' / '_tasks' API has no symmetric
+        'unregister_method' helper today (parallel to the
+        'register_timer' / '_timers' API which gained
+        'unregister_timers_with_prefix' in 'ea28db4'). The fix
+        adds 'unregister_method(method)' to both production
+        'Timer' and the test 'FakeTimer', then calls it from
+        '_change_state' on CLOSED.
+
+        Fix outline (separate commit):
+
+          - 'pytcp/stack/timer.py' adds an
+            'unregister_method(method, /)' helper that filters
+            'self._tasks' by bound-method equality.
+          - 'pytcp/tests/lib/fake_timer.py' mirrors the API.
+          - 'pytcp/socket/tcp__session.py' '_change_state' on
+            CLOSED transition calls
+            'stack.timer.unregister_method(self.tcp_fsm)'
+            alongside 'stack.timer.unregister_timers_with_prefix'.
+          - The three SimpleNamespace stubs in unit-test
+            fixtures (lifecycle.py / fsm.py / syscalls.py) gain
+            an 'unregister_method' field.
+
+        Severity: MEDIUM - real but slow-burn. On a long-
+        running production stack the per-session task survives
+        forever, holding the session alive against GC (memory
+        leak per session: full TX/RX buffers, scoreboard,
+        locks, events) AND firing 'tcp_fsm(timer=True)' once
+        per tick (CPU drain growing linearly with dead-session
+        count). On the LAN/loopback testbed the leak is
+        invisible because the test harness rebuilds 'FakeTimer'
+        per test.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Sanity check: 'stack.timer._tasks' contains exactly one
+        # task bound to this session. The task fires
+        # 'session.tcp_fsm(timer=True)' on every tick and was
+        # added by 'TcpSession.__init__'.
+        session_tasks_before = [
+            task for task in self._timer._tasks if getattr(task.method, "__self__", None) is session
+        ]
+        self.assertEqual(
+            len(session_tasks_before),
+            1,
+            msg=(
+                "Setup precondition: 'stack.timer._tasks' MUST "
+                "contain exactly one task bound to the session "
+                "after handshake. Without this precondition the "
+                "test below is vacuous."
+            ),
+        )
+
+        # Peer sends a clean RST. State -> CLOSED via
+        # '_tcp_fsm_established's RST handler.
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,  # RCV.NXT
+            ack=LOCAL__ISS + 1,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_rst)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="Setup precondition: peer's clean RST must transition session to CLOSED.",
+        )
+
+        # The bug: the per-session 'TimerTask' survives the
+        # CLOSED transition. It keeps firing on every tick,
+        # holds 'session' alive against GC, and burns CPU per
+        # tick.
+        session_tasks_after = [task for task in self._timer._tasks if getattr(task.method, "__self__", None) is session]
+        self.assertEqual(
+            len(session_tasks_after),
+            0,
+            msg=(
+                "After the session has terminated (state -> "
+                "CLOSED), the 'TimerTask' that '__init__' "
+                "registered for the session's 'tcp_fsm' callback "
+                "MUST be removed from 'stack.timer._tasks'. "
+                f"Today the task survives ({session_tasks_after}). "
+                "On a long-running stack the dead-session task "
+                "fires 'tcp_fsm(timer=True)' on every tick "
+                "(burning CPU per tick per dead session) and the "
+                "bound-method reference holds the 'TcpSession' "
+                "instance alive against GC (leaking ~several KB "
+                "per session). Fix: add an 'unregister_method' "
+                "helper to 'Timer' / 'FakeTimer' and call it "
+                "from '_change_state' on CLOSED."
+            ),
+        )
