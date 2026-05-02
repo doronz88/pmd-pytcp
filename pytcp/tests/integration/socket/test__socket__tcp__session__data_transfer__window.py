@@ -822,3 +822,168 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg="State must remain ESTABLISHED through the shrink and silent window.",
         )
+
+    def test__window__sub_mss_available_window_is_advertised_as_zero_per_rfc_1122_4_2_3_3(self) -> None:
+        """
+        Ensure that when the receiver-side available window
+        (RCV.WND_MAX - len(_rx_buffer)) drops below one MSS,
+        we advertise a window of ZERO rather than a small
+        positive value that would invite peer to send a sub-MSS
+        segment - the receiver-side Silly Window Syndrome (SWS)
+        avoidance rule from RFC 1122 §4.2.3.3.
+
+        RFC 1122 §4.2.3.3 (receiver SWS avoidance):
+
+            "A TCP MUST include a SWS avoidance algorithm in the
+             receiver. ... The receiver's SWS avoidance algorithm
+             ... is to refrain from sending small window updates.
+             The window should not be advertised as smaller than
+             the maximum segment size (MSS) reported by the
+             receiver, except when the receive buffer is full."
+
+        With WSCALE enabled (default '_rcv_wsc = 7'), each unit on
+        the wire represents '1 << 7 = 128' bytes - far less than
+        a typical MSS (1460 for IPv4-Ethernet). PyTCP's
+        '_transmit_packet' computes the advertised window field
+        as 'self._rcv_wnd >> self._rcv_wsc' with no SWS clamp:
+        when '_rcv_wnd = 500' (sub-MSS), the advertised value is
+        '500 >> 7 = 3' - peer sees a window of '3 << 7 = 384'
+        effective bytes and may send a 384-byte segment. That
+        segment is sub-MSS, wastes header overhead per byte of
+        payload, and triggers the classic SWS pattern of small
+        outbound segments grinding the connection to a crawl.
+
+        The fix is the receiver-side SWS clamp: if
+        '_rcv_wnd < _rcv_mss' AND '_rcv_wnd > 0', advertise zero
+        instead. The peer enters its zero-window persist loop
+        and we re-open the window only when the application has
+        consumed at least one MSS of buffer space.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED with bilateral
+               WSCALE. After: '_rcv_wsc = 7', '_rcv_wnd_max =
+               65535', '_rcv_mss' = 1460 (typical IPv4-Ethernet).
+            2. Pre-fill '_rx_buffer' to 65_000 bytes so the
+               available window is '_rcv_wnd_max - 65_000 = 535'
+               (sub-MSS).
+            3. Peer sends 1 byte of data so a delayed-ACK is
+               armed. Drain past 'DELAYED_ACK_DELAY' so the ACK
+               fires.
+            4. Inspect the outbound ACK's 'win' field.
+            5. Assert: 'win << _rcv_wsc' is either 0 OR >=
+               '_rcv_mss'. The current code emits
+               '535 >> 7 = 4' (= 512 effective bytes, sub-MSS) -
+               in violation of SWS avoidance.
+
+        Assertions:
+
+            * '(probe.win << session._rcv_wsc) == 0 OR
+               (probe.win << session._rcv_wsc) >= session._rcv_mss'.
+
+        [FLAGS BUG] - 'TcpSession._transmit_packet' (line 718)
+        computes:
+
+            tcp__win = self._rcv_wnd >> self._rcv_wsc
+
+        with no SWS clamp. When '0 < _rcv_wnd < _rcv_mss', the
+        right-shift yields a small positive integer that
+        represents sub-MSS bytes on the wire after peer applies
+        WSCALE.
+
+        Fix outline (separate commit):
+
+            if 0 < self._rcv_wnd < self._rcv_mss:
+                tcp__win = 0
+            else:
+                tcp__win = self._rcv_wnd >> self._rcv_wsc
+
+        Same fix can be unified into the '_rcv_wnd' property
+        itself by clamping there, but the property is also read
+        by the receive-window acceptability check (line 897-905)
+        which wants the un-clamped value. Keeping the SWS clamp
+        local to the wire-emission path avoids that interaction.
+
+        Severity: LOW. PyTCP works correctly with sub-MSS
+        advertisements - the peer sees a smaller window and
+        sends a smaller segment - but the per-byte header
+        overhead grows and average throughput drops. Real-world
+        impact is limited to slow-consumer scenarios with
+        full-sized buffers; on the LAN/loopback testbed the
+        application is typically fast enough that '_rcv_wnd'
+        stays near '_rcv_wnd_max' and SWS never fires.
+        """
+
+        # Drive a custom handshake where peer offers WSCALE so the
+        # bilateral negotiation completes and '_rcv_wsc' stays at
+        # its default 7 (the file's '_drive_handshake_to_established'
+        # does not include WSCALE on peer's SYN+ACK).
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            wscale=7,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        self.assertIs(session.state, FsmState.ESTABLISHED)
+        self.assertEqual(
+            session._rcv_wsc,
+            7,
+            msg="Setup precondition: bilateral WSCALE must yield '_rcv_wsc = 7'.",
+        )
+
+        # Pre-fill '_rx_buffer' so the available window is sub-MSS.
+        # '_rcv_wnd' is a property: 'max(0, _rcv_wnd_max - len(_rx_buffer))'.
+        target_available = 535  # sub-MSS (< 1460)
+        prefill_count = session._rcv_wnd_max - target_available
+        with session._lock__rx_buffer:
+            session._rx_buffer.extend(b"\x00" * prefill_count)
+        self.assertEqual(
+            session._rcv_wnd,
+            target_available,
+            msg=f"Setup precondition: '_rcv_wnd' must be {target_available} after pre-fill.",
+        )
+
+        # Peer sends 1 byte to arm a delayed-ACK. Drain past
+        # 'DELAYED_ACK_DELAY' so the timer-driven ACK fires.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"X",
+        )
+        self._drive_rx(frame=peer_data)
+        delayed_ack_tx = self._advance(ms=200)
+
+        self.assertEqual(
+            len(delayed_ack_tx),
+            1,
+            msg="Setup precondition: the delayed ACK must fire on the next tick after DELAYED_ACK_DELAY.",
+        )
+        ack_probe = self._parse_tx(delayed_ack_tx[0])
+        effective_window = ack_probe.win << session._rcv_wsc
+        self.assertTrue(
+            effective_window == 0 or effective_window >= session._rcv_mss,
+            msg=(
+                f"RFC 1122 §4.2.3.3 receiver SWS avoidance: "
+                f"the advertised window's effective byte count "
+                f"({effective_window} = {ack_probe.win} << {session._rcv_wsc}) "
+                f"MUST be either 0 or >= MSS ({session._rcv_mss}). "
+                f"Today PyTCP advertises a small positive window "
+                f"({ack_probe.win}) representing {effective_window} "
+                f"effective bytes - sub-MSS, in violation of the "
+                f"receiver SWS avoidance rule. Fix: clamp 'tcp__win = 0' "
+                f"when '0 < self._rcv_wnd < self._rcv_mss' in "
+                f"'_transmit_packet' line 718."
+            ),
+        )
