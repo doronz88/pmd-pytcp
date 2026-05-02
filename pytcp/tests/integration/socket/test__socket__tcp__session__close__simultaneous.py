@@ -651,3 +651,92 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             FsmState.CLOSING,
             msg="State must remain CLOSING after a fully-duplicate retransmit.",
         )
+
+    def test__close_simultaneous__in_window_rst_in_closing_must_elicit_challenge_ack(self) -> None:
+        """
+        Ensure CLOSING's RST handler honours the RFC 9293
+        §3.10.7.4 / RFC 5961 §3.2 case-2 challenge-ACK rule: an
+        in-window-but-mismatched RST elicits a challenge ACK
+        rather than a silent drop. Companion to the
+        FIN_WAIT_1 / FIN_WAIT_2 / CLOSE_WAIT / LAST_ACK case-2
+        tests in 'close__rst.py'.
+
+        CLOSING is a synchronized state and inherits the rule.
+        Today '_tcp_fsm_closing's RST+ACK branch (line 2536-2547)
+        uses strict 'tcp__seq == self._rcv_nxt'; an in-window
+        mismatch falls through to silent drop.
+
+        [FLAGS BUG] - the strict-equality check makes the branch
+        miss the case-2 input. Fix: route through a shared
+        '_check_rst_acceptability' helper that returns True for
+        case-1 (caller resets), False otherwise (helper has
+        emitted the case-2 challenge ACK if applicable).
+
+        Scenario:
+
+            1. Active-open handshake → ESTABLISHED.
+            2. close() + tick → FIN_WAIT_1; tick → FIN+ACK out.
+            3. Peer simultaneous-close FIN+ACK at seq=PEER__ISS+1,
+               ack=LOCAL__ISS+1 (does NOT ack our FIN).
+               Transitions FIN_WAIT_1 → CLOSING.
+            4. Peer RST+ACK at seq = PEER__ISS + 2 + 10 (in-window
+               mismatched - past peer's FIN seq).
+            5. Assert: one outbound challenge ACK with seq =
+               LOCAL__ISS + 2 (post-FIN), ack = PEER__ISS + 2
+               (post-peer-FIN). State stays CLOSING.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="Setup precondition: state must be CLOSING.",
+        )
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        peer_rst_off_seq = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=rcv_nxt_before + 10,
+            ack=LOCAL__ISS + 2,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        rst_inline = self._drive_rx(frame=peer_rst_off_seq)
+
+        self.assertEqual(
+            len(rst_inline),
+            1,
+            msg=(
+                "Peer's RST with in-window mismatched seq in "
+                "CLOSING MUST elicit exactly one challenge ACK "
+                "per RFC 9293 §3.10.7.4 case (2)."
+            ),
+        )
+        challenge_ack = self._parse_tx(rst_inline[0])
+        self._assert_segment(
+            challenge_ack,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="In-window-mismatched RST must NOT reset the connection in CLOSING.",
+        )
