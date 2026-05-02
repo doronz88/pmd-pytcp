@@ -2329,7 +2329,21 @@ class TcpSession:
             )
             return
 
-        # Got ACK packet -> Change state to TIME_WAIT.
+        # Got ACK packet -> ESTABLISHED-style ACK processing per
+        # RFC 9293 §3.10.7.4 ("CLOSING STATE: In addition to the
+        # processing for the ESTABLISHED state, if our FIN is now
+        # acknowledged then enter the TIME-WAIT state, otherwise
+        # ignore the segment."). Mirrors the FIN_WAIT_1 /
+        # FIN_WAIT_2 / LAST_ACK shape: '_process_ack_packet'
+        # handles SND.UNA advance, scoreboard prune, retransmit-
+        # counter purge, and persist-timer reset; the FIN-acked
+        # check uses 'ge32(snd_una, snd_fin)' on the post-update
+        # SND.UNA. The strict 'tcp__ack == self._snd_nxt' check
+        # used previously was equivalent in the canonical
+        # simultaneous-close flow but silently dropped 'ack >
+        # snd_max' cases that RFC §3.10.7.4 step 5 mandates an
+        # empty-ACK reply for; the new shape inherits the
+        # sibling-state empty-ACK fallback below.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_ack})
@@ -2341,15 +2355,23 @@ class TcpSession:
                 }
             )
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__ack == self._snd_nxt and in_range32(
+            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
                 packet_rx_md.tcp__ack, self._snd_una, self._snd_max
             ):
-                self._snd_una = packet_rx_md.tcp__ack
-                self._change_state(FsmState.TIME_WAIT)
-                # Initialize TIME_WAIT delay.
-                stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
+                self._process_ack_packet(packet_rx_md)
+                # If our FIN is now acked, enter TIME_WAIT.
+                if ge32(self._snd_una, self._snd_fin):
+                    self._change_state(FsmState.TIME_WAIT)
+                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
                 return
+            # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
+            # data we have never sent (ack > SND.MAX) MUST elicit
+            # an empty-ACK reply carrying our current SND.NXT and
+            # RCV.NXT. The strict-equality predecessor of this
+            # branch silently dropped these.
+            if gt32(packet_rx_md.tcp__ack, self._snd_max):
+                self._transmit_packet(flag_ack=True)
+            return
 
         # Got RST + ACK packet -> Change state to CLOSED.
         if (
