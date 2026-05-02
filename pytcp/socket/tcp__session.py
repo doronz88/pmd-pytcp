@@ -655,6 +655,19 @@ class TcpSession:
             f"[{self}] - <ly>[{old_state} -> {self._state}]</>",
         )
 
+        # RFC 6675 §5 RecoveryPoint is meaningful only inside the
+        # ESTABLISHED loss-recovery loop. Clear on any transition
+        # out of ESTABLISHED so post-half-close 'send()' that
+        # experiences loss can re-enter recovery in the new state
+        # without being inhibited by the stale marker. The
+        # in-'_process_ack_packet' clearing only fires when
+        # SND.UNA crosses the marker, which may not happen if
+        # peer's transition-driving segment did not advance the
+        # cum-ACK far enough (e.g. peer FIN with no cum-ACK
+        # progress).
+        if old_state is FsmState.ESTABLISHED and state is not FsmState.ESTABLISHED:
+            self._recovery_point = 0
+
         # Unregister session.
         if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
