@@ -596,6 +596,8 @@ class TcpSession:
             raise TcpSessionError("Connection refused")
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.TIMEOUT:
             raise TcpSessionError("Connection timeout")
+        if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.CANCELED:
+            raise TcpSessionError("Connection canceled")
 
     def send(self, *, data: bytes) -> int:
         """
@@ -2084,8 +2086,15 @@ class TcpSession:
                 self._event__connect.release()
             return
 
-        # Got CLOSE syscall -> Change state to CLOSE.
+        # Got CLOSE syscall -> Change state to CLOSED. Also signal
+        # any blocked CONNECT caller (typical for a multi-threaded
+        # app with one thread blocked on 'connect()' and another
+        # calling 'close()') with 'ConnError.CANCELED' so they
+        # unblock with 'TcpSessionError("Connection canceled")'
+        # rather than hanging on the dead session forever.
         if syscall is SysCall.CLOSE:
+            self._connection_error = ConnError.CANCELED
+            self._event__connect.release()
             self._change_state(FsmState.CLOSED)
             return
 
@@ -2205,8 +2214,14 @@ class TcpSession:
         # Got CLOSE syscall in SYN_RCVD -> change state to FIN_WAIT_1;
         # the FIN packet is emitted from that state on the next timer
         # tick. The pre-handshake-completion close is legal per
-        # RFC 9293 §3.10.4 (CLOSE in SYN-RECEIVED).
+        # RFC 9293 §3.10.4 (CLOSE in SYN-RECEIVED). Also signal any
+        # blocked CONNECT caller (active-open simultaneous-open path)
+        # with 'ConnError.CANCELED' so they unblock with
+        # 'TcpSessionError("Connection canceled")' rather than
+        # hanging through the entire FIN-exchange lifecycle.
         if syscall is SysCall.CLOSE:
+            self._connection_error = ConnError.CANCELED
+            self._event__connect.release()
             self._change_state(FsmState.FIN_WAIT_1)
             return
 
