@@ -360,3 +360,186 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             LOCAL__ISS + 2,
             msg=("'SND.UNA' must advance to LOCAL__ISS+2 after CLOSING's " "ACK handler runs (line 1672)."),
         )
+
+    def test__close_simultaneous__closing_unacceptable_ack_beyond_snd_nxt_triggers_empty_ack_reply(self) -> None:
+        """
+        Ensure that when we are in the CLOSING state and peer
+        sends an ACK whose value is BEYOND 'SND.NXT' (i.e.
+        acknowledges data we have never sent), we emit the
+        empty-ACK reply RFC 9293 §3.10.7.4 step 5 mandates - not
+        silently drop it. The same RFC mandate already applies
+        in ESTABLISHED (covered by
+        'data_transfer__recv.py::test__data_transfer_recv__ack_beyond_snd_max_triggers_empty_ack_reply')
+        and per §3.10.7.4 the rule applies uniformly to all
+        synchronized states. CLOSING is a synchronized state.
+
+        RFC 9293 §3.10.7.4 step 5 (ACK processing):
+
+            "If the ACK acks something not yet sent (SEG.ACK >
+             SND.NXT), then send an ACK, drop the segment, and
+             return."
+
+        And §3.10.7.4 step 5 specifically for CLOSING:
+
+            "CLOSING STATE: In addition to the processing for the
+             ESTABLISHED state, if our FIN is now acknowledged
+             then enter the TIME-WAIT state, otherwise ignore the
+             segment."
+
+        i.e. CLOSING runs ESTABLISHED-style ACK processing first,
+        which includes the §3.10.7.4 step 5 'ack > SND.NXT'
+        empty-reply branch.
+
+        Scenario:
+
+            1. Drive simultaneous close to CLOSING (mirrors the
+               setup of '_both_sides_fin_walks_through_...' test).
+               Post-setup state:
+                 SND.UNA = LOCAL__ISS + 1
+                 SND.NXT = SND.MAX = LOCAL__ISS + 2
+                 SND.FIN = LOCAL__ISS + 2
+                 RCV.NXT = PEER__ISS + 2
+                 state   = CLOSING
+            2. Peer sends a bare ACK at 'ack = LOCAL__ISS + 0xDEAD'
+               (= LOCAL__ISS + 57005, far beyond SND.NXT =
+               LOCAL__ISS + 2). seq = PEER__ISS + 2 (= our
+               RCV.NXT, so SEQ is acceptable).
+            3. Drive RX. Per RFC §3.10.7.4 step 5 the receiver
+               MUST emit an empty-ACK reply inline carrying our
+               current SND.NXT and RCV.NXT.
+
+        Required wire shape of the empty-ACK reply:
+
+            seq       = LOCAL__ISS + 2     (= our SND.NXT)
+            ack       = PEER__ISS + 2      (= our RCV.NXT)
+            flags     = {ACK}
+            payload   = b""
+
+        Side effects asserted:
+
+            * Exactly one inline outbound ACK fires.
+            * 'session._snd_una' is unchanged (the bogus ack did
+              not advance our send window).
+            * 'session.state' remains CLOSING (the segment is
+              discarded; per RFC §3.10.7.4 the empty-ACK reply
+              is followed by 'drop the segment, and return').
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_closing' uses a
+        strict equality check 'tcp__ack == self._snd_nxt' AND
+        skips '_process_ack_packet' entirely (manually setting
+        '_snd_una = ack' if matched). The strict '==' has THREE
+        outcomes vs the three RFC §3.10.7.4 step 5 branches:
+
+            ack < snd_nxt (FIN not yet acked): silent drop. OK
+                per RFC.
+            ack == snd_nxt (FIN exactly acked): -> TIME_WAIT. OK.
+            ack > snd_nxt (acks unsent data): silent drop. WRONG
+                - RFC §3.10.7.4 step 5 mandates empty-ACK reply.
+
+        On current code the 'ack > snd_nxt' branch silently
+        falls through with no outbound segment. PyTCP's siblings
+        ('_tcp_fsm_fin_wait_1', '_tcp_fsm_fin_wait_2',
+        '_tcp_fsm_last_ack') use 'in_range32(ack, snd_una,
+        snd_max)' + '_process_ack_packet' which delegates to the
+        ESTABLISHED-state ACK handler that already handles the
+        'ack > SND.MAX -> empty-ACK' branch correctly. CLOSING
+        is the odd one out.
+
+        Fix outline (separate commit): converge CLOSING on the
+        sibling shape. Replace the strict '==' check with
+        '_process_ack_packet(packet_rx_md)' (which handles
+        SND.UNA advance, scoreboard prune, retransmit-counter
+        purge, persist-timer reset, AND the empty-ACK-on-
+        unacceptable-ack branch); then check 'ge32(snd_una,
+        snd_fin)' to decide TIME_WAIT vs stay-in-CLOSING.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Application close() -> deferred FIN_WAIT_1. First tick
+        # transitions ESTABLISHED -> FIN_WAIT_1 (after TX buffer
+        # drains, which is empty); second tick fires our FIN.
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Setup precondition: close() must transition to FIN_WAIT_1.",
+        )
+        self.assertEqual(
+            session._snd_fin,
+            LOCAL__ISS + 2,
+            msg="Setup precondition: our FIN must have fired (SND.FIN = LOCAL__ISS + 2).",
+        )
+
+        # Peer's simultaneous FIN+ACK (ack does NOT cover our FIN)
+        # transitions us to CLOSING.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="Setup precondition: simultaneous FIN must transition to CLOSING.",
+        )
+
+        snd_una_before = session._snd_una
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        # Peer sends a bare ACK with ack acknowledging unsent
+        # data. Per RFC 9293 §3.10.7.4 step 5 the receiver MUST
+        # emit an empty-ACK reply.
+        peer_unacceptable_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,
+            ack=LOCAL__ISS + 0xDEAD,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        unacceptable_ack_inline = self._drive_rx(frame=peer_unacceptable_ack)
+
+        self.assertEqual(
+            len(unacceptable_ack_inline),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
+                "unsent data ('SEG.ACK > SND.NXT') in CLOSING MUST "
+                "elicit an empty-ACK reply carrying our current "
+                "SND.NXT and RCV.NXT, the same way the rule is "
+                "applied in ESTABLISHED. PyTCP's CLOSING handler "
+                "uses a strict equality check 'tcp__ack == "
+                "self._snd_nxt' that silently rejects ack > "
+                "snd_nxt without emitting the mandated reply."
+            ),
+        )
+        reply_probe = self._parse_tx(unacceptable_ack_inline[0])
+        self._assert_segment(
+            reply_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertEqual(
+            session._snd_una,
+            snd_una_before,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 5 the unacceptable "
+                "ACK is dropped after the empty-ACK reply; "
+                "SND.UNA must NOT advance."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg=("Per RFC §3.10.7.4 step 5 the unacceptable ACK is " "discarded; state must remain CLOSING."),
+        )
