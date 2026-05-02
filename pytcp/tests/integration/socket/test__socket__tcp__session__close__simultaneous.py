@@ -740,3 +740,106 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             FsmState.CLOSING,
             msg="In-window-mismatched RST must NOT reset the connection in CLOSING.",
         )
+
+    def test__close_simultaneous__bare_rst_in_closing_must_drop_to_closed(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) with seq == RCV.NXT in CLOSING aborts the
+        connection per RFC 9293 §3.10.7.4. The ACK flag is NOT a
+        precondition for valid RST processing in any synchronized
+        state - CLOSING is no different from ESTABLISHED.
+
+        [FLAGS BUG] - same predicate-shape error as ESTABLISHED
+        (see
+        'close__rst.py::test__close_rst__bare_rst_in_established_must_drop_to_closed'
+        for the full rationale and fix outline). The
+        '_tcp_fsm_closing' RST branch (line ~2706-2713) gates on
+        'all({tcp__flag_rst, tcp__flag_ack})', so a bare RST is
+        silently dropped and the connection stays in CLOSING
+        forever from peer's perspective.
+
+        CLOSING is reached via the simultaneous-close path
+        (FIN_WAIT_1 + peer-FIN-without-our-FIN-ack -> CLOSING).
+        The bug applies the same way as in the close-only states
+        covered by 'close__rst.py'; the only differentiator is
+        the path used to walk into CLOSING.
+
+        Fix: replace 'all({rst, ack})' with bare 'tcp__flag_rst',
+        mirroring CLOSE_WAIT / SYN_RCVD. The
+        '_check_rst_acceptability' helper already handles bare
+        RST correctly (line ~1014-1021 short-circuits the
+        ack-range guard).
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. 'close()'; transition tick + FIN-emit tick (state
+               -> FIN_WAIT_1, our FIN out).
+            3. Peer simultaneous-close FIN+ACK at seq=PEER__ISS+1,
+               ack=LOCAL__ISS+1 (does NOT ack our FIN). State
+               transitions FIN_WAIT_1 -> CLOSING.
+            4. Peer sends BARE RST at SEQ = PEER__ISS + 2
+               (== RCV.NXT after peer's FIN advanced it) with no
+               ACK flag and ack=0.
+            5. Drive RX. The CLOSING RST branch MUST run, accept
+               the RST via '_check_rst_acceptability', and
+               transition to CLOSED.
+
+        Assertions:
+
+            * State is CLOSED.
+            * Socket is unregistered from 'stack.sockets'.
+
+        On current code the state assertion fails - bare RST is
+        silently dropped, state stays CLOSING.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="Setup precondition: state must be CLOSING.",
+        )
+
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,
+            ack=0,
+            flags=("RST",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_rst)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's bare RST (no ACK flag) with seq==RCV.NXT in "
+                "CLOSING MUST abort the connection per RFC 9293 "
+                "§3.10.7.4. Today the CLOSING RST branch predicate "
+                "'all({tcp__flag_rst, tcp__flag_ack})' silently drops "
+                "bare RSTs. Fix: replace with bare 'tcp__flag_rst'. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertNotIn(
+            socket_id,
+            stack.sockets,
+            msg="Socket must be unregistered after the CLOSED transition.",
+        )

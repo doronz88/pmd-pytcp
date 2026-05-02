@@ -990,6 +990,303 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             ),
         )
 
+    def test__close_rst__bare_rst_in_fin_wait_1_must_drop_to_closed(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) with seq == RCV.NXT in FIN_WAIT_1 aborts the
+        connection per RFC 9293 §3.10.7.4. The ACK flag is NOT a
+        precondition for valid RST processing in any synchronized
+        state - FIN_WAIT_1 is no different from ESTABLISHED in this
+        respect.
+
+        [FLAGS BUG] - same predicate-shape error as ESTABLISHED
+        (see 'test__close_rst__bare_rst_in_established_must_drop_to_closed'
+        for the full rationale and fix outline). The
+        '_tcp_fsm_fin_wait_1' RST branch (line ~2539-2546) gates on
+        'all({tcp__flag_rst, tcp__flag_ack})', so a bare RST is
+        silently dropped and state stays in FIN_WAIT_1 forever from
+        peer's perspective. Fix is the same: replace
+        'all({rst, ack})' with bare 'tcp__flag_rst', mirroring
+        CLOSE_WAIT / SYN_RCVD.
+
+        Differentiator from the ESTABLISHED case: 'SND.MAX' has
+        advanced past the FIN we sent (SND.MAX = LOCAL__ISS + 2),
+        so the check the helper performs validates against the
+        post-FIN range. For a bare RST the helper short-circuits
+        the ack-range guard at '_check_rst_acceptability' line
+        ~1014-1021, so the post-FIN range expansion is
+        observationally a no-op for this scenario.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. 'close()'; transition tick + FIN-emit tick. State is
+               FIN_WAIT_1, SND.MAX = LOCAL__ISS + 2.
+            3. Peer sends BARE RST at SEQ = PEER__ISS + 1
+               (== RCV.NXT) with no ACK flag and ack=0.
+            4. Drive RX. The FIN_WAIT_1 RST branch MUST run, accept
+               the RST via '_check_rst_acceptability', and
+               transition to CLOSED.
+
+        Assertions:
+
+            * No outbound segment is produced.
+            * State is CLOSED.
+            * Socket is unregistered from 'stack.sockets'.
+
+        On current code the state assertion fails - bare RST is
+        silently dropped, state stays FIN_WAIT_1.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        session.close()
+        self._advance(ms=1)
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg="Setup precondition: FIN_WAIT_1's first tick must emit our FIN+ACK.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Setup precondition: state must be FIN_WAIT_1 after the FIN-emit tick.",
+        )
+
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=0,
+            flags=("RST",),
+            win=PEER__WIN,
+        )
+        rst_inline = self._drive_rx(frame=peer_rst)
+
+        self.assertEqual(
+            rst_inline,
+            [],
+            msg=("Peer's bare RST in FIN_WAIT_1 must produce NO " "outbound segment."),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's bare RST (no ACK flag) with seq==RCV.NXT in "
+                "FIN_WAIT_1 MUST abort the connection per RFC 9293 "
+                "§3.10.7.4. Today the FIN_WAIT_1 RST branch predicate "
+                "'all({tcp__flag_rst, tcp__flag_ack})' silently drops "
+                "bare RSTs. Fix: replace with bare 'tcp__flag_rst'. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertNotIn(
+            socket_id,
+            stack.sockets,
+            msg=(
+                "On the bare-RST-driven transition to CLOSED, " "the socket must be unregistered from 'stack.sockets'."
+            ),
+        )
+
+    def test__close_rst__bare_rst_in_fin_wait_2_must_drop_to_closed(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) with seq == RCV.NXT in FIN_WAIT_2 aborts the
+        connection per RFC 9293 §3.10.7.4. The ACK flag is NOT a
+        precondition for valid RST processing in any synchronized
+        state.
+
+        [FLAGS BUG] - same predicate-shape error as ESTABLISHED
+        (see 'test__close_rst__bare_rst_in_established_must_drop_to_closed'
+        for the full rationale and fix outline). The
+        '_tcp_fsm_fin_wait_2' RST branch (line ~2626-2633) gates on
+        'all({tcp__flag_rst, tcp__flag_ack})', so a bare RST is
+        silently dropped and the connection stays in FIN_WAIT_2.
+
+        Differentiator from the FIN_WAIT_1 case: SND.UNA has
+        advanced past our FIN (peer ACKed it; SND.UNA = SND.MAX =
+        LOCAL__ISS + 2). The bare-RST short-circuit in the helper
+        applies the same way; the test still asserts CLOSED.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. 'close()'; transition tick + FIN-emit tick.
+            3. Peer ACKs our FIN; state -> FIN_WAIT_2.
+            4. Peer sends BARE RST at SEQ = PEER__ISS + 1
+               (== RCV.NXT) with no ACK flag and ack=0.
+            5. Drive RX. The FIN_WAIT_2 RST branch MUST run and
+               transition to CLOSED.
+
+        Assertions:
+
+            * No outbound segment produced.
+            * State is CLOSED.
+            * Socket unregistered.
+
+        On current code the state assertion fails - bare RST is
+        silently dropped, state stays FIN_WAIT_2.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg="Setup precondition: state must be FIN_WAIT_2 after peer ACKs our FIN.",
+        )
+
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=0,
+            flags=("RST",),
+            win=PEER__WIN,
+        )
+        rst_inline = self._drive_rx(frame=peer_rst)
+
+        self.assertEqual(
+            rst_inline,
+            [],
+            msg="Peer's bare RST in FIN_WAIT_2 must produce NO outbound segment.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's bare RST (no ACK flag) with seq==RCV.NXT in "
+                "FIN_WAIT_2 MUST abort the connection per RFC 9293 "
+                "§3.10.7.4. Today the FIN_WAIT_2 RST branch predicate "
+                "'all({tcp__flag_rst, tcp__flag_ack})' silently drops "
+                "bare RSTs. Fix: replace with bare 'tcp__flag_rst'. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertNotIn(socket_id, stack.sockets, msg="Socket must be unregistered after CLOSED transition.")
+
+    def test__close_rst__bare_rst_in_last_ack_must_drop_to_closed(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) with seq == RCV.NXT in LAST_ACK aborts the
+        connection per RFC 9293 §3.10.7.4. The ACK flag is NOT a
+        precondition for valid RST processing in any synchronized
+        state.
+
+        [FLAGS BUG] - same predicate-shape error as ESTABLISHED
+        (see 'test__close_rst__bare_rst_in_established_must_drop_to_closed'
+        for the full rationale and fix outline). The
+        '_tcp_fsm_last_ack' RST branch (line ~2917-2926) gates on
+        'all({tcp__flag_rst, tcp__flag_ack})', so a bare RST is
+        silently dropped and the connection stays in LAST_ACK
+        forever (or until peer ACKs our FIN, which a bare-RST-issuing
+        peer is unlikely to do).
+
+        LAST_ACK is the symmetric counterpart of FIN_WAIT_2 from
+        the passive-close path. The bug applies in exactly the
+        same way; the only differentiator is the path used to
+        walk into the state (peer FINs first; we close).
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer FIN+ACK -> CLOSE_WAIT.
+            3. Tick to drain delayed ACK.
+            4. 'close()'; transition tick (-> LAST_ACK) + FIN-emit
+               tick.
+            5. Peer sends BARE RST at SEQ = PEER__ISS + 2
+               (== RCV.NXT after peer's FIN) with no ACK flag and
+               ack=0.
+            6. Drive RX. The LAST_ACK RST branch MUST run and
+               transition to CLOSED.
+
+        Assertions:
+
+            * No outbound segment produced.
+            * State is CLOSED.
+            * Socket unregistered.
+
+        On current code the state assertion fails - bare RST is
+        silently dropped, state stays LAST_ACK.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: state must be CLOSE_WAIT after peer's FIN+ACK.",
+        )
+        self._advance(ms=1)
+
+        session.close()
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg="Setup precondition: state must be LAST_ACK after the transition tick.",
+        )
+        fin_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(fin_tx),
+            1,
+            msg="Setup precondition: LAST_ACK's first tick must emit our FIN+ACK.",
+        )
+
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,
+            ack=0,
+            flags=("RST",),
+            win=PEER__WIN,
+        )
+        rst_inline = self._drive_rx(frame=peer_rst)
+
+        self.assertEqual(
+            rst_inline,
+            [],
+            msg="Peer's bare RST in LAST_ACK must produce NO outbound segment.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's bare RST (no ACK flag) with seq==RCV.NXT in "
+                "LAST_ACK MUST abort the connection per RFC 9293 "
+                "§3.10.7.4. Today the LAST_ACK RST branch predicate "
+                "'all({tcp__flag_rst, tcp__flag_ack})' silently drops "
+                "bare RSTs. Fix: replace with bare 'tcp__flag_rst'. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertNotIn(socket_id, stack.sockets, msg="Socket must be unregistered after CLOSED transition.")
+
     def test__close_rst__in_window_rst_not_at_rcv_nxt_must_elicit_challenge_ack(self) -> None:
         """
         Ensure that a peer-issued RST with a sequence number that
