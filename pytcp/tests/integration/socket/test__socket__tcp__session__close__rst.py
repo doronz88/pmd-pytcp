@@ -999,3 +999,121 @@ class TestTcpClose__Rst(TcpSessionTestCase):
                 "legitimate."
             ),
         )
+
+    def test__close_rst__session_teardown_unregisters_per_session_timer_entries(self) -> None:
+        """
+        Ensure that when a session terminates (state -> CLOSED via
+        peer RST or any other path), the per-session entries
+        registered into 'stack.timer' are unregistered. PyTCP today
+        leaves entries like '<session>-delayed_ack',
+        '<session>-retransmit_seq-{seq}', '<session>-time_wait',
+        '<session>-persist', and '<session>-challenge_ack' in
+        'stack.timer._timers' indefinitely after the session is
+        gone - a slow accumulating memory leak across long-running
+        stack instances with many connection churns.
+
+        The leak is benign in short-lived test runs (each TestCase
+        builds a fresh 'FakeTimer' via 'TcpSessionTestCase.setUp'
+        so cross-test contamination is impossible) but a real
+        production concern: a long-running stack handling thousands
+        of connections per second would slowly grow the
+        'stack.timer._timers' dict with stale entries that match no
+        live session.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Send 100 bytes of data so a per-seq retransmit timer
+               is armed under name '<session>-retransmit_seq-{seq}'.
+            3. Peer sends a small data segment so the delayed-ACK
+               timer is armed under '<session>-delayed_ack'.
+            4. Sanity-check: 'stack.timer._timers' contains at
+               least one entry whose key starts with the session's
+               name prefix.
+            5. Peer sends a clean RST (seq == RCV.NXT) which
+               transitions state to CLOSED via
+               '_tcp_fsm_established's RST handler.
+            6. Inspect 'stack.timer._timers' AFTER the session is
+               CLOSED. Assert: no entries whose key starts with
+               the session's name prefix.
+
+        [FLAGS BUG] - 'TcpSession._change_state' (line ~660 area)
+        unregisters the socket from 'stack.sockets' on CLOSED
+        transition but does NOT clean up the per-session timer
+        entries registered via 'stack.timer.register_timer' over
+        the session's lifetime.
+
+        Fix outline (separate commit): in '_change_state' on
+        transition to CLOSED, iterate 'stack.timer._timers' and
+        pop every key whose prefix matches 'str(self)'. (Or
+        track registered names in a per-instance set as they
+        are registered, and pop the tracked set on teardown.)
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+
+        # Send 100 bytes so a per-seq retransmit timer is armed.
+        session.send(data=b"X" * 100)
+        self._advance(ms=1)
+
+        # Peer sends data so the delayed-ACK timer is armed.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"hello",
+        )
+        self._drive_rx(frame=peer_data)
+
+        session_prefix = f"{session}"
+        timers_before = {name: ms for name, ms in self._timer.pending_timers.items() if name.startswith(session_prefix)}
+        self.assertGreater(
+            len(timers_before),
+            0,
+            msg=(
+                "Setup precondition: at least one session-prefixed "
+                "timer entry must be registered in 'stack.timer' "
+                "after 'send()' and inbound peer-data have armed "
+                "'-retransmit_seq-{seq}' and '-delayed_ack' entries. "
+                f"Got: {timers_before}"
+            ),
+        )
+
+        # Peer sends a clean RST. State -> CLOSED via
+        # '_tcp_fsm_established's RST handler.
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 5,  # RCV.NXT after we processed peer's 5-byte data
+            ack=LOCAL__ISS + 1,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_rst)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="Setup precondition: peer's clean RST must transition session to CLOSED.",
+        )
+
+        # The bug: per-session timer entries survive the session's
+        # CLOSED transition.
+        timers_after = {name: ms for name, ms in self._timer.pending_timers.items() if name.startswith(session_prefix)}
+        self.assertEqual(
+            len(timers_after),
+            0,
+            msg=(
+                "After the session has terminated (state -> CLOSED), "
+                "all per-session entries in 'stack.timer._timers' "
+                "MUST be unregistered. Today the entries persist "
+                f"({timers_after}). On a long-running stack handling "
+                "many connection churns this accumulates as a slow "
+                "memory leak. Fix: '_change_state' on CLOSED must "
+                "pop every per-session entry."
+            ),
+        )
