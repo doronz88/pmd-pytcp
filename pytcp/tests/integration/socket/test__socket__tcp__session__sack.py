@@ -1951,3 +1951,373 @@ class TestTcpSession__Sack(TcpSessionTestCase):
                 "marker is excluded."
             ),
         )
+
+    def test__sack__dsack__case_2__full_duplicate_of_ooo_queued_segment_elicits_dsack(self) -> None:
+        """
+        Ensure that when peer retransmits an OOO segment whose
+        range exactly matches an entry already buffered in our
+        OOO queue, the next outbound ACK carries a DSACK report
+        per RFC 2883 §4 case 2 - the duplicated range is encoded
+        as the FIRST SACK block, followed by the regular SACK
+        block(s) describing the OOO queue. The DSACK block being
+        contained inside (or equal to) one of the regular blocks
+        is the wire signature that distinguishes RFC 2883 case 2
+        from a plain RFC 2018 SACK option.
+
+        RFC 2883 §3 (Reporting Duplicate Segments):
+
+            "Each duplicate contiguous sequence of data received
+             is reported in at most one D-SACK block in the SACK
+             option of an acknowledgement. ... [The data
+             receiver] uses the first SACK block to specify the
+             sequence numbers of the duplicate segment received."
+
+        RFC 2883 §4 case 2:
+
+            "[T]he D-SACK block is followed by an additional
+             SACK block. ... the first block of a SACK option
+             is contained within the second SACK block."
+
+        Why case 2 matters: a peer that triggers a spurious RTO
+        retransmit while a cum-ACK gap is still open will hit
+        this path (the duplicated bytes are still OOO from our
+        side, since the gap below them has not been filled).
+        Case 2 is the more common spurious-retransmit signal in
+        practice; case 1 only fires when peer retransmits past
+        bytes we already cumulatively ACKed. Without case 2
+        generation the peer's Eifel / RFC 3522 spurious-
+        retransmit detector cannot fire, leaving cwnd halved
+        unnecessarily.
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral
+               SACK negotiation succeeded.
+            2. Peer sends OOO segment 1 (100 bytes at
+               'seq = PEER__ISS + 1 + 100', leaving a 100-byte
+               gap before RCV.NXT). One outbound dup-ACK with a
+               single SACK block describes the OOO range.
+            3. Peer re-sends the SAME OOO segment 1 (full
+               duplicate of OOO-queued bytes - same seq, same
+               len). Our OOO queue overwrites the existing
+               entry with the new (identical) record; one
+               outbound ACK fires with a SACK option that has
+               TWO blocks - DSACK [seq, seq + 100] FIRST,
+               regular OOO [seq, seq + 100] SECOND. Case 2
+               signature satisfied: block 0 contained in (in
+               this case equal to, which counts) block 1.
+
+        Assertions:
+
+            * Exactly one inline outbound ACK on the duplicate
+              OOO arrival.
+            * 'ack = PEER__ISS + 1' (gap cum-ACK unchanged).
+            * 'sack_blocks' equals
+              '[(PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)]'
+              - DSACK first, regular block second.
+            * Session state remains ESTABLISHED.
+
+        [FLAGS BUG] - The OOO ingestion path in
+        '_tcp_fsm_established' (line ~2096-2107) stores
+        'self._ooo_packet_queue[packet_rx_md.tcp__seq] =
+        packet_rx_md' without checking whether the new
+        segment's byte range overlaps any existing OOO entry.
+        Today the duplicate is silently overwritten and the
+        outbound ACK has only the regular SACK block, no DSACK
+        signal. Per RFC 2883 §3 this duplicate event SHOULD be
+        reported.
+
+        Fix outline (separate commit):
+
+            Compute the overlap of the inbound segment's
+            'tcp__seq' / 'seg_end' against every existing entry
+            in 'self._ooo_packet_queue'. If any overlap is non-
+            empty, set 'self._pending_dsack' to the union of
+            overlap ranges (in the canonical case-2 case the
+            first overlap suffices because subsequent blocks
+            extend the signature, but the conservative impl
+            takes the merged extent across all overlapping
+            entries). The existing '_build_sack_blocks' helper
+            already emits '_pending_dsack' as block 0; no other
+            code change is required.
+
+        Severity: MEDIUM - real interop polish that improves
+        the peer's ability to detect spurious retransmits.
+        Without it, we fail to advertise duplicate-OOO events
+        per RFC 2883 §3 and the peer's congestion response to
+        a spurious RTO stays pessimistic for an extra RTT.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        ooo_seg = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 100,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"X" * 100,
+        )
+        first_tx = self._drive_rx(frame=ooo_seg)
+        self.assertEqual(
+            len(first_tx),
+            1,
+            msg="Setup precondition: first OOO segment elicits exactly one dup-ACK.",
+        )
+
+        # Peer retransmits the EXACT same OOO segment.
+        ooo_seg_dup = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 100,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"X" * 100,
+        )
+        dup_tx = self._drive_rx(frame=ooo_seg_dup)
+
+        self.assertEqual(
+            len(dup_tx),
+            1,
+            msg=(
+                "A retransmit of an OOO-queued segment MUST "
+                "elicit exactly one outbound ACK so peer's "
+                "retransmit machinery sees fresh activity "
+                "(RFC 2883 §3)."
+            ),
+        )
+        dup_ack_probe = self._parse_tx(dup_tx[0])
+        self._assert_segment(
+            dup_ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=PEER__ISS + 1,
+            sack_blocks=[
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),  # DSACK marker
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),  # regular OOO block
+            ],
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Duplicate-OOO receipt must not perturb the FSM state.",
+        )
+
+    def test__sack__dsack__case_2__partial_overlap_with_ooo_queued_segment_elicits_dsack(self) -> None:
+        """
+        Ensure that when peer's OOO segment partially overlaps
+        an existing entry in our OOO queue, the next outbound
+        ACK carries a DSACK report whose range is the
+        intersection of the new segment with the existing entry
+        per RFC 2883 §4 case 2. The peer's spurious-retransmit
+        detector fires on the contained-block signature.
+
+        RFC 2883 §3:
+
+            "Each duplicate contiguous sequence of data
+             received is reported in at most one D-SACK block."
+
+        Scenario:
+
+            1. Drive an active-open handshake with bilateral
+               SACK negotiation succeeded.
+            2. Peer sends OOO segment 1: 'seq = PEER__ISS + 1
+               + 100', 100 bytes, range [PEER__ISS + 101,
+               PEER__ISS + 201).
+            3. Peer sends OOO segment 2: 'seq = PEER__ISS + 1
+               + 150', 100 bytes, range [PEER__ISS + 151,
+               PEER__ISS + 251). The first 50 bytes overlap
+               segment 1 (both already in the OOO queue).
+            4. The resulting outbound ACK has SACK blocks:
+                 - block 0 (DSACK): [PEER__ISS + 151,
+                   PEER__ISS + 201) - the overlap range.
+                 - block 1 (regular): [PEER__ISS + 101,
+                   PEER__ISS + 201) - the original OOO entry.
+                 - block 2 (regular): [PEER__ISS + 151,
+                   PEER__ISS + 251) - the new OOO entry.
+               The DSACK block (151, 201) is contained in
+               block 1 (101, 201). Case 2 signature satisfied.
+
+        Assertions:
+
+            * Exactly one inline outbound ACK fires on the
+              second OOO arrival.
+            * 'sack_blocks[0]' equals the overlap range.
+            * 'sack_blocks' contains both regular OOO entries.
+
+        [FLAGS BUG] - Same root cause as the full-duplicate
+        case: the OOO ingestion path does not detect the
+        partial overlap, no '_pending_dsack' is set, and the
+        ACK has only the two regular OOO blocks.
+
+        Fix: same overlap computation as the case-1 sibling.
+        """
+
+        self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        seg1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 100,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"X" * 100,
+        )
+        first_tx = self._drive_rx(frame=seg1)
+        self.assertEqual(
+            len(first_tx),
+            1,
+            msg="Setup precondition: first OOO segment elicits exactly one dup-ACK.",
+        )
+
+        # Second OOO segment overlaps the first by 50 bytes.
+        seg2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 150,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"Y" * 100,
+        )
+        overlap_tx = self._drive_rx(frame=seg2)
+
+        self.assertEqual(
+            len(overlap_tx),
+            1,
+            msg=(
+                "An OOO segment overlapping a queued entry MUST "
+                "elicit exactly one outbound ACK reporting the "
+                "duplicate range via DSACK (RFC 2883 §3)."
+            ),
+        )
+        overlap_ack_probe = self._parse_tx(overlap_tx[0])
+        self._assert_segment(
+            overlap_ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=PEER__ISS + 1,
+            sack_blocks=[
+                (PEER__ISS + 1 + 150, PEER__ISS + 1 + 200),  # DSACK overlap
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),  # original OOO
+                (PEER__ISS + 1 + 150, PEER__ISS + 1 + 250),  # new OOO
+            ],
+        )
+
+    def test__sack__dsack__case_2__disjoint_ooo_segments_emit_no_dsack(self) -> None:
+        """
+        Ensure that when peer's OOO segments do NOT overlap any
+        existing OOO-queue entry, the resulting SACK option
+        carries only regular SACK blocks - no DSACK marker. The
+        case-2 signature is reserved exclusively for the
+        duplicate-range case; emitting a spurious DSACK on
+        every OOO arrival would corrupt the peer's spurious-
+        retransmit detector.
+
+        RFC 2883 §3:
+
+            "[The receiver] uses the first SACK block to
+             specify the sequence numbers of the duplicate
+             segment received."
+
+        I.e. the DSACK signature implies a duplicate event
+        actually occurred. Disjoint OOO ingestion is not a
+        duplicate event and must not trigger DSACK emission.
+
+        Scenario:
+
+            1. Drive handshake with bilateral SACK
+               negotiation succeeded.
+            2. Peer sends OOO segment 1: 'seq = PEER__ISS + 1
+               + 100', 100 bytes (range [101, 201)).
+            3. Peer sends OOO segment 2: 'seq = PEER__ISS + 1
+               + 300', 100 bytes (range [301, 401)). Disjoint
+               from segment 1 - 100-byte gap between them.
+            4. The resulting ACK has SACK blocks:
+                 - block 0 (regular): (101, 201)
+                 - block 1 (regular): (301, 401)
+               No DSACK marker.
+
+        Assertions:
+
+            * Exactly one inline outbound ACK on the second
+              OOO arrival.
+            * 'sack_blocks' has exactly 2 entries: the two
+              regular OOO ranges.
+            * The first block does NOT lie inside any later
+              block (case-2 signature absent).
+
+        Passes today as a regression guard: pins the negative
+        control so a future overly-eager case-2 emission cannot
+        slip in. Already passes - confirms the current code
+        does not emit spurious DSACKs.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+
+        seg1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 100,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"X" * 100,
+        )
+        self._drive_rx(frame=seg1)
+
+        # Second OOO segment - DISJOINT from the first.
+        seg2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 300,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"Y" * 100,
+        )
+        disjoint_tx = self._drive_rx(frame=seg2)
+
+        self.assertEqual(
+            len(disjoint_tx),
+            1,
+            msg="A disjoint OOO segment MUST elicit exactly one outbound ACK.",
+        )
+        disjoint_ack_probe = self._parse_tx(disjoint_tx[0])
+        self._assert_segment(
+            disjoint_ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=PEER__ISS + 1,
+            sack_blocks=[
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),
+                (PEER__ISS + 1 + 300, PEER__ISS + 1 + 400),
+            ],
+        )
+        # Sanity: the case-2 signature requires block-0 to be
+        # contained in a later block. Confirm that NEITHER
+        # block-0 sits inside any later block here - the
+        # negative-control invariant.
+        block0 = (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)
+        block1 = (PEER__ISS + 1 + 300, PEER__ISS + 1 + 400)
+        self.assertFalse(
+            block1[0] <= block0[0] and block0[1] <= block1[1],
+            msg="Negative control: block-0 must NOT lie inside any later block (no spurious DSACK signature).",
+        )
+        self.assertIsNone(
+            session._pending_dsack,
+            msg="Disjoint OOO ingestion must not stash a pending DSACK report.",
+        )
