@@ -813,6 +813,183 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg=("On transition to CLOSED, '_change_state' must " "unregister the socket from 'stack.sockets'."),
         )
 
+    def test__close_rst__bare_rst_in_established_must_drop_to_closed(self) -> None:
+        """
+        Ensure that a peer-issued BARE RST (the RST flag set, the
+        ACK flag cleared) with seq == RCV.NXT in ESTABLISHED aborts
+        the connection per RFC 9293 §3.10.7.4. The ACK flag is NOT
+        a precondition for valid RST processing; both bare RST
+        and RST+ACK are spec-legal abort signals.
+
+        RFC 9293 §3.10.7.4 (synchronized state, RST validation):
+
+            "In all states except SYN-SENT, all reset (RST)
+             segments are validated by checking their SEQ-fields.
+             A reset is valid if its sequence number is in the
+             window."
+
+        Note the absence of any ACK-flag precondition: the
+        validity check is purely a window check on SEG.SEQ. The
+        five "<SEQ=...><CTL=RST>" outbound forms enumerated in
+        RFC 9293 §3.5.2 also confirm the bare-RST shape is the
+        spec-mandated form for several abort scenarios; a
+        receiving peer must accept it.
+
+        Real-world peers (Linux, BSD, Windows) almost always send
+        RST+ACK because of historical convention, so the gap
+        does not bite typical interop. But a spec-compliant
+        peer that legitimately sends bare RST (e.g. abort from
+        SYN-SENT after our handshake completed but before our
+        third-leg ACK arrived; abort from a half-open recovery
+        path) cannot tear down our session, which is an
+        observable RFC violation.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_established' line
+        2418-2426 gates the RST-handling branch on
+        'all({tcp__flag_rst, tcp__flag_ack})':
+
+            if (
+                packet_rx_md
+                and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+                and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
+            ):
+                if self._check_rst_acceptability(packet_rx_md):
+                    self._event__rx_buffer.set()
+                    self._change_state(FsmState.CLOSED)
+                return
+
+        A bare RST has 'tcp__flag_ack=False', so 'all({rst, ack})'
+        is False and the branch never fires. The segment falls
+        through every other branch (none match a bare RST) and
+        the function returns silently with state unchanged. The
+        connection hangs forever from peer's perspective.
+
+        The same predicate-shape error affects four sibling
+        states with the same root cause (commit '991931e' added
+        the three-way RST helper across six sync states but
+        left the strict 'all({rst, ack})' predicate in place
+        for five of them):
+
+          - '_tcp_fsm_fin_wait_1'   line ~2539-2546
+          - '_tcp_fsm_fin_wait_2'   line ~2626-2633
+          - '_tcp_fsm_closing'      line ~2706-2713
+          - '_tcp_fsm_last_ack'     line ~2917-2926
+
+        SYN_RCVD ('_tcp_fsm_syn_rcvd' line ~2207-2221) and
+        CLOSE_WAIT ('_tcp_fsm_close_wait' line ~2836-2848) use
+        the broader 'tcp__flag_rst and not any({fin, syn})'
+        predicate and accept bare RSTs correctly. The CLOSE_WAIT
+        inline comment explicitly notes that the strict-ACK
+        predicate "would (and previously did) make this branch
+        never fire in real traffic" - the same fix the comment
+        describes was applied to CLOSE_WAIT and SYN_RCVD but the
+        five other sync states still carry the old strict
+        predicate.
+
+        Severity: MEDIUM. Real RFC compliance gap. Most peers
+        send RST+ACK, so the gap rarely bites in practice;
+        peers that send bare RST cannot abort us in any of the
+        five affected states.
+
+        Fix outline (separate commit): drop 'tcp__flag_ack' from
+        the predicate in all five branches - replace
+        'all({rst, ack})' with 'tcp__flag_rst', mirroring
+        CLOSE_WAIT / SYN_RCVD. The '_check_rst_acceptability'
+        helper already handles both shapes correctly: line
+        ~1014-1021 short-circuits the ack-range guard for bare
+        RST so the case-1 reset path remains reachable.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED (canonical setup).
+            2. Peer sends BARE RST (flags={"RST"}, no ACK) at
+               SEQ = PEER__ISS + 1 (== RCV.NXT). The 'ack' field
+               is left at 0 - it is meaningless for a bare RST
+               and the helper skips its validation.
+            3. Drive RX. The ESTABLISHED RST branch MUST run,
+               accept the RST via '_check_rst_acceptability',
+               and transition to CLOSED.
+
+        Assertions:
+
+            * No outbound segment is produced (RST is a
+              unidirectional abort).
+            * State is CLOSED.
+            * Socket is unregistered from 'stack.sockets'.
+
+        On current code this test fails at the state assertion:
+        the bare RST is silently dropped, state stays
+        ESTABLISHED, and the socket remains registered. Mirror
+        of the corresponding RST+ACK test above which passes -
+        the only difference is the flag set on peer's segment.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        socket_id = session._socket.socket_id
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: state must be ESTABLISHED before RST.",
+        )
+        self.assertIn(
+            socket_id,
+            stack.sockets,
+            msg="Setup precondition: socket must be registered before RST.",
+        )
+
+        # Peer sends a BARE RST (no ACK flag) at the canonical
+        # "matches RCV.NXT" position. 'ack=0' is meaningless for a
+        # bare RST and ignored by '_check_rst_acceptability' per
+        # the bare-RST short-circuit at line ~1014-1021.
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=0,
+            flags=("RST",),
+            win=PEER__WIN,
+        )
+        rst_inline = self._drive_rx(frame=peer_rst)
+
+        self.assertEqual(
+            rst_inline,
+            [],
+            msg=(
+                "Peer's bare RST must produce NO outbound segment. "
+                "RFC 9293 §3.5.2 / §3.10.7.4 - 'an incoming segment "
+                "containing a RST is discarded after processing'."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's bare RST (no ACK flag) with seq==RCV.NXT MUST "
+                "abort the connection per RFC 9293 §3.10.7.4 - the "
+                "RST validity check is a pure SEG.SEQ window check; "
+                "the ACK flag is not a precondition. Today the "
+                "ESTABLISHED RST branch predicate "
+                "'all({tcp__flag_rst, tcp__flag_ack})' silently drops "
+                "bare RSTs, leaving the connection stuck in "
+                "ESTABLISHED. Fix: replace the predicate with bare "
+                "'tcp__flag_rst', mirroring CLOSE_WAIT / SYN_RCVD. "
+                f"Got state: {session.state!r}."
+            ),
+        )
+        self.assertNotIn(
+            socket_id,
+            stack.sockets,
+            msg=(
+                "On the bare-RST-driven transition to CLOSED, "
+                "'_change_state' must unregister the socket from "
+                "'stack.sockets' so the 4-tuple can be reused. "
+                "Today the predicate gate prevents the transition "
+                "from happening at all, leaving the socket "
+                "registered indefinitely."
+            ),
+        )
+
     def test__close_rst__in_window_rst_not_at_rcv_nxt_must_elicit_challenge_ack(self) -> None:
         """
         Ensure that a peer-issued RST with a sequence number that
