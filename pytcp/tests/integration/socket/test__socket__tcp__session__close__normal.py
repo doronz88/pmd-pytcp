@@ -1614,3 +1614,197 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             FsmState.LAST_ACK,
             msg="State must remain LAST_ACK after a fully-duplicate retransmit.",
         )
+
+    def test__close_active__fin_wait_1_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
+        """
+        Ensure that FIN_WAIT_1's ACK-only handler emits an
+        empty-ACK reply when peer sends 'tcp__ack > SND.MAX'
+        per RFC 9293 §3.10.7.4 step 5. Sibling-state coverage
+        for the gap class fixed in CLOSING (commit '95a2a4e').
+
+        Setup: drive close() to FIN_WAIT_1. Peer sends bare ACK
+        with ack acknowledging unsent data. Today silent drop;
+        after fix empty-ACK reply with our SND.NXT / RCV.NXT.
+
+        [FLAGS BUG] - the FIN_WAIT_1 ACK-only branch exits
+        without emitting on unacceptable-ACK fallthrough. Same
+        fix shape as CLOSING.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Setup precondition: state must be FIN_WAIT_1.",
+        )
+
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        peer_unacceptable_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 0xDEAD,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        unacceptable_ack_inline = self._drive_rx(frame=peer_unacceptable_ack)
+
+        self.assertEqual(
+            len(unacceptable_ack_inline),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
+                "unsent data ('SEG.ACK > SND.NXT') in FIN_WAIT_1 "
+                "MUST elicit an empty-ACK reply. PyTCP today "
+                "drops it silently."
+            ),
+        )
+        ack_probe = self._parse_tx(unacceptable_ack_inline[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="State must remain FIN_WAIT_1 after an unacceptable ACK.",
+        )
+
+    def test__close_active__fin_wait_2_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
+        """
+        Same gap class as the FIN_WAIT_1 test above; this one
+        covers FIN_WAIT_2.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        # Peer ACKs our FIN -> FIN_WAIT_2.
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg="Setup precondition: state must be FIN_WAIT_2.",
+        )
+
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        peer_unacceptable_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 0xDEAD,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        unacceptable_ack_inline = self._drive_rx(frame=peer_unacceptable_ack)
+
+        self.assertEqual(
+            len(unacceptable_ack_inline),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
+                "unsent data ('SEG.ACK > SND.NXT') in FIN_WAIT_2 "
+                "MUST elicit an empty-ACK reply."
+            ),
+        )
+        ack_probe = self._parse_tx(unacceptable_ack_inline[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg="State must remain FIN_WAIT_2 after an unacceptable ACK.",
+        )
+
+    def test__close_passive__last_ack_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
+        """
+        Same gap class as the FIN_WAIT_1 / FIN_WAIT_2 tests
+        above; this one covers LAST_ACK.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Peer FIN -> CLOSE_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: peer's FIN must transition to CLOSE_WAIT.",
+        )
+        # Application close() in CLOSE_WAIT -> LAST_ACK.
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg="Setup precondition: state must be LAST_ACK.",
+        )
+
+        snd_nxt_before = session._snd_nxt
+        rcv_nxt_before = session._rcv_nxt
+
+        peer_unacceptable_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,  # past peer's FIN
+            ack=LOCAL__ISS + 0xDEAD,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        unacceptable_ack_inline = self._drive_rx(frame=peer_unacceptable_ack)
+
+        self.assertEqual(
+            len(unacceptable_ack_inline),
+            1,
+            msg=(
+                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
+                "unsent data ('SEG.ACK > SND.NXT') in LAST_ACK "
+                "MUST elicit an empty-ACK reply."
+            ),
+        )
+        ack_probe = self._parse_tx(unacceptable_ack_inline[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            seq=snd_nxt_before,
+            ack=rcv_nxt_before,
+            payload=b"",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg="State must remain LAST_ACK after an unacceptable ACK.",
+        )

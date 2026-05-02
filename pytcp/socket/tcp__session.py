@@ -2261,6 +2261,14 @@ class TcpSession:
                 if ge32(packet_rx_md.tcp__ack, self._snd_fin):
                     # Change state to FIN_WAIT_2.
                     self._change_state(FsmState.FIN_WAIT_2)
+                return
+            # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
+            # data we have never sent (ack > SND.MAX) MUST elicit
+            # an empty-ACK reply carrying our current SND.NXT and
+            # RCV.NXT. Same gap class as the CLOSING handler's
+            # fix in commit '95a2a4e'.
+            if gt32(packet_rx_md.tcp__ack, self._snd_max):
+                self._emit_challenge_ack()
             return
 
         # Got FIN + ACK packet -> Send ACK packet / change state to TIME_WAIT
@@ -2352,6 +2360,12 @@ class TcpSession:
                 if packet_rx_md.tcp__data:
                     self._transmit_packet(flag_ack=True)
                 return
+            # RFC 9293 §3.10.7.4 step 5 empty-ACK reply on
+            # 'ack > SND.MAX'. Same gap as fixed in CLOSING /
+            # FIN_WAIT_1.
+            if gt32(packet_rx_md.tcp__ack, self._snd_max):
+                self._emit_challenge_ack()
+            return
 
         # Got FIN + ACK packet -> Send ACK packet / change state to TIME_WAIT.
         if (
@@ -2636,6 +2650,12 @@ class TcpSession:
                 packet_rx_md.tcp__ack, self._snd_una, self._snd_max
             ):
                 self._change_state(FsmState.CLOSED)
+                return
+            # RFC 9293 §3.10.7.4 step 5 empty-ACK reply on
+            # 'ack > SND.MAX'. Same gap as fixed in CLOSING /
+            # FIN_WAIT_1 / FIN_WAIT_2.
+            if gt32(packet_rx_md.tcp__ack, self._snd_max):
+                self._emit_challenge_ack()
             return
 
         # Got RST + ACK packet -> Change state to CLOSED.
