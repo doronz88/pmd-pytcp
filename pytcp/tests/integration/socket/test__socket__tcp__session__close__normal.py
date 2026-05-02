@@ -2006,3 +2006,161 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             FsmState.CLOSE_WAIT,
             msg="State must remain CLOSE_WAIT after post-FIN data.",
         )
+
+    def test__close_passive__close_wait_ooo_post_fin_data_must_not_queue(self) -> None:
+        """
+        Ensure that when peer (RFC-violatingly) sends OOO data in
+        CLOSE_WAIT - data with 'seq > RCV.NXT', i.e. PAST the
+        seq just past their own FIN - the segment is NOT stored
+        in 'self._ooo_packet_queue'. The OOO queue normally
+        buffers segments awaiting RCV.NXT to advance to fill a
+        gap; in CLOSE_WAIT, RCV.NXT can NEVER advance past
+        peer's FIN seq + 1 (peer FIN'd so the seq space is
+        capped), so any OOO entry stored here is a permanent
+        leak with no drain path.
+
+        RFC 9293 §3.10.7.4 step 7 (Segment Text Processing)
+        omits CLOSE-WAIT from the list of states that deliver
+        segment text. Combined with the FIN's "no further data"
+        invariant, OOO data in CLOSE_WAIT is doubly-illegal:
+        peer should not have sent it, AND it cannot become
+        deliverable even if we buffered it.
+
+        The conservative response: emit a bare cum-ACK to nudge
+        peer's retransmit machinery toward backoff (same shape
+        as the in-order post-FIN-data sibling test above), but
+        do NOT store the segment in '_ooo_packet_queue'. No
+        DSACK case-2 marker either - the entire OOO branch is
+        rejected, so there is nothing to mark.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Peer FIN+ACK -> CLOSE_WAIT. RCV.NXT = PEER__ISS+2.
+            3. Peer sends OOO data segment at seq = PEER__ISS +
+               1 + 100 (= RCV.NXT + 99) with 50-byte payload.
+               This is past peer's own FIN AND OOO above
+               RCV.NXT.
+            4. Drive RX. Inspect inline TX list and queue state.
+
+        Assertions:
+
+            * Exactly one outbound ACK fires inline.
+            * The ACK carries 'ack = PEER__ISS + 2' (=
+              current RCV.NXT, unchanged).
+            * 'session._ooo_packet_queue' is empty - the
+              segment must NOT be stored.
+            * '_rx_buffer' is unchanged.
+            * 'RCV.NXT' is unchanged.
+            * Session stays in CLOSE_WAIT.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait's OOO
+        branch (line ~2701) mirrors ESTABLISHED's structurally
+        but never got the DSACK case-2 detection added in
+        commit 'b69e8b1' (since the case-2 work focused on
+        ESTABLISHED). More importantly, even with case-2
+        detection, the segment would still be stored in the
+        OOO queue - and in CLOSE_WAIT that storage is a leak
+        (no drain path). The fix replaces the OOO storage
+        branch with a bare ACK reply, dropping the data
+        entirely.
+
+        Severity: LOW (only triggers on RFC-violating peers)
+        but the behaviour is wrong: OOO entries in CLOSE_WAIT
+        accumulate without bound for a misbehaving peer, each
+        holding a 'TcpMetadata' reference that survives until
+        the session reaches CLOSED.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: state must be CLOSE_WAIT after peer FIN.",
+        )
+        rx_buffer_before = bytes(session._rx_buffer)
+        rcv_nxt_before = session._rcv_nxt
+        ooo_count_before = len(session._ooo_packet_queue)
+        self.assertEqual(
+            ooo_count_before,
+            0,
+            msg="Setup precondition: OOO queue must be empty after the FIN-only transition.",
+        )
+
+        # Peer sends OOO data segment past their own FIN.
+        ooo_payload = b"X" * 50
+        peer_ooo_post_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 100,  # > RCV.NXT (= PEER__ISS+2)
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=ooo_payload,
+        )
+        ooo_tx = self._drive_rx(frame=peer_ooo_post_fin)
+
+        self.assertEqual(
+            len(ooo_tx),
+            1,
+            msg=(
+                "Peer's OOO post-FIN data segment in CLOSE_WAIT "
+                "MUST elicit exactly one outbound ACK. Today the "
+                "OOO branch DOES emit the ACK (matches "
+                "ESTABLISHED's behaviour) but the assertion below "
+                "on the queue size is the [FLAGS BUG] anchor."
+            ),
+        )
+        ack_probe = self._parse_tx(ooo_tx[0])
+        self._assert_segment(
+            ack_probe,
+            flags=frozenset({"ACK"}),
+            ack=rcv_nxt_before,
+        )
+
+        # Spec: the segment must NOT be stored in the OOO queue.
+        # Today's code stores it indefinitely (no path to drain
+        # because RCV.NXT cannot advance past peer's FIN).
+        self.assertEqual(
+            len(session._ooo_packet_queue),
+            0,
+            msg=(
+                "Peer's OOO post-FIN data MUST NOT be stored in "
+                "'_ooo_packet_queue'. RCV.NXT in CLOSE_WAIT can "
+                "NEVER advance past peer's FIN seq + 1 (peer "
+                "FIN'd so the receive sequence space is capped), "
+                "so any OOO entry stored here is a permanent leak "
+                "with no drain path. Today the branch at "
+                "'tcp__session.py:2704' stores the segment "
+                "regardless. Fix: replace the OOO-storage branch "
+                "with a bare ACK reply."
+            ),
+        )
+
+        # Spec: '_rx_buffer' unchanged (no enqueue) and RCV.NXT
+        # unchanged (no advance).
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            rx_buffer_before,
+            msg="Peer's OOO post-FIN data MUST NOT be enqueued into '_rx_buffer'.",
+        )
+        self.assertEqual(
+            session._rcv_nxt,
+            rcv_nxt_before,
+            msg="Peer's OOO post-FIN data MUST NOT advance RCV.NXT.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="State must remain CLOSE_WAIT after OOO post-FIN data.",
+        )
