@@ -2413,7 +2413,7 @@ class TcpSession:
                 self._change_state(FsmState.CLOSE_WAIT)
             return
 
-        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
         # (folding RFC 5961 §3.2 blind-RST attack mitigation) via
         # the shared '_check_rst_acceptability' helper which runs
         # the three-way classification (case 1 reset / case 2
@@ -2423,7 +2423,7 @@ class TcpSession:
         # blocking forever on the rx-buffer event.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+            and packet_rx_md.tcp__flag_rst
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
             if self._check_rst_acceptability(packet_rx_md):
@@ -2540,11 +2540,11 @@ class TcpSession:
                     self._change_state(FsmState.CLOSING)
             return
 
-        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
         # three-way classification via the shared helper.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+            and packet_rx_md.tcp__flag_rst
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
             if self._check_rst_acceptability(packet_rx_md):
@@ -2627,11 +2627,11 @@ class TcpSession:
                 stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
                 return
 
-        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
         # three-way classification via the shared helper.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+            and packet_rx_md.tcp__flag_rst
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
             if self._check_rst_acceptability(packet_rx_md):
@@ -2707,11 +2707,11 @@ class TcpSession:
                 self._emit_challenge_ack()
             return
 
-        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
         # three-way classification via the shared helper.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+            and packet_rx_md.tcp__flag_rst
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
             if self._check_rst_acceptability(packet_rx_md):
@@ -2920,11 +2920,11 @@ class TcpSession:
                 self._emit_challenge_ack()
             return
 
-        # Got RST + ACK packet -> Process per RFC 9293 §3.10.7.4
+        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
         # three-way classification via the shared helper.
         if (
             packet_rx_md
-            and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
+            and packet_rx_md.tcp__flag_rst
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
         ):
             if self._check_rst_acceptability(packet_rx_md):
