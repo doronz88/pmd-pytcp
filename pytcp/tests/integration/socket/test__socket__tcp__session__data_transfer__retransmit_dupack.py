@@ -879,3 +879,171 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "vacuous."
             ),
         )
+
+    def test__dupack__peer_fin_during_fast_retransmit_recovery_clears_recovery_point(self) -> None:
+        """
+        Ensure that when peer's FIN arrives mid-recovery and the
+        FSM transitions ESTABLISHED -> CLOSE_WAIT without the
+        cumulative ACK advancing past the existing
+        '_recovery_point' marker, the marker is cleared as part
+        of leaving ESTABLISHED. The RFC 6675 §5 RecoveryPoint is
+        a SND.MAX boundary recorded at fast-retransmit entry; it
+        is meaningful only inside the ESTABLISHED loss-recovery
+        loop. Once the connection has half-closed (peer FIN), any
+        post-FIN application 'send()' that experiences loss must
+        be eligible to enter recovery afresh in CLOSE_WAIT - the
+        old marker references a high-water mark that may or may
+        not still be relevant, and leaving it set silently
+        inhibits fast-retransmit until cum-ACK eventually crosses
+        the stale value.
+
+        Same bug class as the RTO-clears-recovery-point test
+        above (commit 'cc736ae' / fix '2f50480'); different
+        trigger (peer-driven state transition vs RTO timer
+        expiry); same fix surface ('_recovery_point' lifecycle
+        on leaving ESTABLISHED).
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. '_snd_ewn =
+               PEER__WIN' to bypass slow-start.
+            2. Application sends 4 MSS of data. Drain so all
+               four segments fire and SND.MAX = LOCAL__ISS + 1
+               + 4*MSS.
+            3. Three dup-ACKs at 'ack = LOCAL__ISS + 1' trigger
+               fast-retransmit:
+                 _recovery_point = SND.MAX = LOCAL__ISS + 1 +
+                                              4*MSS
+                 _snd_nxt = SND.UNA = LOCAL__ISS + 1
+            4. Drain the fast-retransmit segment.
+            5. Peer sends FIN+ACK with 'ack = LOCAL__ISS + 1'
+               (the SAME unchanged cum-ACK; peer is closing
+               while still missing our outstanding data). The
+               FSM transitions ESTABLISHED -> CLOSE_WAIT
+               without SND.UNA advancing past
+               '_recovery_point'.
+            6. Assert: 'session._recovery_point == 0'. The
+               state-leave-ESTABLISHED clears the marker so a
+               post-FIN application send + loss can re-enter
+               recovery.
+
+        Assertions:
+
+            * After the FIN: 'session.state is FsmState.CLOSE_WAIT'
+              (sanity).
+            * 'session._recovery_point == 0' (the bug surface).
+            * 'session._snd_una' unchanged at LOCAL__ISS + 1
+              (sanity: the FIN's piggybacked ACK did not advance
+              SND.UNA past the marker, so the natural in-
+              '_process_ack_packet' clearing mechanism was NOT
+              what cleared the marker).
+
+        [FLAGS BUG] - 'TcpSession._change_state' (and the per-
+        state handlers that drive transitions) does not clear
+        '_recovery_point' when leaving ESTABLISHED. The marker
+        is cleared only inside '_process_ack_packet' when SND.UNA
+        crosses it; if peer's FIN cum-ACKs less than the marker
+        (the case constructed above), the marker survives the
+        transition. Subsequent post-half-close 'send()' that
+        experiences loss has '_retransmit_packet_request' short-
+        circuit at 'if self._recovery_point != 0: return',
+        silently skipping fast-retransmit. The connection
+        eventually progresses (cum-ACK eventually crosses the
+        stale marker, or RTO fires - which DOES now clear via
+        commit '2f50480') but visibly slower than it should.
+
+        Fix outline (separate commit): in '_change_state' (or in
+        the ESTABLISHED handlers' transitions out), clear
+        'self._recovery_point = 0' when leaving ESTABLISHED.
+        '_recovery_point' has no meaning outside the
+        ESTABLISHED loss-recovery loop.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._snd_ewn = PEER__WIN
+        mss = session._snd_mss
+
+        # Send 4 MSS and drain so SND.MAX is well past SND.UNA.
+        session.send(data=b"X" * (4 * mss))
+        for _ in range(4):
+            self._advance(ms=1)
+        self.assertEqual(
+            session._snd_max,
+            LOCAL__ISS + 1 + 4 * mss,
+            msg="Setup precondition: all 4 MSS segments must drain.",
+        )
+
+        # Three dup-ACKs back-to-back. Third triggers fast-retransmit.
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+        self.assertNotEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "Setup precondition: the third dup-ACK MUST trigger "
+                "fast-retransmit and set '_recovery_point' to a "
+                "non-zero marker."
+            ),
+        )
+        recovery_point_at_entry = session._recovery_point
+
+        # Drain the fast-retransmit segment.
+        self._advance(ms=1)
+
+        # Peer sends FIN+ACK with the SAME cum-ACK = LOCAL__ISS+1
+        # (no forward progress). State transitions to CLOSE_WAIT
+        # WITHOUT SND.UNA advancing past '_recovery_point' - so
+        # the natural 'le32(_recovery_point, _snd_una)' clearing
+        # path inside '_process_ack_packet' does NOT fire.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSE_WAIT,
+            msg="Setup precondition: peer's FIN must transition session to CLOSE_WAIT.",
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1,
+            msg=(
+                "Setup precondition: peer's FIN had cum-ACK = "
+                "LOCAL__ISS + 1, so SND.UNA must NOT have advanced "
+                "past '_recovery_point'. If this assertion fails "
+                "the natural in-'_process_ack_packet' clearing "
+                "fired and the test below is vacuous."
+            ),
+        )
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "Leaving ESTABLISHED MUST clear '_recovery_point' "
+                "to zero - the RFC 6675 §5 marker is meaningful "
+                "only inside the ESTABLISHED loss-recovery loop. "
+                f"Today the marker stays at {recovery_point_at_entry} "
+                "(the stale SND.MAX from fast-retransmit entry); "
+                "the next dup-ACK in CLOSE_WAIT or any state "
+                "transitioned to from here would skip fast-"
+                "retransmit via the one-shot guard. Fix: clear "
+                "'self._recovery_point = 0' in '_change_state' "
+                "when leaving ESTABLISHED, or equivalently in the "
+                "ESTABLISHED handlers' transitions out."
+            ),
+        )
