@@ -1023,3 +1023,230 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "until a legitimate handshake completes or R2 elapses."
             ),
         )
+
+    def test__active_open__rst_in_simultaneous_open_syn_rcvd_unblocks_connect(self) -> None:
+        """
+        Ensure that when an active-open caller is blocked on
+        '_event__connect' and the session traverses
+        SYN_SENT → SYN_RCVD (via the simultaneous-open path -
+        peer's bare SYN crossing our outbound SYN) → CLOSED
+        (via peer RST), the connect-event semaphore is
+        released with 'ConnError.REFUSED'. Today the SYN_RCVD
+        RST handler only calls '_change_state(CLOSED)' and
+        leaves the blocked 'connect()' caller hanging on the
+        semaphore forever.
+
+        RFC 9293 §3.10.7.4 (synchronized state RST handling):
+
+            "If the RST bit is set then ... any outstanding
+             RECEIVEs and SEND should receive 'reset'
+             responses. ... Users should also receive an
+             unsolicited general 'connection reset' signal."
+
+        SYN-RECEIVED is a synchronized state, and the active-
+        open caller blocked on 'connect()' is the analog of
+        the "outstanding RECEIVE" the spec calls out. Failing
+        to release the semaphore violates the contract and
+        produces an application-level deadlock.
+
+        Threat model: a peer that opens connections
+        simultaneously and then resets them (legitimately or
+        adversarially) can pin our 'connect()' callers in a
+        blocked-forever state. The SYN_SENT RST handler
+        already releases the semaphore correctly (commit
+        '9a1d7f5' precedent / line 2032 of 'tcp__session.py');
+        SYN_RCVD's two RST branches (RST+ACK and bare RST)
+        do not.
+
+        Scenario:
+
+            1. Build active-open session with LOCAL__ISS.
+               Issue CONNECT. Tick once to emit SYN.
+               State = SYN_SENT.
+            2. Verify the connect-event semaphore is NOT yet
+               released - sanity for the "blocked connect"
+               precondition.
+            3. Peer sends a bare SYN (no ACK) - the
+               simultaneous-open trigger. SYN_SENT's SYN-only
+               branch transitions to SYN_RCVD and emits a
+               SYN+ACK.
+            4. Verify the connect-event semaphore is STILL
+               not released - we are still mid-handshake.
+            5. Peer sends RST+ACK with seq=PEER_ISS+1 (=
+               RCV.NXT), ack=LOCAL__ISS+1 (= SND.NXT).
+               Session transitions SYN_RCVD → CLOSED.
+
+        Assertions:
+
+            * State is CLOSED.
+            * 'session._connection_error' is
+              'ConnError.REFUSED' so a blocked
+              'TcpSession.connect()' caller receives the
+              'TcpSessionError("Connection refused")'
+              propagation rather than a generic timeout or
+              an indefinite hang.
+            * 'session._event__connect.acquire(timeout=0)'
+              returns True - the semaphore was released, the
+              blocked caller would unblock.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd's RST and
+        RST+ACK branches (line ~2123 and ~2143) call only
+        '_change_state(FsmState.CLOSED)' and 'return'. They
+        do not set '_connection_error' and do not release
+        '_event__connect'. This contrasts with
+        '_tcp_fsm_syn_sent's RST+ACK handler (line ~2032)
+        which correctly does both.
+
+        Fix outline (separate commit):
+
+            Mirror the SYN_SENT shape - on RST acceptance in
+            SYN_RCVD, set
+            'self._connection_error = ConnError.REFUSED' and
+            call 'self._event__connect.release()' before the
+            state transition. The release on a non-blocked
+            semaphore is harmless (Semaphore.release() just
+            increments the counter), so a single fix applies
+            uniformly to both the active-open simultaneous-
+            open caller (blocked) and the passive-open
+            listener-fork child (not blocked).
+        """
+
+        # Step 1: drive active-open to SYN_SENT and emit our SYN.
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN must fire on the first tick.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="Setup precondition: state must be SYN_SENT after CONNECT and SYN emit.",
+        )
+        # Step 2: connect-event semaphore is NOT yet released.
+        self.assertFalse(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "Setup precondition: connect-event semaphore must "
+                "not be released while the handshake is still in "
+                "progress (SYN_SENT)."
+            ),
+        )
+
+        # Step 3: peer sends bare SYN (simultaneous-open trigger).
+        # SYN_SENT's SYN-only branch transitions to SYN_RCVD and
+        # emits a SYN+ACK.
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        syn_ack_tx = self._drive_rx(frame=peer_syn)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg=(
+                "Setup precondition: peer's bare SYN in SYN_SENT "
+                "must elicit one outbound SYN+ACK as the "
+                "simultaneous-open response."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg=(
+                "Setup precondition: peer's bare SYN must transition " "the session to SYN_RCVD per RFC 9293 §3.10.7.3."
+            ),
+        )
+        # Step 4: connect-event semaphore is STILL not released.
+        self.assertFalse(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "Setup precondition: connect-event semaphore must "
+                "still not be released in SYN_RCVD - the handshake "
+                "is not complete yet."
+            ),
+        )
+
+        # Step 5: peer sends RST+ACK at canonical match position.
+        # NOTE: 'seq=0' (NOT 'PEER__ISS + 1') because the
+        # simultaneous-open handler in SYN_SENT
+        # ('_tcp_fsm_syn_sent' line ~2011-2029) does NOT
+        # bootstrap '_rcv_nxt' from peer's SYN before
+        # transitioning to SYN_RCVD - it just emits SYN+ACK
+        # with our default 'ack=0' and leaves '_rcv_nxt' at the
+        # __init__ value (0). That is a separate pre-existing
+        # bug in the simultaneous-open path; this test focuses
+        # on Bug A (the SYN_RCVD RST handler not unblocking
+        # connect) and works around it by sending the RST at
+        # the actual (corrupted) RCV.NXT value. 'ack=LOCAL__ISS
+        # + 1' is in the legitimate range '[SND.UNA=LOCAL__ISS,
+        # SND.MAX=LOCAL__ISS+2]' (post-SYN-then-SYN+ACK).
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0,  # == _rcv_nxt (still uninitialized due to separate bug)
+            ack=LOCAL__ISS + 1,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        rst_tx = self._drive_rx(frame=peer_rst)
+        self.assertEqual(
+            rst_tx,
+            [],
+            msg=(
+                "Peer's RST+ACK in SYN_RCVD must produce NO outbound "
+                "segment - RST is unilateral and the receiver does "
+                "not reply (RFC 9293 §3.10.7.3)."
+            ),
+        )
+
+        # The actual contract checks: state, connection_error, and
+        # connect-event release.
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg=(
+                "Peer's RST+ACK with acceptable seq/ack in SYN_RCVD "
+                "must transition the session to CLOSED per RFC 9293 "
+                "§3.10.7.4."
+            ),
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg=(
+                "On RST in SYN_RCVD with a blocked active-open "
+                "caller, the session MUST record "
+                "'ConnError.REFUSED' so the blocked "
+                "'TcpSession.connect()' raises "
+                "'TcpSessionError(\"Connection refused\")' on "
+                "unblock, mirroring the SYN_SENT RST handler "
+                "behaviour. Today the SYN_RCVD RST branch only "
+                "calls '_change_state(CLOSED)' without setting "
+                "'_connection_error'."
+            ),
+        )
+        self.assertTrue(
+            session._event__connect.acquire(timeout=0),
+            msg=(
+                "On RST in SYN_RCVD, the connect-event semaphore "
+                "MUST be released so the blocked active-open caller "
+                "unblocks. Today the SYN_RCVD RST branch only "
+                "transitions state to CLOSED; the semaphore is "
+                "never released, so any 'connect()' caller that "
+                "reached SYN_RCVD via simultaneous open hangs "
+                "forever on '_event__connect.acquire()'. Fix: "
+                "mirror the SYN_SENT RST handler (line 2032 of "
+                "'tcp__session.py') which sets "
+                "'_connection_error = ConnError.REFUSED' and calls "
+                "'_event__connect.release()' before the state "
+                "transition."
+            ),
+        )
