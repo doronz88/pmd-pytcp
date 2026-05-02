@@ -987,3 +987,323 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
                 f"'_transmit_packet' line 718."
             ),
         )
+
+    def test__window__peer_window_update_via_dup_ack_shape_updates_snd_wnd(self) -> None:
+        """
+        Ensure that a peer ACK whose wire shape matches the
+        dup-ACK pattern ('seq == RCV.NXT, ack == SND.UNA, no
+        data') BUT carries a different window value than peer's
+        previously-advertised window is treated as a window-
+        update segment, not a duplicate ACK. The 'send window
+        SHOULD be updated' clause in RFC 9293 §3.10.7.4 step 5
+        applies whenever 'SND.UNA <= SEG.ACK <= SND.NXT' - it
+        does NOT require SEG.ACK to advance SND.UNA.
+
+        RFC 9293 §3.10.7.4 step 5 (window update):
+
+            "If SND.UNA =< SEG.ACK =< SND.NXT, the send window
+             should be updated. If (SND.WL1 < SEG.SEQ or (SND.WL1
+             = SEG.SEQ and SND.WL2 =< SEG.ACK)), set SND.WND <-
+             SEG.WND, set SND.WL1 <- SEG.SEQ, and set SND.WL2 <-
+             SEG.ACK."
+
+        and RFC 5681 §2 (duplicate-ACK definition - the part
+        PyTCP elides):
+
+            "An acknowledgment is considered a 'duplicate' in the
+             following algorithms when ... (e) the advertised
+             window in the incoming acknowledgment equals the
+             advertised window in the last incoming
+             acknowledgment."
+
+        Together: a segment with SEG.ACK == SND.UNA but a NEW
+        window value is NOT a duplicate; it is a window-update.
+        PyTCP currently misclassifies it.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_established' line
+        ~2294-2306 in the dup-ACK branch:
+
+            if (
+                packet_rx_md.tcp__seq == self._rcv_nxt
+                and packet_rx_md.tcp__ack == self._snd_una
+                and not packet_rx_md.tcp__data
+            ):
+                self._retransmit_packet_request(packet_rx_md)
+                return
+
+        The classification ignores the window field, so a
+        wnd-update segment is routed to
+        '_retransmit_packet_request', which:
+
+          - Increments '_tx_retransmit_request_counter[ack]'
+            (priming spurious-fast-retransmit; see the sibling
+            test '..._three_wnd_updates_must_not_trigger_spurious_fast_retransmit').
+          - Does NOT update '_snd_wnd' (the wnd-update is lost).
+
+        Two consequences this test pins:
+
+          1. The window value is silently dropped. Peer's
+             "I want a smaller window now" or "I reopened my
+             window" signal does not change our SND.WND, so we
+             may continue sending past peer's new right edge
+             (window-shrink violation per RFC 1122 §4.2.2.16) or
+             keep persist-probing past peer's reopening.
+
+          2. The downstream effect on persist (RFC 9293 §3.8.6.1):
+             if peer was at 0-window and reopens via this
+             segment, '_persist_active' is not deactivated and we
+             keep probing until either persist's RTO fires
+             (wasting bandwidth on unnecessary 1-byte probes) or
+             a real cum-ACK-advancing segment arrives. The latter
+             is bounded by PERSIST_TIMEOUT_MAX = 60 s on the
+             worst case.
+
+        Severity: MEDIUM. Modern TCP stacks usually piggyback
+        wnd-updates on data ACKs, so the gap rarely bites. But
+        peers under memory pressure or shrinking-window
+        scenarios DO send standalone wnd-update ACKs, and that
+        is exactly when the bug bites hardest.
+
+        Fix outline (separate commit): add a window-comparison
+        gate to the dup-ACK classification at line ~2294-2306.
+        When 'tcp__win << _snd_wsc != _snd_wnd', route to a new
+        wnd-update branch that updates 'self._snd_wnd' and
+        deactivates the persist flag if peer reopened the
+        window, but does NOT increment the dup-ACK counter or
+        double '_snd_ewn' (cwnd grows on cum-ACK progress, not
+        wnd-update, per RFC 5681 §3.1).
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED. The SYN+ACK
+               advertised PEER__WIN = 64240, so 'session._snd_wnd'
+               starts at 64240.
+            2. Peer sends an ACK with the dup-ACK wire shape
+               ('seq = PEER__ISS + 1 = RCV.NXT', 'ack =
+               LOCAL__ISS + 1 = SND.UNA', no data) but carrying
+               a NEW window value of 20000.
+            3. Drive RX. Per RFC 9293 §3.10.7.4 step 5, the
+               session MUST update '_snd_wnd' to 20000.
+
+        Assertions:
+
+            * '_snd_wnd' equals 20000 after the wnd-update.
+            * State stays ESTABLISHED.
+
+        On current code the test fails: '_snd_wnd' remains at
+        the SYN+ACK's PEER__WIN value because the wnd-update was
+        misclassified as a dup-ACK and silently dropped.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self.assertEqual(
+            session._snd_wnd,
+            PEER__WIN,
+            msg="Setup precondition: post-handshake SND.WND must equal peer's SYN+ACK win.",
+        )
+
+        new_win = 20000
+        # Sanity: new_win must differ from PEER__WIN, otherwise the
+        # test would be vacuous.
+        self.assertNotEqual(
+            new_win,
+            PEER__WIN,
+            msg="Test fixture must use a NEW window value distinct from peer's SYN+ACK win.",
+        )
+
+        peer_wnd_update = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=new_win,
+        )
+        self._drive_rx(frame=peer_wnd_update)
+
+        self.assertEqual(
+            session._snd_wnd,
+            new_win,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 5, an ACK whose wire "
+                "shape matches the dup-ACK pattern but carries a NEW "
+                "window value MUST update SND.WND. PyTCP currently "
+                "routes such segments to '_retransmit_packet_request' "
+                "(line ~2294) which does not update '_snd_wnd', so "
+                "the wnd-update is silently dropped. Fix: gate the "
+                "dup-ACK classification on the window field per RFC "
+                "5681 §2(e); route window-changing segments to a "
+                "wnd-update path that calls "
+                "'self._snd_wnd = packet_rx_md.tcp__win << "
+                "self._snd_wsc' (and deactivates persist if peer "
+                f"reopened). Got '_snd_wnd' = {session._snd_wnd}, "
+                f"expected {new_win}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="A wnd-update must not transition the session out of ESTABLISHED.",
+        )
+
+    def test__window__three_wnd_updates_must_not_trigger_spurious_fast_retransmit(self) -> None:
+        """
+        Ensure that three consecutive ACKs with the dup-ACK wire
+        shape ('seq == RCV.NXT, ack == SND.UNA, no data') but
+        each carrying a DIFFERENT window value do NOT trigger
+        fast-retransmit. Per RFC 5681 §2(e), a duplicate ACK
+        requires the advertised window to be unchanged from the
+        previous ACK; window-changing segments are not duplicates
+        and MUST NOT contribute to the fast-retransmit threshold.
+
+        RFC 5681 §2 (duplicate-ACK definition):
+
+            "An acknowledgment is considered a 'duplicate' in the
+             following algorithms when ... (e) the advertised
+             window in the incoming acknowledgment equals the
+             advertised window in the last incoming
+             acknowledgment."
+
+        and RFC 5681 §3.2 (fast-retransmit trigger):
+
+            "When the third duplicate ACK is received, a TCP
+             MUST set ssthresh ... and retransmit the lost
+             segment."
+
+        The "third duplicate" must be a third TRUE duplicate.
+        Window-update ACKs are not duplicates; counting them
+        toward the fast-retransmit threshold causes spurious
+        retransmits, wastes bandwidth, and (under proper RFC
+        5681 cwnd) would unnecessarily halve cwnd.
+
+        [FLAGS BUG] - companion to '..._wnd_update_via_dup_ack_shape_updates_snd_wnd':
+        '_tcp_fsm_established' line ~2294-2306 routes ALL
+        'seq == RCV.NXT, ack == SND.UNA, no data' segments to
+        '_retransmit_packet_request' regardless of the window
+        field. That helper increments
+        '_tx_retransmit_request_counter[ack]' on every call,
+        and on the third call fires fast-retransmit via the
+        'count_trigger == 3' check at line ~2293.
+
+        For 3 wnd-update ACKs at the same 'ack' value: counter
+        hits 3, count_trigger fires, fast-retransmit emits a
+        spurious retransmit on the next timer tick, and
+        '_recovery_point' is set to '_snd_max' (gating further
+        dup-ACK-driven recovery for the rest of the loss event).
+
+        Severity: HIGH when triggered. Three standalone
+        wnd-update ACKs from peer at the same ack value cause:
+
+          - One spurious data retransmit.
+          - Recovery-point gate set, suppressing legitimate
+            fast-retransmit until SND.UNA crosses
+            '_recovery_point'.
+          - Under proper RFC 5681 cwnd: ssthresh halving and
+            cwnd collapse per RFC 5681 §3.2 step 2 (PyTCP's
+            simplified '_snd_ewn' model masks this part of the
+            damage today; it would emerge once the deferred cwnd
+            rework lands).
+
+        Fix outline (separate commit): same root-cause fix as
+        '..._wnd_update_via_dup_ack_shape_updates_snd_wnd' -
+        add a window-comparison gate to the dup-ACK
+        classification, and route window-changing segments to a
+        wnd-update path that bypasses
+        '_tx_retransmit_request_counter' entirely. Once the
+        classification is correct, neither bug fires.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Send 1 MSS of data so SND.UNA < SND.MAX (i.e.
+               there is something for fast-retransmit to fire
+               on).
+            3. Peer sends three ACKs with the dup-ACK shape
+               ('seq=PEER__ISS+1, ack=LOCAL__ISS+1, no data')
+               but each carrying a DIFFERENT window value
+               (10000, 20000, 30000 - all distinct from each
+               other and from the SYN+ACK's PEER__WIN).
+            4. Advance one timer tick to allow any pending
+               fast-retransmit emission to fire.
+
+        Assertions:
+
+            * No retransmit data segment is emitted.
+            * '_recovery_point' is still 0 (no recovery
+              entered).
+
+        On current code the test fails: peer's three
+        wnd-updates are misclassified as dup-ACKs, count_trigger
+        fires on the third, '_recovery_point' is set, and a
+        spurious retransmit emits on the timer-tick advance.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Bypass slow-start so the data segment fires immediately
+        # and SND.MAX advances past SND.UNA - giving fast-retransmit
+        # something to fire on.
+        session._snd_ewn = PEER__WIN
+
+        session.send(data=b"X" * 1460)
+        self._advance(ms=1)
+        self.assertEqual(
+            session._snd_max,
+            LOCAL__ISS + 1 + 1460,
+            msg=("Setup precondition: SND.MAX must have advanced past SND.UNA " "after the initial data send."),
+        )
+        # Clear handshake + initial-data residue so 'self._frames_tx'
+        # below contains only any spurious retransmits.
+        self._frames_tx.clear()
+
+        # Peer sends three wnd-update ACKs at the same ack value
+        # (= SND.UNA, since peer hasn't ACKed our data yet) but with
+        # DIFFERENT window values - per RFC 5681 §2(e) these are NOT
+        # duplicates.
+        for new_win in (10000, 20000, 30000):
+            wnd_update = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=new_win,
+            )
+            self._drive_rx(frame=wnd_update)
+
+        # Advance a timer tick so any pending fast-retransmit
+        # ('_retransmit_packet_request' rewinds SND.NXT but the
+        # actual transmission happens on the next '_transmit_data'
+        # call, which fires from the timer branch) emits.
+        self._advance(ms=1)
+
+        retransmits = [self._parse_tx(frame) for frame in self._frames_tx if len(self._parse_tx(frame).payload) > 0]
+        self.assertEqual(
+            retransmits,
+            [],
+            msg=(
+                "Three peer ACKs with the dup-ACK wire shape but "
+                "DIFFERENT window values are wnd-updates per RFC "
+                "5681 §2(e), not duplicates. They MUST NOT trigger "
+                "fast-retransmit. Today '_tcp_fsm_established' "
+                "line ~2294-2306 misclassifies them as dup-ACKs and "
+                "'_retransmit_packet_request' fires fast-retransmit "
+                "on the third one, emitting a spurious data "
+                "retransmit. Fix: add a window-comparison gate to "
+                "the dup-ACK classification so wnd-updates skip the "
+                "fast-retransmit path entirely. Got "
+                f"{len(retransmits)} spurious retransmit(s)."
+            ),
+        )
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "Three peer wnd-update ACKs MUST NOT enter "
+                "fast-retransmit recovery (per RFC 5681 §2(e) they "
+                "are not duplicates). Today '_recovery_point' is "
+                f"set to SND.MAX = {session._snd_max:#x} on the "
+                "spurious third-duplicate trigger, gating further "
+                "legitimate fast-retransmit until SND.UNA crosses "
+                f"the marker. Got '_recovery_point' = {session._recovery_point:#x}."
+            ),
+        )
