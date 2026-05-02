@@ -677,6 +677,15 @@ class TcpSession:
         # Unregister session.
         if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
+            # Clean up per-session entries in 'stack.timer._timers'
+            # so they do not accumulate as stale entries after the
+            # session is gone. Timer keys all start with 'str(self)-'
+            # (e.g. '<session>-delayed_ack',
+            # '<session>-retransmit_seq-{seq}',
+            # '<session>-time_wait', '<session>-persist',
+            # '<session>-challenge_ack'); the prefix scan pops them
+            # uniformly without per-suffix bookkeeping.
+            stack.timer.unregister_timers_with_prefix(f"{self}-")
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
     def _transmit_packet(

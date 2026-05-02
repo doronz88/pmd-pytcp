@@ -205,3 +205,17 @@ class Timer(Subsystem):
         __debug__ and log("timer", f"<r>Active timers: {self._timers}</>")
 
         return not self._timers.get(name, None)
+
+    def unregister_timers_with_prefix(self, prefix: str, /) -> None:
+        """
+        Unregister every named delay timer whose name starts with
+        'prefix'. Used by 'TcpSession._change_state' on the
+        transition to CLOSED to clean up per-session entries from
+        'self._timers' so a long-running stack handling many
+        connection churns does not slowly accumulate stale
+        entries that match no live session.
+        """
+
+        __debug__ and log("timer", f"<r>Unregistering timers with prefix: {prefix!r}</>")
+
+        self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}

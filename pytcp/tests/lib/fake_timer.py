@@ -149,6 +149,15 @@ class FakeTimer:
 
         return not self._timers.get(name, None)
 
+    def unregister_timers_with_prefix(self, prefix: str, /) -> None:
+        """
+        Unregister every named delay timer whose name starts with
+        'prefix'. Mirrors the production
+        'Timer.unregister_timers_with_prefix' API.
+        """
+
+        self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
+
     def advance(self, ms: int) -> None:
         """
         Advance the virtual clock by 'ms' milliseconds, ticking every
