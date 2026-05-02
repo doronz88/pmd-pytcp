@@ -826,3 +826,144 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             FsmState.TIME_WAIT,
             msg="A SYN in TIME_WAIT (without PAWS) MUST NOT change state.",
         )
+
+    def test__blind_attack__challenge_ack_burst_is_rate_limited_per_rfc_5961_3(self) -> None:
+        """
+        Ensure that a burst of unacceptable segments arriving in a
+        sub-1-second window does NOT produce one challenge ACK per
+        inbound segment. Per RFC 5961 §3, the receiver MUST rate-
+        limit challenge-ACK responses to mitigate ACK-amplification
+        DoS attacks where a small volume of malicious or buggy
+        inbound segments produces a large outbound ACK flood.
+
+        RFC 5961 §3 (Mitigating Blind Reset Attacks):
+
+            "It is recommended that the implementation rate-limit
+             the response to ACK segments. ...  A method of
+             implementing the SHOULD-recommendation is to choose a
+             sliding window size of one second and allow at most
+             one challenge ACK per window."
+
+        Linux's default is one challenge-ACK per second; RFC 5961
+        leaves the exact rate to the implementation but the
+        principle is firm: one inbound unacceptable segment
+        should not amplify into one outbound ACK without bound.
+
+        Attack vector: a flood of out-of-window data segments
+        (e.g. blind injection by an off-path attacker, or a
+        misbehaving peer in a retransmit storm). Each one passes
+        the receive-window acceptability check at
+        '_check_segment_acceptability' (introduced in commit
+        '7f0d18b') and emits an empty-ACK reply. With no rate
+        limit, the receiver becomes an amplifier - an inbound
+        segment trickle becomes an outbound ACK flood, saturating
+        the local link and giving the attacker the amplification
+        they sought.
+
+        Scenario:
+
+            1. Drive handshake to ESTABLISHED.
+            2. Drain any post-handshake state.
+            3. Send 10 unacceptable data segments back-to-back
+               within a sub-1-second window. Each segment has
+               'seq' below RCV.NXT (fully duplicate, RFC §3.10.7.4
+               unacceptable) so each currently elicits one
+               challenge ACK.
+            4. Inspect the inline TX list. Per RFC 5961 §3, the
+               total outbound ACK count MUST be small (default:
+               one per second window).
+
+        Assertions:
+
+            * Total outbound challenge-ACK frames across all 10
+              inbound segments is at most 2 (= one for the
+              opening sliding window + one allowance margin).
+              The exact threshold is implementation-defined per
+              RFC 5961 §3; the test asserts the principle, not
+              a specific numeric limit.
+
+        [FLAGS BUG] - 'TcpSession._check_segment_acceptability'
+        emits 'self._transmit_packet(flag_ack=True)' on every
+        unacceptable non-RST segment with no rate limit. Same
+        gap exists in the SYN-bearing branches in ESTABLISHED /
+        CLOSE_WAIT (each blind SYN-in-synchronized-state gets
+        an immediate challenge ACK) and in the OOO branch's
+        capped-at-2 dup-ACK emissions. RFC 5961 §3 mandates a
+        unified rate limit across ALL challenge-ACK emission
+        sites.
+
+        Fix outline (separate commit):
+
+          - Add '_challenge_ack_window_start: int = 0' and
+            '_challenge_ack_count: int = 0' attributes (or
+            equivalent token-bucket / sliding-window state)
+            to 'TcpSession.__init__'.
+          - Add a '_emit_challenge_ack()' helper that:
+              * Reads the current virtual-clock millisecond.
+              * If we are in a new 1-second window since
+                '_challenge_ack_window_start', reset the count
+                and update the window-start.
+              * If '_challenge_ack_count' is at the limit (1
+                per RFC 5961 §3 recommendation), suppress the
+                emission and return.
+              * Else fire 'self._transmit_packet(flag_ack=True)'
+                and increment the count.
+          - Replace every challenge-ACK emission site
+            (acceptability helper, SYN-bearing branches, OOO
+            branch) with the helper.
+
+        On current code this test fails with TX count == 10:
+        every unacceptable segment elicits a challenge ACK.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Drain any post-handshake state (delayed-ACK timers, etc.).
+        self._advance(ms=200)
+
+        # Peer sends 10 unacceptable data segments back-to-back.
+        # Each carries seq below RCV.NXT (fully duplicate; the
+        # acceptability check rejects each segment with an ACK
+        # reply).
+        unacceptable_segments_count = 10
+        before_count = len(self._frames_tx)
+        for _ in range(unacceptable_segments_count):
+            unacceptable_segment = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS,  # below RCV.NXT (= PEER__ISS + 1)
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                payload=b"X",  # 1 byte, fully below RCV.NXT
+            )
+            self._drive_rx(frame=unacceptable_segment)
+        after_count = len(self._frames_tx)
+        burst_tx_count = after_count - before_count
+
+        # Per RFC 5961 §3, the burst MUST be rate-limited. The
+        # exact threshold is implementation-defined (Linux uses
+        # 1/sec); we assert the principle: the count is bounded
+        # well below the inbound count. Allow up to 2 challenge
+        # ACKs (one for the opening window + a small
+        # implementation margin); 10 inbound -> 10 outbound is
+        # clearly broken.
+        self.assertLessEqual(
+            burst_tx_count,
+            2,
+            msg=(
+                f"RFC 5961 §3: a burst of {unacceptable_segments_count} "
+                "unacceptable segments arriving in a sub-1-second "
+                "window MUST be rate-limited to at most ~1 challenge "
+                "ACK. PyTCP today emits one ACK per inbound segment "
+                f"(observed {burst_tx_count} outbound ACKs) - this is "
+                "an ACK-amplification DoS vector. Fix: introduce a "
+                "'_emit_challenge_ack' helper that enforces a 1-per-"
+                "second sliding-window rate limit and route all "
+                "challenge-ACK emission sites through it."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Sanity: rate-limited or not, the burst MUST NOT change FSM state.",
+        )
