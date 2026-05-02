@@ -1250,3 +1250,225 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "transition."
             ),
         )
+
+    def test__active_open__simultaneous_open_bootstraps_peer_state_from_bare_syn(self) -> None:
+        """
+        Ensure that when peer's bare SYN crosses our outbound
+        SYN (the simultaneous-open path per RFC 9293 §3.5.1
+        figure 8), the SYN+ACK we emit acknowledges peer's
+        SYN sequence number AND we bootstrap peer-derived
+        session state from peer's SYN options - mirroring the
+        passive-open / listener-fork pattern in
+        '_tcp_fsm_listen' (line ~1709-1747).
+
+        RFC 9293 §3.5.1 (Simultaneous Connection Synchronization):
+
+            "[The simultaneous-open] sequence of events is
+             illustrated in Figure 8. ... The principal reason
+             for the three-way handshake is to prevent old
+             duplicate connection initiations from causing
+             confusion."
+
+        The third leg of the handshake requires our SYN+ACK
+        to carry 'ack = peer_isn + 1' so peer accepts it as
+        the acknowledgment of their SYN. Without this,
+        peer's TCP rejects the SYN+ACK as not acknowledging
+        their SYN, and the connection never establishes -
+        both ends sit in SYN_SENT / SYN_RCVD until R2 fires.
+
+        Equivalently: 'self._rcv_nxt' MUST be advanced past
+        peer's SYN seq (to 'peer_isn + 1') before the SYN+ACK
+        is emitted, and various peer-derived bookkeeping
+        ('_rcv_ini', '_snd_mss' clamp, '_snd_wnd', WSCALE /
+        SACK negotiation, '_peer_contacted' flag) MUST also
+        be initialised from peer's SYN options - the
+        listener-fork pattern at '_tcp_fsm_listen' lines
+        ~1709-1747 does all of this.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent's SYN-only
+        branch (line ~2024-2029):
+
+            if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
+                self._transmit_packet(flag_syn=True, flag_ack=True)
+                self._change_state(FsmState.SYN_RCVD)
+                return
+
+        … doesn't bootstrap any peer-side state. The
+        '_transmit_packet' call uses the default 'ack =
+        self._rcv_nxt = 0' (the __init__ value) so the
+        SYN+ACK we emit has 'ack=0' - peer rejects it. The
+        SYN+ACK's 'seq' also defaults to 'self._snd_nxt =
+        LOCAL__ISS + 1' (post-original-SYN advance) instead
+        of 'LOCAL__ISS' (peer expected our same SYN seq with
+        their ACK piggybacked).
+
+        Severity: HIGH for simultaneous-open scenarios - the
+        path is completely broken. Probability: rare in
+        practice because most TCP stacks don't trigger
+        simultaneous open, but when it does happen the
+        handshake silently fails until R2 expires (~127 s).
+
+        Fix outline (separate commit):
+
+            Mirror the listener-fork bootstrap pattern from
+            '_tcp_fsm_listen' lines ~1709-1747:
+
+              - Clamp '_snd_mss' to peer's MSS bound.
+              - Set '_snd_wnd = packet_rx_md.tcp__win'.
+              - Run WSCALE / SACK bilateral negotiation on
+                peer's options.
+              - Set '_rcv_ini = packet_rx_md.tcp__seq' and
+                '_rcv_nxt = add32(peer_seq, 1)'.
+              - Set '_peer_contacted = True' (Bug C's
+                companion - same flag introduced for #3).
+              - Call '_transmit_packet(flag_syn=True,
+                flag_ack=True, seq=self._snd_ini)' so the
+                SYN+ACK consumes the same seq as our
+                original SYN, not advances past it.
+
+        Scenario:
+
+            1. Build active-open session with LOCAL__ISS.
+               Issue CONNECT. Tick once to emit SYN.
+               State = SYN_SENT.
+            2. Peer sends bare SYN with seq=PEER__ISS,
+               win=PEER__WIN, mss=PEER__MSS. Drive RX.
+            3. Inspect inline TX (the SYN+ACK we should
+               emit) and inspect bootstrapped session state.
+
+        Assertions:
+
+            * Exactly one outbound segment fires (the
+              SYN+ACK).
+            * SYN+ACK 'seq = LOCAL__ISS' (reuses our
+              original SYN's seq; doesn't advance past).
+            * SYN+ACK 'ack = PEER__ISS + 1' (acknowledges
+              peer's SYN).
+            * 'session._rcv_nxt == PEER__ISS + 1'.
+            * 'session._rcv_ini == PEER__ISS'.
+            * 'session._snd_mss == PEER__MSS' (clamped to
+              peer's MSS).
+            * 'session._snd_wnd == PEER__WIN'.
+            * 'session._peer_contacted is True'.
+            * State is SYN_RCVD.
+
+        Today the SYN+ACK has 'ack=0' (the most observable
+        symptom) and none of the bootstrapped state is set.
+        """
+
+        # Step 1: drive active-open to SYN_SENT and emit SYN.
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN must fire on the first tick.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="Setup precondition: state must be SYN_SENT.",
+        )
+
+        # Step 2: peer sends bare SYN (simultaneous-open trigger).
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        syn_ack_tx = self._drive_rx(frame=peer_syn)
+
+        # Step 3: inspect outbound SYN+ACK and bootstrapped state.
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg=(
+                "Peer's bare SYN in SYN_SENT must elicit exactly "
+                "one outbound SYN+ACK (the simultaneous-open "
+                "response per RFC 9293 §3.10.7.3)."
+            ),
+        )
+        syn_ack_probe = self._parse_tx(syn_ack_tx[0])
+
+        # The fundamental wire-level assertion: the SYN+ACK MUST
+        # acknowledge peer's SYN.
+        self.assertEqual(
+            syn_ack_probe.ack,
+            PEER__ISS + 1,
+            msg=(
+                "The SYN+ACK we emit in response to peer's bare "
+                "SYN MUST carry 'ack = PEER__ISS + 1' to "
+                "acknowledge peer's SYN. Today the SYN-only "
+                "handler at '_tcp_fsm_syn_sent' line ~2024 calls "
+                "'_transmit_packet' without bootstrapping "
+                "'_rcv_nxt' from peer's SYN, so the default "
+                "'ack = self._rcv_nxt = 0' is used. Peer's TCP "
+                "rejects our SYN+ACK as not acknowledging their "
+                "SYN, and the connection never establishes."
+            ),
+        )
+
+        # The SYN+ACK should reuse our original SYN's seq
+        # (LOCAL__ISS), not advance past it. RFC 9293 §3.5.1:
+        # the simultaneous-open SYN+ACK is functionally a
+        # retransmit of our original SYN with peer's ACK
+        # piggybacked.
+        self.assertEqual(
+            syn_ack_probe.seq,
+            LOCAL__ISS,
+            msg=(
+                "The SYN+ACK MUST carry 'seq = LOCAL__ISS' (= "
+                "the same seq as our original SYN); the "
+                "SYN+ACK is RFC 9293 §3.5.1's 'reuse of our "
+                "SYN seq with peer's ACK piggybacked'. Today "
+                "the SYN+ACK uses 'seq = LOCAL__ISS + 1' (the "
+                "post-original-SYN advance of SND.NXT)."
+            ),
+        )
+
+        # Bootstrapped peer-side state.
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 1,
+            msg=(
+                "'_rcv_nxt' MUST be advanced past peer's SYN "
+                "seq before the SYN+ACK is emitted - mirroring "
+                "the listener-fork bootstrap pattern."
+            ),
+        )
+        self.assertEqual(
+            session._rcv_ini,
+            PEER__ISS,
+            msg="'_rcv_ini' MUST record peer's ISN for downstream consistency.",
+        )
+        self.assertEqual(
+            session._snd_mss,
+            PEER__MSS,
+            msg=("'_snd_mss' MUST be clamped to peer's MSS " "advertisement (RFC 6691)."),
+        )
+        self.assertEqual(
+            session._snd_wnd,
+            PEER__WIN,
+            msg="'_snd_wnd' MUST be initialised from peer's advertised window.",
+        )
+        self.assertTrue(
+            session._peer_contacted,
+            msg=(
+                "'_peer_contacted' MUST be set to True once peer's "
+                "first segment has been processed - same flag "
+                "introduced in commit 'e5e12dc' for the R2-abort "
+                "RST emission gate."
+            ),
+        )
+
+        # State transition.
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg="State must transition to SYN_RCVD per RFC 9293 §3.10.7.3.",
+        )
