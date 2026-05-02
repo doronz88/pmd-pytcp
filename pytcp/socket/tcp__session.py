@@ -1234,9 +1234,28 @@ class TcpSession:
                     # still ahead of 'SND.UNA', a previous partial is
                     # in flight and we defer until either it gets ACK'd
                     # or the buffered amount reaches a full MSS.
+                    #
+                    # Nagle applies to FRESH transmits only - RFC 1122
+                    # §4.2.3.4 governs application-driven small-write
+                    # generation, not the RTO retransmit machinery
+                    # (RFC 6298 §2 retransmits the earliest unacked
+                    # segment unconditionally). We detect "we are
+                    # retransmitting" via 'SND.NXT < SND.MAX
+                    # modularly': '_retransmit_packet_timeout' rewinds
+                    # SND.NXT to SND.UNA while leaving SND.MAX at the
+                    # high-water mark, so this inequality is True iff
+                    # the next segment to send covers ground we have
+                    # already transmitted. Without this exemption a
+                    # sub-MSS partial that is dropped on the wire
+                    # would loop in the Nagle gate forever - the
+                    # retransmit counter only increments inside
+                    # '_transmit_packet', so deferring here also
+                    # disables R2-based connection-abort progression,
+                    # silently hanging the connection.
+                    is_retransmit = lt32(self._snd_nxt, self._snd_max)
                     is_partial = transmit_data_len < self._snd_mss
                     prev_partial_in_flight = gt32(self._snd_sml, self._snd_una)
-                    if is_partial and prev_partial_in_flight:
+                    if is_partial and prev_partial_in_flight and not is_retransmit:
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - Nagle: deferring {transmit_data_len}-byte "
