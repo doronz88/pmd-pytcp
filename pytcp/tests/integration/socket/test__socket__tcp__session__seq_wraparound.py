@@ -703,12 +703,12 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
 class TestTcpSeqWraparound__Purge(TcpSessionTestCase):
     """
     Tests for the retransmit-counter purge loops in
-    '_process_ack_packet' across the 32-bit wrap. Three internal
-    dicts are keyed by seq: '_tx_retransmit_request_counter',
-    '_tx_retransmit_timeout_counter', '_rx_retransmit_request_counter'.
-    Each is purged on every cum-ACK advance via a 'seq < ack' loop;
-    the raw '<' fails to recognise wraparound and lets stale entries
-    accumulate indefinitely.
+    '_process_ack_packet' across the 32-bit wrap. Two internal
+    dicts are keyed by seq: '_tx_retransmit_request_counter' and
+    '_tx_retransmit_timeout_counter'. Each is purged on every
+    cum-ACK advance via a 'seq < ack' loop; the raw '<' fails to
+    recognise wraparound and lets stale entries accumulate
+    indefinitely.
     """
 
     def _make_active_session(self, *, iss: int) -> TcpSession:

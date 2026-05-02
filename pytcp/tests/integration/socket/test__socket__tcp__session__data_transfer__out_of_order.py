@@ -203,11 +203,11 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
 
         This test passes on current code as a positive-control
         regression guard for the OOO machinery: the
-        '_ooo_packet_queue' storage, the dup-ACK emit (capped at
-        2 by the existing '_rx_retransmit_request_counter' logic),
-        the recursive drain in '_process_ack_packet's
-        'pop(self._rcv_nxt, None)' branch, and the cumulative ACK
-        of the drained chain are all exercised end-to-end.
+        '_ooo_packet_queue' storage, the dup-ACK emit on every
+        OOO arrival (RFC 5681 §4.2), the recursive drain in
+        '_process_ack_packet's 'pop(self._rcv_nxt, None)' branch,
+        and the cumulative ACK of the drained chain are all
+        exercised end-to-end.
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

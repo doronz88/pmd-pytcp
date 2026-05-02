@@ -429,10 +429,6 @@ class TcpSession:
         # determine when to retransmit packet.
         self._tx_retransmit_timeout_counter: dict[int, int] = {}
 
-        # Keeps track of us sending 'fast retransmit request' packets so we can
-        # limit their count to 2.
-        self._rx_retransmit_request_counter: dict[int, int] = {}
-
         # Used to help translate local_seq_send and snd_una numbers to
         # the TX buffer pointers.
         self._tx_buffer_seq_mod: Seq32 = self._snd_ini
@@ -1704,14 +1700,6 @@ class TcpSession:
                     "tcp-ss",
                     f"[{self}] - Purged expired TX packet retransmit timeout for {seq}",
                 )
-        # Purge expired rx retransmit requests.
-        for seq in list(self._rx_retransmit_request_counter):
-            if lt32(seq, self._rcv_nxt):
-                self._rx_retransmit_request_counter.pop(seq)
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Purged expired RX packet retransmit request counter for {seq}",
-                )
         # Bring next packet from ooo_packet_queue if available.
         if ooo_packet := self._ooo_packet_queue.pop(self._rcv_nxt, None):
             __debug__ and log(
@@ -2341,11 +2329,16 @@ class TcpSession:
                             self._pending_dsack = (ovl_left, ovl_right)
                             break
                 self._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
-                self._rx_retransmit_request_counter[self._rcv_nxt] = (
-                    self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
-                )
-                if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
-                    self._transmit_packet(flag_ack=True)
+                # RFC 5681 §4.2: a TCP receiver MUST send an
+                # immediate duplicate ACK on every out-of-order
+                # segment arrival - no per-gap rate limit. The
+                # ACKs convey the missing-segment seq to the
+                # sender peer; once peer sees three duplicate ACKs
+                # at the same value, peer's RFC 5681 §3.2 fast-
+                # retransmit fires. OOO arrivals are naturally
+                # rate-limited by peer's send cadence so emitting
+                # one ACK per arrival cannot flood the wire.
+                self._transmit_packet(flag_ack=True)
                 return
             # Regular data/ACK packet -> Process data. Match either an
             # exactly in-order segment ('SEG.SEQ == RCV.NXT', which
