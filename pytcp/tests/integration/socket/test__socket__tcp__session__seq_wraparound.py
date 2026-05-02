@@ -1712,6 +1712,17 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
         )
 
         # Step 5: send 1 byte at SND.NXT = 0. Peer does not ACK.
+        # Neutralise Nagle's partial-in-flight gate (RFC 1122
+        # §4.2.3.4 Minshall variant) for the RTO retransmit by
+        # resetting '_snd_sml' to 'SND.UNA' AFTER the second
+        # send fires. Without this, the RTO retransmit path
+        # would observe '_snd_sml=1 > _snd_una=0', mark it
+        # 'is_partial AND prev_partial_in_flight', and defer the
+        # retransmit indefinitely - the deferral would mask the
+        # bug under test by always producing zero outbound
+        # segments regardless of the FIN-sentinel fix. The
+        # Nagle-on-retransmits interaction is a separate gap not
+        # covered by this test file.
         session.send(data=b"B")
         seg2_tx = self._advance(ms=1)
         self.assertEqual(
@@ -1719,6 +1730,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
             1,
             msg="Setup precondition: second send must produce one outbound segment.",
         )
+        session._snd_sml = session._snd_una
         seg2_probe = self._parse_tx(seg2_tx[0])
         self._assert_segment(
             seg2_probe,

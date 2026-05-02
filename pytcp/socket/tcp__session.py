@@ -334,8 +334,20 @@ class TcpSession:
         # Sequence number not yet acknowledged by peer.
         self._snd_una: Seq32 = self._snd_ini
 
-        # Sequence number of the FIN packet we sent.
+        # Sequence number of the FIN packet we sent. Only valid
+        # when '_fin_sent' is True; until then '_snd_fin' carries
+        # the sentinel '0' value and MUST NOT be compared to live
+        # 'SND.NXT' / 'SND.UNA' values lest a post-wrap 'SND.NXT
+        # == 0' collide with the sentinel and trigger code paths
+        # gated on a real FIN seq match.
         self._snd_fin: Seq32 = 0
+
+        # 'True' once '_transmit_packet' has emitted a FIN
+        # segment (sets '_snd_fin' to the FIN's seq alongside
+        # this flag). Used as the gate on '_snd_fin' reads so
+        # the sentinel '0' value cannot be confused for a real
+        # post-wrap FIN seq. See the comment on '_snd_fin' above.
+        self._fin_sent: bool = False
 
         # Maximum segment size.
         self._snd_mss: int = 536
@@ -823,6 +835,7 @@ class TcpSession:
         # In case packet caries FIN flag make note of its SEQ number.
         if flag_fin:
             self._snd_fin = self._snd_nxt
+            self._fin_sent = True
 
         # Whenever we send an ACK-bearing segment (which may also carry
         # data) the peer's pending sequence space is implicitly
@@ -1374,8 +1387,13 @@ class TcpSession:
             # incremented '_tx_buffer_seq_mod' by 1 to account for
             # that phantom byte; on retransmit we walk the offset
             # back so the packet builder finds the pre-SYN/FIN
-            # alignment again.
-            if self._snd_nxt in {self._snd_ini, self._snd_fin}:
+            # alignment again. The FIN branch is gated on
+            # '_fin_sent' to prevent the sentinel '_snd_fin = 0'
+            # from colliding with a post-wrap 'SND.NXT == 0'
+            # (which would otherwise walk '_tx_buffer_seq_mod'
+            # back spuriously and silently corrupt subsequent
+            # transmissions).
+            if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == self._snd_fin):
                 self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
             __debug__ and log(
                 "tcp-ss",
