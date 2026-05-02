@@ -1175,23 +1175,14 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
         )
 
         # Step 5: peer sends RST+ACK at canonical match position.
-        # NOTE: 'seq=0' (NOT 'PEER__ISS + 1') because the
-        # simultaneous-open handler in SYN_SENT
-        # ('_tcp_fsm_syn_sent' line ~2011-2029) does NOT
-        # bootstrap '_rcv_nxt' from peer's SYN before
-        # transitioning to SYN_RCVD - it just emits SYN+ACK
-        # with our default 'ack=0' and leaves '_rcv_nxt' at the
-        # __init__ value (0). That is a separate pre-existing
-        # bug in the simultaneous-open path; this test focuses
-        # on Bug A (the SYN_RCVD RST handler not unblocking
-        # connect) and works around it by sending the RST at
-        # the actual (corrupted) RCV.NXT value. 'ack=LOCAL__ISS
-        # + 1' is in the legitimate range '[SND.UNA=LOCAL__ISS,
-        # SND.MAX=LOCAL__ISS+2]' (post-SYN-then-SYN+ACK).
+        # Post-Bug-C fix ('d7a57f6'): the simultaneous-open
+        # handler bootstraps '_rcv_nxt' from peer's SYN, so
+        # 'RCV.NXT == PEER__ISS + 1' here. The RST's seq must
+        # match.
         peer_rst = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=0,  # == _rcv_nxt (still uninitialized due to separate bug)
+            seq=PEER__ISS + 1,  # == _rcv_nxt
             ack=LOCAL__ISS + 1,
             flags=("RST", "ACK"),
             win=PEER__WIN,

@@ -288,7 +288,13 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
             FsmState.SYN_RCVD,
             msg="A bare SYN in SYN_SENT must transition to SYN_RCVD (simultaneous open).",
         )
-        mock_transmit.assert_called_once_with(flag_syn=True, flag_ack=True)
+        # Post-Bug-C fix: simultaneous-open emits SYN+ACK with
+        # seq=self._snd_ini (reuses original SYN's seq) rather
+        # than letting it default to self._snd_nxt (which would
+        # have advanced past LOCAL__ISS to LOCAL__ISS+1 from the
+        # initial SYN). The fix bootstraps peer state and emits
+        # SYN+ACK at the original SYN's seq so peer accepts it.
+        mock_transmit.assert_called_once_with(flag_syn=True, flag_ack=True, seq=session._snd_ini)
 
 
 class TestTcpFsmEstablished(_TcpSessionFsmFixture):

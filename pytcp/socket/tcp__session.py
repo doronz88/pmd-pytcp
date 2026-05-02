@@ -2009,6 +2009,16 @@ class TcpSession:
                 return
 
         # Got SYN packet -> Send SYN + ACK packet / change state to SYN_RCVD.
+        # Simultaneous-open path per RFC 9293 §3.5.1: peer's bare SYN
+        # crossed our outbound SYN before either side saw the other's
+        # SYN. Bootstrap peer-side state from peer's SYN options -
+        # mirroring the listener-fork pattern in '_tcp_fsm_listen' -
+        # then emit a SYN+ACK that reuses our original SYN's seq
+        # with peer's ACK piggybacked. The bootstrap is mandatory:
+        # without it the SYN+ACK we emit would carry 'ack=0' (the
+        # uninitialised '_rcv_nxt' default) and peer's TCP would
+        # reject it as not acknowledging their SYN, leaving both
+        # ends stuck until R2 fires.
         if (
             packet_rx_md
             and all({packet_rx_md.tcp__flag_syn})
@@ -2022,8 +2032,38 @@ class TcpSession:
         ):
             # Packet sanity check.
             if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
-                # Send SYN + ACK packet.
-                self._transmit_packet(flag_syn=True, flag_ack=True)
+                # Clamp the effective send-MSS to RFC 879 / RFC 6691
+                # bounds: at most 'mtu - overhead', at least
+                # 'TCP__MIN_MSS = 536'.
+                self._snd_mss = max(
+                    TCP__MIN_MSS,
+                    min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
+                )
+                self._snd_wnd = packet_rx_md.tcp__win
+                # WSCALE bilateral negotiation per RFC 7323 §2.2.
+                if self._advertise_wscale and packet_rx_md.tcp__wscale:
+                    self._snd_wsc = packet_rx_md.tcp__wscale
+                else:
+                    self._rcv_wsc = 0
+                    self._snd_wsc = 0
+                # SACK bilateral negotiation per RFC 2018 §2.
+                self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
+                # Receive sequence space: advance past peer's SYN.
+                self._rcv_ini = packet_rx_md.tcp__seq
+                self._rcv_nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)
+                # Mark peer as contacted so the R2-abort RST gate
+                # fires correctly across the seq wrap (commit
+                # 'e5e12dc' rationale).
+                self._peer_contacted = True
+                # Reset slow-start to one MSS now that we know peer's
+                # MSS for real.
+                self._snd_ewn = self._snd_mss
+                # Send SYN + ACK at our original SYN's seq so peer
+                # accepts it as the simultaneous-open response. RFC
+                # 9293 §3.5.1 figure 8: the simultaneous-open SYN+ACK
+                # is functionally a retransmit of our SYN with peer's
+                # ACK piggybacked.
+                self._transmit_packet(flag_syn=True, flag_ack=True, seq=self._snd_ini)
                 # Change state to SYN_RCVD.
                 self._change_state(FsmState.SYN_RCVD)
                 return
