@@ -1305,3 +1305,185 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
                 "migrate to 'ge32' from 'pytcp.lib.tcp_seq'."
             ),
         )
+
+
+class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
+    """
+    Tests for the SYN_SENT-state ACK acceptability check across
+    the 32-bit wrap. RFC 9293 §3.10.7.3 step 1 mandates that any
+    ACK-bearing segment in SYN_SENT whose 'SEG.ACK' falls outside
+    '(SND.UNA, SND.MAX]' must elicit '<SEQ=SEG.ACK><CTL=RST>' and
+    the segment be discarded. The check is implemented at
+    'tcp__session.py' line 1706 with a chained Python comparator
+    'self._snd_una < ack <= self._snd_max' that fails across the
+    32-bit wrap. The site escaped the modular-arithmetic
+    migration ('91abbc4' / '352199d'); this test is the forcing
+    function for the spot fix.
+
+    The bug fires only when the locally-chosen Initial Sequence
+    Number is randomly drawn close to the 32-bit ceiling - rare
+    in practice (~1-in-4-billion ISS draws) but a real
+    interoperability failure when it does fire (peer sees a
+    legitimate active-open's SYN+ACK rejected with RST).
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def test__seq_wraparound__syn_sent_inbound_syn_ack_with_wrapped_ack_accepted(self) -> None:
+        """
+        Ensure that when the locally-chosen ISS lies on the 32-bit
+        ceiling and the peer's SYN+ACK carries 'ack = ISS + 1'
+        which has wrapped past the ceiling to zero, the ACK
+        acceptability check accepts the SYN+ACK as in-window and
+        the session transitions to ESTABLISHED. RFC 9293 §3.10.7.3
+        step 1 ACK acceptability is a modular '(SND.UNA, SND.MAX]'
+        check; the chained Python comparator fails across the
+        wrap.
+
+        Setup:
+
+            ISS      = 0xFFFF_FFFF (forced via '_force_iss')
+            SND.UNA  = 0xFFFF_FFFF (initial)
+            Post-SYN-emit:
+              SND.NXT = SND.MAX = 0x0000_0000  (wrapped)
+
+        Peer's canonical SYN+ACK:
+
+            seq = peer_iss
+            ack = ISS + 1 = 0x0000_0000
+
+        ACK acceptability per RFC 9293 §3.10.7.3 step 1:
+
+            (SND.UNA, SND.MAX]
+              = (0xFFFF_FFFF, 0x0000_0000]   # modular
+
+        The interval contains exactly one byte of seq space: the
+        single byte at 0x0000_0000 (= the FIN-acked byte after
+        our SYN consumed seq 0xFFFF_FFFF). 'ack = 0x0000_0000'
+        IS in that interval - the SYN+ACK is acceptable.
+
+        Numerically the chained Python comparator computes:
+
+            0xFFFF_FFFF < 0x0000_0000 <= 0x0000_0000
+
+        which is False (0xFFFF_FFFF < 0 is False), so the check
+        rejects the segment as unacceptable, fires
+        '<SEQ=SEG.ACK><CTL=RST>', and the session never reaches
+        ESTABLISHED. From peer's view the active-open looks like
+        a connection-refused.
+
+        Scenario:
+
+            1. Force ISS = 0xFFFF_FFFF.
+            2. Drive 'CONNECT'. SYN fires at seq = 0xFFFF_FFFF.
+            3. Peer replies with SYN+ACK at seq = peer_iss,
+               ack = 0x0000_0000.
+            4. Drive RX. The session MUST transition to
+               ESTABLISHED.
+
+        Assertions:
+
+            * 'session.state is FsmState.ESTABLISHED' after the
+              SYN+ACK is processed.
+            * No outbound RST appears on the wire (the
+              acceptability check accepts the segment).
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent' line 1706
+        uses the chained Python comparator
+        'self._snd_una < ack <= self._snd_max' which fails
+        across the 32-bit wrap. Fix: migrate to
+        'lt32(self._snd_una, ack) and le32(ack, self._snd_max)'
+        (or equivalently 'in_range32(ack, add32(snd_una, 1),
+        snd_max)' for the half-open lower bound).
+
+        On current code this test fails: state stays in SYN_SENT
+        and an outbound RST appears in the inline TX list.
+        """
+
+        session = self._make_active_session(iss=SEQ32__MAX)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        # Tick to fire the outbound SYN.
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN must fire on the first tick.",
+        )
+        syn_probe = self._parse_tx(syn_tx[0])
+        self.assertEqual(
+            syn_probe.seq,
+            SEQ32__MAX,
+            msg="Setup precondition: outbound SYN must carry seq=ISS=0xFFFF_FFFF.",
+        )
+        self.assertEqual(
+            session._snd_max,
+            0x0000_0000,
+            msg=(
+                "Setup precondition: post-SYN-emit 'SND.MAX' must be "
+                "the wrapped value 0x0000_0000 (= ISS + 1 modularly)."
+            ),
+        )
+
+        # Peer's SYN+ACK with ack = ISS + 1 = 0x0000_0000 (the
+        # wrapped value). Per RFC 9293 §3.10.7.3 step 1 this is
+        # acceptable - 'ack' falls inside '(SND.UNA, SND.MAX]'
+        # modularly.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_2000,  # peer's ISS
+            ack=0x0000_0000,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        inline_tx = self._drive_rx(frame=peer_syn_ack)
+
+        # No RST should fire - the SYN+ACK is acceptable.
+        rst_frames = [frame for frame in inline_tx if self._parse_tx(frame).flags & {"RST"}]
+        self.assertEqual(
+            rst_frames,
+            [],
+            msg=(
+                "An acceptable SYN+ACK whose ack value happens to "
+                "have wrapped past the 32-bit ceiling MUST NOT "
+                "elicit an RST. The chained Python comparator "
+                "'self._snd_una < ack <= self._snd_max' computes "
+                "'0xFFFF_FFFF < 0x00 <= 0x00' which is False "
+                "numerically and wrongly rejects the segment with "
+                "'<SEQ=SEG.ACK><CTL=RST>'. Fix: migrate to "
+                "'lt32 / le32' from 'pytcp.lib.tcp_seq'."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "The session MUST transition to ESTABLISHED after "
+                "peer's acceptable SYN+ACK. Current code rejects the "
+                "segment via the broken acceptability check and stays "
+                "in SYN_SENT (or transitions to CLOSED if the bogus "
+                "RST also drives an internal abort)."
+            ),
+        )
