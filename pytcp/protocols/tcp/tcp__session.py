@@ -33,11 +33,9 @@ ver 3.0.4
 
 from __future__ import annotations
 
-import functools
 import random
 import threading
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
@@ -84,51 +82,6 @@ CHALLENGE_ACK_RATE_LIMIT_MS = 1000
 # window stays at zero, so the timer never gives up - only the connection's R2
 # timeout (handled by '_retransmit_packet_timeout') tears the session down.
 PERSIST_TIMEOUT_MAX = 60_000
-
-
-def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:
-    """
-    Decorator for tracing FSM state.
-    """
-
-    # pylint: disable=protected-access
-
-    @functools.wraps(function)
-    def wrapper(self: TcpSession, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
-        print(
-            f"[ >>> ] snd_nxt {self._snd_nxt}, snd_una {self._snd_una},",
-            f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
-        )
-        retval = function(self, *args, **kwargs)
-        print(
-            f"[ <<< ] snd_nxt {self._snd_nxt}, snd_una {self._snd_una},",
-            f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
-        )
-        return retval
-
-    return wrapper
-
-
-def trace_win(self: TcpSession) -> None:
-    """
-    Method used to trace sliding window operation, invoke as 'trace_win(self)'
-    from within the TcpSession object.
-    """
-
-    # pylint: disable=protected-access
-
-    remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
-    usable_window = self._tx_buffer_una + self._snd_ewn - self._tx_buffer_nxt
-    transmit_data_len = min(self._snd_mss, usable_window, remaining_data_len)
-
-    print("unsent_data:", remaining_data_len)
-    print("usable_window:", usable_window)
-    print("transmit_data_len:", transmit_data_len)
-    print("self._snd_nxt:", self._snd_nxt)
-    print("self._snd_una:", self._snd_una)
-    print("self._tx_buffer_seq_mod:", self._tx_buffer_seq_mod)
-    print("self._tx_buffer_nxt:", self._tx_buffer_nxt)
-    print("self._tx_buffer_una:", self._tx_buffer_una)
 
 
 class TcpSession:
