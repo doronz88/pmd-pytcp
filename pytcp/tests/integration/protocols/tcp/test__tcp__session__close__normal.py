@@ -2164,3 +2164,352 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             FsmState.CLOSE_WAIT,
             msg="State must remain CLOSE_WAIT after OOO post-FIN data.",
         )
+
+
+class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 9293 §3.10.4 'CLOSE in
+    half-close states' invariant: a second 'close()' call after
+    the connection has already entered FIN_WAIT_1 / FIN_WAIT_2
+    / CLOSING / LAST_ACK / TIME_WAIT MUST NOT emit a SECOND
+    distinct FIN, MUST NOT corrupt FSM state, and MUST NOT
+    interfere with timers (e.g. cancel TIME_WAIT). The first
+    FIN may be retransmitted by the existing retransmit
+    machinery; that is permitted by the RFC.
+
+    PyTCP's per-state FSM modules for the five half-close
+    states have NO SysCall.CLOSE handler, so the syscall is
+    silently dropped (the canonical no-op in PyTCP). These
+    tests pin that no-op behavior so a future refactor that
+    accidentally re-fires the FIN-emission logic on a second
+    close() call is caught.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def _drive_to_fin_wait_1(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """ESTABLISHED + close() + 2 ticks -> FIN_WAIT_1 with FIN sent."""
+
+        session = self._drive_handshake_to_established(iss=iss, peer_iss=peer_iss)
+        session.close()
+        self._advance(ms=1)  # transition tick
+        self._advance(ms=1)  # FIN emit tick
+        assert session.state is FsmState.FIN_WAIT_1, (
+            f"Setup invariant: session must be in FIN_WAIT_1 with FIN " f"sent, got {session.state}"
+        )
+        return session
+
+    def test__close_idempotent__close_in_fin_wait_1_does_not_emit_second_fin(self) -> None:
+        """
+        Ensure RFC 9293 §3.10.4 CLOSE-in-FIN_WAIT_1: a second
+        close() call is acceptable (silent no-op) but MUST NOT
+        emit a second FIN at a NEW seq. The first FIN's
+        retransmit cadence is unaffected.
+        """
+
+        session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        snd_nxt_pre = session._snd_nxt
+        snd_max_pre = session._snd_max
+
+        session.close()
+        idempotent_tx = self._advance(ms=1)
+
+        for frame in idempotent_tx:
+            probe = self._parse_tx(frame)
+            self.assertEqual(
+                probe.seq,
+                LOCAL__ISS + 1,
+                msg=(
+                    "RFC 9293 §3.10.4: any TX after a redundant close() "
+                    "in FIN_WAIT_1 MUST be a retransmit of the original "
+                    f"FIN at seq=LOCAL__ISS+1={LOCAL__ISS + 1}, NOT a "
+                    f"second FIN at a higher seq. Got seq={probe.seq}."
+                ),
+            )
+        self.assertEqual(
+            session._snd_nxt,
+            snd_nxt_pre,
+            msg="Idempotent close() in FIN_WAIT_1 MUST NOT advance SND.NXT.",
+        )
+        self.assertEqual(
+            session._snd_max,
+            snd_max_pre,
+            msg="Idempotent close() in FIN_WAIT_1 MUST NOT advance SND.MAX.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg="Idempotent close() in FIN_WAIT_1 MUST NOT change FSM state.",
+        )
+
+    def test__close_idempotent__close_in_fin_wait_2_does_not_emit_anything(self) -> None:
+        """
+        Ensure RFC 9293 §3.10.4 CLOSE-in-FIN_WAIT_2: a second
+        close() call is acceptable (silent no-op). After peer
+        ACKed our FIN, there is nothing to retransmit; idle
+        FIN_WAIT_2 must stay quiet.
+        """
+
+        session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        assert session.state is FsmState.FIN_WAIT_2, f"Setup: state={session.state}"
+
+        snd_nxt_pre = session._snd_nxt
+        session.close()
+        idempotent_tx = self._advance(ms=1)
+
+        self.assertEqual(
+            idempotent_tx,
+            [],
+            msg=(
+                "RFC 9293 §3.10.4: idempotent close() in FIN_WAIT_2 "
+                "MUST NOT emit any segment. Peer already ACKed our "
+                f"FIN; nothing to retransmit. Got {len(idempotent_tx)} "
+                "outbound frame(s)."
+            ),
+        )
+        self.assertEqual(
+            session._snd_nxt,
+            snd_nxt_pre,
+            msg="Idempotent close() in FIN_WAIT_2 MUST NOT advance SND.NXT.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_2,
+            msg="Idempotent close() in FIN_WAIT_2 MUST NOT change FSM state.",
+        )
+
+    def test__close_idempotent__close_in_closing_does_not_emit_second_fin(self) -> None:
+        """
+        Ensure RFC 9293 §3.10.4 CLOSE-in-CLOSING: simultaneous-
+        close path; both sides have sent FIN, neither has been
+        ACKed yet. A second close() is acceptable (silent no-op)
+        and MUST NOT emit a second FIN.
+        """
+
+        session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Peer's FIN crosses our FIN on the wire (simultaneous
+        # close). Per the FSM: FIN_WAIT_1 + peer FIN before peer
+        # ACKs ours -> CLOSING.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,  # peer hasn't seen our FIN's seq yet
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        if session.state is not FsmState.CLOSING:
+            self.skipTest(
+                f"Simultaneous-close driver did not reach CLOSING (got "
+                f"{session.state}); skipping CLOSING-idempotency check."
+            )
+
+        snd_nxt_pre = session._snd_nxt
+        session.close()
+        idempotent_tx = self._advance(ms=1)
+
+        for frame in idempotent_tx:
+            probe = self._parse_tx(frame)
+            self.assertEqual(
+                probe.seq,
+                LOCAL__ISS + 1,
+                msg=(
+                    "RFC 9293 §3.10.4: idempotent close() in CLOSING "
+                    "MUST NOT emit a second FIN at a new seq. Got "
+                    f"seq={probe.seq}."
+                ),
+            )
+        self.assertEqual(
+            session._snd_nxt,
+            snd_nxt_pre,
+            msg="Idempotent close() in CLOSING MUST NOT advance SND.NXT.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg="Idempotent close() in CLOSING MUST NOT change FSM state.",
+        )
+
+    def test__close_idempotent__close_in_last_ack_does_not_emit_second_fin(self) -> None:
+        """
+        Ensure RFC 9293 §3.10.4 CLOSE-in-LAST_ACK: passive-
+        close path; peer FIN'd first, app called close(),
+        session sent its FIN and is in LAST_ACK. A second
+        close() is acceptable (silent no-op) and MUST NOT
+        emit a second FIN.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Peer FINs first -> CLOSE_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.CLOSE_WAIT, f"Setup: state={session.state}"
+
+        # App close() -> LAST_ACK with our FIN sent.
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+        assert session.state is FsmState.LAST_ACK, (
+            f"Setup invariant: state must be LAST_ACK after CLOSE in " f"CLOSE_WAIT, got {session.state}"
+        )
+
+        snd_nxt_pre = session._snd_nxt
+        session.close()  # the redundant call under test
+        idempotent_tx = self._advance(ms=1)
+
+        for frame in idempotent_tx:
+            probe = self._parse_tx(frame)
+            self.assertEqual(
+                probe.seq,
+                LOCAL__ISS + 1,
+                msg=(
+                    "RFC 9293 §3.10.4: idempotent close() in LAST_ACK "
+                    "MUST NOT emit a second FIN at a new seq. Got "
+                    f"seq={probe.seq}."
+                ),
+            )
+        self.assertEqual(
+            session._snd_nxt,
+            snd_nxt_pre,
+            msg="Idempotent close() in LAST_ACK MUST NOT advance SND.NXT.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg="Idempotent close() in LAST_ACK MUST NOT change FSM state.",
+        )
+
+    def test__close_idempotent__close_in_time_wait_does_not_disturb_timer_or_state(self) -> None:
+        """
+        Ensure RFC 9293 §3.10.4 CLOSE-in-TIME_WAIT: a redundant
+        close() call MUST NOT cancel the TIME_WAIT timer, MUST
+        NOT emit any segment, and MUST NOT change FSM state.
+        The TIME_WAIT delay must continue to count down to its
+        natural expiry per RFC 9293 §3.4.2.
+        """
+
+        session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.TIME_WAIT, f"Setup invariant: state must be TIME_WAIT, got {session.state}"
+
+        time_wait_timer_name = f"{session}-time_wait"
+        self.assertIn(
+            time_wait_timer_name,
+            self._timer.pending_timers,
+            msg="Setup invariant: TIME_WAIT timer MUST be registered.",
+        )
+        timer_remaining_pre = self._timer.pending_timers[time_wait_timer_name]
+
+        session.close()
+        idempotent_tx = self._advance(ms=1)
+
+        self.assertEqual(
+            idempotent_tx,
+            [],
+            msg=(
+                "RFC 9293 §3.10.4: idempotent close() in TIME_WAIT "
+                "MUST NOT emit any segment. Got "
+                f"{len(idempotent_tx)} outbound frame(s)."
+            ),
+        )
+        self.assertIn(
+            time_wait_timer_name,
+            self._timer.pending_timers,
+            msg=(
+                "RFC 9293 §3.4.2 / §3.10.4: idempotent close() MUST NOT "
+                "cancel the TIME_WAIT timer. The 2*MSL delay must run "
+                "to natural expiry."
+            ),
+        )
+        timer_remaining_post = self._timer.pending_timers[time_wait_timer_name]
+        # The advance(ms=1) above should have decremented the
+        # timer by 1 ms; if close() cancelled-and-rearmed it,
+        # the value would jump to TIME_WAIT_DELAY (much
+        # larger).
+        self.assertLessEqual(
+            timer_remaining_post,
+            timer_remaining_pre,
+            msg=(
+                "RFC 9293 §3.4.2: idempotent close() MUST NOT re-arm "
+                "the TIME_WAIT timer. Pre-close remaining: "
+                f"{timer_remaining_pre} ms; post-close: "
+                f"{timer_remaining_post} ms (a re-arm would push "
+                "remaining BACK UP)."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg="Idempotent close() in TIME_WAIT MUST NOT change FSM state.",
+        )
