@@ -563,3 +563,224 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
                 f"TSecr={probe.tsecr}."
             ),
         )
+
+
+class TestTcpTimestampsPhase3(TcpSessionTestCase):
+    """
+    Phase 3 invariants: TSecr-driven RTTM (RFC 7323 §4)
+    measures RTT cleanly even on Karn-tainted retransmits,
+    where the Phase-2 sample tracker would skip the update.
+
+    The distinguishing test is the retransmit case: the
+    Phase-2 sample tracker invalidates samples from
+    retransmitted segments per RFC 6298 §3 (Karn's algorithm),
+    so the smoothed estimator stops moving until a fresh
+    non-retransmitted sample arrives. RFC 7323 §4 obviates
+    Karn entirely - peer's TSecr identifies WHICH transmission
+    it acknowledges, so RTT can be measured cleanly.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rttm__karn_tainted_retransmit_measures_rtt_via_tsecr(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §4: when peer's ACK echoes a TSecr
+        identifying the retransmitted segment's TSval, the
+        runtime measures RTT directly from TSecr and folds it
+        into '_rto_state' via 'update', SUPERSEDING the Phase-2
+        sample tracker's Karn-mandated skip (RFC 6298 §3).
+
+        Scenario:
+
+            * Drive handshake with TSopt at t=1.
+            * Send data at t=2 (TSval=2). Sample tracker armed.
+            * Advance past RTO (1000 ms boundary) to fire
+              retransmit. Sample tracker is now Karn-tainted.
+              Retransmit segment carries TSval=now_ms (the
+              retransmit time, ~1003).
+            * Capture '_rto_state' post-retransmit (after
+              'back_off' fires).
+            * Drive a peer ACK at later time with
+              'tsecr=retransmit_tsval', advancing snd_una.
+            * Without Phase 3: Phase-2 path skips the update
+              (Karn-tainted), and '_rto_state' would only have
+              the back_off-doubled rto_ms with no new sample
+              folded in.
+            * With Phase 3: TSecr identifies the retransmit's
+              TSval, RTT = now_ms - tsecr is folded via
+              update, and '_rto_state.srtt_ms' / 'rttvar_ms'
+              MOVE from the post-back_off snapshot.
+        """
+
+        from pytcp.protocols.tcp.tcp__rto import update as rto_update
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        payload = b"hello"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Drive past the RTO timer so retransmit fires.
+        # Post-handshake rto_ms = 1000 (clamped). Retransmit at
+        # ~ t=1002 ms.
+        self._advance(ms=1001)
+
+        # Verify the retransmit fired (Karn-tainted sample).
+        self.assertTrue(
+            session._rtt_sample_retransmitted,
+            msg="Setup invariant: retransmit must have tainted the sample.",
+        )
+        post_retransmit_state = session._rto_state
+        # Capture the retransmit's TSval - the retransmit
+        # segment was emitted at ~t=1002 ms and its TSval
+        # equals stack.timer.now_ms at that moment. With the
+        # FakeTimer's 1ms tick the retransmit's TSval is
+        # roughly the now_ms at the retransmit fire time.
+        # Find it from the latest TX frame.
+        all_tx = list(self._frames_tx)
+        retransmit_probe = self._parse_tx(all_tx[-1])
+        retransmit_tsval = retransmit_probe.tsval
+        assert retransmit_tsval is not None
+
+        # Advance another 5 ms then drive peer ACK echoing the
+        # retransmit's TSval as TSecr.
+        self._advance(ms=5)
+        observed_rtt = self._timer.now_ms - retransmit_tsval
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL + 100,
+            tsecr=retransmit_tsval,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # Phase 3 expectation: '_rto_state' moved via update
+        # despite the Karn taint. Compute expected.
+        expected = rto_update(post_retransmit_state, observed_rtt)
+        self.assertEqual(
+            session._rto_state,
+            expected,
+            msg=(
+                f"RFC 7323 §4: TSecr-driven RTTM MUST fold "
+                f"observed_rtt={observed_rtt} via 'update' even "
+                f"after a Karn-tainted retransmit. Without "
+                f"Phase 3 the Karn skip leaves '_rto_state' at "
+                f"the post-back_off snapshot. Expected "
+                f"{expected!r}, got {session._rto_state!r}."
+            ),
+        )
+
+    def test__rttm__non_tsopt_peer_falls_back_to_sample_tracker(self) -> None:
+        """
+        Ensure the Phase-2 sample tracker continues to work
+        unchanged for peers that did not negotiate TSopt -
+        bilateral negotiation gates the TSecr path so legacy
+        peers fall through to the existing harvest logic.
+
+        Regression guard.
+        """
+
+        from pytcp.protocols.tcp.tcp__rto import update as rto_update
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            # No tsval/tsecr.
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        self.assertFalse(session._send_ts, msg="Peer did not advertise TSopt.")
+        session._snd_ewn = PEER__WIN
+
+        pre_ack_state = session._rto_state
+        payload = b"hello"
+        session.send(data=payload)
+        self._advance(ms=1)
+        sample_send_time = session._rtt_sample_send_time_ms
+
+        self._advance(ms=10)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        observed_rtt = self._timer.now_ms - (sample_send_time or 0)
+        expected = rto_update(pre_ack_state, observed_rtt)
+        self.assertEqual(
+            session._rto_state,
+            expected,
+            msg=(
+                f"Sample-tracker fallback: non-TSopt peer's "
+                f"ACK MUST fold observed_rtt={observed_rtt} via "
+                f"update. Expected {expected!r}, got "
+                f"{session._rto_state!r}."
+            ),
+        )
