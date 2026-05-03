@@ -697,6 +697,131 @@ class TestTcpKeepalive(TcpSessionTestCase):
         )
 
 
+class TestTcpKeepaliveOverrides(TcpSessionTestCase):
+    """
+    Integration tests for the per-connection keep-alive
+    overrides (TCP_KEEPIDLE / TCP_KEEPINTVL / TCP_KEEPCNT).
+    Verifies the override fields on TcpSession actually change
+    the timer behaviour at runtime - the helpers must read
+    'override or constant', not just the constant.
+    """
+
+    def _patch_keepalive_constants(self) -> None:
+        """
+        Patch the global defaults to small test values so we can
+        prove the override takes precedence over them. The
+        override values used in each test are DIFFERENT from these
+        patched defaults so a regression that ignored the override
+        would surface as a wrong-timing failure.
+        """
+
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_IDLE_TIME",
+            TEST__KEEPALIVE_IDLE_TIME_MS,
+        )
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_INTERVAL",
+            TEST__KEEPALIVE_PROBE_INTERVAL_MS,
+        )
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_MAX_COUNT",
+            TEST__KEEPALIVE_PROBE_MAX_COUNT,
+        )
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a TcpSocket / TcpSession pair the way 'connect()' would.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__keepalive_overrides__idle_override_takes_precedence_over_constant(
+        self,
+    ) -> None:
+        """
+        Ensure '_keepalive_idle_override' makes
+        '_keepalive_arm_idle' use the per-connection value
+        instead of 'tcp__constants.KEEPALIVE_IDLE_TIME'.
+
+        The override is set to DIFFERENT-from-default value (50 ms
+        vs the patched 100 ms default) so a regression that read
+        only the constant would surface: the probe would fire at
+        100 ms instead of the expected 50 ms.
+        """
+
+        self._patch_keepalive_constants()
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._keepalive_enabled = True
+        # Override: half the patched default, so probe should fire
+        # at 50 ms (override) NOT 100 ms (constant).
+        override_ms = TEST__KEEPALIVE_IDLE_TIME_MS // 2
+        session._keepalive_idle_override = override_ms
+
+        # Pre-boundary advance: no probe yet.
+        pre_boundary_tx = self._advance(ms=override_ms - 1)
+        self.assertEqual(
+            pre_boundary_tx,
+            [],
+            msg=(f"Setup precondition: no probe within {override_ms - 1} ms " f"of the override boundary."),
+        )
+
+        # Past the override boundary: exactly one probe.
+        boundary_tx = self._advance(ms=2)
+        self.assertEqual(
+            len(boundary_tx),
+            1,
+            msg=(
+                f"Override TCP_KEEPIDLE={override_ms} ms must take precedence "
+                "over the patched KEEPALIVE_IDLE_TIME constant. Probe must fire "
+                f"at the override boundary; got {len(boundary_tx)} probe(s) "
+                f"after {override_ms + 1} ms of idle."
+            ),
+        )
+
+
 class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
     """
     Integration test for the listener-fork keep-alive inheritance

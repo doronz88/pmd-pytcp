@@ -193,6 +193,19 @@ class TcpSession:
         # ConnError.TIMEOUT).
         self._keepalive_probes_unacked: int = 0
 
+        # Linux-style per-connection keep-alive overrides for the
+        # idle / probe-interval / max-count parameters. 'None'
+        # means "use the global 'tcp__constants.KEEPALIVE_*'
+        # default at runtime"; an int value (passed in via
+        # 'TcpSocket.setsockopt(IPPROTO_TCP, TCP_KEEP*, ...)' and
+        # propagated by 'TcpSocket.connect()' / 'TcpSocket.listen()')
+        # overrides for this connection only. Units match the
+        # constants: ms for the two timer values, count for the
+        # max probes.
+        self._keepalive_idle_override: int | None = None
+        self._keepalive_interval_override: int | None = None
+        self._keepalive_max_count_override: int | None = None
+
         # Whether the keep-alive timer is currently armed. We need
         # this in addition to 'stack.timer._timers'-membership
         # because production 'Timer.is_expired' returns True both
@@ -1012,7 +1025,11 @@ class TcpSession:
         self._keepalive_active = True
         stack.timer.register_timer(
             name=f"{self}-keepalive",
-            timeout=tcp__constants.KEEPALIVE_IDLE_TIME,
+            timeout=(
+                self._keepalive_idle_override
+                if self._keepalive_idle_override is not None
+                else tcp__constants.KEEPALIVE_IDLE_TIME
+            ),
         )
 
     def _keepalive_tick(self) -> None:
@@ -1048,7 +1065,12 @@ class TcpSession:
             return
         if not stack.timer.is_expired(f"{self}-keepalive"):
             return
-        if self._keepalive_probes_unacked >= tcp__constants.KEEPALIVE_PROBE_MAX_COUNT:
+        max_count = (
+            self._keepalive_max_count_override
+            if self._keepalive_max_count_override is not None
+            else tcp__constants.KEEPALIVE_PROBE_MAX_COUNT
+        )
+        if self._keepalive_probes_unacked >= max_count:
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Keep-alive: {self._keepalive_probes_unacked} probes "
@@ -1072,13 +1094,16 @@ class TcpSession:
         self._keepalive_probes_unacked += 1
         stack.timer.register_timer(
             name=f"{self}-keepalive",
-            timeout=tcp__constants.KEEPALIVE_PROBE_INTERVAL,
+            timeout=(
+                self._keepalive_interval_override
+                if self._keepalive_interval_override is not None
+                else tcp__constants.KEEPALIVE_PROBE_INTERVAL
+            ),
         )
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Keep-alive: emitted probe "
-            f"{self._keepalive_probes_unacked}/"
-            f"{tcp__constants.KEEPALIVE_PROBE_MAX_COUNT} "
+            f"{self._keepalive_probes_unacked}/{max_count} "
             f"at seq={sub32(self._snd_nxt, 1)} ack={self._rcv_nxt}",
         )
 

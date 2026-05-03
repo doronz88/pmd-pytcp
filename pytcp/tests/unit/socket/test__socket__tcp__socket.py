@@ -43,6 +43,9 @@ from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
+    TCP_KEEPCNT,
+    TCP_KEEPIDLE,
+    TCP_KEEPINTVL,
     AddressFamily,
     SocketType,
     gaierror,
@@ -914,4 +917,99 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
                 "listen() must propagate '_so_keepalive' to the new listening "
                 "TcpSession's '_keepalive_enabled' so accepted children inherit."
             ),
+        )
+
+    def test__tcp_socket__setsockopt__tcp_keepidle_round_trip(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, N)' stores
+        the per-connection idle override and a subsequent
+        'getsockopt' returns the same N.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 600)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_KEEPIDLE),
+            600,
+            msg="TCP_KEEPIDLE must round-trip via setsockopt / getsockopt.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_keepintvl_round_trip(self) -> None:
+        """
+        Same shape for TCP_KEEPINTVL.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 75)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_KEEPINTVL),
+            75,
+            msg="TCP_KEEPINTVL must round-trip via setsockopt / getsockopt.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_keepcnt_round_trip(self) -> None:
+        """
+        Same shape for TCP_KEEPCNT.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 5)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_KEEPCNT),
+            5,
+            msg="TCP_KEEPCNT must round-trip via setsockopt / getsockopt.",
+        )
+
+    def test__tcp_socket__getsockopt__tcp_keep_overrides_default_zero(self) -> None:
+        """
+        Ensure getsockopt for the three TCP_KEEP* overrides
+        returns 0 on a fresh socket - the sentinel meaning "no
+        override; the session falls back to the global
+        'tcp__constants.KEEPALIVE_*' default at runtime."
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.assertEqual(s.getsockopt(IPPROTO_TCP, TCP_KEEPIDLE), 0)
+        self.assertEqual(s.getsockopt(IPPROTO_TCP, TCP_KEEPINTVL), 0)
+        self.assertEqual(s.getsockopt(IPPROTO_TCP, TCP_KEEPCNT), 0)
+
+    def test__tcp_socket__connect_propagates_keep_overrides_to_session(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_TCP, TCP_KEEP*, ...) followed by
+        connect() propagates each override onto the freshly-
+        constructed TcpSession's matching field. Without this, the
+        per-connection override has no path into the protocol
+        runtime.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, 600)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, 75)
+        s.setsockopt(IPPROTO_TCP, TCP_KEEPCNT, 5)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertEqual(
+            self._session_cls.return_value._keepalive_idle_override,
+            600,
+            msg="connect() must propagate TCP_KEEPIDLE override to session.",
+        )
+        self.assertEqual(
+            self._session_cls.return_value._keepalive_interval_override,
+            75,
+            msg="connect() must propagate TCP_KEEPINTVL override to session.",
+        )
+        self.assertEqual(
+            self._session_cls.return_value._keepalive_max_count_override,
+            5,
+            msg="connect() must propagate TCP_KEEPCNT override to session.",
         )

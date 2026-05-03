@@ -134,6 +134,10 @@ def fsm__listen(
             # Inherit SO_KEEPALIVE on the fresh listening session
             # so each subsequent accept fork carries the flag too.
             tcp_session._keepalive_enabled = listen_socket._so_keepalive
+            # Inherit per-connection keep-alive overrides too.
+            tcp_session._keepalive_idle_override = listen_socket._tcp_keepidle
+            tcp_session._keepalive_interval_override = listen_socket._tcp_keepintvl
+            tcp_session._keepalive_max_count_override = listen_socket._tcp_keepcnt
             session._socket._tcp_session = tcp_session  # pylint: disable=protected-access
             # Re-bind 'session' to the peer's 4-tuple and create a
             # new TcpSocket that exposes this child session to
@@ -151,8 +155,13 @@ def fsm__listen(
             # Propagate SO_KEEPALIVE from the listening parent
             # onto the new child socket so a future
             # 'getsockopt(SO_KEEPALIVE)' on the accept()'d child
-            # round-trips correctly.
+            # round-trips correctly. The per-connection overrides
+            # follow the same path so 'getsockopt(TCP_KEEPIDLE)'
+            # etc. also round-trip.
             session._socket._so_keepalive = listen_socket._so_keepalive
+            session._socket._tcp_keepidle = listen_socket._tcp_keepidle
+            session._socket._tcp_keepintvl = listen_socket._tcp_keepintvl
+            session._socket._tcp_keepcnt = listen_socket._tcp_keepcnt
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the

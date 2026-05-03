@@ -50,8 +50,12 @@ from pytcp.lib.ip_helper import (
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
 from pytcp.socket import (
+    IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
+    TCP_KEEPCNT,
+    TCP_KEEPIDLE,
+    TCP_KEEPINTVL,
     AddressFamily,
     IpProto,
     SocketType,
@@ -120,6 +124,18 @@ class TcpSocket(socket):
         # into the freshly-constructed 'TcpSession' before the
         # FSM starts firing.
         self._so_keepalive: bool = False
+
+        # Linux-style per-connection keep-alive overrides
+        # (TCP_KEEPIDLE / TCP_KEEPINTVL / TCP_KEEPCNT). 'None'
+        # means "no override - use the system default constant
+        # at runtime". Units are milliseconds for the two timer
+        # values, count for max-probes; this matches the units
+        # of the corresponding 'tcp__constants.KEEPALIVE_*'
+        # values internally. (Linux's API is in seconds; PyTCP
+        # uses ms for ergonomics with the small test windows.)
+        self._tcp_keepidle: int | None = None
+        self._tcp_keepintvl: int | None = None
+        self._tcp_keepcnt: int | None = None
 
         # Create established socket based on established TCP session, called by
         # listening sockets only.
@@ -196,6 +212,15 @@ class TcpSocket(socket):
         if level == SOL_SOCKET and optname == SO_KEEPALIVE:
             self._so_keepalive = bool(value)
             return
+        if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
+            self._tcp_keepidle = int(value)
+            return
+        if level == IPPROTO_TCP and optname == TCP_KEEPINTVL:
+            self._tcp_keepintvl = int(value)
+            return
+        if level == IPPROTO_TCP and optname == TCP_KEEPCNT:
+            self._tcp_keepcnt = int(value)
+            return
         raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
@@ -210,6 +235,14 @@ class TcpSocket(socket):
 
         if level == SOL_SOCKET and optname == SO_KEEPALIVE:
             return int(self._so_keepalive)
+        if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
+            # 0 means "no override set"; the session falls back
+            # to 'tcp__constants.KEEPALIVE_IDLE_TIME' at runtime.
+            return self._tcp_keepidle if self._tcp_keepidle is not None else 0
+        if level == IPPROTO_TCP and optname == TCP_KEEPINTVL:
+            return self._tcp_keepintvl if self._tcp_keepintvl is not None else 0
+        if level == IPPROTO_TCP and optname == TCP_KEEPCNT:
+            return self._tcp_keepcnt if self._tcp_keepcnt is not None else 0
         raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def _get_ip_addresses(
@@ -358,6 +391,12 @@ class TcpSocket(socket):
         # this hook, 'setsockopt(SO_KEEPALIVE, 1)' would have no
         # effect.
         self._tcp_session._keepalive_enabled = self._so_keepalive
+        # Linux-style per-connection keep-alive overrides: copy
+        # over so the session reads the override (or falls back
+        # to the global constant) when arming probes.
+        self._tcp_session._keepalive_idle_override = self._tcp_keepidle
+        self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
+        self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
 
         __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
@@ -406,6 +445,12 @@ class TcpSocket(socket):
         # 'pytcp/protocols/tcp/tcp__fsm__listen.py' (which
         # mutates this session in-place into the child).
         self._tcp_session._keepalive_enabled = self._so_keepalive
+        # Per-connection keep-alive overrides also propagate to
+        # the listening session so each listener-fork child
+        # inherits them from the same source.
+        self._tcp_session._keepalive_idle_override = self._tcp_keepidle
+        self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
+        self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
 
         __debug__ and log(
             "socket",
