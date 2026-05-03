@@ -50,6 +50,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
+from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 
@@ -254,6 +255,25 @@ class TcpSession:
         # Useful for spurious-retransmit observability; phase 7
         # does not yet wire it into RTO / cwnd.
         self._dsack_received: int = 0
+
+        # RFC 6298 §2 RTO estimator state plus the single-pending-
+        # sample tracker that drives '_rto_state' updates per
+        # §4 ("one sample per RTT"). The hooks live in
+        # '_transmit_packet' (record fresh sample), in
+        # '_process_ack_packet' (harvest on covering ACK and run
+        # 'update' iff Karn's flag is False), and in
+        # '_retransmit_packet_timeout' (set Karn's flag per §3 on
+        # the in-flight sample). 'rto_ms' is observed in Phase 2
+        # but the per-seq retransmit timer family
+        # ('_tx_retransmit_timeout_counter') still drives the wire
+        # cadence; Phase 3 replaces the per-seq machinery with a
+        # session-level retransmit timer keyed on
+        # '_rto_state.rto_ms' (see
+        # '.claude/rules/tcp_rto_integration.md').
+        self._rto_state: RtoState = initial_state()
+        self._rtt_sample_seq: Seq32 | None = None
+        self._rtt_sample_send_time_ms: int | None = None
+        self._rtt_sample_retransmitted: bool = False
 
         ###
         # Sending window parameters.
