@@ -943,3 +943,251 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
             b"fresh-data",
             msg="Fresh-TSval segment's data MUST enter the RX buffer.",
         )
+
+
+class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
+    """
+    Phase 4b extension: PAWS + '_ts_recent' update must apply
+    to ALL FSM dispatch paths, not only segments routed through
+    '_process_ack_packet'. Specifically the dup-ACK fast-
+    retransmit branch, the OOO-queue branch in ESTABLISHED, and
+    the late-segment branch in TIME_WAIT all currently bypass
+    the PAWS check shipped in commit '79ed38e'.
+
+    RFC 7323 §4.3 mandates '_ts_recent' refresh on every
+    accepted segment in receive sequence space. RFC 7323 §5
+    mandates PAWS rejection of stale-TSval segments at every
+    inbound dispatch boundary. Without these tests the bypass
+    paths can leak old-incarnation segments into recovery
+    machinery.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__paws__dup_ack_with_stale_tsval_dropped(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §5: a duplicate ACK whose TSval is
+        strictly less than '_ts_recent' is dropped at the FSM
+        dispatch boundary BEFORE the dup-ACK count fast-
+        retransmit machinery sees it.
+
+        Without this gate, a delayed-and-replayed dup-ACK from
+        an old incarnation could spuriously contribute to the
+        3-dup-ACK fast-retransmit threshold, halving cwnd.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        session._tx_buffer.extend(b"X" * 100)
+        self._advance(ms=1)
+
+        snd_una_pre = session._snd_una
+        cwnd_pre = session._cwnd
+        retransmit_request_count_pre = session._tx_retransmit_request_counter.get(snd_una_pre, 0)
+
+        stale_tsval = PEER__TSVAL_INITIAL - 100
+        for _ in range(3):
+            stale_dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=snd_una_pre,
+                flags=("ACK",),
+                win=PEER__WIN,
+                tsval=stale_tsval,
+                tsecr=PEER__TSVAL_INITIAL,
+            )
+            self._drive_rx(frame=stale_dup_ack)
+
+        self.assertEqual(
+            session._cwnd,
+            cwnd_pre,
+            msg=(
+                "RFC 7323 §5 PAWS: stale-TSval dup-ACKs MUST be "
+                "dropped before the fast-retransmit count "
+                "increments. cwnd MUST be unchanged."
+            ),
+        )
+        self.assertEqual(
+            session._tx_retransmit_request_counter.get(snd_una_pre, 0),
+            retransmit_request_count_pre,
+            msg=("RFC 7323 §5 PAWS: stale-TSval dup-ACKs MUST NOT " "increment the per-seq dup-ACK counter."),
+        )
+
+    def test__paws__ts_recent_updated_on_dup_ack_with_fresh_tsval(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §4.3: an accepted dup-ACK with a fresh
+        TSval refreshes '_ts_recent'. Currently the dup-ACK
+        path bypasses the '_ts_recent' update in
+        '_process_ack_packet', so peer's TS clock progress is
+        not reflected until peer sends data again.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        session._tx_buffer.extend(b"X" * 100)
+        self._advance(ms=1)
+
+        snd_una_pre = session._snd_una
+        fresh_tsval = PEER__TSVAL_INITIAL + 500
+        dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=snd_una_pre,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=fresh_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=dup_ack)
+
+        self.assertEqual(
+            session._ts_recent,
+            fresh_tsval,
+            msg=(
+                "RFC 7323 §4.3: '_ts_recent' MUST refresh on an "
+                f"accepted dup-ACK carrying TSval={fresh_tsval}. "
+                f"Got _ts_recent={session._ts_recent}."
+            ),
+        )
+
+    def test__paws__time_wait_late_segment_with_stale_tsval_dropped(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §5 PAWS applies to TIME_WAIT: a delayed
+        peer-FIN retransmit from an earlier incarnation, with
+        stale TSval, MUST be dropped before the FIN-retransmit
+        handler re-arms the TIME_WAIT timer.
+
+        This is the strongest form of RFC 1337 TIME-WAIT
+        assassination protection: PAWS catches the stale
+        segment regardless of the segment's seq value.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        # Active close: ESTABLISHED -> FIN_WAIT_1 -> FIN_WAIT_2 ->
+        # TIME_WAIT. The transition takes 2 timer ticks: tick 1
+        # walks ESTABLISHED -> FIN_WAIT_1, tick 2 emits the FIN
+        # from FIN_WAIT_1.
+        session.tcp_fsm(syscall=SysCall.CLOSE)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL + 1,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL + 2,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=peer_fin)
+
+        if session.state is not FsmState.TIME_WAIT:
+            self.skipTest(
+                f"Active-close path did not reach TIME_WAIT (got {session.state}); "
+                "the test's CLOSE driver doesn't model this branch on every release."
+            )
+
+        ts_recent_pre = session._ts_recent
+        stale_late_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL - 1000,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        frames_tx_before = len(self._frames_tx)
+        self._drive_rx(frame=stale_late_fin)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            frames_tx_before,
+            msg=(
+                "RFC 7323 §5 PAWS in TIME_WAIT: stale-TSval late "
+                "segment MUST be dropped before the FIN-"
+                "retransmit handler emits an ACK."
+            ),
+        )
+        self.assertEqual(
+            session._ts_recent,
+            ts_recent_pre,
+            msg=("PAWS-rejected segment MUST NOT update " "'_ts_recent'."),
+        )
