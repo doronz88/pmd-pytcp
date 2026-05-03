@@ -733,40 +733,6 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
             ),
         )
 
-    def test__cwnd__additional_dup_ack_in_recovery_inflates_cwnd_by_one_mss(self) -> None:
-        """
-        Ensure each additional duplicate ACK received while
-        in recovery inflates cwnd by SMSS — representing one
-        more segment that left the network.
-
-        Reference: RFC 5681 §3.2 (additional dup-ACKs in recovery inflate cwnd).
-        """
-
-        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        self._send_n_segments_and_drain_dupacks(session=session, n_segments=5)
-        cwnd_pre_dup4 = session._cwnd
-
-        dup_ack_4 = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=PEER__ISS + 1,
-            ack=LOCAL__ISS + 1,
-            flags=("ACK",),
-            win=PEER__WIN,
-        )
-        self._drive_rx(frame=dup_ack_4)
-
-        self.assertEqual(
-            session._cwnd,
-            cwnd_pre_dup4 + PEER__MSS,
-            msg=(
-                "The 4th dup-ACK in recovery MUST inflate "
-                f"cwnd by SMSS. Pre-dup4={cwnd_pre_dup4}, "
-                f"expected {cwnd_pre_dup4 + PEER__MSS}, got "
-                f"{session._cwnd}."
-            ),
-        )
-
     def test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh(self) -> None:
         """
         Ensure that when a cumulative ACK advances SND.UNA

@@ -840,6 +840,13 @@ class TcpSession:
         # progress).
         if old_state is FsmState.ESTABLISHED and state is not FsmState.ESTABLISHED:
             self._recovery_point = 0
+            # RFC 6937 §3.1 PRR per-recovery state lives only
+            # while a recovery episode is active in ESTABLISHED.
+            # Clear alongside RecoveryPoint so half-close and
+            # subsequent re-entries start clean.
+            self._recover_fs = 0
+            self._prr_delivered = 0
+            self._prr_out = 0
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
@@ -1090,6 +1097,19 @@ class TcpSession:
         if flag_fin:
             self._snd_fin = self._snd_nxt
             self._fin_sent = True
+
+        # RFC 6937 §3.1 PRR: track 'prr_out' across every
+        # outbound segment that consumes sequence space while
+        # we are in a recovery episode. The accumulator feeds
+        # the per-ACK 'sndcnt' computation
+        # ('CEIL(prr_delivered * ssthresh / RecoverFS) -
+        # prr_out') so PRR's send-pacing decision sees the
+        # actual recovery-episode send rate. The retransmit
+        # that fires from the recovery-entry path consumes one
+        # SMSS of 'prr_out'; subsequent retransmits or new
+        # data sent during recovery accumulate here too.
+        if self._recovery_point != 0 and (data or flag_syn or flag_fin):
+            self._prr_out += len(data) + flag_syn + flag_fin
 
         # Whenever we send an ACK-bearing segment (which may also carry
         # data) the peer's pending sequence space is implicitly
@@ -1422,6 +1442,9 @@ class TcpSession:
         # Clear SACK + DSACK + recovery state from the prior incarnation.
         self._sack_scoreboard = SackScoreboard()
         self._recovery_point = 0
+        self._recover_fs = 0
+        self._prr_delivered = 0
+        self._prr_out = 0
         self._pending_dsack = None
         self._dsack_received = 0
 
@@ -2057,15 +2080,20 @@ class TcpSession:
         # RFC 5681 §3.2 / RFC 6675 §5: enter recovery exactly
         # once per loss event. While 'recovery_point > 0' we are
         # still recovering from an earlier trigger; further
-        # dup-ACKs inflate cwnd per RFC 5681 §3.2 step 4 but
-        # MUST NOT re-fire the retransmit.
+        # dup-ACKs MUST NOT re-fire the retransmit. Cwnd
+        # inflation on each dup-ACK is now driven by RFC 6937
+        # PRR: a bare dup-ACK delivers no new bytes
+        # (DeliveredData = 0) so prr_delivered is unchanged
+        # and cwnd stays steady - PRR's proportional pacing
+        # replaces the legacy RFC 5681 §3.2 step 4 'cwnd +=
+        # SMSS per dup-ACK' rule, which over-inflated cwnd on
+        # bare dup-ACK bursts and caused the post-recovery
+        # send burst PRR is designed to smooth. SACK-bearing
+        # dup-ACKs that delivered new bytes update
+        # 'prr_delivered' inside '_ingest_sack_info' and the
+        # cwnd recompute on cum-ACK in '_process_ack_packet'
+        # picks them up.
         if self._recovery_point != 0:
-            # §3.2 step 4: each additional dup-ACK in recovery
-            # represents one more segment that left the network
-            # and grants permission to send one more new segment
-            # while the retransmit is in flight.
-            self._cwnd += self._snd_mss
-            self._snd_ewn = min(self._cwnd, self._snd_wnd)
             return
 
         # Two independent triggers, either of which enters
@@ -2101,6 +2129,16 @@ class TcpSession:
         self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         self._cwnd = self._ssthresh + 3 * self._snd_mss
         self._snd_ewn = min(self._cwnd, self._snd_wnd)
+
+        # RFC 6937 §3.1 PRR per-recovery state initialisation:
+        # snapshot pipe at entry as 'RecoverFS' so the per-ACK
+        # send-pacing math has the denominator for the
+        # 'prr_delivered * ssthresh / RecoverFS' ratio. Reset
+        # the prr_delivered / prr_out counters to zero so the
+        # accumulators only cover this recovery episode.
+        self._recover_fs = flight_size
+        self._prr_delivered = 0
+        self._prr_out = 0
 
         # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
         # within the loss event do not re-trigger; '_process_ack_packet'
@@ -2166,6 +2204,12 @@ class TcpSession:
             # delta when the cum-ACK straddles the 32-bit wrap.
             bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
             self._snd_una = packet_rx_md.tcp__ack
+            # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
+            # recovery feed 'prr_delivered'. Out-of-recovery
+            # cum-ACKs do not - the accumulator is scoped to a
+            # single recovery episode.
+            if self._recovery_point != 0:
+                self._prr_delivered += bytes_acked
             # Cwnd update on cum-ACK that advances SND.UNA.
             # Three branches gated on recovery state:
             #   - in recovery, partial cum-ACK (snd_una hasn't
@@ -2282,6 +2326,13 @@ class TcpSession:
             self._cwnd = self._ssthresh
             self._snd_ewn = min(self._cwnd, self._snd_wnd)
             self._recovery_point = 0
+            # RFC 6937 §3.1 PRR: per-recovery state is scoped
+            # to a single recovery episode. Reset on exit so
+            # the next loss event snapshots a fresh
+            # 'RecoverFS' and re-accumulates from zero.
+            self._recover_fs = 0
+            self._prr_delivered = 0
+            self._prr_out = 0
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
         if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):
