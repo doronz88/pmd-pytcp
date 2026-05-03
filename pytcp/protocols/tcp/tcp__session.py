@@ -1700,6 +1700,12 @@ class TcpSession:
         # dup-ACKs inflate cwnd per RFC 5681 §3.2 step 4 but
         # MUST NOT re-fire the retransmit.
         if self._recovery_point != 0:
+            # §3.2 step 4: each additional dup-ACK in recovery
+            # represents one more segment that left the network
+            # and grants permission to send one more new segment
+            # while the retransmit is in flight.
+            self._cwnd += self._snd_mss
+            self._snd_ewn = min(self._cwnd, self._snd_wnd)
             return
 
         # Two independent triggers, either of which enters
@@ -1722,6 +1728,19 @@ class TcpSession:
         )
         if not (count_trigger or sack_trigger):
             return
+
+        # RFC 5681 §3.2 step 2: ssthresh = max(FlightSize/2,
+        # 2*SMSS). Captures the just-observed loss point so
+        # the post-recovery slow-start exits at this boundary.
+        # Step 3: cwnd = ssthresh + 3*SMSS - the +3 inflation
+        # represents the three segments that left the network
+        # (the dup-ACKs prove they arrived) and grants
+        # permission to send three new segments while the
+        # retransmit is in flight.
+        flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+        self._ssthresh = max(flight_size // 2, 2 * self._snd_mss)
+        self._cwnd = self._ssthresh + 3 * self._snd_mss
+        self._snd_ewn = min(self._cwnd, self._snd_wnd)
 
         # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
         # within the loss event do not re-trigger; '_process_ack_packet'
@@ -1851,13 +1870,19 @@ class TcpSession:
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
-        # to re-enter recovery via either trigger.
+        # to re-enter recovery via either trigger. RFC 5681 §3.2
+        # step 6 mandates deflating cwnd back to ssthresh on
+        # exit so the inflation from steps 3+4 is undone and
+        # subsequent §3.1 growth resumes from the previously-
+        # observed loss boundary.
         if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Exiting recovery: SND.UNA={self._snd_una} "
                 f"reached RecoveryPoint={self._recovery_point}",
             )
+            self._cwnd = self._ssthresh
+            self._snd_ewn = min(self._cwnd, self._snd_wnd)
             self._recovery_point = 0
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).

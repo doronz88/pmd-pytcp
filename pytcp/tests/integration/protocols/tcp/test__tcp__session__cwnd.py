@@ -871,6 +871,12 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
                 win=PEER__WIN,
             )
             self._drive_rx(frame=dup_ack)
+        # Advance one tick so '_transmit_data' fires the
+        # retransmitted segment - that advances 'SND.NXT' past
+        # 'SND.UNA' so subsequent dup-ACKs are not classified
+        # as keep-alive probe-acks (which would skip the
+        # fast-retransmit machinery entirely).
+        self._advance(ms=1)
 
     def test__cwnd__fast_retransmit_halves_ssthresh_and_inflates_cwnd(self) -> None:
         """
