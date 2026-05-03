@@ -26,7 +26,7 @@
 This module contains tests for the 'TcpSession' LISTEN / CONNECT /
 SEND / RECEIVE / CLOSE syscall handlers.
 
-pytcp/tests/unit/socket/test__socket__tcp__session__syscalls.py
+pytcp/tests/unit/protocols/tcp/test__tcp__session__syscalls.py
 
 ver 3.0.4
 """

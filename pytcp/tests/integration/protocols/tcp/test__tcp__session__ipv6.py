@@ -45,7 +45,7 @@ Reference RFCs:
     RFC 8200            Internet Protocol, Version 6 - 40-byte
                         fixed header
 
-pytcp/tests/integration/socket/test__socket__tcp__session__ipv6.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__ipv6.py
 
 ver 3.0.4
 """

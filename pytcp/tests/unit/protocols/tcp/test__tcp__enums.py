@@ -27,7 +27,7 @@ This module contains tests for the 'FsmState', 'SysCall', and
 'ConnError' enums plus the 'TcpSessionError' exception class exposed
 by 'pytcp/socket/tcp__session.py'.
 
-pytcp/tests/unit/socket/test__socket__tcp__session__enums.py
+pytcp/tests/unit/protocols/tcp/test__tcp__enums.py
 
 ver 3.0.4
 """

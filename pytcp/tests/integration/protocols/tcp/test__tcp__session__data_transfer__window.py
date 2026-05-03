@@ -41,7 +41,7 @@ Reference RFCs:
     RFC 1122 §4.2.2.16   TCP MUST be robust against shrinking windows
     RFC 7323 §2.2        WSCALE option only when offered bilaterally
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__window.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__window.py
 
 ver 3.0.4
 """

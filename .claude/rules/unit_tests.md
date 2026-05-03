@@ -63,18 +63,26 @@ class.
   carries an extra leading segment naming the subpackage, so the
   filename alone states which area of the codebase is under test:
 
-  | Source location                  | Test filename pattern                         |
-  | -------------------------------- | --------------------------------------------- |
-  | `<pkg>/protocols/<proto>/*.py`   | `test__<proto>__<component>__<aspect>.py`     |
-  | `<pkg>/lib/*.py`                 | `test__lib__<source>.py`                      |
-  | `pytcp/socket/*.py`              | `test__socket__<source>.py`                   |
+  | Source location                       | Test filename pattern                         |
+  | ------------------------------------- | --------------------------------------------- |
+  | `net_proto/protocols/<proto>/*.py`    | `test__<proto>__<component>__<aspect>.py`     |
+  | `pytcp/protocols/<proto>/*.py`        | `test__<proto>__<source>__<aspect>.py`        |
+  | `<pkg>/lib/*.py`                      | `test__lib__<source>.py`                      |
+  | `pytcp/socket/*.py`                   | `test__socket__<source>.py`                   |
 
   Examples: `test__lib__inet_cksum.py`, `test__lib__proto_parser.py`,
-  `test__socket__raw__socket.py`, `test__socket__tcp__session__fsm.py`.
-  The one accepted exception is the stutter case
+  `test__socket__raw__socket.py`,
+  `test__tcp__session__lifecycle.py` (a `pytcp/protocols/tcp/`
+  source file). The one accepted exception is the stutter case
   `test__socket__socket_id.py` (source file `socket_id.py` already
   contains the subdir name) — still prefix it; do not drop the
   leading `socket__` to avoid the stutter.
+
+  Tests for `pytcp/protocols/<proto>/*.py` source files live
+  under `pytcp/tests/{unit,integration}/protocols/<proto>/`
+  mirroring the source layout. The directory has no
+  `__init__.py` (PEP 420 namespace package, matching the rest
+  of the codebase).
 
 - **Protocol aspect splits**: for per-protocol files under
   `net_proto/protocols/<proto>/`, per-aspect splitting is mandatory:

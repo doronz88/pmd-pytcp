@@ -51,7 +51,7 @@ Reference RFCs:
     RFC 9293 §3.10.7.2   Listen-state SYN handling
     RFC 9293 §3.10.4     CLOSE / ACCEPT calls
 
-pytcp/tests/integration/socket/test__socket__tcp__session__listener__multi_child.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__listener__multi_child.py
 
 ver 3.0.4
 """

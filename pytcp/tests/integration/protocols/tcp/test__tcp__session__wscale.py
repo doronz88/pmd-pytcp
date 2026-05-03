@@ -40,7 +40,7 @@ Reference RFCs:
     RFC 7323 §2.2    Window Scale Option negotiation
     RFC 7323 §2.3    Using the Window Scale Option
 
-pytcp/tests/integration/socket/test__socket__tcp__session__wscale.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__wscale.py
 
 ver 3.0.4
 """

@@ -52,7 +52,7 @@ Reference RFCs:
     RFC 9293 §3.10.7.4   Synchronized state segment processing
                           (acceptability checks across the wrap)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__seq_wraparound.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__seq_wraparound.py
 
 ver 3.0.4
 """

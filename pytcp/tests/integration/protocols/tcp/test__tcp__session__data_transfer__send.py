@@ -50,7 +50,7 @@ Reference RFCs:
     RFC 1122 §4.2.2.2   PSH bit on last segment of a write
     RFC 1122 §4.2.3.4   Nagle's algorithm
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__send.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__send.py
 
 ver 3.0.4
 """

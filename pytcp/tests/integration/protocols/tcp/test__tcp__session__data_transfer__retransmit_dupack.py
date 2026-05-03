@@ -45,7 +45,7 @@ Reference RFCs:
     RFC 6675             Conservative loss recovery (informational
                          backdrop; not asserted here)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__retransmit_dupack.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py
 
 ver 3.0.4
 """

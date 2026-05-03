@@ -44,7 +44,7 @@ Reference RFCs:
     RFC 9293 §3.8.3      User Timeout / connection abort
     RFC 1122 §4.2.3.5    R1 / R2 retransmission limits
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__retransmit_timeout.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_timeout.py
 
 ver 3.0.4
 """

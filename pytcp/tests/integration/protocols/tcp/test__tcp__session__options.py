@@ -42,7 +42,7 @@ Reference RFCs:
                         Topics (TCP__MIN_MSS = 536)
     RFC 2018            TCP Selective Acknowledgment Options
 
-pytcp/tests/integration/socket/test__socket__tcp__session__options.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__options.py
 
 ver 3.0.4
 """

@@ -42,7 +42,7 @@ Reference RFCs:
     RFC 9293 §3.5       Closing a Connection
     RFC 9293 §3.10.7.5  TIME-WAIT state segment processing
 
-pytcp/tests/integration/socket/test__socket__tcp__session__close__normal.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__close__normal.py
 
 ver 3.0.4
 """

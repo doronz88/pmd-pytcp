@@ -59,7 +59,7 @@ Reference RFCs:
     RFC 6691 §2          MSS calculation from link MTU
     RFC 5961 §4          SYN-on-established challenge ACK
 
-pytcp/tests/integration/socket/test__socket__tcp__session__handshake__passive.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py
 
 ver 3.0.4
 """

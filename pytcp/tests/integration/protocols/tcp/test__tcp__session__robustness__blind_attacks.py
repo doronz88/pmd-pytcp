@@ -57,7 +57,7 @@ Reference RFCs:
     RFC 5961 §3          Blind RST Attacks (covered separately)
     RFC 5961 §5          Blind Data Injection (covered separately)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__robustness__blind_attacks.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__robustness__blind_attacks.py
 
 ver 3.0.4
 """

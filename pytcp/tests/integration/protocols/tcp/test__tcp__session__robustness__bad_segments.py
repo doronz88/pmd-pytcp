@@ -38,7 +38,7 @@ Reference RFCs:
     RFC 9293 §3.1        Control Bits semantics
     RFC 9293 §3.10.7.4   Synchronized state segment processing
 
-pytcp/tests/integration/socket/test__socket__tcp__session__robustness__bad_segments.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__robustness__bad_segments.py
 
 ver 3.0.4
 """

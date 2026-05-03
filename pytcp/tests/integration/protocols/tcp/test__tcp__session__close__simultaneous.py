@@ -42,7 +42,7 @@ Reference RFCs:
     RFC 9293 §3.10.7.4  Synchronized state segment processing
     RFC 9293 §3.5       Closing a Connection (state diagram)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__close__simultaneous.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__close__simultaneous.py
 
 ver 3.0.4
 """

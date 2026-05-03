@@ -45,7 +45,7 @@ Reference RFCs:
     RFC 6675            Conservative Loss Recovery using SACK
     RFC 9293 §3.10.7.4  Synchronized state segment processing
 
-pytcp/tests/integration/socket/test__socket__tcp__session__sack.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py
 
 ver 3.0.4
 """

@@ -49,7 +49,7 @@ Reference RFCs:
                          into 9293; cited for the original threat
                          model)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__close__rst.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__close__rst.py
 
 ver 3.0.4
 """

@@ -26,7 +26,7 @@
 This module contains tests for the 'TcpSession' constructor, property
 surface, and '__str__' formatting.
 
-pytcp/tests/unit/socket/test__socket__tcp__session__lifecycle.py
+pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
 
 ver 3.0.4
 """

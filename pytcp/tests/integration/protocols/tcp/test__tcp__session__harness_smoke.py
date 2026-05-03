@@ -26,7 +26,7 @@
 This module contains smoke tests for the TCP session integration test
 harness ('FakeTimer', 'tcp_segment_factory', 'TcpSessionTestCase').
 
-pytcp/tests/integration/socket/test__socket__tcp__session__harness_smoke.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__harness_smoke.py
 
 ver 3.0.4
 """

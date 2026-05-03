@@ -39,7 +39,7 @@ Reference RFCs:
                          deviates from the RFC's 240 s suggestion;
                          see the TIME_WAIT_DELAY constant)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__close__time_wait.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py
 
 ver 3.0.4
 """

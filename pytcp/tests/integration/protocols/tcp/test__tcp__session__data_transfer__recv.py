@@ -45,7 +45,7 @@ Reference RFCs:
                          "ACK every other segment", 500 ms ceiling)
     RFC 1122 §4.2.2.20   General TCP requirements
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__recv.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__recv.py
 
 ver 3.0.4
 """

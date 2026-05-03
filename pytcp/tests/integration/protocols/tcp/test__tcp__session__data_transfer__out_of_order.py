@@ -45,7 +45,7 @@ Reference RFCs:
     RFC 5681 §3.2        Fast retransmit / fast recovery
     RFC 1122 §4.2.2.20   General TCP requirements
 
-pytcp/tests/integration/socket/test__socket__tcp__session__data_transfer__out_of_order.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__out_of_order.py
 
 ver 3.0.4
 """

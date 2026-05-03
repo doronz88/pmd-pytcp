@@ -27,7 +27,7 @@ This module contains tests for the 'TcpSession' FSM state-transition
 handlers ('_tcp_fsm_closed' through '_tcp_fsm_time_wait') and the
 top-level 'tcp_fsm' dispatch.
 
-pytcp/tests/unit/socket/test__socket__tcp__session__fsm.py
+pytcp/tests/unit/protocols/tcp/test__tcp__fsm.py
 
 ver 3.0.4
 """

@@ -51,7 +51,7 @@ Reference RFCs:
     RFC 5961 §4          Blind data injection / SYN-on-established mitigation
     RFC 1122 §4.2.3.5    R1 / R2 retransmission limits (R2 >= 100 s)
 
-pytcp/tests/integration/socket/test__socket__tcp__session__handshake__active.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__active.py
 
 ver 3.0.4
 """
