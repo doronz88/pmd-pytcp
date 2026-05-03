@@ -441,3 +441,68 @@ class TestComputeIss(TestCase):
                 "different ISNs - the binding includes address bytes."
             ),
         )
+
+    def test__compute_iss__same_4tuple_post_msl_yields_different_iss(self) -> None:
+        """
+        Ensure RFC 9293 §3.4.3 Quiet Time alternative: PyTCP
+        skips the literal MSL "keep quiet for an MSL on
+        startup" requirement (which §3.4.3 explicitly allows
+        as a MAY) and relies on the RFC 6528 hashed ISS for
+        the equivalent collision-resistance guarantee.
+
+        Specifically, after one MSL has elapsed (PyTCP's
+        TIME_WAIT_DELAY = 30 s = 30_000_000 µs), an ISS for
+        the SAME 4-tuple computed at the post-MSL clock is
+        guaranteed to differ from the pre-MSL ISS by
+        '30_000_000 / ISS_CLOCK_RATE_US = 7_500_000' ticks.
+        That delta is far larger than any plausible in-flight
+        sequence-window, so a delayed segment from a prior
+        incarnation cannot collide with a fresh ISN.
+
+        This test pins the §3.4.3 alternative protection as
+        an explicit invariant, complementing the existing
+        'monotonic_in_clock_us' test.
+        """
+
+        msl_us = 30_000_000  # PyTCP's TIME_WAIT_DELAY in microseconds.
+        expected_delta_ticks = msl_us // ISS_CLOCK_RATE_US
+
+        iss_pre = compute_iss(
+            TEST_LOCAL_IP4,
+            TEST_LOCAL_PORT,
+            TEST_REMOTE_IP4,
+            TEST_REMOTE_PORT,
+            TEST_SECRET,
+            clock_us=0,
+        )
+        iss_post = compute_iss(
+            TEST_LOCAL_IP4,
+            TEST_LOCAL_PORT,
+            TEST_REMOTE_IP4,
+            TEST_REMOTE_PORT,
+            TEST_SECRET,
+            clock_us=msl_us,
+        )
+
+        observed_delta = (iss_post - iss_pre) & 0xFFFF_FFFF
+        self.assertEqual(
+            observed_delta,
+            expected_delta_ticks,
+            msg=(
+                f"RFC 9293 §3.4.3 Quiet Time alternative: same-4-"
+                f"tuple ISS post-MSL ({msl_us} µs) MUST differ "
+                f"from pre-MSL ISS by exactly {expected_delta_ticks} "
+                f"ticks (M-component advance). Got delta="
+                f"{observed_delta} ticks."
+            ),
+        )
+        self.assertNotEqual(
+            iss_pre,
+            iss_post,
+            msg=(
+                "RFC 9293 §3.4.3: same-4-tuple ISS pre/post MSL "
+                "MUST differ. The M-component advance prevents a "
+                "delayed segment from a prior incarnation from "
+                "colliding with a fresh ISS."
+            ),
+        )

@@ -50,6 +50,25 @@ ISS to the 4-tuple so an attacker who learns one ISN learns nothing
 about ISNs for other peers, and the time-driven M component prevents
 replay of stale ISNs against fresh connections.
 
+RFC 9293 §3.4.3 Quiet Time:
+
+    "When a TCP user issues an OPEN call, before any segments are
+     issued, the TCP must wait at least 2*MSL ... for any prior
+     incarnation's segments to drain."
+
+    "Hosts that prefer to avoid waiting and are willing to risk
+     possible confusion of old and new packets at a given
+     destination MAY choose not to wait for the 'quiet time'."
+
+PyTCP exercises the MAY-skip option: the literal MSL Quiet Time
+wait on stack startup is omitted because the RFC 6528 hashed ISS
+provides the equivalent collision-resistance guarantee. Same-4-
+tuple ISS values at clocks differing by an MSL differ by
+'MSL / ISS_CLOCK_RATE_US' ticks (= 7_500_000 for PyTCP's
+TIME_WAIT_DELAY = 30 s), so a delayed segment from a prior
+incarnation cannot collide with a fresh ISN. Pinned by
+'test__compute_iss__same_4tuple_post_msl_yields_different_iss'.
+
 pytcp/protocols/tcp/tcp__iss.py
 
 ver 3.0.4
