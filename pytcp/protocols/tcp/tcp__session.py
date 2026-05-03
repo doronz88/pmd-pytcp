@@ -275,6 +275,15 @@ class TcpSession:
         self._rtt_sample_send_time_ms: int | None = None
         self._rtt_sample_retransmitted: bool = False
         self._retransmit_count: int = 0
+        # RFC 6298 §5.7 restart-after-idle baseline. 'None' until
+        # the first outbound segment fires; '_transmit_packet'
+        # then refreshes it on every send that consumes sequence
+        # space (data / SYN / FIN). Phase 4 wires the §5.7 reset
+        # hook in '_transmit_packet' to compare 'now_ms -
+        # _last_send_time_ms' against '_rto_state.rto_ms' and
+        # reset the estimator when the silence exceeded the
+        # in-flight RTO.
+        self._last_send_time_ms: int | None = None
 
         ###
         # Sending window parameters.

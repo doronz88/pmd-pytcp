@@ -988,3 +988,304 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
                 f"'_rto_state.rto_ms = {session._rto_state.rto_ms}'."
             ),
         )
+
+
+class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 6298 §5.7 restart-after-idle
+    behaviour (Phase 4 of '.claude/rules/tcp_rto_integration.md').
+
+    When a session has been silent for longer than the in-flight
+    'rto_ms' the smoothed RTT estimator may be stale - the
+    network conditions that produced the current SRTT/RTTVAR may
+    no longer hold. Phase 4 hooks '_transmit_packet' so the next
+    outbound segment after a long idle resets '_rto_state' to
+    'initial_state()' and the §4 sample-collection hook then
+    re-establishes the estimator from scratch on the next
+    covering ACK.
+
+    The reset is gated on:
+
+        '_last_send_time_ms is not None'
+        AND 'now_ms - _last_send_time_ms > _rto_state.rto_ms'
+        AND segment carries a data/SYN/FIN byte (i.e. it
+            consumes sequence space the peer can ACK back)
+
+    so a fresh session never spuriously resets, and a quiescent
+    burst spaced under 'rto_ms' preserves the smoothed estimate
+    that drives subsequent retransmit timing.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED
+        and bypass slow-start.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def _send_one_payload_and_ack(self, *, session: TcpSession, seq_offset: int, payload: bytes) -> None:
+        """
+        Send 'payload', drive the data segment out on the next
+        tick, then drive a peer ACK that fully covers it. Used
+        to put the session into the post-handshake quiescent
+        state where the retransmit timer is off (§5.2 satisfied)
+        and a subsequent idle period can be observed cleanly.
+        """
+
+        session.send(data=payload)
+        self._advance(ms=1)
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + seq_offset + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+    def test__rto__idle_longer_than_rto_resets_state_to_initial(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.7: a session that has been quiescent
+        for longer than the in-flight 'rto_ms' MUST reset
+        '_rto_state' to 'initial_state()' on the next outbound
+        segment, so a stale smoothed estimator does not drive
+        spurious retransmits with a now-too-short RTO.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Post-handshake
+              '_rto_state' = update(initial, 1) = (1, 0, 1000)
+              with the 'MIN_RTO_MS' clamp keeping rto_ms at
+              1000.
+            * Send first payload, advance, peer-ACK. Timer
+              turns off (§5.2); '_last_send_time_ms' was
+              recorded at the first send.
+            * Advance well past 'rto_ms' of virtual time
+              (2000 ms here vs. 1000 ms RTO). No peer activity.
+            * Send second payload; advance one tick so the
+              segment fires.
+            * Assert '_rto_state == initial_state()' - the
+              §5.7 reset took effect inside '_transmit_packet'
+              before the new sample was recorded.
+            * Assert the new sample tracker fields are set
+              for the second segment - the reset does not
+              wipe sample collection itself.
+
+        Fails today: '_last_send_time_ms' does not exist on
+        'TcpSession'; the test attribute access raises
+        'AttributeError'. After the fix, the §5.7 reset hook
+        in '_transmit_packet' restores 'initial_state()' on
+        the second-payload send.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Step 1: send + ACK first payload so the session
+        # reaches a quiescent state (timer off, all in-flight
+        # acked).
+        first_payload = b"hello"
+        self._send_one_payload_and_ack(
+            session=session,
+            seq_offset=0,
+            payload=first_payload,
+        )
+        first_send_time = session._last_send_time_ms
+        self.assertIsNotNone(
+            first_send_time,
+            msg="Setup invariant: '_last_send_time_ms' must be recorded after the first send.",
+        )
+
+        # Step 2: idle longer than rto_ms (= 1000 ms post-clamp).
+        self._advance(ms=2000)
+
+        # Step 3: send second payload.
+        second_payload = b"world"
+        session.send(data=second_payload)
+        self._advance(ms=1)
+
+        self.assertEqual(
+            session._rto_state,
+            initial_state(),
+            msg=(
+                f"RFC 6298 §5.7: idle for "
+                f"{self._timer.now_ms - (first_send_time or 0)} ms > "
+                f"rto_ms={1000}; '_rto_state' MUST reset to "
+                f"'initial_state()' on the next data send. Got "
+                f"{session._rto_state!r}."
+            ),
+        )
+        self.assertEqual(
+            session._rtt_sample_seq,
+            LOCAL__ISS + 1 + len(first_payload),
+            msg=(
+                "RFC 6298 §4: the §5.7 reset must not interfere "
+                "with sample collection - the new outbound "
+                "segment still records its sample seq."
+            ),
+        )
+
+    def test__rto__idle_shorter_than_rto_preserves_state(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.7 reset is gated on the idle period
+        EXCEEDING 'rto_ms'. A burst of writes spaced shorter
+        than the smoothed RTO is normal application behaviour
+        and MUST preserve the smoothed estimator.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED.
+            * Send + ACK first payload to enter quiescent
+              state. Capture '_rto_state' = (1, 0, 1000)
+              post-handshake-and-first-ACK.
+            * Idle 500 ms (well under 'rto_ms' = 1000 ms).
+            * Send second payload; advance one tick so the
+              segment fires.
+            * Assert '_rto_state' is unchanged from the pre-
+              idle snapshot - the short idle did not trigger
+              the §5.7 reset.
+
+        Fails today: '_last_send_time_ms' does not exist on
+        'TcpSession'; the test attribute access raises
+        'AttributeError'. After the fix, the §5.7 idle check
+        evaluates 'False' (now - last_send = 501 < rto_ms =
+        1000) and '_rto_state' remains the harvested value.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        first_payload = b"hello"
+        self._send_one_payload_and_ack(
+            session=session,
+            seq_offset=0,
+            payload=first_payload,
+        )
+        pre_idle_state = session._rto_state
+        self.assertIsNotNone(
+            session._last_send_time_ms,
+            msg="Setup invariant: '_last_send_time_ms' must be recorded after the first send.",
+        )
+
+        # Short idle, well under rto_ms = 1000 ms.
+        self._advance(ms=500)
+
+        second_payload = b"world"
+        session.send(data=second_payload)
+        self._advance(ms=1)
+
+        self.assertEqual(
+            session._rto_state,
+            pre_idle_state,
+            msg=(
+                "RFC 6298 §5.7: the idle-reset is gated on the "
+                "idle period EXCEEDING 'rto_ms'. A 500 ms idle "
+                "with rto_ms=1000 must not trigger the reset; "
+                f"'_rto_state' must remain at "
+                f"{pre_idle_state!r}. Got {session._rto_state!r}."
+            ),
+        )
+
+    def test__rto__transmit_updates_last_send_time(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure that '_transmit_packet' records the virtual
+        clock at every outbound segment that consumes sequence
+        space (data / SYN / FIN), so the §5.7 idle check has
+        an accurate baseline.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Post-handshake
+              '_last_send_time_ms' must be set (the SYN send
+              counted).
+            * Send a payload; advance one tick. After the
+              data segment fires, '_last_send_time_ms' must
+              equal the virtual clock at that send.
+
+        Fails today: '_last_send_time_ms' does not exist on
+        'TcpSession'; the test attribute access raises
+        'AttributeError'.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # SYN consumed sequence space at t=0; handshake helper
+        # advances 1 ms before delivering SYN+ACK, so the
+        # post-handshake '_last_send_time_ms' is the SYN send
+        # time (= 0 ms on FakeTimer's virtual clock).
+        self.assertIsNotNone(
+            session._last_send_time_ms,
+            msg=(
+                "RFC 6298 §5.7 baseline: '_last_send_time_ms' "
+                "MUST be recorded by the SYN send during "
+                "handshake. Otherwise the first post-handshake "
+                "data send sees 'None' and skips the §5.7 reset "
+                "check entirely."
+            ),
+        )
+
+        payload = b"hello, world!"
+        session.send(data=payload)
+        send_tick_now_ms = self._timer.now_ms + 1
+        self._advance(ms=1)
+
+        self.assertEqual(
+            session._last_send_time_ms,
+            send_tick_now_ms,
+            msg=(
+                "RFC 6298 §5.7 tracking: '_last_send_time_ms' "
+                "MUST equal the virtual clock at the moment "
+                "'_transmit_packet' fired the data segment."
+            ),
+        )
