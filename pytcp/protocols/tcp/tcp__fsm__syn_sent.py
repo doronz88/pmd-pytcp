@@ -21,6 +21,7 @@
 ##                                                                            ##
 ################################################################################
 
+# pylint: disable=protected-access
 # pyright: reportPrivateUsage=false
 
 """
