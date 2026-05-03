@@ -1900,6 +1900,31 @@ class TcpSession:
                     name=f"{self}-retransmit",
                     timeout=self._rto_state.rto_ms,
                 )
+        # RFC 7323 §4 TSecr-driven RTTM: peer's TSecr identifies
+        # the specific transmission it acknowledges, so the RTT
+        # measurement is unambiguous even on retransmitted
+        # segments (RFC 7323 §4 obviates Karn's algorithm).
+        # When bilateral TSopt is enabled and peer's ACK carries
+        # a non-zero TSecr that echoes one of our previous
+        # TSvals, fold 'now_ms - tsecr' into '_rto_state' via
+        # 'update'. This SUPERSEDES the Phase-2 sample tracker,
+        # which would otherwise skip the harvest on Karn-
+        # tainted samples. Clear the tracker after to prevent
+        # double-folding.
+        if self._send_ts and packet_rx_md.tcp__tsecr is not None and packet_rx_md.tcp__tsecr != 0:
+            ts_rtt_ms = (stack.timer.now_ms - packet_rx_md.tcp__tsecr) & 0xFFFF_FFFF
+            self._rto_state = update(self._rto_state, ts_rtt_ms)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 7323 §4 TSecr-driven RTTM: "
+                f"rtt={ts_rtt_ms} ms via TSecr="
+                f"{packet_rx_md.tcp__tsecr}; rto_state="
+                f"{self._rto_state}",
+            )
+            self._rtt_sample_seq = None
+            self._rtt_sample_send_time_ms = None
+            self._rtt_sample_retransmitted = False
+
         # RFC 6298 §4 sample harvest: peer's cumulative ACK has
         # advanced past the seq of our pending RTT sample. Fold
         # the observed RTT into '_rto_state' iff the sample was
