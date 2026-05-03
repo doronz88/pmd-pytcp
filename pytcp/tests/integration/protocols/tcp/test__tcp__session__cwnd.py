@@ -698,15 +698,23 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         # fast-retransmit machinery entirely).
         self._advance(ms=1)
 
-    def test__cwnd__fast_retransmit_halves_ssthresh_and_inflates_cwnd(self) -> None:
+    def test__cwnd__fast_retransmit_halves_ssthresh_and_sets_cwnd_to_pipe(self) -> None:
         """
-        Ensure that when the third duplicate ACK fires fast-
-        retransmit, the sender sets ssthresh =
-        max(FlightSize/2, 2*SMSS) and cwnd = ssthresh +
-        3*SMSS, granting permission to send three new
-        segments while the retransmit is in flight.
+        Ensure that when the third duplicate ACK fires
+        fast-retransmit, the sender sets ssthresh =
+        max(FlightSize/2, 2*SMSS) per RFC 5681 §3.2 step 2
+        AND, per RFC 6937 §3.1, sets cwnd to 'pipe + sndcnt'
+        where sndcnt is computed from the proportional
+        formula. On the trigger ACK 'prr_delivered = 0' and
+        'prr_out = 0' (the retransmit has not fired yet at
+        the moment cwnd is set), so 'sndcnt = 0' and 'cwnd =
+        pipe = FlightSize at entry'. This replaces the
+        legacy RFC 5681 §3.2 step 3 'cwnd = ssthresh +
+        3*SMSS' coarse approximation with PRR's data-driven
+        per-ACK pacing.
 
-        Reference: RFC 5681 §3.2 (fast-retransmit ssthresh halving and cwnd inflation).
+        Reference: RFC 5681 §3.2 (fast-retransmit ssthresh halving).
+        Reference: RFC 6937 §3.1 (PRR per-ACK cwnd = pipe + sndcnt).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -722,14 +730,23 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
                 f"{expected_ssthresh}. Got {session._ssthresh}."
             ),
         )
+        # PRR cwnd at entry = pipe = FlightSize (snapshot
+        # in '_recover_fs' = 5*MSS for the 5-segment
+        # scenario). The retransmit has fired by the time we
+        # observe '_cwnd' here but cwnd is recomputed on each
+        # ACK, not on each send - so the value reflects the
+        # entry-trigger ACK's computation.
+        expected_cwnd = 5 * PEER__MSS
         self.assertEqual(
             session._cwnd,
-            expected_ssthresh + 3 * PEER__MSS,
+            expected_cwnd,
             msg=(
-                "Fast-retransmit MUST inflate cwnd to "
-                "ssthresh + 3*SMSS = "
-                f"{expected_ssthresh + 3 * PEER__MSS}. Got "
-                f"{session._cwnd}."
+                "RFC 6937 §3.1: cwnd at recovery entry MUST "
+                "equal pipe (= FlightSize, no extra inflation). "
+                f"Expected {expected_cwnd}, got {session._cwnd}. "
+                "The legacy RFC 5681 §3.2 step 3 'ssthresh + "
+                "3*SMSS' coarse approximation is what PRR "
+                "replaces."
             ),
         )
 
@@ -2031,5 +2048,75 @@ class TestTcpCwndPrr(TcpSessionTestCase):
                 "the delta of newly-SACK'd bytes, not a sum "
                 f"of all SACK ranges seen. Pre={prr_after_first}, "
                 f"got {session._prr_delivered}, expected unchanged."
+            ),
+        )
+
+    def test__cwnd__prr__cum_ack_during_recovery_sets_cwnd_per_prr_formula(self) -> None:
+        """
+        Ensure that on a cumulative ACK during recovery,
+        cwnd is recomputed per the PRR formula:
+
+            sndcnt = CEIL(prr_delivered * ssthresh / RecoverFS) - prr_out
+            cwnd   = pipe + max(0, sndcnt)
+
+        where pipe is the RFC 6675 §4 FlightSize estimate.
+        For the 5-segment scenario:
+
+            RecoverFS  = 5 * SMSS = 7300
+            ssthresh   = max(7300/2, 2*SMSS) = 3650
+            entry: prr_delivered=0, prr_out=SMSS post-retransmit
+            cum-ACK +1*SMSS: prr_delivered = SMSS = 1460
+                pipe = SND.MAX - SND.UNA = 4*SMSS = 5840
+                sndcnt = CEIL(1460*3650/7300) - 1460
+                       = 730 - 1460 = -730 -> max(0, ·) = 0
+                cwnd = pipe + 0 = 5840
+
+        The legacy NewReno 'partial_cum_ack_deflate' would
+        leave cwnd at 'ssthresh + 3*SMSS = 8030' instead -
+        a 2190-byte over-estimate that PRR's proportional
+        ratio corrects.
+
+        Reference: RFC 6937 §3.1 (PRR proportional cwnd recomputation per ACK).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_enter_recovery(session=session, n_segments=5)
+
+        ssthresh = session._ssthresh
+        recover_fs = session._recover_fs
+        # Sanity-check the setup math.
+        self.assertEqual(
+            ssthresh,
+            max(5 * PEER__MSS // 2, 2 * PEER__MSS),
+            msg="Setup precondition: ssthresh = max(5*MSS/2, 2*MSS) = 3650.",
+        )
+        self.assertEqual(
+            recover_fs,
+            5 * PEER__MSS,
+            msg="Setup precondition: RecoverFS = 5*MSS = 7300.",
+        )
+
+        # Cum-ACK advancing SND.UNA by exactly 1 SMSS.
+        cum_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=cum_ack)
+
+        expected_cwnd = 4 * PEER__MSS  # pipe (= 5*MSS - 1*MSS) + sndcnt (0)
+        self.assertEqual(
+            session._cwnd,
+            expected_cwnd,
+            msg=(
+                "RFC 6937 §3.1: cwnd after a 1*SMSS cum-ACK "
+                "during recovery MUST equal 'pipe + max(0, "
+                "sndcnt)'. With prr_delivered=SMSS, prr_out=SMSS, "
+                f"ssthresh={ssthresh}, RecoverFS={recover_fs}: "
+                f"sndcnt clamps to 0 and cwnd = pipe = "
+                f"{expected_cwnd}. Got {session._cwnd}."
             ),
         )
