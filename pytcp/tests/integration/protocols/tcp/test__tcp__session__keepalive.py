@@ -63,6 +63,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__constants import DELAYED_ACK_DELAY
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
@@ -668,13 +669,18 @@ class TestTcpKeepalive(TcpSessionTestCase):
             ),
         )
 
-        # Advance to one tick past the NEW idle boundary (full
-        # KEEPALIVE_IDLE_TIME after the data activity). The timer,
-        # if correctly re-armed, must fire exactly one probe here.
-        # Total elapsed since data activity at this point will be
-        # (2 * margin) + remaining = KEEPALIVE_IDLE_TIME + 1, so
-        # advance the difference.
-        remaining_to_new_boundary = TEST__KEEPALIVE_IDLE_TIME_MS - 2 * margin_ms + 1
+        # Advance to one tick past the EFFECTIVE new boundary.
+        # Peer data triggers the RFC 1122 §4.2.3.2 delayed-ACK
+        # timer (DELAYED_ACK_DELAY ms). When that timer fires,
+        # the session emits its inline ACK to peer's data; that
+        # outbound ACK itself counts as activity for keep-alive
+        # purposes and resets the idle timer to KEEPALIVE_IDLE_TIME.
+        # The keep-alive probe therefore fires at
+        # 'data_arrival + DELAYED_ACK_DELAY + KEEPALIVE_IDLE_TIME'.
+        # We are currently '2 * margin_ms' past data arrival, so
+        # the remaining advance is the difference.
+        new_boundary_offset = DELAYED_ACK_DELAY + TEST__KEEPALIVE_IDLE_TIME_MS
+        remaining_to_new_boundary = new_boundary_offset - 2 * margin_ms + 1
         new_boundary_tx = self._advance(ms=remaining_to_new_boundary)
         probes_at_new_boundary = sum(1 for frame in new_boundary_tx if _is_probe(frame))
         self.assertEqual(
@@ -682,9 +688,10 @@ class TestTcpKeepalive(TcpSessionTestCase):
             1,
             msg=(
                 "RFC 1122 §4.2.3.6: after data activity resets the idle timer, "
-                "the timer must re-arm and fire ONE probe at the NEW boundary "
-                f"(KEEPALIVE_IDLE_TIME={TEST__KEEPALIVE_IDLE_TIME_MS} ms after "
-                f"the data). Got {probes_at_new_boundary} probe(s) - the timer "
-                "either disarmed entirely or never fired."
+                "the timer must re-arm and fire ONE probe at the new effective "
+                f"boundary ({new_boundary_offset} ms after data arrival, "
+                "accounting for the §4.2.3.2 delayed-ACK that the session sends "
+                f"in response to peer's data). Got {probes_at_new_boundary} "
+                "probe(s) - the timer either disarmed entirely or never fired."
             ),
         )

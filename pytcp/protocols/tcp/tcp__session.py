@@ -180,6 +180,27 @@ class TcpSession:
         # unanswered-probe tear-down).
         self._keepalive_enabled: bool = False
 
+        # Counter of consecutive unanswered keep-alive probes per
+        # RFC 1122 §4.2.3.6. Reset to 0 by '_keepalive_arm_idle'
+        # on any peer-acknowledged activity; incremented by
+        # '_keepalive_tick' on each probe emission. When the
+        # counter reaches 'tcp__constants.KEEPALIVE_PROBE_MAX_COUNT'
+        # the connection is declared dead (state -> CLOSED with
+        # ConnError.TIMEOUT).
+        self._keepalive_probes_unacked: int = 0
+
+        # Whether the keep-alive timer is currently armed. We need
+        # this in addition to 'stack.timer._timers'-membership
+        # because production 'Timer.is_expired' returns True both
+        # when a timer has not been registered yet AND when its
+        # countdown has reached zero - 'is_expired' alone cannot
+        # distinguish "never armed" from "fired and pending
+        # service". Without this flag, a session that opts in to
+        # keep-alive after handshake completion would have
+        # '_keepalive_tick' immediately treat the absent timer as
+        # expired and fire a probe burst.
+        self._keepalive_active: bool = False
+
         # SACK scoreboard tracking peer-SACKed-but-not-yet-
         # cumulatively-acked send-side ranges per RFC 2018 §3 /
         # RFC 6675 §3. Updated by '_ingest_sack_info' on every
@@ -620,6 +641,14 @@ class TcpSession:
             stack.timer.unregister_method(self.tcp_fsm)
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
+        # RFC 1122 §4.2.3.6: arm the keep-alive idle timer on the
+        # transition into ESTABLISHED (no-op when keep-alive is
+        # disabled). Done here rather than in 'fsm__syn_sent' /
+        # 'fsm__syn_rcvd' / 'fsm__listen' so all three handshake
+        # paths share a single arm site.
+        if state is FsmState.ESTABLISHED:
+            self._keepalive_arm_idle()
+
     def _transmit_packet(
         self,
         *,
@@ -752,6 +781,14 @@ class TcpSession:
         # every-other-segment counter resets to zero.
         if flag_ack:
             self._delayed_ack_segments_pending = 0
+
+        # RFC 1122 §4.2.3.6: any outbound segment counts as
+        # "activity" for keep-alive purposes - reset the idle
+        # timer. No-op when keep-alive is disabled. The keep-alive
+        # PROBE itself bypasses this method (it goes through
+        # 'stack.packet_handler.send_tcp_packet' directly), so a
+        # probe emission does not spuriously reset its own timer.
+        self._keepalive_arm_idle()
 
         # If in ESTABLISHED state then reset ACK delay timer.
         if self._state is FsmState.ESTABLISHED:
@@ -951,6 +988,95 @@ class TcpSession:
             return
         self._transmit_packet(flag_ack=True)
         stack.timer.register_timer(name=rate_limit_timer, timeout=tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
+
+    def _keepalive_arm_idle(self) -> None:
+        """
+        (Re)arm the keep-alive idle timer per RFC 1122 §4.2.3.6.
+
+        Called from any code path that observes peer activity (an
+        inbound data segment, an inbound ACK, or our own outbound
+        transmission - peer's eventual response will reset the
+        timer naturally) and from '_change_state' on the transition
+        into ESTABLISHED. No-op when '_keepalive_enabled' is False.
+        Resetting also clears the unanswered-probe counter so a
+        fresh idle window starts from zero.
+        """
+
+        if not self._keepalive_enabled:
+            return
+        self._keepalive_probes_unacked = 0
+        self._keepalive_active = True
+        stack.timer.register_timer(
+            name=f"{self}-keepalive",
+            timeout=tcp__constants.KEEPALIVE_IDLE_TIME,
+        )
+
+    def _keepalive_tick(self) -> None:
+        """
+        Per-tick keep-alive timer service.
+
+        Called from the synchronized-state FSM timer branch
+        (currently ESTABLISHED only). When the keep-alive timer
+        fires, either emit another probe or - if
+        'KEEPALIVE_PROBE_MAX_COUNT' probes have already gone
+        unanswered - tear the connection down per RFC 1122
+        §4.2.3.6. The probe wire shape is an ACK with
+        'SEG.SEQ = SND.NXT - 1' so peer's TCP is forced to respond
+        with an ACK at the current SND.NXT (which we treat as a
+        probe-ack and use to reset the idle timer); peer's
+        application sees no segment text. The probe is emitted
+        directly via the packet handler rather than via
+        '_transmit_packet' because the latter rewrites SND.NXT
+        from its 'seq' argument and the probe must consume no
+        sequence space.
+
+        Lazy-arm: when 'enable_keepalive' is flipped True after
+        handshake completion (e.g. via a setsockopt-equivalent
+        path), the first tick sees '_keepalive_enabled = True'
+        but '_keepalive_active = False'. Arm the timer here and
+        return so the next tick begins the regular idle countdown.
+        """
+
+        if not self._keepalive_enabled:
+            return
+        if not self._keepalive_active:
+            self._keepalive_arm_idle()
+            return
+        if not stack.timer.is_expired(f"{self}-keepalive"):
+            return
+        if self._keepalive_probes_unacked >= tcp__constants.KEEPALIVE_PROBE_MAX_COUNT:
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - Keep-alive: {self._keepalive_probes_unacked} probes "
+                "unacked, tearing down connection (RFC 1122 §4.2.3.6)",
+            )
+            self._connection_error = ConnError.TIMEOUT
+            self._event__connect.release()
+            self._event__rx_buffer.set()
+            self._change_state(FsmState.CLOSED)
+            return
+        stack.packet_handler.send_tcp_packet(
+            ip__local_address=self._local_ip_address,
+            ip__remote_address=self._remote_ip_address,
+            tcp__local_port=self._local_port,
+            tcp__remote_port=self._remote_port,
+            tcp__flag_ack=True,
+            tcp__seq=sub32(self._snd_nxt, 1),
+            tcp__ack=self._rcv_nxt,
+            tcp__win=self._rcv_wnd >> self._rcv_wsc,
+        )
+        self._keepalive_probes_unacked += 1
+        stack.timer.register_timer(
+            name=f"{self}-keepalive",
+            timeout=tcp__constants.KEEPALIVE_PROBE_INTERVAL,
+        )
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Keep-alive: emitted probe "
+            f"{self._keepalive_probes_unacked}/"
+            f"{tcp__constants.KEEPALIVE_PROBE_MAX_COUNT} "
+            f"at seq={sub32(self._snd_nxt, 1)} ack={self._rcv_nxt}",
+        )
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -1438,6 +1564,11 @@ class TcpSession:
         """
         Process regular data/ACK packet.
         """
+
+        # RFC 1122 §4.2.3.6: peer activity (ACK and / or data)
+        # resets the keep-alive idle timer. No-op when keep-alive
+        # is disabled.
+        self._keepalive_arm_idle()
 
         # Make note of the local SEQ that has been acked by peer.
         # Modular 'max': SND.UNA advances iff peer's ack is

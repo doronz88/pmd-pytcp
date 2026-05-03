@@ -61,6 +61,7 @@ def fsm__established(
         session._retransmit_packet_timeout()
         session._transmit_data()
         session._delayed_ack()
+        session._keepalive_tick()
         if session._closing and not session._tx_buffer:
             session._change_state(FsmState.FIN_WAIT_1)
         return
@@ -121,6 +122,12 @@ def fsm__established(
             and packet_rx_md.tcp__ack == session._snd_una
             and not packet_rx_md.tcp__data
         ):
+            # RFC 1122 §4.2.3.6: any peer ACK at SND.UNA - whether
+            # a wnd-update, a true dup-ACK, or a keep-alive probe-
+            # ack - signals peer is alive. Reset the keep-alive
+            # idle timer regardless of which sub-branch handles
+            # the segment below.
+            session._keepalive_arm_idle()
             new_wnd = packet_rx_md.tcp__win << session._snd_wsc
             if new_wnd != session._snd_wnd:
                 __debug__ and log(
@@ -137,9 +144,20 @@ def fsm__established(
                     session._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
                 session._ingest_sack_info(packet_rx_md)
                 return
-            # Window unchanged -> true duplicate ACK per RFC
-            # 5681 §2(e). Hand off to the fast-retransmit
-            # machinery.
+            # Idle session (SND.UNA == SND.NXT) with an ACK at
+            # SND.UNA: this is a keep-alive probe-ack (RFC 1122
+            # §4.2.3.6) - peer is responding to a probe we sent at
+            # SND.NXT-1, or sending an unsolicited liveness ACK.
+            # Either way the keep-alive timer above has been reset;
+            # absorb the segment without contributing to the dup-
+            # ACK fast-retransmit count (there is nothing to
+            # retransmit anyway, and three such probe-acks would
+            # otherwise spuriously enter recovery).
+            if session._snd_una == session._snd_nxt:
+                return
+            # Window unchanged AND data is in flight -> true
+            # duplicate ACK per RFC 5681 §2(e). Hand off to the
+            # fast-retransmit machinery.
             session._retransmit_packet_request(packet_rx_md)
             return
         # Packet with higher SEQ than what we are expecting -> Store it and
