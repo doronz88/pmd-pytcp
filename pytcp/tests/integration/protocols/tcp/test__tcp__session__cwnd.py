@@ -475,3 +475,106 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
                 f"connection - wrong by the §3.1 narrative."
             ),
         )
+
+    def test__cwnd__cum_ack_recomputes_snd_ewn_from_cwnd_via_runtime_path(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 9293 §3.8.4 / RFC 5681 §3.1 contract under
+        the actual '_process_ack_packet' code path: a cum-ACK
+        that grows '_cwnd' MUST propagate the new value into
+        '_snd_ewn = min(_cwnd, _snd_wnd)'. This is the
+        runtime-driven complement of the
+        'snd_ewn_tracks_min_of_cwnd_and_snd_wnd' regression
+        guard - that test sets fields manually, this one drives
+        a real peer ACK and asserts the runtime maintains the
+        invariant.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Pin
+              cwnd = 4 * MSS, ssthresh = INT32_MAX (default,
+              guarantees slow-start phase). Pin
+              snd_wnd = 100 * MSS so cwnd is the tighter bound.
+            * Send 1 MSS; advance one tick so the segment
+              fires.
+            * Drive a peer ACK covering the segment. Per RFC
+              5681 §3.1 the runtime MUST grow cwnd to
+              4*MSS + min(MSS, MSS) = 5*MSS, and per RFC 9293
+              §3.8.4 propagate that into _snd_ewn = min(5*MSS,
+              100*MSS) = 5*MSS.
+            * Assert post-ACK '_cwnd == 5*MSS'.
+            * Assert post-ACK '_snd_ewn == _cwnd' (the runtime
+              recomputed it from the new cwnd).
+            * Assert post-ACK '_snd_ewn == min(_cwnd,
+              _snd_wnd)' (the canonical RFC 9293 §3.8.4
+              invariant).
+
+        Fails today: '_process_ack_packet' computes
+        '_snd_ewn = min(_snd_ewn << 1, _snd_wnd)' directly,
+        ignoring '_cwnd' entirely. Post-ACK '_snd_ewn' would
+        be 8*MSS (doubled), '_cwnd' stays at 4*MSS (no
+        runtime touches it), so the invariant breaks.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Pin slow-start regime with cwnd as the tighter bound.
+        session._cwnd = 4 * PEER__MSS
+        session._ssthresh = 0x7FFF_FFFF
+        session._snd_wnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Send 1 MSS, let it fire.
+        payload = b"x" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Drive cum-ACK.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=100 * PEER__MSS,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # §3.1 slow-start: cwnd += min(bytes_acked, SMSS) per ACK.
+        expected_cwnd = 4 * PEER__MSS + min(PEER__MSS, PEER__MSS)
+        self.assertEqual(
+            session._cwnd,
+            expected_cwnd,
+            msg=(
+                f"RFC 5681 §3.1: cum-ACK in slow-start MUST "
+                f"grow cwnd by min(bytes_acked, SMSS). Expected "
+                f"{expected_cwnd}, got {session._cwnd}. The "
+                f"runtime '_process_ack_packet' has no §3.1 "
+                f"growth hook today."
+            ),
+        )
+        self.assertEqual(
+            session._snd_ewn,
+            session._cwnd,
+            msg=(
+                f"RFC 9293 §3.8.4: with snd_wnd >> cwnd, "
+                f"_snd_ewn MUST equal _cwnd post-ACK. The "
+                f"runtime currently does '_snd_ewn = "
+                f"min(_snd_ewn << 1, _snd_wnd)' which doubles "
+                f"_snd_ewn to {2 * 4 * PEER__MSS} bytes "
+                f"regardless of _cwnd; got "
+                f"_snd_ewn={session._snd_ewn}, "
+                f"_cwnd={session._cwnd}."
+            ),
+        )
+        self.assertEqual(
+            session._snd_ewn,
+            min(session._cwnd, session._snd_wnd),
+            msg=(
+                f"RFC 9293 §3.8.4 canonical invariant: _snd_ewn "
+                f"= min(_cwnd, _snd_wnd) after every cum-ACK. "
+                f"Got _snd_ewn={session._snd_ewn}, "
+                f"min={min(session._cwnd, session._snd_wnd)}."
+            ),
+        )
