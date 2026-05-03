@@ -1191,3 +1191,132 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             ts_recent_pre,
             msg=("PAWS-rejected segment MUST NOT update " "'_ts_recent'."),
         )
+
+
+class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
+    """
+    Cross-RFC interaction (Phase B1 of the test-coverage audit):
+    bilateral TSopt negotiation across the passive-open path,
+    confirming the TSopt + listener fork pattern composes
+    correctly with the existing wildcard-listen mechanism.
+    """
+
+    def _make_listen_session(self, *, iss: int) -> tuple[TcpSocket, TcpSession]:
+        """Build a wildcard-listen TcpSession."""
+
+        from net_addr import Ip4Address as _Ip4Address
+        from pytcp.protocols.tcp.tcp__enums import SysCall as _SysCall
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = _Ip4Address()
+        sock._remote_port = 0
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=_Ip4Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=_SysCall.LISTEN)
+        return sock, session
+
+    def test__ts__passive_open_with_peer_tsopt_emits_syn_ack_with_tsopt(self) -> None:
+        """
+        Cross-RFC regression guard: a peer SYN carrying TSopt
+        plus WSCALE plus SACK-permitted causes the listener
+        to spawn a child whose SYN+ACK echoes peer's TSval and
+        carries our own TSopt + WSCALE + SACK-permitted.
+        """
+
+        listen_sock, _ = self._make_listen_session(iss=0x0000_3000)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_4000,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            wscale=7,
+            sackperm=True,
+            tsval=PEER__TSVAL_INITIAL,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn)
+        tx = self._advance(ms=1)
+
+        self.assertEqual(
+            len(tx),
+            1,
+            msg="Passive-open path must emit exactly one SYN+ACK on the first tick.",
+        )
+        syn_ack = self._parse_tx(tx[0])
+        self.assertIn("SYN", syn_ack.flags)
+        self.assertIn("ACK", syn_ack.flags)
+        self.assertIsNotNone(
+            syn_ack.tsval,
+            msg="Cross-RFC: peer offered TSopt; our SYN+ACK MUST echo with our TSopt.",
+        )
+        self.assertEqual(
+            syn_ack.tsecr,
+            PEER__TSVAL_INITIAL,
+            msg=(
+                "Cross-RFC: SYN+ACK's TSecr MUST equal peer's " f"TSval ({PEER__TSVAL_INITIAL}). Got {syn_ack.tsecr}."
+            ),
+        )
+        self.assertIsNotNone(
+            syn_ack.wscale,
+            msg="Cross-RFC: peer offered WSCALE; our SYN+ACK MUST advertise WSCALE.",
+        )
+        self.assertTrue(
+            syn_ack.sackperm,
+            msg="Cross-RFC: peer offered SACK-permitted; our SYN+ACK MUST advertise SACK-permitted.",
+        )
+
+        # Reset stack.sockets to the listener-only state so other tests are
+        # not contaminated by the spawned child socket.
+        for sid in list(stack.sockets):
+            if sid != listen_sock.socket_id:
+                del stack.sockets[sid]
+
+    def test__ts__passive_open_without_peer_tsopt_omits_tsopt_in_syn_ack(self) -> None:
+        """
+        Cross-RFC regression guard: a peer SYN without TSopt
+        causes the listener's SYN+ACK to OMIT TSopt per RFC
+        7323 §3 bilateral negotiation.
+        """
+
+        listen_sock, _ = self._make_listen_session(iss=0x0000_3100)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_4000,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        tx = self._advance(ms=1)
+
+        self.assertEqual(len(tx), 1)
+        syn_ack = self._parse_tx(tx[0])
+        self.assertIsNone(
+            syn_ack.tsval,
+            msg=(
+                "Cross-RFC: peer did not offer TSopt; our SYN+ACK "
+                "MUST NOT advertise TSopt per RFC 7323 §3 bilateral "
+                "negotiation."
+            ),
+        )
+
+        for sid in list(stack.sockets):
+            if sid != listen_sock.socket_id:
+                del stack.sockets[sid]

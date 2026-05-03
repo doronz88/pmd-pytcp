@@ -1009,3 +1009,120 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
                 f"of idle time. Got {probe_count} probe(s)."
             ),
         )
+
+
+class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
+    """
+    Cross-RFC interaction (Phase B1 of the test-coverage audit):
+    a keep-alive probe fired while the session is in fast
+    recovery MUST NOT clear '_recovery_point' or otherwise
+    interfere with the RFC 5681 §3.2 / RFC 6582 NewReno
+    recovery state. The probe is a special-purpose ACK at
+    'SND.NXT - 1'; the recovery machinery uses 'SND.UNA' and
+    'SND.MAX' as anchors and is independent.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Handshake without SACK so NewReno is the recovery path."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def test__keepalive__probe_during_fast_recovery_preserves_recovery_point(self) -> None:
+        """
+        Cross-RFC regression guard: enter fast recovery, fire
+        a keep-alive probe (manually, by directly invoking the
+        keepalive helper), assert '_recovery_point' is
+        unchanged and 'cwnd' is unchanged.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Get N segments in flight then enter recovery.
+        n_segments = 5
+        payload = b"x" * (n_segments * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(n_segments):
+            self._advance(ms=1)
+
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+        recovery_point_pre = session._recovery_point
+        cwnd_pre = session._cwnd
+        ssthresh_pre = session._ssthresh
+        self.assertNotEqual(
+            recovery_point_pre,
+            0,
+            msg="Setup invariant: '_recovery_point' MUST be set after entering fast recovery.",
+        )
+
+        # Fire a keep-alive probe directly. '_keepalive_tick'
+        # synthesizes the wire-shape probe (ACK at SND.NXT - 1)
+        # without touching '_recovery_point' or cwnd.
+        session._keepalive_enabled = True
+        session._keepalive_tick()
+
+        self.assertEqual(
+            session._recovery_point,
+            recovery_point_pre,
+            msg=(
+                "Cross-RFC: a keep-alive probe MUST NOT clear "
+                "'_recovery_point'. The probe is independent of "
+                "RFC 5681 §3.2 fast-recovery state."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            cwnd_pre,
+            msg="Cross-RFC: a keep-alive probe MUST NOT change cwnd.",
+        )
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_pre,
+            msg="Cross-RFC: a keep-alive probe MUST NOT change ssthresh.",
+        )

@@ -1790,3 +1790,121 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
                 f"{session._cwnd}."
             ),
         )
+
+
+class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
+    """
+    Cross-RFC interaction (Phase B1 of the test-coverage audit):
+    RFC 6582 NewReno fast recovery interacting with the RFC 6298
+    RTO retransmit-timer fire mid-recovery. The two mechanisms
+    must compose cleanly:
+
+      - Entering recovery: cwnd = ssthresh + 3*SMSS, _recovery_point
+        set to SND.MAX (RFC 5681 §3.2 step 3).
+      - RTO fires before _recovery_point reached: cwnd collapses
+        to LW=SMSS, ssthresh halves AGAIN, _recovery_point MUST
+        be cleared (we're back in slow-start, not in recovery).
+      - Subsequent partial cum-ACK MUST NOT trigger NewReno
+        deflation - the post-RTO recovery is a fresh slow-start
+        re-entry, not a continuation.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Handshake without SACK so NewReno is the canonical recovery path."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def test__cwnd__rto_during_fast_recovery_clears_recovery_point_and_resets_cwnd(self) -> None:
+        """
+        Cross-RFC regression guard: an RTO timeout fired while
+        in fast recovery clears '_recovery_point' AND collapses
+        cwnd to LW=SMSS. Subsequent partial cum-ACK does NOT
+        run the NewReno deflation path because recovery state
+        is gone.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Get N segments in flight then enter recovery via 3 dup-ACKs.
+        n_segments = 5
+        payload = b"x" * (n_segments * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(n_segments):
+            self._advance(ms=1)
+
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+        recovery_point_in_recovery = session._recovery_point
+        self.assertNotEqual(
+            recovery_point_in_recovery,
+            0,
+            msg="Setup invariant: '_recovery_point' MUST be set after entering fast recovery.",
+        )
+
+        # Force the retransmit timer to expire so RTO fires
+        # while still in recovery. The RTO handler runs §3.1
+        # ssthresh halving + cwnd=LW reset.
+        stack.timer.register_timer(name=f"{session}-retransmit", timeout=0)
+        self._advance(ms=1)
+
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "RFC 5681 §3.1 RTO during fast recovery: "
+                "'_recovery_point' MUST be cleared so subsequent "
+                "partial cum-ACKs follow the §3.1 slow-start path, "
+                "not the §3.2 / RFC 6582 NewReno path."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            session._snd_mss,
+            msg="RFC 5681 §3.1 RTO: cwnd MUST collapse to LW=SMSS for slow-start re-entry.",
+        )

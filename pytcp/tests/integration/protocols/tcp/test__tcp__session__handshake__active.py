@@ -2285,3 +2285,42 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "stuck for the entire graceful-close lifecycle."
             ),
         )
+
+    def test__active_open__outbound_syn_carries_tsopt_wscale_sackperm_together(self) -> None:
+        """
+        Cross-RFC regression guard (Phase B1 of the test-coverage
+        audit): the active-open SYN MUST simultaneously carry
+        MSS (RFC 6691), WSCALE (RFC 7323 §2), TSopt (RFC 7323
+        §3), and SACK-Permitted (RFC 2018) - the canonical
+        modern-TCP option set. Pins that the four shipped option
+        emitters compose without one accidentally suppressing
+        another.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        tx = self._advance(ms=1)
+
+        self.assertEqual(len(tx), 1, msg="Active-open SYN tick must emit exactly one frame.")
+        syn = self._parse_tx(tx[0])
+        self.assertIn("SYN", syn.flags)
+        self.assertEqual(syn.mss, 1460, msg="Outbound SYN MUST advertise MSS=1460 (RFC 6691).")
+        self.assertEqual(syn.wscale, 7, msg="Outbound SYN MUST advertise WSCALE=7 (RFC 7323 §2).")
+        self.assertIsNotNone(
+            syn.tsval,
+            msg="Outbound SYN MUST advertise TSopt with TSval set (RFC 7323 §3).",
+        )
+        self.assertEqual(
+            syn.tsecr,
+            0,
+            msg="Outbound SYN's TSecr MUST be 0 (peer's TSval is unknown).",
+        )
+        self.assertTrue(
+            syn.sackperm,
+            msg="Outbound SYN MUST advertise SACK-Permitted (RFC 2018).",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="State must be SYN_SENT after the initial SYN.",
+        )

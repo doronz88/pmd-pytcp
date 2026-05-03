@@ -2321,3 +2321,70 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             session._pending_dsack,
             msg="Disjoint OOO ingestion must not stash a pending DSACK report.",
         )
+
+    def test__sack__cross_rfc__paws_drops_stale_segment_before_dsack_detector(self) -> None:
+        """
+        Cross-RFC regression guard (Phase B1 of the test-coverage
+        audit): a stale-TSval segment that would otherwise be
+        a DSACK candidate (fully duplicate, below RCV.NXT) MUST
+        be dropped by RFC 7323 §5 PAWS BEFORE the RFC 2883 DSACK
+        detector fires; no DSACK report on the next outbound ACK.
+        """
+
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_sackperm=True,
+        )
+        # Promote the session to bilateral TSopt. The handshake
+        # helper doesn't drive TSopt; flip the flags directly so
+        # the post-handshake test focus is on the PAWS+DSACK
+        # interaction, not on the negotiation.
+        session._send_ts = True
+        session._ts_recent = 0x1234_5678
+
+        # Drive an in-order data segment so RCV.NXT advances,
+        # creating the precondition for a "fully duplicate" segment.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=0x1234_5679,
+            tsecr=0x1234_5678,
+            payload=b"hello",
+        )
+        self._drive_rx(frame=peer_data)
+        # Drain the delayed-ACK timer so '_pending_dsack' state is
+        # observable cleanly.
+        self._advance(ms=400)
+        session._pending_dsack = None
+
+        # Now drive a stale-TSval, fully-duplicate segment. The
+        # DSACK detector at '_check_segment_acceptability' would
+        # ordinarily latch '_pending_dsack' for this segment; PAWS
+        # must drop the segment first.
+        stale_dup = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=0x1234_5670,  # < _ts_recent
+            tsecr=0x1234_5678,
+            payload=b"hello",
+        )
+        self._drive_rx(frame=stale_dup)
+
+        self.assertIsNone(
+            session._pending_dsack,
+            msg=(
+                "Cross-RFC: PAWS-rejected segment MUST NOT latch a "
+                "pending DSACK report. The PAWS check at the FSM "
+                "dispatch boundary fires BEFORE the DSACK detector "
+                "in '_check_segment_acceptability'."
+            ),
+        )
