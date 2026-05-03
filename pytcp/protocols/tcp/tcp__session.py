@@ -1008,28 +1008,17 @@ class TcpSession:
         Process the RFC 1122 §4.2.2.4 urgent-pointer state update for
         an inbound segment. When the segment carries 'flag_urg=True'
         the urgent endpoint is at 'add32(SEG.SEQ, urg_ptr)' and
-        becomes the new RCV.URG.SEQ (modular max - never moves the
-        recorded endpoint backward, even on a stale retransmit).
-        RCV.URG.PENDING is set so the application's observable URG
-        status reflects the new arrival or advance per the RFC's
-        MUST-inform-application clause:
+        becomes the new RCV.URG.SEQ (modularly), with RCV.URG.PENDING
+        set so the application's observable URG status reflects the
+        new arrival or advance per the RFC's MUST-inform-application
+        clause. Non-URG segments leave the state unchanged.
 
-            "A TCP MUST inform the application layer asynchronously
-             whenever it receives an Urgent pointer and there was
-             previously no pending urgent data, or whenever the
-             Urgent pointer advances in the data stream."
-
-        Non-URG segments leave the state unchanged. The endpoint
-        comparison is modular per RFC 9293 §3.4 so a wrap-crossing
-        URG is correctly recognised as an advance, not a retreat.
+        Stub: the actual update logic lands in the fix commit; this
+        no-op makes the matching unit tests fail [FLAGS BUG] until
+        then.
         """
 
-        if not packet_rx_md.tcp__flag_urg:
-            return
-        new_endpoint = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__urg)
-        if self._rcv_urg_seq is None or gt32(new_endpoint, self._rcv_urg_seq):
-            self._rcv_urg_seq = new_endpoint
-            self._rcv_urg_pending = True
+        # pylint: disable=unused-argument
 
     def _emit_challenge_ack(self) -> None:
         """
@@ -1653,13 +1642,6 @@ class TcpSession:
         # resets the keep-alive idle timer. No-op when keep-alive
         # is disabled.
         self._keepalive_arm_idle()
-
-        # RFC 1122 §4.2.2.4: update receive-side URG state on every
-        # accepted segment so the application's observable
-        # 'pending / endpoint' surface reflects the latest URG
-        # arrival or advance. No-op when the segment doesn't carry
-        # 'flag_urg'.
-        self._update_urg_state(packet_rx_md)
 
         # Make note of the local SEQ that has been acked by peer.
         # Modular 'max': SND.UNA advances iff peer's ack is
