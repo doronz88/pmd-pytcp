@@ -172,6 +172,21 @@ class TcpSession:
         # (phase 4).
         self._send_sack: bool = False
 
+        # RFC 7323 §3 Timestamps option (TSopt) state. The
+        # opt-out flag '_advertise_ts' is application-level
+        # (default True, can be disabled before connect /
+        # listen). The bilateral-success flag '_send_ts' is set
+        # by the FSM during handshake when both sides
+        # advertised TSopt. '_ts_recent' carries peer's most-
+        # recently-seen TSval, echoed back as TSecr on every
+        # post-handshake outbound segment so peer can drive
+        # exact-RTT measurements per RFC 7323 §4. Phases 1-4
+        # of '.claude/rules/tcp_rfc7323_timestamps.md' wire
+        # negotiation, emission, RTTM, and PAWS in that order.
+        self._advertise_ts: bool = True
+        self._send_ts: bool = False
+        self._ts_recent: int = 0
+
         # RFC 1122 §4.2.3.6 keep-alive opt-in flag. Defaults False
         # per the RFC's MUST: "If keep-alive are included, the
         # application MUST be able to turn them on or off for

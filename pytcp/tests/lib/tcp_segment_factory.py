@@ -45,6 +45,7 @@ from net_proto.protocols.tcp.options.tcp__option__sack import (
     TcpSackBlock,
 )
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
+from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTimestamps
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from net_proto.protocols.tcp.options.tcp__options import TcpOption, TcpOptions
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
@@ -72,27 +73,28 @@ def _build_tcp_assembler(
     wscale: int | None,
     sackperm: bool,
     sack_blocks: Iterable[tuple[int, int]] | None,
+    tsval: int | None,
+    tsecr: int | None,
     payload: Buffer,
-    paws_ts: object,
 ) -> TcpAssembler:
     """
     Build the inner 'TcpAssembler' carrying the requested header
     fields, options, and payload. Validates the 'flags' set against
-    the supported names and raises 'NotImplementedError' for the
-    PAWS option slot reserved for future tests.
+    the supported names.
     """
-
-    if paws_ts is not None:
-        raise NotImplementedError(
-            "PAWS timestamps are not supported by 'tcp_segment_factory' yet; "
-            "the TCP assembler does not emit the option."
-        )
 
     flag_set = frozenset(flags)
     unknown = flag_set - TCP_FLAGS__VALID
     assert not unknown, f"Unknown TCP flag name(s) {sorted(unknown)!r}; supported: {sorted(TCP_FLAGS__VALID)!r}"
 
-    options = _build_options(mss=mss, wscale=wscale, sackperm=sackperm, sack_blocks=sack_blocks)
+    options = _build_options(
+        mss=mss,
+        wscale=wscale,
+        sackperm=sackperm,
+        sack_blocks=sack_blocks,
+        tsval=tsval,
+        tsecr=tsecr,
+    )
 
     return TcpAssembler(
         tcp__sport=sport,
@@ -120,12 +122,16 @@ def _build_options(
     wscale: int | None,
     sackperm: bool,
     sack_blocks: Iterable[tuple[int, int]] | None,
+    tsval: int | None,
+    tsecr: int | None,
 ) -> TcpOptions:
     """
     Build a 'TcpOptions' container holding the requested MSS,
-    WSCALE, SACK-permitted, and SACK options, padding with NOPs so
-    the total option block length is a multiple of 4 bytes (TCP
-    requires 4-byte alignment of the data offset).
+    WSCALE, SACK-permitted, SACK, and Timestamps options, padding
+    with NOPs so the total option block length is a multiple of 4
+    bytes (TCP requires 4-byte alignment of the data offset).
+    Timestamps requires both 'tsval' and 'tsecr' to be supplied
+    together (the wire option carries both fields).
     """
 
     options: list[TcpOption] = []
@@ -141,6 +147,14 @@ def _build_options(
 
     if sack_blocks is not None:
         options.append(TcpOptionSack(blocks=[TcpSackBlock(left, right) for left, right in sack_blocks]))
+
+    if tsval is not None or tsecr is not None:
+        assert tsval is not None and tsecr is not None, (
+            "'tsval' and 'tsecr' MUST be supplied together; the "
+            "Timestamps option is a single 10-byte option carrying "
+            "both fields."
+        )
+        options.append(TcpOptionTimestamps(tsval=tsval, tsecr=tsecr))
 
     pad_count = (-sum(len(opt) for opt in options)) % 4
     options.extend(TcpOptionNop() for _ in range(pad_count))
@@ -164,8 +178,9 @@ def build_tcp4(
     wscale: int | None = None,
     sackperm: bool = False,
     sack_blocks: Iterable[tuple[int, int]] | None = None,
+    tsval: int | None = None,
+    tsecr: int | None = None,
     payload: Buffer = b"",
-    paws_ts: object = None,
 ) -> bytes:
     """
     Build an Ethernet/IPv4/TCP frame with the supplied TCP fields and
@@ -184,8 +199,9 @@ def build_tcp4(
         wscale=wscale,
         sackperm=sackperm,
         sack_blocks=sack_blocks,
+        tsval=tsval,
+        tsecr=tsecr,
         payload=payload,
-        paws_ts=paws_ts,
     )
 
     ip4 = Ip4Assembler(
@@ -221,8 +237,9 @@ def build_tcp6(
     wscale: int | None = None,
     sackperm: bool = False,
     sack_blocks: Iterable[tuple[int, int]] | None = None,
+    tsval: int | None = None,
+    tsecr: int | None = None,
     payload: Buffer = b"",
-    paws_ts: object = None,
 ) -> bytes:
     """
     Build an Ethernet/IPv6/TCP frame with the supplied TCP fields and
@@ -241,8 +258,9 @@ def build_tcp6(
         wscale=wscale,
         sackperm=sackperm,
         sack_blocks=sack_blocks,
+        tsval=tsval,
+        tsecr=tsecr,
         payload=payload,
-        paws_ts=paws_ts,
     )
 
     ip6 = Ip6Assembler(

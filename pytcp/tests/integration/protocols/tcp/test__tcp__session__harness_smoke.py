@@ -184,14 +184,44 @@ class TestTcpSegmentFactory(TestCase):
             msg="Unknown-flag assertion must surface a specific message.",
         )
 
-    def test__factory__paws_ts_slot_raises_not_implemented(self) -> None:
+    def test__factory__timestamps_round_trip_through_parser(self) -> None:
         """
-        Ensure the reserved 'paws_ts' slot raises 'NotImplementedError'
-        so future PAWS work has a clear failing call site.
+        Ensure 'build_tcp4' encodes the supplied 'tsval=' / 'tsecr='
+        as a TCP Timestamps option (RFC 7323 §3) that round-trips
+        through the parser as a 'TcpTimestamps(tsval, tsecr)'.
         """
 
-        with self.assertRaises(NotImplementedError):
-            build_tcp4(sport=1, dport=2, paws_ts=(0, 0))
+        from net_proto.lib.packet_rx import PacketRx
+        from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
+        from net_proto.protocols.ip4.ip4__parser import Ip4Parser
+        from net_proto.protocols.tcp.tcp__parser import TcpParser
+
+        frame = build_tcp4(
+            sport=1,
+            dport=2,
+            tsval=0x1122_3344,
+            tsecr=0x5566_7788,
+        )
+        rx = PacketRx(frame)
+        EthernetParser(rx)
+        Ip4Parser(rx)
+        TcpParser(rx)
+
+        self.assertIsNotNone(
+            rx.tcp.timestamps,
+            msg="Built frame must carry a Timestamps option.",
+        )
+        assert rx.tcp.timestamps is not None
+        self.assertEqual(
+            rx.tcp.timestamps.tsval,
+            0x1122_3344,
+            msg="TSval must round-trip exactly through the parser.",
+        )
+        self.assertEqual(
+            rx.tcp.timestamps.tsecr,
+            0x5566_7788,
+            msg="TSecr must round-trip exactly through the parser.",
+        )
 
     def test__factory__sack_blocks_round_trip_through_parser(self) -> None:
         """

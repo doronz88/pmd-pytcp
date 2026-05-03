@@ -91,6 +91,8 @@ class TcpProbe:
     wscale: int | None
     sackperm: bool
     sack_blocks: tuple[tuple[int, int], ...]
+    tsval: int | None
+    tsecr: int | None
     payload: bytes
 
 
@@ -235,6 +237,9 @@ class TcpSessionTestCase(NetworkTestCase):
         sack_blocks: tuple[tuple[int, int], ...] = (
             () if sack_blocks_raw is None else tuple((block.left, block.right) for block in sack_blocks_raw)
         )
+        timestamps_raw = packet_rx.tcp._options.timestamps
+        tsval = timestamps_raw.tsval if timestamps_raw is not None else None
+        tsecr = timestamps_raw.tsecr if timestamps_raw is not None else None
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -248,6 +253,8 @@ class TcpSessionTestCase(NetworkTestCase):
             wscale=packet_rx.tcp._options.wscale,
             sackperm=bool(packet_rx.tcp._options.sackperm),
             sack_blocks=sack_blocks,
+            tsval=tsval,
+            tsecr=tsecr,
             payload=bytes(packet_rx.tcp.payload),
         )
 
