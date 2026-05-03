@@ -1,331 +1,371 @@
-# PyTCP — RFC 6298 RTO Full Integration Plan
+# PyTCP — RFC 6298 RTO Integration: Project Record
 
-Self-contained handoff plan for replacing PyTCP's per-seq retransmit
-machinery with a session-level RFC 6298 RTO estimator. The pure-
-function helper module (`pytcp/protocols/tcp/tcp__rto.py`) is
-already shipped in commits `8f52a81` (tests-first) + `cbecdf4`
-(impl). This plan covers the FSM-integration follow-up that the
-original sketch deferred.
+**Status: SHIPPED** (helper module + Phase 2 sample collection +
+Phase 3 session-level retransmit timer + Phase 4 §5.7
+restart-after-idle).
 
----
-
-## 1. Mission
-
-Today PyTCP's retransmit timer is **per-seq**:
-
-```python
-# tcp__session.py:831-834
-self._tx_retransmit_timeout_counter[seq] = (
-    self._tx_retransmit_timeout_counter.get(seq, -1) + 1
-)
-stack.timer.register_timer(
-    name=f"{self}-retransmit_seq-{seq}",
-    timeout=tcp__constants.PACKET_RETRANSMIT_TIMEOUT
-            * (1 << self._tx_retransmit_timeout_counter[seq]),
-)
-```
-
-Each unacked seq has its own backoff counter and its own timer
-entry. Cadence is fixed: 1 s, 2 s, 4 s, 8 s, 16 s, 32 s, 64 s
-regardless of actual RTT.
-
-RFC 6298 specifies **session-level** RTO computation and a
-**single retransmit timer per socket** (Linux's model). To wire
-in the helper from `pytcp/protocols/tcp/tcp__rto.py`, the per-seq
-machinery must be replaced with:
-
-1. One `_rto_state: RtoState` per session.
-2. One outstanding sample tracker `(seq, send_time_ms,
-   retransmitted)` for RFC 6298 §4 "one sample per RTT".
-3. One retransmit timer `f"{self}-retransmit"` driven by
-   `_rto_state.rto_ms`.
-4. Karn's algorithm (RFC 6298 §3): retransmits invalidate the
-   pending sample; ACKs of retransmitted segments don't yield
-   samples.
-5. Restart-after-idle (RFC 6298 §5.7): on resumed transmit after
-   long idle, reset to `INITIAL_RTO_MS`.
+This document was originally a handoff plan to execute the full
+RFC 6298 RTO wiring; it has now been rewritten as a completion
+record so a future session that wants to **extend** the RTO
+machinery (e.g. land RFC 7323 timestamps, RFC 8985 RACK-TLP, or
+the RFC 5681 cwnd interaction with `back_off`) has a clean
+starting point. The implementation history, phase-by-phase
+commit map, test inventory, and explicitly-deferred-work list
+are all captured below.
 
 ---
 
-## 2. Standing principles (preserved)
+## 1. Scope and references
 
-1. **Tests-first per phase.** Each phase opens with a tests-first
-   commit asserting RFC 6298 invariants on the new behaviour.
-   Failures are marked `[FLAGS BUG]` until the fix commit.
-2. **Suite invariant.** Suite count and pass count never drop
-   across a green commit boundary. Baseline at the start of this
-   plan is 7882 passing, 17 skipped, 0 failures (after the helper
-   was shipped).
-3. **Existing retransmit-test scenarios must keep passing OR
-   their assertions update with explicit RFC justification.**
-   `test__tcp__session__data_transfer__retransmit_timeout.py`
-   currently asserts "RTO=1000ms × 2^count" cadence. Post-RFC-6298
-   the cadence is "RTO=`rto_ms`, doubled per backoff". For mocked
-   handshakes the SYN+ACK RTT is sub-millisecond, the first
-   sample yields a sub-second RTO that clamps to MIN_RTO_MS=1000,
-   so cadence MAY look unchanged on those tests — but the
-   underlying mechanism is different. Audit each retransmit test
-   for hidden assumptions on the static formula.
-4. **No mid-flight visible-state changes for existing
-   ESTABLISHED tests.** Sessions that don't take RTT samples
-   (e.g. tests that drive only one segment then go silent) MUST
-   keep RTO=INITIAL_RTO_MS so existing assertions pass.
+| RFC      | Title                                              | Use |
+|----------|----------------------------------------------------|-----|
+| RFC 6298 | Computing TCP's Retransmission Timer               | Canonical for RTO estimator + Karn + timer lifecycle |
+| RFC 1122 | Host requirements                                  | §4.2.3.1 RTO bound, §4.2.3.5 R2 abort floor |
+| RFC 5681 | TCP Congestion Control                             | §3.1 cwnd reset on RTO (PyTCP keeps simplified `_snd_ewn`) |
+| RFC 9293 | TCP (consolidated)                                 | §3.8.4 references RFC 6298 by inclusion |
+
+PyTCP now computes RTO from observed RTT samples per §2, applies
+Karn's algorithm per §3, drives a single session-level
+retransmit timer per §5.1–§5.6, applies binary backoff with a
+60 s cap per §5.5, and resets the smoothed estimator on
+extended idle per §5.7.
 
 ---
 
-## 3. Target architecture (final state)
+## 2. Standing principles (preserved for future extensions)
+
+1. **Pure-function helper, immutable state.** The `tcp__rto`
+   module exposes `RtoState` (frozen dataclass) and three
+   operations: `initial_state()`, `update(state, sample_ms)`,
+   `back_off(state)`. No mutation, no side effects. The
+   integration into `TcpSession` is hook-style: the helper
+   computes, the session stores.
+2. **Single-sample-per-RTT cadence.** Only one in-flight RTT
+   sample at a time. Subsequent in-flight segments do not
+   overwrite the pending sample's seq/send-time; a retransmit
+   of the sampled segment lands with the tracker already set
+   so no fresh sample is recorded.
+3. **Karn's algorithm via taint flag.** Retransmit of a
+   sampled segment flips `_rtt_sample_retransmitted` rather
+   than clearing the tracker. The covering ACK's harvest path
+   reads the flag and skips `update()` — the smoothed estimate
+   stays untouched until a fresh non-retransmitted sample
+   arrives.
+4. **Session-level timer, not per-seq.** One named timer
+   `f"{session}-retransmit"` keyed on `_rto_state.rto_ms`
+   replaces the legacy per-seq family. Lifecycle rules from
+   RFC 6298 §5 govern arm/restart/stop transitions.
+5. **R2 abort via `_retransmit_count`.** Independent counter
+   from the smoothed estimator; resets on every cum-ACK that
+   advances `SND.UNA` (peer's progress is fresh evidence of
+   liveness). The abort threshold remains
+   `PACKET_RETRANSMIT_MAX_COUNT`.
+6. **Fast retransmit stays back_off-free.** RFC 5681 §3.2 fast
+   retransmit (third dup-ACK or SACK byte rule) does NOT
+   trigger `back_off()` and does NOT increment
+   `_retransmit_count`. The retransmit timer keeps counting
+   down from its original arm time.
+
+---
+
+## 3. Architecture (final state)
 
 ```
-TcpSession new state:
-    _rto_state: RtoState                    # initial_state() in __init__
-    _rtt_sample_seq: Seq32 | None = None    # seq we're sampling
-    _rtt_sample_send_time_ms: int | None = None
-    _rtt_sample_retransmitted: bool = False # Karn's flag
-    _last_send_time_ms: int                 # for §5.7 idle-reset
+pytcp/
+    protocols/tcp/
+        tcp__rto.py                  RFC 6298 §2 helper:
+                                        INITIAL_RTO_MS, MIN_RTO_MS, MAX_RTO_MS
+                                        K, ALPHA_NUM/DEN, BETA_NUM/DEN
+                                        RtoState dataclass
+                                        initial_state(), update(), back_off(), clamp_rto()
+        tcp__session.py              Session-level RTO state + hooks (see §6)
+    stack/
+        timer.py                     Production 'Timer.now_ms' (time.monotonic_ns // 1e6)
+    tests/
+        unit/protocols/tcp/
+            test__tcp__rto.py        20 unit tests on the helper formulas
+        integration/protocols/tcp/
+            test__tcp__session__rto.py             13 RTO integration tests
+            test__tcp__session__data_transfer__retransmit_timeout.py
+                                                    Updated for session-level state
+        lib/
+            fake_timer.py            'now_ms' property mirrors production
+```
 
-TcpSession dropped state:
-    _tx_retransmit_timeout_counter: dict[Seq32, int]   # per-seq counter
-    # The 'f"{self}-retransmit_seq-{seq}"' timer family
+---
+
+## 4. Phase-by-phase completion record
+
+| Phase | Description                                          | Commits           | Tests added |
+|-------|------------------------------------------------------|-------------------|-------------|
+| 1     | Helper module (RtoState + update/back_off/clamp)     | `8f52a81` + `cbecdf4` | 20 unit |
+| 2     | Sample collection (no behaviour change)              | `62f879b` + `8b7f6e6` | 7 integration |
+| 3     | Session-level retransmit timer + back_off            | `799266e` + `6c5d5db` | 3 integration (-1 obsolete) |
+| 4     | RFC 6298 §5.7 restart-after-idle                     | `3022f7a` + `4c573e3` | 3 integration |
+
+Total: **8 code commits + 1 plan commit (`171309f`), 33
+RTO-specific tests, ~150 LOC of production code in
+`tcp__session.py` + 50 LOC in `tcp__rto.py`.**
+
+The integration was intentionally tests-first per phase: every
+fix commit is paired with a preceding `[FLAGS BUG]` tests-first
+commit so the behavioural invariant is captured in executable
+form before the implementation lands.
+
+---
+
+## 5. Test inventory (final)
+
+### Unit tests in `test__tcp__rto.py` (20)
+
+Cover the pure helper formulas: initial state defaults,
+first-sample case (§2.2 SRTT/RTTVAR/RTO), subsequent-sample
+EWMA (§2.3 with α=1/8, β=1/4, K=4), backoff doubling and the
+MAX_RTO_MS cap, clamp boundaries, convergence on a steady
+sample stream.
+
+### Integration tests in `test__tcp__session__rto.py` (13)
+
+| #  | Class                              | Test name                                                      |
+|----|------------------------------------|----------------------------------------------------------------|
+| 1  | TestTcpRtoSampling                 | outbound_data_segment_records_pending_sample                   |
+| 2  | TestTcpRtoSampling                 | ack_covering_pending_sample_harvests_and_updates_rto_state     |
+| 3  | TestTcpRtoSampling                 | additional_data_while_sample_pending_does_not_overwrite        |
+| 4  | TestTcpRtoSampling                 | post_harvest_next_outbound_starts_fresh_sample                 |
+| 5  | TestTcpRtoSampling                 | retransmit_marks_pending_sample_as_karn_tainted                |
+| 6  | TestTcpRtoSampling                 | ack_of_karn_tainted_sample_clears_but_does_not_update_state    |
+| 7  | TestTcpRtoInitialization           | fresh_session_initializes_rto_state_to_initial                 |
+| 8  | TestTcpRtoRetransmitTimer          | data_transmit_arms_session_level_retransmit_timer              |
+| 9  | TestTcpRtoRetransmitTimer          | cumulative_ack_draining_in_flight_stops_retransmit_timer       |
+| 10 | TestTcpRtoRetransmitTimer          | retransmit_timeout_backs_off_rto_state                         |
+| 11 | TestTcpRtoRestartAfterIdle         | idle_longer_than_rto_resets_state_to_initial                   |
+| 12 | TestTcpRtoRestartAfterIdle         | idle_shorter_than_rto_preserves_state                          |
+| 13 | TestTcpRtoRestartAfterIdle         | transmit_updates_last_send_time                                |
+
+### Cross-references covered indirectly
+
+- `test__tcp__session__data_transfer__retransmit_timeout.py`
+  — six existing integration tests that verify cadence /
+  payload preservation / FIN retransmit / sub-MSS retransmit
+  / 0-window flow control / FIN seq-mod walkback. Test #2
+  (`peer_ack_mid_back_off_clears_counters_and_grows_window`)
+  was rewritten in commit `6c5d5db` to assert against the
+  session-level state shape (`_retransmit_count`,
+  `f"{session}-retransmit"` timer key).
+- `test__tcp__session__seq_wraparound.py` — the obsolete
+  `TestTcpSeqWraparound__Purge` class was deleted in commit
+  `6c5d5db`; the wrap-aware behaviour of the still-present
+  `_tx_retransmit_request_counter` (fast retransmit) is
+  covered transitively by the surrounding wrap tests.
+
+---
+
+## 6. Production code map (where RTO lives in `tcp__session.py`)
+
+| Attribute / method                      | Purpose                                                       |
+|-----------------------------------------|---------------------------------------------------------------|
+| `_rto_state: RtoState`                  | RFC 6298 §2 estimator (SRTT, RTTVAR, RTO)                     |
+| `_rtt_sample_seq: Seq32 \| None`        | Pending-sample seq (None means tracker idle)                  |
+| `_rtt_sample_send_time_ms: int \| None` | Virtual-clock value at sample's send moment                   |
+| `_rtt_sample_retransmitted: bool`       | Karn taint flag (§3)                                          |
+| `_retransmit_count: int`                | R2 abort counter; resets on cum-ACK progress                  |
+| `_last_send_time_ms: int \| None`       | §5.7 idle baseline; updated on every data/SYN/FIN             |
 
 Hook points:
-    _transmit_packet:
-        - If consumed > 0 (flag_syn / flag_fin / data) AND
-          _rtt_sample_seq is None AND not retransmit:
-            record (seq, now, retransmitted=False).
-        - Always: register f"{self}-retransmit" timer with
-          _rto_state.rto_ms (replaces per-seq registration).
-        - Update _last_send_time_ms.
 
-    _retransmit_packet_timeout:
-        - If _rtt_sample_seq matches the seq being retransmitted:
-            mark _rtt_sample_retransmitted = True (Karn).
-        - Replace the doubled-static-formula with:
-            _rto_state = back_off(_rto_state)
-            re-register timer with _rto_state.rto_ms.
-        - Keep R2 abort logic: if retransmit count exceeds
-          PACKET_RETRANSMIT_MAX_COUNT, abort.
-
-    _process_ack_packet:
-        - If _rtt_sample_seq is not None AND ack > _rtt_sample_seq:
-            sample harvested.
-            If not _rtt_sample_retransmitted:
-                _rto_state = update(_rto_state, now - send_time)
-            Clear pending sample (seq=None, time=None,
-            retransmitted=False).
-        - On any ACK that advances SND.UNA, the per-seq timer
-          family no longer applies; instead, if SND.UNA == SND.NXT
-          (everything acked), unregister f"{self}-retransmit".
-          Else, re-register with current rto_ms.
-
-    _transmit_data (or wherever new outbound data is fired):
-        - On idle restart: if (now - _last_send_time_ms) > rto_ms,
-          reset RTO via initial_state() per RFC 6298 §5.7.
-```
+- **`_transmit_packet`**:
+  - §5.7 reset check (idle > rto_ms → reset to initial_state).
+  - §4 sample-record (single-pending-sample gate).
+  - §5.7 last-send tracking refresh.
+  - §5.1 timer arm-if-not-running (`f"{self}-retransmit"`).
+- **`_process_ack_packet`**:
+  - On `lt32(_snd_una, ack)`: reset `_retransmit_count` to 0.
+  - §5.2 stop timer iff `_snd_una == _snd_max` else §5.3
+    restart with current `rto_ms`.
+  - §4 sample harvest with Karn-skip.
+- **`_retransmit_packet_timeout`**:
+  - Gate on `is_expired(f"{self}-retransmit")` AND
+    `_snd_una != _snd_max`.
+  - R2 abort if `_retransmit_count >=
+    PACKET_RETRANSMIT_MAX_COUNT`.
+  - §3 Karn taint of in-flight sample.
+  - §5.5 `back_off(_rto_state)` and `_retransmit_count += 1`.
+  - §5.6 re-arm timer with new `rto_ms`.
+  - Slow-start cwnd reset, recovery point clear, SYN/FIN
+    seq-mod walkback (PyTCP-specific bookkeeping preserved
+    from pre-Phase-3).
+- **`_retransmit_packet_request`** (fast retransmit, RFC 5681
+  §3.2): does NOT touch `_rto_state` or `_retransmit_count`;
+  the timer is left running per the audit (a still-running
+  timer is correct under §5.1 and §5.3 doesn't apply because
+  dup-ACKs do not advance SND.UNA).
 
 ---
 
-## 4. Phase-by-phase plan
+## 7. Deferred work (out of scope for "the RTO project")
 
-### Phase 2 — Sample collection (no behavior change yet)
+These items were considered and explicitly skipped. They belong
+to adjacent projects, not RTO polish.
 
-Add the sample tracker fields. Hook outbound `_transmit_packet` to
-record. Hook inbound `_process_ack_packet` to harvest. Hook
-retransmit to set Karn's flag. The retransmit timer logic stays
-unchanged for now — `_rto_state` is observable but unused by the
-existing per-seq machinery.
+### 7.1 RFC 5681 cwnd interaction with back_off
 
-**Tests-first** (`test__tcp__session__rto.py`, ~6 unit tests):
+PyTCP's `_snd_ewn` collapses to `min(_snd_mss, _snd_wnd)` on
+RTO, mirroring the RFC 5681 §3.1 slow-start re-entry. A proper
+RFC 5681 implementation would also track `ssthresh` and apply
+`ssthresh = max(FlightSize/2, 2*SMSS)` on RTO before the cwnd
+collapse. The full RFC 5681 cwnd rework is a separate project
+(see `.claude/rules/tcp_sack_implementation.md` §7.1 for the
+broader rationale).
 
-  1. Outbound data segment in ESTABLISHED records pending sample.
-  2. ACK covering the pending sample harvests it; `_rto_state`
-     transitions from `(None, None, INITIAL_RTO_MS)` to a
-     post-`update()` value.
-  3. While a sample is pending, additional outbound data does NOT
-     start a new sample (RFC 6298 §4).
-  4. After harvest, the next outbound starts a fresh sample.
-  5. Retransmit (driven via `_retransmit_packet_timeout`) marks
-     pending sample with `_rtt_sample_retransmitted = True`.
-  6. ACK of a Karn-tainted sample harvests but does NOT update
-     `_rto_state` (unchanged value).
+When that project lands, the natural integration point with
+RTO is in `_retransmit_packet_timeout` after `back_off()`:
+the same code path that doubles `rto_ms` should also halve
+`ssthresh`. The current `_snd_ewn` collapse line stays as the
+cwnd post-event value; the new `ssthresh` line goes alongside.
 
-**Fix commit:** add fields + hooks. ~80 LOC. No existing test
-should change behavior because `_rto_state.rto_ms` isn't read by
-the retransmit machinery yet.
+### 7.2 RFC 7323 timestamps option (TSopt)
 
-Estimated: 2 commits (test + impl).
+Phase 2's sample collection records send-time at the
+TcpSession level using the FakeTimer / production `now_ms`
+clock. RFC 7323 §3 specifies the TSopt option that lets peers
+echo each other's send timestamps at the wire level, removing
+the need for sender-side clock tracking and avoiding Karn's
+ambiguity entirely (the timestamp on the ACK identifies which
+transmission it acknowledges).
 
-### Phase 3 — Wire dynamic RTO into retransmit timer
+When TSopt lands:
+- `_rtt_sample_seq` / `_rtt_sample_send_time_ms` /
+  `_rtt_sample_retransmitted` become advisory; the canonical
+  RTT measurement is `now_ms - tcp__tsecr` from the inbound
+  ACK's option.
+- Karn's algorithm in `_retransmit_packet_timeout` still
+  applies for legacy non-TSopt peers.
+- The covering-ACK harvest in `_process_ack_packet` adds a
+  TSopt-preferred path before falling back to the §4 tracker.
 
-Replace the per-seq `_tx_retransmit_timeout_counter` machinery and
-the `f"{self}-retransmit_seq-{seq}"` timer family with a single
-session-level `f"{self}-retransmit"` timer driven by
-`_rto_state.rto_ms`.
+Estimated effort: ~6-8 commits including option parser/
+assembler + TcpSession integration. Frame as **"RFC 7323
+project"**.
 
-This is the disruptive commit. It touches every retransmit test
-because the cadence-formula source changes.
+### 7.3 RFC 8985 RACK-TLP
 
-**Tests-first updates:**
+RACK (Recent ACKnowledgement) and TLP (Tail Loss Probe) replace
+the dup-ACK + RTO duo with a more aggressive loss-detection
+model that reduces tail latency on bursty drop patterns. RACK
+needs SRTT and a per-segment send-time (already available
+post-Phase-2), and TLP arms a timer at `min(2*SRTT,
+PACKET_RETRANSMIT_TIMEOUT/2)` — both of which the current RTO
+integration provides as building blocks.
 
-The existing `test__tcp__session__data_transfer__retransmit_timeout.py`
-scenarios assert "1, 3, 7, 15, 31 s cadence on a silent peer."
-On a mocked harness, the SYN+ACK RTT is ~1 ms, so SRTT is
-clamped to 1000 ms by MIN_RTO_MS, and cadence stays 1, 3, 7,
-15, 31 s. The tests should still pass with no assertion changes
-**but** the docstrings need updating to cite RFC 6298 §5.5
-(binary backoff, capped at MAX_RTO_MS) instead of the legacy
-fixed-formula explanation.
+This is a future direction, not RTO polish.
 
-New tests:
+### 7.4 SYN-RTO 3-second floor (RFC 6298 §5.7 second sentence)
 
-  - `test__rto__short_rtt_yields_short_rto` — drive a session
-    with mocked sub-1s RTT (e.g., advance 5 ms between SYN and
-    SYN+ACK), assert `_rto_state.rto_ms == MIN_RTO_MS` (clamp
-    floor stays).
-  - `test__rto__long_rtt_yields_long_rto` — drive with a 5 s
-    SYN+ACK delay, assert `_rto_state.rto_ms` is around
-    `5000 + 4 * 2500 = 15000` (no clamp).
-  - `test__rto__retransmit_timer_uses_rto_state_value` — assert
-    the `f"{self}-retransmit"` timer was registered with
-    `_rto_state.rto_ms` (not the legacy constant).
+RFC 6298 §5.7 actually has TWO clauses:
+1. The restart-after-idle clause we implemented in Phase 4.
+2. "If the timer expires awaiting the ACK of a SYN segment
+   and the TCP implementation is using an RTO less than 3
+   seconds, the RTO MUST be re-initialized to 3 seconds when
+   data transmission begins."
 
-**Fix commit:** drop `_tx_retransmit_timeout_counter`, replace
-timer registration in `_transmit_packet`, replace
-`_retransmit_packet_timeout` body. Audit the cleanup in
-`_change_state(CLOSED)` to drop the new timer name. Audit
-`_retransmit_packet_request` (fast retransmit) — that's RFC 5681
-territory and should NOT use `back_off()`.
+The second clause specifies a SYN-RTO floor: after a SYN
+retransmit timeout, if the in-flight rto_ms was < 3000 ms, set
+it to 3000 ms before the first post-handshake data send. PyTCP
+does NOT currently enforce this floor.
 
-Estimated: 3-4 commits (test + impl + cleanup audit + cross-check).
+The impact is modest: with the MIN_RTO_MS = 1000 ms clamp,
+post-handshake rto_ms is always ≥ 1000 (and typically exactly
+1000 due to the SYN+ACK RTT clamp), so the worst-case RTO is
+1000 ms vs the §5.7 mandate of 3000 ms. Real-world workloads
+usually reach 3000 ms via subsequent RTT-driven backoffs.
 
-### Phase 4 — Restart-after-idle (RFC 6298 §5.7)
-
-When a session goes idle longer than the current RTO and then
-resumes transmitting, RFC 6298 §5.7 says reset RTO to
-`INITIAL_RTO_MS` so a stale (possibly short) `rto_ms` doesn't
-trigger spurious retransmits in the new burst.
-
-**Tests-first** (~2-3 unit tests):
-
-  1. Session idle for > rto_ms wall-clock time; next transmit
-     observes `_rto_state` reset to `initial_state()`.
-  2. Session idle for < rto_ms; next transmit preserves the
-     prior `_rto_state`.
-  3. Reset clears `_last_send_time_ms` accounting.
-
-**Fix commit:** small hook in `_transmit_packet` — check `now -
-_last_send_time_ms > _rto_state.rto_ms` and reset before
-recording the new sample.
-
-Estimated: 1-2 commits.
-
-### Phase 5 — Documentation + memory
-
-Update `MEMORY.md`, the RFC coverage report sections affected
-(RFC 6298 row, RFC 1122 §4.2.3.1 row), and the
-`tcp_session_integration_tests.md` §6 plan note for
-`data_transfer__retransmit_timeout.py` (it's no longer "deferred"
-since RFC 6298 is now wired).
-
-Estimated: 1 commit.
+If a future session decides to land this clause, the hook
+point is `_tcp_fsm_syn_sent` after the ESTABLISHED transition:
+if `_retransmit_count > 0` (we retransmitted the SYN at least
+once) and `_rto_state.rto_ms < 3000`, set
+`_rto_state.rto_ms = 3000` explicitly. ~5 LOC + 1 test.
 
 ---
 
-## 5. Existing-test impact audit
+## 8. Anti-patterns (preserved for future extensions)
 
-Files that may need updates beyond docstrings:
+- **Don't conflate `_rtt_sample_seq` with `_snd_una`.** The
+  sample tracker holds the seq of ONE specific in-flight
+  segment; SND.UNA is the cumulative-ACK boundary. They
+  coincide on the first transmit but diverge once peer's ACK
+  arrives (sample is harvested, snd_una advances).
 
-| File                                                         | Likely impact                                                                  |
-|--------------------------------------------------------------|--------------------------------------------------------------------------------|
-| `data_transfer__retransmit_timeout.py`                       | Cadence stays via MIN_RTO_MS clamp; docstrings update with RFC 6298 cite       |
-| `data_transfer__retransmit_dupack.py`                        | Fast-retransmit path unchanged; double-check no static-formula assumptions    |
-| `data_transfer__send.py`                                     | Inline ACKs trigger sampling; verify no spurious sample-pending state         |
-| `data_transfer__recv.py`                                     | Same as send.py shape                                                          |
-| `close__simultaneous.py`, `close__time_wait.py`              | RTO reset on TIME_WAIT entry — verify the new timer family cleanups            |
-| `seq_wraparound.py`                                          | RTT sample math uses now-send_time which is wall-clock, not seq; should be safe |
-| `harness_smoke.py`                                           | The `_force_iss` helper is unaffected; may want a `_force_rto_state` analog    |
+- **Don't apply `back_off()` outside the retransmit timeout
+  path.** Fast retransmit (RFC 5681) is a different mechanism
+  with its own cwnd rules; touching `_rto_state` there would
+  double-penalise.
 
-The new test file `test__tcp__session__rto.py` is the canonical
-home for phase-2/3/4 unit tests. Integration tests for
-end-to-end cadence under various RTT regimes go alongside the
-existing data_transfer tests.
+- **Don't forget Karn's algorithm.** RFC 6298 §3 is
+  load-bearing. A naive harvest-on-ACK without the taint check
+  would feed retransmit-derived RTTs into the EWMA, biasing
+  the estimator low (because the retransmit's send-time is
+  closer to the ACK than the original's), shortening RTO,
+  causing more retransmits — a positive feedback loop.
 
----
+- **Don't unregister the retransmit timer in
+  `_retransmit_packet_request`.** Fast retransmit is a
+  different mechanism; the timer is correctly left running.
+  RFC 6298 §5.3 specifies "restart on cum-ACK that advances
+  SND.UNA" — dup-ACKs do not advance SND.UNA.
 
-## 6. Anti-patterns to avoid
+- **Don't initialise `_last_send_time_ms` to `0`.** Use `None`.
+  `0` is a legitimate `now_ms` value (FakeTimer starts at 0)
+  and would spuriously satisfy the `is not None` guard. The
+  §5.7 reset would then fire on the very first send if rto_ms
+  happened to be smaller than the first-send time, which is
+  the opposite of what §5.7 mandates.
 
-- **Don't keep `_tx_retransmit_timeout_counter` for backward
-  compat.** The dict is legacy per-seq state. Drop it cleanly in
-  phase 3; the new design is one counter implicit in
-  `_rto_state.rto_ms` doubling.
-
-- **Don't sample on every ACK.** RFC 6298 §4 says one sample per
-  RTT. The pending-sample mechanism (single seq tracker) enforces
-  this naturally. Don't try to sample multiple in-flight
-  segments — that's RFC 7323 timestamp territory.
-
-- **Don't conflate Karn's algorithm with the dup-ACK counter.**
-  Karn (RFC 6298 §3) invalidates RTT SAMPLES from retransmitted
-  segments. The dup-ACK counter (RFC 5681 §3.2) drives fast
-  retransmit. Independent mechanisms.
-
-- **Don't sample SYN handshake RTT on a mocked clock without
-  patching.** The harness's `FakeTimer` advances only when
-  `_advance` is called. Tests that don't advance between SYN and
-  SYN+ACK will produce a 0 ms or 1 ms RTT, which after the K=4
-  rule yields RTO ~1 ms unclamped, clamped to 1000 ms. That's
-  fine for cadence assertions but obscures whether the
-  estimator is actually tracking. The `_force_rto_state` analog
-  (or direct `session._rto_state = RtoState(srtt_ms=N, ...)`)
-  may be useful.
-
-- **Don't forget RFC 6298 §3.4 mentions "When a TCP sender
-  detects segment loss using the retransmission timer and the
-  given segment has not yet been resent by way of the retransmission
-  timer, the value of ssthresh MUST be set to no more than ssthresh
-  reduced..."** This is RFC 5681 cwnd interaction — out of scope
-  for the RTO project per se, but flag it for the future RFC 5681
-  cwnd-rework project.
+- **Don't forget the production `Timer.now_ms`.** PyTCP runs
+  in production with `pytcp.stack.Timer`, not `FakeTimer`. The
+  helper module's invariants depend on `now_ms` returning a
+  monotonically increasing integer. `time.monotonic_ns() //
+  1_000_000` is the canonical implementation; do not switch
+  to `time.time()` (subject to wall-clock adjustments) or
+  `time.monotonic()` (float).
 
 ---
 
-## 7. Re-orient command for new sessions
+## 9. Extender's re-orient command
+
+If you want to extend the RTO machinery (e.g. land RFC 7323
+timestamps, RFC 5681 cwnd interaction, or the SYN-RTO 3 s
+floor), start with:
 
 ```bash
-git log --oneline -10
-ls pytcp/protocols/tcp/tcp__rto.py            # helper exists
-grep -n "_rto_state\|_rtt_sample_seq" pytcp/protocols/tcp/tcp__session.py 2>/dev/null
-grep -n "_tx_retransmit_timeout_counter" pytcp/protocols/tcp/tcp__session.py 2>/dev/null
-ls pytcp/tests/unit/protocols/tcp/test__tcp__session__rto.py 2>/dev/null
+git log --oneline --grep="RTO\|RFC 6298" 8f52a81~..HEAD
 make test 2>&1 | tail -5
+ls pytcp/protocols/tcp/tcp__rto.py
+grep -n "_rto_state\|_retransmit_count\|_last_send_time_ms" \
+    pytcp/protocols/tcp/tcp__session.py | head
 ```
 
-What it tells you:
+Read the docstrings of:
+- `pytcp/protocols/tcp/tcp__rto.py` (helper module)
+- `pytcp/protocols/tcp/tcp__session.py::TcpSession.__init__`
+  (RTO field declarations near the SACK / DSACK fields)
+- `pytcp/protocols/tcp/tcp__session.py::_retransmit_packet_timeout`
+  (the canonical §5.5 backoff implementation)
 
-  - `_rto_state` not in tcp__session.py → phase 2 not started.
-  - `_rto_state` present, `_tx_retransmit_timeout_counter` still
-    present → phase 2 done, phase 3 not started.
-  - Both `_rto_state` AND no `_tx_retransmit_timeout_counter` →
-    phase 3 done.
-  - `test__tcp__session__rto.py` shape tells phase progress.
-
-Match against §4 to pick up where the prior session left off.
+Then decide whether the extension fits the deferred-work
+taxonomy in §7 above, or is a new direction entirely.
 
 ---
 
-## 8. Cross-references
+## 10. Cross-references
 
-- Helper module shipped: `pytcp/protocols/tcp/tcp__rto.py` +
-  `pytcp/tests/unit/protocols/tcp/test__tcp__rto.py`. Commits
-  `8f52a81` (tests-first) and `cbecdf4` (impl).
-- Coding style: `.claude/rules/coding_style.md`.
-- Unit test authoring: `.claude/rules/unit_tests.md`.
-- Integration test plan: `.claude/rules/tcp_session_integration_tests.md`
-  (§6.x retransmit_timeout plan note becomes obsolete after this).
-- Pairs with future work:
-  - **RFC 7323 timestamps** — once shipped, sampling becomes
-    much simpler (peer echoes original send time).
-  - **RFC 8985 RACK-TLP** — needs SRTT for tail-loss-probe
-    interval. Blocked on this RTO work.
-  - **RFC 5681 cwnd rework** — RFC 6298 §3.4 mentions the
-    cwnd-on-RTO interaction; future RFC 5681 project will
-    consume it.
+- Workflow + reporting format:
+  `.claude/rules/tcp_session_integration_tests.md` §7
+- Coding style: `.claude/rules/coding_style.md`
+- Unit test authoring: `.claude/rules/unit_tests.md`
+- SACK shipped record (similar phased plan, similar shape):
+  `.claude/rules/tcp_sack_implementation.md`
+- Modular sequence arithmetic:
+  `pytcp/protocols/tcp/tcp__seq.py` +
+  `pytcp/tests/unit/protocols/tcp/test__tcp__seq.py`
+- TCP session split + per-FSM-state files:
+  `.claude/rules/tcp_session_split.md`

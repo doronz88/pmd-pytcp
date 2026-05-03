@@ -227,13 +227,21 @@ Other commits (no production fix):
 | `data_transfer__send.py` | 7 | ✓ all pass | 4 (PSH, persist, Nagle, send-after-close) |
 | `data_transfer__recv.py` | 4 | ✓ all pass | 3 (delayed-ACK first-seg, every-other, unacceptable-ACK) |
 | `data_transfer__out_of_order.py` | 3 | ✓ all pass | 1 (overlap rejected) |
-| `data_transfer__retransmit_timeout.py` | 3 | ✓ all pass | 0 (positive-control regression guards) |
+| `data_transfer__retransmit_timeout.py` | 6 | ✓ all pass | (post-RTO: rewritten for session-level state, see `tcp_rto_integration.md`) |
 
 Total: 43 integration tests + 14 smoke + 112 `tcp_seq` unit tests
 landed. Production-bug fix commits: 13.
 
 Branch state at last checkpoint: 24 commits ahead of `master`,
 7634/7634 full suite passing, lint clean.
+
+**Update (2026-05-03)**: Subsequent projects (SACK, session
+move + split, keep-alive, ISS hash, RTO integration) have
+landed since this snapshot. The RTO integration in particular
+rewrote `data_transfer__retransmit_timeout.py` test #2 for the
+session-level state shape; see
+`.claude/rules/tcp_rto_integration.md` for the completion
+record.
 
 ---
 
