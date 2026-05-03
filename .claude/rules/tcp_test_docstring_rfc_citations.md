@@ -1,8 +1,22 @@
 # PyTCP — TCP Test Docstring RFC-Citation Rule
 
-Self-contained handoff for the in-progress task of adding
-uniform `Reference: RFC <N> §<S> (<short desc>).` lines to
-every TCP test method's docstring across 39 files.
+**Status: SHIPPED.** All 39 TCP test files now carry the
+canonical docstring shape on every test method. The
+authoring rule has been folded into
+`.claude/rules/unit_tests.md` §7 + §7.1; this document
+remains as the historical record of the migration.
+
+Final state at completion:
+- 8024 tests passing, 0 failures, 17 skipped.
+- 39 files audited, ~479 test docstrings rewritten.
+- 0 `Per RFC ...` duplicates and 0 `[FLAGS BUG]` markers in
+  docstrings across the entire TCP test surface.
+- `make lint` clean.
+
+For new tests, follow `.claude/rules/unit_tests.md` §7 (the
+canonical three-part docstring shape) and §7.1 (the TCP RFC
+clause picker). The migration plan below is preserved for
+reference only.
 
 ---
 

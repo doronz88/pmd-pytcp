@@ -282,33 +282,118 @@ Prefer `!r` inside f-string assertion messages for values (`Got: {value!r}`).
 
 ## 7. Test-method docstrings
 
-Every test method has a docstring. First word is always **"Ensure"**,
-describing the behavioral guarantee from the caller's perspective:
+Every test method has a docstring with a **canonical three-part shape**:
 
-```python
-def test__udp__parser__payload(self) -> None:
-    """
-    Ensure the UDP packet parser extracts the payload starting at
-    'UDP__HEADER__LEN' and ending at 'header.plen'.
-    """
-```
-
-Do not describe *how* the code is tested — describe *what* is
-guaranteed. Method bodies that exercise edge cases often call out the
-RFC or a past-regression in a second sentence:
+1. A description that starts with the word **"Ensure"** and states
+   the behavioral guarantee from the caller's perspective.
+2. A blank line.
+3. A single trailing line per cited RFC clause:
+   `Reference: RFC <number> §<section> (<short description>).`
 
 ```python
 def test__udp__parser__integrity__zero_cksum_skips_validation(self) -> None:
     """
-    Ensure a frame with cksum=0 bypasses checksum validation even
-    when the bytes would otherwise not sum to zero. RFC 768 allows a
-    transmitter to set the UDP checksum to zero, in which case the
-    receiver must not validate it.
+    Ensure a frame with cksum=0 bypasses checksum validation
+    even when the bytes would otherwise not sum to zero.
+
+    Reference: RFC 768 (UDP checksum optional / zero bypass).
     """
 ```
 
+Rules:
+
+- The description describes *what* is guaranteed, never *how* the
+  code is tested.
+- **Do not put RFC citations inline in the description.** Strings
+  like `"Per RFC X §Y ..."` or `"RFC X §Y: <fact>"` inside the
+  description are forbidden — the trailing `Reference:` line is the
+  canonical citation. Duplicating it in prose is the exact failure
+  mode that motivated this rule.
+- A test that pins behaviour from multiple RFCs uses one
+  `Reference:` line per clause, in citation-precedence order:
+
+  ```python
+  Reference: RFC 9293 §3.10.7.4 (R2 abort emits RST).
+  Reference: RFC 1122 §4.2.3.5 (R2 ≥ 100 s retransmit abort).
+  ```
+
+- For pure plumbing tests with no RFC clause, use one of the two
+  acceptable fallback citations:
+  - `Reference: PyTCP test infrastructure (no RFC clause).`
+  - `Reference: RFC 9293 §3.9 (User/TCP interface).` (for socket-API
+    plumbing).
+
+- **No `[FLAGS BUG]` markers in docstrings.** Tests-first development
+  may temporarily mark expected failures, but the marker MUST be
+  stripped before the test is considered complete (i.e. the moment
+  the corresponding fix lands and the test passes). A docstring
+  containing `[FLAGS BUG]` is a cleanup-debt indicator, not a
+  long-lived annotation.
+
 Class docstrings are one noun phrase
 (`"The UDP packet parser sanity checks tests."`).
+
+### 7.1 RFC clause picker (TCP)
+
+When citing a TCP RFC clause, pick the most specific clause that
+covers the behaviour under test. Common picks (the canonical
+inventory, distilled from the SHIPPED docstring-citation pass):
+
+| RFC | Section | When to cite |
+|---|---|---|
+| RFC 9293 | §3.1 | Header format, wire-level field layout |
+| RFC 9293 | §3.3.2 | FSM state machine dispatch |
+| RFC 9293 | §3.4 | Sequence-number arithmetic, modular comparison |
+| RFC 9293 | §3.4.1 | ISS selection (also RFC 6528) |
+| RFC 9293 | §3.5 | Connection establishment (active/passive open) |
+| RFC 9293 | §3.6 | Closing a connection |
+| RFC 9293 | §3.7.1 | MSS option |
+| RFC 9293 | §3.7.4 | Nagle algorithm |
+| RFC 9293 | §3.7.5 | IPv6 jumbograms |
+| RFC 9293 | §3.8.4 | Keep-alive |
+| RFC 9293 | §3.8.6.1 | Zero-window probing (persist timer) |
+| RFC 9293 | §3.8.6.2 | Silly Window Syndrome avoidance |
+| RFC 9293 | §3.9 | User/TCP interface (OPEN / SEND / RECEIVE / CLOSE / ABORT / STATUS) |
+| RFC 9293 | §3.10.7.x | Per-state segment processing |
+| RFC 1122 | §4.2.2.2 | PSH on last segment of write |
+| RFC 1122 | §4.2.2.16 | Robustness against shrinking windows |
+| RFC 1122 | §4.2.3.2 | Delayed-ACK |
+| RFC 1122 | §4.2.3.3 | Receiver SWS avoidance |
+| RFC 1122 | §4.2.3.4 | Nagle (Minshall variant) |
+| RFC 1122 | §4.2.3.5 | R2 ≥ 100 s retransmit abort |
+| RFC 1122 | §4.2.3.6 | Keep-alive |
+| RFC 1337 | §3 | TIME-WAIT assassination mitigations |
+| RFC 2018 | §2 | SACK-Permitted bilateral negotiation |
+| RFC 2018 | §3 | SACK option wire format / scoreboard |
+| RFC 2675 | §5 | IPv6 jumbogram MSS=65535 wire signal |
+| RFC 2883 | §3-§5 | DSACK detection / generation |
+| RFC 5681 | §3.1 | Slow-start vs CA, RTO ssthresh halving |
+| RFC 5681 | §3.2 | Fast-retransmit / fast-recovery |
+| RFC 5681 | §4.2 | Immediate ACK on OOO segment |
+| RFC 5961 | §3 | RST acceptability hardening |
+| RFC 5961 | §4 | SYN-in-synchronized challenge ACK |
+| RFC 5961 | §5 | ACK acceptability (snd_una − max_window) |
+| RFC 6298 | §2.1-§2.5 | RTO computation (initial, sample, EWMA, clamps) |
+| RFC 6298 | §3 | Karn's algorithm |
+| RFC 6298 | §5.5 | Binary backoff |
+| RFC 6298 | §5.7 | Idle reset + SYN-RTO floor |
+| RFC 6528 | §3 | Hash-based ISS generator |
+| RFC 6582 | §3 | NewReno step-3b deflation |
+| RFC 6675 | §3 | IsLost / NextSeg |
+| RFC 6675 | §4 | Pipe / FlightSize estimate |
+| RFC 6691 | §2 | MSS calculation from MTU |
+| RFC 6928 | §2 | Initial Window of 10 segments |
+| RFC 7323 | §2 | WSCALE bilateral negotiation |
+| RFC 7323 | §3 | Timestamps option wire format |
+| RFC 7323 | §4 | RTTM via TSecr |
+| RFC 7323 | §4.3 | _ts_recent update |
+| RFC 7323 | §5 | PAWS |
+
+Prefer RFC 9293 over the obsolete 793 / 1122-TCP-section / 5961
+when 9293 incorporates them; cite 1122 / 5681 / 5961 / 6298 / 7323
+separately when the clause is not folded into 9293 or you want the
+historical reference. UDP / IP / ARP / ICMP tests cite their own
+canonical RFCs (768, 791, 826, 792, 4443, etc.).
 
 ## 8. Required test matrix per protocol
 
@@ -533,6 +618,17 @@ Work one test file at a time. For each file:
   reads stub-able IP attributes.
 - Losing coverage on the "shortest valid packet" / "minimum accepted"
   boundary by only testing rejection.
+- Inlining RFC citations in the docstring description (`"Per RFC X
+  §Y ..."`, `"RFC X §Y: <fact>"`) instead of using the canonical
+  trailing `Reference: RFC <n> §<s> (<desc>).` line. The trailing
+  line is the single source of truth; duplicating it inline is
+  forbidden by §7.
+- Leaving `[FLAGS BUG]` markers in docstrings of tests that already
+  pass. The marker is a tests-first transient — strip it the moment
+  the corresponding fix lands.
+- Bundling multiple RFC citations into one `Reference:` line. Each
+  cited clause gets its own line so the citation is greppable and
+  the commit-message audit trail stays clean.
 
 ## 12. Reference implementations
 
