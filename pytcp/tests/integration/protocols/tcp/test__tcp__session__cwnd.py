@@ -584,3 +584,192 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
                 f"min={min(session._cwnd, session._snd_wnd)}."
             ),
         )
+
+
+class TestTcpCwndPhase2(TcpSessionTestCase):
+    """
+    Integration tests for RFC 5681 §3.1 Phase 2 invariants:
+    RTO ssthresh halving and slow-start re-entry.
+
+    Per §3.1 step 1, on a retransmission-timeout fire the
+    sender MUST set:
+
+        ssthresh = max(FlightSize / 2, 2 * SMSS)
+
+    so that subsequent slow-start growth exits at the
+    previously-observed loss point. PyTCP's pre-Phase-2 RTO
+    handler resets cwnd to 1 SMSS (Phase-1 fix) but does not
+    touch ssthresh - the loss memory is lost and slow-start
+    runs unbounded until peer's win clamps it.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair. Returns the
+        session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__cwnd__rto_sets_ssthresh_to_half_flight_size(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5681 §3.1 step 1: on RTO, the sender MUST
+        set 'ssthresh = max(FlightSize / 2, 2 * SMSS)'. With
+        a multi-MSS flight at the moment of RTO, the
+        FlightSize/2 branch dominates: ssthresh records the
+        midpoint between the unacked low-water mark and the
+        high-water mark, which becomes the slow-start exit
+        point on the recovery cycle.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Pin cwnd =
+              100 * MSS so slow-start does not constrain the
+              initial 6-MSS flight.
+            * Send 6 * MSS of payload. Advance 6 ticks so all
+              segments fire (FlightSize = 6 * MSS at peak).
+            * Don't peer-ACK. Advance past the RTO timer
+              (1000 ms post-handshake-clamp) so
+              '_retransmit_packet_timeout' fires.
+            * Assert post-RTO ssthresh = max(6*MSS / 2, 2*MSS)
+              = max(3*MSS, 2*MSS) = 3*MSS.
+
+        Fails today: '_retransmit_packet_timeout' resets cwnd
+        to 1 SMSS but does not touch ssthresh. Pre-Phase-2
+        ssthresh stays at the constructor default (INT32_MAX),
+        which would let the post-RTO slow-start run unbounded.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Send 6 MSS so 6 segments are in flight at RTO time.
+        payload = b"x" * (6 * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(6):
+            self._advance(ms=1)
+
+        # Verify all 6 segments hit the wire.
+        self.assertEqual(
+            (session._snd_max - session._snd_una) & 0xFFFF_FFFF,
+            6 * PEER__MSS,
+            msg="Setup invariant: 6 MSS must be in flight before RTO fires.",
+        )
+
+        # Drive past RTO. Post-handshake rto_ms is 1000 ms; the
+        # impl arms the timer at the data send (~ t=2 ms) so
+        # the boundary is t=1002 ms. Advance ~999 more ms.
+        self._advance(ms=999)
+
+        expected_ssthresh = max(6 * PEER__MSS // 2, 2 * PEER__MSS)
+        self.assertEqual(
+            session._ssthresh,
+            expected_ssthresh,
+            msg=(
+                f"RFC 5681 §3.1 step 1: RTO MUST set ssthresh "
+                f"= max(FlightSize / 2, 2*SMSS). With "
+                f"FlightSize = 6*MSS = {6 * PEER__MSS}, "
+                f"expected ssthresh = max(3*MSS, 2*MSS) = "
+                f"{expected_ssthresh}. Got "
+                f"{session._ssthresh}."
+            ),
+        )
+        # Phase 1 regression: cwnd reset to 1 SMSS.
+        self.assertEqual(
+            session._cwnd,
+            session._snd_mss,
+            msg=(
+                f"Phase 1 regression: post-RTO cwnd MUST collapse "
+                f"to 1 SMSS for slow-start re-entry. Got "
+                f"cwnd={session._cwnd}."
+            ),
+        )
+
+    def test__cwnd__rto_with_minimal_flight_size_clamps_ssthresh_to_floor(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5681 §3.1 step 1's '2*SMSS' floor: when the
+        in-flight bytes are small enough that 'FlightSize/2 <
+        2*SMSS', the floor clamps ssthresh to 2*SMSS. Without
+        this clamp, a single small unacked segment would set
+        ssthresh below the canonical minimum and the post-RTO
+        slow-start would exit prematurely.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED.
+            * Send 1 MSS only. FlightSize = 1*MSS, so
+              FlightSize/2 = 730 bytes < 2*MSS = 2920.
+            * Don't peer-ACK. Advance past RTO.
+            * Assert post-RTO ssthresh = 2 * MSS (the floor).
+
+        Fails today: ssthresh untouched by RTO.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        self._advance(ms=1000)
+
+        self.assertEqual(
+            session._ssthresh,
+            2 * PEER__MSS,
+            msg=(
+                f"RFC 5681 §3.1 step 1 floor: when FlightSize/2 "
+                f"= {PEER__MSS // 2} bytes < 2*SMSS = "
+                f"{2 * PEER__MSS}, ssthresh MUST clamp to "
+                f"2*SMSS. Got {session._ssthresh}."
+            ),
+        )
