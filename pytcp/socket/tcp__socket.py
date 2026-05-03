@@ -62,6 +62,7 @@ from pytcp.socket import (
     gaierror,
     socket,
 )
+from pytcp.socket.tcp__status import TcpStatus
 
 if TYPE_CHECKING:
     from threading import Semaphore
@@ -188,6 +189,51 @@ class TcpSocket(socket):
         """
 
         return self._parent_socket
+
+    def status(self) -> TcpStatus:
+        """
+        Return a read-only snapshot of the connection's
+        user-visible state per RFC 9293 §3.9.1 STATUS.
+
+        On a fresh socket with no associated TCP session, the
+        returned snapshot has 'state = FsmState.CLOSED' and
+        zero-valued / unspecified addresses.
+        """
+
+        session = self._tcp_session
+        if session is None:
+            return TcpStatus(
+                state=FsmState.CLOSED,
+                local_address=self._local_ip_address,
+                local_port=self._local_port,
+                remote_address=self._remote_ip_address,
+                remote_port=self._remote_port,
+                snd_una=0,
+                snd_nxt=0,
+                snd_wnd=0,
+                rcv_nxt=0,
+                rcv_wnd=0,
+                snd_mss=0,
+                rcv_mss=0,
+                tx_buffer_len=0,
+                rx_buffer_len=0,
+            )
+        return TcpStatus(
+            state=session.state,
+            local_address=session._local_ip_address,
+            local_port=session._local_port,
+            remote_address=session._remote_ip_address,
+            remote_port=session._remote_port,
+            snd_una=session._snd_una,
+            snd_nxt=session._snd_nxt,
+            snd_wnd=session._snd_wnd,
+            rcv_nxt=session._rcv_nxt,
+            rcv_wnd=session._rcv_wnd,
+            snd_mss=session._snd_mss,
+            rcv_mss=session._rcv_mss,
+            tx_buffer_len=len(session._tx_buffer),
+            rx_buffer_len=len(session._rx_buffer),
+        )
 
     def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
         """
