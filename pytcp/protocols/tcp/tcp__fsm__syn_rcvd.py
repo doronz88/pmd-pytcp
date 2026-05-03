@@ -36,7 +36,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pytcp.lib.logger import log
-from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.tcp__cwnd import initial_window
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 
 if TYPE_CHECKING:
@@ -113,10 +113,7 @@ def fsm__syn_rcvd(
             # peer's third-leg ACK) and the simultaneous-open
             # path (both sides SYN, both SYN+ACK, third-leg
             # ACK).
-            session._cwnd = min(
-                tcp__constants.INITIAL_WINDOW_FACTOR * session._snd_mss,
-                max(2 * session._snd_mss, tcp__constants.INITIAL_WINDOW_BYTES),
-            )
+            session._cwnd = initial_window(session._snd_mss)
             session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # Inline ACK if peer piggybacked data so peer's
             # retransmit machinery sees the data acknowledged

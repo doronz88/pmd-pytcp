@@ -76,17 +76,3 @@ PERSIST_TIMEOUT_MAX = 60_000
 KEEPALIVE_IDLE_TIME = 7_200_000
 KEEPALIVE_PROBE_INTERVAL = 75_000
 KEEPALIVE_PROBE_MAX_COUNT = 9
-
-# RFC 6928 §2 Initial Window: post-handshake congestion window. The
-# multi-clause formula 'min(10*MSS, max(2*MSS, 14600))' caps IW at
-# both ends:
-#   - lower: at least 2*MSS (or 14600 bytes if MSS is small enough
-#     that 2*MSS < 14600), so very-small-MSS connections are not
-#     under-provisioned at start.
-#   - upper: at most 10*MSS, so large-MSS jumbo-frame paths cannot
-#     exceed 10 segments at start.
-# 14600 was chosen by RFC 6928 as 10 * 1460 (the canonical
-# Ethernet-MTU-derived MSS). PyTCP's default Ethernet MTU yields
-# MSS = 1460, so the canonical IW = 14600 = 10*MSS.
-INITIAL_WINDOW_FACTOR = 10
-INITIAL_WINDOW_BYTES = 14600

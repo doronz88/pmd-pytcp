@@ -41,6 +41,7 @@ from net_addr import Ip4Address, Ip6Address
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh, cwnd_grow_per_ack
 from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,
@@ -1685,7 +1686,7 @@ class TcpSession:
         # loss detection. Modular subtraction per RFC 9293 §3.4
         # so the value is correct across the 32-bit wrap.
         flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-        self._ssthresh = max(flight_size // 2, 2 * self._snd_mss)
+        self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
         # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
         # §4.2.2.16 still require respecting peer's advertised
@@ -1790,7 +1791,7 @@ class TcpSession:
         # permission to send three new segments while the
         # retransmit is in flight.
         flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-        self._ssthresh = max(flight_size // 2, 2 * self._snd_mss)
+        self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         self._cwnd = self._ssthresh + 3 * self._snd_mss
         self._snd_ewn = min(self._cwnd, self._snd_wnd)
 
@@ -1895,10 +1896,8 @@ class TcpSession:
             #     congestion-avoidance growth.
             if self._recovery_point != 0 and lt32(self._snd_una, self._recovery_point):
                 self._cwnd = partial_cum_ack_deflate(self._cwnd, bytes_acked, self._snd_mss)
-            elif self._cwnd < self._ssthresh:
-                self._cwnd += min(bytes_acked, self._snd_mss)
             else:
-                self._cwnd += max(1, self._snd_mss * self._snd_mss // self._cwnd)
+                self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
             # 'min(cwnd, snd_wnd)'. Recompute now so
             # '_transmit_data' sees the new value on the same
