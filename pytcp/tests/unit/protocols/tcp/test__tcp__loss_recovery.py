@@ -68,9 +68,10 @@ class TestIsLost(TestCase):
     def test__is_lost__three_blocks_above_seq_triggers_count_rule(self) -> None:
         """
         Ensure 'is_lost' fires on the count rule when at least
-        'dup_thresh' (default 3) discontiguous SACK blocks lie at
-        or above 'seq'.
-        Per RFC 6675 §3 (IsLost count rule, condition (1)).
+        'dup_thresh' (default 3) discontiguous SACK blocks lie
+        at or above 'seq'.
+
+        Reference: RFC 6675 §3 (IsLost count rule, condition (1)).
         """
 
         scoreboard = SackScoreboard()
@@ -84,10 +85,11 @@ class TestIsLost(TestCase):
 
     def test__is_lost__two_blocks_below_count_threshold_returns_false(self) -> None:
         """
-        Ensure 'is_lost' is False with two blocks of small total
-        size - count rule needs three blocks, byte rule needs
-        more than '(dup_thresh-1) * mss' bytes.
-        Per RFC 6675 §3 (IsLost neither rule satisfied).
+        Ensure 'is_lost' is False with two blocks of small
+        total size - count rule needs three blocks, byte rule
+        needs more than '(dup_thresh-1) * mss' bytes.
+
+        Reference: RFC 6675 §3 (IsLost neither rule satisfied).
         """
 
         scoreboard = SackScoreboard()
@@ -106,7 +108,8 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' fires on the byte rule when a single
         SACK block above 'seq' carries more than
         '(dup_thresh - 1) * mss' bytes (default = '2 * mss').
-        Per RFC 6675 §3 (IsLost byte rule, condition (2)).
+
+        Reference: RFC 6675 §3 (IsLost byte rule, condition (2)).
         """
 
         scoreboard = SackScoreboard()
@@ -121,9 +124,10 @@ class TestIsLost(TestCase):
         """
         Ensure 'is_lost' returns False when bytes above 'seq'
         equal exactly '(dup_thresh - 1) * mss' - the spec
-        requires STRICTLY MORE than that (the inequality is '>',
-        not '>=').
-        Per RFC 6675 §3 (IsLost byte-rule strict inequality).
+        requires STRICTLY MORE than that (the inequality is
+        '>', not '>=').
+
+        Reference: RFC 6675 §3 (IsLost byte-rule strict inequality).
         """
 
         scoreboard = SackScoreboard()
@@ -140,8 +144,8 @@ class TestIsLost(TestCase):
         """
         Ensure a caller-supplied 'dup_thresh' lowers the count
         trigger - two blocks fire IsLost when 'dup_thresh = 2'.
-        Per RFC 6675 §3 (IsLost DupThresh parameter) +
-        RFC 5681 §3.2 (DupThresh default value).
+
+        Reference: RFC 6675 §3 (IsLost DupThresh parameter).
         """
 
         scoreboard = SackScoreboard()
@@ -157,7 +161,8 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' ignores blocks whose left edge falls
         below 'seq' - only blocks at or above 'seq' contribute
         to either threshold.
-        Per RFC 6675 §3 (IsLost considers blocks above the candidate seq).
+
+        Reference: RFC 6675 §3 (IsLost considers blocks above the candidate seq).
         """
 
         scoreboard = SackScoreboard()
@@ -174,6 +179,7 @@ class TestIsLost(TestCase):
         """
         Ensure 'is_lost' asserts when 'seq' is outside the
         32-bit unsigned range.
+
         Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
@@ -193,7 +199,8 @@ class TestNextSeg(TestCase):
         empty - even though there is a gap at SND.UNA, IsLost
         cannot fire without any SACK info, so no retransmit is
         warranted.
-        Per RFC 6675 §3 (NextSeg procedure, no candidate when IsLost False).
+
+        Reference: RFC 6675 §3 (NextSeg procedure, no candidate when IsLost False).
         """
 
         scoreboard = SackScoreboard()
@@ -205,9 +212,10 @@ class TestNextSeg(TestCase):
     def test__next_seg__three_blocks_above_gap_returns_gap(self) -> None:
         """
         Ensure 'next_seg' returns the gap (= SND.UNA in this
-        scenario) when three blocks above it trigger IsLost via
-        the count rule.
-        Per RFC 6675 §3 (NextSeg returns first IsLost-positive seq).
+        scenario) when three blocks above it trigger IsLost
+        via the count rule.
+
+        Reference: RFC 6675 §3 (NextSeg returns first IsLost-positive seq).
         """
 
         scoreboard = SackScoreboard()
@@ -222,9 +230,10 @@ class TestNextSeg(TestCase):
 
     def test__next_seg__below_thresh_blocks_return_none(self) -> None:
         """
-        Ensure 'next_seg' returns None when only one small block
-        is above the gap - IsLost is not satisfied.
-        Per RFC 6675 §3 (NextSeg returns no candidate when IsLost False).
+        Ensure 'next_seg' returns None when only one small
+        block is above the gap - IsLost is not satisfied.
+
+        Reference: RFC 6675 §3 (NextSeg returns no candidate when IsLost False).
         """
 
         scoreboard = SackScoreboard()
@@ -237,8 +246,10 @@ class TestNextSeg(TestCase):
     def test__next_seg__gap_above_snd_max_returns_none(self) -> None:
         """
         Ensure 'next_seg' returns None when the gap is at or
-        above SND.MAX - there is no in-flight byte at that seq.
-        Per RFC 6675 §3 (NextSeg upper bound at SND.MAX).
+        above SND.MAX - there is no in-flight byte at that
+        seq.
+
+        Reference: RFC 6675 §3 (NextSeg upper bound at SND.MAX).
         """
 
         scoreboard = SackScoreboard()
@@ -252,9 +263,10 @@ class TestNextSeg(TestCase):
 
     def test__next_seg__byte_rule_triggers_with_one_large_block(self) -> None:
         """
-        Ensure 'next_seg' returns the gap when IsLost's byte rule
-        fires from a single large block above the gap.
-        Per RFC 6675 §3 (NextSeg using byte-rule IsLost).
+        Ensure 'next_seg' returns the gap when IsLost's byte
+        rule fires from a single large block above the gap.
+
+        Reference: RFC 6675 §3 (NextSeg using byte-rule IsLost).
         """
 
         scoreboard = SackScoreboard()
@@ -274,9 +286,11 @@ class TestPipe(TestCase):
     def test__pipe__empty_scoreboard_returns_full_in_flight(self) -> None:
         """
         Ensure 'pipe' returns 'snd_max - snd_una' when the
-        scoreboard is empty - nothing has been SACKed, so every
-        sent-but-uncum-acked byte is still considered in flight.
-        Per RFC 6675 §4 (Pipe estimate of FlightSize).
+        scoreboard is empty - nothing has been SACKed, so
+        every sent-but-uncum-acked byte is still considered
+        in flight.
+
+        Reference: RFC 6675 §4 (Pipe estimate of FlightSize).
         """
 
         scoreboard = SackScoreboard()
@@ -288,9 +302,10 @@ class TestPipe(TestCase):
 
     def test__pipe__one_block_subtracts_sacked_bytes(self) -> None:
         """
-        Ensure 'pipe' subtracts SACKed bytes from the in-flight
-        estimate.
-        Per RFC 6675 §4 (Pipe subtracts SACKed bytes).
+        Ensure 'pipe' subtracts SACKed bytes from the
+        in-flight estimate.
+
+        Reference: RFC 6675 §4 (Pipe subtracts SACKed bytes).
         """
 
         scoreboard = SackScoreboard()
@@ -303,9 +318,10 @@ class TestPipe(TestCase):
 
     def test__pipe__multiple_blocks_subtract_total_sacked_bytes(self) -> None:
         """
-        Ensure 'pipe' sums the bytes across multiple SACK blocks
-        and subtracts the total.
-        Per RFC 6675 §4 (Pipe sums all SACKed bytes).
+        Ensure 'pipe' sums the bytes across multiple SACK
+        blocks and subtracts the total.
+
+        Reference: RFC 6675 §4 (Pipe sums all SACKed bytes).
         """
 
         scoreboard = SackScoreboard()
@@ -321,9 +337,10 @@ class TestPipe(TestCase):
     def test__pipe__out_of_window_blocks_ignored(self) -> None:
         """
         Ensure 'pipe' ignores blocks whose edges fall outside
-        '[SND.UNA, SND.MAX]' - a defensive sum that cannot make
-        the result negative.
-        Per RFC 6675 §4 (Pipe operates on in-flight window only).
+        '[SND.UNA, SND.MAX]' - a defensive sum that cannot
+        make the result negative.
+
+        Reference: RFC 6675 §4 (Pipe operates on in-flight window only).
         """
 
         scoreboard = SackScoreboard()
@@ -339,6 +356,7 @@ class TestPipe(TestCase):
         """
         Ensure 'pipe' asserts when 'snd_una' is outside the
         32-bit unsigned range.
+
         Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 

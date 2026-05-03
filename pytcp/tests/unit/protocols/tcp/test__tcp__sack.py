@@ -130,7 +130,9 @@ class TestSackScoreboard__AddBlock(TestCase):
     def test__sack_scoreboard__add_block__adjacent_blocks_coalesce(self) -> None:
         """
         Ensure two exactly-adjacent blocks ('A.right == B.left')
-        coalesce into a single block per RFC 2018 union semantics.
+        coalesce into a single block.
+
+        Reference: RFC 2018 §3 (SACK union semantics, adjacent merge).
         """
 
         scoreboard = SackScoreboard()
@@ -691,8 +693,10 @@ class TestSackScoreboard__Blocks(TestCase):
     def test__sack_scoreboard__blocks__preserves_insertion_order(self) -> None:
         """
         Ensure 'blocks' preserves insertion order of distinct,
-        non-merging blocks (callers that want RFC 2018 §4 'most-
-        recent first' ordering can apply their own permutation).
+        non-merging blocks (callers that want 'most-recent
+        first' ordering can apply their own permutation).
+
+        Reference: RFC 2018 §4 (SACK block ordering).
         """
 
         scoreboard = SackScoreboard()
