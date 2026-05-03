@@ -1064,52 +1064,6 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
             ),
         )
 
-    def test__newreno__partial_cum_ack_deflates_cwnd_per_step_3b(self) -> None:
-        """
-        Ensure NewReno cwnd deflation on partial cum-ACK:
-        cwnd_new = cwnd_old - bytes_acked + SMSS (when
-        bytes_acked >= SMSS).
-
-        Reference: RFC 6582 §3 (NewReno step 3b cwnd deflation).
-        """
-
-        n_segments = 4  # so we can ack 2*MSS partially
-        session, post_fr_cwnd, _ = self._setup_multi_loss_recovery(
-            iss=LOCAL__ISS,
-            peer_iss=PEER__ISS,
-            n_segments=n_segments,
-        )
-
-        # Drive partial cum-ACK acking 2*MSS.
-        bytes_acked_partial = 2 * PEER__MSS
-        partial_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=PEER__ISS + 1,
-            ack=LOCAL__ISS + 1 + bytes_acked_partial,
-            flags=("ACK",),
-            win=PEER__WIN,
-        )
-        self._drive_rx(frame=partial_ack)
-
-        # NewReno step 3b:
-        #   cwnd -= bytes_acked = -2*MSS
-        #   if bytes_acked >= MSS: cwnd += MSS
-        # Net: cwnd -= MSS.
-        expected_cwnd = post_fr_cwnd - bytes_acked_partial + PEER__MSS
-        self.assertEqual(
-            session._cwnd,
-            expected_cwnd,
-            msg=(
-                f"Partial cum-ACK acking "
-                f"{bytes_acked_partial} bytes MUST deflate "
-                "cwnd by 'bytes_acked' then add SMSS back. "
-                f"Pre-ACK cwnd={post_fr_cwnd}, expected "
-                f"post-ACK cwnd={expected_cwnd}, got "
-                f"{session._cwnd}."
-            ),
-        )
-
 
 class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
     """
@@ -1169,15 +1123,20 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         )
         return session
 
-    def test__newreno__multiple_consecutive_partial_cum_acks_each_deflate_cwnd(self) -> None:
+    def test__newreno__multi_partial_cum_acks_preserve_recovery_then_exit_on_full(self) -> None:
         """
-        Ensure NewReno cwnd deflation fires correctly for
-        multiple consecutive partial cum-ACKs in one
-        recovery cycle: each deflates cwnd by 'bytes_acked'
-        (with SMSS add-back), and recovery exits only on
-        the cum-ACK that reaches recovery_point.
+        Ensure that across multiple consecutive partial
+        cum-ACKs in one recovery cycle, '_recovery_point' is
+        preserved on each partial advance and cleared only
+        on the cum-ACK that crosses the marker. Per-ACK cwnd
+        recomputation is now governed by RFC 6937 PRR
+        (covered by 'TestTcpCwndPrr'); this test focuses on
+        the structural multi-partial-cum-ACK invariants
+        (recovery-state lifecycle + RFC 5681 §3.2 step 6
+        deflate to ssthresh on exit) that PRR preserves.
 
-        Reference: RFC 6582 §3 (NewReno step 3b across multiple partial cum-ACKs).
+        Reference: RFC 6582 §3 (NewReno multi-partial-cum-ACK recovery lifecycle).
+        Reference: RFC 5681 §3.2 (recovery exit deflation).
         """
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1203,7 +1162,6 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
         # Tick - seg 1 retransmit fires.
         self._advance(ms=1)
-        cwnd_post_fr = session._cwnd
         ssthresh_post_fr = session._ssthresh
         recovery_point = session._recovery_point
 
@@ -1217,17 +1175,6 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=partial_1)
-
-        # bytes_acked=MSS: deflate by MSS, add back MSS, net 0.
-        self.assertEqual(
-            session._cwnd,
-            cwnd_post_fr,
-            msg=(
-                f"Partial cum-ACK #1 with bytes_acked=SMSS: "
-                f"deflate(-SMSS)+add-back(+SMSS) cancels. "
-                f"Expected {cwnd_post_fr}, got {session._cwnd}."
-            ),
-        )
         self.assertEqual(
             session._recovery_point,
             recovery_point,
@@ -1247,12 +1194,6 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=partial_2)
-
-        self.assertEqual(
-            session._cwnd,
-            cwnd_post_fr,
-            msg=("Partial cum-ACK #2 with bytes_acked=SMSS: " "same cancel. cwnd preserved."),
-        )
         self.assertEqual(
             session._recovery_point,
             recovery_point,
@@ -1291,14 +1232,17 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
             ),
         )
 
-    def test__newreno__sack_active_partial_cum_ack_still_deflates_cwnd(self) -> None:
+    def test__newreno__sack_active_partial_cum_ack_preserves_recovery(self) -> None:
         """
-        Ensure NewReno cwnd deflation runs even when SACK
-        is bilaterally negotiated. The cwnd deflation
-        accounting is independent of SACK and applies on
-        every partial cum-ACK during recovery.
+        Ensure that during recovery on a SACK-bilaterally-
+        negotiated session, a partial cum-ACK preserves the
+        recovery state ('_recovery_point' unchanged) - the
+        recovery-lifecycle invariant is independent of the
+        SACK negotiation result. Per-ACK cwnd recomputation
+        is now governed by RFC 6937 PRR (covered by
+        'TestTcpCwndPrr').
 
-        Reference: RFC 6582 §3 (NewReno step 3b cwnd deflation, SACK-orthogonal).
+        Reference: RFC 6582 §3 (recovery-state lifecycle is SACK-orthogonal).
         """
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS, sackperm=True)
@@ -1321,7 +1265,12 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
             )
             self._drive_rx(frame=dup_ack)
         self._advance(ms=1)
-        cwnd_post_fr = session._cwnd
+        recovery_point = session._recovery_point
+        self.assertNotEqual(
+            recovery_point,
+            0,
+            msg="Setup invariant: '_recovery_point' must be set after fast retransmit.",
+        )
 
         partial_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1333,27 +1282,30 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         )
         self._drive_rx(frame=partial_ack)
 
-        # NewReno step 3b: cwnd -= 2*SMSS + add-back SMSS.
-        expected_cwnd = cwnd_post_fr - 2 * PEER__MSS + PEER__MSS
         self.assertEqual(
-            session._cwnd,
-            expected_cwnd,
+            session._recovery_point,
+            recovery_point,
             msg=(
-                "Step 3b deflation MUST run regardless of "
-                f"SACK state. Expected post-deflate "
-                f"cwnd={expected_cwnd}, got {session._cwnd}."
+                "Partial cum-ACK on a SACK-active session "
+                "MUST preserve '_recovery_point' - the "
+                "lifecycle invariant is SACK-orthogonal."
             ),
         )
 
-    def test__newreno__partial_cum_ack_across_32bit_seq_wrap(self) -> None:
+    def test__newreno__partial_cum_ack_across_32bit_seq_wrap_preserves_recovery(self) -> None:
         """
-        Ensure NewReno cwnd deflation works across the
-        32-bit seq wrap. The recovery_point check uses
-        modular comparison so a partial cum-ACK on the
-        post-wrap side of recovery_point is classified as
-        partial, not past-recovery_point.
+        Ensure that the recovery-state lifecycle works
+        across the 32-bit seq wrap: the 'lt32(snd_una,
+        recovery_point)' modular comparison correctly
+        classifies a partial cum-ACK on the post-wrap side
+        of 'recovery_point' as partial (recovery preserved),
+        not as past-recovery_point (recovery exited). Per-ACK
+        cwnd recomputation is now governed by RFC 6937 PRR
+        (covered by 'TestTcpCwndPrr'); this test focuses on
+        the modular comparison invariant that PRR preserves.
 
-        Reference: RFC 6582 §3 (NewReno step 3b across modular seq wrap).
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
+        Reference: RFC 6582 §3 (recovery-state lifecycle across wrap).
         """
 
         wrap_iss = 0xFFFF_FFE0
@@ -1381,7 +1333,6 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
             self._drive_rx(frame=dup_ack)
 
         self._advance(ms=1)
-        cwnd_post_fr = session._cwnd
         recovery_point = session._recovery_point
 
         # Partial cum-ACK at SND.UNA + MSS. Modular addition
@@ -1406,17 +1357,6 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
                 f"as partial. Got recovery_point="
                 f"{session._recovery_point} (expected non-zero, "
                 f"= {recovery_point})."
-            ),
-        )
-        # bytes_acked=MSS: deflate -MSS + add-back +MSS = 0 net.
-        self.assertEqual(
-            session._cwnd,
-            cwnd_post_fr,
-            msg=(
-                f"Across-wrap partial cum-ACK with "
-                f"bytes_acked=SMSS: deflate-add-back cancels. "
-                f"Expected cwnd={cwnd_post_fr}, got "
-                f"{session._cwnd}."
             ),
         )
 

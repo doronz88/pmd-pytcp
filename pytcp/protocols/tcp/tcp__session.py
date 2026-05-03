@@ -51,8 +51,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 )
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
-from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
-from pytcp.protocols.tcp.tcp__newreno import partial_cum_ack_deflate
+from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -2136,15 +2135,8 @@ class TcpSession:
         # RFC 5681 §3.2 step 2: ssthresh = max(FlightSize/2,
         # 2*SMSS). Captures the just-observed loss point so
         # the post-recovery slow-start exits at this boundary.
-        # Step 3: cwnd = ssthresh + 3*SMSS - the +3 inflation
-        # represents the three segments that left the network
-        # (the dup-ACKs prove they arrived) and grants
-        # permission to send three new segments while the
-        # retransmit is in flight.
         flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
         self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
-        self._cwnd = self._ssthresh + 3 * self._snd_mss
-        self._snd_ewn = min(self._cwnd, self._snd_wnd)
 
         # RFC 6937 §3.1 PRR per-recovery state initialisation:
         # snapshot pipe at entry as 'RecoverFS' so the per-ACK
@@ -2155,6 +2147,18 @@ class TcpSession:
         self._recover_fs = flight_size
         self._prr_delivered = 0
         self._prr_out = 0
+
+        # RFC 6937 §3.1: at entry 'prr_delivered = 0' and
+        # 'prr_out = 0' so the per-ACK formula yields
+        # 'sndcnt = 0 - 0 = 0' and 'cwnd = pipe + 0 = pipe'.
+        # Pipe at entry equals 'flight_size' (no SACKs ingested
+        # this ACK). This replaces the legacy RFC 5681 §3.2
+        # step 3 'cwnd = ssthresh + 3*SMSS' coarse approximation
+        # with PRR's data-driven per-ACK pacing - subsequent
+        # ACKs recompute cwnd via the proportional ratio in
+        # '_process_ack_packet'.
+        self._cwnd = flight_size
+        self._snd_ewn = min(self._cwnd, self._snd_wnd)
 
         # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
         # within the loss event do not re-trigger; '_process_ack_packet'
@@ -2229,12 +2233,15 @@ class TcpSession:
             # Cwnd update on cum-ACK that advances SND.UNA.
             # Three branches gated on recovery state:
             #   - in recovery, partial cum-ACK (snd_una hasn't
-            #     reached recovery_point): RFC 6582 NewReno §3
-            #     step 3b deflation (cwnd -= bytes_acked, then
-            #     add back SMSS if bytes_acked >= SMSS). Helps
-            #     non-SACK peers recover from multi-segment
-            #     loss without taking an RTO per additional
-            #     loss.
+            #     reached recovery_point): RFC 6937 §3.1 PRR
+            #     proportional pacing - 'cwnd = pipe + sndcnt'
+            #     where sndcnt is computed from the
+            #     'prr_delivered * ssthresh / RecoverFS' ratio.
+            #     Replaces the RFC 6582 NewReno step 3b
+            #     deflation; PRR's per-ACK proportional pacing
+            #     subsumes both the deflate-on-partial-ACK
+            #     intent and RFC 5681 §3.2 step 4's per-dup-ACK
+            #     inflation.
             #   - in recovery, full cum-ACK (snd_una reached
             #     recovery_point): RFC 5681 §3.2 step 6
             #     deflation (cwnd = ssthresh) - handled at the
@@ -2242,7 +2249,30 @@ class TcpSession:
             #   - not in recovery: RFC 5681 §3.1 slow-start vs
             #     congestion-avoidance growth.
             if self._recovery_point != 0 and lt32(self._snd_una, self._recovery_point):
-                self._cwnd = partial_cum_ack_deflate(self._cwnd, bytes_acked, self._snd_mss)
+                current_pipe = pipe(
+                    scoreboard=self._sack_scoreboard,
+                    snd_una=self._snd_una,
+                    snd_max=self._snd_max,
+                )
+                if current_pipe > self._ssthresh:
+                    # PRR proper: aim for ssthresh/RecoverFS
+                    # ratio. Integer CEIL via the standard
+                    # '-(-a // b)' trick to avoid float math.
+                    target = -(-self._prr_delivered * self._ssthresh // self._recover_fs)
+                    sndcnt = target - self._prr_out
+                else:
+                    # PRR-CRB / PRR-SSRB: pipe has dropped at
+                    # or below ssthresh; allow conservative
+                    # send budget. SSRB (bilateral SACK + new
+                    # data this ACK) lets cwnd grow up to one
+                    # SMSS per ACK; CRB (no SACK or no new
+                    # data) caps at the unsent prr_delivered.
+                    if self._send_sack and bytes_acked > 0:
+                        limit = max(self._prr_delivered - self._prr_out, bytes_acked) + self._snd_mss
+                    else:
+                        limit = self._prr_delivered - self._prr_out
+                    sndcnt = min(self._ssthresh - current_pipe, limit)
+                self._cwnd = current_pipe + max(0, sndcnt)
             else:
                 self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
