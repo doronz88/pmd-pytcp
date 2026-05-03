@@ -59,8 +59,9 @@ class TestTcpSessionModuleConstants(TestCase):
         Ensure 'PACKET_RETRANSMIT_TIMEOUT' stays at the canonical 1000
         ms base delay. Changing it shifts every retransmit cadence, so
         any drift must be an intentional, reviewed change.
-        Per RFC 6298 §2.1 (initial RTO recommendation) +
-        RFC 8961 §2 (initial RTO best practices).
+
+        Reference: RFC 6298 §2.1 (initial RTO = 1 second).
+        Reference: RFC 8961 §2 (initial RTO best practices).
         """
 
         self.assertEqual(
@@ -73,8 +74,10 @@ class TestTcpSessionModuleConstants(TestCase):
         """
         Ensure 'PACKET_RETRANSMIT_MAX_COUNT' stays at 6 retries so the
         connection-abort timeout reaches 2**7 - 1 = 127 s under the
-        RFC 6298 §2 doubling cadence, satisfying the RFC 1122 §4.2.3.5
-        R2 floor of >= 100 s incorporated by RFC 9293 §3.8.3.
+        binary-doubling cadence, satisfying the R2 floor of >= 100 s.
+
+        Reference: RFC 1122 §4.2.3.5 (R2 >= 100 s before connection abort).
+        Reference: RFC 6298 §5.5 (binary backoff).
         """
 
         self.assertEqual(
@@ -90,9 +93,10 @@ class TestTcpSessionModuleConstants(TestCase):
     def test__tcp_session__time_wait_delay(self) -> None:
         """
         Ensure 'TIME_WAIT_DELAY' stays at the canonical 30-second
-        value used for the TCP TIME_WAIT state.
-        Reference: RFC 9293 §3.4.2 (TIME-WAIT 2*MSL); PyTCP uses 30 s
+        value used for the TCP TIME_WAIT state. PyTCP uses 30 s
         rather than the spec's 240 s default — a documented deviation.
+
+        Reference: RFC 9293 §3.4.2 (TIME-WAIT 2*MSL).
         """
 
         self.assertEqual(
@@ -105,8 +109,8 @@ class TestTcpSessionModuleConstants(TestCase):
         """
         Ensure 'DELAYED_ACK_DELAY' stays at the canonical 100 ms delay
         for consecutive delayed ACKs.
-        Per RFC 1122 §4.2.3.2 (delayed ACK timer must be < 500 ms) +
-        RFC 9293 §3.8.6.3.
+
+        Reference: RFC 1122 §4.2.3.2 (delayed ACK timer must be < 500 ms).
         """
 
         self.assertEqual(
@@ -123,10 +127,11 @@ class TestFsmState(TestCase):
 
     def test__tcp_session__fsm_state_has_every_tcp_state(self) -> None:
         """
-        Ensure 'FsmState' exposes every standard TCP state name
-        (RFC 9293, formerly RFC 793). Missing or renamed members would
-        silently break the state-transition machinery.
-        Per RFC 9293 §3.3.2 (eleven states).
+        Ensure 'FsmState' exposes every standard TCP state name.
+        Missing or renamed members would silently break the
+        state-transition machinery.
+
+        Reference: RFC 9293 §3.3.2 (eleven TCP states).
         """
 
         expected = {
@@ -151,8 +156,8 @@ class TestFsmState(TestCase):
     def test__tcp_session__fsm_state_str_is_name(self) -> None:
         """
         Ensure FsmState members stringify as their member name (the
-        'NameEnum' base overrides '__str__') so log lines are
-        readable.
+        'NameEnum' base overrides '__str__') so log lines are readable.
+
         Reference: RFC 9293 §3.3.2 (state names).
         """
 
@@ -172,7 +177,8 @@ class TestSysCall(TestCase):
         """
         Ensure 'SysCall' exposes the four syscalls the session
         recognizes: LISTEN, CONNECT, CLOSE, ABORT.
-        Reference: RFC 9293 §3.10 (User/TCP Interface calls).
+
+        Reference: RFC 9293 §3.9.1 (User/TCP interface calls).
         """
 
         self.assertEqual(
@@ -185,7 +191,8 @@ class TestSysCall(TestCase):
         """
         Ensure SysCall members stringify as their name (NameEnum
         override).
-        Reference: RFC 9293 §3.10 (User/TCP Interface call names).
+
+        Reference: RFC 9293 §3.9.1 (User/TCP interface call names).
         """
 
         self.assertEqual(str(SysCall.CONNECT), "CONNECT", msg="SysCall.CONNECT must stringify as 'CONNECT'.")
@@ -200,12 +207,13 @@ class TestConnError(TestCase):
         """
         Ensure 'ConnError' exposes the four connection-failure codes
         used by the session: NONE, REFUSED, TIMEOUT, CANCELED.
-        'CANCELED' added to support 'close()' issued mid-handshake
-        from a different thread than the one blocked on 'connect()';
-        signals the canceled-error so the blocked caller raises
+        'CANCELED' supports 'close()' issued mid-handshake from a
+        different thread than the one blocked on 'connect()'; signals
+        the canceled-error so the blocked caller raises
         'TcpSessionError("Connection canceled")' on unblock.
-        Reference: RFC 9293 §3.10.1 (OPEN error codes) +
-        §3.10.7.3 (RST in SYN-SENT triggers connection refused).
+
+        Reference: RFC 9293 §3.10.1 (OPEN error signalling).
+        Reference: RFC 9293 §3.10.7.3 (RST in SYN-SENT triggers connection refused).
         """
 
         self.assertEqual(
@@ -224,6 +232,7 @@ class TestTcpSessionError(TestCase):
         """
         Ensure 'TcpSessionError' inherits from 'Exception' so callers
         using a broad except clause catch it.
+
         Reference: RFC 9293 §3.10.1 (OPEN error signalling).
         """
 
@@ -236,6 +245,7 @@ class TestTcpSessionError(TestCase):
         """
         Ensure the exception's 'str()' returns the constructor
         message verbatim — test fixtures match on exact text.
+
         Reference: RFC 9293 §3.10.1 (error signalling to user).
         """
 

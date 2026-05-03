@@ -156,97 +156,15 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_fin_wait_1_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
-        FIN_WAIT_1 (we have sent our FIN and are awaiting its ACK)
-        elicits a challenge ACK at our current SND.NXT / RCV.NXT
-        and does NOT change state, per RFC 9293 §3.10.7.4 (folding
-        RFC 5961 §4).
+        Ensure a peer-issued SYN arriving while we are in
+        FIN_WAIT_1 (we have sent our FIN and are awaiting its
+        ACK) elicits a challenge ACK at our current SND.NXT /
+        RCV.NXT and does NOT change state. The challenge ACK
+        carries flags={ACK}, seq=SND.NXT, ack=RCV.NXT and the
+        graceful 4-way close is unaffected.
 
-        RFC 9293 §3.10.7.4 (synchronized state, SYN bit set):
-
-            "If the SYN bit is set in these synchronized states, it
-             may be either a legitimate new connection attempt
-             (e.g., in the case of TIME-WAIT), an error where the
-             connection should be reset, or the result of an attack
-             attempt, as described in RFC 5961 [9].  For the TIME-
-             WAIT state, new connections can be accepted if the
-             Timestamp Option is used and meets expectations (per
-             [40]).  For all other cases, RFC 5961 provides a
-             mitigation with applicability to some situations,
-             though there are also alternatives that offer cryptographic
-             protection (see RFC 5925 [37]).  RFC 5961 recommends
-             that in these synchronized states, if the SYN bit is
-             set, irrespective of the sequence number, TCP endpoints
-             MUST send a 'challenge ACK' to the remote peer."
-
-        And RFC 5961 §4 (the recommended mitigation):
-
-            "If the SYN bit is set, irrespective of the sequence
-             number, TCP MUST send an ACK (also referred to as
-             challenge ACK) to the remote peer."
-
-        The current 'TcpSession' implementation handles this rule
-        in ESTABLISHED (line 1354) and SYN_RCVD (line 1247) but
-        not in any of the other synchronized states. A peer (or
-        attacker) sending a SYN to a session in FIN_WAIT_1 will
-        see no reply at all - the FSM dispatcher routes the
-        segment into '_tcp_fsm_fin_wait_1', which has no SYN-
-        matching branch (its three branches match ACK-only,
-        FIN+ACK, and RST+ACK with SYN explicitly excluded), so
-        the SYN falls through and is silently dropped.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Application calls 'close()'. Tick #1 transitions
-               to FIN_WAIT_1; tick #2 emits our FIN+ACK at
-               SEQ = LOCAL__ISS + 1. SND.NXT advances to
-               LOCAL__ISS + 2 (post-FIN), SND.MAX = LOCAL__ISS + 2.
-            3. Peer (or off-path attacker) sends a SYN to our
-               4-tuple. The wire shape mimics a fresh handshake
-               attempt: flags = {SYN}, seq chosen arbitrarily
-               (the RFC says "irrespective of the sequence
-               number" - the attacker does not know RCV.NXT),
-               no MSS option, no payload.
-            4. Drive RX. Per RFC 9293 §3.10.7.4 / RFC 5961 §4,
-               we MUST emit a challenge ACK pointing at our
-               current SND.NXT and RCV.NXT (i.e. seq = LOCAL__ISS
-               + 2, ack = PEER__ISS + 1). State must NOT change.
-
-        Assertions:
-
-            * Exactly ONE inline TX frame is emitted - the
-              challenge ACK (the spec encoding).
-            * The challenge ACK carries flags = {ACK}.
-            * 'seq = LOCAL__ISS + 2' (== current SND.NXT after FIN).
-            * 'ack = PEER__ISS + 1' (== current RCV.NXT, no peer
-              data was sent).
-            * State remains FIN_WAIT_1 - the SYN is REJECTED, the
-              graceful 4-way close is unaffected.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_fin_wait_1' (line 1508-
-        1585) has no SYN-matching branch. The three branches it
-        does have (ACK-only at 1525, FIN+ACK at 1550, RST+ACK at
-        1576) all explicitly exclude SYN via 'not any({tcp__flag_syn})'.
-        A SYN-bearing segment falls through and is silently dropped,
-        leaving FIN_WAIT_1 vulnerable to the blind-attack scenario
-        the RFC mandates a challenge-ACK defence against.
-
-        The fix mirrors the existing pattern in '_tcp_fsm_established'
-        (line 1354):
-
-            if packet_rx_md and packet_rx_md.tcp__flag_syn:
-                self._transmit_packet(flag_ack=True)
-                return
-
-        placed near the top of '_tcp_fsm_fin_wait_1's segment-
-        handling chain (after the timer branch). The same one-
-        liner is needed in the other five close-related state
-        handlers; this test surfaces FIN_WAIT_1 specifically as
-        the most impactful (active-close path).
-
-        On current code this test will see zero outbound TX after
-        the SYN arrives - failing the inline-TX-count assertion.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -324,42 +242,14 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_fin_wait_2_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
-        FIN_WAIT_2 (we have sent our FIN and received its ACK; we
-        are awaiting peer's FIN) elicits a challenge ACK and does
-        NOT change state, per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        Ensure a peer-issued SYN arriving while we are in
+        FIN_WAIT_2 (we have sent our FIN and received its ACK;
+        we are awaiting peer's FIN) elicits a challenge ACK
+        and does NOT change state. The challenge ACK carries
+        flags={ACK}, seq=SND.NXT, ack=RCV.NXT.
 
-        Same RFC mandate as the FIN_WAIT_1 case - 'irrespective of
-        the sequence number, TCP endpoints MUST send a challenge
-        ACK to the remote peer'. Differentiates from FIN_WAIT_1 by
-        having SND.UNA already advanced to SND.MAX (peer ACKed our
-        FIN), which means the challenge ACK's seq is the same
-        post-FIN value (LOCAL__ISS + 2) but RCV.NXT remains at
-        PEER__ISS + 1 (peer has not sent its FIN yet - that would
-        have transitioned us to TIME_WAIT).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Application calls 'close()'. Tick #1 transitions
-               to FIN_WAIT_1; tick #2 emits our FIN+ACK.
-            3. Peer ACKs our FIN; state -> FIN_WAIT_2; SND.UNA
-               advances to LOCAL__ISS + 2.
-            4. Peer (or attacker) sends a SYN at arbitrary seq.
-            5. Drive RX. Per RFC, we MUST emit a challenge ACK
-               at seq=LOCAL__ISS+2, ack=PEER__ISS+1, and state
-               must remain FIN_WAIT_2.
-
-        Assertions:
-
-            * Exactly one inline TX - the challenge ACK.
-            * 'seq = LOCAL__ISS + 2', 'ack = PEER__ISS + 1', flags
-              = {ACK}.
-            * State remains FIN_WAIT_2.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_fin_wait_2' (line 1587-
-        1647) has no SYN-matching branch. Same fix pattern as
-        FIN_WAIT_1 applies.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -423,40 +313,14 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_close_wait_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
+        Ensure a peer-issued SYN arriving while we are in
         CLOSE_WAIT (peer closed first; we have not yet called
-        'close()') elicits a challenge ACK and does NOT change
-        state, per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        close()) elicits a challenge ACK and does NOT change
+        state. The challenge ACK acknowledges peer's FIN
+        cumulatively at seq=SND.NXT, ack=RCV.NXT.
 
-        CLOSE_WAIT is unique among the close-related states in
-        that we have NOT sent our FIN yet - SND.NXT is still at
-        LOCAL__ISS + 1 - while RCV.NXT has advanced past peer's
-        FIN to PEER__ISS + 2. The challenge ACK therefore
-        acknowledges peer's FIN cumulatively.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK; state -> CLOSE_WAIT,
-               RCV.NXT = PEER__ISS + 2.
-            3. Without ticking (so the delayed ACK of peer's FIN
-               has not yet fired), peer/attacker sends a SYN at
-               arbitrary seq.
-            4. Drive RX. Per RFC, we MUST emit a challenge ACK
-               at seq=LOCAL__ISS+1, ack=PEER__ISS+2 (acking the
-               FIN cumulatively), and state must remain CLOSE_WAIT.
-
-        Assertions:
-
-            * Exactly one inline TX - the challenge ACK.
-            * 'seq = LOCAL__ISS + 1' (we have not sent our FIN).
-            * 'ack = PEER__ISS + 2' (acknowledges peer's FIN).
-            * flags = {ACK}.
-            * State remains CLOSE_WAIT.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait' (line 1690-
-        1773) has no SYN-matching branch. Same fix pattern as
-        the other states.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -517,42 +381,14 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_closing_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
-        CLOSING (we and peer have both sent FIN; we have received
-        and acknowledged peer's FIN but ours is not yet ACKed)
-        elicits a challenge ACK and does NOT change state, per
-        RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        Ensure a peer-issued SYN arriving while we are in
+        CLOSING (simultaneous-close state - both sides have
+        sent FIN, neither has ACKed the other's FIN) elicits a
+        challenge ACK and does NOT change state. The challenge
+        ACK carries flags={ACK}, seq=SND.NXT, ack=RCV.NXT.
 
-        CLOSING is the simultaneous-close state - both sides FIN,
-        neither has ACKed the other's FIN yet at the moment of
-        transition. After we ACK peer's FIN, we are awaiting peer's
-        ACK of our FIN.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Application calls 'close()'. Tick #1 transitions
-               to FIN_WAIT_1; tick #2 emits our FIN+ACK.
-            3. Peer sends FIN+ACK with ack=LOCAL__ISS+1 (does
-               NOT ack our FIN; the simultaneous-close marker).
-               State -> CLOSING; we emit inline ACK at
-               ack=PEER__ISS+2.
-            4. Attacker sends a SYN at arbitrary seq.
-            5. Per RFC, we MUST emit a challenge ACK at
-               seq=LOCAL__ISS+2, ack=PEER__ISS+2, and state must
-               remain CLOSING.
-
-        Assertions:
-
-            * Exactly one inline TX in response to the SYN -
-              the challenge ACK.
-            * 'seq = LOCAL__ISS + 2' (post-FIN), 'ack = PEER__ISS
-              + 2' (acknowledges peer's FIN cumulatively),
-              flags={ACK}.
-            * State remains CLOSING.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_closing' (line 1649-
-        1688) has no SYN-matching branch. Same fix pattern.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -618,34 +454,14 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_last_ack_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
-        LAST_ACK (we sent our FIN after the peer closed first; we
-        are awaiting peer's ACK of our FIN) elicits a challenge
-        ACK and does NOT change state, per RFC 9293 §3.10.7.4 /
-        RFC 5961 §4.
+        Ensure a peer-issued SYN arriving while we are in
+        LAST_ACK (we sent our FIN after the peer closed first;
+        we are awaiting peer's ACK of our FIN) elicits a
+        challenge ACK and does NOT change state. The challenge
+        ACK carries flags={ACK}, seq=SND.NXT, ack=RCV.NXT.
 
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK; state -> CLOSE_WAIT.
-            3. Tick to drain delayed ACK of peer's FIN.
-            4. Application calls 'close()'. Tick #1: state ->
-               LAST_ACK. Tick #2: our FIN+ACK fires at SEQ =
-               LOCAL__ISS + 1. SND.NXT advances to LOCAL__ISS + 2.
-            5. Attacker sends a SYN.
-            6. Per RFC, we MUST emit a challenge ACK at
-               seq=LOCAL__ISS+2, ack=PEER__ISS+2, and state must
-               remain LAST_ACK.
-
-        Assertions:
-
-            * Exactly one inline TX in response to the SYN.
-            * 'seq = LOCAL__ISS + 2', 'ack = PEER__ISS + 2', flags
-              = {ACK}.
-            * State remains LAST_ACK.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_last_ack' (line 1775-
-        1818) has no SYN-matching branch.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -708,56 +524,16 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__robustness__syn_in_time_wait_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure that a peer-issued SYN arriving while we are in
-        TIME_WAIT (active close completed; we are waiting out the
-        2 MSL grace period) elicits a challenge ACK and does NOT
-        change state, per RFC 9293 §3.10.7.4 / RFC 5961 §4.
+        Ensure a peer-issued SYN arriving while we are in
+        TIME_WAIT (active close completed; we are waiting out
+        the 2 MSL grace period) and carrying NO timestamp
+        option elicits a challenge ACK and does NOT change
+        state. The PAWS-based 4-tuple-recycle path is
+        unreachable so the default challenge-ACK behaviour
+        applies.
 
-        RFC 9293 §3.10.7.4 mentions a special-case exception for
-        TIME_WAIT:
-
-            "For the TIME-WAIT state, new connections can be
-             accepted if the Timestamp Option is used and meets
-             expectations (per [40])."
-
-        i.e. RFC 6191 / RFC 7323's PAWS allows recycling the
-        4-tuple from TIME_WAIT into a fresh connection if the
-        SYN's TSecr establishes that the new SYN is "newer" than
-        any segment that could still be in flight from the prior
-        connection. PyTCP does NOT currently implement the
-        Timestamp Option (see harness factory's 'paws_ts'
-        sentinel that raises NotImplementedError), so the
-        TIME_WAIT-specific recycling path is unreachable. The
-        default RFC 9293 §3.10.7.4 / RFC 5961 §4 behaviour
-        applies: emit a challenge ACK, no state change.
-
-        Scenario:
-
-            1. Drive an active-close path to TIME_WAIT (via
-               ESTABLISHED -> FIN_WAIT_1 -> FIN_WAIT_2 ->
-               TIME_WAIT).
-            2. Attacker sends a SYN at arbitrary seq with NO
-               timestamp option (the PyTCP-supported case).
-            3. Per RFC, we MUST emit a challenge ACK at
-               seq=LOCAL__ISS+2, ack=PEER__ISS+2, and state
-               must remain TIME_WAIT.
-
-        Assertions:
-
-            * Exactly one inline TX in response to the SYN.
-            * 'seq = LOCAL__ISS + 2', 'ack = PEER__ISS + 2', flags
-              = {ACK}.
-            * State remains TIME_WAIT.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_time_wait' (post the
-        TIME_WAIT FIN-retransmit fix from commit '323c96c') now
-        accepts a 'packet_rx_md' parameter and has one inbound
-        branch (FIN retransmit -> ACK + restart timer). It still
-        has no SYN-matching branch, so a SYN falls through to
-        the return at the bottom of the FIN branch (which doesn't
-        match SYN-only) and is silently dropped. The fix is the
-        same one-line pattern applied to the other five close-
-        related state handlers.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -829,91 +605,15 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
 
     def test__blind_attack__challenge_ack_burst_is_rate_limited_per_rfc_5961_3(self) -> None:
         """
-        Ensure that a burst of unacceptable segments arriving in a
-        sub-1-second window does NOT produce one challenge ACK per
-        inbound segment. Per RFC 5961 §3, the receiver MUST rate-
-        limit challenge-ACK responses to mitigate ACK-amplification
+        Ensure a burst of unacceptable segments arriving in a
+        sub-1-second window does NOT produce one challenge ACK
+        per inbound segment. The receiver rate-limits
+        challenge-ACK responses to mitigate ACK-amplification
         DoS attacks where a small volume of malicious or buggy
-        inbound segments produces a large outbound ACK flood.
+        inbound segments would otherwise produce a large
+        outbound ACK flood.
 
-        RFC 5961 §3 (Mitigating Blind Reset Attacks):
-
-            "It is recommended that the implementation rate-limit
-             the response to ACK segments. ...  A method of
-             implementing the SHOULD-recommendation is to choose a
-             sliding window size of one second and allow at most
-             one challenge ACK per window."
-
-        Linux's default is one challenge-ACK per second; RFC 5961
-        leaves the exact rate to the implementation but the
-        principle is firm: one inbound unacceptable segment
-        should not amplify into one outbound ACK without bound.
-
-        Attack vector: a flood of out-of-window data segments
-        (e.g. blind injection by an off-path attacker, or a
-        misbehaving peer in a retransmit storm). Each one passes
-        the receive-window acceptability check at
-        '_check_segment_acceptability' (introduced in commit
-        '7f0d18b') and emits an empty-ACK reply. With no rate
-        limit, the receiver becomes an amplifier - an inbound
-        segment trickle becomes an outbound ACK flood, saturating
-        the local link and giving the attacker the amplification
-        they sought.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Drain any post-handshake state.
-            3. Send 10 unacceptable data segments back-to-back
-               within a sub-1-second window. Each segment has
-               'seq' below RCV.NXT (fully duplicate, RFC §3.10.7.4
-               unacceptable) so each currently elicits one
-               challenge ACK.
-            4. Inspect the inline TX list. Per RFC 5961 §3, the
-               total outbound ACK count MUST be small (default:
-               one per second window).
-
-        Assertions:
-
-            * Total outbound challenge-ACK frames across all 10
-              inbound segments is at most 2 (= one for the
-              opening sliding window + one allowance margin).
-              The exact threshold is implementation-defined per
-              RFC 5961 §3; the test asserts the principle, not
-              a specific numeric limit.
-
-        [FLAGS BUG] - 'TcpSession._check_segment_acceptability'
-        emits 'self._transmit_packet(flag_ack=True)' on every
-        unacceptable non-RST segment with no rate limit. Same
-        gap exists in the SYN-bearing branches in ESTABLISHED /
-        CLOSE_WAIT (each blind SYN-in-synchronized-state gets
-        an immediate challenge ACK) and in the OOO branch's
-        capped-at-2 dup-ACK emissions. RFC 5961 §3 mandates a
-        unified rate limit across ALL challenge-ACK emission
-        sites.
-
-        Fix outline (separate commit):
-
-          - Add '_challenge_ack_window_start: int = 0' and
-            '_challenge_ack_count: int = 0' attributes (or
-            equivalent token-bucket / sliding-window state)
-            to 'TcpSession.__init__'.
-          - Add a '_emit_challenge_ack()' helper that:
-              * Reads the current virtual-clock millisecond.
-              * If we are in a new 1-second window since
-                '_challenge_ack_window_start', reset the count
-                and update the window-start.
-              * If '_challenge_ack_count' is at the limit (1
-                per RFC 5961 §3 recommendation), suppress the
-                emission and return.
-              * Else fire 'self._transmit_packet(flag_ack=True)'
-                and increment the count.
-          - Replace every challenge-ACK emission site
-            (acceptability helper, SYN-bearing branches, OOO
-            branch) with the helper.
-
-        On current code this test fails with TX count == 10:
-        every unacceptable segment elicits a challenge ACK.
+        Reference: RFC 5961 §3 (challenge-ACK rate limit, sliding window).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -940,13 +640,10 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
         after_count = len(self._frames_tx)
         burst_tx_count = after_count - before_count
 
-        # Per RFC 5961 §3, the burst MUST be rate-limited. The
-        # exact threshold is implementation-defined (Linux uses
-        # 1/sec); we assert the principle: the count is bounded
-        # well below the inbound count. Allow up to 2 challenge
-        # ACKs (one for the opening window + a small
-        # implementation margin); 10 inbound -> 10 outbound is
-        # clearly broken.
+        # Rate-limit principle: count is bounded well below
+        # the inbound count. Allow up to 2 challenge ACKs
+        # (opening window + small implementation margin);
+        # 10 inbound -> 10 outbound is clearly broken.
         self.assertLessEqual(
             burst_tx_count,
             2,
@@ -1031,26 +728,12 @@ class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
 
     def test__ack__below_snd_una_minus_max_window_emits_challenge_ack(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure an inbound ACK with SEG.ACK below
+        'SND.UNA - MAX.SND.WND' elicits a rate-limited
+        challenge ACK rather than a silent drop, so a wedged
+        peer with a stale view can re-sync.
 
-        Ensure RFC 5961 §5: an inbound ACK with SEG.ACK below
-        'SND.UNA - MAX.SND.WND' MUST elicit a rate-limited
-        challenge ACK rather than silent drop.
-
-        Currently '_process_ack_packet' silently drops any
-        ACK that doesn't satisfy 'lt32(_snd_una, ack)' -
-        very-stale ACKs disappear without any observable
-        response, leaving a wedged peer unable to re-sync.
-
-        Scenario:
-            * Drive handshake; SND.UNA = LOCAL__ISS + 1,
-              MAX.SND.WND = PEER__WIN = 64240.
-            * Compute a stale-ACK value far below the
-              acceptable lower bound:
-                stale_ack = (SND.UNA - 2*MAX.SND.WND) & 0xFFFF_FFFF
-            * Drive a peer ACK with that value.
-            * Assert challenge-ACK emitted (1 outbound ACK
-              after the 1-tick advance).
+        Reference: RFC 5961 §5 (blind data injection, ACK lower bound).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1089,10 +772,11 @@ class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
 
     def test__ack__within_max_window_silently_dropped(self) -> None:
         """
-        Regression guard: a stale-but-within-MAX.SND.WND ACK
-        is silently dropped (no challenge-ACK). Only ACKs
-        BELOW 'SND.UNA - MAX.SND.WND' trigger the §5 hardening
-        path.
+        Ensure a stale-but-within-MAX.SND.WND ACK is silently
+        dropped (no challenge-ACK). Only ACKs below
+        'SND.UNA - MAX.SND.WND' trigger the §5 hardening path.
+
+        Reference: RFC 5961 §5 (blind data injection, acceptable-ACK window).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

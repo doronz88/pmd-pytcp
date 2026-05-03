@@ -139,85 +139,15 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__textbook_4way_close_walks_through_fin_wait_1_fin_wait_2_time_wait(self) -> None:
         """
-        Ensure that an application-driven 'close()' on an idle
-        ESTABLISHED session walks the FSM through the canonical
-        active-close 4-way handshake described by RFC 9293 §3.10.4 /
-        §3.5, with each transition emitting (or accepting) the
-        wire-level segment shape the spec mandates.
+        Ensure an application-driven 'close()' on an idle
+        ESTABLISHED session walks the FSM through the
+        canonical active-close 4-way handshake: ESTABLISHED ->
+        FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT, with our FIN
+        emitted, peer's ACK accepted, peer's FIN ACKed, and
+        the final ACK emitted at each step.
 
-        The textbook trajectory:
-
-            ESTABLISHED
-                | local 'close()'
-                v                                   send FIN+ACK -->
-            FIN_WAIT_1
-                |                                   <-- receive ACK
-                v                                       (of our FIN)
-            FIN_WAIT_2
-                |                                   <-- receive FIN+ACK
-                v                                       (peer's close)
-            TIME_WAIT                               send ACK -->
-                |                                       (of peer's FIN)
-                | (TIME_WAIT_DELAY elapses)
-                v
-            CLOSED
-
-        RFC 9293 §3.10.4 (CLOSE Call, ESTABLISHED state):
-
-            "Queue this until all preceding SENDs have been segmentized,
-             then form a FIN segment and send it.  In any case, enter
-             FIN-WAIT-1 state."
-
-        and §3.10.7.4 (FIN-WAIT-1 segment processing):
-
-            "If our FIN is now acknowledged, then enter FIN-WAIT-2 ..."
-            "If the FIN bit is set, ... acknowledge the segment, ...
-             and enter the TIME-WAIT state."
-
-        Scenario:
-
-            1. Drive the active-open handshake to ESTABLISHED. The
-               TX buffer is empty - no in-flight data complicates the
-               close.
-            2. Application calls 'session.close()'. This sets the
-               '_closing' flag in '_tcp_fsm_established's CLOSE-syscall
-               branch (line 1504-1506); state is still ESTABLISHED at
-               this point.
-            3. Tick #1: ESTABLISHED's timer branch sees
-               '_closing AND not _tx_buffer' and transitions to
-               FIN_WAIT_1. NO segment is emitted on this tick - the
-               transition only flips state; the FIN goes out from the
-               FIN_WAIT_1 timer handler on the next tick.
-            4. Tick #2: FIN_WAIT_1's '_transmit_data' enters the
-               '_state in {FIN_WAIT_1, LAST_ACK} and _snd_nxt !=
-               _snd_fin' branch (line 770) and emits the FIN+ACK at
-               SEQ = LOCAL__ISS + 1, ACK = PEER__ISS + 1, no payload.
-            5. Peer ACKs our FIN with ack = LOCAL__ISS + 2 (covering
-               the FIN's one byte of sequence space). FIN_WAIT_1's
-               handler processes the ACK and, seeing 'ack >= _snd_fin',
-               transitions to FIN_WAIT_2.
-            6. Peer sends its FIN+ACK with seq = PEER__ISS + 1,
-               ack = LOCAL__ISS + 2. FIN_WAIT_2's handler emits our
-               final ACK (ACK = PEER__ISS + 2, covering peer's FIN
-               byte) and transitions to TIME_WAIT.
-
-        Assertions on each step's wire shape and state:
-
-            * Tick #1 emits no segments.
-            * Tick #2 emits exactly one FIN+ACK with the spec'd
-              SEQ/ACK/flags/payload.
-            * After peer's ACK of our FIN: state is FIN_WAIT_2; no
-              segment emitted (ACKs of FIN do not require a reply).
-            * After peer's FIN+ACK: state is TIME_WAIT; exactly one
-              outbound bare-ACK with ack = PEER__ISS + 2 emerges.
-
-        This test passes on current code as a positive-control
-        regression guard. It exercises the canonical happy path
-        through the entire active-close subgraph, which is the
-        common case for a client-initiated graceful shutdown.
-        Future changes to '_tcp_fsm_established's CLOSE-syscall
-        branch, '_tcp_fsm_fin_wait_1', '_tcp_fsm_fin_wait_2', or the
-        FIN-emit branch in '_transmit_data' are all caught here.
+        Reference: RFC 9293 §3.6 (closing a connection).
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -365,94 +295,17 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__peer_fin_first_walks_through_close_wait_last_ack_closed(self) -> None:
         """
-        Ensure that when the peer initiates the close (sends FIN
-        before our application calls 'close()'), the FSM walks
-        through the canonical passive-close path described by
-        RFC 9293 §3.10.4 / §3.5, with each transition emitting the
-        wire-level segment shape the spec mandates.
+        Ensure that when the peer initiates the close
+        (sends FIN before our application calls close()),
+        the FSM walks through the canonical passive-close
+        path: ESTABLISHED -> CLOSE_WAIT -> LAST_ACK ->
+        CLOSED. Peer's FIN is acknowledged via delayed-ACK,
+        our subsequent close() flushes a FIN+ACK in
+        LAST_ACK, and peer's ACK of our FIN tears down
+        the connection.
 
-        The textbook trajectory:
-
-            ESTABLISHED                              <-- receive FIN+ACK
-                |                                        (peer's close)
-                v                                    send ACK -->
-            CLOSE_WAIT                                   (of peer's FIN)
-                |
-                | local 'close()' (after application
-                |  drains '_rx_buffer' and chooses
-                |  to close its half too)
-                v                                    send FIN+ACK -->
-            LAST_ACK
-                |                                    <-- receive ACK
-                v                                        (of our FIN)
-            CLOSED
-
-        RFC 9293 §3.10.4 (CLOSE Call, CLOSE-WAIT state):
-
-            "Queue this request until all preceding SENDs have been
-             segmentized; then send a FIN segment, enter LAST-ACK
-             state."
-
-        and §3.10.7.4 (ESTABLISHED segment processing, FIN bit):
-
-            "If the FIN bit is set, signal the user 'connection
-             closing' and return any pending RECEIVEs with same
-             message, advance RCV.NXT over the FIN, and send an
-             acknowledgment for the FIN.  Note that FIN implies
-             PUSH for any segment text not yet delivered to the
-             user."
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK with no data
-               (seq=PEER__ISS+1, ack=LOCAL__ISS+1). The FIN consumes
-               one byte of sequence space.
-            3. The ESTABLISHED FIN+ACK handler runs '_process_ack_packet'
-               (which advances 'RCV.NXT' to PEER__ISS+2 because
-               'seg_end' includes the FIN flag), notifies the
-               application via '_event__rx_buffer.set()', and
-               transitions to CLOSE_WAIT. The current FIN+ACK
-               handler emits an inline ACK only when the FIN-bearing
-               segment also carries data; for a pure FIN it relies
-               on the delayed-ACK timer to fire the ACK on the
-               first CLOSE_WAIT tick.
-            4. Tick #1 (post-FIN): CLOSE_WAIT's timer branch runs
-               '_delayed_ack', which fires the bare ACK acknowledging
-               peer's FIN at ack=PEER__ISS+2.
-            5. Application calls 'session.close()'. CLOSE_WAIT's
-               CLOSE-syscall branch sets '_closing = True'; state
-               stays CLOSE_WAIT.
-            6. Tick #2: CLOSE_WAIT's timer branch sees
-               '_closing AND not _tx_buffer' and transitions to
-               LAST_ACK. No segment emitted on this tick.
-            7. Tick #3: LAST_ACK's timer branch enters
-               '_transmit_data's FIN-emit branch (line 770) and
-               emits FIN+ACK at seq=LOCAL__ISS+1, ack=PEER__ISS+2.
-            8. Peer ACKs our FIN with ack=LOCAL__ISS+2. LAST_ACK's
-               handler transitions to CLOSED.
-
-        Assertions on each step's wire shape and state:
-
-            * Peer's FIN+ACK arrival produces no inline TX
-              (delayed-ACK governs).
-            * Tick #1 emits exactly one bare ACK acknowledging
-              peer's FIN.
-            * After 'close()' but before tick #2: state still
-              CLOSE_WAIT, '_closing' set.
-            * Tick #2 emits no segment (state-only transition).
-            * Tick #3 emits exactly one FIN+ACK with the spec'd
-              SEQ/ACK/flags/payload.
-            * After peer's ACK of our FIN: state is CLOSED, the
-              socket is unregistered from 'stack.sockets'.
-
-        This test passes on current code as a positive-control
-        regression guard for the canonical passive-close subgraph.
-        Future changes to '_tcp_fsm_established's FIN+ACK branch,
-        '_tcp_fsm_close_wait', '_tcp_fsm_last_ack', or the FIN-emit
-        branch in '_transmit_data' are all caught here. It also
-        documents the (RFC-permitted) choice to delay the FIN's
-        ACK rather than sending it inline.
+        Reference: RFC 9293 §3.6 (closing a connection).
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing in CLOSE-WAIT).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -623,89 +476,14 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__pending_tx_data_drains_before_fin_is_emitted(self) -> None:
         """
-        Ensure that an application-driven 'close()' on an ESTABLISHED
-        session with unacknowledged data still in the TX buffer does
-        NOT preempt the in-flight data: the buffered bytes must be
-        transmitted (and on PyTCP's stricter implementation, also
-        acknowledged by the peer) before the FIN segment goes out.
-        The FIN's SEQ must follow the last data byte so the peer's
-        cumulative-ACK arithmetic is consistent.
+        Ensure an application-driven close() on an
+        ESTABLISHED session with unacknowledged data still
+        in the TX buffer does not preempt the in-flight data:
+        the buffered bytes are segmentized and acknowledged
+        by the peer before the FIN segment goes out, so the
+        FIN's SEQ follows the last data byte.
 
-        RFC 9293 §3.10.4 (CLOSE Call, ESTABLISHED state):
-
-            "Queue this until all preceding SENDs have been
-             segmentized, then form a FIN segment and send it.  In
-             any case, enter FIN-WAIT-1 state."
-
-        The "queue this until" clause is the key contract: an
-        application that has called 'send(data)' followed by 'close()'
-        must see its data delivered to the peer with the FIN as the
-        terminator, not as a flag interleaved with or preempting the
-        data. PyTCP implements a stricter variant: the
-        ESTABLISHED -> FIN_WAIT_1 transition fires only when
-        '_closing AND not _tx_buffer' (line 1339), which means the
-        buffer must drain AND the data must be acknowledged. This
-        is RFC-compliant (the RFC's "queue this" clause permits any
-        arbitrary delay before forming the FIN, not just "until
-        segmentized") and avoids the edge case of a FIN getting
-        retransmit-tangled with unacked data.
-
-        Scenario:
-
-            1. Drive the active-open handshake to ESTABLISHED.
-               Pre-set '_snd_ewn = PEER__WIN' so the data send is
-               not throttled by slow-start.
-            2. Application sends 2 * MSS of data ("A"*1460 + "B"*1460).
-               The bytes go into '_tx_buffer'; nothing is on the wire
-               yet.
-            3. Application calls 'session.close()'. '_closing' is set;
-               state stays ESTABLISHED. The buffer still holds 2920
-               bytes of unsent data.
-            4. Tick #1: '_transmit_data' emits the first data segment
-               ('A'*1460) at SEQ=LOCAL__ISS+1. The closing transition
-               does NOT fire because '_tx_buffer' is non-empty.
-            5. Tick #2: '_transmit_data' emits the second data segment
-               ('B'*1460) at SEQ=LOCAL__ISS+1+1460. Still no FIN; still
-               ESTABLISHED.
-            6. Peer ACKs both segments cumulatively
-               (ack=LOCAL__ISS+1+2920). '_tx_buffer' purges all 2920
-               bytes.
-            7. Tick #3: '_transmit_data' is a no-op (buffer empty);
-               then '_closing AND not _tx_buffer' triggers the
-               transition to FIN_WAIT_1. No segment emitted on this
-               tick.
-            8. Tick #4: FIN_WAIT_1's '_transmit_data' enters the
-               FIN-emit branch (line 770) and emits FIN+ACK at
-               SEQ=LOCAL__ISS+1+2920 (the byte AFTER the last data
-               byte we sent). The FIN consumes one byte of sequence
-               space, so '_snd_fin' lands at LOCAL__ISS+1+2920+1.
-
-        Assertions on each step's wire shape and state:
-
-            * Tick #1 emits exactly one data segment with payload
-              'A'*1460 at SEQ=LOCAL__ISS+1; flags include neither
-              FIN nor SYN; state stays ESTABLISHED.
-            * Tick #2 emits exactly one data segment with payload
-              'B'*1460 at SEQ=LOCAL__ISS+1+1460; no FIN; state
-              stays ESTABLISHED.
-            * Peer's cumulative ACK drains '_tx_buffer' to zero
-              and advances 'SND.UNA' to LOCAL__ISS+1+2920.
-            * Tick #3 emits no segment but transitions ESTABLISHED
-              -> FIN_WAIT_1.
-            * Tick #4 emits exactly one FIN+ACK at
-              SEQ=LOCAL__ISS+1+2920 (immediately after the data
-              tail) with no payload; state stays FIN_WAIT_1
-              awaiting peer's ACK of the FIN.
-
-        This test passes on current code as a positive-control
-        regression guard for the ordering invariant that data
-        precedes FIN. Future changes to the close-syscall branch
-        in '_tcp_fsm_established' or to the closing-transition
-        condition that allowed the FIN to be emitted before
-        '_tx_buffer' drained would be caught here - the FIN's
-        SEQ would land inside or before the data range, breaking
-        the cumulative-ACK arithmetic and risking peer rejection
-        of either the data or the FIN.
+        Reference: RFC 9293 §3.10.4 (CLOSE call queues FIN until SENDs are segmentized).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -877,91 +655,15 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__data_bearing_fin_elicits_inline_cumulative_ack(self) -> None:
         """
-        Ensure that a peer FIN+ACK that ALSO carries data is handled
-        as a single atomic event: the data is enqueued into
-        '_rx_buffer', RCV.NXT advances past both the data and the
-        FIN's one byte of sequence space, an inline cumulative ACK
-        fires immediately (not delayed), and the FSM transitions to
-        CLOSE_WAIT. The data must remain in '_rx_buffer' so the
-        application can drain it via 'recv()' even after the peer
-        has closed its half.
+        Ensure a peer FIN+ACK that also carries data is
+        handled atomically: the data is enqueued into
+        '_rx_buffer', RCV.NXT advances past both the data
+        and the FIN's one byte of sequence space, an inline
+        cumulative ACK fires immediately (not delayed), and
+        the FSM transitions to CLOSE_WAIT. The data remains
+        readable via recv() after peer closed its half.
 
-        RFC 9293 §3.10.7.4 (ESTABLISHED segment processing, sequencing
-        across data and FIN):
-
-            "If the FIN bit is set, signal the user 'connection
-             closing' and return any pending RECEIVEs with same
-             message, advance RCV.NXT over the FIN, and send an
-             acknowledgment for the FIN.  Note that FIN implies
-             PUSH for any segment text not yet delivered to the
-             user."
-
-        and from §3.10.4 (CLOSE-WAIT semantics):
-
-            "CLOSE-WAIT - represents waiting for a connection
-             termination request from the local user."
-
-        The PyTCP implementation collapses the data-with-FIN case
-        into a single inline ACK (rather than letting the delayed-
-        ACK timer cover it), which is the RFC's recommended path
-        for FIN-bearing segments per the "send an acknowledgment
-        for the FIN" clause and the "PUSH" semantics that imply
-        immediate delivery.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK with a payload (b"final-data",
-               10 bytes) at SEQ=PEER__ISS+1. The segment carries
-               BOTH new data AND the FIN.
-            3. Drive RX. The ESTABLISHED FIN+ACK branch runs
-               '_process_ack_packet' (which advances RCV.NXT to
-               PEER__ISS+1+10+1 because 'seg_end' includes both
-               data length and 'flag_fin'), then takes the
-               'if packet_rx_md.tcp__data' branch (line 1478) to
-               emit an INLINE ACK acknowledging both the data and
-               the FIN, and transitions to CLOSE_WAIT.
-
-        Assertions on the inline ACK:
-
-            * Exactly one inline TX frame produced by the FIN
-              arrival.
-            * Flags = {ACK} (no FIN, no SYN, no RST).
-            * 'ack = PEER__ISS + 1 + 10 + 1' - the cumulative
-              acknowledgement covers all 10 data bytes AND the
-              FIN's one-byte sequence consumption.
-            * 'seq = LOCAL__ISS + 1' - we have not advanced our
-              own send sequence (no data sent on our side).
-            * 'payload = b""' - bare ACK.
-            * Advertised window = 65535 - 10 (the new buffer
-              occupancy after the data was enqueued; per the
-              receive-window-shrink fix from commit 'f3c3392').
-
-        Side assertions on session state:
-
-            * State is CLOSE_WAIT.
-            * 'RCV.NXT == PEER__ISS + 1 + 10 + 1' - past the data
-              and the FIN.
-            * '_rx_buffer == b"final-data"' - the application can
-              still recv() the data even though the peer has
-              closed its half.
-            * '_event__rx_buffer' is set (so 'recv()' can wake up
-              and observe both the data and the connection-closing
-              signal).
-
-        This test passes on current code as a positive-control
-        regression guard for the data-with-FIN inline-ACK path
-        (line 1478 of '_tcp_fsm_established'). It catches any
-        future change that:
-          - Defers the ACK to the delayed-ACK timer when data is
-            present (would break the "send an acknowledgment for
-            the FIN" RFC clause).
-          - Discards the data when the FIN flag is set (a real
-            risk during refactors that branch on FIN before
-            looking at payload).
-          - Computes 'ack' without including the FIN's one-byte
-            sequence consumption (would leave the peer
-            retransmitting the FIN forever).
+        Reference: RFC 9293 §3.10.7.4 (FIN with text, immediate ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1054,112 +756,16 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__close_wait_pre_fin_data_retransmit_elicits_ack_per_rfc_3_10_7_4(self) -> None:
         """
-        Ensure that when a peer retransmits previously-received
-        pre-FIN data while we are in CLOSE_WAIT, we respond with
-        an ACK reply per RFC 9293 §3.10.7.4 step 1, rather than
-        silently dropping the segment. The retransmit's payload
-        is unacceptable (SEG.SEQ + SEG.LEN <= RCV.NXT - all bytes
-        already cumulatively-acknowledged before peer's FIN), but
-        the spec requires unacceptable segments to elicit an ACK
-        so peer's retransmit machinery sees fresh activity and
-        can stop retransmitting.
+        Ensure that when a peer retransmits previously-
+        received pre-FIN data while we are in CLOSE_WAIT, we
+        respond with an ACK reply rather than silently
+        dropping the segment. The retransmit's payload is
+        unacceptable (entire seq range below RCV.NXT) but
+        the spec requires an ACK so peer's retransmit
+        machinery can stop. State and SND.UNA / RCV.NXT /
+        '_rx_buffer' are unchanged.
 
-        RFC 9293 §3.10.7.4 step 1:
-
-            "If an incoming segment is not acceptable, an
-             acknowledgment should be sent in reply (unless the
-             RST bit is set, if so drop the segment and return):
-             <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>. After sending
-             the acknowledgment, drop the unacceptable segment
-             and return."
-
-        The CLOSE_WAIT handler in PyTCP today has no receive-
-        window acceptability check at the top and no fallback
-        ACK for unacceptable segments; only segments matching
-        one of the four explicit branches (suspected-retransmit
-        dup-ACK, OOO data, regular bare ACK, RST) elicit any
-        outbound activity. A pre-FIN data retransmit fits NONE
-        of those branches (its seq is below RCV.NXT and it
-        carries data), so it falls through silently. Peer's
-        retransmit timer fires repeatedly until RTO clears the
-        connection - wasted bandwidth and visible peer-side
-        latency.
-
-        Same gap exists in CLOSING / FIN_WAIT_1 / FIN_WAIT_2 /
-        LAST_ACK; this test pins the CLOSE_WAIT case as the
-        canonical example. The fix is structurally shared with
-        the ESTABLISHED Phase 7 DSACK handler: extract the
-        receive-window acceptability check + always-ACK reply
-        into a helper and apply it to all synchronized states.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends 50 bytes of data. Drain so the bytes
-               are delivered to '_rx_buffer' and the delayed
-               ACK fires (RCV.NXT advances to PEER__ISS + 1 +
-               50; RCV.UNA == RCV.NXT).
-            3. Peer sends FIN. We transition to CLOSE_WAIT;
-               RCV.NXT advances past the FIN to PEER__ISS + 1
-               + 50 + 1; we ACK the FIN.
-            4. Application sends 4 bytes (so SND.MAX >
-               SND.UNA - the test exercises the unacceptable-
-               segment-with-piggybacked-ACK case where peer's
-               retransmit HAS ack info that would advance our
-               SND.UNA if processed; per RFC 9293 §3.10.7.4
-               step 1 that ACK info MUST NOT be processed
-               because the segment is unacceptable and
-               dropped).
-            5. Peer retransmits the original 50-byte data
-               segment with seq = PEER__ISS + 1 (below our
-               RCV.NXT) AND ack = LOCAL__ISS + 1 + 4 (cum-
-               ACKing our 4-byte send). The segment is
-               unacceptable per RFC 9293 §3.10.7.4 receive-
-               window check.
-            6. Inspect the inline TX. Per RFC 9293 §3.10.7.4
-               step 1 we MUST emit one ACK reply.
-
-        Required wire shape of the ACK reply:
-
-            seq       = LOCAL__ISS + 1 + 4    (= our SND.NXT)
-            ack       = PEER__ISS + 1 + 50 + 1 (= our RCV.NXT,
-                                               post-FIN)
-            flags     = {ACK}
-            payload   = b""
-
-        Side effects asserted:
-
-            * Exactly one outbound ACK fires.
-            * 'session._snd_una' is unchanged (peer's piggy-
-              backed ACK info was NOT processed - the
-              unacceptable segment was dropped at the
-              acceptability check, before the ACK-field
-              processing in §3.10.7.4 step 5).
-            * 'session._rcv_nxt' is unchanged (data not re-
-              delivered, no overlap recompute).
-            * 'session._rx_buffer' contents unchanged (the
-              data is already in there from step 2; the
-              retransmit MUST NOT double-deliver).
-            * 'session.state' remains CLOSE_WAIT.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait' has no
-        receive-window acceptability check and no fall-through
-        unacceptable-segment ACK reply. The retransmit falls
-        through to the end of the handler (the 'return' just
-        below the 'Regular data/ACK packet' branch) without
-        emitting any outbound segment. Today this test fails
-        at the 'len(retransmit_tx) == 1' assertion - the
-        actual count is 0.
-
-        Fix outline (separate commit): extract the receive-
-        window acceptability check from
-        '_tcp_fsm_established' into a helper
-        '_check_segment_acceptability(packet_rx_md)' that
-        returns True/False and emits the RFC 9293 §3.10.7.4
-        step 1 ACK reply when False. Apply the helper at the
-        top of '_tcp_fsm_close_wait' (and ideally
-        '_tcp_fsm_fin_wait_1', '_fin_wait_2', '_closing',
-        '_last_ack' - same RFC mandate).
+        Reference: RFC 9293 §3.10.7.4 (step 1 unacceptable-segment ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1251,10 +857,9 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             session._snd_una,
             snd_una_before,
             msg=(
-                "Per RFC 9293 §3.10.7.4 step 1 the unacceptable "
-                "segment is dropped BEFORE the ACK-field processing "
-                "step 5; peer's piggybacked ACK info MUST NOT "
-                "advance SND.UNA."
+                "An unacceptable segment is dropped before "
+                "the ACK-field processing step; peer's "
+                "piggybacked ACK info MUST NOT advance SND.UNA."
             ),
         )
         self.assertEqual(
@@ -1280,65 +885,12 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__fin_wait_1_unacceptable_segment_elicits_ack_per_rfc_3_10_7_4(self) -> None:
         """
-        Ensure that FIN_WAIT_1 honours RFC 9293 §3.10.7.4 step 1
-        and emits an ACK reply on unacceptable inbound segments
-        rather than silently dropping them. Same RFC mandate as
-        the CLOSE_WAIT case (commit '7f0d18b' fixed via
-        '_check_segment_acceptability') and the ESTABLISHED case
-        (covered since Phase 7 DSACK + the fix in '7f0d18b' /
-        'df96d27'); FIN_WAIT_1 was the first sibling state left
-        without the helper.
+        Ensure FIN_WAIT_1 emits an ACK reply on unacceptable
+        inbound segments (e.g. a fully-duplicate retransmit
+        with seq below RCV.NXT) rather than silently
+        dropping them. State remains FIN_WAIT_1.
 
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends 50 bytes of data; drain past delayed
-               ACK so RCV.NXT advances and the bytes are
-               acknowledged.
-            3. Application calls close(); two ticks transition
-               ESTABLISHED -> FIN_WAIT_1 and emit our FIN.
-            4. Peer retransmits the original 50-byte data
-               segment with seq = PEER__ISS + 1 (entirely below
-               RCV.NXT - fully duplicate, unacceptable per
-               §3.10.7.4 step 1).
-            5. Per RFC §3.10.7.4 step 1: ACK reply with our
-               current SND.NXT and RCV.NXT.
-            6. Today: silent drop.
-
-        Required wire shape of the ACK reply:
-
-            seq       = LOCAL__ISS + 2     (= our SND.NXT post-FIN)
-            ack       = PEER__ISS + 1 + 50 (= our RCV.NXT)
-            flags     = {ACK}
-            payload   = b""
-
-        Assertions:
-
-            * Exactly one outbound ACK fires inline on the
-              retransmit's arrival.
-            * 'session.state' remains FIN_WAIT_1 (the unacceptable
-              segment is dropped, not processed; SND.UNA does not
-              advance past our FIN).
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_fin_wait_1' has no
-        receive-window acceptability check at the top. Segments
-        with seq below RCV.NXT (fully duplicate) match none of
-        the explicit branches (suspected-retransmit dup-ACK
-        requires no-data; OOO branch requires seq > rcv_nxt;
-        regular bare ACK requires seq == rcv_nxt; FIN+ACK
-        requires seq == rcv_nxt; RST handlers require seq ==
-        rcv_nxt) and fall through silently.
-
-        Fix outline (separate commit): route the helper at the
-        top of '_tcp_fsm_fin_wait_1' below the SYN-bearing
-        branch (which preempts acceptability per RFC 5961 §4):
-
-            if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
-                return
-
-        Same one-liner that '7f0d18b' added to ESTABLISHED and
-        CLOSE_WAIT. The helper handles RST exception, DSACK case-1
-        stash, and the rate-limited ACK reply uniformly.
+        Reference: RFC 9293 §3.10.7.4 (step 1 unacceptable-segment ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1415,11 +967,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         self.assertEqual(
             session._snd_una,
             snd_una_before,
-            msg=(
-                "Per RFC §3.10.7.4 step 1 the unacceptable segment "
-                "is dropped after the empty-ACK reply; SND.UNA must "
-                "NOT advance."
-            ),
+            msg=("An unacceptable segment is dropped after " "the ACK reply; SND.UNA must NOT advance."),
         )
         self.assertIs(
             session.state,
@@ -1429,22 +977,11 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__fin_wait_2_unacceptable_segment_elicits_ack_per_rfc_3_10_7_4(self) -> None:
         """
-        Ensure that FIN_WAIT_2 honours RFC 9293 §3.10.7.4 step 1
-        and emits an ACK reply on unacceptable inbound segments.
-        Sibling-state coverage for the same gap class as the
-        FIN_WAIT_1 test above.
+        Ensure FIN_WAIT_2 emits an ACK reply on unacceptable
+        inbound segments rather than silently dropping them.
+        State remains FIN_WAIT_2.
 
-        Setup: drive ESTABLISHED -> close() -> FIN_WAIT_1 ->
-        peer ACKs our FIN -> FIN_WAIT_2. Then peer retransmits
-        old data; today silent drop, after fix ACK reply.
-
-        Assertions: same as FIN_WAIT_1; per RFC §3.10.7.4 step 1
-        an unacceptable segment elicits an ACK with our current
-        SND.NXT and RCV.NXT.
-
-        [FLAGS BUG] - '_tcp_fsm_fin_wait_2' has no acceptability
-        check at the top. Same fix shape as FIN_WAIT_1 / CLOSE_WAIT
-        / ESTABLISHED: route through '_check_segment_acceptability'.
+        Reference: RFC 9293 §3.10.7.4 (step 1 unacceptable-segment ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1497,12 +1034,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         self.assertEqual(
             len(retransmit_tx),
             1,
-            msg=(
-                "RFC 9293 §3.10.7.4 step 1: an unacceptable segment "
-                "in FIN_WAIT_2 MUST elicit an ACK reply. PyTCP today "
-                "drops it silently because '_tcp_fsm_fin_wait_2' has "
-                "no acceptability check at the top."
-            ),
+            msg=("An unacceptable segment in FIN_WAIT_2 MUST " "elicit an ACK reply rather than being dropped."),
         )
         ack_probe = self._parse_tx(retransmit_tx[0])
         self._assert_segment(
@@ -1520,19 +1052,11 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__last_ack_unacceptable_segment_elicits_ack_per_rfc_3_10_7_4(self) -> None:
         """
-        Ensure that LAST_ACK honours RFC 9293 §3.10.7.4 step 1
-        and emits an ACK reply on unacceptable inbound segments.
-        Sibling-state coverage; LAST_ACK is reached on the
-        passive-close path: peer FIN -> we go to CLOSE_WAIT ->
-        application close() -> LAST_ACK (waiting for peer's ACK
-        of our FIN).
+        Ensure LAST_ACK emits an ACK reply on unacceptable
+        inbound segments rather than silently dropping them.
+        State remains LAST_ACK.
 
-        Setup: drive ESTABLISHED -> peer FIN -> CLOSE_WAIT ->
-        application close() -> LAST_ACK. Then peer retransmits
-        old data; today silent drop, after fix ACK reply.
-
-        [FLAGS BUG] - '_tcp_fsm_last_ack' has no acceptability
-        check at the top. Same fix shape as the sibling states.
+        Reference: RFC 9293 §3.10.7.4 (step 1 unacceptable-segment ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1617,18 +1141,11 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__fin_wait_1_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
         """
-        Ensure that FIN_WAIT_1's ACK-only handler emits an
-        empty-ACK reply when peer sends 'tcp__ack > SND.MAX'
-        per RFC 9293 §3.10.7.4 step 5. Sibling-state coverage
-        for the gap class fixed in CLOSING (commit '95a2a4e').
+        Ensure FIN_WAIT_1's ACK-only handler emits an
+        empty-ACK reply when peer sends 'tcp__ack > SND.MAX'.
+        State remains FIN_WAIT_1.
 
-        Setup: drive close() to FIN_WAIT_1. Peer sends bare ACK
-        with ack acknowledging unsent data. Today silent drop;
-        after fix empty-ACK reply with our SND.NXT / RCV.NXT.
-
-        [FLAGS BUG] - the FIN_WAIT_1 ACK-only branch exits
-        without emitting on unacceptable-ACK fallthrough. Same
-        fix shape as CLOSING.
+        Reference: RFC 9293 §3.10.7.4 (step 5 ACK acknowledging unsent data).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1658,10 +1175,9 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             len(unacceptable_ack_inline),
             1,
             msg=(
-                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
-                "unsent data ('SEG.ACK > SND.NXT') in FIN_WAIT_1 "
-                "MUST elicit an empty-ACK reply. PyTCP today "
-                "drops it silently."
+                "An ACK acknowledging unsent data "
+                "('SEG.ACK > SND.NXT') in FIN_WAIT_1 MUST "
+                "elicit an empty-ACK reply."
             ),
         )
         ack_probe = self._parse_tx(unacceptable_ack_inline[0])
@@ -1680,8 +1196,11 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_active__fin_wait_2_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
         """
-        Same gap class as the FIN_WAIT_1 test above; this one
-        covers FIN_WAIT_2.
+        Ensure FIN_WAIT_2's ACK-only handler emits an
+        empty-ACK reply when peer sends 'tcp__ack > SND.MAX'.
+        State remains FIN_WAIT_2.
+
+        Reference: RFC 9293 §3.10.7.4 (step 5 ACK acknowledging unsent data).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1722,9 +1241,9 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             len(unacceptable_ack_inline),
             1,
             msg=(
-                "RFC 9293 §3.10.7.4 step 5: an ACK acknowledging "
-                "unsent data ('SEG.ACK > SND.NXT') in FIN_WAIT_2 "
-                "MUST elicit an empty-ACK reply."
+                "An ACK acknowledging unsent data "
+                "('SEG.ACK > SND.NXT') in FIN_WAIT_2 MUST "
+                "elicit an empty-ACK reply."
             ),
         )
         ack_probe = self._parse_tx(unacceptable_ack_inline[0])
@@ -1743,8 +1262,11 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__last_ack_unacceptable_ack_beyond_snd_max_triggers_empty_ack(self) -> None:
         """
-        Same gap class as the FIN_WAIT_1 / FIN_WAIT_2 tests
-        above; this one covers LAST_ACK.
+        Ensure LAST_ACK's ACK-only handler emits an
+        empty-ACK reply when peer sends 'tcp__ack > SND.MAX'.
+        State remains LAST_ACK.
+
+        Reference: RFC 9293 §3.10.7.4 (step 5 ACK acknowledging unsent data).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1811,99 +1333,14 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__close_wait_post_fin_data_elicits_ack_without_enqueue(self) -> None:
         """
-        Ensure that when peer (RFC-violatingly) sends data after
-        their own FIN - i.e. an in-window segment in CLOSE_WAIT
-        with 'seq == RCV.NXT' carrying payload - the receiver
-        emits an empty ACK so peer's retransmit machinery sees
-        fresh activity, but does NOT enqueue the data into
-        '_rx_buffer' (RFC 9293 §3.10.7.4 step 7 lists ESTABLISHED,
-        FIN-WAIT-1, FIN-WAIT-2 as the states that deliver segment
-        text - CLOSE_WAIT is NOT listed) and does NOT advance
-        RCV.NXT past it.
+        Ensure that when peer sends data after their own FIN
+        in CLOSE_WAIT (a protocol violation), the receiver
+        emits an empty ACK so peer's retransmit machinery
+        backs off, but does NOT enqueue the data into
+        '_rx_buffer' or advance RCV.NXT — CLOSE_WAIT is not
+        a segment-text-delivery state. State stays CLOSE_WAIT.
 
-        RFC 9293 §3.10.7.4 step 7 (Segment Text Processing):
-
-            "ESTABLISHED, FIN-WAIT-1, FIN-WAIT-2 STATE:
-             Once in the ESTABLISHED state, it is possible to
-             deliver segment text to user RECEIVE buffers."
-
-        The list omits CLOSE-WAIT, CLOSING, LAST-ACK, and
-        TIME-WAIT - all post-half-close states where the local
-        application has been signalled EOF and MUST NOT receive
-        further bytes. A peer that sends data past their own
-        FIN is RFC-violating; the receiver must not pass those
-        bytes up to the application (BSD socket semantics:
-        recv() returns b"" once peer FIN'd; appending fresh
-        data after EOF would break that contract). But the
-        receiver still needs to acknowledge the segment was
-        received so peer's retransmit timer backs off; without
-        an ACK reply, peer's TCP retransmits indefinitely until
-        their R2 fires.
-
-        The "ACK without enqueue" pattern is the conservative
-        BSD-stack approach. The stricter alternative (RST on
-        post-FIN data, treating it as a protocol error per
-        RFC 9293 §3.10.7.2's "any other incoming control or
-        data ... will be processed in the SYN-RECEIVED state"
-        clause read very strictly) is also legal but more
-        aggressive; PyTCP follows the conservative path
-        elsewhere (e.g. SYN piggybacked data on listener
-        handshake is queued, not dropped or RST'd) so this
-        test pins the conservative variant.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK at seq=PEER__ISS+1, ack=
-               LOCAL__ISS+1. Session transitions ESTABLISHED ->
-               CLOSE_WAIT; RCV.NXT advances to PEER__ISS+2.
-            3. Peer (RFC-violatingly) sends a fresh data
-               segment at seq=PEER__ISS+2 (= RCV.NXT) carrying
-               b"X" * 50.
-            4. Snapshot '_rx_buffer' before; should remain
-               unchanged after.
-            5. Drive RX. Inspect inline TX list.
-
-        Assertions:
-
-            * Exactly one outbound ACK fires inline.
-            * The ACK carries 'ack=PEER__ISS+2' (= current
-              RCV.NXT, NOT advanced past peer's post-FIN data).
-            * 'session._rx_buffer' is unchanged - the data
-              must NOT be enqueued past peer's FIN (would
-              corrupt application's post-EOF view of the
-              stream).
-            * 'session._rcv_nxt' is unchanged at PEER__ISS+2 -
-              accepting the post-FIN data into the receive
-              sequence space would violate RFC 9293's "FIN
-              consumes the last byte of the sequence space"
-              invariant.
-            * Session state stays CLOSE_WAIT.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait's regular
-        ACK branch (line ~2711) gates the '_process_ack_packet'
-        call on 'not packet_rx_md.tcp__data', so any data-
-        bearing in-order segment falls through to bare 'return'
-        without an ACK reply. The upstream
-        '_check_segment_acceptability' DID accept the segment
-        (in window, len > 0, RCV.WND > 0) but only emits an ACK
-        on UNACCEPTABLE inputs. Net effect: silent drop. Peer
-        retransmits indefinitely until their own R2 fires
-        (~100 s+ later).
-
-        Fix outline (separate commit):
-
-            Drop the 'not packet_rx_md.tcp__data' clause from
-            the regular-data branch and add an explicit "data
-            in CLOSE_WAIT" path that processes the ACK field
-            but does NOT enqueue or advance RCV.NXT, then emits
-            the cum-ACK so peer's retransmit timer backs off.
-
-        Severity: LOW. Only affects RFC-violating peers
-        (sending data past their own FIN) but the silent-drop
-        behaviour wastes peer-side bandwidth on the
-        retransmit-storm and pins peer's TCP in ESTABLISHED
-        until their R2 expires.
+        Reference: RFC 9293 §3.10.7.4 (segment text delivery, post-half-close).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2009,67 +1446,14 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
     def test__close_passive__close_wait_ooo_post_fin_data_must_not_queue(self) -> None:
         """
-        Ensure that when peer (RFC-violatingly) sends OOO data in
-        CLOSE_WAIT - data with 'seq > RCV.NXT', i.e. PAST the
-        seq just past their own FIN - the segment is NOT stored
-        in 'self._ooo_packet_queue'. The OOO queue normally
-        buffers segments awaiting RCV.NXT to advance to fill a
-        gap; in CLOSE_WAIT, RCV.NXT can NEVER advance past
-        peer's FIN seq + 1 (peer FIN'd so the seq space is
-        capped), so any OOO entry stored here is a permanent
-        leak with no drain path.
+        Ensure that when peer sends OOO data in CLOSE_WAIT
+        (past their own FIN, with seq > RCV.NXT), the
+        segment is NOT stored in '_ooo_packet_queue' (no
+        drain path exists in CLOSE_WAIT). A bare cum-ACK
+        nudges peer's retransmit machinery toward backoff;
+        '_rx_buffer', RCV.NXT, and OOO queue stay unchanged.
 
-        RFC 9293 §3.10.7.4 step 7 (Segment Text Processing)
-        omits CLOSE-WAIT from the list of states that deliver
-        segment text. Combined with the FIN's "no further data"
-        invariant, OOO data in CLOSE_WAIT is doubly-illegal:
-        peer should not have sent it, AND it cannot become
-        deliverable even if we buffered it.
-
-        The conservative response: emit a bare cum-ACK to nudge
-        peer's retransmit machinery toward backoff (same shape
-        as the in-order post-FIN-data sibling test above), but
-        do NOT store the segment in '_ooo_packet_queue'. No
-        DSACK case-2 marker either - the entire OOO branch is
-        rejected, so there is nothing to mark.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer FIN+ACK -> CLOSE_WAIT. RCV.NXT = PEER__ISS+2.
-            3. Peer sends OOO data segment at seq = PEER__ISS +
-               1 + 100 (= RCV.NXT + 99) with 50-byte payload.
-               This is past peer's own FIN AND OOO above
-               RCV.NXT.
-            4. Drive RX. Inspect inline TX list and queue state.
-
-        Assertions:
-
-            * Exactly one outbound ACK fires inline.
-            * The ACK carries 'ack = PEER__ISS + 2' (=
-              current RCV.NXT, unchanged).
-            * 'session._ooo_packet_queue' is empty - the
-              segment must NOT be stored.
-            * '_rx_buffer' is unchanged.
-            * 'RCV.NXT' is unchanged.
-            * Session stays in CLOSE_WAIT.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_close_wait's OOO
-        branch (line ~2701) mirrors ESTABLISHED's structurally
-        but never got the DSACK case-2 detection added in
-        commit 'b69e8b1' (since the case-2 work focused on
-        ESTABLISHED). More importantly, even with case-2
-        detection, the segment would still be stored in the
-        OOO queue - and in CLOSE_WAIT that storage is a leak
-        (no drain path). The fix replaces the OOO storage
-        branch with a bare ACK reply, dropping the data
-        entirely.
-
-        Severity: LOW (only triggers on RFC-violating peers)
-        but the behaviour is wrong: OOO entries in CLOSE_WAIT
-        accumulate without bound for a misbehaving peer, each
-        holding a 'TcpMetadata' reference that survives until
-        the session reaches CLOSED.
+        Reference: RFC 9293 §3.10.7.4 (segment text delivery, post-half-close).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2115,10 +1499,9 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             1,
             msg=(
                 "Peer's OOO post-FIN data segment in CLOSE_WAIT "
-                "MUST elicit exactly one outbound ACK. Today the "
-                "OOO branch DOES emit the ACK (matches "
-                "ESTABLISHED's behaviour) but the assertion below "
-                "on the queue size is the [FLAGS BUG] anchor."
+                "MUST elicit exactly one outbound ACK; the queue-"
+                "size assertion below pins that the segment is "
+                "not stored."
             ),
         )
         ack_probe = self._parse_tx(ooo_tx[0])
@@ -2238,10 +1621,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
 
     def test__close_idempotent__close_in_fin_wait_1_does_not_emit_second_fin(self) -> None:
         """
-        Ensure RFC 9293 §3.10.4 CLOSE-in-FIN_WAIT_1: a second
-        close() call is acceptable (silent no-op) but MUST NOT
-        emit a second FIN at a NEW seq. The first FIN's
-        retransmit cadence is unaffected.
+        Ensure a second close() call in FIN_WAIT_1 is a silent
+        no-op: no new FIN at a fresh seq is emitted; the first
+        FIN's retransmit cadence is unaffected.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call is idempotent across half-close states).
         """
 
         session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2257,10 +1641,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 probe.seq,
                 LOCAL__ISS + 1,
                 msg=(
-                    "RFC 9293 §3.10.4: any TX after a redundant close() "
-                    "in FIN_WAIT_1 MUST be a retransmit of the original "
-                    f"FIN at seq=LOCAL__ISS+1={LOCAL__ISS + 1}, NOT a "
-                    f"second FIN at a higher seq. Got seq={probe.seq}."
+                    "Any TX after a redundant close() in "
+                    "FIN_WAIT_1 MUST be a retransmit of the "
+                    f"original FIN at seq=LOCAL__ISS+1={LOCAL__ISS + 1}, "
+                    f"NOT a second FIN at a higher seq. Got "
+                    f"seq={probe.seq}."
                 ),
             )
         self.assertEqual(
@@ -2281,10 +1666,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
 
     def test__close_idempotent__close_in_fin_wait_2_does_not_emit_anything(self) -> None:
         """
-        Ensure RFC 9293 §3.10.4 CLOSE-in-FIN_WAIT_2: a second
-        close() call is acceptable (silent no-op). After peer
-        ACKed our FIN, there is nothing to retransmit; idle
-        FIN_WAIT_2 must stay quiet.
+        Ensure a second close() call in FIN_WAIT_2 is a silent
+        no-op: peer already ACKed our FIN so there is nothing
+        to retransmit; the idle session stays quiet.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call is idempotent across half-close states).
         """
 
         session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2307,10 +1693,10 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             idempotent_tx,
             [],
             msg=(
-                "RFC 9293 §3.10.4: idempotent close() in FIN_WAIT_2 "
-                "MUST NOT emit any segment. Peer already ACKed our "
-                f"FIN; nothing to retransmit. Got {len(idempotent_tx)} "
-                "outbound frame(s)."
+                "Idempotent close() in FIN_WAIT_2 MUST NOT "
+                "emit any segment. Peer already ACKed our FIN; "
+                "nothing to retransmit. Got "
+                f"{len(idempotent_tx)} outbound frame(s)."
             ),
         )
         self.assertEqual(
@@ -2326,10 +1712,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
 
     def test__close_idempotent__close_in_closing_does_not_emit_second_fin(self) -> None:
         """
-        Ensure RFC 9293 §3.10.4 CLOSE-in-CLOSING: simultaneous-
-        close path; both sides have sent FIN, neither has been
-        ACKed yet. A second close() is acceptable (silent no-op)
-        and MUST NOT emit a second FIN.
+        Ensure a second close() call in CLOSING (simultaneous-
+        close path with both sides having sent FIN) is a
+        silent no-op: no second FIN is emitted at a fresh seq.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call is idempotent across half-close states).
         """
 
         session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2361,9 +1748,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 probe.seq,
                 LOCAL__ISS + 1,
                 msg=(
-                    "RFC 9293 §3.10.4: idempotent close() in CLOSING "
-                    "MUST NOT emit a second FIN at a new seq. Got "
-                    f"seq={probe.seq}."
+                    "Idempotent close() in CLOSING MUST NOT " "emit a second FIN at a new seq. Got " f"seq={probe.seq}."
                 ),
             )
         self.assertEqual(
@@ -2379,11 +1764,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
 
     def test__close_idempotent__close_in_last_ack_does_not_emit_second_fin(self) -> None:
         """
-        Ensure RFC 9293 §3.10.4 CLOSE-in-LAST_ACK: passive-
-        close path; peer FIN'd first, app called close(),
-        session sent its FIN and is in LAST_ACK. A second
-        close() is acceptable (silent no-op) and MUST NOT
-        emit a second FIN.
+        Ensure a second close() call in LAST_ACK (passive-
+        close path) is a silent no-op: no second FIN at a
+        new seq is emitted.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call is idempotent across half-close states).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2417,8 +1802,8 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 probe.seq,
                 LOCAL__ISS + 1,
                 msg=(
-                    "RFC 9293 §3.10.4: idempotent close() in LAST_ACK "
-                    "MUST NOT emit a second FIN at a new seq. Got "
+                    "Idempotent close() in LAST_ACK MUST NOT "
+                    "emit a second FIN at a new seq. Got "
                     f"seq={probe.seq}."
                 ),
             )
@@ -2435,11 +1820,13 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
 
     def test__close_idempotent__close_in_time_wait_does_not_disturb_timer_or_state(self) -> None:
         """
-        Ensure RFC 9293 §3.10.4 CLOSE-in-TIME_WAIT: a redundant
-        close() call MUST NOT cancel the TIME_WAIT timer, MUST
-        NOT emit any segment, and MUST NOT change FSM state.
-        The TIME_WAIT delay must continue to count down to its
-        natural expiry per RFC 9293 §3.4.2.
+        Ensure a redundant close() call in TIME_WAIT does not
+        cancel the TIME_WAIT timer, emit any segment, or
+        change FSM state. The 2*MSL delay continues to count
+        down to its natural expiry.
+
+        Reference: RFC 9293 §3.4.2 (TIME-WAIT 2*MSL).
+        Reference: RFC 9293 §3.10.4 (CLOSE call is idempotent in TIME_WAIT).
         """
 
         session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -2478,8 +1865,8 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             idempotent_tx,
             [],
             msg=(
-                "RFC 9293 §3.10.4: idempotent close() in TIME_WAIT "
-                "MUST NOT emit any segment. Got "
+                "Idempotent close() in TIME_WAIT MUST NOT "
+                "emit any segment. Got "
                 f"{len(idempotent_tx)} outbound frame(s)."
             ),
         )
@@ -2487,8 +1874,8 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             time_wait_timer_name,
             self._timer.pending_timers,
             msg=(
-                "RFC 9293 §3.4.2 / §3.10.4: idempotent close() MUST NOT "
-                "cancel the TIME_WAIT timer. The 2*MSL delay must run "
+                "Idempotent close() MUST NOT cancel the "
+                "TIME_WAIT timer. The 2*MSL delay must run "
                 "to natural expiry."
             ),
         )
@@ -2501,11 +1888,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             timer_remaining_post,
             timer_remaining_pre,
             msg=(
-                "RFC 9293 §3.4.2: idempotent close() MUST NOT re-arm "
-                "the TIME_WAIT timer. Pre-close remaining: "
+                "Idempotent close() MUST NOT re-arm the "
+                "TIME_WAIT timer. Pre-close remaining: "
                 f"{timer_remaining_pre} ms; post-close: "
-                f"{timer_remaining_post} ms (a re-arm would push "
-                "remaining BACK UP)."
+                f"{timer_remaining_post} ms (a re-arm would "
+                "push remaining BACK UP)."
             ),
         )
         self.assertIs(

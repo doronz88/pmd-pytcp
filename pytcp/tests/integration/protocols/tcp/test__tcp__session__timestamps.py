@@ -45,7 +45,7 @@ The four invariants the project must satisfy:
     4. PAWS - reject inbound segments with stale TSval.
 
 This file exercises Phase 1 (bilateral negotiation). Phases
-2-4 add their own [FLAGS BUG] suites.
+2-4 add their own suites.
 
 Reference RFCs:
     RFC 7323 §3   Timestamps option wire format + negotiation
@@ -123,25 +123,11 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
 
     def test__ts__active_open_syn_carries_tsopt(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure an active-open SYN includes the Timestamps
+        option with TSval = current TS clock and TSecr = 0
+        (peer's TSval is unknown until the SYN+ACK arrives).
 
-        Ensure RFC 7323 §3: an active-open SYN MUST include the
-        Timestamps option with 'TSval = current TS clock' and
-        'TSecr = 0' (peer's TSval is unknown until the SYN+ACK
-        arrives).
-
-        Scenario:
-
-            * Construct an active session, drive 'connect'
-              syscall.
-            * Advance one tick so the SYN fires.
-            * Parse the outbound SYN frame.
-            * Assert TSopt is present (tsval is not None).
-            * Assert TSval is the current 'now_ms'.
-            * Assert TSecr == 0.
-
-        Fails today: 'TcpSession._transmit_packet' does not
-        emit TSopt; outbound TcpProbe.tsval is None.
+        Reference: RFC 7323 §3 (Timestamps option wire format).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -162,18 +148,14 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         )
         self.assertIsNotNone(
             probe.tsval,
-            msg=(
-                "RFC 7323 §3: active-open SYN MUST carry the "
-                "Timestamps option (with TSval = current TS clock, "
-                "TSecr = 0). Got no TSopt."
-            ),
+            msg=("Active-open SYN MUST carry the Timestamps " "option. Got no TSopt."),
         )
         self.assertEqual(
             probe.tsval,
             send_now_ms,
             msg=(
-                f"RFC 7323 §3: SYN's TSval MUST equal the "
-                f"sender's current TS clock value "
+                "SYN's TSval MUST equal the sender's "
+                "current TS clock value "
                 f"(stack.timer.now_ms = {send_now_ms}). "
                 f"Got TSval={probe.tsval}."
             ),
@@ -182,26 +164,18 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
             probe.tsecr,
             0,
             msg=(
-                "RFC 7323 §3: TSecr on the active-open SYN MUST "
-                "be zero (peer's TSval is not yet known). Got "
+                "TSecr on the active-open SYN MUST be zero "
+                "(peer's TSval is not yet known). Got "
                 f"TSecr={probe.tsecr}."
             ),
         )
 
     def test__ts__bilateral_send_ts_set_post_handshake_when_peer_supports(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure post-handshake '_send_ts' is True when both
+        sides advertised TSopt during the SYN exchange.
 
-        Ensure RFC 7323 §3: post-handshake '_send_ts' is True
-        when both sides advertised TSopt during the SYN
-        exchange. The flag gates per-segment TSopt emission and
-        TSopt ingestion in subsequent phases.
-
-        Scenario:
-
-            * Construct an active session, connect.
-            * Drive a peer SYN+ACK that includes TSopt.
-            * Assert session._send_ts == True post-handshake.
+        Reference: RFC 7323 §3 (Timestamps bilateral negotiation).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -228,28 +202,16 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         )
         self.assertTrue(
             session._send_ts,
-            msg=(
-                "RFC 7323 §3: bilateral negotiation success - "
-                "both sides advertised TSopt - MUST set "
-                "'_send_ts = True' so post-handshake segments "
-                "carry TSopt."
-            ),
+            msg=("Bilateral negotiation success - both sides " "advertised TSopt - MUST set '_send_ts = True'."),
         )
 
     def test__ts__peer_no_tsopt_disables_send_ts(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that if peer's SYN+ACK does not include
+        TSopt, '_send_ts' stays False; we cannot
+        unilaterally include TSopt on subsequent segments.
 
-        Ensure RFC 7323 §3: if peer's SYN+ACK does NOT include
-        TSopt, '_send_ts' MUST stay False. PyTCP cannot
-        unilaterally include TSopt on subsequent segments
-        because peer would not echo it.
-
-        Scenario:
-
-            * Connect.
-            * Drive a peer SYN+ACK with NO TSopt.
-            * Assert session._send_ts == False post-handshake.
+        Reference: RFC 7323 §3 (Timestamps bilateral negotiation).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -275,32 +237,18 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         )
         self.assertFalse(
             session._send_ts,
-            msg=(
-                "RFC 7323 §3: peer did not advertise TSopt - "
-                "'_send_ts' MUST stay False so we do not emit "
-                "TSopt on subsequent segments. Got "
-                f"_send_ts={session._send_ts}."
-            ),
+            msg=("Peer did not advertise TSopt - '_send_ts' " "MUST stay False. Got " f"_send_ts={session._send_ts}."),
         )
 
     def test__ts__advertise_opt_out_disables_outbound_tsopt(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 7323 §3: when the application disables TSopt
+        Ensure that when the application disables TSopt
         advertisement via '_advertise_ts = False' before
-        connect, the outbound SYN does NOT carry TSopt and the
-        post-handshake '_send_ts' stays False even if peer
-        advertised.
+        connect, the outbound SYN does not carry TSopt and
+        the post-handshake '_send_ts' stays False even if
+        peer advertised.
 
-        Scenario:
-
-            * Construct an active session.
-            * Set session._advertise_ts = False.
-            * Connect, advance.
-            * Assert outbound SYN's TSval is None (no option).
-            * Drive peer SYN+ACK with TSopt.
-            * Assert _send_ts == False (asymmetric guard).
+        Reference: RFC 7323 §3 (Timestamps bilateral negotiation, application opt-out).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -334,11 +282,10 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         self.assertFalse(
             session._send_ts,
             msg=(
-                "RFC 7323 §3 asymmetric-guard: even if peer "
-                "advertises TSopt, we MUST NOT enable '_send_ts' "
-                "when our side opted out via '_advertise_ts = "
-                "False'. Got _send_ts="
-                f"{session._send_ts}."
+                "Asymmetric-guard: even if peer advertises "
+                "TSopt, we MUST NOT enable '_send_ts' when "
+                "our side opted out. Got "
+                f"_send_ts={session._send_ts}."
             ),
         )
 
@@ -413,13 +360,11 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
 
     def test__ts__post_handshake_data_segment_carries_tsopt(self) -> None:
         """
-        Ensure RFC 7323 §3: post-handshake outbound segments
-        carry TSopt with 'TSval = now_ms' and 'TSecr =
-        _ts_recent' when bilateral negotiation succeeded.
+        Ensure post-handshake outbound segments carry TSopt
+        with TSval = now_ms and TSecr = _ts_recent when
+        bilateral negotiation succeeded.
 
-        Regression guard - the non-SYN TSopt emission gate was
-        wired in Phase 1 but only handshake segments were
-        explicitly tested.
+        Reference: RFC 7323 §3 (TSopt emission on every segment after bilateral negotiation).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -438,7 +383,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             probe.tsval,
             send_now_ms,
             msg=(
-                f"RFC 7323 §3: post-handshake data segment MUST "
+                "Post-handshake data segment MUST "
                 f"carry TSval = current TS clock ({send_now_ms}). "
                 f"Got TSval={probe.tsval}."
             ),
@@ -447,7 +392,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             probe.tsecr,
             PEER__TSVAL_INITIAL,
             msg=(
-                f"RFC 7323 §3: TSecr MUST equal '_ts_recent' "
+                "TSecr MUST equal '_ts_recent' "
                 f"(= peer's last seen TSval = "
                 f"{PEER__TSVAL_INITIAL:#x}). Got "
                 f"TSecr={probe.tsecr}."
@@ -456,19 +401,11 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
 
     def test__ts__ts_recent_updated_on_accepted_inbound_segment(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that an accepted inbound segment's TSval
+        updates '_ts_recent' so subsequent outbound TSecr
+        echoes the latest peer TS clock value.
 
-        Ensure RFC 7323 §4.3: an accepted inbound segment's
-        TSval MUST update '_ts_recent' so subsequent outbound
-        TSecr echoes the latest peer TS clock value.
-
-        Scenario:
-
-            * Drive handshake with peer TSval=PEER__TSVAL_INITIAL.
-              Capture initial _ts_recent.
-            * Drive a peer ACK (in-sequence, no data) with
-              TSval=PEER__TSVAL_INITIAL + 100.
-            * Assert '_ts_recent' updated to the new TSval.
+        Reference: RFC 7323 §4.3 (_ts_recent update on accepted segment).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -501,27 +438,20 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             session._ts_recent,
             new_tsval,
             msg=(
-                f"RFC 7323 §4.3: an accepted inbound segment's "
-                f"TSval MUST update '_ts_recent'. Expected "
+                "An accepted inbound segment's TSval MUST "
+                "update '_ts_recent'. Expected "
                 f"{new_tsval:#x}, got {session._ts_recent:#x}."
             ),
         )
 
     def test__ts__post_update_outbound_segment_echoes_new_ts_recent(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that after '_ts_recent' updates from an
+        inbound segment, the next outbound segment's TSecr
+        reflects the new value.
 
-        Ensure RFC 7323 §3 / §4.3: after '_ts_recent' updates
-        from an inbound segment, the next outbound segment's
-        TSecr reflects the new value.
-
-        Scenario:
-
-            * Drive handshake.
-            * Drive a peer ACK with TSval=NEW_TSVAL to update
-              '_ts_recent'.
-            * Send data; advance one tick to fire the segment.
-            * Assert outbound TSecr == NEW_TSVAL.
+        Reference: RFC 7323 §3 (TSecr echoes _ts_recent).
+        Reference: RFC 7323 §4.3 (_ts_recent update on accepted segment).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -558,7 +488,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             probe.tsecr,
             new_tsval,
             msg=(
-                f"RFC 7323 §3: outbound TSecr MUST reflect the "
+                "Outbound TSecr MUST reflect the "
                 f"updated '_ts_recent' = {new_tsval:#x}. Got "
                 f"TSecr={probe.tsecr}."
             ),
@@ -627,34 +557,13 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
 
     def test__rttm__karn_tainted_retransmit_measures_rtt_via_tsecr(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 7323 §4: when peer's ACK echoes a TSecr
+        Ensure that when peer's ACK echoes a TSecr
         identifying the retransmitted segment's TSval, the
-        runtime measures RTT directly from TSecr and folds it
-        into '_rto_state' via 'update', SUPERSEDING the Phase-2
-        sample tracker's Karn-mandated skip (RFC 6298 §3).
+        runtime measures RTT directly from TSecr and folds
+        it into '_rto_state' via 'update', superseding the
+        Phase-2 sample tracker's Karn-mandated skip.
 
-        Scenario:
-
-            * Drive handshake with TSopt at t=1.
-            * Send data at t=2 (TSval=2). Sample tracker armed.
-            * Advance past RTO (1000 ms boundary) to fire
-              retransmit. Sample tracker is now Karn-tainted.
-              Retransmit segment carries TSval=now_ms (the
-              retransmit time, ~1003).
-            * Capture '_rto_state' post-retransmit (after
-              'back_off' fires).
-            * Drive a peer ACK at later time with
-              'tsecr=retransmit_tsval', advancing snd_una.
-            * Without Phase 3: Phase-2 path skips the update
-              (Karn-tainted), and '_rto_state' would only have
-              the back_off-doubled rto_ms with no new sample
-              folded in.
-            * With Phase 3: TSecr identifies the retransmit's
-              TSval, RTT = now_ms - tsecr is folded via
-              update, and '_rto_state.srtt_ms' / 'rttvar_ms'
-              MOVE from the post-back_off snapshot.
+        Reference: RFC 7323 §4 (TSecr-driven RTTM obviates Karn).
         """
 
         from pytcp.protocols.tcp.tcp__rto import update as rto_update
@@ -715,7 +624,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
             session._rto_state,
             expected,
             msg=(
-                f"RFC 7323 §4: TSecr-driven RTTM MUST fold "
+                "TSecr-driven RTTM MUST fold "
                 f"observed_rtt={observed_rtt} via 'update' even "
                 f"after a Karn-tainted retransmit. Without "
                 f"Phase 3 the Karn skip leaves '_rto_state' at "
@@ -844,22 +753,13 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
 
     def test__paws__stale_tsval_segment_dropped(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure an inbound data segment with TSval strictly
+        less than '_ts_recent' is dropped without affecting
+        session state. PAWS defends against wrapped-sequence
+        attacks where an old segment delayed in the network
+        re-emerges with a low TSval but a newly-valid seq.
 
-        Ensure RFC 7323 §5: an inbound data segment with TSval
-        STRICTLY LESS than '_ts_recent' is dropped without
-        affecting session state. PAWS defends against
-        wrapped-sequence attacks where an old segment delayed
-        in the network re-emerges with a low TSval but a
-        newly-valid seq number.
-
-        Scenario:
-
-            * Drive handshake; '_ts_recent = PEER__TSVAL_INITIAL'.
-            * Drive a peer DATA segment with
-              'tsval = PEER__TSVAL_INITIAL - 100' (stale).
-            * Assert RX buffer NOT extended (segment dropped).
-            * Assert session state unchanged (RCV.NXT same).
+        Reference: RFC 7323 §5 (PAWS).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -889,24 +789,26 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
             session._rcv_nxt,
             rcv_nxt_pre,
             msg=(
-                f"RFC 7323 §5 PAWS: stale-TSval segment "
+                f"Stale-TSval segment "
                 f"(tsval={stale_tsval:#x} < _ts_recent="
                 f"{PEER__TSVAL_INITIAL:#x}) MUST be dropped "
-                f"without advancing RCV.NXT. Got "
+                "without advancing RCV.NXT. Got "
                 f"_rcv_nxt={session._rcv_nxt}."
             ),
         )
         self.assertEqual(
             bytes(session._rx_buffer),
             rx_buffer_pre,
-            msg=("RFC 7323 §5 PAWS: stale-TSval segment's data " "MUST NOT enter the RX buffer."),
+            msg="Stale-TSval segment's data MUST NOT enter the RX buffer.",
         )
 
     def test__paws__current_tsval_segment_accepted(self) -> None:
         """
-        Regression guard: an inbound segment with TSval
-        greater than or equal to '_ts_recent' is accepted
-        normally. PAWS only rejects strictly-stale TSvals.
+        Ensure an inbound segment with TSval greater than
+        or equal to '_ts_recent' is accepted normally; PAWS
+        only rejects strictly-stale TSvals.
+
+        Reference: RFC 7323 §5 (PAWS).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -932,11 +834,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
         self.assertEqual(
             session._rcv_nxt,
             PEER__ISS + 1 + len(b"fresh-data"),
-            msg=(
-                "RFC 7323 §5 PAWS: a fresh-TSval segment MUST "
-                "be accepted normally; RCV.NXT advances past "
-                "the data."
-            ),
+            msg=("A fresh-TSval segment MUST be accepted " "normally; RCV.NXT advances past the data."),
         )
         self.assertEqual(
             bytes(session._rx_buffer),
@@ -1009,16 +907,12 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
 
     def test__paws__dup_ack_with_stale_tsval_dropped(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 7323 §5: a duplicate ACK whose TSval is
-        strictly less than '_ts_recent' is dropped at the FSM
-        dispatch boundary BEFORE the dup-ACK count fast-
+        Ensure that a duplicate ACK whose TSval is strictly
+        less than '_ts_recent' is dropped at the FSM
+        dispatch boundary before the dup-ACK count fast-
         retransmit machinery sees it.
 
-        Without this gate, a delayed-and-replayed dup-ACK from
-        an old incarnation could spuriously contribute to the
-        3-dup-ACK fast-retransmit threshold, halving cwnd.
+        Reference: RFC 7323 §5 (PAWS at FSM-wide dispatch).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -1052,26 +946,24 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             session._cwnd,
             cwnd_pre,
             msg=(
-                "RFC 7323 §5 PAWS: stale-TSval dup-ACKs MUST be "
-                "dropped before the fast-retransmit count "
+                "Stale-TSval dup-ACKs MUST be dropped "
+                "before the fast-retransmit count "
                 "increments. cwnd MUST be unchanged."
             ),
         )
         self.assertEqual(
             session._tx_retransmit_request_counter.get(snd_una_pre, 0),
             retransmit_request_count_pre,
-            msg=("RFC 7323 §5 PAWS: stale-TSval dup-ACKs MUST NOT " "increment the per-seq dup-ACK counter."),
+            msg="Stale-TSval dup-ACKs MUST NOT increment the per-seq dup-ACK counter.",
         )
 
     def test__paws__ts_recent_updated_on_dup_ack_with_fresh_tsval(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure an accepted dup-ACK with a fresh TSval
+        refreshes '_ts_recent' so peer's TS clock progress
+        is reflected before peer sends data again.
 
-        Ensure RFC 7323 §4.3: an accepted dup-ACK with a fresh
-        TSval refreshes '_ts_recent'. Currently the dup-ACK
-        path bypasses the '_ts_recent' update in
-        '_process_ack_packet', so peer's TS clock progress is
-        not reflected until peer sends data again.
+        Reference: RFC 7323 §4.3 (_ts_recent update on dup-ACK with fresh TSval).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -1109,16 +1001,13 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
 
     def test__paws__time_wait_late_segment_with_stale_tsval_dropped(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure PAWS applies to TIME_WAIT: a delayed peer-FIN
+        retransmit from an earlier incarnation with stale
+        TSval is dropped before the FIN-retransmit handler
+        re-arms the TIME_WAIT timer.
 
-        Ensure RFC 7323 §5 PAWS applies to TIME_WAIT: a delayed
-        peer-FIN retransmit from an earlier incarnation, with
-        stale TSval, MUST be dropped before the FIN-retransmit
-        handler re-arms the TIME_WAIT timer.
-
-        This is the strongest form of RFC 1337 TIME-WAIT
-        assassination protection: PAWS catches the stale
-        segment regardless of the segment's seq value.
+        Reference: RFC 7323 §5 (PAWS in TIME_WAIT).
+        Reference: RFC 1337 §3 (TIME-WAIT assassination mitigations).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -1180,11 +1069,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         self.assertEqual(
             len(self._frames_tx),
             frames_tx_before,
-            msg=(
-                "RFC 7323 §5 PAWS in TIME_WAIT: stale-TSval late "
-                "segment MUST be dropped before the FIN-"
-                "retransmit handler emits an ACK."
-            ),
+            msg=("Stale-TSval late segment MUST be dropped " "before the FIN-retransmit handler emits an " "ACK."),
         )
         self.assertEqual(
             session._ts_recent,
@@ -1227,10 +1112,12 @@ class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
 
     def test__ts__passive_open_with_peer_tsopt_emits_syn_ack_with_tsopt(self) -> None:
         """
-        Cross-RFC regression guard: a peer SYN carrying TSopt
-        plus WSCALE plus SACK-permitted causes the listener
-        to spawn a child whose SYN+ACK echoes peer's TSval and
-        carries our own TSopt + WSCALE + SACK-permitted.
+        Ensure that a peer SYN carrying TSopt + WSCALE +
+        SACK-permitted causes the listener to spawn a child
+        whose SYN+ACK echoes peer's TSval and carries our
+        own TSopt + WSCALE + SACK-permitted.
+
+        Reference: RFC 7323 §3 (Timestamps bilateral negotiation, passive open).
         """
 
         listen_sock, _ = self._make_listen_session(iss=0x0000_3000)
@@ -1287,9 +1174,10 @@ class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
 
     def test__ts__passive_open_without_peer_tsopt_omits_tsopt_in_syn_ack(self) -> None:
         """
-        Cross-RFC regression guard: a peer SYN without TSopt
-        causes the listener's SYN+ACK to OMIT TSopt per RFC
-        7323 §3 bilateral negotiation.
+        Ensure that a peer SYN without TSopt causes the
+        listener's SYN+ACK to omit TSopt.
+
+        Reference: RFC 7323 §3 (Timestamps bilateral negotiation, passive open omit).
         """
 
         listen_sock, _ = self._make_listen_session(iss=0x0000_3100)
@@ -1310,11 +1198,7 @@ class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
         syn_ack = self._parse_tx(tx[0])
         self.assertIsNone(
             syn_ack.tsval,
-            msg=(
-                "Cross-RFC: peer did not offer TSopt; our SYN+ACK "
-                "MUST NOT advertise TSopt per RFC 7323 §3 bilateral "
-                "negotiation."
-            ),
+            msg=("Peer did not offer TSopt; our SYN+ACK " "MUST NOT advertise TSopt."),
         )
 
         for sid in list(stack.sockets):
@@ -1389,13 +1273,12 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
 
     def test__retransmit__tsval_reflects_current_now_ms_not_queue_time(self) -> None:
         """
-        Ensure RFC 7323 §3: a retransmitted segment carries
-        TSval = current 'now_ms', NOT the value captured at
-        the original transmission. With Karn's algorithm
-        obviated by TSopt, the freshness of TSval is the
-        load-bearing invariant: peer's RTT measurement on the
-        retransmit's ACK uses 'now - TSval' to identify which
-        transmission it acknowledges.
+        Ensure that a retransmitted segment carries TSval =
+        current now_ms, not the value captured at the
+        original transmission, so peer's RTT measurement on
+        the retransmit's ACK identifies the retransmission.
+
+        Reference: RFC 7323 §3 (TSval freshness on retransmit).
         """
 
         session = self._drive_handshake_with_tsopt(
@@ -1446,35 +1329,33 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             retransmit_tsval,
             original_tsval,
             msg=(
-                "RFC 7323 §3 freshness: retransmit's TSval MUST be "
-                f"GREATER than the original's TSval ({original_tsval}). "
-                f"Got retransmit TSval={retransmit_tsval}. A stale "
-                "captured-at-queue-time value would equal the "
-                "original's TSval, re-introducing the original-vs-"
-                "retransmit ambiguity that TSopt resolves at the wire "
-                "level."
+                "Retransmit's TSval MUST be GREATER than "
+                f"the original's TSval ({original_tsval}). "
+                f"Got retransmit TSval={retransmit_tsval}."
             ),
         )
         self.assertGreaterEqual(
             retransmit_tsval,
             retransmit_send_now_ms_lower,
             msg=(
-                "RFC 7323 §3 freshness: retransmit's TSval MUST be at "
-                "least the now_ms at the moment the retransmit was "
-                f"scheduled ({retransmit_send_now_ms_lower}). Got "
-                f"TSval={retransmit_tsval}."
+                "Retransmit's TSval MUST be at least the "
+                "now_ms at the moment the retransmit was "
+                f"scheduled ({retransmit_send_now_ms_lower}). "
+                f"Got TSval={retransmit_tsval}."
             ),
         )
 
     def test__retransmit__tsecr_reflects_current_ts_recent_not_stale_capture(self) -> None:
         """
-        Ensure RFC 7323 §3 + §4.3: a retransmitted segment
-        carries TSecr = CURRENT '_ts_recent', not a value
-        captured at the original transmission. If peer sent
-        any other segment in the meantime (e.g. wnd-update,
-        keep-alive probe-ack), its TSval has updated
-        '_ts_recent' and the retransmit MUST echo the latest
+        Ensure that a retransmitted segment carries TSecr =
+        current '_ts_recent', not a value captured at the
+        original transmission. If peer sent any other
+        segment in the meantime, its TSval has updated
+        '_ts_recent' and the retransmit echoes the latest
         value.
+
+        Reference: RFC 7323 §3 (TSecr echoes _ts_recent on every send).
+        Reference: RFC 7323 §4.3 (_ts_recent update).
         """
 
         session = self._drive_handshake_with_tsopt(

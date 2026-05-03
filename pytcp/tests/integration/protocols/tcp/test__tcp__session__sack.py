@@ -188,41 +188,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__inbound_sack_option_does_not_crash_parser(self) -> None:
         """
-        Ensure that an inbound ACK segment carrying a SACK option
-        (RFC 2018 §3) is consumed by the wire path without raising
-        and without forcing a state transition. The TCP parser
-        already decodes 'TcpOptionSack' into a list of
-        '(left, right)' blocks; this test guards against a
-        regression where a future change to the parser, the FSM's
-        option-reading logic, or the segment-factory mistakenly
-        rejects or crashes on a SACK-bearing segment.
+        Ensure that an inbound ACK segment carrying a SACK
+        option is consumed by the wire path without raising
+        and without forcing a state transition. The TCP
+        parser decodes 'TcpOptionSack' into '(left, right)'
+        blocks; SACK is informational, never a control
+        signal at the FSM level.
 
-        Scenario:
-
-            1. Drive the active-open handshake to ESTABLISHED.
-               (Bilateral SACK-Permitted negotiation is out of
-               scope for phase 1; the session does not advertise
-               SACK-Permitted and so the SACK option arriving on
-               peer's later segment is, strictly speaking, an
-               RFC 2018 §2 violation. The receiver MUST NOT crash
-               on it - it should be silently consumed.)
-            2. Peer sends a bare-ACK segment carrying a SACK option
-               with one block. The block edges are arbitrary -
-               nothing in current code reads them.
-            3. Drive RX. No exception. Session stays in ESTABLISHED.
-               No RST. No challenge ACK. No inline TX at all (the
-               segment is a pure dup-ACK with no new data).
-
-        Assertions:
-
-            * '_drive_rx' returns without raising.
-            * No outbound frames produced.
-            * 'session.state is FsmState.ESTABLISHED'.
-
-        Passes today as a positive control / regression guard for
-        the existing 'TcpOptionSack' parser support. A future
-        SACK-implementation patch that rewires the option parsing
-        path or the FSM option reader must keep this test green.
+        Reference: RFC 2018 §3 (SACK option wire format).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -260,49 +233,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__inbound_sack_blocks_silently_consumed_when_send_sack_disabled(self) -> None:
         """
-        Ensure that when the bilateral SACK negotiation has NOT
-        succeeded ('_send_sack = False'), an inbound ACK carrying
-        SACK blocks is silently consumed: the scoreboard is not
-        updated, no scoreboard-driven TX fires, and the send-side
-        counters do not move. Per RFC 2018 §3, SACK information is
-        meaningful only when the option was offered bilaterally
-        during connection establishment; outside that envelope the
-        receiver SHOULD ignore inbound SACK info.
+        Ensure that when the bilateral SACK negotiation has
+        not succeeded ('_send_sack = False'), an inbound ACK
+        carrying SACK blocks is silently consumed: the
+        scoreboard is not updated, no scoreboard-driven TX
+        fires, and send-side counters do not move.
 
-        The phase-1 'inbound_sack_option_does_not_crash_parser'
-        test pinned the wire-level passthrough; this one pins the
-        FSM-level no-effect when '_send_sack = False'. After phase
-        4 wiring, '_sack_scoreboard' exists on every 'TcpSession'
-        instance, so this test is now a regression guard for the
-        ingestion gate.
-
-        Scenario:
-
-            1. Drive the active-open handshake WITHOUT bilateral
-               SACK ('peer_sackperm=False' default), so
-               'session._send_sack' ends up False.
-            2. Application sends 200 bytes so we have outstanding
-               unacked TX bytes the SACK option could reference.
-            3. Drain the outbound data segment.
-            4. Peer sends a dup-ACK carrying a SACK block claiming
-               receipt of the upper half of our outstanding range.
-            5. Inspect session state.
-
-        Assertions:
-
-            * 'session._send_sack is False'.
-            * 'session._sack_scoreboard.blocks() == []' - the
-              ingestion gate refused to update the scoreboard.
-            * '_snd_una', '_snd_nxt', '_snd_max' unchanged.
-            * No outbound TX (no fast retransmit, no anomalous
-              reply).
-            * 'session.state is FsmState.ESTABLISHED'.
-
-        Passes today as a positive control / regression guard for
-        the '_send_sack' ingestion gate after phase 4 lands. A
-        future change that ingests SACK info unconditionally
-        (regardless of bilateral negotiation outcome) would be
-        caught by the empty-scoreboard assertion here.
+        Reference: RFC 2018 §3 (SACK information meaningful only when bilaterally negotiated).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -409,50 +346,12 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__outbound_syn_advertises_sack_permitted(self) -> None:
         """
-        Ensure that an active-open session emits its initial SYN
-        with the SACK-Permitted option per RFC 2018 §2. Without our
-        advertisement the bilateral SACK negotiation cannot
-        complete, peer has no reason to enable SACK, and any later
-        loss-recovery RFC 6675 machinery is dead - the connection
-        falls back to the count-based dup-ACK fast-retransmit path
-        only.
+        Ensure that an active-open session emits its initial
+        SYN with the SACK-Permitted option, and that the
+        session defaults to advertising it
+        ('_advertise_sack = True').
 
-        RFC 2018 §2 (SACK-Permitted Option):
-
-            "The SACK-permitted option is offered to the remote end
-             during TCP setup as an option to an opening SYN packet.
-             ... It MUST NOT be sent on non-SYN segments."
-
-        Concretely:
-
-            * The outbound SYN MUST carry the SACK-Permitted option.
-            * The session must default to advertising it
-              ('_advertise_sack = True') so SACK is the modern
-              throughput-friendly default, opt-out via
-              '_advertise_sack = False' before CONNECT.
-
-        Scenario:
-
-            1. Build a session and emit our outbound SYN.
-            2. Parse the SYN frame and inspect the SACK-Permitted
-               option presence.
-
-        Assertions:
-
-            * The outbound SYN carries 'sackperm = True' on the
-              wire.
-
-        [FLAGS BUG] - 'TcpSession._transmit_packet' (line 577)
-        currently has no SACK-Permitted plumbing: there is no
-        'self._advertise_sack' attribute, no 'tcp__sackperm'
-        parameter on 'send_tcp_packet', and no encoder branch in
-        'packet_handler__tcp__tx.py'. The fix is the phase-3
-        implementation: add '_advertise_sack: bool = True' and
-        '_send_sack: bool = False' attributes, route a 'sackperm'
-        flag through the TX path, and emit
-        'TcpOptionSackperm' on outbound SYN/SYN+ACK iff
-        'self._advertise_sack' (and, for SYN+ACK, peer's SYN
-        carried the option per the bilateral mirror rule).
+        Reference: RFC 2018 §2 (SACK-Permitted option, offered on opening SYN).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -476,43 +375,12 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__bilateral_sack_negotiation_sets_send_sack(self) -> None:
         """
-        Ensure that when both sides advertise SACK-Permitted on
-        their SYN exchange, the active-open session records the
-        successful bilateral negotiation by setting
-        'self._send_sack = True'. Per RFC 2018 §2 SACK is bilateral:
-        each side may send SACK information only if BOTH sides
-        offered SACK-Permitted on their respective SYNs.
+        Ensure that when both sides advertise SACK-Permitted
+        on their SYN exchange, the active-open session
+        records the successful bilateral negotiation by
+        setting 'self._send_sack = True'.
 
-        RFC 2018 §3 (Sending the SACK option):
-
-            "If sent at all, an SACK option that specifies n blocks
-             will have a length of 8*n+2 bytes, so the 40 bytes
-             available for TCP options can specify a maximum of 4
-             blocks. ... The SACK option is to be used to convey
-             extended acknowledgment information from the receiver
-             to the sender over an established connection. The SACK
-             option SHOULD be sent if the SACK-permitted option was
-             received during connection establishment."
-
-        Scenario:
-
-            1. Drive an active-open handshake with peer's SYN+ACK
-               carrying the SACK-Permitted option.
-            2. Inspect 'session._send_sack' after ESTABLISHED.
-
-        Assertions:
-
-            * 'session._send_sack is True' iff bilateral negotiation
-              succeeded (we advertised AND peer echoed).
-            * 'session.state is FsmState.ESTABLISHED'.
-
-        [FLAGS BUG] - 'TcpSession' has no '_send_sack' attribute
-        today; '_tcp_fsm_syn_sent' has no SACK-Permitted gate. The
-        phase-3 implementation must mirror the WSCALE pattern:
-        after '_process_ack_packet' on peer's SYN+ACK, set
-        'self._send_sack = self._advertise_sack and
-        packet_rx_md.tcp__sackperm'. 'tcp__sackperm' must be
-        plumbed through 'TcpMetadata' from the inbound parser path.
+        Reference: RFC 2018 §2 (SACK bilateral negotiation).
         """
 
         session = self._drive_handshake_to_established(
@@ -523,62 +391,21 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self.assertTrue(
             session._send_sack,
             msg=(
-                "After bilateral SACK-Permitted negotiation the session "
-                "must record success in '_send_sack = True' so the FSM "
-                "knows it may emit SACK options on subsequent outbound "
-                "ACKs (RFC 2018 §3)."
+                "After bilateral SACK-Permitted negotiation "
+                "the session must record success in "
+                "'_send_sack = True'."
             ),
         )
 
     def test__sack__out_of_order_data_segment_elicits_sack_block_in_outbound_ack(self) -> None:
         """
-        Ensure that when a peer's data segment arrives out of order
-        (gap before it), the resulting outbound dup-ACK carries a
-        SACK option whose single block reports the buffered OOO
-        range '[seq, seq + len(payload))' per RFC 2018 §4. Without
-        this, the peer cannot distinguish "we never received that
-        data" from "we received it, but a different segment was
-        lost", and SACK-driven loss recovery cannot run.
+        Ensure that when a peer's data segment arrives out
+        of order (gap before it), the resulting outbound
+        dup-ACK carries a SACK option whose single block
+        reports the buffered OOO range
+        '[seq, seq + len(payload))'.
 
-        RFC 2018 §4 (Generating the SACK option):
-
-            "If the data receiver decides to send a SACK option, ...
-             the first SACK block (i.e., the one immediately
-             following the kind and length fields in the option)
-             MUST specify the contiguous block of data containing
-             the segment which triggered this ACK, unless that
-             segment advanced the Acknowledgment Number field in
-             the header."
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral SACK
-               negotiation succeeded.
-            2. Peer sends an OOO data segment - 100 bytes at
-               'seq = PEER__ISS + 1 + 100' (skipping over 100 bytes
-               of expected data; RCV.NXT is still 'PEER__ISS + 1').
-            3. Inspect the inline TX. Exactly one outbound ACK
-               must fire pointing at the missing RCV.NXT, AND the
-               ACK must carry a SACK option with one block
-               containing the OOO range.
-
-        Assertions:
-
-            * Inline TX list has exactly 1 frame.
-            * The frame is an ACK with 'ack = PEER__ISS + 1' (gap
-              cumulative ACK; RCV.NXT unchanged).
-            * The ACK's 'sack_blocks' equals the single tuple
-              '[(PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)]'.
-
-        [FLAGS BUG] - '_tcp_fsm_established' (line 1573) emits
-        '_transmit_packet(flag_ack=True)' on the OOO branch with
-        no SACK option plumbing. The phase-3 fix builds the SACK
-        option block list from '_ooo_packet_queue' (each entry
-        contributing one '(seq, seq + len(payload))' pair) and
-        passes it to 'send_tcp_packet' / '_phtx_tcp', which
-        encodes it as 'TcpOptionSack' alongside any other options.
-        The emission is gated on 'self._send_sack' so peers that
-        did not offer SACK do not receive one.
+        Reference: RFC 2018 §4 (SACK block ordering, segment-triggering-ACK first).
         """
 
         session = self._drive_handshake_to_established(
@@ -619,40 +446,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__multiple_ooo_segments_yield_multiple_sack_blocks(self) -> None:
         """
-        Ensure that when multiple OOO segments are buffered, the
-        outbound SACK option carries one block per disjoint OOO
-        range, up to RFC 2018 §3's maximum of 4 blocks per option.
+        Ensure that when multiple OOO segments are buffered,
+        the outbound SACK option carries one block per
+        disjoint OOO range, up to a maximum of 4 blocks per
+        option.
 
-        RFC 2018 §3 (Format):
-
-            "If sent at all, a SACK option that specifies n blocks
-             will have a length of 8*n+2 bytes, so the 40 bytes
-             available for TCP options can specify a maximum of 4
-             blocks."
-
-        Scenario:
-
-            1. Drive handshake with bilateral SACK.
-            2. Peer sends OOO segment A at 'PEER__ISS + 1 + 100',
-               100 bytes. SACK option on the dup-ACK reports
-               '[seg_a_left, seg_a_right)'.
-            3. Peer sends OOO segment B at 'PEER__ISS + 1 + 300'
-               (disjoint; gap between them), 100 bytes. The dup-ACK
-               on this arrival carries TWO SACK blocks: A and B
-               (the first slot per RFC 2018 §4 is the segment
-               triggering this ACK, so 'B' is first).
-
-        Assertions:
-
-            * The dup-ACK on B's arrival carries exactly 2 SACK
-              blocks covering both OOO ranges.
-
-        [FLAGS BUG] - the OOO emit path has no SACK plumbing
-        (per the previous test). Once SACK is wired,
-        '_build_sack_blocks' reads the full '_ooo_packet_queue' and
-        emits up to 4 disjoint blocks. The phase-3 fix must
-        iterate the queue (not just the most recent arrival) so
-        prior OOO context survives the next dup-ACK.
+        Reference: RFC 2018 §3 (SACK option, max 4 blocks).
+        Reference: RFC 2018 §4 (SACK block ordering).
         """
 
         session = self._drive_handshake_to_established(
@@ -711,51 +511,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__cumulative_ack_drains_ooo_queue_clears_sack_blocks(self) -> None:
         """
-        Ensure that once the gap is filled and the OOO queue
-        drains, subsequent outbound ACKs no longer carry SACK
-        blocks - the data is now cumulatively ACKed and the
-        scoreboard contribution is zero. This is the receiver-side
-        SACK lifecycle: blocks appear when data arrives out of
-        order, persist until the gap fills, then disappear.
+        Ensure that once the gap is filled and the OOO
+        queue drains, subsequent outbound ACKs no longer
+        carry SACK blocks. The receiver-side SACK lifecycle:
+        blocks appear when data arrives out of order,
+        persist until the gap fills, then disappear.
 
-        RFC 2018 §4 (Generating the SACK option):
-
-            "The SACK option is advisory, in that, while it
-             notifies the data sender that the data receiver has
-             received the indicated segments, the data receiver is
-             permitted to later discard data which have been
-             reported in a SACK option. ... If the data receiver
-             chooses to discard such data, ... the data receiver
-             will reflect the lower right edge in subsequent SACK
-             options sent by the data receiver."
-
-        For PyTCP the simpler invariant: after cumulative ACK
-        absorbs the OOO queue, no SACK option appears on later
-        outbound ACKs because there are no buffered out-of-order
-        ranges left.
-
-        Scenario:
-
-            1. Drive handshake with bilateral SACK.
-            2. Peer sends OOO segment at 'PEER__ISS + 1 + 100',
-               100 bytes. Dup-ACK with SACK fires.
-            3. Peer sends gap-fill segment at 'PEER__ISS + 1',
-               100 bytes. The session processes both segments
-               (gap-fill + OOO drained) and fires a cumulative ACK.
-            4. Inspect the cumulative ACK: no SACK option (queue
-               is now empty).
-
-        Assertions:
-
-            * After gap fill, '_ooo_packet_queue' is empty.
-            * The cumulative ACK carries no SACK blocks
-              ('sack_blocks=[]').
-
-        [FLAGS BUG] - the underlying SACK emission path does not
-        yet exist. Once it does, the empty-queue case must
-        gracefully omit the option - building an empty SACK option
-        is illegal per RFC 2018 §3 (every option carries at least
-        one block).
+        Reference: RFC 2018 §3 (SACK option requires at least one block).
         """
 
         session = self._drive_handshake_to_established(
@@ -831,31 +593,11 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__passive_open_mirrors_peer_sack_permitted_offer(self) -> None:
         """
-        Ensure that when a peer's SYN to a listening socket carries
-        SACK-Permitted, our SYN+ACK reply mirrors the offer back
-        per RFC 2018 §2's bilateral negotiation. The passive-open
-        SACK semantics match the WSCALE pattern: we echo only when
-        peer offered, and we never echo on a SYN where peer was
-        silent on SACK (next test).
+        Ensure that when a peer's SYN to a listening socket
+        carries SACK-Permitted, our SYN+ACK reply mirrors
+        the offer back.
 
-        Scenario:
-
-            1. Build a LISTEN-state session.
-            2. Peer sends SYN with SACK-Permitted.
-            3. Drive RX. Listening session transitions to SYN_RCVD;
-               on the next tick the child session's SYN+ACK fires.
-            4. Inspect the SYN+ACK: it MUST carry SACK-Permitted.
-
-        Assertions:
-
-            * The child session's SYN+ACK 'sackperm = True'.
-
-        [FLAGS BUG] - '_tcp_fsm_listen' has no '_send_sack' /
-        '_advertise_sack' / 'packet_rx_md.tcp__sackperm' wiring.
-        The phase-3 fix mirrors the WSCALE pattern: after peer's
-        SYN, set 'self._send_sack = self._advertise_sack and
-        packet_rx_md.tcp__sackperm', and gate the SYN+ACK's
-        SACK-Permitted emission on the same combined predicate.
+        Reference: RFC 2018 §2 (SACK bilateral negotiation, mirror peer's offer).
         """
 
         listen_session = self._make_listen_session(iss=LOCAL__ISS)
@@ -889,32 +631,12 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__passive_open_omits_sack_when_peer_did_not_offer(self) -> None:
         """
-        Ensure that when a peer's SYN does NOT carry SACK-Permitted,
-        our SYN+ACK reply also omits it - the bilateral mirror rule
-        forces the negotiation to fail closed. This is the
-        regression-guard counterpart to the prior test.
+        Ensure that when a peer's SYN does not carry
+        SACK-Permitted, our SYN+ACK reply also omits it —
+        the bilateral mirror rule forces the negotiation to
+        fail closed.
 
-        Scenario:
-
-            1. Build a LISTEN-state session.
-            2. Peer sends SYN with no SACK-Permitted.
-            3. Drive RX. Listening session transitions to SYN_RCVD;
-               on the next tick the child SYN+ACK fires.
-            4. Inspect the SYN+ACK: SACK-Permitted MUST be absent.
-
-        Assertions:
-
-            * The child session's SYN+ACK 'sackperm = False'.
-
-        Passes today as a positive control / regression guard for
-        the bilateral mirror rule (peer didn't offer, we don't
-        echo). A future SACK patch that wires up SACK-Permitted on
-        outbound SYN+ACKs without gating on peer's offer would
-        echo accidentally and be caught here. The '_send_sack
-        is False' invariant is asserted by the bilateral-success
-        test ('bilateral_sack_negotiation_sets_send_sack') in the
-        positive direction; this regression-test only pins the
-        wire shape.
+        Reference: RFC 2018 §2 (SACK bilateral negotiation, no echo without peer offer).
         """
 
         listen_session = self._make_listen_session(iss=LOCAL__ISS)
@@ -948,52 +670,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__inbound_sack_block_updates_scoreboard(self) -> None:
         """
-        Ensure that when bilateral SACK is enabled and peer sends
-        an ACK carrying a SACK block describing receipt of bytes
-        in our outstanding (unacked) range, the session ingests
-        that block into '_sack_scoreboard' per RFC 2018 §3-§4.
-        Without this, the scoreboard cannot inform RFC 6675's
-        NextSeg / IsLost / Pipe machinery in phase 5.
+        Ensure that when bilateral SACK is enabled and peer
+        sends an ACK carrying a SACK block describing
+        receipt of bytes in our outstanding (unacked) range,
+        the session ingests that block into
+        '_sack_scoreboard'.
 
-        RFC 2018 §4 (Generating the SACK option):
-
-            "Each contiguous block of data queued at the data
-             receiver is defined in the SACK option by two 32-bit
-             unsigned integers in network byte order: ... Left
-             Edge of Block ... Right Edge of Block ... This is the
-             sequence number immediately following the last
-             sequence number of this block."
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral SACK.
-            2. Application sends 200 bytes so 'SND.UNA = ISS+1' and
-               'SND.MAX = ISS+1+200'.
-            3. Drain the outbound data segment.
-            4. Peer sends a dup-ACK (cumulative ack unchanged at
-               'ISS+1') carrying a SACK block
-               '[ISS+1+100, ISS+1+200)' reporting receipt of the
-               upper half of our outstanding bytes.
-            5. Inspect 'session._sack_scoreboard.blocks()'.
-
-        Assertions:
-
-            * '_sack_scoreboard.blocks() == [(ISS+1+100, ISS+1+200)]'
-              after the SACK-bearing dup-ACK is processed.
-            * '_send_sack is True' (precondition).
-
-        [FLAGS BUG] - 'TcpSession' has no '_sack_scoreboard'
-        attribute today (it's introduced in phase 4) and
-        '_process_ack_packet' has no SACK-block ingestion path.
-        The fix wires the ingestion: 'TcpMetadata' grows
-        'tcp__sack_blocks' populated from
-        'packet_rx.tcp._options.sack' in
-        'packet_handler__tcp__rx.py'; '_process_ack_packet' / the
-        dup-ACK '_retransmit_packet_request' branch loops over the
-        blocks and calls 'self._sack_scoreboard.add_block(left,
-        right)' for each block whose edges fall inside
-        '[SND.UNA, SND.MAX]' (RFC 2018 §5: be liberal in what we
-        accept; out-of-window blocks are dropped).
+        Reference: RFC 2018 §3 (SACK option wire format).
+        Reference: RFC 2018 §4 (SACK block semantics).
         """
 
         session = self._drive_handshake_to_established(
@@ -1028,48 +712,16 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self.assertEqual(
             session._sack_scoreboard.blocks(),
             [(sacked_left, sacked_right)],
-            msg=(
-                "An inbound SACK block describing in-window bytes "
-                "must be ingested into the scoreboard so RFC 6675's "
-                "NextSeg / IsLost / Pipe wrappers (phase 5) can "
-                "consult it."
-            ),
+            msg=("An inbound SACK block describing in-window " "bytes must be ingested into the scoreboard."),
         )
 
     def test__sack__cumulative_ack_prunes_scoreboard_below_snd_una(self) -> None:
         """
-        Ensure that when peer's cumulative ACK advances 'SND.UNA'
-        past a SACK-recorded range, the corresponding block is
-        pruned from the scoreboard. The scoreboard's contract
-        per RFC 6675 §3 is that it tracks bytes we sent that are
-        unacked-but-sacked; once cumulatively-acked, those bytes
-        are no longer in flight and the scoreboard entry is dead.
+        Ensure that when peer's cumulative ACK advances
+        SND.UNA past a SACK-recorded range, the
+        corresponding block is pruned from the scoreboard.
 
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral SACK.
-            2. Application sends 200 bytes.
-            3. Drain the outbound data segment.
-            4. Peer sends a dup-ACK with SACK block
-               '[ISS+1+100, ISS+1+200)' - scoreboard ingests it.
-            5. Peer sends a normal ACK with cumulative ack
-               'ISS+1+200' (advancing SND.UNA past the entire
-               sacked range).
-            6. Inspect '_sack_scoreboard.blocks()' - empty.
-
-        Assertions:
-
-            * After the cumulative ACK, '_snd_una' has advanced
-              to 'ISS+1+200'.
-            * '_sack_scoreboard.blocks() == []' - prune_below has
-              dropped the now-redundant entry.
-
-        [FLAGS BUG] - both '_sack_scoreboard' and the
-        prune-on-cumulative-ack path are introduced in phase 4.
-        The fix wires 'prune_below(self._snd_una)' inside
-        '_process_ack_packet' immediately after the SND.UNA
-        update so blocks below the new cumulative-ack high-water
-        mark are dropped before subsequent block ingestion.
+        Reference: RFC 6675 §3 (SACK scoreboard tracks unacked-but-sacked bytes).
         """
 
         session = self._drive_handshake_to_established(
@@ -1122,42 +774,20 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             [],
             msg=(
                 "The scoreboard MUST be pruned once the cumulative ACK "
-                "absorbs the sacked range - 'prune_below(SND.UNA)' "
-                "drops blocks whose right edge lies at or below the "
-                "new SND.UNA per RFC 6675 §3 / RFC 2018 §3."
+                "absorbs the sacked range; "
+                "'prune_below(SND.UNA)' drops blocks whose "
+                "right edge lies at or below the new SND.UNA."
             ),
         )
 
     def test__sack__out_of_window_sack_block_silently_dropped(self) -> None:
         """
-        Ensure that an inbound SACK block whose edges fall outside
-        '[SND.UNA, SND.MAX]' is silently dropped. Such a block
-        cannot describe legitimate in-flight bytes - the receiver
-        cannot have SACKed bytes we never sent. RFC 2018 §5
-        ("being liberal in what we accept") permits silently
-        ignoring it without dropping the segment.
+        Ensure an inbound SACK block whose edges fall
+        outside '[SND.UNA, SND.MAX]' is silently dropped —
+        such a block cannot describe legitimate in-flight
+        bytes.
 
-        Scenario:
-
-            1. Drive handshake with bilateral SACK.
-            2. Send 200 bytes so 'SND.MAX = ISS+1+200'.
-            3. Drain.
-            4. Peer sends an ACK with SACK block
-               '[ISS+1+1000, ISS+1+1100)' - well past 'SND.MAX'.
-            5. Inspect '_sack_scoreboard.blocks()' - empty.
-
-        Assertions:
-
-            * '_sack_scoreboard.blocks() == []' - the out-of-
-              window block was filtered out and never reached
-              the scoreboard.
-
-        [FLAGS BUG] - the scoreboard does not yet exist (phase 4).
-        After the implementation lands the ingestion path must
-        gate every block on
-        'le32(SND.UNA, left) AND le32(right, SND.MAX) AND
-        lt32(left, right)'; blocks failing the gate are silently
-        dropped.
+        Reference: RFC 2018 §3 (out-of-window SACK blocks ignored).
         """
 
         session = self._drive_handshake_to_established(
@@ -1186,58 +816,20 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             [],
             msg=(
                 "A SACK block whose edges fall outside "
-                "'[SND.UNA, SND.MAX]' MUST be silently dropped - the "
-                "block cannot describe legitimate in-flight bytes "
-                "(RFC 2018 §5). The scoreboard must remain empty."
+                "'[SND.UNA, SND.MAX]' MUST be silently "
+                "dropped. The scoreboard must remain empty."
             ),
         )
 
     def test__sack__three_dup_sacks_above_gap_trigger_fast_retransmit(self) -> None:
         """
-        Ensure that three SACK-bearing dup-ACKs above the gap at
-        SND.UNA accumulate in the scoreboard as three distinct
-        blocks AND trigger fast retransmit. RFC 6675 §3's
-        scoreboard-driven IsLost predicate fires when three
-        discontiguous SACKed ranges sit above an unsacked seq;
-        the count-based RFC 5681 §3.2 path also fires after the
-        third dup-ACK. The test pins both invariants: scoreboard
-        ingestion of three blocks, and outbound fast-retransmit
-        of the gap segment.
+        Ensure three SACK-bearing dup-ACKs above the gap at
+        SND.UNA accumulate in the scoreboard as three
+        distinct blocks AND trigger fast retransmit of the
+        gap segment.
 
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral SACK.
-            2. Application sends 4*MSS bytes so 'SND.UNA = ISS+1'
-               and 'SND.MAX = ISS+1+4*MSS'.
-            3. Drain the outbound data segment.
-            4. Peer sends three SACK-bearing dup-ACKs in
-               succession, each reporting one new disjoint range
-               above the gap:
-                 dup #1: SACK [ISS+1+1*MSS, ISS+1+2*MSS)
-                 dup #2: SACK [ISS+1+2*MSS, ISS+1+3*MSS)  *
-                 dup #3: SACK [ISS+1+3*MSS, ISS+1+4*MSS)  *
-               (* Note: these are adjacent and would coalesce in
-               our scoreboard; to keep three distinct blocks we
-               leave 1-byte gaps between them.)
-            5. Fast retransmit fires on the third dup-ACK and
-               emits one outbound segment starting at SND.UNA
-               (the gap).
-
-        Assertions:
-
-            * After all three dup-ACKs: scoreboard holds three
-              distinct blocks.
-            * One outbound segment fires on the third dup-ACK.
-            * The retransmitted seq equals 'SND.UNA' (= the gap),
-              matching both the count-based fall-back and the
-              SACK-driven NextSeg in this single-gap scenario.
-
-        Passes today as a positive control / regression guard for
-        the SACK-aware dup-ACK ingestion path. The phase-5
-        wiring of NextSeg means the retransmit's seq comes from
-        'next_seg(...)' when bilateral SACK is enabled (and
-        falls back to '_snd_una' otherwise); in single-gap
-        scenarios both produce the same value.
+        Reference: RFC 5681 §3.2 (fast retransmit on third dup-ACK).
+        Reference: RFC 6675 §3 (IsLost count rule).
         """
 
         session = self._drive_handshake_to_established(
@@ -1288,11 +880,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self.assertEqual(
             sorted(session._sack_scoreboard.blocks()),
             sorted([block_1, block_2, block_3]),
-            msg=(
-                "Three SACK-bearing dup-ACKs MUST accumulate three "
-                "distinct blocks in the scoreboard - one ingestion "
-                "per dup-ACK."
-            ),
+            msg=("Three SACK-bearing dup-ACKs MUST accumulate " "three distinct blocks in the scoreboard."),
         )
 
         # The third dup-ACK sets '_snd_nxt' back to the gap;
@@ -1304,9 +892,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             len(retransmit_tx),
             1,
             msg=(
-                "The third dup-ACK MUST elicit exactly one outbound "
-                "fast-retransmit segment on the next timer tick per "
-                "RFC 5681 §3.2."
+                "The third dup-ACK MUST elicit exactly one "
+                "outbound fast-retransmit segment on the next "
+                "timer tick."
             ),
         )
         retransmit_probe = self._parse_tx(retransmit_tx[0])
@@ -1319,34 +907,11 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__pipe_excludes_sacked_bytes_from_in_flight_estimate(self) -> None:
         """
-        Ensure that 'pipe()' applied to the session's
-        '_sack_scoreboard' excludes peer-SACKed bytes from the
-        in-flight estimate per RFC 6675 §4. The phase-5 helper
-        is intended to bound the sender's effective window
-        during recovery so dup-ACK-driven cwnd inflation does
-        not over-commit; this test pins the integration of the
-        helper against the live session scoreboard.
+        Ensure that pipe() applied to the session's
+        '_sack_scoreboard' excludes peer-SACKed bytes from
+        the in-flight estimate.
 
-        Scenario:
-
-            1. Drive handshake with bilateral SACK.
-            2. Send 4*MSS bytes, drain.
-            3. Peer SACKs the upper 2*MSS bytes (one block).
-            4. Compute 'pipe(scoreboard, snd_una, snd_max)'.
-            5. Verify the result equals
-               '(SND.MAX - SND.UNA) - 2*MSS = 2*MSS' - the lower
-               half remains in-flight, the upper half does not.
-
-        Assertions:
-
-            * 'pipe(scoreboard, snd_una, snd_max) == 2*mss'.
-            * The session's '_sack_scoreboard' contains the
-              SACKed range (sanity check on ingestion path).
-
-        Passes today as a positive control / regression guard for
-        the helper-against-live-session integration. The pipe()
-        return value is not yet consumed by '_snd_ewn' bounding;
-        a future phase will wire that.
+        Reference: RFC 6675 §4 (Pipe estimate of FlightSize).
         """
 
         session = self._drive_handshake_to_established(
@@ -1398,61 +963,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__byte_rule_triggers_fast_retransmit_on_first_dup_sack(self) -> None:
         """
-        Ensure that the RFC 6675 §3 IsLost byte-rule fires fast
-        retransmit on the FIRST SACK-bearing dup-ACK when peer
-        reports MORE THAN '(dup_thresh - 1) * SMSS' bytes
-        SACKed above SND.UNA. This is the SACK-aware shortcut
-        around RFC 5681 §3.2's count-based threshold: with rich
-        SACK info, the receiver-evidence is already strong
-        enough to declare loss after one dup-ACK, recovering
-        faster on bursty / contiguous-loss patterns.
+        Ensure that the IsLost byte-rule fires fast
+        retransmit on the FIRST SACK-bearing dup-ACK when
+        peer reports more than '(dup_thresh - 1) * SMSS'
+        bytes SACKed above SND.UNA, and that the
+        '_recovery_point' marker prevents re-firing on a
+        second dup-SACK with the same info.
 
-        RFC 6675 §3 (IsLost):
-
-            "This routine returns whether the given sequence
-             number is considered to be lost. ... The routine
-             returns true when either DupThresh discontiguous
-             SACKed sequences have arrived above 'SeqNum' or
-             more than (DupThresh - 1) * SMSS bytes with
-             sequence numbers greater than 'SeqNum' have been
-             SACKed."
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral
-               SACK negotiation.
-            2. Application sends 4*MSS bytes; drain so SND.MAX =
-               LOCAL__ISS + 1 + 4*MSS.
-            3. Peer sends ONE SACK-bearing dup-ACK reporting a
-               single contiguous SACK block of '2*MSS + 1'
-               bytes - just over the byte-rule threshold of
-               '(3-1)*MSS = 2*MSS'.
-            4. The byte-rule fires; '_recovery_point' is set;
-               '_snd_nxt' rewinds to SND.UNA via NextSeg.
-            5. Next timer tick: one outbound retransmit fires
-               at SEQ=SND.UNA.
-            6. A SECOND dup-ACK with the same SACK info MUST
-               NOT re-fire the retransmit (one-shot per loss
-               event guarded by '_recovery_point').
-
-        Assertions:
-
-            * '_recovery_point' is non-zero after the 1st
-              dup-SACK (we entered recovery via byte rule).
-            * Exactly one outbound retransmit segment fires on
-              the next tick.
-            * Retransmit's SEQ equals SND.UNA, payload is the
-              first MSS bytes of our outstanding data.
-            * A 2nd dup-SACK followed by a tick produces no
-              additional retransmit.
-
-        Passes today as a positive control / regression guard
-        for the byte-rule trigger and the '_recovery_point'
-        one-shot. Without phase 5b's IsLost branch, the
-        sender would wait for the 3rd dup-ACK before firing -
-        a measurable latency penalty on contiguous-loss
-        patterns where peer can pack many sacked bytes into
-        one block.
+        Reference: RFC 6675 §3 (IsLost byte rule).
         """
 
         session = self._drive_handshake_to_established(
@@ -1551,49 +1069,12 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__recovery_skips_already_sacked_bytes(self) -> None:
         """
-        Ensure that during fast-retransmit recovery the sender
-        skips over peer-SACKed ranges in 'SND.NXT' so subsequent
-        outbound segments do not redundantly retransmit bytes
-        peer already received. RFC 6675 §5 multi-gap recovery:
-        the scoreboard tells the sender what NOT to resend, and
-        '_transmit_data' consults it before each transmission
-        during recovery.
+        Ensure that during fast-retransmit recovery the
+        sender skips over peer-SACKed ranges in SND.NXT so
+        subsequent outbound segments do not redundantly
+        retransmit bytes peer already received.
 
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral
-               SACK negotiation.
-            2. Application sends 4*MSS bytes (segments 1, 2, 3,
-               4); drain so SND.MAX = LOCAL__ISS + 1 + 4*MSS.
-            3. Peer sends three dup-ACKs each reporting the
-               same SACK block covering segments 2 and 3
-               '[LOCAL__ISS + 1 + MSS, LOCAL__ISS + 1 + 3*MSS)'.
-               Segments 1 and 4 are presumed lost / out-of-
-               order.
-            4. The third dup-ACK triggers fast retransmit
-               (count rule). '_snd_nxt' rewinds to SND.UNA.
-            5. Tick #1: outbound retransmit at SEQ = SND.UNA
-               (segment 1, the first gap).
-            6. After segment 1 is sent, SND.NXT = SND.UNA + MSS
-               which sits inside the SACKed block. On tick #2,
-               '_advance_snd_nxt_past_sacked' jumps SND.NXT to
-               the right edge of the SACKed block (= SND.UNA +
-               3*MSS = segment 4's start).
-            7. Tick #2 outbound: SEQ = SND.UNA + 3*MSS
-               (segment 4), NOT SND.UNA + MSS (segment 2).
-
-        Assertions:
-
-            * After 3 dup-ACKs: '_recovery_point' is non-zero.
-            * Tick #1 retransmit has SEQ = SND.UNA.
-            * Tick #2 retransmit has SEQ = SND.UNA + 3*MSS
-              (the segment-4 boundary), demonstrating the
-              skip past sacked segments 2 and 3.
-
-        Passes today as a positive control / regression guard
-        for the recovery-side SACK-skip logic. Without the
-        skip, tick #2 would resend segment 2 - bandwidth wasted
-        on bytes peer already SACKed.
+        Reference: RFC 6675 §6 (multi-gap recovery skips SACKed bytes).
         """
 
         session = self._drive_handshake_to_established(
@@ -1674,41 +1155,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__fully_duplicate_segment_elicits_dsack_in_outbound_ack(self) -> None:
         """
-        Ensure that when peer retransmits a segment whose entire
-        payload range we have already received and cumulatively
-        acknowledged, the next outbound ACK carries a DSACK
-        report per RFC 2883 §4 - the duplicated range is encoded
-        as the FIRST SACK block.
+        Ensure that when peer retransmits a segment whose
+        entire payload range we have already received and
+        cumulatively acknowledged, the next outbound ACK
+        carries a DSACK report — the duplicated range is
+        encoded as the FIRST SACK block.
 
-        RFC 2883 §4 (Reporting Full Duplicate Segments):
-
-            "If the data receiver receives a duplicate of a
-             previously received segment, it MUST ... send a
-             D-SACK option in the next acknowledgement. The
-             D-SACK block is the first SACK block in the
-             SACK option."
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral
-               SACK negotiation.
-            2. Peer sends segment 1 (50 bytes) - we deliver and
-               eventually acknowledge.
-            3. Drain the delayed-ACK so RCV.NXT is settled at
-               'PEER__ISS + 1 + 50' from peer's view.
-            4. Peer re-sends the SAME segment (= fully
-               duplicate retransmit). Inline drive: one
-               outbound ACK with a SACK option whose FIRST
-               block reports the duplicate range.
-
-        Assertions:
-
-            * Exactly one inline outbound ACK fires on the
-              duplicate-segment arrival.
-            * The ACK's SACK option contains exactly one block
-              equal to '(PEER__ISS + 1, PEER__ISS + 1 + 50)' -
-              the DSACK report of the duplicated range.
-            * Session state remains ESTABLISHED.
+        Reference: RFC 2883 §3 (DSACK case-1, full duplicate below cum-ACK).
         """
 
         session = self._drive_handshake_to_established(
@@ -1753,9 +1206,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             len(dup_tx),
             1,
             msg=(
-                "A fully-duplicate inbound segment MUST elicit "
-                "exactly one outbound ACK so peer's retransmit "
-                "machinery sees fresh activity (RFC 2883 §4)."
+                "A fully-duplicate inbound segment MUST "
+                "elicit exactly one outbound ACK so peer's "
+                "retransmit machinery sees fresh activity."
             ),
         )
         dup_ack_probe = self._parse_tx(dup_tx[0])
@@ -1780,43 +1233,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__inbound_dsack_below_snd_una_detected_and_not_ingested(self) -> None:
         """
-        Ensure that when peer sends an ACK whose SACK option's
-        first block reports a range entirely below SND.UNA, the
-        sender recognises the DSACK signature (RFC 2883 §4),
-        increments '_dsack_received', and does NOT add the
+        Ensure that when peer sends an ACK whose SACK
+        option's first block reports a range entirely below
+        SND.UNA, the sender recognises the DSACK signature,
+        increments '_dsack_received', and does not add the
         DSACK range to the loss-recovery scoreboard.
 
-        RFC 2883 §4 (Recognising D-SACK signatures):
-
-            "First, the data sender determines whether or not
-             the SACK information includes a D-SACK option ...
-             If the SACK option contains an SACK block ...
-             where the right edge of that block ... is less
-             than or equal to the cumulative acknowledgement
-             ... then that information represents a duplicate
-             segment received by the data receiver."
-
-        Scenario:
-
-            1. Drive handshake with bilateral SACK; pre-set
-               '_snd_ewn = PEER__WIN' and send 2*MSS bytes;
-               drain so SND.MAX = LOCAL__ISS + 1 + 2*MSS.
-            2. Peer sends an ACK whose cumulative-ACK advances
-               SND.UNA to 'LOCAL__ISS + 1 + 2*MSS' AND whose
-               SACK option carries one block
-               '[LOCAL__ISS + 1, LOCAL__ISS + 1 + 100)' - a
-               range entirely below the new SND.UNA, signalling
-               peer received those bytes twice.
-
-        Assertions:
-
-            * After the ACK: 'session._dsack_received == 1'.
-            * 'session._sack_scoreboard.blocks() == []' - the
-              DSACK block was NOT ingested into the scoreboard
-              (it would never produce useful in-flight info
-              since it is below SND.UNA).
-            * 'session._snd_una == LOCAL__ISS + 1 + 2 * mss'
-              - the cumulative ACK still advanced normally.
+        Reference: RFC 2883 §4 (DSACK detection, range below cum-ACK).
         """
 
         session = self._drive_handshake_to_established(
@@ -1846,9 +1269,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             session._dsack_received,
             1,
             msg=(
-                "An inbound SACK option whose first block lies "
-                "entirely below SND.UNA MUST be recognised as a "
-                "DSACK report and increment '_dsack_received'."
+                "An inbound SACK option whose first block "
+                "lies entirely below SND.UNA MUST be "
+                "recognised as a DSACK report."
             ),
         )
         self.assertEqual(
@@ -1868,38 +1291,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__inbound_dsack_contained_in_outer_block_detected(self) -> None:
         """
-        Ensure that the second DSACK signature per RFC 2883 §4
-        is recognised: when the first SACK block lies entirely
-        within a subsequent SACK block in the same option, the
-        first block is a DSACK marker (peer received those bytes
-        twice and is reporting the duplicate alongside the
-        normal SACK info).
+        Ensure that the second DSACK signature is
+        recognised: when the first SACK block lies entirely
+        within a subsequent SACK block in the same option,
+        the first block is a DSACK marker (peer received
+        those bytes twice and is reporting the duplicate
+        alongside the normal SACK info).
 
-        RFC 2883 §4 (Recognising D-SACK signatures):
-
-            "If the SACK option contains an SACK block ... that
-             reports duplicate contiguous sequence space inside
-             a SACK block ... then ... that information
-             represents a duplicate segment."
-
-        Scenario:
-
-            1. Drive handshake with bilateral SACK; send 4*MSS,
-               drain so SND.MAX = LOCAL__ISS + 1 + 4*MSS.
-            2. Peer sends an ACK with TWO SACK blocks:
-                  block 1 (DSACK):  [LOCAL__ISS + 1 + MSS,
-                                     LOCAL__ISS + 1 + MSS + 100)
-                  block 2 (outer): [LOCAL__ISS + 1 + MSS,
-                                     LOCAL__ISS + 1 + 3*MSS)
-               Block 1 is entirely contained within block 2.
-            3. The sender recognises block 1 as DSACK
-               (contained-in-outer) and ingests only block 2
-               into the scoreboard.
-
-        Assertions:
-
-            * 'session._dsack_received == 1'.
-            * Scoreboard contains only the outer block (block 2).
+        Reference: RFC 2883 §4 (DSACK detection, contained-in-outer signature).
         """
 
         session = self._drive_handshake_to_established(
@@ -1936,10 +1335,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             session._dsack_received,
             1,
             msg=(
-                "An inbound SACK option whose first block lies "
-                "entirely within a subsequent block MUST be "
-                "recognised as a DSACK report (RFC 2883 §4 "
-                "second signature)."
+                "An inbound SACK option whose first block "
+                "lies entirely within a subsequent block "
+                "MUST be recognised as a DSACK report."
             ),
         )
         self.assertEqual(
@@ -1954,99 +1352,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__case_2__full_duplicate_of_ooo_queued_segment_elicits_dsack(self) -> None:
         """
-        Ensure that when peer retransmits an OOO segment whose
-        range exactly matches an entry already buffered in our
-        OOO queue, the next outbound ACK carries a DSACK report
-        per RFC 2883 §4 case 2 - the duplicated range is encoded
-        as the FIRST SACK block, followed by the regular SACK
-        block(s) describing the OOO queue. The DSACK block being
-        contained inside (or equal to) one of the regular blocks
-        is the wire signature that distinguishes RFC 2883 case 2
-        from a plain RFC 2018 SACK option.
+        Ensure that when peer retransmits an OOO segment
+        whose range exactly matches an entry already
+        buffered in our OOO queue, the next outbound ACK
+        carries a DSACK case-2 report — DSACK block first,
+        regular OOO block second.
 
-        RFC 2883 §3 (Reporting Duplicate Segments):
-
-            "Each duplicate contiguous sequence of data received
-             is reported in at most one D-SACK block in the SACK
-             option of an acknowledgement. ... [The data
-             receiver] uses the first SACK block to specify the
-             sequence numbers of the duplicate segment received."
-
-        RFC 2883 §4 case 2:
-
-            "[T]he D-SACK block is followed by an additional
-             SACK block. ... the first block of a SACK option
-             is contained within the second SACK block."
-
-        Why case 2 matters: a peer that triggers a spurious RTO
-        retransmit while a cum-ACK gap is still open will hit
-        this path (the duplicated bytes are still OOO from our
-        side, since the gap below them has not been filled).
-        Case 2 is the more common spurious-retransmit signal in
-        practice; case 1 only fires when peer retransmits past
-        bytes we already cumulatively ACKed. Without case 2
-        generation the peer's Eifel / RFC 3522 spurious-
-        retransmit detector cannot fire, leaving cwnd halved
-        unnecessarily.
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral
-               SACK negotiation succeeded.
-            2. Peer sends OOO segment 1 (100 bytes at
-               'seq = PEER__ISS + 1 + 100', leaving a 100-byte
-               gap before RCV.NXT). One outbound dup-ACK with a
-               single SACK block describes the OOO range.
-            3. Peer re-sends the SAME OOO segment 1 (full
-               duplicate of OOO-queued bytes - same seq, same
-               len). Our OOO queue overwrites the existing
-               entry with the new (identical) record; one
-               outbound ACK fires with a SACK option that has
-               TWO blocks - DSACK [seq, seq + 100] FIRST,
-               regular OOO [seq, seq + 100] SECOND. Case 2
-               signature satisfied: block 0 contained in (in
-               this case equal to, which counts) block 1.
-
-        Assertions:
-
-            * Exactly one inline outbound ACK on the duplicate
-              OOO arrival.
-            * 'ack = PEER__ISS + 1' (gap cum-ACK unchanged).
-            * 'sack_blocks' equals
-              '[(PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),
-                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)]'
-              - DSACK first, regular block second.
-            * Session state remains ESTABLISHED.
-
-        [FLAGS BUG] - The OOO ingestion path in
-        '_tcp_fsm_established' (line ~2096-2107) stores
-        'self._ooo_packet_queue[packet_rx_md.tcp__seq] =
-        packet_rx_md' without checking whether the new
-        segment's byte range overlaps any existing OOO entry.
-        Today the duplicate is silently overwritten and the
-        outbound ACK has only the regular SACK block, no DSACK
-        signal. Per RFC 2883 §3 this duplicate event SHOULD be
-        reported.
-
-        Fix outline (separate commit):
-
-            Compute the overlap of the inbound segment's
-            'tcp__seq' / 'seg_end' against every existing entry
-            in 'self._ooo_packet_queue'. If any overlap is non-
-            empty, set 'self._pending_dsack' to the union of
-            overlap ranges (in the canonical case-2 case the
-            first overlap suffices because subsequent blocks
-            extend the signature, but the conservative impl
-            takes the merged extent across all overlapping
-            entries). The existing '_build_sack_blocks' helper
-            already emits '_pending_dsack' as block 0; no other
-            code change is required.
-
-        Severity: MEDIUM - real interop polish that improves
-        the peer's ability to detect spurious retransmits.
-        Without it, we fail to advertise duplicate-OOO events
-        per RFC 2883 §3 and the peer's congestion response to
-        a spurious RTO stays pessimistic for an extra RTT.
+        Reference: RFC 2883 §3 (DSACK case-2, full duplicate of OOO-queued segment).
         """
 
         session = self._drive_handshake_to_established(
@@ -2089,8 +1401,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             msg=(
                 "A retransmit of an OOO-queued segment MUST "
                 "elicit exactly one outbound ACK so peer's "
-                "retransmit machinery sees fresh activity "
-                "(RFC 2883 §3)."
+                "retransmit machinery sees fresh activity."
             ),
         )
         dup_ack_probe = self._parse_tx(dup_tx[0])
@@ -2111,52 +1422,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__case_2__partial_overlap_with_ooo_queued_segment_elicits_dsack(self) -> None:
         """
-        Ensure that when peer's OOO segment partially overlaps
-        an existing entry in our OOO queue, the next outbound
-        ACK carries a DSACK report whose range is the
-        intersection of the new segment with the existing entry
-        per RFC 2883 §4 case 2. The peer's spurious-retransmit
-        detector fires on the contained-block signature.
+        Ensure that when peer's OOO segment partially
+        overlaps an existing entry in our OOO queue, the
+        next outbound ACK carries a DSACK report whose
+        range is the intersection of the new segment with
+        the existing entry, followed by both regular OOO
+        blocks.
 
-        RFC 2883 §3:
-
-            "Each duplicate contiguous sequence of data
-             received is reported in at most one D-SACK block."
-
-        Scenario:
-
-            1. Drive an active-open handshake with bilateral
-               SACK negotiation succeeded.
-            2. Peer sends OOO segment 1: 'seq = PEER__ISS + 1
-               + 100', 100 bytes, range [PEER__ISS + 101,
-               PEER__ISS + 201).
-            3. Peer sends OOO segment 2: 'seq = PEER__ISS + 1
-               + 150', 100 bytes, range [PEER__ISS + 151,
-               PEER__ISS + 251). The first 50 bytes overlap
-               segment 1 (both already in the OOO queue).
-            4. The resulting outbound ACK has SACK blocks:
-                 - block 0 (DSACK): [PEER__ISS + 151,
-                   PEER__ISS + 201) - the overlap range.
-                 - block 1 (regular): [PEER__ISS + 101,
-                   PEER__ISS + 201) - the original OOO entry.
-                 - block 2 (regular): [PEER__ISS + 151,
-                   PEER__ISS + 251) - the new OOO entry.
-               The DSACK block (151, 201) is contained in
-               block 1 (101, 201). Case 2 signature satisfied.
-
-        Assertions:
-
-            * Exactly one inline outbound ACK fires on the
-              second OOO arrival.
-            * 'sack_blocks[0]' equals the overlap range.
-            * 'sack_blocks' contains both regular OOO entries.
-
-        [FLAGS BUG] - Same root cause as the full-duplicate
-        case: the OOO ingestion path does not detect the
-        partial overlap, no '_pending_dsack' is set, and the
-        ACK has only the two regular OOO blocks.
-
-        Fix: same overlap computation as the case-1 sibling.
+        Reference: RFC 2883 §3 (DSACK case-2, partial overlap with OOO queue).
         """
 
         self._drive_handshake_to_established(
@@ -2197,9 +1470,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             len(overlap_tx),
             1,
             msg=(
-                "An OOO segment overlapping a queued entry MUST "
-                "elicit exactly one outbound ACK reporting the "
-                "duplicate range via DSACK (RFC 2883 §3)."
+                "An OOO segment overlapping a queued entry "
+                "MUST elicit exactly one outbound ACK "
+                "reporting the duplicate range via DSACK."
             ),
         )
         overlap_ack_probe = self._parse_tx(overlap_tx[0])
@@ -2216,51 +1489,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__dsack__case_2__disjoint_ooo_segments_emit_no_dsack(self) -> None:
         """
-        Ensure that when peer's OOO segments do NOT overlap any
-        existing OOO-queue entry, the resulting SACK option
-        carries only regular SACK blocks - no DSACK marker. The
-        case-2 signature is reserved exclusively for the
-        duplicate-range case; emitting a spurious DSACK on
-        every OOO arrival would corrupt the peer's spurious-
-        retransmit detector.
+        Ensure that when peer's OOO segments do not overlap
+        any existing OOO-queue entry, the resulting SACK
+        option carries only regular SACK blocks — no DSACK
+        marker. Disjoint OOO ingestion is not a duplicate
+        event and must not trigger DSACK emission.
 
-        RFC 2883 §3:
-
-            "[The receiver] uses the first SACK block to
-             specify the sequence numbers of the duplicate
-             segment received."
-
-        I.e. the DSACK signature implies a duplicate event
-        actually occurred. Disjoint OOO ingestion is not a
-        duplicate event and must not trigger DSACK emission.
-
-        Scenario:
-
-            1. Drive handshake with bilateral SACK
-               negotiation succeeded.
-            2. Peer sends OOO segment 1: 'seq = PEER__ISS + 1
-               + 100', 100 bytes (range [101, 201)).
-            3. Peer sends OOO segment 2: 'seq = PEER__ISS + 1
-               + 300', 100 bytes (range [301, 401)). Disjoint
-               from segment 1 - 100-byte gap between them.
-            4. The resulting ACK has SACK blocks:
-                 - block 0 (regular): (101, 201)
-                 - block 1 (regular): (301, 401)
-               No DSACK marker.
-
-        Assertions:
-
-            * Exactly one inline outbound ACK on the second
-              OOO arrival.
-            * 'sack_blocks' has exactly 2 entries: the two
-              regular OOO ranges.
-            * The first block does NOT lie inside any later
-              block (case-2 signature absent).
-
-        Passes today as a regression guard: pins the negative
-        control so a future overly-eager case-2 emission cannot
-        slip in. Already passes - confirms the current code
-        does not emit spurious DSACKs.
+        Reference: RFC 2883 §3 (DSACK reserved for duplicate-range case).
         """
 
         session = self._drive_handshake_to_established(
@@ -2324,11 +1559,13 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
     def test__sack__cross_rfc__paws_drops_stale_segment_before_dsack_detector(self) -> None:
         """
-        Cross-RFC regression guard (Phase B1 of the test-coverage
-        audit): a stale-TSval segment that would otherwise be
-        a DSACK candidate (fully duplicate, below RCV.NXT) MUST
-        be dropped by RFC 7323 §5 PAWS BEFORE the RFC 2883 DSACK
-        detector fires; no DSACK report on the next outbound ACK.
+        Ensure a stale-TSval segment that would otherwise be
+        a DSACK candidate (fully duplicate, below RCV.NXT)
+        is dropped by PAWS before the DSACK detector fires;
+        no DSACK report on the next outbound ACK.
+
+        Reference: RFC 7323 §5 (PAWS).
+        Reference: RFC 2883 §3 (DSACK detection).
         """
 
         session = self._drive_handshake_to_established(
@@ -2382,9 +1619,8 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self.assertIsNone(
             session._pending_dsack,
             msg=(
-                "Cross-RFC: PAWS-rejected segment MUST NOT latch a "
-                "pending DSACK report. The PAWS check at the FSM "
-                "dispatch boundary fires BEFORE the DSACK detector "
-                "in '_check_segment_acceptability'."
+                "PAWS-rejected segment MUST NOT latch a "
+                "pending DSACK report; the PAWS check fires "
+                "before the DSACK detector."
             ),
         )

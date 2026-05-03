@@ -142,72 +142,15 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
 
     def test__data_transfer_out_of_order__gap_buffers_segment_and_dup_ack_then_fill_drains(self) -> None:
         """
-        Ensure the OOO machinery correctly handles a one-segment gap
-        in the inbound stream:
+        Ensure the OOO machinery handles a one-segment gap:
+        peer's segment #2 arrives before segment #1, the
+        receiver buffers it and emits a duplicate ACK
+        pointing at the still-expected RCV.NXT; when
+        segment #1 arrives the receiver drains the OOO
+        queue, advances RCV.NXT past both segments, and
+        emits a cumulative ACK acknowledging both.
 
-            1. Peer's segment #2 arrives BEFORE segment #1 (gap at
-               RCV.NXT). The receiver MUST buffer segment #2 in the
-               OOO queue rather than discard it, and emit a fast-
-               retransmit duplicate ACK pointing at the still-
-               expected RCV.NXT so the peer's sender knows which
-               byte is missing per RFC 5681 §3.2.
-            2. Peer's segment #1 arrives next, filling the gap. The
-               receiver processes segment #1 normally, advancing
-               RCV.NXT past it, then drains the OOO queue: segment
-               #2 is retrieved at the new RCV.NXT and processed in
-               the same call chain, advancing RCV.NXT past it too.
-            3. After the drain, '_rx_buffer' contains seg1 + seg2 in
-               the order the application sent them, and RCV.NXT
-               equals 'PEER__ISS + 1 + 2 * MSS'.
-
-        Wire-level expectations:
-
-            On segment #2 arrival (the OOO one):
-                One inline TX = bare ACK with
-                    seq = LOCAL__ISS + 1
-                    ack = PEER__ISS + 1     (= still-expected RCV.NXT)
-                    flags = {ACK}
-                    payload = b""
-
-            On segment #1 arrival (the gap-fill):
-                One inline TX = cumulative ACK covering BOTH segments:
-                    seq = LOCAL__ISS + 1
-                    ack = PEER__ISS + 1 + 2 * MSS
-                    flags = {ACK}
-                    payload = b""
-                The cumulative ACK fires inline because seg #1 plus
-                the drained seg #2 together hit the
-                "ACK every other segment" threshold (count == 2)
-                added to '_process_ack_packet' for RFC 1122 §4.2.3.2
-                compliance.
-
-        Side effects asserted:
-
-            * After segment #2 arrival:
-                - 'session._ooo_packet_queue' contains segment #2 at
-                  key 'PEER__ISS + 1 + 1460'.
-                - '_rx_buffer' is still empty - we have not delivered
-                  out-of-order data to the application.
-                - 'session._rcv_nxt' is unchanged at PEER__ISS + 1.
-
-            * After segment #1 arrival (gap-fill + drain):
-                - 'session._ooo_packet_queue' is empty.
-                - 'session._rx_buffer' equals 'seg1_payload +
-                  seg2_payload'.
-                - 'session._rcv_nxt' equals
-                  'PEER__ISS + 1 + 2 * 1460'.
-                - 'session._rcv_una' equals '_rcv_nxt' (the inline
-                  cumulative ACK acknowledged everything).
-
-            * State stays ESTABLISHED throughout.
-
-        This test passes on current code as a positive-control
-        regression guard for the OOO machinery: the
-        '_ooo_packet_queue' storage, the dup-ACK emit on every
-        OOO arrival (RFC 5681 §4.2), the recursive drain in
-        '_process_ack_packet's 'pop(self._rcv_nxt, None)' branch,
-        and the cumulative ACK of the drained chain are all
-        exercised end-to-end.
+        Reference: RFC 5681 §4.2 (immediate ACK on out-of-order segment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -351,85 +294,14 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
 
     def test__data_transfer_out_of_order__multi_gap_delivery_preserves_application_order(self) -> None:
         """
-        Ensure the OOO machinery handles MULTIPLE non-contiguous
-        gaps in the inbound stream, retaining segments in the OOO
-        queue across multiple arrivals and draining them in
-        application order once each gap is filled per RFC 9293
-        §3.4 / §3.10.7.4.
+        Ensure the OOO machinery handles multiple non-
+        contiguous gaps: four segments arriving in the order
+        [seg2, seg4, seg1, seg3] are buffered with distinct
+        OOO-queue keys; once seg1 and seg3 fill the gaps,
+        the recursive drain delivers all four to '_rx_buffer'
+        in application order.
 
-        Scenario:
-
-            Peer is sending four segments in application order
-            (seg1, seg2, seg3, seg4) but they arrive at the
-            receiver in the network order [seg2, seg4, seg1,
-            seg3]. The receiver therefore sees TWO simultaneous
-            gaps after seg2 and seg4 arrive (gap at RCV.NXT, plus
-            gap between seg2's tail and seg4's head); only after
-            seg1 fills the first gap and seg3 fills the second
-            do all four segments drain to the application in
-            their original send order.
-
-            Wire arrivals (each segment is exactly 1460 bytes,
-            payload distinguished by a unique fill byte so the
-            test can verify ordering byte-for-byte):
-
-                seg2: seq = peer_ISS + 1 + 1460,  payload = b"B"
-                seg4: seq = peer_ISS + 1 + 4380,  payload = b"D"
-                seg1: seq = peer_ISS + 1,         payload = b"A"
-                seg3: seq = peer_ISS + 1 + 2920,  payload = b"C"
-
-        Stages and asserted invariants:
-
-            After seg2 arrives:
-                - OOO queue: { peer_ISS+1+1460: seg2 }
-                - RCV.NXT  : peer_ISS + 1 (unchanged)
-                - rx_buffer: empty
-                - 1 dup-ACK fires pointing at the missing
-                  RCV.NXT.
-
-            After seg4 arrives:
-                - OOO queue: { peer_ISS+1+1460: seg2,
-                               peer_ISS+1+4380: seg4 }
-                - RCV.NXT  : still peer_ISS + 1
-                - rx_buffer: empty
-                - 1 dup-ACK fires pointing at the missing
-                  RCV.NXT.
-                - The 'seg2/seg4' OOO queue keys remain
-                  distinct - the second OOO arrival did NOT
-                  overwrite the first.
-
-            After seg1 arrives (fills first gap):
-                - seg1 is processed via '_process_ack_packet';
-                  the recursive 'pop(self._rcv_nxt, None)' drain
-                  retrieves seg2 at the new RCV.NXT and
-                  processes it; seg4's queue entry remains
-                  because RCV.NXT is now peer_ISS+1+2*1460,
-                  which does NOT equal peer_ISS+1+4380.
-                - rx_buffer: seg1_payload + seg2_payload
-                - RCV.NXT  : peer_ISS + 1 + 2*1460
-                - OOO queue: { peer_ISS+1+4380: seg4 }
-                - 1 cumulative ACK covering seg1+seg2.
-
-            After seg3 arrives (fills second gap):
-                - seg3 is processed; the recursive drain
-                  retrieves seg4 at the new RCV.NXT.
-                - rx_buffer: seg1+seg2+seg3+seg4 (all four
-                  payloads in send order).
-                - RCV.NXT  : peer_ISS + 1 + 4*1460
-                - OOO queue: empty.
-                - 1 cumulative ACK covering seg3+seg4.
-
-        State stays ESTABLISHED throughout.
-
-        This test passes on current code: the OOO queue is keyed
-        by raw 'tcp__seq', distinct gap segments end up in
-        separate dictionary entries, and the recursive drain in
-        '_process_ack_packet' correctly retrieves only the
-        contiguous run starting at the freshly-advanced RCV.NXT.
-        The test serves as a regression guard against changes
-        that might (a) replace OOO storage with a single-slot
-        buffer, (b) break the recursive-drain logic, or (c) lose
-        track of distinct OOO segments under retransmit.
+        Reference: RFC 5681 §4.2 (immediate ACK on out-of-order segment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -572,125 +444,13 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
 
     def test__data_transfer_out_of_order__overlapping_segment_keeps_new_bytes_only(self) -> None:
         """
-        Ensure that a segment whose SEQ lies BEFORE 'RCV.NXT' but
-        whose tail extends PAST 'RCV.NXT' is not rejected outright;
-        instead the receiver discards the already-received prefix,
-        accepts the new tail bytes, advances 'RCV.NXT' accordingly,
-        and acknowledges the new boundary, per RFC 9293 §3.10.7.4
-        sequence-acceptability rules and §3.4 receive-window
-        semantics.
+        Ensure a segment whose SEQ lies before RCV.NXT but
+        whose tail extends past RCV.NXT is not rejected
+        outright: the receiver discards the already-received
+        prefix, accepts the new tail bytes, advances RCV.NXT
+        accordingly, and acknowledges the new boundary.
 
-        Concretely, RFC 9293 §3.10.7.4 mandates:
-
-            "A receiver should be tolerant of overlap in segments
-             since it is now acceptable for a sender to retransmit
-             data with overlap. The receiver should accept the
-             segment if any portion of the segment falls within the
-             receive window."
-
-        Overlapping segments arise legitimately when:
-
-          - The sender retransmits a segment whose ACK was lost,
-            then continues sending fresh data; on a network with
-            reordering, the retransmit may arrive at the receiver
-            with one combined segment whose head overlaps the
-            previously-acked region.
-          - A path with re-segmentation (such as a middlebox
-            doing TCP normalization) merges two segments into one
-            larger frame whose seq covers ground we have already
-            processed.
-
-        In all such cases the receiver MUST keep the connection
-        making forward progress by accepting the new tail bytes
-        rather than silently dropping the whole segment - dropping
-        would force the sender to retry, wasting a full RTO.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends 5 bytes (b"hello") at seq = PEER__ISS + 1.
-               Drive RX. Data is delivered to '_rx_buffer'; RCV.NXT
-               advances to PEER__ISS + 6. No inline ACK (delayed
-               via the timer).
-            3. Peer sends an OVERLAPPING segment: seq = PEER__ISS + 1
-               (covers the already-received b"hello") with payload
-               b"hello world" (11 bytes total = 5 overlap + 6 new).
-               Drive RX.
-            4. Per RFC: the receiver discards the first 5 bytes
-               (already in '_rx_buffer'), enqueues only the new 6
-               bytes (b" world"), advances RCV.NXT to PEER__ISS +
-               12, and emits an inline ACK acknowledging the new
-               boundary.
-
-        Required wire shape of the inline ACK:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = LOCAL__ISS + 1
-            ack       = PEER__ISS + 12   (= old RCV.NXT + 6 new bytes)
-            flags     = {ACK}
-            payload   = b""
-
-        Side effects asserted:
-
-            * '_rx_buffer' equals b"hello world" - the overlap
-              prefix was discarded so we do NOT see double-enqueuing
-              of b"hello".
-            * 'RCV.NXT' equals PEER__ISS + 12.
-            * 'RCV.UNA' equals 'RCV.NXT' after the inline ACK
-              (since the every-other-segment counter forces an
-              inline ACK at 2 segments).
-            * State remains ESTABLISHED.
-
-        [FLAGS BUG] - RFC 9293 §3.10.7.4 deviation
-        ----------------------------------------------------------
-        '_tcp_fsm_established's receive-window guard:
-
-            if packet_rx_md and not self._rcv_nxt
-                <= packet_rx_md.tcp__seq
-                <= self._rcv_nxt + self._rcv_wnd - len(...):
-                ... drop ...
-                return
-
-        Requires 'RCV.NXT <= SEG.SEQ', so any segment with SEQ <
-        RCV.NXT is rejected outright - regardless of whether its
-        tail extends past RCV.NXT and would have delivered new
-        bytes. The function returns silently with no outbound
-        segment; the sender is given no signal of receipt of the
-        overlap.
-
-        Worse, even if the data branch could be reached for an
-        overlap segment, '_process_ack_packet' assigns
-
-            self._rcv_nxt = (
-                packet_rx_md.tcp__seq
-                + len(packet_rx_md.tcp__data)
-                + packet_rx_md.tcp__flag_syn
-                + packet_rx_md.tcp__flag_fin
-            )
-
-        UNCONDITIONALLY - it does not max with the existing
-        RCV.NXT, so a stale-duplicate segment whose tail STILL
-        does not reach RCV.NXT would actually REWIND RCV.NXT
-        backwards, corrupting the connection's seq tracking.
-        That second bug is masked today by the window-guard's
-        outright drop, but a fix that simply lifts the guard
-        without fixing the assignment would expose it.
-
-        This test is expected to FAIL on current code with zero
-        outbound segments and an unchanged '_rx_buffer'. Fixing
-        it requires:
-
-          (a) Relaxing the window guard to accept any segment
-              whose '[SEQ, SEQ+LEN)' interval overlaps the
-              receive window '[RCV.NXT, RCV.NXT + RCV.WND)'
-              (per RFC 9293 §3.10.7.4 acceptability table).
-          (b) In '_process_ack_packet' (or before calling it),
-              if 'SEQ < RCV.NXT', slicing the payload to start
-              at 'RCV.NXT - SEQ' so only the new bytes are
-              enqueued.
-          (c) Changing the RCV.NXT assignment to use 'max(...)'
-              so a stale duplicate cannot rewind RCV.NXT.
+        Reference: RFC 9293 §3.10.7.4 (receiver tolerance for overlap).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -738,9 +498,8 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
         )
         inline_tx = self._drive_rx(frame=overlap_segment)
 
-        # Per RFC 9293 §3.10.7.4 the receiver must accept the new
-        # tail bytes and emit an inline ACK acknowledging the new
-        # boundary.
+        # The receiver must accept the new tail bytes and emit
+        # an inline ACK acknowledging the new boundary.
         self.assertEqual(
             len(inline_tx),
             1,
@@ -807,112 +566,14 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
 
     def test__data_transfer_out_of_order__five_ooo_segments_emit_at_least_three_dup_acks(self) -> None:
         """
-        Ensure that when the peer delivers a burst of out-of-order
-        segments past a single gap, PyTCP-as-receiver emits AT LEAST
-        three duplicate ACKs at the still-expected RCV.NXT - the
-        threshold required to trigger peer's RFC 5681 §3.2 fast-
-        retransmit. RFC 5681 §4.2 "Generating Acknowledgments" is
-        explicit on the receiver-side requirement:
+        Ensure that when the peer delivers a burst of OOO
+        segments past a single gap, PyTCP-as-receiver emits
+        at least three duplicate ACKs at the still-expected
+        RCV.NXT — the threshold required to trigger peer's
+        fast-retransmit.
 
-            "A TCP receiver MUST send an immediate duplicate ACK when
-             an out-of-order segment arrives. The purpose of this ACK
-             is to inform the sender that a segment was received out
-             of order and which sequence number is expected. ... This
-             ACK should not be delayed."
-
-        and RFC 5681 §3.2 "Fast Retransmit/Fast Recovery" pins the
-        sender-side threshold:
-
-            "When the third duplicate ACK is received, a TCP MUST
-             set ssthresh ... and retransmit what appears to be the
-             missing segment."
-
-        Without at least three dup-ACKs from the receiver, the sender
-        peer cannot trigger fast-retransmit and must wait for the
-        retransmit timeout (RTO) - typically 1 second on the first
-        loss, growing exponentially via RFC 6298 back-off. The
-        per-loss recovery delay drops by ~1-2 orders of magnitude
-        when fast-retransmit is reachable, so the threshold is
-        load-bearing for any workload where loss is non-zero (lossy
-        WAN, mobile / wireless, congested links).
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_established' line ~2347
-        in the OOO-segment branch caps outbound dup-ACKs at 2 per
-        gap via the '_rx_retransmit_request_counter[rcv_nxt] <= 2'
-        gate:
-
-            self._rx_retransmit_request_counter[self._rcv_nxt] = (
-                self._rx_retransmit_request_counter.get(self._rcv_nxt, 0) + 1
-            )
-            if self._rx_retransmit_request_counter[self._rcv_nxt] <= 2:
-                self._transmit_packet(flag_ack=True)
-
-        The cap is documented in the inline comment at line 432-434
-        as intentional ("Keeps track of us sending 'fast retransmit
-        request' packets so we can limit their count to 2"), but the
-        threshold is wrong: peer needs 3 dup-ACKs, not 2. The
-        asymmetry is internally inconsistent - PyTCP's own sender-
-        side count-trigger at '_retransmit_packet_request' line ~2293
-        correctly fires on the THIRD dup-ACK
-        ('count_trigger = ... == 3'), so PyTCP-as-sender expects 3
-        from peer but PyTCP-as-receiver emits at most 2 to peer.
-
-        SACK does not save the gap either. Each of the 2 emitted
-        ACKs carries a SACK option block reflecting what is in our
-        OOO queue at the time:
-
-          - 1st ACK: SACK block for {seg1}.
-          - 2nd ACK: SACK blocks for {seg1, seg2}.
-          - (counter > 2: no further ACKs, no further SACK
-            information delivered to peer.)
-
-        Peer's RFC 6675 §3 IsLost() byte rule fires when MORE THAN
-        '(DupThresh - 1) * SMSS' bytes are reported SACKed. With
-        DupThresh = 3 and SMSS = 1460, that's > 2920 bytes. With at
-        most 2 full-MSS segments reported (= 2920 bytes exactly,
-        not strictly more), the byte rule does not fire either.
-        Peer falls back to RTO regardless of SACK negotiation.
-
-        Severity: HIGH performance impact. Affects every PyTCP-as-
-        receiver connection on a lossy link. The bug only "hides"
-        in lossless test environments where the OOO branch is
-        rarely exercised.
-
-        Fix outline (separate commit): remove the cap-at-2 gate
-        entirely. The OOO segments are naturally rate-limited by
-        peer's send cadence (peer emits at most one segment per
-        SMSS-worth of cwnd), so PyTCP's outbound dup-ACKs cannot
-        exceed peer's outbound segment rate; there is no ACK-flood
-        risk to mitigate. The '_rx_retransmit_request_counter' dict
-        and its purge-on-cum-ACK plumbing become dead state and can
-        be removed in the same commit.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Disable bilateral SACK to focus on the count-based
-               RFC 5681 §3.2 path (the SACK byte-rule analysis above
-               applies independently; this test pins the count
-               path).
-            3. Peer delivers 5 OOO segments past the gap at
-               RCV.NXT = PEER__ISS + 1 (gap = 1000 bytes; each OOO
-               segment is 100 bytes at offsets 1000, 1100, 1200,
-               1300, 1400 past PEER__ISS + 1).
-            4. Count outbound ACK frames carrying ack ==
-               PEER__ISS + 1 (the still-expected RCV.NXT).
-
-        Assertions:
-
-            * Outbound dup-ACK count >= 3.
-            * Each outbound dup-ACK has the canonical shape:
-              flags={"ACK"}, ack=PEER__ISS+1, seq=LOCAL__ISS+1,
-              payload=b"".
-            * State stays ESTABLISHED.
-
-        On current code this test fails: only 2 dup-ACKs are
-        emitted (the cap-at-2 logic), peer's fast-retransmit cannot
-        trigger, peer falls back to RTO. The number-of-dup-ACKs
-        assertion is what fires.
+        Reference: RFC 5681 §3.2 (fast retransmit on third dup-ACK).
+        Reference: RFC 5681 §4.2 (immediate ACK on out-of-order segment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -979,21 +640,13 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             dup_ack_count,
             3,
             msg=(
-                "Per RFC 5681 §4.2, the receiver MUST send an "
-                "immediate duplicate ACK on every out-of-order "
-                "segment arrival, and per RFC 5681 §3.2 the sender "
-                "peer requires at least 3 duplicate ACKs to trigger "
-                "fast-retransmit. With "
+                "The receiver MUST send an immediate duplicate "
+                "ACK on every out-of-order segment arrival; "
+                "the sender peer requires at least 3 duplicate "
+                "ACKs to trigger fast-retransmit. With "
                 f"{ooo_segment_count} OOO segments delivered past "
                 "the gap, the receiver MUST emit at least 3 "
                 "duplicate ACKs at the still-expected RCV.NXT. "
-                "Today '_tcp_fsm_established' line ~2347 caps the "
-                "count at 2 via "
-                "'_rx_retransmit_request_counter[rcv_nxt] <= 2'; "
-                "peer's fast-retransmit never fires from PyTCP-"
-                "generated dup-ACKs and peer must wait for RTO. Fix: "
-                "remove the cap-at-2 gate; OOO arrivals are rate-"
-                "limited by peer's send cadence and cannot flood. "
                 f"Got dup-ACK count: {dup_ack_count}."
             ),
         )

@@ -138,65 +138,15 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
     def test__bad_segments__fin_plus_rst_in_established_drops_silently(self) -> None:
         """
         Ensure that a segment carrying BOTH the FIN and RST flags
-        - an illegal combination per RFC 9293 §3.1 - is silently
-        dropped on receipt: state is unchanged, no segment is
-        emitted in response, and 'RCV.NXT' / 'SND.UNA' do not
-        advance.
+        is silently dropped on receipt in ESTABLISHED: state is
+        unchanged, no segment is emitted in response, and
+        'RCV.NXT' / 'SND.UNA' do not advance. FIN and RST encode
+        mutually exclusive intents and no legitimate conformant
+        peer sends both. The synchronized-state branches cleanly
+        separate FIN and RST so the segment falls through.
 
-        FIN and RST encode mutually exclusive intents (graceful
-        connection termination vs. abortive reset) and no
-        legitimate conformant TCP will send a segment with both
-        flags set. Such a segment can come from:
-
-            - A malformed implementation (rare).
-            - An off-path attacker probing for confused-state
-              behaviour (the blind-attack threat model from RFC
-              5961).
-            - A stale segment from a previous connection where
-              flag bits became corrupted in transit.
-
-        In all three cases the safe response is to drop. RFC 9293
-        §3.10.7.4's branches for synchronized states cleanly
-        separate FIN and RST: the FIN+ACK branch (line 1469-1485)
-        excludes RST, and the RST+ACK branch (line 1487-1511)
-        excludes FIN. A FIN+RST segment matches neither and falls
-        through, which is the spec-correct outcome - drop silently
-        without any state change or reply.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Snapshot 'SND.UNA',
-               'RCV.NXT', and state.
-            2. Peer sends FIN+RST+ACK at 'SEQ = PEER__ISS + 1' (in
-               window; valid seq) and 'ACK = LOCAL__ISS + 1' (in
-               window; valid ack). The flags include the canonical
-               ACK piggyback alongside the malformed FIN+RST.
-            3. Drive RX. The FSM dispatcher routes to
-               '_tcp_fsm_established'. None of the FIN+ACK,
-               RST+ACK, ACK-only, or SYN-on-syn branches match
-               (FIN+RST is excluded by all of them), so the
-               segment falls through.
-
-        Assertions:
-
-            * No outbound segment in response.
-            * State is unchanged (still ESTABLISHED).
-            * 'SND.UNA' is unchanged - the malformed segment must
-              not advance the send sequence space, even though
-              its ACK field is in [SND.UNA, SND.MAX].
-            * 'RCV.NXT' is unchanged - the FIN's potential
-              consumption of one byte of sequence space is
-              forfeited because the segment is dropped before
-              processing.
-
-        This test passes on current code as a positive-control
-        regression guard for the FSM's parser-tolerant rejection
-        of malformed flag combinations. Future changes that
-        relaxed the 'not any({tcp__flag_rst})' or 'not any(
-        {tcp__flag_fin})' exclusions in any of the
-        '_tcp_fsm_established' branches would let the malformed
-        segment match a handler and cause incorrect state
-        progression.
+        Reference: RFC 9293 §3.1 (control-bit semantics).
+        Reference: RFC 9293 §3.10.7.4 (synchronized state segment processing).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -248,45 +198,15 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
 
     def test__bad_segments__all_zero_flags_segment_in_established_drops_silently(self) -> None:
         """
-        Ensure that a segment with NO flags set (the all-zero
-        flags byte - no ACK, no SYN, no FIN, no RST, no PSH, no
-        URG) is silently dropped on receipt in ESTABLISHED.
+        Ensure a segment with no flags set (the all-zero flags
+        byte) is silently dropped on receipt in ESTABLISHED:
+        no outbound reply, state unchanged, SND.UNA / RCV.NXT
+        unchanged. Once the connection is synchronized every
+        segment the peer sends must carry an ACK piggyback;
+        a flag-less segment is malformed, stale, or an attacker
+        probe and the safe response is to drop without reply.
 
-        RFC 9293 §3.10.7.4 (synchronized state segment processing,
-        ACK validation):
-
-            "If the ACK bit is off, drop the segment and return."
-
-        i.e. once the connection is synchronized, every segment
-        the peer sends MUST carry an ACK piggyback - the receiver
-        is constantly observing the cumulative ACK as a heartbeat
-        and a flow-control-window update. A flag-less segment is
-        either malformed, stale, or an attacker probe; in all
-        cases the safe response is to drop without reply.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Snapshot 'SND.UNA',
-               'RCV.NXT', and state.
-            2. Peer sends a segment with flags = empty tuple (the
-               all-zero flags byte). 'SEQ' and 'ACK' fields are
-               populated with valid in-window values to rule out
-               other rejection paths.
-            3. Drive RX. None of '_tcp_fsm_established's branches
-               match: the ACK-only branch (line 1389) requires
-               'all({tcp__flag_ack})'; the FIN+ACK / RST+ACK / SYN-
-               on-syn branches all also require ACK. The segment
-               falls through silently.
-
-        Assertions:
-
-            * No outbound segment in response.
-            * State remains ESTABLISHED.
-            * 'SND.UNA' is unchanged.
-            * 'RCV.NXT' is unchanged.
-
-        This test passes on current code as a positive-control
-        regression guard for the FSM's ACK-required invariant.
+        Reference: RFC 9293 §3.10.7.4 (drop segment when ACK bit is off).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -333,70 +253,16 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
 
     def test__bad_segments__ecn_flags_accepted_and_not_echoed(self) -> None:
         """
-        Ensure that a non-ECN endpoint (which PyTCP is - we never
-        negotiate ECN on the SYN handshake) correctly handles the
-        two ECN-related flag bits that may appear on inbound
-        segments per RFC 3168 / RFC 9293 §3.1:
+        Ensure a non-ECN endpoint accepts a segment carrying
+        ECE / CWR (the segment is processed normally and data
+        is delivered) and does NOT echo ECE / CWR in the
+        outbound ACK. PyTCP never negotiates ECN on the SYN
+        handshake, so ECE / CWR on any inbound segment must be
+        treated as having no effect, and the outbound reply
+        must not set those bits.
 
-            * Accept the segment normally (ECE / CWR are not
-              segment-rejection criteria).
-            * Do NOT echo ECE / CWR in our outbound reply (we
-              haven't agreed to speak ECN, so any ECE/CWR we
-              emit would be a misencoding peer might
-              misinterpret).
-
-        RFC 3168 §6.1.1 (originally introducing ECN to TCP):
-
-            "If a TCP host has not agreed to negotiate ECN with its
-             peer (using the ECE and CWR flags during the SYN
-             exchange), the host MUST NOT set the ECE or CWR flags
-             on any subsequent segment it transmits, and MUST treat
-             any received ECE / CWR flags as having no effect."
-
-        RFC 9293 §3.1 inherits this: the flag-bits diagram lists
-        ECE / CWR as control bits, and §3.10.7.4's branch predicates
-        do not test for ECE/CWR (only SYN/ACK/FIN/RST). So a
-        conformant non-ECN implementation processes the segment as
-        if those bits weren't there, and emits its own segments
-        without setting them.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. (Both SYNs in the
-               handshake had no ECE/CWR, so ECN is not negotiated.)
-            2. Peer sends a data segment of 5 bytes 'b"hello"' with
-               flags = {ACK, PSH, ECE, CWR} - i.e. claiming ECN
-               feedback even though we never agreed to ECN.
-            3. Drive RX. The ESTABLISHED ACK-only data branch (line
-               1389) does NOT exclude ECE/CWR (it only checks
-               'all({tcp__flag_ack}) and not any({syn, rst, fin})'),
-               so the segment matches and is processed normally:
-               the data is enqueued into '_rx_buffer', RCV.NXT
-               advances, and the delayed-ACK timer is armed.
-            4. Tick past the delayed-ACK boundary so an outbound
-               ACK fires.
-            5. Inspect the outbound ACK: its flags must be exactly
-               {ACK} - no ECE, no CWR.
-
-        Assertions:
-
-            * '_rx_buffer' contains the 5 bytes peer sent.
-            * 'RCV.NXT' advanced by 5.
-            * The outbound ACK carries flags = {ACK} only - ECE
-              and CWR are absent. Asserted via the strict
-              'frozenset({"ACK"})' equality check.
-
-        This test passes on current code as a positive-control
-        regression guard. PyTCP's '_transmit_packet' does not
-        accept any 'flag_ece' / 'flag_cwr' parameter, so by
-        construction it never sets those bits on outbound
-        segments - the no-echo half of the contract is
-        structurally guaranteed. The accept-and-process half
-        relies on the FSM branch predicates not checking for
-        ECN bits. A future change that added '"ECE"' to a
-        'not any({...})' exclusion (e.g. as part of a misguided
-        "tighten the predicate" cleanup) would silently start
-        dropping ECN-marked segments and break this test.
+        Reference: RFC 3168 §6.1.1 (non-ECN endpoint MUST NOT echo ECE/CWR).
+        Reference: RFC 9293 §3.1 (control-bit semantics).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

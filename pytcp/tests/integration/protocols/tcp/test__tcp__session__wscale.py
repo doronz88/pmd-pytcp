@@ -118,74 +118,11 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__outbound_syn_advertises_wscale_option(self) -> None:
         """
-        Ensure that an active-open session emits its initial SYN
-        with the WSCALE option carrying a non-zero scaling factor,
-        per RFC 7323 §2.2. Without our advertisement the bilateral
-        negotiation fails closed (peer would have no reason to
-        offer reciprocal scaling), and the connection is
-        permanently throughput-capped at 64 KB / RTT regardless
-        of how much bandwidth or buffer is available.
+        Ensure that an active-open session emits its initial
+        SYN with the WSCALE option carrying a non-zero
+        scaling factor.
 
-        RFC 7323 §2.2 (Window Scale Option):
-
-            "The Window Scale option is sent only in a <SYN>
-             segment ... A TCP MAY send the WSopt in only the
-             <SYN> segment of the connection ... All windows
-             field values in the segment exchanged on the
-             connection are relative to the WSopt-Permitted
-             Window Scale option (WSopt) value advertised in the
-             initial SYN."
-
-        Concretely:
-
-            * The outbound SYN MUST carry the WSCALE option with a
-              non-zero shift count. PyTCP defaults to '7' (yields
-              max advertised window = 65535 << 7 ~= 8 MB),
-              matching Linux/FreeBSD defaults.
-            * The SYN's own 'win' field is NOT shifted (per RFC
-              7323 §2.2 "WSopt is not used to scale the value in
-              the window field of the SYN segment itself").
-
-        Scenario:
-
-            1. Build a session and emit our outbound SYN.
-            2. Parse the SYN frame and inspect the WSCALE option.
-
-        Assertions:
-
-            * The outbound SYN carries 'wscale = LOCAL__RCV_WSCALE'
-              (= 7) on the WSCALE option (the spec encoding).
-            * The SYN's 'win' field equals the initial '_rcv_wnd'
-              (65535) - NOT shifted.
-
-        [FLAGS BUG] - 'TcpSession._transmit_packet' (line 568)
-        currently emits 'tcp__wscale=0 if flag_syn else None'
-        unconditionally, hard-coded. The session class has no
-        '_advertise_wscale' / '_rcv_wsc' state to override this
-        with a non-zero shift, so the WSCALE option is never
-        emitted on outbound SYNs and the bilateral negotiation
-        cannot complete.
-
-        The fix is the WSCALE implementation:
-
-            1. Add 'self._rcv_wsc: int = 7' (or a configurable
-               default) to 'TcpSession.__init__'.
-            2. Update '_transmit_packet' to emit
-               'tcp__wscale=self._rcv_wsc' on SYN/SYN+ACK
-               segments (gated on a 'self._advertise_wscale'
-               bool that callers can flip if asymmetric-offer
-               testing is needed).
-            3. Apply the shift to outbound 'win' fields on
-               post-handshake segments only (the SYN's own
-               'win' stays unshifted).
-            4. On inbound SYN/SYN+ACK with WSCALE, set
-               'self._snd_wsc = peer.wscale' (gated on
-               'self._advertise_wscale' so the asymmetric-
-               offer rule from RFC 7323 §2.2 still holds).
-
-        On current code this test fails at the
-        'syn_probe.wscale == 7' assertion - the option is
-        absent on the wire (probe.wscale == None).
+        Reference: RFC 7323 §2.2 (Window Scale Option negotiation).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -256,64 +193,16 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__bilateral_handshake_sets_both_directions(self) -> None:
         """
-        Ensure that when both sides advertise WSCALE on the SYN /
-        SYN+ACK exchange, the session ends up with both directions
-        of scale state set: '_rcv_wsc' equal to OUR advertised
-        shift (governs how we shift outbound 'win' fields) and
-        '_snd_wsc' equal to PEER'S advertised shift (governs how
-        we interpret inbound 'win' fields).
+        Ensure that when both sides advertise WSCALE on the
+        SYN / SYN+ACK exchange, the session ends up with both
+        directions of scale state set: '_rcv_wsc' equal to
+        OUR advertised shift (governs how we shift outbound
+        'win' fields) and '_snd_wsc' equal to PEER'S
+        advertised shift (governs how we interpret inbound
+        'win' fields).
 
-        RFC 7323 §2.2:
-
-            "If a Window Scale option is received with a shift.cnt
-             value larger than 14, the TCP SHOULD log the error but
-             MUST use 14 instead of the specified value. ... A WSopt
-             is sent only in <SYN> and <SYN,ACK> segments."
-
-        and §2.3 (using WSCALE):
-
-            "After the connection setup, the value of the WSopt
-             received from the peer is used to scale the values of
-             the window field of any received <ACK> segment, and
-             the WSopt sent by this host is used to scale the
-             window-field values of <ACK> segments sent by this
-             host."
-
-        Concretely, post-handshake:
-
-            * Outbound segments carry 'win = (rcv_wnd) >> _rcv_wsc'.
-            * Inbound segments are interpreted as
-              '_snd_wnd = peer.win << _snd_wsc'.
-
-        Scenario:
-
-            1. Build session, drive 'CONNECT'. Outbound SYN carries
-               our default WSCALE = 7 (covered by scenario #1).
-            2. Peer replies with SYN+ACK carrying a DIFFERENT
-               WSCALE value (10) so the two directions are
-               distinguishable in assertions. RFC 7323 permits
-               asymmetric shift counts; the values do not have to
-               match.
-            3. Drive RX. Handshake completes to ESTABLISHED.
-
-        Assertions:
-
-            * 'session.state' is ESTABLISHED.
-            * 'session._rcv_wsc == 7' - our advertised shift,
-              unchanged by peer's offer (the 'rcv' side is what
-              we apply to OUR receive window for outbound 'win'
-              fields).
-            * 'session._snd_wsc == 10' - peer's advertised shift,
-              applied to inbound 'win' fields. The bilateral
-              negotiation succeeded because we offered WSCALE
-              first.
-
-        [FLAGS BUG] - same root cause as scenario #1. Without the
-        WSCALE implementation, '_snd_wsc' currently stays at 0
-        (the asymmetric-offer rule from 'data_transfer__window.py'
-        scenario #2's fix kicks in). Once we DO advertise on
-        outbound SYN, peer's WSCALE on the SYN+ACK becomes legal
-        bilateral and must be honoured.
+        Reference: RFC 7323 §2.2 (Window Scale Option negotiation).
+        Reference: RFC 7323 §2.3 (Using the Window Scale Option).
         """
 
         peer_wscale = 10
@@ -373,44 +262,13 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__peer_wscale_applied_to_inbound_window(self) -> None:
         """
-        Ensure that after a bilateral WSCALE negotiation, the peer's
-        post-handshake 'win' field is interpreted as
-        '_snd_wnd = peer.win << _snd_wsc' per RFC 7323 §2.3. The
-        SYN+ACK's own 'win' field is NOT shifted (RFC 7323 §2.2);
-        the shift applies only to subsequent segments.
+        Ensure that after a bilateral WSCALE negotiation, the
+        peer's post-handshake 'win' field is interpreted as
+        '_snd_wnd = peer.win << _snd_wsc'. The SYN+ACK's own
+        'win' field is NOT shifted; the shift applies only to
+        subsequent segments.
 
-        RFC 7323 §2.3 (Using the Window Scale Option):
-
-            "After the connection setup, the value of the WSopt
-             received from the peer is used to scale the values of
-             the window field of any received <ACK> segment..."
-
-        This is the wire-level consequence of scenario #2's
-        '_snd_wsc' state assertion: the shift state is only useful
-        if the code actually applies it. The existing
-        '_process_ack_packet' shifts via 'packet_rx_md.tcp__win <<
-        self._snd_wsc' (line ~915), so once '_snd_wsc' is set
-        correctly post-handshake, the application is automatic.
-
-        Scenario:
-
-            1. Drive bilateral WSCALE handshake (us=7, peer=10).
-            2. Peer sends a post-handshake bare ACK with
-               'win=1024'.
-            3. Verify '_snd_wnd = 1024 << 10 = 1_048_576'.
-
-        Assertions:
-
-            * After peer's post-handshake ACK with 'win=1024' and
-              negotiated 'snd_wsc=10', 'session._snd_wnd' equals
-              '1_048_576' (~1 MB) - clearly above the 65535
-              unscaled cap.
-            * State remains ESTABLISHED.
-
-        [FLAGS BUG] - Same root cause as #1 / #2. Once those
-        flip green via the WSCALE implementation, this test
-        flips green automatically because the shift logic
-        already exists in '_process_ack_packet' line ~915.
+        Reference: RFC 7323 §2.3 (Using the Window Scale Option).
         """
 
         peer_wscale = 10
@@ -480,56 +338,13 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__outbound_window_advertised_with_local_wscale_shift(self) -> None:
         """
-        Ensure that the wire-level 'win' field in our post-handshake
-        outbound segments is right-shifted by '_rcv_wsc', so the
-        peer reconstructs our actual receive window via 'peer_snd_wnd
-        = wire_win << our_wsc'. Without the shift, our advertisable
-        receive window stays capped at 65535 bytes regardless of
-        '_rcv_wnd_max'; with the shift, we can advertise effective
-        windows up to '65535 << 7 = 8_388_480' bytes (~8 MB) even
-        though the wire field is only 16 bits.
+        Ensure that the wire-level 'win' field in our
+        post-handshake outbound segments is right-shifted by
+        '_rcv_wsc', so the peer reconstructs our actual
+        receive window via 'peer_snd_wnd = wire_win <<
+        our_wsc'.
 
-        RFC 7323 §2.3:
-
-            "After the connection setup ... the WSopt sent by this
-             host is used to scale the window-field values of <ACK>
-             segments sent by this host."
-
-        Concretely: 'wire_win = _rcv_wnd >> _rcv_wsc'. The shift is
-        lossy in the low '_rcv_wsc' bits (peer reconstructs to
-        'wire_win << _rcv_wsc' which truncates the LSBs). This is
-        a documented and accepted property of WSCALE - the
-        "granularity" of the advertised window is '2 ** _rcv_wsc'
-        bytes.
-
-        Scenario:
-
-            1. Drive bilateral WSCALE handshake (us=7, peer=10).
-            2. Peer sends two back-to-back 100-byte data segments
-               so the every-other-segment rule produces an inline
-               cumulative ACK.
-            3. Inspect the outbound ACK's 'win' field.
-
-        Assertions:
-
-            * 'wire_win = (_rcv_wnd_max - len(_rx_buffer)) >> 7'.
-              With '_rcv_wnd_max = 65535' and 200 bytes in
-              '_rx_buffer', actual rcv_wnd = 65335 and
-              'wire_win = 65335 >> 7 = 510'.
-            * State remains ESTABLISHED.
-
-        [FLAGS BUG] - Same root cause as #1 / #2. Once those flip
-        green via the WSCALE implementation, this test asserts the
-        outbound 'win' is correctly shifted. Without the shift,
-        the outbound 'win' would stay at 'rcv_wnd' clamped to 65535
-        - good for non-WSCALE peers but throws away the bandwidth
-        opportunity for WSCALE-capable peers.
-
-        The fix in '_transmit_packet' is a one-line change: pass
-        'tcp__win=self._rcv_wnd >> self._rcv_wsc' instead of
-        'tcp__win=self._rcv_wnd' (gated on 'state in synchronized
-        states' so the SYN's own 'win' stays unshifted per scenario
-        #6).
+        Reference: RFC 7323 §2.3 (Using the Window Scale Option).
         """
 
         peer_wscale = 10
@@ -652,49 +467,12 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__passive_open_mirrors_peer_wscale_offer(self) -> None:
         """
-        Ensure that when an inbound SYN to a listening socket carries
-        the WSCALE option, our SYN+ACK reply mirrors the offer
-        (carrying our own WSCALE) and the resulting child session
-        records peer's wscale as '_snd_wsc'.
+        Ensure that when an inbound SYN to a listening socket
+        carries the WSCALE option, our SYN+ACK reply mirrors
+        the offer (carrying our own WSCALE) and the resulting
+        child session records peer's wscale as '_snd_wsc'.
 
-        RFC 7323 §2.2:
-
-            "A TCP MAY send the WSopt in only the <SYN> segment of
-             the connection, but if it is sent in only that segment,
-             the connection is opened with the no-window-scaling
-             default. ... A WSopt is not legal unless it is offered
-             in both directions."
-
-        Concretely for the passive-open path:
-
-            * Peer SYN with WSCALE -> our SYN+ACK MUST carry WSCALE
-              (otherwise the bilateral negotiation fails closed and
-              we'd need to set our '_rcv_wsc' to 0).
-            * Peer SYN without WSCALE -> our SYN+ACK MUST NOT carry
-              WSCALE (covered by scenario #5b).
-
-        Scenario:
-
-            1. Set up a listening session.
-            2. Drive a SYN from a peer with 'wscale=12'.
-            3. Tick to fire the SYN+ACK.
-            4. Inspect the SYN+ACK and the child session state.
-
-        Assertions:
-
-            * SYN+ACK carries 'wscale = LOCAL__RCV_WSCALE' (= 7,
-              our default).
-            * Child session's '_rcv_wsc == 7' (the value we
-              advertised; governs our outbound shifts).
-            * Child session's '_snd_wsc == 12' (peer's value;
-              governs our inbound interpretation).
-            * Child session is in SYN_RCVD.
-
-        [FLAGS BUG] - same root cause as the other wscale
-        scenarios. Without the WSCALE implementation:
-          - Outbound SYN+ACK doesn't carry WSCALE.
-          - '_rcv_wsc' stays at the default 0.
-          - '_snd_wsc' stays at 0 (asymmetric-rejection rule).
+        Reference: RFC 7323 §2.2 (Window Scale Option negotiation).
         """
 
         peer_wscale = 12
@@ -778,50 +556,13 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__passive_open_omits_wscale_when_peer_did_not_offer(self) -> None:
         """
-        Ensure that when an inbound SYN to a listening socket does
-        NOT carry the WSCALE option, our SYN+ACK reply also omits
-        it and the resulting child session keeps both '_rcv_wsc'
-        and '_snd_wsc' at 0 for the connection lifetime per RFC
-        7323 §2.2's bilateral non-offer rule.
+        Ensure that when an inbound SYN to a listening socket
+        does NOT carry the WSCALE option, our SYN+ACK reply
+        also omits it and the resulting child session keeps
+        both '_rcv_wsc' and '_snd_wsc' at 0 for the
+        connection lifetime.
 
-        RFC 7323 §2.2:
-
-            "A WSopt is not legal unless it is offered in both
-             directions; if it is offered in only one direction,
-             it MUST be ignored."
-
-        For the passive-open path, this means: peer SYN without
-        WSCALE -> we MUST NOT advertise WSCALE on our SYN+ACK
-        either. Otherwise we'd be "offering" without prior peer
-        advertisement, which the RFC forbids.
-
-        Scenario:
-
-            1. Set up a listening session.
-            2. Drive a SYN from a peer with NO 'wscale=' parameter
-               (the option is absent on the wire).
-            3. Tick to fire the SYN+ACK.
-            4. Inspect the SYN+ACK and the child session state.
-
-        Assertions:
-
-            * SYN+ACK has 'wscale = None' (option absent on wire).
-            * Child session's '_rcv_wsc == 0' - we did NOT
-              advertise; the bilateral negotiation failed closed.
-            * Child session's '_snd_wsc == 0' - peer did NOT
-              advertise; nothing to apply to inbound 'win' fields.
-            * Child session is in SYN_RCVD.
-
-        [FLAGS BUG] - PyTCP's current code (without WSCALE
-        implementation) actually passes this test as a
-        positive-control side effect because '_rcv_wsc' and
-        '_snd_wsc' default to 0 and outbound SYN+ACK never
-        carries WSCALE anyway. Once the WSCALE implementation
-        lands and the active-open path always advertises, the
-        passive-open path needs the conditional logic: 'if peer
-        offered, mirror; else stay quiet'. This test pins that
-        post-WSCALE-implementation behaviour as a regression
-        guard.
+        Reference: RFC 7323 §2.2 (bilateral non-offer rule).
         """
 
         listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS)
@@ -892,68 +633,13 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__syn_ack_own_win_field_is_not_wscale_shifted(self) -> None:
         """
-        Ensure that peer's SYN+ACK 'win' field is NOT left-shifted
-        by the negotiated WSCALE - per RFC 7323 §2.2 the SYN segment
-        itself uses an unshifted window value, the shift only applies
-        to subsequent post-handshake segments. A bilateral handshake
-        with peer wscale=10 and SYN+ACK win=64240 must yield a
-        post-handshake '_snd_wnd' of 64240, not '64240 << 10' which
-        would over-advertise peer's window by 1024x.
+        Ensure that peer's SYN+ACK 'win' field is NOT
+        left-shifted by the negotiated WSCALE — the SYN
+        segment itself uses an unshifted window value, the
+        shift only applies to subsequent post-handshake
+        segments.
 
-        RFC 7323 §2.2:
-
-            "...All windows field values in the segment exchanged
-             on the connection are relative to the WSopt-Permitted
-             Window Scale option (WSopt) value advertised in the
-             initial SYN. WSopt is not used to scale the value in
-             the window field of the SYN segment itself; receiving
-             ends always interpret that value as a 16-bit number."
-
-        Concretely: the WSCALE option is exchanged DURING the
-        handshake but is only meant to be APPLIED on segments
-        AFTER the handshake. The SYN and SYN+ACK segments
-        themselves carry literal 16-bit window values.
-
-        Implementation concern: the natural post-WSCALE-fix code
-        path inside '_tcp_fsm_syn_sent' looks like:
-
-            self._snd_wnd = packet_rx_md.tcp__win  # raw
-            self._snd_wsc = packet_rx_md.tcp__wscale  # peer's wsc
-            self._process_ack_packet(packet_rx_md)  # this re-applies
-
-        '_process_ack_packet' has the line:
-
-            self._snd_wnd = packet_rx_md.tcp__win << self._snd_wsc
-
-        which would clobber the previously-set raw value with the
-        shifted one, yielding 64240 << 10 = 65_781_760. Over-
-        advertising by 1024x is not "robust against attacker" -
-        it is a confused-state bug that breaks our flow control
-        and silently allows the peer to overrun our buffer.
-
-        The fix in the WSCALE implementation must defer setting
-        '_snd_wsc' until AFTER '_process_ack_packet' runs (or,
-        equivalently, special-case the first post-handshake
-        segment to skip the shift). Either way, post-handshake
-        '_snd_wnd' must equal peer's literal SYN+ACK win value.
-
-        Scenario:
-
-            1. Drive bilateral WSCALE handshake with peer SYN+ACK
-               carrying 'win=64240' and 'wscale=10'.
-            2. Assert post-handshake '_snd_wnd == 64240' (the
-               unshifted SYN+ACK win value).
-
-        Assertions:
-
-            * 'session._snd_wnd == 64240' (NOT 64240 << 10).
-            * State is ESTABLISHED.
-
-        This test passes on current code as a positive-control
-        side effect because '_snd_wsc' stays at 0 (the asymmetric-
-        rejection rule from 'data_transfer__window.py' #2). After
-        the WSCALE implementation lands the test pins the
-        spec-correct deferral as a regression guard.
+        Reference: RFC 7323 §2.2 (SYN's own win field is unscaled).
         """
 
         peer_wscale = 10
@@ -997,61 +683,12 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__asymmetric_offer_we_disabled_advertising_ignores_peer_wscale(self) -> None:
         """
-        Ensure that when our session is explicitly configured to NOT
-        advertise WSCALE on its outbound SYN (via setting
-        '_advertise_wscale = False' on the session before CONNECT),
-        peer's WSCALE option on the SYN+ACK is ignored per RFC 7323
-        §2.2's bilateral non-offer rule. The session ends up with
-        '_snd_wsc = 0', '_rcv_wsc = 0', and '_snd_wnd = peer_win'
-        unshifted - exactly as the asymmetric-rejection fix covered
-        in 'data_transfer__window.py' scenario #2 mandates, but
-        with the opt-out toggled deliberately rather than hard-coded.
+        Ensure that when our session is explicitly
+        configured to NOT advertise WSCALE on its outbound
+        SYN (via setting '_advertise_wscale = False'), peer's
+        WSCALE option on the SYN+ACK is ignored.
 
-        Once WSCALE is the default-advertise behaviour, the existing
-        'data_transfer__window.py' scenario #2 will be updated to
-        flip '_advertise_wscale = False' to preserve its semantics
-        (without that flag, default-advertise would mean the SYN
-        DOES carry WSCALE and the bilateral rule would change
-        outcome). This scenario locks in the opt-out path so the
-        flag's behaviour is not silently dropped by future
-        implementation changes.
-
-        RFC 7323 §2.2:
-
-            "A WSopt is not legal unless it is offered in both
-             directions; if it is offered in only one direction,
-             it MUST be ignored."
-
-        Scenario:
-
-            1. Build an active-open session and explicitly set
-               'session._advertise_wscale = False'.
-            2. Drive 'CONNECT'. The outbound SYN must NOT carry
-               WSCALE.
-            3. Peer replies with SYN+ACK carrying 'wscale = 8'.
-               Per RFC, we must ignore peer's offer because we
-               did not offer ourselves.
-            4. Verify post-handshake state:
-                  _rcv_wsc == 0  (we opted out)
-                  _snd_wsc == 0  (peer's offer ignored)
-                  _snd_wnd == peer_win  (unshifted, no scaling
-                                          applies in either
-                                          direction)
-
-        Assertions:
-
-            * Outbound SYN carries no WSCALE option.
-            * State is ESTABLISHED.
-            * '_rcv_wsc == 0', '_snd_wsc == 0', '_snd_wnd == peer_win'.
-
-        This test passes on current code as a positive control
-        (PyTCP doesn't advertise WSCALE today either way, so the
-        '_advertise_wscale = False' setting is a no-op). After the
-        WSCALE implementation lands the test serves as the
-        regression guard for the opt-out path - without it, a
-        future change that always-advertised would silently
-        violate the bilateral rule when the test passed
-        '_advertise_wscale = False'.
+        Reference: RFC 7323 §2.2 (bilateral non-offer rule).
         """
 
         peer_wscale = 8
@@ -1134,18 +771,11 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__active_open_us_only_peer_omits_wscale_disables_scaling(self) -> None:
         """
-        Cross-RFC bilateral matrix completion: active open
-        where WE advertise WSCALE on the SYN but peer's SYN+ACK
-        OMITS WSCALE. Per RFC 7323 §2.2, the asymmetric offer
-        MUST be ignored on both sides.
+        Ensure that an active open where WE advertise WSCALE
+        on the SYN but peer's SYN+ACK OMITS WSCALE results in
+        the asymmetric offer being ignored on both sides.
 
-        Result: '_rcv_wsc' set to our advertised value (the
-        offer is on the wire), but the bilateral-success flag
-        path keeps '_snd_wsc = 0' (no scaling on outbound), and
-        '_snd_wnd' equals peer's raw 'win' field unshifted.
-        Existing 'asymmetric_offer_we_disabled_advertising_ignores_peer_wscale'
-        covers the symmetric mirror (peer-only). This test
-        covers the us-only direction.
+        Reference: RFC 7323 §2.2 (bilateral non-offer rule).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1197,16 +827,12 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
     def test__wscale__active_open_neither_advertises_disables_scaling(self) -> None:
         """
-        Cross-RFC bilateral matrix completion: active open
-        where NEITHER side advertises WSCALE. Per RFC 7323
-        §2.2, scaling is simply not in effect; '_snd_wsc' and
-        '_rcv_wsc' both remain 0 and '_snd_wnd' equals peer's
-        raw 'win' field.
+        Ensure that an active open where NEITHER side
+        advertises WSCALE results in scaling being not in
+        effect; '_snd_wsc' and '_rcv_wsc' both remain 0 and
+        '_snd_wnd' equals peer's raw 'win' field.
 
-        Existing 'passive_open_omits_wscale_when_peer_did_not_offer'
-        covers the passive shape (we mirror peer's omission);
-        this test covers the active shape (we explicitly opt
-        out, peer omits).
+        Reference: RFC 7323 §2.2 (bilateral non-offer rule).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)

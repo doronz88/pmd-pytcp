@@ -168,85 +168,14 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__single_segment_fits_in_mss_emits_psh_ack(self) -> None:
         """
-        Ensure that an application 'send()' of a small payload (less
-        than MSS) results in a single outbound TCP segment carrying
-        the PSH and ACK flags, with SEQ tracking the established
-        send-side sequence number, ACK echoing the current RCV.NXT,
-        and the payload exactly equal to the bytes the application
-        passed.
+        Ensure that an application send() of a small payload
+        (less than MSS) emits a single outbound TCP segment
+        carrying the PSH and ACK flags, with SEQ tracking
+        SND.NXT, ACK echoing RCV.NXT, and the payload equal
+        to the bytes the application passed. SND.NXT
+        advances by len(payload); state stays ESTABLISHED.
 
-        RFC 9293 §3.7.4 ("Generating data segments") describes the
-        outbound segment shape: every segment carrying data on an
-        established connection must also acknowledge the peer's seq
-        space (ACK flag set), advance our SND.NXT by the data
-        length, and use SND.NXT as the seq it is transmitted at.
-
-        RFC 1122 §4.2.2.2 ("Sender's SWS Avoidance Algorithm" and
-        "When to Send Data") additionally MANDATES that the sender
-        SHOULD set the PSH bit on the last segment of a sequence of
-        pushed data:
-
-            "When the sending TCP receives a SEND call, it has at
-             its disposal the data to be sent. ... When all the data
-             is sent, the sender SHOULD set the PSH bit in the LAST
-             segment."
-
-        Since pytcp's 'TcpSession.send()' does not expose a separate
-        'push' parameter, the only sensible interpretation is that
-        every byte the application hands us is "pushed" - in which
-        case the LAST segment of every 'send()' call must carry PSH.
-        For a single-segment send (payload < MSS), that segment IS
-        the last segment of the write, so PSH must be set on the
-        sole outbound segment.
-
-        Wire shape required:
-
-            sport   = STACK__PORT
-            dport   = PEER__PORT
-            seq     = LOCAL__ISS + 1   (= SND.NXT post-handshake)
-            ack     = PEER__ISS + 1    (= RCV.NXT post-handshake)
-            flags   = {PSH, ACK}       (PSH on the last segment of
-                                        the write per RFC 1122
-                                        §4.2.2.2; ACK always set on
-                                        established-state segments)
-            payload = b"hello, world!" (the application's bytes,
-                                        delivered verbatim)
-            win     = 65535            (our advertised receive window)
-            mss     = None             (MSS option only on SYN-bearing
-                                        segments per RFC 9293 §3.7.1)
-            wscale  = None             (WSCALE only on SYN-bearing
-                                        segments per RFC 7323 §2.2)
-
-        Side effects asserted:
-
-            * 'session._snd_nxt' advances by len(payload) to
-              consume the outbound bytes from sequence space.
-            * 'session._snd_una' is unchanged - the peer has not
-              yet acknowledged our data; '_snd_una' will only
-              advance when the peer's ACK arrives.
-            * 'session.state' remains ESTABLISHED throughout.
-
-        [FLAGS BUG] - RFC 1122 §4.2.2.2 deviation
-        ----------------------------------------------------------
-        Current '_transmit_packet' has no 'flag_psh' parameter and
-        '_transmit_data' calls it with 'flag_ack=True, data=...'
-        only. The PSH bit is therefore NEVER set on outbound data
-        segments, regardless of where they fall in a write
-        sequence. Receivers using PSH as a delivery hint may delay
-        passing buffered bytes up to the application until they
-        observe other delivery cues (delayed ACK timer, buffer
-        full, or peer FIN). On interactive workloads (SSH, REPL,
-        line-oriented protocols) this manifests as user-visible
-        latency.
-
-        This test is expected to FAIL on current code with the
-        outbound segment carrying flags={ACK} only; on a correct
-        implementation it observes flags={PSH, ACK}. The fix
-        requires plumbing a 'flag_psh' parameter through
-        '_transmit_packet' and setting it from '_transmit_data'
-        whenever the segment being transmitted is the last segment
-        of the buffered data (i.e. 'transmit_data_len ==
-        remaining_data_len').
+        Reference: RFC 1122 §4.2.2.2 (PSH on last segment of write).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -317,74 +246,14 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__back_to_back_writes_respect_advertised_window(self) -> None:
         """
-        Ensure that when the application sends more data than peer's
-        advertised SND.WND can hold in flight, the sender respects
-        the window: it transmits segments up to the window edge and
-        then stops, leaving the remainder buffered until the peer
+        Ensure that when the application sends more data
+        than peer's advertised SND.WND can hold in flight,
+        the sender respects the window: it transmits
+        segments up to the window edge and then stops,
+        leaving the remainder buffered until the peer
         acknowledges some of the in-flight bytes.
 
-        Per RFC 9293 §3.8.6 ("Window Management") the sender MUST
-        ensure that the right edge of any transmitted segment never
-        exceeds 'SND.UNA + SND.WND'. Concretely, with no ACKs from
-        the peer, the sender's in-flight bytes ('SND.NXT - SND.UNA')
-        must not exceed 'SND.WND'; once that limit is reached,
-        further '_transmit_data' invocations must produce no segment
-        on the wire even though there is buffered data to send.
-
-        Scenario:
-
-            * After the handshake, restrict peer's advertised window
-              to '3 * MSS = 4380' bytes (set both '_snd_wnd' and the
-              effective send window '_snd_ewn'). The latter bypass
-              avoids entangling this test with the slow-start-style
-              cwnd doubling, which is exercised separately in the
-              data_transfer__window file - here the focus is on
-              flow-control respect.
-            * Application sends 8000 bytes (well in excess of the
-              window).
-            * Tick the virtual clock four times. The first three
-              ticks must each emit one MSS-sized segment, totalling
-              4380 bytes in flight - exactly the window edge. The
-              fourth tick must emit nothing because the window is
-              full.
-
-        Wire-level expectations across the four ticks:
-
-            Tick 1: segment of 1460 bytes,
-                seq=LOCAL__ISS+1, payload=payload[0:1460].
-            Tick 2: segment of 1460 bytes,
-                seq=LOCAL__ISS+1+1460, payload=payload[1460:2920].
-            Tick 3: segment of 1460 bytes,
-                seq=LOCAL__ISS+1+2920, payload=payload[2920:4380].
-            Tick 4: NO segment - SND.WND respected.
-
-        All three segments carry only the ACK flag (no PSH) because
-        even segment 3 is NOT the last segment of the write - 3620
-        bytes remain in the TX buffer past 'SND.NXT'. PSH placement
-        is governed by RFC 1122 §4.2.2.2 and tested separately; this
-        test specifically asserts that 'PSH' is NOT set on segments
-        that are stopped by the window edge.
-
-        Final state assertions:
-
-            session._snd_nxt == LOCAL__ISS + 1 + 4380
-            session._snd_una == LOCAL__ISS + 1
-            in_flight (snd_nxt - snd_una) == 4380 == SND.WND
-            len(session._tx_buffer) == 8000   (nothing has been ACKed yet,
-                                               so nothing is purged)
-            state == ESTABLISHED
-
-        After an additional 100 ms of virtual time (still well below
-        the 1 s retransmit timer), the session must remain quiescent
-        - no further segments, no spurious retransmits.
-
-        This test passes on current code: '_transmit_data' uses
-        'usable_window = self._snd_ewn - self._tx_buffer_nxt' which
-        correctly clamps each segment's right edge at the window
-        edge. The test exists as a positive-control regression guard
-        - a future refactor that loses the window check (e.g. by
-        switching to 'min(MSS, remaining_data_len)' alone) would be
-        caught immediately.
+        Reference: RFC 9293 §3.8.4 (effective window = min(cwnd, snd_wnd)).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -519,100 +388,14 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__zero_window_triggers_persist_probe_at_rto(self) -> None:
         """
-        Ensure that when the peer advertises a zero receive window
-        and we have buffered data ready to send, the persist timer
-        fires after the RTO interval and emits a 1-byte zero-window
-        probe per RFC 9293 §3.8.6.1:
+        Ensure that when the peer advertises a zero receive
+        window and we have buffered data ready to send, the
+        persist timer fires after the RTO interval and emits
+        a 1-byte zero-window probe at SEQ = SND.UNA. The
+        probe asks for a window update without draining the
+        TX buffer.
 
-            "The transmitting host SHOULD send the first zero-window
-             probe when a zero window has existed for the
-             retransmission timeout period (see Section 3.8.1), and
-             SHOULD increase exponentially the interval between
-             successive probes (MUST-58)."
-
-        The probe is a normal data segment containing exactly ONE byte
-        of buffered application data, sent at SEQ=SND.UNA (the peer's
-        next-expected byte). It is NOT a retransmission; it is a
-        liveness/window probe whose purpose is to elicit a window
-        update from the peer. Without it, a connection in zero-window
-        state would stall indefinitely - the application's data sits
-        in the TX buffer forever because there is no spontaneous
-        signal that would cause the peer to re-advertise a non-zero
-        window.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Application sends 5 bytes. The first segment fires on
-               the next tick.
-            3. Peer ACKs the 5 bytes BUT advertises 'win=0' on the
-               ACK - peer has no receive buffer space available.
-            4. Application sends 5 more bytes.
-            5. Tick the virtual clock through the persist timeout
-               (the RTO, initially 'PACKET_RETRANSMIT_TIMEOUT' = 1 s).
-               No segment must fire while the timer counts down.
-            6. Just past the timeout, exactly one outbound segment
-               must appear: a 1-byte probe carrying the first byte
-               of the post-zero-window data.
-
-        Required wire shape of the probe segment:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = SND.UNA          (= LOCAL__ISS + 1 + 5,
-                                           the byte the peer is
-                                           expecting next)
-            ack       = RCV.NXT          (= PEER__ISS + 1)
-            flags     = {ACK}            (the probe is a normal
-                                           data segment, not a
-                                           special control frame;
-                                           PSH is unspecified by
-                                           the RFC for the probe)
-            payload   = 1 byte           (the first byte of the
-                                           post-zero-window data:
-                                           b"w" from b"world")
-            len       = 1
-
-        Side effects asserted:
-
-            * Before t = ACK + 1000 ms, no segment may be emitted -
-              the persist timer must not fire prematurely.
-            * After the probe fires, 'session._snd_nxt' advances by
-              exactly 1 byte (consuming the probe's seq space).
-            * 'session._snd_una' and the rest of the buffered data
-              remain unchanged - the probe is asking for a window
-              update, not draining the buffer.
-            * State remains ESTABLISHED throughout.
-
-        [FLAGS BUG] - RFC 9293 §3.8.6.1 deviation
-        ----------------------------------------------------------
-        '_transmit_data' early-returns when 'usable_window <= 0':
-
-            transmit_data_len = min(self._snd_mss, usable_window,
-                                    remaining_data_len)
-            if remaining_data_len:
-                if transmit_data_len:    # <- 0 is falsy
-                    ... transmit ...
-                return
-
-        With peer's window at 0, 'usable_window' = 0 and
-        'transmit_data_len' = 0; the inner branch is skipped and the
-        function returns without scheduling any probe. The persist
-        timer is not implemented anywhere in 'TcpSession' - there
-        is no 'f"{self}-persist"' timer registration, no probe-emit
-        path. As a result, an application that writes data into a
-        connection whose peer has temporarily closed the receive
-        window stalls forever; only a peer-initiated window update
-        (which we have no way of soliciting) or our own retransmit
-        timer's eventual abort can break the deadlock.
-
-        This test is expected to FAIL on current code with zero
-        outbound segments after the persist interval. The fix
-        requires adding a persist timer that registers when we
-        observe a zero-window state with buffered data, fires after
-        the current RTO, emits a 1-byte segment at SND.UNA, and
-        re-arms with double the timeout (per the RFC's exponential
-        back-off requirement).
+        Reference: RFC 9293 §3.8.6.1 (zero-window probing).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -723,94 +506,15 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__nagle_suppresses_small_write_with_unacked_data(self) -> None:
         """
-        Ensure that when there is unacknowledged data in flight, a
-        subsequent small 'send()' is buffered rather than immediately
-        transmitted, per Nagle's algorithm as specified in RFC 1122
-        §4.2.3.4 ("When to Send Data" -> "Nagle Algorithm"):
+        Ensure that when there is unacknowledged data in
+        flight, a subsequent small send() is buffered rather
+        than immediately transmitted. Nagle coalesces small
+        writes until either all previously-sent data is
+        ACKed or enough data has accumulated to fill a full
+        MSS.
 
-            "If there is unacknowledged data (i.e., SND.NXT > SND.UNA),
-             then the sending TCP buffers all user data (regardless of
-             the PSH bit) until the outstanding data has been
-             acknowledged or until the TCP can send a full-sized
-             segment (Eff.snd.MSS bytes; see Section 4.2.3.4)."
-
-        Nagle's purpose is to avoid generating "tinygrams" - tiny
-        segments whose header overhead dominates the payload, wasting
-        bandwidth and inducing unnecessary network load. The
-        algorithm coalesces small writes until either:
-
-          (a) all previously-sent data is ACKed, OR
-          (b) enough data has accumulated to fill a full MSS.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Application sends 1 byte (b"a"). The session has no
-               outstanding data, so Nagle does NOT apply - the byte
-               is transmitted immediately on the next tick.
-            3. Application sends 1 more byte (b"b"). Now SND.NXT >
-               SND.UNA (the b"a" is in flight, unacked) AND the
-               buffered amount (1 byte) is far below MSS. Nagle's
-               condition (a) and (b) both fail to release the
-               write. The next tick must NOT transmit anything.
-
-        Required wire-level expectations:
-
-            Tick after first send: one segment of 1 byte (b"a")
-                with seq=LOCAL__ISS+1, payload=b"a".
-            Tick after second send (with first byte still unacked):
-                NO segment must be emitted.
-
-        End state assertions (after the second send + tick):
-
-            session._snd_nxt == LOCAL__ISS + 1 + 1   (only the b"a"
-                                                       byte advanced
-                                                       seq space; b"b"
-                                                       is still in the
-                                                       buffer waiting)
-            session._snd_una == LOCAL__ISS + 1       (peer has not
-                                                       ACKed yet)
-            len(session._tx_buffer) == 2             (both bytes still
-                                                       in the buffer
-                                                       since no ACK has
-                                                       purged them)
-            state == ESTABLISHED
-
-        [FLAGS BUG] - RFC 1122 §4.2.3.4 deviation
-        ----------------------------------------------------------
-        '_transmit_data' has no Nagle guard. Its loop is:
-
-            remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
-            usable_window = self._snd_ewn - self._tx_buffer_nxt
-            transmit_data_len = min(self._snd_mss, usable_window,
-                                    remaining_data_len)
-            if remaining_data_len:
-                if transmit_data_len:
-                    ... transmit ...
-
-        It transmits as soon as ANY buffered data is present and the
-        window allows ANY bytes through, regardless of how small the
-        segment would be or whether prior bytes are still unacked.
-        Each application 'send()' of a small payload immediately
-        produces a tinygram, generating 41+ bytes of header overhead
-        per byte of payload on interactive workloads.
-
-        RFC 1122 makes Nagle a SHOULD - implementations may omit it
-        and provide a TCP_NODELAY-equivalent disable mechanism for
-        applications that need the lower latency. PyTCP currently
-        does both NEITHER: Nagle is not implemented, and there is no
-        per-connection option to turn it off (because there is
-        nothing to turn off). The 100%-RFC-compliant behaviour is
-        "Nagle on by default", which this test pins.
-
-        This test is expected to FAIL on current code with the second
-        tick producing a 1-byte segment. The fix requires adding a
-        Nagle guard to '_transmit_data' that suppresses transmission
-        when 'self._snd_nxt > self._snd_una' AND
-        'transmit_data_len < self._snd_mss', releasing the buffered
-        bytes only when an ACK advances 'SND.UNA' (clearing the
-        outstanding-data condition) or when the buffered amount
-        reaches a full MSS.
+        Reference: RFC 9293 §3.7.4 (Nagle algorithm).
+        Reference: RFC 1122 §4.2.3.4 (Nagle algorithm).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -899,91 +603,13 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__send_in_close_wait_is_allowed_and_transmits_data(self) -> None:
         """
-        Ensure that an application can still 'send()' data after the
-        peer has closed its write half (i.e. after we have moved to
-        CLOSE_WAIT) and that the data is actually transmitted on the
-        wire, per RFC 9293 §3.10.4 / §3.5.2:
+        Ensure that an application can still send() data
+        after the peer has closed its write half (CLOSE_WAIT)
+        and that the data is actually transmitted on the wire
+        with the FIN acknowledgement piggybacked. State stays
+        CLOSE_WAIT.
 
-            "CLOSE-WAIT - represents waiting for a connection
-             termination request from the local user."
-
-        TCP connections are independently half-closable. The peer
-        sending FIN closes ONLY their send direction (= our receive
-        direction); our send direction is still open and we MUST
-        accept further writes from the application until WE close.
-        Specifically:
-
-          - 'send()' must accept the data into the TX buffer (no
-            TcpSessionError).
-          - The session's '_transmit_data' path must remain active
-            in CLOSE_WAIT and emit a data segment on the next tick.
-          - The segment's 'ack' field must include peer's FIN's seq
-            byte (i.e. ACK = peer_ISS + 1 + 1 = peer_ISS + 2),
-            piggybacking the acknowledgement of the FIN onto our
-            outbound data.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends FIN+ACK with seq=peer_ISS+1 (their
-               next-to-send byte; they have sent no data, only the
-               FIN). This advances RCV.NXT to peer_ISS+2 and
-               transitions us to CLOSE_WAIT.
-            3. Application calls 'send(data=b"after fin")'. The 9
-               bytes are accepted into the TX buffer; 'send()'
-               returns 9.
-            4. Tick the virtual clock. '_transmit_data' must fire the
-               buffered data as a segment with the spec'd shape.
-
-        Required wire shape of the outbound data segment:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = LOCAL__ISS + 1     (= SND.NXT post-handshake;
-                                             peer's FIN+ACK ACKed our
-                                             SYN at ISS+1, so SND.UNA
-                                             = ISS+1 = SND.NXT and our
-                                             next byte is ISS+1)
-            ack       = PEER__ISS + 2      (= RCV.NXT; consumes peer's
-                                             SYN's 1 byte + FIN's 1
-                                             byte from peer's seq
-                                             space)
-            flags     = {PSH, ACK}         (PSH on the last segment
-                                             of the write per RFC 1122
-                                             §4.2.2.2; ACK piggybacks
-                                             the FIN acknowledgement)
-            payload   = b"after fin"
-            len       = 9
-            mss       = None
-            wscale    = None
-            win       = 65535
-
-        Side effects asserted:
-
-            * 'session._snd_nxt' advances by len(payload).
-            * 'session._snd_una' is unchanged - peer has not ACKed
-              our new data.
-            * 'session.state' remains 'FsmState.CLOSE_WAIT' (sending
-              data does NOT trigger our half-close; only an explicit
-              'close()' transitions toward LAST_ACK).
-            * The session's '_closing' flag remains False.
-
-        This test pins the contract that 'send()' must work in
-        CLOSE_WAIT. Under current code, 'send()' allows CLOSE_WAIT
-        explicitly:
-
-            if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
-                ... extend buffer ...
-                return len(data)
-            raise TcpSessionError(...)
-
-        and '_transmit_data' includes CLOSE_WAIT in its transmit
-        guard. The 'flags={PSH, ACK}' assertion will FAIL until the
-        cross-cutting PSH bug surfaced by tests #1 and #2 is fixed;
-        all other assertions pass today. The test is therefore a
-        positive-control regression guard for the CLOSE_WAIT-send
-        path PLUS an additional surface for the PSH bug to be
-        verified against.
+        Reference: RFC 9293 §3.6 (CLOSE-WAIT, half-close semantics).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1088,78 +714,13 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
     def test__data_transfer_send__send_after_close_raises_immediately(self) -> None:
         """
-        Ensure that any 'send()' issued AFTER the application has
-        called 'close()' is rejected with 'TcpSessionError', per
-        RFC 9293 §3.10.6 ("CLOSE Call"):
+        Ensure any send() issued after the application has
+        called close() is rejected with TcpSessionError —
+        once close() has been invoked, the application has
+        relinquished its right to write further data on the
+        connection.
 
-            "ESTABLISHED STATE: ...
-             Any subsequent SEND issued is illegal and will return
-             'error: connection closing' response."
-
-        The spec is clear and unconditional - once 'close()' has
-        been invoked, the application has relinquished its right to
-        write further data on the connection, and any subsequent
-        'send()' MUST be rejected with the same closing-error
-        response REGARDLESS of where the FSM currently sits in its
-        teardown sequence (still in ESTABLISHED waiting for the TX
-        buffer to drain, in FIN_WAIT_1 with the FIN on the wire, in
-        FIN_WAIT_2 waiting for peer's FIN, etc.).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Confirm 'send()' works in this state (positive
-               control - the precondition is that send is normally
-               legal so we know the post-close raise is meaningful).
-            3. Call 'session.close()'. This sets the '_closing'
-               flag.
-            4. Immediately call 'session.send(data=b"after close")'.
-               Expect 'TcpSessionError' to be raised.
-
-        Note that under the current implementation, 'close()' is
-        DEFERRED: it sets '_closing = True' but does NOT change the
-        FSM state synchronously. The state transition to FIN_WAIT_1
-        happens on the next timer tick, gated on
-        ('_closing AND not _tx_buffer'). RFC 9293 §3.10.6's rule
-        (no SEND after CLOSE) does NOT depend on state having
-        transitioned - it depends solely on whether the application
-        has called 'close()'. The 100% RFC-compliant test therefore
-        invokes 'send()' BEFORE any tick, so the state is still
-        ESTABLISHED but '_closing' is True.
-
-        [FLAGS BUG] - RFC 9293 §3.10.6 deviation
-        ----------------------------------------------------------
-        Current 'TcpSession.send()' guards on FSM state only:
-
-            def send(self, *, data: bytes) -> int:
-                if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
-                    with self._lock__tx_buffer:
-                        self._tx_buffer.extend(data)
-                        return len(data)
-                raise TcpSessionError("TCP session not in ESTABLISHED or CLOSE_WAIT state")
-
-        It does not consult '_closing'. Between 'close()' (which
-        sets '_closing = True' but leaves state at ESTABLISHED)
-        and the next timer tick (which transitions to FIN_WAIT_1),
-        the connection is effectively closed but 'send()' continues
-        to accept writes. Those writes get appended to the TX
-        buffer; on the tick that fires the FIN, the freshly-buffered
-        bytes go out as a data segment AHEAD of the FIN - the
-        application's "post-close" data ends up on the wire in
-        violation of the spec, breaking the contract that 'close()'
-        is a hard write-side termination.
-
-        This test is expected to FAIL on current code; the
-        post-close 'send()' returns the byte count instead of
-        raising. The fix is to add an early '_closing' check at
-        the top of 'send()':
-
-            if self._closing or self._state not in {ESTABLISHED, CLOSE_WAIT}:
-                raise TcpSessionError(...)
-
-        With that fix in place this test passes, and the post-close-
-        but-pre-tick window where stale writes leak onto the wire
-        is closed.
+        Reference: RFC 9293 §3.10.4 (CLOSE call: subsequent SEND returns "connection closing").
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1179,8 +740,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Setup precondition: 'close()' must set the '_closing' flag.",
         )
 
-        # Per RFC 9293 §3.10.6, any subsequent 'send()' must be
-        # rejected with the closing-error response.
+        # Any subsequent send() must be rejected with the
+        # closing-error response.
         with self.assertRaises(TcpSessionError) as error_ctx:
             session.send(data=b"after close")
 
@@ -1188,89 +749,21 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             "closing",
             str(error_ctx.exception).lower(),
             msg=(
-                "RFC 9293 §3.10.6 requires the post-close 'send()' "
-                "rejection to surface a 'connection closing' error "
-                "to the application. The exception message should "
-                "convey that the connection is closing. Got: "
-                f"{error_ctx.exception!r}."
+                "Post-close send() rejection must surface a "
+                "'connection closing' error to the application. "
+                f"Got: {error_ctx.exception!r}."
             ),
         )
 
     def test__data_transfer_send__multi_mss_payload_segments_with_psh_only_on_last(self) -> None:
         """
-        Ensure that an application 'send()' of a payload larger than
-        MSS is segmented into MSS-sized chunks, each chunk emitted on
-        a successive virtual-clock tick, with the PSH bit set ONLY
-        on the FINAL segment of the write per RFC 1122 §4.2.2.2:
+        Ensure that an application send() of a payload
+        larger than MSS is segmented into MSS-sized chunks,
+        each chunk emitted on a successive virtual-clock
+        tick, with the PSH bit set only on the final segment
+        of the write.
 
-            "When all the data is sent, the sender SHOULD set the
-             PSH bit in the LAST segment."
-
-        Implementation strategy:
-
-            * Pre-set 'session._snd_ewn' to the peer's advertised
-              receive window (PEER__WIN = 64240). After the handshake
-              completes, '_snd_ewn' starts at one MSS (1460); the
-              session's slow-start-style window doubling is its own
-              concern, exercised separately in the data_transfer__window
-              file. Bypassing it here keeps THIS test focused on
-              segmentation and the PSH-on-last contract.
-
-            * Send a payload of '3 * MSS - 380 = 4000' bytes. With
-              MSS=1460 this produces three segments: 1460 + 1460 +
-              1080. The first two are MSS-sized (NOT the last
-              segment of the write); the third is a 1080-byte
-              fragment that DRAINS the TX buffer (IS the last
-              segment of the write).
-
-        Required wire shapes per segment:
-
-            Segment 1 (tick 1):
-                seq     = LOCAL__ISS + 1
-                ack     = PEER__ISS + 1
-                flags   = {ACK}             (no PSH - more data
-                                             follows in the buffer)
-                payload = first 1460 bytes of the write
-                len     = 1460
-
-            Segment 2 (tick 2):
-                seq     = LOCAL__ISS + 1 + 1460
-                ack     = PEER__ISS + 1
-                flags   = {ACK}             (no PSH - 1080 bytes
-                                             still in the buffer)
-                payload = next 1460 bytes of the write
-                len     = 1460
-
-            Segment 3 (tick 3):
-                seq     = LOCAL__ISS + 1 + 2920
-                ack     = PEER__ISS + 1
-                flags   = {PSH, ACK}        (PSH set - this segment
-                                             drains the TX buffer
-                                             per RFC 1122 §4.2.2.2)
-                payload = final 1080 bytes of the write
-                len     = 1080
-
-        After all three ticks:
-
-            session._snd_nxt == LOCAL__ISS + 1 + 4000
-            session._snd_una == LOCAL__ISS + 1   (peer has not ACKed)
-            session.state    == ESTABLISHED
-
-        [FLAGS BUG] - RFC 1122 §4.2.2.2 deviation
-        ----------------------------------------------------------
-        Same root cause as the single-segment test in this file:
-        '_transmit_packet' has no 'flag_psh' parameter, so PSH is
-        NEVER set on outbound data segments. Segments 1 and 2 of
-        this scenario happen to match the spec because the spec also
-        requires PSH NOT be set on non-last segments; segment 3
-        fails because the spec REQUIRES PSH and current code never
-        sets it.
-
-        The fix is the same single-line plumbing as for test #1:
-        thread 'flag_psh' through '_transmit_packet' and set it from
-        '_transmit_data' when 'transmit_data_len ==
-        remaining_data_len' (the segment drains the buffer = it is
-        the last segment of the write at the time of transmission).
+        Reference: RFC 1122 §4.2.2.2 (PSH on last segment of write).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1468,10 +961,11 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
 
     def test__persist__second_probe_fires_at_double_initial_timeout(self) -> None:
         """
-        Ensure RFC 9293 §3.8.6.1 'increase exponentially': the
-        SECOND persist probe fires after 2*RTO (= 2000 ms),
-        not after another 1*RTO. Pins the doubling cadence
-        from probe #1 to probe #2.
+        Ensure the second persist probe fires after 2*RTO
+        (= 2000 ms), not after another 1*RTO. Pins the
+        doubling cadence from probe #1 to probe #2.
+
+        Reference: RFC 9293 §3.8.6.1 (zero-window probing exponential backoff).
         """
 
         self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1490,7 +984,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             len(early_probes),
             0,
             msg=(
-                "RFC 9293 §3.8.6.1 doubling: probe #2 MUST NOT fire "
+                "Persist doubling: probe #2 MUST NOT fire "
                 "at t = probe#1 + 1000 ms. The persist interval "
                 "after probe #1 is 2*RTO = 2000 ms, so the timer "
                 "should still be counting down. Got "
@@ -1504,7 +998,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             len(late_probes),
             1,
             msg=(
-                "RFC 9293 §3.8.6.1 doubling: probe #2 MUST fire at "
+                "Persist doubling: probe #2 MUST fire at "
                 "t = probe#1 + 2*RTO = ~3000 ms. Got "
                 f"{len(late_probes)} probe(s) in the [2001, 3101] ms "
                 "window."
@@ -1513,10 +1007,12 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
 
     def test__persist__fourth_probe_fires_at_8x_initial_timeout(self) -> None:
         """
-        Ensure cumulative doubling: probe #1 at 1 s, #2 at 3 s
-        (1+2), #3 at 7 s (1+2+4), #4 at 15 s (1+2+4+8). The
-        intervals 1 / 2 / 4 / 8 s pin the geometric series
-        through four probes.
+        Ensure cumulative doubling: probe #1 at 1 s, #2 at
+        3 s (1+2), #3 at 7 s (1+2+4), #4 at 15 s (1+2+4+8).
+        The intervals 1 / 2 / 4 / 8 s pin the geometric
+        series through four probes.
+
+        Reference: RFC 9293 §3.8.6.1 (zero-window probing exponential backoff).
         """
 
         self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1535,11 +1031,10 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             len(probe_arrival_times),
             4,
             msg=(
-                "RFC 9293 §3.8.6.1: by t=16 s with peer's window "
-                "shut, at least 4 persist probes MUST have fired "
-                "(at ~1, ~3, ~7, ~15 s). Got "
-                f"{len(probe_arrival_times)} probe(s) at "
-                f"{probe_arrival_times}."
+                "By t=16 s with peer's window shut, at least "
+                "4 persist probes MUST have fired (at ~1, ~3, "
+                f"~7, ~15 s). Got {len(probe_arrival_times)} "
+                f"probe(s) at {probe_arrival_times}."
             ),
         )
         expected = [1000, 3000, 7000, 15000]
@@ -1549,20 +1044,23 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
                 abs(act - exp),
                 150,
                 msg=(
-                    f"RFC 9293 §3.8.6.1 doubling cadence: probe "
-                    f"#{i + 1} expected at ~{exp} ms (cumulative "
-                    f"of intervals {[2 ** k * 1000 for k in range(i + 1)]}), "
-                    f"got {act} ms. Tolerance: 150 ms (one tick "
-                    f"step). All probe times: {probe_arrival_times}."
+                    f"Persist doubling cadence: probe #{i + 1} "
+                    f"expected at ~{exp} ms (cumulative of "
+                    f"intervals "
+                    f"{[2 ** k * 1000 for k in range(i + 1)]}), "
+                    f"got {act} ms. Tolerance: 150 ms. All "
+                    f"probe times: {probe_arrival_times}."
                 ),
             )
 
     def test__persist__interval_caps_at_60_seconds(self) -> None:
         """
-        Ensure RFC 9293 §3.8.6.1 cap: after enough probes that
-        the doubled interval would exceed PERSIST_TIMEOUT_MAX
-        (60 s), the cap kicks in and subsequent probes fire on
-        a fixed 60 s schedule.
+        Ensure that after enough probes that the doubled
+        interval would exceed PERSIST_TIMEOUT_MAX (60 s),
+        the cap kicks in and subsequent probes fire on a
+        fixed 60 s schedule.
+
+        Reference: RFC 9293 §3.8.6.1 (zero-window probing interval cap).
         """
 
         from pytcp.protocols.tcp import tcp__constants
@@ -1595,9 +1093,9 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             len(cap_probes),
             1,
             msg=(
-                f"RFC 9293 §3.8.6.1 cap: probe MUST fire at t = "
-                f"{tcp__constants.PERSIST_TIMEOUT_MAX} ms after the "
-                f"previous one (the cap'd interval). Got "
+                f"Persist cap: probe MUST fire at t = "
+                f"{tcp__constants.PERSIST_TIMEOUT_MAX} ms after "
+                f"the previous one (the cap'd interval). Got "
                 f"{len(cap_probes)} probe(s)."
             ),
         )
@@ -1605,20 +1103,22 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             session._persist_timeout,
             tcp__constants.PERSIST_TIMEOUT_MAX,
             msg=(
-                "RFC 9293 §3.8.6.1 cap: '_persist_timeout' MUST stay "
-                "at PERSIST_TIMEOUT_MAX after a post-cap probe. The "
-                "'min()' clamp at tcp__session.py:1609 prevents drift. "
+                "Persist cap: '_persist_timeout' MUST stay at "
+                "PERSIST_TIMEOUT_MAX after a post-cap probe. "
                 f"Got _persist_timeout={session._persist_timeout} ms."
             ),
         )
 
     def test__persist__peer_window_reopen_resets_timeout_to_initial(self) -> None:
         """
-        Regression guard: when peer reopens the window, the
-        persist timer is deactivated AND '_persist_timeout' is
-        reset to the initial value (PACKET_RETRANSMIT_TIMEOUT)
-        so a future zero-window event starts fresh at 1 s, not
-        at the previously-doubled value.
+        Ensure that when peer reopens the window, the
+        persist timer is deactivated AND '_persist_timeout'
+        is reset to the initial value
+        (PACKET_RETRANSMIT_TIMEOUT) so a future zero-window
+        event starts fresh at 1 s, not at the previously-
+        doubled value.
+
+        Reference: RFC 9293 §3.8.6.1 (persist timer reset on window reopen).
         """
 
         from pytcp.protocols.tcp import tcp__constants

@@ -119,67 +119,11 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__outbound_syn_advertises_mss_mtu_minus_60(self) -> None:
         """
-        Ensure that the outbound SYN on an IPv6 session advertises
-        MSS = 'mtu - 60' (not 'mtu - 40' as the IPv4 case uses),
-        per RFC 6691 §3 and RFC 8200's 40-byte IPv6 fixed header.
+        Ensure that the outbound SYN on an IPv6 session
+        advertises MSS = 'mtu - 60' (not 'mtu - 40' as the
+        IPv4 case uses).
 
-        RFC 6691 §3:
-
-            "An MSS option ... is the size of the largest segment
-             the sender of the option is willing to receive ...
-             based on the size of the largest IP datagram that the
-             sending host can support without fragmentation, which
-             can in turn be limited by the IP layer or by the link
-             layer. ... The minimum size of the IP+TCP headers is
-             40 octets ..."
-
-        The "minimum 40 octets" is the IPv4 case (20 IPv4 + 20 TCP).
-        For IPv6 the fixed header is 40 octets (RFC 8200 §3), so
-        the IP+TCP overhead is 40 + 20 = 60 octets. An IPv6
-        endpoint advertising 'mtu - 40' over-advertises by 20
-        bytes; the peer would then send segments larger than the
-        local link can carry without fragmentation, leading to
-        either path-MTU-driven retransmits or silent drops at
-        misbehaving middleboxes that do not propagate ICMPv6
-        Packet-Too-Big.
-
-        Scenario:
-
-            1. Build a session bound to the IPv6 4-tuple. The
-               harness's 'stack.interface_mtu = 1500' applies
-               regardless of IP version.
-            2. Drive 'CONNECT'. Tick once to fire the outbound
-               SYN.
-            3. Parse the outbound SYN as an Ethernet/IPv6/TCP
-               frame and inspect the advertised MSS option.
-
-        Assertions:
-
-            * The outbound frame's IP version is IPv6 (sanity).
-            * The advertised MSS = 1500 - 60 = 1440 (NOT 1460,
-              which would be the over-advertised IPv4 value).
-
-        [FLAGS BUG] - 'TcpSession.__init__' (line 219) initialises
-        '_rcv_mss = stack.interface_mtu - 40' unconditionally,
-        and the active-open / passive-open MSS clamps at lines
-        1075 and 1177 also use 'mtu - 40' verbatim. None of these
-        sites check the session's IP version.
-
-        On IPv6 (40-byte IP header), the correct overhead is 60
-        bytes (40 + 20 TCP), so all three sites need IP-version-
-        aware logic. Concretely:
-
-            ip_overhead = 40 if isinstance(self._local_ip_address, Ip6Address) else 20
-            mss_ceiling = stack.interface_mtu - ip_overhead - 20
-
-        applied at all three sites. The fix is small and self-
-        contained but the call sites are scattered, so the right
-        cleanup is probably to introduce a 'self._ip_tcp_overhead'
-        property computed once at construction.
-
-        On current code this test will see 'mss = 1460' on the
-        outbound SYN (the IPv4 value), failing the equality
-        check.
+        Reference: RFC 6691 §2 (MSS calculation from MTU).
         """
 
         session = self._make_active_session_ip6(iss=LOCAL__ISS)
@@ -229,31 +173,13 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__active_handshake_completes_to_established_with_ipv6_correct_snd_mss(self) -> None:
         """
-        Ensure that the canonical active-open three-way handshake
-        completes to ESTABLISHED over the IPv6 carrier and that the
-        post-handshake '_snd_mss' is calibrated against the IPv6-
-        correct overhead (mtu - 60), not the IPv4 value (mtu - 40).
+        Ensure that the canonical active-open three-way
+        handshake completes to ESTABLISHED over the IPv6
+        carrier and that the post-handshake '_snd_mss' is
+        calibrated against the IPv6-correct overhead (mtu -
+        60), not the IPv4 value (mtu - 40).
 
-        Scenario:
-
-            1. Build an IPv6 session and emit our outbound SYN.
-            2. Peer replies with a SYN+ACK over IPv6, carrying a
-               jumbo MSS=9000 to exercise the upper-bound clamp.
-            3. Drive RX. Handshake completes to ESTABLISHED.
-
-        Assertions:
-
-            * State is ESTABLISHED.
-            * '_snd_mss' is clamped to '1500 - 60 = 1440' - the
-              IPv6 correct value, NOT 1460 (the IPv4 value the
-              old code would have produced).
-            * 'RCV.NXT' has advanced past peer's SYN's one byte.
-
-        This test passes after the IPv6-MSS-overhead fix from commit
-        'ba4c624'; on the prior code it would have asserted
-        '_snd_mss == 1460' and the IPv6 over-clamp bug would have
-        gone undetected for the active-open path. Locks in the
-        post-handshake correctness as a regression guard.
+        Reference: RFC 6691 §2 (MSS calculation from MTU).
         """
 
         session = self._make_active_session_ip6(iss=LOCAL__ISS)
@@ -295,28 +221,12 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__data_transfer_round_trip(self) -> None:
         """
-        Ensure that bidirectional data transfer over an IPv6 ESTABLISHED
-        session works end-to-end: application 'send()' produces an
-        IPv6/TCP frame at the correct seq, peer's data segment is
-        delivered to '_rx_buffer'.
+        Ensure that bidirectional data transfer over an IPv6
+        ESTABLISHED session works end-to-end: application
+        'send()' produces an IPv6/TCP frame at the correct
+        seq, peer's data segment is delivered to '_rx_buffer'.
 
-        Scenario:
-
-            1. Drive IPv6 active handshake to ESTABLISHED. Pre-set
-               '_snd_ewn = PEER__WIN' so the send is unconstrained.
-            2. Application sends 'b"ipv6-hello"' (10 bytes).
-            3. Tick once: outbound IPv6/TCP segment fires.
-            4. Peer sends 5 bytes 'b"world"' as a data segment.
-            5. Drive RX. Bytes are enqueued into '_rx_buffer'.
-
-        Assertions:
-
-            * Outbound segment is IPv6 (sanity), seq=LOCAL__ISS+1,
-              payload=b"ipv6-hello".
-            * '_rx_buffer' contains b"world" after peer's segment.
-            * 'RCV.NXT' advanced by 5.
-
-        Positive control regression guard for IPv6 data-transfer.
+        Reference: RFC 9293 §3.7 (Data Communication).
         """
 
         session = self._make_active_session_ip6(iss=LOCAL__ISS)
@@ -381,29 +291,12 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__active_close_walks_through_fin_wait_1_2_time_wait(self) -> None:
         """
-        Ensure the canonical active-close 4-way handshake walks
-        ESTABLISHED -> FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT over
-        the IPv6 carrier with the same wire-level shape as the
-        IPv4 case (just on the v6 transport).
+        Ensure the canonical active-close 4-way handshake
+        walks ESTABLISHED -> FIN_WAIT_1 -> FIN_WAIT_2 ->
+        TIME_WAIT over the IPv6 carrier with the same
+        wire-level shape as the IPv4 case.
 
-        Same trajectory as 'close__normal.py' scenario #1 but on
-        IPv6 to lock in IP-version-agnostic close handling.
-
-        Scenario:
-
-            1. Drive IPv6 active handshake to ESTABLISHED.
-            2. close() then tick (transition) + tick (FIN+ACK fires).
-            3. Peer ACKs our FIN; state -> FIN_WAIT_2.
-            4. Peer FIN+ACK; state -> TIME_WAIT.
-
-        Assertions:
-
-            * Each outbound segment is carried over IPv6 (sanity).
-            * State transitions match the IPv4 canonical sequence.
-            * Final ACK in response to peer's FIN has 'ack =
-              PEER__ISS + 2' (covering peer's FIN byte).
-
-        Positive control regression guard for IPv6 close-path.
+        Reference: RFC 9293 §3.6 (Closing a Connection).
         """
 
         session = self._make_active_session_ip6(iss=LOCAL__ISS)
@@ -482,23 +375,13 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__outbound_mss_caps_at_uint16_max_on_jumbogram_path(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when the local interface MTU is large
+        enough that the derived '_rcv_mss = MTU - 60' would
+        exceed the 16-bit TCP MSS option field, the on-wire
+        MSS is capped at 65535.
 
-        Ensure RFC 9293 §3.7.5 / RFC 2675 §5 wire signal: when
-        the local interface MTU is large enough that the
-        derived '_rcv_mss = MTU - 60' would exceed the 16-bit
-        TCP MSS option field, the on-wire MSS MUST be capped at
-        65535. Per RFC 2675 §5, MSS=65535 on an IPv6 SYN is the
-        canonical signal "use the path MTU minus the IPv6+TCP
-        header size" - i.e. the special-case marker for
-        jumbogram-capable paths.
-
-        PyTCP does not implement RFC 2675 IPv6 Jumbograms at
-        the IP layer (no Jumbo Payload Hop-by-Hop option), so
-        this path is purely defensive: ensure that a mis-
-        configured 'stack.interface_mtu > 65535+60' on an IPv6
-        session produces a valid wire-level SYN rather than
-        overflowing the 16-bit MSS field.
+        Reference: RFC 9293 §3.7.5 (IPv6 jumbograms).
+        Reference: RFC 2675 §5 (jumbogram MSS=65535 wire signal).
         """
 
         # Force the interface MTU into the jumbogram regime.
@@ -532,16 +415,14 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
     def test__ipv6__inbound_mss_65535_clamped_by_local_mtu(self) -> None:
         """
-        Ensure peer's MSS=65535 (the RFC 2675 §5 jumbogram-
-        capable signal) on an IPv6 SYN+ACK is interpreted by
-        PyTCP as "use local MSS as the upper bound" — the
-        existing clamp logic ('_snd_mss = min(peer_mss,
-        interface_mtu - _ip_tcp_overhead)') subjects peer's
-        signal to our local MSS ceiling. Without RFC 2675
-        IPv6 jumbograms support at the IP layer, that's the
-        correct behaviour: we don't accept arbitrarily large
-        peer MSS values just because the wire signal allows
-        them.
+        Ensure peer's MSS=65535 on an IPv6 SYN+ACK is
+        subjected to our local MSS ceiling — the existing
+        clamp logic uses 'min(peer_mss, interface_mtu -
+        _ip_tcp_overhead)' so without IP-layer jumbogram
+        support we don't accept arbitrarily large peer MSS
+        values just because the wire signal allows them.
+
+        Reference: RFC 2675 §5 (jumbogram MSS=65535 wire signal).
         """
 
         session = self._make_active_session_ip6(iss=LOCAL__ISS)

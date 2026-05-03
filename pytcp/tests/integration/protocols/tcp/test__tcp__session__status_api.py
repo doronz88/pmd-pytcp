@@ -116,11 +116,11 @@ class TestTcpStatusApi(TcpSessionTestCase):
 
     def test__status__fresh_socket_returns_state_closed(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure a fresh TcpSocket with no associated session
         returns 'TcpStatus(state=CLOSED)' from status() without
         raising.
+
+        Reference: RFC 9293 §3.9.1 (STATUS on non-bound endpoint).
         """
 
         sock = TcpSocket(family=AddressFamily.INET4)
@@ -139,6 +139,9 @@ class TestTcpStatusApi(TcpSessionTestCase):
         """
         Ensure status() on an ESTABLISHED socket returns the
         canonical post-handshake sequence numbers and addresses.
+
+        Reference: RFC 9293 §3.9.1 (STATUS user call).
+        Reference: RFC 9293 §3.4 (SND/RCV state).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -184,6 +187,8 @@ class TestTcpStatusApi(TcpSessionTestCase):
         """
         Ensure status() reflects CURRENT buffer state. Drive
         peer data and assert rx_buffer_len updates.
+
+        Reference: RFC 9293 §3.9.1 (STATUS reports current state).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -218,6 +223,8 @@ class TestTcpStatusApi(TcpSessionTestCase):
         Ensure status() on a session in LISTEN state returns
         state=LISTEN. Pins the listening-socket diagnostic
         path.
+
+        Reference: RFC 9293 §3.9.1 (STATUS on LISTEN endpoint).
         """
 
         from net_addr import Ip4Address as _Ip4Address
@@ -256,6 +263,9 @@ class TestTcpStatusApi(TcpSessionTestCase):
         """
         Ensure status().state tracks the FSM through close():
         ESTABLISHED -> FIN_WAIT_1 after close() + 2 ticks.
+
+        Reference: RFC 9293 §3.9.1 (STATUS user call).
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -277,6 +287,9 @@ class TestTcpStatusApi(TcpSessionTestCase):
         WSCALE negotiation result. PyTCP advertises rcv_wsc=7 by
         default; if peer's SYN+ACK echoes WSCALE the snd_wsc is
         set to peer's value.
+
+        Reference: RFC 9293 §3.9.1 (STATUS user call).
+        Reference: RFC 7323 §2 (WSCALE bilateral negotiation).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -312,6 +325,8 @@ class TestTcpStatusApi(TcpSessionTestCase):
         """
         Ensure status() on a fully-closed session (post-LAST_ACK
         / TIME_WAIT expiry) reflects state=CLOSED.
+
+        Reference: RFC 9293 §3.9.1 (STATUS on CLOSED endpoint).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

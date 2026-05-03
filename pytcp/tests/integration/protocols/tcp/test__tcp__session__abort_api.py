@@ -115,10 +115,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__in_established_emits_rst_and_transitions_to_closed(self) -> None:
         """
-        Ensure RFC 9293 §3.9.1 ABORT in ESTABLISHED:
-          * Emits a RST + ACK at SND.NXT / RCV.NXT.
-          * Transitions FSM to CLOSED.
-          * Releases blocked recv() / connect() callers.
+        Ensure ABORT in ESTABLISHED emits a RST + ACK at
+        SND.NXT / RCV.NXT, transitions the FSM to CLOSED, and
+        releases blocked recv() / connect() callers.
+
+        Reference: RFC 9293 §3.9.1 (ABORT user call).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -147,8 +148,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__in_fin_wait_1_emits_rst(self) -> None:
         """
-        Ensure RFC 9293 §3.9.1 ABORT in FIN_WAIT_1 emits a RST.
-        Synchronized state per the RFC.
+        Ensure ABORT in FIN_WAIT_1 emits a RST as a synchronized
+        state.
+
+        Reference: RFC 9293 §3.9.1 (ABORT user call, synchronized states).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -173,8 +176,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__in_time_wait_does_not_emit_rst(self) -> None:
         """
-        Ensure RFC 9293 §3.9.1 ABORT in TIME_WAIT: TCB is torn
-        down WITHOUT emitting a RST. Per-state ABORT spec.
+        Ensure ABORT in TIME_WAIT tears down the TCB WITHOUT
+        emitting a RST.
+
+        Reference: RFC 9293 §3.9.1 (ABORT in TIME_WAIT does not signal peer).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -220,8 +225,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__on_fresh_socket_is_noop(self) -> None:
         """
-        Regression guard: abort() on a TcpSocket with no
-        associated session is a no-op (no exception, no TX).
+        Ensure abort() on a TcpSocket with no associated session
+        is a no-op (no exception, no TX).
+
+        Reference: RFC 9293 §3.9.1 (ABORT on CLOSED endpoint).
         """
 
         sock = TcpSocket(family=AddressFamily.INET4)
@@ -234,8 +241,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__in_close_wait_emits_rst(self) -> None:
         """
-        Ensure RFC 9293 §3.9.1 ABORT in CLOSE_WAIT (synchronized
-        state) emits a RST. Pins the per-state RST gate.
+        Ensure ABORT in CLOSE_WAIT (synchronized state) emits a
+        RST. Pins the per-state RST gate.
+
+        Reference: RFC 9293 §3.9.1 (ABORT user call, synchronized states).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -266,8 +275,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
 
     def test__abort__in_syn_sent_does_not_emit_rst(self) -> None:
         """
-        Ensure RFC 9293 §3.9.1 ABORT in SYN_SENT (unsynchronized
-        state) tears down the TCB WITHOUT emitting a RST.
+        Ensure ABORT in SYN_SENT (unsynchronized state) tears
+        down the TCB WITHOUT emitting a RST.
+
+        Reference: RFC 9293 §3.9.1 (ABORT in unsynchronized states).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -302,6 +313,8 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Ensure ABORT marks '_connection_error = CANCELED' so
         any blocked recv() / connect() caller observes the
         cancellation via the standard error-propagation path.
+
+        Reference: RFC 9293 §3.9.1 (ABORT signals "connection reset" to user).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -322,6 +335,8 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Ensure ABORT sets '_event__rx_buffer' so a thread blocked
         in recv() unblocks and the FSM-state check yields the
         connection-cancelled error.
+
+        Reference: RFC 9293 §3.9.1 (ABORT releases pending RECEIVE).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -339,8 +354,10 @@ class TestTcpAbortApi(TcpSessionTestCase):
         """
         Ensure ABORT does NOT retransmit pending TX buffer data
         post-RST. The connection is gone; the application's
-        unsent bytes are discarded per the RFC's "abandon all
-        pending SENDs" semantics.
+        unsent bytes are discarded per the "abandon all pending
+        SENDs" semantics.
+
+        Reference: RFC 9293 §3.9.1 (ABORT abandons pending SENDs).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

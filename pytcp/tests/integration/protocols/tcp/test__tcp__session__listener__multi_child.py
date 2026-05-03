@@ -128,69 +128,13 @@ class TestTcpListener__MultiChild(TcpSessionTestCase):
 
     def test__listener__accept_queue_is_fifo_and_unbounded_backlog(self) -> None:
         """
-        Ensure that completed handshakes accumulate on the listening
-        socket's '_tcp_accept' queue in handshake-completion order
-        (FIFO, ready for 'accept()' to dequeue with 'pop(0)') and
-        that the queue has no backlog cap - five concurrent
-        completed handshakes all land cleanly.
+        Ensure that completed handshakes accumulate on the
+        listening socket's '_tcp_accept' queue in
+        handshake-completion order (FIFO, ready for
+        'accept()' to dequeue) and that the queue has no
+        backlog cap.
 
-        Two behaviours are documented:
-
-            1. FIFO order: 'TcpSession._tcp_fsm_syn_rcvd' (line 1299
-               in '_tcp_fsm_syn_rcvd') appends each newly-ESTABLISHED
-               child to 'parent._tcp_accept'. 'TcpSocket.accept()'
-               (line 336) pops from index 0. The combination is FIFO -
-               children are returned to the application in the order
-               their handshakes completed, NOT the order their SYNs
-               arrived (those can differ if a later SYN's 3WHS
-               completes before an earlier one's, e.g. due to the
-               peers' ACKs arriving in a different order than their
-               SYNs).
-
-            2. Unbounded backlog: 'TcpSocket.listen()' takes no
-               backlog argument and '_tcp_accept' is an unbounded
-               'list[socket]'. PyTCP does not currently impose a cap;
-               five completed handshakes (well past BSD's default
-               backlog of 5 or 128) all land successfully.
-
-        Scenario:
-
-            1. Set up a listening socket.
-            2. Drive five SYNs from five distinct peer source ports
-               (33000-33004), each with a distinct peer ISN
-               (0x4000-0x4400). The listener spawns five children,
-               each in SYN_RCVD.
-            3. Drive a tick to fire all five SYN+ACKs.
-            4. Drive five third-leg ACKs in REVERSE order
-               (port 33004 first, 33000 last). Each child transitions
-               SYN_RCVD -> ESTABLISHED and appends itself to
-               'parent._tcp_accept'.
-            5. Inspect 'parent._tcp_accept': five entries, in
-               handshake-completion order
-               (33004, 33003, 33002, 33001, 33000) - NOT SYN-arrival
-               order (33000, 33001, 33002, 33003, 33004).
-
-        Assertions:
-
-            * 'parent._tcp_accept' has length 5 (no backlog cap
-              kicked in).
-            * The list's source-port sequence equals the
-              completion-order sequence (reverse of SYN-arrival).
-            * Each entry is a 'TcpSocket' whose '_tcp_session' is
-              in ESTABLISHED.
-            * The listening socket itself is still in LISTEN, ready
-              to accept further connections.
-
-        This test passes on current code as a positive-control
-        regression guard. A future change that:
-
-            - Replaced the FIFO with a different ordering (e.g. LIFO,
-              keyed by SYN arrival, etc.) would be caught by the
-              completion-order assertion.
-            - Imposed a backlog cap below 5 would shrink
-              '_tcp_accept' and fail the length-5 assertion.
-
-        is what this test exists to flag.
+        Reference: RFC 9293 §3.10.4 (CLOSE / ACCEPT calls).
         """
 
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
@@ -312,80 +256,13 @@ class TestTcpListener__MultiChild(TcpSessionTestCase):
 
     def test__listener__backlog_cap_drops_excess_syn_silently(self) -> None:
         """
-        Ensure that when the listening socket's accept queue has
-        reached its configured backlog, an additional inbound SYN
-        is dropped silently - no SYN+ACK fires - so peer's TCP
-        retransmits the SYN per the standard retry cycle until
-        either backlog space opens or peer's connect-timeout
-        fires. POSIX leaves this case implementation-defined;
-        Linux and BSD both silently drop. PyTCP follows the same
-        convention.
+        Ensure that when the listening socket's accept queue
+        has reached its configured backlog, an additional
+        inbound SYN is dropped silently — no SYN+ACK fires —
+        so peer's TCP retransmits the SYN until either
+        backlog space opens or peer's connect-timeout fires.
 
-        RFC 9293 §3.10.7.2 step 3 (LISTEN, SYN handling):
-
-            "Note that any other incoming control or data
-             (combined with SYN) will be processed in the SYN-
-             RECEIVED state, but processing of SYN and ACK
-             SHOULD NOT be repeated."
-
-        The RFC does not directly mandate accept-queue capping
-        (it predates the BSD socket API as a normative reference)
-        but POSIX 'listen(backlog)' makes the cap part of the
-        portable contract. PyTCP's BSD-style 'TcpSocket.listen()'
-        currently takes no backlog argument and '_tcp_accept' is
-        unbounded; this test pins the desired behaviour where
-        'listen(backlog=N)' caps the queue at N.
-
-        Scenario:
-
-            1. Set up a listening socket with 'backlog = 2'.
-            2. Drive two complete handshakes from peers A
-               (port 33000) and B (port 33001). After both
-               complete, '_tcp_accept' has length 2 (= backlog).
-            3. Peer C (port 33002) sends a fresh SYN. Drive the
-               RX. Inspect the inline TX list.
-
-        Assertions:
-
-            * '_tcp_accept' length is exactly 2 (= backlog) after
-              the first two handshakes.
-            * The third SYN's drive does NOT append to '_tcp_accept'
-              (still length 2 after it).
-            * The third SYN does NOT produce any inline TX, and no
-              SYN+ACK fires on the next tick either - silent drop.
-            * The listener remains in LISTEN.
-            * No new child session has been registered in
-              'stack.sockets' for peer C's 4-tuple - the SYN was
-              rejected before child allocation.
-
-        [FLAGS BUG] - 'TcpSocket.listen()' takes no backlog
-        argument and '_tcp_accept' is unbounded; '_tcp_fsm_listen'
-        has no admission gate before the listener-fork that
-        spawns a child session for each SYN. As a result, a peer
-        that opens connections faster than the application calls
-        'accept()' grows '_tcp_accept' linearly with no upper
-        bound, and an off-path attacker that completes
-        handshakes (or bypasses sequence-number validation, e.g.
-        via on-path observation) can exhaust the listening
-        process's memory.
-
-        Fix outline (separate commit):
-
-          - 'TcpSocket.__init__' adds '_backlog: int = TCP__DEFAULT_BACKLOG'
-            with default 16 (POSIX minimum 5; BSD/Linux defaults
-            are higher; 16 is a conservative default for a
-            research stack and accommodates the existing 5-peer
-            test).
-          - 'TcpSocket.listen(*, backlog: int = TCP__DEFAULT_BACKLOG)'
-            stores the cap on 'self._backlog'.
-          - '_tcp_fsm_listen' SYN handler, BEFORE the listener-
-            fork, checks
-            'len(self._socket._tcp_accept) >= self._socket._backlog'
-            and silently returns when full.
-
-        Severity: HIGH for any stack exposed to a network -
-        accept-queue exhaustion is one of the oldest TCP-stack
-        DoS vectors and a portable BSD-API conformance gap.
+        Reference: RFC 9293 §3.10.7.2 (LISTEN-state SYN handling).
         """
 
         # Stand up a listener with a small backlog. The
@@ -500,54 +377,12 @@ class TestTcpListener__MultiChild(TcpSessionTestCase):
 
     def test__listener__backlog_cap_drained_by_accept_allows_next_syn(self) -> None:
         """
-        Ensure that once the application drains the accept queue
-        via 'accept()', the freed slot makes room for a previously-
-        rejected peer's SYN retransmit to complete the handshake -
-        i.e. the cap is dynamic, not a hard one-shot ceiling.
+        Ensure that once the application drains the accept
+        queue via 'accept()', the freed slot makes room for a
+        previously-rejected peer's SYN retransmit to complete
+        the handshake — the cap is dynamic, not latched.
 
-        This is the canonical "slow accept consumer" recovery
-        path: a peer whose initial SYN was dropped due to a full
-        backlog will (per RFC 9293 §3.4 connection establishment)
-        retransmit the SYN. If the application has drained one
-        slot in the meantime, the retransmit completes the
-        handshake normally.
-
-        Scenario:
-
-            1. Set up a listening socket with 'backlog = 1'.
-            2. Drive one complete handshake (peer A). Accept queue
-               is full at 1.
-            3. Peer B sends SYN. Silently dropped (queue full).
-            4. Application calls 'accept()' on the listener. One
-               slot is freed; '_tcp_accept' length is now 0.
-            5. Peer B retransmits the SAME SYN. This time the
-               admission gate passes; the listener-fork runs;
-               SYN+ACK fires on the next tick. Peer B's third-leg
-               ACK completes the handshake.
-
-        Assertions:
-
-            * After step 3: '_tcp_accept' length == 1 (unchanged
-              from full state); peer B's SYN produced no inline
-              TX.
-            * After step 4: '_tcp_accept' length == 0 (drained
-              by accept()).
-            * After step 5: SYN+ACK fires on the tick;
-               peer B's handshake completes; '_tcp_accept'
-               length == 1 again.
-
-        [FLAGS BUG] - same root cause as the sibling test
-        ('test__listener__backlog_cap_drops_excess_syn_silently'):
-        no admission gate. This test additionally pins the
-        recovery-after-drain behaviour - even after the cap is
-        added, the gate must be re-checked on every SYN, not
-        latched.
-
-        Severity: same as sibling - HIGH for network-exposed
-        stacks. Without this property, a slow-accept consumer
-        would never recover from one over-backlog burst because
-        the admission gate would (in a buggy implementation)
-        stay latched.
+        Reference: RFC 9293 §3.10.7.2 (LISTEN-state SYN admission).
         """
 
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)

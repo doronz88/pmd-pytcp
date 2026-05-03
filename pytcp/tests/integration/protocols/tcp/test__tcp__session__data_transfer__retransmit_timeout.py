@@ -142,70 +142,18 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
     def test__retransmit_timeout__silent_peer_retransmits_per_rfc6298_cadence(self) -> None:
         """
-        Ensure that when an in-flight data segment goes unacknowledged
-        the retransmit timer fires per RFC 6298 §2 with exponential
-        back-off (initial RTO = 1 s, doubled per retry), and the
-        connection stays alive past the RFC 1122 §4.2.3.5 R2 floor of
-        100 s before any abort is considered:
+        Ensure that when an in-flight data segment goes
+        unacknowledged the retransmit timer fires with
+        exponential back-off (initial RTO = 1 s, doubled per
+        retry) and the connection stays alive past the R2
+        floor of 100 s. By t = 60 s of peer silence the wire
+        shows at least five retransmits, each reusing the
+        original seq and payload byte-for-byte; state stays
+        ESTABLISHED.
 
-            "(2.1) Until a round-trip time (RTT) measurement has been
-                   made for a segment sent between the sender and
-                   receiver, the sender SHOULD set RTO <- 1 second ...
-             (5.5) The host MUST set RTO <- RTO * 2 (\"back off the
-                   timer\")."
-
-            "(R2) ... the value of the timeout that should cause a
-                  TCP to give up ... at least 100 seconds."
-
-        Concretely, with the initial RTO of 1 s and exponential
-        doubling, a silent peer must see retransmits at approximately
-        the following times after the initial transmission:
-
-            t =   1 s    1st retransmit
-            t =   3 s    2nd retransmit (RTO -> 2 s)
-            t =   7 s    3rd retransmit (RTO -> 4 s)
-            t =  15 s    4th retransmit (RTO -> 8 s)
-            t =  31 s    5th retransmit (RTO -> 16 s)
-            t =  63 s    6th retransmit (RTO -> 32 s)
-
-        i.e. by t = 60 s of peer silence we must have observed at
-        least five retransmits (initial + retransmits at 1, 3, 7,
-        15, 31 s, with the 63 s one not yet fired). Each retransmit
-        must reuse the original SEQ and payload byte-for-byte
-        (RFC 6298 §2 retransmits the SAME segment, not a fresh one)
-        and the session must remain in ESTABLISHED throughout - only
-        after the R2 floor (>= 100 s) elapses may the implementation
-        consider abort.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
-              peer's advertised window so slow-start does not
-              constrain the initial transmission.
-            * Application sends one full-MSS data segment (1460 B,
-              all 'X'). Full MSS bypasses Nagle entirely so no
-              partial-segment deferral interferes with the cadence.
-            * Tick once - the initial segment fires.
-            * Drive 60 s of virtual time with the peer staying silent.
-            * Inspect the captured TX list:
-                - Every frame is a retransmit of the same seq /
-                  payload as the initial.
-                - Frame count >= 5 (the cadence above).
-                - 'session.state' remains ESTABLISHED.
-                - 'session._snd_una' is unchanged (no peer ACK has
-                  arrived).
-
-        This test passes on current code thanks to the
-        'PACKET_RETRANSMIT_MAX_COUNT = 6' constant set by commit
-        'efb8343' (which raised the limit from 3 to 6 to satisfy R2).
-        It serves as a positive-control regression guard against
-        future changes that might:
-
-          - Lower the retransmit count below the R2 floor.
-          - Skip back-off doubling (each retransmit at fixed RTO).
-          - Mutate the seq or payload across retransmits.
-          - Trigger a premature abort (state transition out of
-            ESTABLISHED before R2).
+        Reference: RFC 6298 §2.1 (initial RTO = 1 second).
+        Reference: RFC 6298 §5.5 (binary backoff).
+        Reference: RFC 1122 §4.2.3.5 (R2 >= 100 s before connection abort).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -238,8 +186,8 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         # cadence.
         retransmits = self._advance(ms=60_000)
 
-        # Per RFC 6298 doubling cadence (1, 3, 7, 15, 31 s within
-        # 60 s), the retransmit count must be at least 5.
+        # Doubling cadence (1, 3, 7, 15, 31 s within 60 s);
+        # the retransmit count must be at least 5.
         self.assertGreaterEqual(
             len(retransmits),
             5,
@@ -309,76 +257,15 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
     def test__retransmit_timeout__peer_ack_mid_back_off_clears_counters_and_grows_window(self) -> None:
         """
-        Ensure that when a peer ACK arrives in the middle of the
-        retransmit back-off window, the sender-side bookkeeping
-        unwinds cleanly per RFC 6298 §5.2 / §5.3:
+        Ensure that when a peer ACK arrives in the middle of
+        the retransmit back-off window, the sender-side
+        bookkeeping unwinds cleanly: the session-level
+        retransmit timer is unregistered, SND.UNA advances,
+        '_retransmit_count' resets to 0, '_snd_ewn' grows,
+        and no spurious retransmits fire on subsequent ticks.
 
-            * The session-level 'f"{session}-retransmit"' timer
-              MUST be turned off (§5.2 - "When all outstanding
-              data has been acknowledged, turn off the
-              retransmission timer").
-            * 'SND.UNA' advances past the acknowledged data, freeing
-              the corresponding range of the TX buffer.
-            * '_retransmit_count' resets to 0 (peer's progress is
-              fresh evidence of liveness).
-            * '_snd_ewn' doubles (slow-start growth per RFC 5681
-              §3.1 and the simplified slow-start-style logic in
-              '_process_ack_packet'), restoring sending capacity
-              that the retransmit-timeout reset had collapsed back
-              to one MSS.
-            * No spurious retransmits fire on subsequent ticks -
-              the timer was unregistered AND the TX buffer is
-              empty so '_transmit_data' has nothing to send.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn'
-               to peer's full advertised window so the initial
-               transmission goes out unconstrained.
-            2. Application sends one full-MSS data segment
-               (1460 B). Tick once - initial transmit fires; the
-               session-level retransmit timer is armed at
-               '_rto_state.rto_ms = 1000'.
-            3. Advance ~1.5 s of virtual time. The first
-               retransmit (RTO = 1 s after initial) fires inside
-               this window. '_retransmit_count' bumps from 0 to 1
-               and '_rto_state' is backed off (rto_ms 1000 ->
-               2000); '_snd_ewn' collapses to one MSS.
-            4. Snapshot pre-ACK state: '_retransmit_count == 1',
-               session-level timer present, '_snd_una' unchanged,
-               '_snd_ewn' equal to MSS.
-            5. Peer ACKs with ack = SND.NXT (= LOCAL__ISS + 1 +
-               1460), implicitly acknowledging both the initial
-               transmit and the retransmit.
-            6. Drive RX. '_process_ack_packet' runs and:
-                 - advances 'SND.UNA' to 'LOCAL__ISS + 1 + 1460'
-                 - resets '_retransmit_count' to 0
-                 - turns the session-level retransmit timer off
-                   (§5.2 - all in-flight is acked)
-                 - doubles '_snd_ewn'
-            7. Advance an additional 10 s of virtual time. No TX
-               may fire during this window - the timer is
-               unregistered AND the TX buffer has been purged of
-               acknowledged bytes.
-
-        Side effects asserted (post-Phase-3 session-level shape):
-
-            * 'f"{session}-retransmit"' is NOT in
-              'self._timer.pending_timers'.
-            * '_retransmit_count == 0'.
-            * '_snd_una == LOCAL__ISS + 1 + 1460'.
-            * '_snd_ewn' is strictly greater than the value it
-              had after the retransmit reset (MSS = 1460).
-            * 'len(_tx_buffer) == 0' (acknowledged bytes purged).
-            * State remains ESTABLISHED throughout.
-
-        This test passes as a positive-control regression guard
-        for the §5.2 / §5.3 timer lifecycle plus the per-cum-ACK
-        doubling of '_snd_ewn'. A future change that removed the
-        timer-stop or skipped the slow-start growth would be
-        caught immediately - either the post-ACK retransmit
-        timer would still fire OR the connection would stay
-        throttled at one-MSS bursts.
+        Reference: RFC 6298 §5.2 (turn off retransmission timer when all data is acked).
+        Reference: RFC 6298 §5.3 (restart timer on cum-ACK that advances SND.UNA).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -516,73 +403,14 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
     def test__retransmit_timeout__fin_wait_1_timer_retransmits_fin_not_data(self) -> None:
         """
-        Ensure that once a session has transitioned to FIN_WAIT_1
-        (because the application called 'close()' and the TX buffer
-        had drained), subsequent retransmit-timer expirations
-        retransmit ONLY the FIN segment - they MUST NOT re-send any
-        data segments at sequence numbers that have already been
-        acknowledged or that lie past the FIN.
+        Ensure that once a session has transitioned to
+        FIN_WAIT_1, subsequent retransmit-timer expirations
+        retransmit only the FIN segment — they do not
+        re-send any data segments at sequence numbers that
+        have already been acknowledged or that lie past the
+        FIN.
 
-        Per RFC 9293 §3.10.4 / §3.5.2 the FIN_WAIT_1 state means we
-        have sent our FIN and are awaiting the peer's ACK of it. Any
-        prior data has by definition been fully acknowledged before
-        we issued FIN (the ESTABLISHED -> FIN_WAIT_1 transition is
-        gated on '_closing AND not _tx_buffer'). Retransmitting data
-        in this state would reuse SEQ numbers the peer has already
-        ACK'd, confuse the cumulative-ACK arithmetic, and risk
-        sliding past the right edge of the peer's receive window if
-        their FIN-ACK has trimmed the window down.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
-               peer's full window so the data goes out unconstrained.
-            2. Application sends one full-MSS data segment. Tick
-               once - initial transmit.
-            3. Peer ACKs the data: '_snd_una' advances past the
-               segment, the retransmit-timeout counter for the data
-               SEQ is purged, and the TX buffer is drained.
-            4. Application calls 'close()'. '_closing' is set; state
-               is still ESTABLISHED.
-            5. First tick after 'close()': '_tcp_fsm_established's
-               timer branch runs '_transmit_data' (no-op, buffer
-               empty), then sees '_closing AND not _tx_buffer' and
-               transitions to FIN_WAIT_1. No segment is emitted on
-               this tick.
-            6. Second tick: '_tcp_fsm_fin_wait_1's timer branch runs
-               '_transmit_data', which falls through the
-               ESTABLISHED-only data block and hits the FIN-
-               retransmit block ('SND.NXT != SND.FIN'). The FIN is
-               emitted at SEQ = LOCAL__ISS + 1 + 1460.
-            7. Drive 60 s of virtual time with the peer silent. The
-               FIN's retransmit timer cycles through the RFC 6298
-               cadence; every retransmit MUST be a FIN, not a data
-               segment.
-
-        Assertions on each retransmit:
-
-            * 'FIN' in 'flags'.
-            * 'payload == b""' (FIN-only, no data).
-            * 'seq == LOCAL__ISS + 1 + 1460' (the original FIN's
-              SEQ, not any data SEQ).
-
-        Plus state assertions:
-
-            * After step 5, 'session.state' is FsmState.FIN_WAIT_1.
-            * After step 7 (60 s of silence), 'session.state' is
-              still FsmState.FIN_WAIT_1 - well within the R2 floor.
-
-        This test passes on current code as a positive-control
-        regression guard. The plan's '[FLAGS BUG]' note about
-        '_tcp_fsm_fin_wait_1' "calling '_transmit_data' on every
-        tick - could retransmit data" is not actually realised
-        today because '_transmit_data's data-emit block is gated on
-        'state in {ESTABLISHED, CLOSE_WAIT}', so the FIN_WAIT_1
-        timer path correctly falls through to the FIN-retransmit
-        branch. The test serves as a regression guard against
-        future changes that might widen the data-emit gate or split
-        '_transmit_data' in a way that lets data leak into
-        FIN_WAIT_1's retransmit path.
+        Reference: RFC 9293 §3.6 (FIN-WAIT-1 awaits ACK of our FIN).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -729,113 +557,16 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
     def test__retransmit_timeout__sub_mss_partial_segment_retransmits_despite_nagle(self) -> None:
         """
-        Ensure that when an in-flight sub-MSS ("partial") segment
-        goes unacknowledged the RTO retransmits it on the timer
-        boundary, even though Nagle's Minshall variant
-        (RFC 1122 §4.2.3.4) ordinarily defers a fresh partial
-        while a previous partial is still in flight. RFC 1122
-        §4.2.3.4 governs FRESH transmits to avoid generating
-        tinygrams when a stream of small writes accumulates; it
-        does NOT apply to retransmits, which are by definition
-        re-sending the very same partial that is "in flight".
+        Ensure that when an in-flight sub-MSS partial
+        segment goes unacknowledged the RTO retransmits it
+        on the timer boundary, despite Nagle's Minshall
+        variant ordinarily deferring fresh partials while a
+        previous partial is in flight. The retransmit
+        machinery re-sends the earliest unacked segment
+        regardless of segment size or Nagle state.
 
-        RFC 1122 §4.2.3.4 (Sender's SWS Avoidance / Nagle):
-
-            "[The sender] SHOULD NOT send small segments if there
-             is unacknowledged data."
-
-        and §4.2.3.4 explanatory text on "send" being the
-        application-driven generation:
-
-            "[The Nagle algorithm] solves the small-packet
-             problem by delaying transmission ... when the user
-             passes data to TCP, TCP will ... wait until either
-             one MSS of data ... or all unacknowledged data has
-             been ACKed."
-
-        RFC 6298 (RTO retransmission) does NOT defer to Nagle:
-        the retransmit machinery re-sends "the earliest segment
-        that has not been acknowledged" once the RTO timer
-        fires, regardless of segment size or Nagle state.
-
-        [FLAGS BUG] - 'TcpSession._transmit_data' applies the
-        Nagle gate (line ~1183) unconditionally before any
-        outbound segment, including RTO-driven retransmits:
-
-            is_partial = transmit_data_len < self._snd_mss
-            prev_partial_in_flight = gt32(self._snd_sml, self._snd_una)
-            if is_partial and prev_partial_in_flight:
-                return  # defer
-
-        On RTO retransmit:
-
-          - '_retransmit_packet_timeout' rewinds 'SND.NXT' to
-            'SND.UNA' (= the partial we want to re-send).
-          - Control falls through to '_transmit_data' on the
-            same FSM tick.
-          - 'is_partial' is True (the segment IS a partial -
-            we're retransmitting the original partial).
-          - 'prev_partial_in_flight = gt32(_snd_sml, _snd_una)'
-            is True (the partial we sent originally is still in
-            flight - that's why we're retransmitting).
-          - Nagle defers.
-
-        The retransmit counter ('_tx_retransmit_timeout_counter')
-        only increments inside '_transmit_packet', which never
-        runs because the deferral exits '_transmit_data' before
-        reaching it. The RFC 1122 §4.2.3.5 R2 floor (=
-        'PACKET_RETRANSMIT_MAX_COUNT') is therefore never
-        reached either. The connection HANGS indefinitely until
-        an external timeout kills it.
-
-        Severity: HIGH. Affects every connection that loses an
-        unacked sub-MSS segment - typical for interactive
-        traffic (SSH keystrokes, RPC control messages, HTTP
-        chunked headers, partial database commits). Not a
-        seq-wrap-rare class; this is everyday workload.
-
-        Fix outline (separate commit):
-
-            Detect "we are retransmitting" via a modular check:
-            'lt32(self._snd_nxt, self._snd_max)'. The RTO
-            handler rewinds 'SND.NXT' to 'SND.UNA' while
-            leaving 'SND.MAX' at the high-water mark, so this
-            inequality is True iff the next segment to send
-            covers ground we have already transmitted. Skip
-            the Nagle gate when retransmitting:
-
-                is_retransmit = lt32(self._snd_nxt, self._snd_max)
-                ...
-                if is_partial and prev_partial_in_flight and not is_retransmit:
-                    return  # defer
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set
-               '_snd_ewn' to peer's advertised window so
-               slow-start does not constrain the initial send.
-            2. Application sends 100 bytes (sub-MSS partial).
-               One outbound segment with seq = ISS + 1, payload
-               b"X" * 100.
-            3. Peer stays silent. Wait
-               'PACKET_RETRANSMIT_TIMEOUT' (1 s) plus a tick
-               for the boundary.
-            4. The RTO MUST fire and the segment MUST be
-               retransmitted byte-for-byte at the same seq.
-
-        Assertions:
-
-            * Initial send produces exactly one segment
-              (sanity).
-            * After the RTO advance: exactly one retransmit
-              segment is captured, with matching seq/payload.
-            * Session is still in ESTABLISHED.
-
-        On current code this test fails at the retransmit
-        segment-count assertion: zero retransmits emitted
-        because the Nagle gate defers, the retransmit counter
-        does not increment, R2 is never reached, and the
-        connection is silently stuck.
+        Reference: RFC 6298 §5 (RTO-driven retransmission).
+        Reference: RFC 1122 §4.2.3.4 (Nagle applies to fresh transmits, not retransmits).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -899,100 +630,15 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
     def test__retransmit_timeout__rto_with_peer_zero_window_respects_flow_control(self) -> None:
         """
-        Ensure that when an RTO fires while peer has advertised
-        a 0-window, the retransmit path respects peer's flow-
-        control: '_snd_ewn' must collapse to 0 (clamped to
-        '_snd_wnd'), and no MSS-sized data segment must hit the
-        wire. The persist machinery handles probing while the
-        window is closed (RFC 9293 §3.8.6.1 / RFC 1122
-        §4.2.2.17).
+        Ensure that when an RTO fires while peer has
+        advertised a 0-window, the retransmit path respects
+        peer's flow-control: '_snd_ewn' collapses to 0
+        (clamped to '_snd_wnd'); no MSS-sized data segment
+        hits the wire. The persist machinery probes while the
+        window is closed.
 
-        RFC 9293 §3.8.6.1 (Zero-Window Probing):
-
-            "The transmitting host SHOULD send the first
-             zero-window probe when a zero window has existed
-             for the retransmission timeout period ... and
-             SHOULD increase exponentially the interval between
-             successive probes."
-
-        RFC 1122 §4.2.2.16 (right-edge of window):
-
-            "[The TCP sender] MUST be robust against window
-             shrinking, which may cause the 'usable window' ...
-             to become negative."
-
-        Both RFCs implicitly require the sender to respect the
-        receiver's advertised window across retransmits. The
-        RTO mechanism does NOT exempt itself from this
-        constraint; RFC 6298 §5 (retransmit) does not say "send
-        regardless of window."
-
-        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout'
-        line 1378-1380:
-
-            self._snd_ewn = self._snd_mss
-            self._snd_nxt = self._snd_una
-
-        '_snd_ewn = self._snd_mss' is unconditional. It does
-        NOT clamp to '_snd_wnd'. If peer advertised a 0-window
-        before this RTO fired (typical when peer's app is slow
-        to drain their receive buffer), the post-RTO
-        'transmit_data_len = min(MSS, _snd_ewn=MSS,
-        remaining)' computes as a positive number; the
-        retransmit then sends data despite peer's
-        flow-control restriction.
-
-        Severity: MEDIUM. Real RFC-conformance gap. Fires on
-        every RTO that occurs while peer's window is 0.
-        Probability is non-trivial in workloads where peer's
-        application is slow.
-
-        Fix outline (separate commit):
-
-            self._snd_ewn = min(self._snd_mss, self._snd_wnd)
-            self._snd_nxt = self._snd_una
-
-        Post-fix the RTO + 0-window scenario flows like:
-
-          - RTO: '_snd_ewn = min(MSS, 0) = 0'.
-          - '_transmit_data' sees 'transmit_data_len = 0' and
-            falls to the persist branch, which arms the
-            persist timer; no data segment goes out.
-          - Persist machinery handles probing as designed
-            (RFC 9293 §3.8.6.1).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Bypass
-               slow-start by setting '_snd_ewn = PEER__WIN' so
-               the initial send fires at full MSS (or as much
-               as we ask).
-            2. send(b"X" * 100). One outbound segment fires at
-               seq = LOCAL__ISS + 1.
-            3. Simulate peer advertising 0-window AFTER we
-               sent. We set 'session._snd_wnd = 0' and
-               'session._snd_ewn = 0' directly because the
-               '_process_ack_packet' path for an ACK that
-               doesn't advance SND.UNA gets intercepted by
-               ESTABLISHED's dup-ACK branch (which doesn't
-               update '_snd_wnd'). The state-direct setup is
-               equivalent to peer's "ACK with new-data + win=0"
-               having been processed.
-            4. Advance past 'PACKET_RETRANSMIT_TIMEOUT' so the
-               RTO timer for our unacked segment fires.
-
-        Assertions:
-
-            * Post-RTO 'session._snd_ewn == 0' (clamped to
-              peer's 0-window).
-            * No data-bearing outbound segment fires during
-              the RTO advance window. Pre-fix the test would
-              see a 100-byte retransmit emitted in violation
-              of peer's flow-control.
-
-        On current code this test fails at the assertion that
-        no data-bearing segment fires - one 100-byte segment
-        gets emitted post-RTO despite peer's 0-window.
+        Reference: RFC 9293 §3.8.6.1 (zero-window probing).
+        Reference: RFC 1122 §4.2.2.16 (sender robust against shrinking windows).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1047,98 +693,22 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             [],
             msg=(
                 "After RTO with peer's 0-window, NO data-bearing "
-                "segment larger than 1 byte may be emitted - peer's "
-                "advertised window forbids it (RFC 9293 §3.8.6.1 / "
-                "RFC 1122 §4.2.2.16). Today the RTO retransmit "
-                "fires a full 100-byte segment in violation of "
-                f"peer's flow-control. Got: {data_segments!r}"
+                "segment larger than 1 byte may be emitted; peer's "
+                "advertised window forbids it. Got: "
+                f"{data_segments!r}"
             ),
         )
 
     def test__retransmit_timeout__fin_retransmit_does_not_drift_tx_buffer_seq_mod(self) -> None:
         """
-        Ensure that retransmitting the FIN segment after RTO leaves
-        '_tx_buffer_seq_mod' unchanged. The FIN consumes one byte of
-        sequence space but no slot in the TX buffer; on the original
-        send '_transmit_packet' bumps '_tx_buffer_seq_mod' by 1 to
-        account for that phantom byte. On every subsequent retransmit
-        the same bump fires again, so '_retransmit_packet_timeout'
-        MUST walk the anchor back by 1 BEFORE the retransmit-driven
-        '_transmit_data' call to keep '_tx_buffer_seq_mod' aligned
-        with the post-original-FIN value across the entire
-        retransmit cycle.
+        Ensure that retransmitting the FIN segment after RTO
+        leaves '_tx_buffer_seq_mod' unchanged across the
+        entire retransmit cycle. The FIN consumes one byte
+        of sequence space but no slot in the TX buffer; the
+        retransmit walk-back must compensate for the phantom
+        byte each cycle so the anchor remains aligned.
 
-        Per RFC 9293 §3.4 sequence numbers are 32-bit modular and
-        every TX-side anchor MUST stay aligned with 'SND.NXT' minus
-        unsent-buffer offset; otherwise the next 'send()' or
-        retransmit reads the wrong slice of '_tx_buffer'.
-
-        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout' line
-        ~1448:
-
-            if self._snd_nxt == self._snd_ini or (
-                self._fin_sent and self._snd_nxt == self._snd_fin
-            ):
-                self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
-
-        '_snd_fin' is assigned at '_transmit_packet' line ~853 AFTER
-        'self._snd_nxt = add32(seq, len(data), flag_syn, flag_fin)'
-        has already advanced past the FIN's seq, so '_snd_fin =
-        post-FIN-seq = FIN_seq + 1'. After RTO the rewind line ~1426
-        sets '_snd_nxt = _snd_una', and on the canonical "FIN went
-        out, peer ACKed everything before it but not the FIN" path
-        '_snd_una == FIN_seq == _snd_fin - 1'. The check
-        'self._snd_nxt == self._snd_fin' is therefore ALWAYS False
-        in the path it was meant to catch - the second branch is
-        unreachable. The walk-back never fires and the next
-        '_transmit_packet' (FIN retransmit) re-bumps
-        '_tx_buffer_seq_mod' by 1 without compensation. Each
-        subsequent retransmit drifts by another +1.
-
-        Severity: LOW in current usage. FIN_WAIT_1 / LAST_ACK only
-        reach '_transmit_data' with an empty TX buffer, so the
-        corrupted offset is not read for new content, and modular
-        'add32' / 'sub32' arithmetic recovers the anchor when the
-        peer eventually ACKs the FIN. But the invariant is still
-        broken; a future change that writes to '_tx_buffer' from
-        FIN_WAIT_1 / LAST_ACK (or that introduces a half-duplex
-        path where post-FIN data could be queued) would silently
-        corrupt the read offset. The dead-code branch also
-        misleads anyone reading the rewind logic.
-
-        Fix outline (separate commit):
-
-            Compare against the FIN's seq (pre-bump), not
-            post-FIN-seq:
-
-                if self._snd_nxt == self._snd_ini or (
-                    self._fin_sent
-                    and self._snd_nxt == sub32(self._snd_fin, 1)
-                ):
-                    self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
-
-            After rewind, 'self._snd_nxt == _snd_una == FIN_seq ==
-            sub32(_snd_fin, 1)' - the branch fires, the anchor walks
-            back by 1, and the post-retransmit '_tx_buffer_seq_mod'
-            stays at its post-original-FIN value across the entire
-            retransmit cycle.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. 'close()' with an empty TX buffer. First tick
-               transitions to FIN_WAIT_1; second tick emits the FIN.
-            3. Snapshot '_tx_buffer_seq_mod' immediately after the
-               original FIN sent.
-            4. Drive three RTO cycles (1 s, 3 s, 7 s of cumulative
-               virtual time) with the peer silent. Each cycle MUST
-               emit exactly one FIN retransmit at the original
-               FIN's seq.
-            5. After each retransmit, '_tx_buffer_seq_mod' MUST
-               equal the snapshot value taken in step 3.
-
-        On current code the snapshot-equality assertion fails: the
-        anchor drifts by +1 per retransmit (1 -> 2 -> 3).
+        Reference: RFC 9293 §3.4 (sequence-number arithmetic and TX-buffer alignment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1202,18 +772,10 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
                 session._tx_buffer_seq_mod,
                 baseline_seq_mod,
                 msg=(
-                    f"RTO cycle #{cycle}: '_tx_buffer_seq_mod' MUST "
-                    f"equal its post-original-FIN value "
-                    f"(0x{baseline_seq_mod:08x}). Today the rewind "
-                    f"check 'self._snd_nxt == self._snd_fin' in "
-                    f"'_retransmit_packet_timeout' is unreachable "
-                    f"because '_snd_fin' holds post-FIN-seq while "
-                    f"the rewind sets '_snd_nxt = _snd_una = "
-                    f"FIN_seq = _snd_fin - 1'; the walk-back never "
-                    f"fires and the next '_transmit_packet' "
-                    f"re-bumps '_tx_buffer_seq_mod' by 1 per "
-                    f"retransmit. Got 0x{session._tx_buffer_seq_mod:08x} "
-                    f"(drift "
+                    f"RTO cycle #{cycle}: '_tx_buffer_seq_mod' "
+                    f"MUST equal its post-original-FIN value "
+                    f"(0x{baseline_seq_mod:08x}). Got "
+                    f"0x{session._tx_buffer_seq_mod:08x} (drift "
                     f"+{(session._tx_buffer_seq_mod - baseline_seq_mod) & 0xFFFFFFFF})."
                 ),
             )

@@ -121,7 +121,8 @@ class TestTcpSessionListenSyscall(_TcpSessionSyscallFixture):
         """
         Ensure LISTEN from CLOSED transitions the FSM to 'LISTEN'.
         The canonical passive-open path for servers.
-        Per RFC 9293 §3.10.1 (OPEN call, passive).
+
+        Reference: RFC 9293 §3.10.1 (OPEN call processing, passive).
         """
 
         session = self._make_session()
@@ -137,7 +138,8 @@ class TestTcpSessionListenSyscall(_TcpSessionSyscallFixture):
         Ensure listen() routes through 'tcp_fsm' rather than mutating
         '_state' directly — the FSM dispatch is the single source of
         truth for state transitions.
-        Per RFC 9293 §3.10.1 (OPEN call dispatched via FSM).
+
+        Reference: RFC 9293 §3.10.1 (OPEN call processing).
         """
 
         session = self._make_session()
@@ -156,7 +158,8 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
         Ensure connect() raises 'TcpSessionError("Connection refused")'
         when the FSM ends up in a non-ESTABLISHED state with the
         'REFUSED' error code (peer sent RST).
-        Per RFC 9293 §3.10.1 (OPEN call) + §3.10.7.3 (SYN-SENT RST).
+
+        Reference: RFC 9293 §3.10.7.3 (RST in SYN-SENT triggers connection refused).
         """
 
         session = self._make_session()
@@ -188,7 +191,9 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
         Ensure connect() raises 'TcpSessionError("Connection timeout")'
         when the FSM ends up non-ESTABLISHED with the 'TIMEOUT' error
         code (retransmit budget exhausted).
-        Per RFC 9293 §3.10.1 + RFC 1122 §4.2.3.5 (R2 abort).
+
+        Reference: RFC 1122 §4.2.3.5 (R2 abort floor).
+        Reference: RFC 9293 §3.10.1 (OPEN call processing).
         """
 
         session = self._make_session()
@@ -219,7 +224,8 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
         """
         Ensure connect() returns cleanly when the FSM reaches
         'ESTABLISHED' before the connect semaphore is signaled.
-        Per RFC 9293 §3.10.1 (OPEN call returns on ESTABLISHED).
+
+        Reference: RFC 9293 §3.10.1 (OPEN call returns on ESTABLISHED).
         """
 
         session = self._make_session()
@@ -248,7 +254,8 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
         """
         Ensure send() in 'ESTABLISHED' appends the data to the TX
         buffer and returns 'len(data)' unchanged.
-        Per RFC 9293 §3.10.2 (SEND call from ESTABLISHED).
+
+        Reference: RFC 9293 §3.9.1 (SEND call from ESTABLISHED).
         """
 
         session = self._make_session()
@@ -271,7 +278,8 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
         """
         Ensure send() also works in 'CLOSE_WAIT' — the local half of
         the connection is still open there.
-        Per RFC 9293 §3.10.2 (SEND call from CLOSE-WAIT).
+
+        Reference: RFC 9293 §3.9.1 (SEND call from CLOSE-WAIT).
         """
 
         session = self._make_session()
@@ -295,7 +303,8 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
         Ensure send() raises 'TcpSessionError' when the session is not
         in 'ESTABLISHED' or 'CLOSE_WAIT'. BSD stream-socket semantics
         do not allow writes once the local half is closed.
-        Per RFC 9293 §3.10.2 (SEND in non-synchronized states returns error).
+
+        Reference: RFC 9293 §3.9.1 (SEND in non-synchronized states returns error).
         """
 
         session = self._make_session()
@@ -314,7 +323,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         """
         Ensure receive() with no byte_count drains the entire RX
         buffer and returns it as 'bytes'.
-        Per RFC 9293 §3.10.5 (RECEIVE call).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE call).
         """
 
         session = self._make_session()
@@ -336,7 +346,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         """
         Ensure receive(byte_count=N) returns at most N bytes and
         leaves the rest in the buffer for the next call.
-        Per RFC 9293 §3.10.5 (RECEIVE byte-count parameter).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE byte-count parameter).
         """
 
         session = self._make_session()
@@ -360,7 +371,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         Ensure receive() on an empty buffer while in 'CLOSE_WAIT'
         returns an empty bytes object to signal remote-end EOF — the
         BSD 'recv returned 0' convention.
-        Per RFC 9293 §3.10.5 (RECEIVE on closed remote half).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE on closed remote half).
         """
 
         session = self._make_session()
@@ -377,7 +389,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         """
         Ensure receive() with a finite timeout raises 'TimeoutError'
         when no data arrives in the window.
-        Reference: RFC 9293 §3.10.5 (RECEIVE timeout signalling).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE timeout signalling).
         """
 
         session = self._make_session()
@@ -389,7 +402,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         Ensure receive() leaves the '_event__rx_buffer' event set
         when the buffer still has data after the read, so the next
         call does not block unnecessarily.
-        Reference: RFC 9293 §3.10.5 (RECEIVE call delivers buffered data).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE call delivers buffered data).
         """
 
         session = self._make_session()
@@ -413,7 +427,8 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         permit on the rx event so a subsequent 'receive()' on an empty
         buffer would 'succeed' and return b"" -- masking the no-data
         condition as a legitimate remote-end EOF.
-        Reference: RFC 9293 §3.10.5 (RECEIVE EOF semantics).
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE EOF semantics).
         """
 
         session = self._make_session()
@@ -450,7 +465,8 @@ class TestTcpSessionCloseSyscall(_TcpSessionSyscallFixture):
         """
         Ensure close() routes through 'tcp_fsm' with 'SysCall.CLOSE'
         rather than mutating the state directly.
-        Per RFC 9293 §3.10.4 (CLOSE call dispatched via FSM).
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         session = self._make_session()

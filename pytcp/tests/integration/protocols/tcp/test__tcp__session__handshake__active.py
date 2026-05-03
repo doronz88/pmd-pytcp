@@ -134,45 +134,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
     def test__active_open__three_way_handshake_completes_to_established(self) -> None:
         """
         Ensure the canonical three-way handshake takes a freshly
-        constructed 'TcpSession' from 'CLOSED' through 'SYN_SENT' to
-        'ESTABLISHED' and emits exactly the segments RFC 9293 §3.5.1
-        prescribes for active open: an initial SYN carrying our ISS,
-        then a single ACK in response to the peer's SYN+ACK whose
-        SEQ / ACK numbers track the established connection state per
-        RFC 9293 §3.10.7.3.
+        constructed 'TcpSession' from CLOSED through SYN_SENT to
+        ESTABLISHED and emits exactly the prescribed segments for
+        active open: an initial SYN carrying our ISS with MSS /
+        WSCALE options, then a single third-leg ACK in response
+        to the peer's SYN+ACK whose SEQ / ACK numbers track the
+        established connection state.
 
-        Stages observed:
-
-            1. CLOSED + SysCall.CONNECT -> SYN_SENT (no segment yet:
-               the actual transmit is gated on a timer tick, matching
-               production where '_tcp_fsm_closed' only changes state
-               and '_transmit_data' in SYN_SENT does the SYN emit).
-
-            2. Virtual-clock tick fires the SYN_SENT timer handler ->
-               '_transmit_data' detects 'snd_nxt == snd_ini' and
-               sends the initial SYN with seq=ISS, ack=0, our MSS
-               option, and our advertised receive window.
-
-            3. Peer's SYN+ACK arrives -> sanity check (ack==ISS+1,
-               no payload) succeeds, peer's MSS / WSCALE / window are
-               recorded, '_process_ack_packet' advances 'snd_una' and
-               'rcv_nxt', the ACK leg is emitted (seq=ISS+1,
-               ack=peer_ISS+1, no payload) and state moves to
-               ESTABLISHED. The connect-event semaphore is released
-               so a blocked 'connect()' caller would unblock.
-
-        The current implementation passes 'tcp__wscale=0' to
-        '_phtx_tcp' on initial SYN, but '_phtx_tcp' only emits the
-        WSCALE option when the value is truthy ('if tcp__wscale:'),
-        so 0 means 'no WSCALE option on the wire' - this test
-        therefore asserts 'wscale is None' on the outbound SYN. RFC
-        7323 §1.3 specifically permits this (a host that does not
-        support window scaling simply omits the option), so it is a
-        deliberate stylistic choice rather than a bug, and the test
-        documents the contract rather than mandating WSCALE
-        advertisement. A separate test in 'options.py' will assert
-        that we correctly ignore peer-advertised WSCALE since we did
-        not advertise our own (current code does not - 'flag bug').
+        Reference: RFC 9293 §3.5 (Establishing a connection, active open).
+        Reference: RFC 9293 §3.10.7.3 (SYN-SENT segment processing).
         """
 
         # Stage 1: CONNECT syscall.
@@ -305,112 +275,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__syn_ack_with_payload_completes_handshake_and_delivers_data(self) -> None:
         """
-        Ensure that an inbound SYN+ACK carrying piggybacked data
-        completes the active-open handshake AND queues the data per
-        RFC 9293 §3.10.7.3 step 4 -> §3.10.7.4 step 7.
+        Ensure an inbound SYN+ACK carrying piggybacked data
+        completes the active-open handshake AND queues the data:
+        the session transitions to ESTABLISHED, the data is
+        enqueued into '_rx_buffer', RCV.NXT advances past both
+        the SYN's one byte and every byte of payload, and the
+        third-leg ACK acknowledges both.
 
-        RFC 9293 §3.10.7.3 step 4 (SYN-SENT, processing SYN+ACK):
-
-            "If SND.UNA < SEG.ACK =< SND.NXT then enter ESTABLISHED
-             state and continue processing with the variables set
-             ... If there are other controls or text in the segment,
-             then continue processing at the sixth step under
-             Section 3.10.7.4 where the URG bit is checked,
-             otherwise return."
-
-        The "if there are other controls or text" clause is the
-        load-bearing one for piggybacked-data on SYN+ACK: when peer
-        sends data alongside their SYN+ACK (a fast-start
-        optimisation any peer is allowed to use), processing
-        continues into §3.10.7.4 step 7:
-
-            "Once in the ESTABLISHED state, it is possible to
-             deliver segment text to user RECEIVE buffers. Text
-             from segments can be moved into buffers until either
-             the buffer is full or the segment is empty. ... Send
-             an acknowledgment of the form: <SEQ=SND.NXT>
-             <ACK=RCV.NXT><CTL=ACK>."
-
-        Concretely: peer's SYN+ACK with piggybacked data MUST
-        transition us to ESTABLISHED, the data MUST be enqueued
-        into '_rx_buffer' for the application's eventual 'recv()',
-        'RCV.NXT' MUST advance past both the SYN's one byte AND
-        every byte of payload, and we MUST emit a third-leg ACK
-        whose 'ack' field acknowledges both.
-
-        Wire shape of the SYN+ACK-with-data we feed:
-
-            sport   = PEER__PORT
-            dport   = STACK__PORT
-            seq     = PEER__ISS
-            ack     = LOCAL__ISS + 1
-            flags   = {SYN, ACK}
-            payload = b"greetings-from-peer"   (19 bytes)
-
-        Required outbound third-leg ACK shape:
-
-            seq     = LOCAL__ISS + 1
-            ack     = PEER__ISS + 1 + 19      (consumes peer SYN
-                                                + peer payload)
-            flags   = {ACK}
-            payload = b""
-
-        Side effects asserted:
-
-            * 'session.state' is FsmState.ESTABLISHED.
-            * 'session._rx_buffer' equals the payload.
-            * 'session._rcv_nxt' equals 'PEER__ISS + 1 + 19'.
-            * The connect-event semaphore is released.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent' line ~1945-1946
-        in the SYN+ACK handling branch:
-
-            if packet_rx_md.tcp__ack == self._snd_nxt and not packet_rx_md.tcp__data:
-                ...
-                self._change_state(FsmState.ESTABLISHED)
-
-        The 'not packet_rx_md.tcp__data' sanity check rejects any
-        SYN+ACK that carries a payload. The branch body is skipped,
-        the function falls through every other branch (none match a
-        SYN+ACK with data), and returns silently. State stays
-        SYN_SENT, '_rx_buffer' stays empty, 'RCV.NXT' is unchanged
-        (still 0, since '_rcv_ini' was never set), no third-leg ACK
-        is emitted.
-
-        Peer keeps retransmitting their SYN+ACK-with-data on their
-        RTO; PyTCP keeps silently dropping. The connection
-        eventually times out at peer's R2 (~100 s) or via PyTCP's
-        own R2-driven abort.
-
-        Severity: MEDIUM. Affects every peer stack that piggybacks
-        application data on the SYN+ACK as a fast-start
-        optimisation. Symmetric sister of the SYN_RCVD-third-leg-
-        ACK-with-data bug pinned by the test
-        'test__passive_open__third_leg_ack_with_payload_completes_handshake_and_delivers_data'
-        in close__rst.py - same root-cause pattern ('not data'
-        guard on a sanity check that should not gate the state
-        transition), and a single combined fix can address both
-        branches.
-
-        Fix outline (separate commit, paired with the SYN_RCVD
-        sister fix): drop the 'not data' guard from the sanity
-        check, then enqueue any payload into '_rx_buffer' and
-        advance 'RCV.NXT' past the data BEFORE the state
-        transition fires. The shape mirrors the existing LISTEN-
-        side handling for SYN-with-data (see
-        'test__passive_open__syn_with_payload_to_listen_queues_data_and_acks_it').
-
-        Scenario:
-
-            1. CONNECT syscall. Tick to fire the initial SYN.
-            2. Peer responds with SYN+ACK carrying 19-byte
-               payload at 'seq = PEER__ISS, ack = LOCAL__ISS + 1'.
-            3. Drive RX. The session MUST transition to ESTABLISHED
-               and queue the data; the third-leg ACK MUST
-               acknowledge both the SYN and the payload.
-
-        On current code this test fails: the data-bearing SYN+ACK
-        is silently dropped, state stays SYN_SENT.
+        Reference: RFC 9293 §3.10.7.3 (SYN-SENT processing of SYN+ACK with text).
+        Reference: RFC 9293 §3.10.7.4 (ESTABLISHED segment text delivery).
         """
 
         # Stage 1: drive into SYN_SENT and emit the initial SYN.
@@ -444,26 +317,18 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             session.state,
             FsmState.ESTABLISHED,
             msg=(
-                "Per RFC 9293 §3.10.7.3 step 4, an acceptable SYN+ACK "
-                "in SYN_SENT MUST transition the session to "
-                "ESTABLISHED, regardless of whether the segment also "
-                "carries data. Today '_tcp_fsm_syn_sent' line ~1945-"
-                "1946 gates on 'not packet_rx_md.tcp__data', so a "
-                "data-bearing SYN+ACK is silently dropped and the "
-                "session stays in SYN_SENT. Fix: drop the 'not data' "
-                "guard; enqueue the payload into '_rx_buffer' and "
-                "advance 'RCV.NXT' past it before the state "
-                f"transition fires. Got state: {session.state!r}."
+                "An acceptable SYN+ACK in SYN_SENT MUST transition "
+                "the session to ESTABLISHED, regardless of whether "
+                f"the segment carries data. Got state: {session.state!r}."
             ),
         )
         self.assertEqual(
             bytes(session._rx_buffer),
             payload,
             msg=(
-                "Per RFC 9293 §3.10.7.3 step 4 -> §3.10.7.4 step 7, "
-                "the data piggybacked on the SYN+ACK MUST be enqueued "
-                "into '_rx_buffer' so the application can receive it "
-                f"via 'recv()'. Got: {bytes(session._rx_buffer)!r}, "
+                "Data piggybacked on the SYN+ACK MUST be enqueued "
+                "into '_rx_buffer' so the application can receive "
+                f"it via 'recv()'. Got: {bytes(session._rx_buffer)!r}, "
                 f"expected: {payload!r}."
             ),
         )
@@ -471,9 +336,9 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             session._rcv_nxt,
             PEER__ISS + 1 + len(payload),
             msg=(
-                "Per RFC 9293 §3.10.7.4 step 7, 'RCV.NXT' MUST "
-                "advance past BOTH the SYN's one byte AND every byte "
-                f"of payload. Got: {session._rcv_nxt:#x}, expected: "
+                "'RCV.NXT' MUST advance past BOTH the SYN's one "
+                "byte AND every byte of payload. Got: "
+                f"{session._rcv_nxt:#x}, expected: "
                 f"{PEER__ISS + 1 + len(payload):#x}."
             ),
         )
@@ -481,12 +346,9 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             len(tx_frames),
             1,
             msg=(
-                "Per RFC 9293 §3.10.7.4 step 7, after enqueueing the "
-                "SYN+ACK's payload the session MUST emit the third-"
-                "leg ACK so peer learns the data is received. Today "
-                "no outbound ACK is emitted because the data-bearing "
-                "SYN+ACK is silently dropped. Got "
-                f"{len(tx_frames)} TX frame(s)."
+                "After enqueueing the SYN+ACK's payload the session "
+                "MUST emit the third-leg ACK so peer learns the "
+                f"data is received. Got {len(tx_frames)} TX frame(s)."
             ),
         )
         if tx_frames:
@@ -526,45 +388,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__rst_ack_to_outbound_syn_yields_connection_refused(self) -> None:
         """
-        Ensure that when our initial SYN provokes a RST+ACK from the
-        peer (the canonical "connection refused" response a host
-        sends for a SYN to a closed port - see RFC 9293 §3.10.7.2),
-        the SYN_SENT state machine accepts the RST, transitions
-        directly to CLOSED, signals the connect-event semaphore with
-        'ConnError.REFUSED' so 'TcpSession.connect()' would raise
-        'TcpSessionError("Connection refused")' to the caller, and
-        emits no segment in response (RFC 9293 §3.10.7.3 explicitly
-        forbids replying to an RST that has been accepted - doing so
-        would create a RST/RST loop with the peer).
+        Ensure that when our initial SYN provokes an acceptable
+        RST+ACK from the peer (the canonical "connection refused"
+        response), the SYN_SENT state machine accepts the RST,
+        transitions directly to CLOSED, signals the connect-event
+        semaphore with ConnError.REFUSED, emits no segment in
+        response, and unregisters the socket from 'stack.sockets'.
 
-        Required wire-level shape of an acceptable RST in SYN_SENT,
-        per RFC 9293 §3.10.7.3 read in conjunction with the RFC 5961
-        §3 blind-reset mitigation that the same section folds in:
-
-          - The RST and ACK flags must both be set; SYN and FIN must
-            be clear. (A bare RST is dropped because we cannot tell
-            whether it acknowledges our SYN; only a RST+ACK with an
-            acceptable ACK is acted upon.)
-          - The ACK number must equal SND.NXT (i.e. ISS+1). The spec
-            allows SND.UNA < SEG.ACK <= SND.NXT but recommends the
-            stricter '== SND.NXT' check; the current implementation
-            uses the strict form and this test pins that contract.
-          - The SEQ number must equal RCV.NXT, which in SYN_SENT is
-            still 0 because we have not yet seen any peer segment.
-            This is the RFC 5961 mitigation - it prevents an
-            off-window blind RST attacker from tearing down our
-            embryonic connection.
-
-        Side effects asserted post-RST:
-
-          - 'session.state is FsmState.CLOSED'
-          - '_connection_error is ConnError.REFUSED'
-          - '_event__connect.acquire(timeout=0) is True' (the connect
-            syscall is unblocked with the REFUSED signal)
-          - The socket is unregistered from 'stack.sockets' by
-            '_change_state(FsmState.CLOSED)' so subsequent inbound
-            packets to the same 4-tuple are not delivered to the
-            now-dead session.
+        Reference: RFC 9293 §3.10.7.3 (RST acceptance in SYN-SENT).
+        Reference: RFC 5961 §3 (blind RST mitigation).
         """
 
         # Drive the session to SYN_SENT and emit the initial SYN.
@@ -642,90 +474,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__bare_rst_in_syn_sent_dropped_silently_per_rfc_9293_3_10_7_3(self) -> None:
         """
-        Ensure that a peer-issued BARE RST (RST flag set, ACK flag
-        cleared) arriving in SYN_SENT is dropped silently per RFC
-        9293 §3.10.7.3 step 2, regardless of the seq/ack values
-        carried on the segment. SYN_SENT's RST handling is
-        DIFFERENT from the synchronized states' rule precisely
-        because we have no way to validate that a bare RST was
-        issued in response to OUR SYN versus injected by an
-        off-path attacker - the spec mandates we wait for the
-        explicit RST+ACK confirmation.
+        Ensure a peer-issued BARE RST (RST flag set, ACK flag
+        cleared) arriving in SYN_SENT is dropped silently
+        regardless of the seq/ack values carried on the
+        segment. SYN_SENT lacks an established window so the
+        only way to bind a RST to our connection is via the
+        ACK field — a bare RST has no acceptable-ACK path so
+        the spec mandates dropping it.
 
-        RFC 9293 §3.10.7.3 step 2 (SYN-SENT, RST handling):
-
-            "If the RST bit is set,
-              If the ACK was acceptable then signal the user
-              'error: connection reset', drop the segment, enter
-              CLOSED state, delete TCB, and return.
-              Otherwise (no ACK), drop the segment and return."
-
-        Note the explicit "Otherwise (no ACK), drop the segment
-        and return" clause: bare RST in SYN_SENT is dropped, not
-        accepted. This DIFFERS from the synchronized-state rule
-        in §3.10.7.4 where bare RST IS valid (subject to the
-        SEG.SEQ window check). The asymmetry is deliberate:
-
-          - Synchronized states have an established RCV.NXT, so a
-            bare RST's seq can be window-validated against the
-            same 32-bit window an attacker would need to guess.
-          - SYN_SENT has no established window yet. The only way
-            to bind the RST to OUR connection is via SEG.ACK
-            (which must equal SND.NXT = ISS + 1). A bare RST has
-            no acceptable-ACK path, so the only safe action is to
-            drop it.
-
-        This test acts as a positive-control regression guard
-        against a future "uniform fix" that loosens the SYN_SENT
-        predicate from 'all({tcp__flag_rst, tcp__flag_ack})' to
-        bare 'tcp__flag_rst' alongside the (correct) loosening
-        in the five synchronized-state branches (ESTABLISHED /
-        FIN_WAIT_1 / FIN_WAIT_2 / CLOSING / LAST_ACK). The
-        SYN_SENT branch's strict 'all({rst, ack})' predicate is
-        intentional and must NOT be uniformly relaxed.
-
-        The danger is concrete: today the SYN_SENT branch has an
-        inner sanity check 'tcp__seq == 0 and tcp__ack ==
-        self._snd_nxt'. A bare RST with ack = LOCAL__ISS + 1
-        carries an "acceptable-looking" ack value (the ACK flag
-        is cleared, so the value is a wire-level field whose
-        contents the spec says should be ignored). Today's outer
-        predicate filters out bare RSTs before the inner check
-        ever runs. If the predicate is loosened uniformly, the
-        bare RST enters the branch, the inner check
-        ('seq==0 and ack==SND.NXT') passes for a peer that
-        constructs the segment to look acceptable, and the
-        connection silently transitions to CLOSED - giving an
-        off-path blind-RST attacker a tool to abort embryonic
-        connections.
-
-        Scenario:
-
-            1. Drive into SYN_SENT and emit our SYN.
-            2. Peer sends a BARE RST (flags={"RST"}, ACK flag
-               CLEARED) at SEQ = 0 and ACK = LOCAL__ISS + 1
-               (the value that, paired with the ACK flag, would
-               make the canonical RST+ACK acceptable).
-            3. Drive RX. The session MUST stay in SYN_SENT, MUST
-               NOT release the connect-event semaphore, MUST NOT
-               record any '_connection_error', and MUST NOT
-               unregister the socket from 'stack.sockets'.
-
-        Assertions:
-
-            * State remains SYN_SENT.
-            * '_connection_error' is still 'ConnError.NONE'.
-            * '_event__connect.acquire(timeout=0)' returns False
-              (semaphore was not released by an erroneous abort).
-            * Socket still registered in 'stack.sockets'.
-            * No outbound segment is produced.
-
-        This test PASSES on current code as a positive-control
-        regression guard. It is the companion to the five
-        '[FLAGS BUG]' bare-RST tests in close__rst.py /
-        close__simultaneous.py: those motivate loosening the
-        predicate in five branches, this test pins the SYN_SENT
-        branch's strict-ACK predicate as INTENTIONAL.
+        Reference: RFC 9293 §3.10.7.3 (RST handling in SYN-SENT, "no ACK" branch).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -819,52 +576,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
     def test__active_open__silent_peer_retransmits_per_rfc6298_until_r2(self) -> None:
         """
         Ensure that when the peer never replies to our SYN, the
-        SYN_SENT state machine retransmits at the cadence prescribed
-        by RFC 6298 §2 (initial RTO 1 s, doubling on every retry) and
+        SYN_SENT state machine retransmits at the prescribed
+        cadence (initial RTO 1 s, doubling on every retry) and
         does NOT abort the connection before R2 = 100 s of total
-        elapsed time has been exhausted (RFC 9293 §3.8.3 incorporating
-        RFC 1122 §4.2.3.5: "R2 SHOULD correspond to at least 100
-        seconds").
+        elapsed time has been exhausted. By t = 60 s we observe at
+        least six SYN transmissions and the session is still in
+        SYN_SENT.
 
-        Concretely, the RFC-compliant cadence over the first 60
-        seconds of silence must produce SYN retransmits at
-        approximately:
-
-            t =   0 s   initial SYN
-            t =   1 s   1st retransmit (RTO = 1 s)
-            t =   3 s   2nd retransmit (RTO doubled to 2 s)
-            t =   7 s   3rd retransmit (RTO doubled to 4 s)
-            t =  15 s   4th retransmit (RTO doubled to 8 s)
-            t =  31 s   5th retransmit (RTO doubled to 16 s)
-            t =  63 s   6th retransmit (RTO doubled to 32 s)
-
-        i.e. by t = 60 s we must have observed at least six SYN
-        transmissions (the initial plus five retransmits) and the
-        session must STILL be in SYN_SENT - the spec floor on R2 is
-        100 s, well beyond 60 s.
-
-        Each retransmit must reuse our ISS as SEQ (we are
-        retransmitting the SAME segment, not opening a new
-        connection) and must carry the SYN flag with the same option
-        block we originally advertised.
-
-        [FLAGS BUG] - RFC 9293 §3.8.3 deviation
-        ----------------------------------------------------------
-        The current 'tcp__session.py' uses
-        'PACKET_RETRANSMIT_MAX_COUNT = 3' and aborts the session at
-        the third retransmit's timer expiry. With the doubling
-        cadence above, that means the session is forced to CLOSED at
-        roughly t = 15 s (after 1 + 2 + 4 + 8 = 15 s of cumulative
-        retransmit timeouts), more than 6x earlier than R2 = 100 s
-        permits. A blocked 'connect()' caller therefore sees a
-        connection-timeout error far sooner than RFC 9293 / RFC 1122
-        promise.
-
-        This test pins the RFC-compliant behaviour and is expected to
-        FAIL on the current implementation; the failure is the proof
-        of the bug. Fixing it requires raising the retransmit limit
-        (or, better, switching to a wall-clock R2 budget) so total
-        elapsed time before abort is at least 100 s.
+        Reference: RFC 6298 §5.5 (binary backoff).
+        Reference: RFC 1122 §4.2.3.5 (R2 >= 100 s before connection abort).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -954,68 +674,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__retransmitted_syn_ack_in_established_emits_challenge_ack(self) -> None:
         """
-        Ensure that when a peer's third-leg ACK gets lost in flight
-        and the peer retransmits its SYN+ACK while we have already
-        moved to ESTABLISHED, we respond with a "challenge ACK" per
-        RFC 9293 §3.10.7.4 (folding RFC 5961 §4) rather than silently
-        dropping the segment, tearing down the connection, or
-        attempting a fresh handshake.
+        Ensure that when a peer's third-leg ACK gets lost in
+        flight and the peer retransmits its SYN+ACK while we
+        have already moved to ESTABLISHED, we respond with a
+        challenge ACK keyed to our current SND.NXT / RCV.NXT
+        rather than silently dropping the segment. State
+        remains ESTABLISHED and SND.UNA / RCV.NXT are unchanged.
 
-        Wire shape of the retransmitted SYN+ACK:
-
-            seq = peer_ISS                   (peer is replaying their
-                                              original handshake segment,
-                                              not advancing)
-            ack = our_ISS + 1                (still acknowledges only our
-                                              SYN, not any data)
-            flags = {SYN, ACK}
-
-        From the peer's perspective, this is a perfectly legal
-        retransmission - their RTO fired before they observed our
-        third-leg ACK. From our perspective in ESTABLISHED, however,
-        the SYN flag set on a segment from an already-established
-        4-tuple is suspicious. RFC 5961 §4 (which RFC 9293 §3.10.7.4
-        incorporates verbatim) prescribes:
-
-            "a challenge ACK MUST be sent ... [carrying] the values
-             SND.NXT and RCV.NXT for SEG.SEQ and SEG.ACK, respectively"
-
-        In other words: respond with a normal ACK keyed to our
-        current connection state. This serves two purposes -
-        (a) if the peer was legitimately retransmitting, our challenge
-        ACK satisfies them and the connection continues normally;
-        (b) if the SYN was forged by an attacker who guessed the
-        4-tuple but did not observe our ISN, the challenge ACK gives
-        the legitimate peer a chance to RST the spoofed segment.
-
-        Required side effects:
-
-            * Exactly one outbound segment, an ACK with
-              flags = {ACK}, seq = SND.NXT (= our_ISS + 1),
-              ack = RCV.NXT (= peer_ISS + 1), payload = b"".
-            * 'session.state' remains 'FsmState.ESTABLISHED'.
-            * 'session._snd_una' / '_rcv_nxt' unchanged - the
-              retransmitted SYN+ACK is acknowledging data we already
-              processed; reprocessing it would double-count the SYN's
-              one-byte sequence space and corrupt our window.
-
-        [FLAGS BUG] - RFC 9293 §3.10.7.4 / RFC 5961 §4 deviation
-        ----------------------------------------------------------
-        '_tcp_fsm_established' has no branch matching SYN+ACK; the
-        outer receive-window check
-        '_rcv_nxt <= seg.seq <= _rcv_nxt + _rcv_wnd - len(data)'
-        rejects the retransmission outright (the peer's seq =
-        peer_ISS is one byte before our _rcv_nxt = peer_ISS + 1)
-        and the handler returns silently, emitting nothing. The peer
-        receives no acknowledgement, retries on its own RTO, and may
-        eventually give up and RST the connection. The connection
-        looks established to us but is functionally one-way until the
-        peer either gets through with data we ACK directly or aborts.
-
-        This test is expected to FAIL on current code. Fixing it
-        requires adding a SYN-on-established branch that emits the
-        challenge ACK before the receive-window check trims the
-        segment.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1111,64 +778,14 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__bare_ack_with_unacceptable_ack_in_syn_sent_emits_rst(self) -> None:
         """
-        Ensure that a bare ACK (no SYN, no RST, no FIN) arriving in
-        SYN_SENT with an UNACCEPTABLE acknowledgement number triggers
-        the RFC 9293 §3.10.7.3 step 1 response: emit a RST whose
-        sequence number is the offending SEG.ACK, then discard the
-        segment. The session must remain in SYN_SENT - this kind of
-        spurious ACK does not signal that the peer believes the
-        connection is up, so we keep waiting for a legitimate
-        SYN+ACK and continue retransmitting our SYN on the normal
-        cadence.
+        Ensure a bare ACK (no SYN, no RST, no FIN) arriving in
+        SYN_SENT with an unacceptable ACK number triggers an
+        outbound bare RST whose sequence number is the offending
+        SEG.ACK and that the segment is then discarded. The
+        session remains in SYN_SENT and SND.UNA / SND.NXT are
+        unchanged.
 
-        Wire shape of the spurious bare ACK we feed:
-
-            seq   = 0       (peer has not sent any prior segment from
-                             our perspective; arbitrary in this case)
-            ack   = 0       (clearly unacceptable: 0 <= ISS = 0x1000)
-            flags = {ACK}   (no SYN, no RST, no FIN)
-
-        Acceptability test per RFC 9293 §3.10.7.3 step 1 requires
-        'SND.UNA < SEG.ACK =< SND.NXT'. In SYN_SENT after our initial
-        SYN, SND.UNA = ISS and SND.NXT = ISS + 1, so the only
-        acceptable ACK value is ISS + 1; any other value triggers the
-        reset path.
-
-        Required outbound RST shape (RFC 9293 §3.10.7.3 step 1
-        verbatim: '<SEQ=SEG.ACK><CTL=RST>'):
-
-            seq     = SEG.ACK   (i.e. 0 in this test, the bogus value
-                                 we received - we echo it back to make
-                                 absolutely clear which segment we are
-                                 rejecting)
-            ack     = 0         (RST does not acknowledge anything)
-            flags   = {RST}     (no ACK flag - the spec form is bare
-                                 RST, not RST+ACK)
-            payload = b""
-
-        And critically:
-
-            * 'session.state' remains 'FsmState.SYN_SENT' - a spurious
-              ACK is not a connection event; only an RST or a valid
-              SYN(+ACK) changes our state from SYN_SENT.
-            * 'session._snd_una' is unchanged - the bogus ACK
-              acknowledged nothing we sent.
-
-        [FLAGS BUG] - RFC 9293 §3.10.7.3 step 1 deviation
-        ----------------------------------------------------------
-        '_tcp_fsm_syn_sent' has only three packet-driven branches:
-        SYN+ACK, bare SYN (simultaneous open), and RST+ACK. A bare
-        ACK matches none of them and falls through to the bottom of
-        the function unprocessed. No RST is emitted, the segment is
-        silently dropped, and the spurious peer is free to repeat.
-        Worse, an attacker who can guess our 4-tuple but not our ISS
-        can send forged ACK floods knowing they will be ignored
-        rather than visibly rejected.
-
-        This test is expected to FAIL on current code. Fixing it
-        requires a bare-ACK branch in '_tcp_fsm_syn_sent' that
-        evaluates 'SND.UNA < seg.ack <= SND.NXT' and, on rejection,
-        emits the spec'd <SEQ=SEG.ACK><CTL=RST> reply.
+        Reference: RFC 9293 §3.10.7.3 (step 1 ACK acceptability in SYN-SENT).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1252,75 +869,13 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__syn_ack_with_unacceptable_ack_in_syn_sent_emits_rst(self) -> None:
         """
-        Ensure that a SYN+ACK arriving in SYN_SENT whose ACK number
-        is outside the acceptable window '(SND.UNA, SND.NXT]' is
-        rejected per RFC 9293 §3.10.7.3 step 1: a bare RST with
-        '<SEQ=SEG.ACK><CTL=RST>' is emitted, the segment is
-        discarded, and the session stays in SYN_SENT to keep waiting
-        for a legitimate SYN+ACK from the real peer.
+        Ensure a SYN+ACK arriving in SYN_SENT whose ACK number is
+        outside the acceptable window '(SND.UNA, SND.NXT]' is
+        rejected: a bare RST with seq=SEG.ACK is emitted, the
+        segment is discarded, and the session stays in SYN_SENT
+        without releasing the connect-event semaphore.
 
-        This is the SYN-bit-set sibling of the bare-ACK case in the
-        previous test. RFC 9293 §3.10.7.3 specifies the ACK
-        acceptability check (step 1) BEFORE the RST check (step 2),
-        the security check (step 3), and the SYN check (step 4) - in
-        other words, the presence of the SYN flag does not exempt the
-        peer from sending an acceptable ACK. A SYN+ACK with a bogus
-        ACK number is just as malformed as a bare ACK with the same
-        bogus value, and gets the same RFC response.
-
-        Wire shape of the rogue SYN+ACK we feed:
-
-            seq   = peer_ISS  (legitimate-looking sender ISN)
-            ack   = 0xDEADBEEF  (clearly outside (ISS, ISS+1])
-            flags = {SYN, ACK}
-
-        The acceptability test 'SND.UNA < SEG.ACK <= SND.NXT' folds
-        into 'SEG.ACK == ISS+1' in SYN_SENT, so any other value
-        (whether linearly larger like '0xDEADBEEF', linearly smaller
-        like '0', or modularly distant) triggers the reset path.
-        Choosing '0xDEADBEEF' makes the offending value visually
-        unambiguous in failure messages and packet captures.
-
-        Required outbound RST shape (RFC 9293 §3.10.7.3 step 1):
-
-            seq     = SEG.ACK = 0xDEADBEEF
-            ack     = 0                    (no ACK flag set)
-            flags   = {RST}                (bare RST, NOT RST+ACK)
-            payload = b""
-
-        Side effects asserted:
-
-            * 'session.state' remains 'FsmState.SYN_SENT'. Crucially,
-              we do NOT transition to ESTABLISHED - the SYN we
-              ostensibly received must be discarded along with the
-              bogus ACK because step 1's "discard the segment" applies
-              to the whole segment, not just its ACK field.
-            * 'session._snd_una' and '_rcv_nxt' are unchanged: we did
-              not process the SYN, so peer's ISN is not recorded; we
-              did not consume any of our own sequence space, so
-              '_snd_una' stays at ISS.
-            * '_event__connect' is NOT released - 'connect()' must
-              keep blocking; spurious SYN+ACK from a wrong peer is not
-              a connection event.
-
-        [FLAGS BUG] - RFC 9293 §3.10.7.3 step 1 deviation
-        ----------------------------------------------------------
-        The SYN+ACK branch in '_tcp_fsm_syn_sent' tests
-        'tcp__ack == self._snd_nxt' as an inner sanity check; if it
-        fails, the branch silently 'falls through' to the next
-        if-block and ultimately the function returns without action.
-        No RST is emitted. An attacker (or a misconfigured peer) can
-        therefore send streams of malformed SYN+ACKs and we will
-        ignore them rather than visibly rejecting them, prolonging
-        the SYN_SENT window in which the legitimate peer might
-        otherwise win the race.
-
-        This test is expected to FAIL on current code. Fixing it
-        requires lifting step 1 (ACK-acceptability + RST) out of the
-        per-flag-combination branches and running it as the very
-        first thing the SYN_SENT handler does on every incoming
-        ACK-bearing segment - matching the order RFC 9293 §3.10.7.3
-        prescribes.
+        Reference: RFC 9293 §3.10.7.3 (step 1 ACK acceptability in SYN-SENT).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1425,87 +980,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
         """
         Ensure that when an active-open caller is blocked on
         '_event__connect' and the session traverses
-        SYN_SENT → SYN_RCVD (via the simultaneous-open path -
-        peer's bare SYN crossing our outbound SYN) → CLOSED
-        (via peer RST), the connect-event semaphore is
-        released with 'ConnError.REFUSED'. Today the SYN_RCVD
-        RST handler only calls '_change_state(CLOSED)' and
-        leaves the blocked 'connect()' caller hanging on the
-        semaphore forever.
+        SYN_SENT → SYN_RCVD (via the simultaneous-open path)
+        → CLOSED (via peer RST), the connect-event semaphore
+        is released with ConnError.REFUSED so the blocked
+        connect() caller unblocks rather than hanging forever.
 
-        RFC 9293 §3.10.7.4 (synchronized state RST handling):
-
-            "If the RST bit is set then ... any outstanding
-             RECEIVEs and SEND should receive 'reset'
-             responses. ... Users should also receive an
-             unsolicited general 'connection reset' signal."
-
-        SYN-RECEIVED is a synchronized state, and the active-
-        open caller blocked on 'connect()' is the analog of
-        the "outstanding RECEIVE" the spec calls out. Failing
-        to release the semaphore violates the contract and
-        produces an application-level deadlock.
-
-        Threat model: a peer that opens connections
-        simultaneously and then resets them (legitimately or
-        adversarially) can pin our 'connect()' callers in a
-        blocked-forever state. The SYN_SENT RST handler
-        already releases the semaphore correctly (commit
-        '9a1d7f5' precedent / line 2032 of 'tcp__session.py');
-        SYN_RCVD's two RST branches (RST+ACK and bare RST)
-        do not.
-
-        Scenario:
-
-            1. Build active-open session with LOCAL__ISS.
-               Issue CONNECT. Tick once to emit SYN.
-               State = SYN_SENT.
-            2. Verify the connect-event semaphore is NOT yet
-               released - sanity for the "blocked connect"
-               precondition.
-            3. Peer sends a bare SYN (no ACK) - the
-               simultaneous-open trigger. SYN_SENT's SYN-only
-               branch transitions to SYN_RCVD and emits a
-               SYN+ACK.
-            4. Verify the connect-event semaphore is STILL
-               not released - we are still mid-handshake.
-            5. Peer sends RST+ACK with seq=PEER_ISS+1 (=
-               RCV.NXT), ack=LOCAL__ISS+1 (= SND.NXT).
-               Session transitions SYN_RCVD → CLOSED.
-
-        Assertions:
-
-            * State is CLOSED.
-            * 'session._connection_error' is
-              'ConnError.REFUSED' so a blocked
-              'TcpSession.connect()' caller receives the
-              'TcpSessionError("Connection refused")'
-              propagation rather than a generic timeout or
-              an indefinite hang.
-            * 'session._event__connect.acquire(timeout=0)'
-              returns True - the semaphore was released, the
-              blocked caller would unblock.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd's RST and
-        RST+ACK branches (line ~2123 and ~2143) call only
-        '_change_state(FsmState.CLOSED)' and 'return'. They
-        do not set '_connection_error' and do not release
-        '_event__connect'. This contrasts with
-        '_tcp_fsm_syn_sent's RST+ACK handler (line ~2032)
-        which correctly does both.
-
-        Fix outline (separate commit):
-
-            Mirror the SYN_SENT shape - on RST acceptance in
-            SYN_RCVD, set
-            'self._connection_error = ConnError.REFUSED' and
-            call 'self._event__connect.release()' before the
-            state transition. The release on a non-blocked
-            semaphore is harmless (Semaphore.release() just
-            increments the counter), so a single fix applies
-            uniformly to both the active-open simultaneous-
-            open caller (blocked) and the passive-open
-            listener-fork child (not blocked).
+        Reference: RFC 9293 §3.10.7.4 (RST handling in synchronized states).
         """
 
         # Step 1: drive active-open to SYN_SENT and emit our SYN.
@@ -1642,106 +1122,14 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
     def test__active_open__simultaneous_open_bootstraps_peer_state_from_bare_syn(self) -> None:
         """
         Ensure that when peer's bare SYN crosses our outbound
-        SYN (the simultaneous-open path per RFC 9293 §3.5.1
-        figure 8), the SYN+ACK we emit acknowledges peer's
-        SYN sequence number AND we bootstrap peer-derived
-        session state from peer's SYN options - mirroring the
-        passive-open / listener-fork pattern in
-        '_tcp_fsm_listen' (line ~1709-1747).
+        SYN (simultaneous-open), the SYN+ACK we emit reuses
+        our original SYN's seq, acknowledges peer's SYN
+        (ack=PEER_ISS+1), and we bootstrap peer-derived state
+        (_rcv_nxt, _rcv_ini, _snd_mss clamp, _snd_wnd,
+        _peer_contacted) from peer's SYN options. State
+        transitions to SYN_RCVD.
 
-        RFC 9293 §3.5.1 (Simultaneous Connection Synchronization):
-
-            "[The simultaneous-open] sequence of events is
-             illustrated in Figure 8. ... The principal reason
-             for the three-way handshake is to prevent old
-             duplicate connection initiations from causing
-             confusion."
-
-        The third leg of the handshake requires our SYN+ACK
-        to carry 'ack = peer_isn + 1' so peer accepts it as
-        the acknowledgment of their SYN. Without this,
-        peer's TCP rejects the SYN+ACK as not acknowledging
-        their SYN, and the connection never establishes -
-        both ends sit in SYN_SENT / SYN_RCVD until R2 fires.
-
-        Equivalently: 'self._rcv_nxt' MUST be advanced past
-        peer's SYN seq (to 'peer_isn + 1') before the SYN+ACK
-        is emitted, and various peer-derived bookkeeping
-        ('_rcv_ini', '_snd_mss' clamp, '_snd_wnd', WSCALE /
-        SACK negotiation, '_peer_contacted' flag) MUST also
-        be initialised from peer's SYN options - the
-        listener-fork pattern at '_tcp_fsm_listen' lines
-        ~1709-1747 does all of this.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent's SYN-only
-        branch (line ~2024-2029):
-
-            if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
-                self._transmit_packet(flag_syn=True, flag_ack=True)
-                self._change_state(FsmState.SYN_RCVD)
-                return
-
-        … doesn't bootstrap any peer-side state. The
-        '_transmit_packet' call uses the default 'ack =
-        self._rcv_nxt = 0' (the __init__ value) so the
-        SYN+ACK we emit has 'ack=0' - peer rejects it. The
-        SYN+ACK's 'seq' also defaults to 'self._snd_nxt =
-        LOCAL__ISS + 1' (post-original-SYN advance) instead
-        of 'LOCAL__ISS' (peer expected our same SYN seq with
-        their ACK piggybacked).
-
-        Severity: HIGH for simultaneous-open scenarios - the
-        path is completely broken. Probability: rare in
-        practice because most TCP stacks don't trigger
-        simultaneous open, but when it does happen the
-        handshake silently fails until R2 expires (~127 s).
-
-        Fix outline (separate commit):
-
-            Mirror the listener-fork bootstrap pattern from
-            '_tcp_fsm_listen' lines ~1709-1747:
-
-              - Clamp '_snd_mss' to peer's MSS bound.
-              - Set '_snd_wnd = packet_rx_md.tcp__win'.
-              - Run WSCALE / SACK bilateral negotiation on
-                peer's options.
-              - Set '_rcv_ini = packet_rx_md.tcp__seq' and
-                '_rcv_nxt = add32(peer_seq, 1)'.
-              - Set '_peer_contacted = True' (Bug C's
-                companion - same flag introduced for #3).
-              - Call '_transmit_packet(flag_syn=True,
-                flag_ack=True, seq=self._snd_ini)' so the
-                SYN+ACK consumes the same seq as our
-                original SYN, not advances past it.
-
-        Scenario:
-
-            1. Build active-open session with LOCAL__ISS.
-               Issue CONNECT. Tick once to emit SYN.
-               State = SYN_SENT.
-            2. Peer sends bare SYN with seq=PEER__ISS,
-               win=PEER__WIN, mss=PEER__MSS. Drive RX.
-            3. Inspect inline TX (the SYN+ACK we should
-               emit) and inspect bootstrapped session state.
-
-        Assertions:
-
-            * Exactly one outbound segment fires (the
-              SYN+ACK).
-            * SYN+ACK 'seq = LOCAL__ISS' (reuses our
-              original SYN's seq; doesn't advance past).
-            * SYN+ACK 'ack = PEER__ISS + 1' (acknowledges
-              peer's SYN).
-            * 'session._rcv_nxt == PEER__ISS + 1'.
-            * 'session._rcv_ini == PEER__ISS'.
-            * 'session._snd_mss == PEER__MSS' (clamped to
-              peer's MSS).
-            * 'session._snd_wnd == PEER__WIN'.
-            * 'session._peer_contacted is True'.
-            * State is SYN_RCVD.
-
-        Today the SYN+ACK has 'ack=0' (the most observable
-        symptom) and none of the bootstrapped state is set.
+        Reference: RFC 9293 §3.5 (simultaneous connection synchronization).
         """
 
         # Step 1: drive active-open to SYN_SENT and emit SYN.
@@ -1863,106 +1251,15 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__simultaneous_open_completes_to_established_without_parent_socket(self) -> None:
         """
-        Ensure the simultaneous-open path completes the three-way
-        handshake to ESTABLISHED when peer's third-leg ACK
-        arrives, releasing the connect-event semaphore so the
-        blocked active-open caller unblocks. The session has NO
-        parent socket (it was created via 'TcpSocket(family=...)'
-        directly, not via the listener-fork pattern), so the
-        SYN_RCVD ACK-only handler MUST NOT assert
+        Ensure the simultaneous-open path completes the
+        three-way handshake to ESTABLISHED when peer's
+        third-leg ACK arrives. The blocked active-open caller
+        unblocks (the connect-event semaphore is released)
+        even though the session has no parent socket — the
+        SYN_RCVD ACK-only handler must not assert that
         '_parent_socket is not None'.
 
-        RFC 9293 §3.5.1 Figure 8 (Simultaneous Connection
-        Synchronization):
-
-            "TCP A                                            TCP B
-             1.  CLOSED                                       CLOSED
-             2.  SYN-SENT  --> <SEQ=100><CTL=SYN>             ...
-             3.  SYN-RECEIVED <-- <SEQ=300><CTL=SYN>          <-- SYN-SENT
-             ...
-             5.  ESTABLISHED <-- <SEQ=300><ACK=101><CTL=SYN,ACK> <-- SYN-RECEIVED
-             ..."
-
-        Step 5 (peer's third leg) is what this test drives. The
-        FSM must transition to ESTABLISHED and unblock the
-        active-open CONNECT caller.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd' lines
-        ~2148-2158 unconditionally fetch and assert the
-        parent socket:
-
-            self._change_state(FsmState.ESTABLISHED)
-            parent_socket = self._socket._parent_socket
-            assert parent_socket is not None, "child TcpSocket must always have a parent_socket set"
-            parent_socket._tcp_accept.append(self._socket)
-            parent_socket._event__tcp_session_established.release()
-            self._event__connect.release()
-            return
-
-        For active-open simultaneous-open the socket has no
-        parent ('_parent_socket = None' set in
-        'TcpSocket.__init__'); the assert fires and the test
-        crashes with an 'AssertionError'. This bug was hidden
-        before commit '9ecdd42' (Bug C fix) because the
-        simultaneous-open SYN+ACK we previously emitted carried
-        'ack=0' (the uninitialised '_rcv_nxt' default), peer's
-        TCP rejected it, and the third-leg ACK never arrived -
-        so this code path was unreachable. Closing Bug C made
-        the path reachable in this new way.
-
-        Severity: HIGH for simultaneous-open scenarios. The path
-        was 'silently broken' before; now it 'crashes with
-        AssertionError'. Either way the active-open caller
-        cannot complete a simultaneous-open handshake.
-
-        The comment immediately AFTER the assert
-        ("'_event__connect.release()': this is needed only in
-        case of tcp simultaneous open") acknowledges that
-        simultaneous open exists, but the assert above
-        contradicts that awareness - the parent_socket lookup
-        is unconditional even though the comment knows
-        simultaneous open won't have one.
-
-        Fix outline (separate commit):
-
-            Gate the parent-socket plumbing on its presence:
-
-                self._change_state(FsmState.ESTABLISHED)
-                parent_socket = self._socket._parent_socket
-                if parent_socket is not None:
-                    parent_socket._tcp_accept.append(self._socket)
-                    parent_socket._event__tcp_session_established.release()
-                self._event__connect.release()
-                return
-
-            Active-open simultaneous-open has no parent socket
-            but DOES need the connect-event release; passive-
-            open listener-fork has both. The 'if not None'
-            gate handles both paths uniformly.
-
-        Scenario:
-
-            1. Build active-open session with LOCAL__ISS.
-               Issue CONNECT. Tick once to emit SYN. State
-               = SYN_SENT.
-            2. Peer sends bare SYN (simultaneous-open
-               trigger). Post-Bug-C-fix the handler
-               bootstraps peer state, emits SYN+ACK, and
-               transitions to SYN_RCVD.
-            3. Peer sends third-leg ACK (acks our SYN+ACK).
-               Drive RX.
-
-        Assertions:
-
-            * Driving the third-leg ACK must NOT raise
-              (today: AssertionError fires).
-            * State is ESTABLISHED.
-            * 'session._event__connect.acquire(timeout=0)'
-              returns True (semaphore released, blocked
-              CONNECT would unblock).
-            * '_socket._parent_socket' is None (sanity check
-              of the precondition that distinguishes active-
-              from passive-open).
+        Reference: RFC 9293 §3.5 (simultaneous connection synchronization).
         """
 
         # Step 1: drive active-open to SYN_SENT and emit SYN.
@@ -2059,71 +1356,14 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__close_in_syn_sent_unblocks_connect_with_canceled(self) -> None:
         """
-        Ensure that 'close()' issued mid-handshake from SYN_SENT
-        releases the connect-event semaphore with the dedicated
-        'ConnError.CANCELED' signal, so a blocked
-        'TcpSession.connect()' caller (typically a different
-        thread) unblocks with
-        'TcpSessionError("Connection canceled")' rather than
-        hanging forever on the dead session.
+        Ensure 'close()' issued mid-handshake from SYN_SENT
+        releases the connect-event semaphore with the
+        dedicated ConnError.CANCELED signal, so a blocked
+        connect() caller (typically a different thread)
+        unblocks with TcpSessionError("Connection canceled")
+        rather than hanging forever on the dead session.
 
-        RFC 9293 §3.10.4 (CLOSE call) governs the close-during-
-        connect transition. PyTCP's SYN_SENT close handler
-        moves state to CLOSED but does not signal the blocked
-        connect caller; without an explicit unblock the calling
-        thread sits on '_event__connect.acquire()' until the
-        application is killed.
-
-        Threat model: a multi-threaded application with one
-        thread blocked on 'connect()' and another that calls
-        'close()' (e.g. shutdown initiated from a control
-        plane) hangs the connect thread. PyTCP doesn't ship a
-        wrapper that triggers this today, but downstream users
-        wrapping the session in 'asyncio' / 'concurrent.futures'
-        could trip the race.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_sent's CLOSE
-        syscall handler (line ~2049):
-
-            if syscall is SysCall.CLOSE:
-                self._change_state(FsmState.CLOSED)
-                return
-
-        … doesn't set '_connection_error' and doesn't release
-        '_event__connect'. The session is unregistered from
-        'stack.sockets' but the connect-blocked thread is left
-        hanging.
-
-        Severity: LOW (rare race - requires multi-threaded
-        app to exhibit) but real correctness gap.
-
-        Fix outline (separate commit):
-
-          - Add 'ConnError.CANCELED' enum value (semantically
-            distinct from REFUSED 'peer-side rejection' and
-            TIMEOUT 'R2 expired').
-          - Add a corresponding branch in 'TcpSession.connect()'
-            so the canceled-error raises
-            'TcpSessionError("Connection canceled")'.
-          - SYN_SENT close handler: set
-            '_connection_error = ConnError.CANCELED', call
-            '_event__connect.release()', then transition to
-            CLOSED.
-
-        Scenario:
-
-            1. Build active-open session with LOCAL__ISS.
-               Issue CONNECT. Tick once to emit SYN. State =
-               SYN_SENT. '_event__connect' is NOT yet
-               released.
-            2. Issue CLOSE syscall while still in SYN_SENT.
-
-        Assertions:
-
-            * State is CLOSED.
-            * 'session._connection_error is ConnError.CANCELED'.
-            * 'session._event__connect.acquire(timeout=0)' is
-              True.
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -2183,49 +1423,13 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__close_in_syn_rcvd_unblocks_connect_with_canceled(self) -> None:
         """
-        Ensure that 'close()' issued mid-handshake from
-        SYN_RCVD (reached via simultaneous open) releases the
-        connect-event semaphore with 'ConnError.CANCELED' so a
-        blocked CONNECT caller unblocks. Same gap class as the
-        SYN_SENT sibling above.
+        Ensure 'close()' issued mid-handshake from SYN_RCVD
+        (reached via simultaneous open) releases the connect-
+        event semaphore with ConnError.CANCELED so a blocked
+        CONNECT caller unblocks. State transitions to
+        FIN_WAIT_1 per the close-during-handshake path.
 
-        SYN_RCVD's CLOSE handler currently transitions to
-        FIN_WAIT_1 to drive the post-half-close FIN exchange,
-        but doesn't signal the blocked CONNECT caller. The
-        eventual transition to CLOSED via the FIN exchange
-        also doesn't release '_event__connect' (none of the
-        FIN_WAIT_1 / FIN_WAIT_2 / TIME_WAIT handlers do), so
-        the CONNECT caller remains blocked through the entire
-        graceful-close lifecycle.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd's CLOSE
-        syscall handler (line ~2207):
-
-            if syscall is SysCall.CLOSE:
-                self._change_state(FsmState.FIN_WAIT_1)
-                return
-
-        … doesn't set '_connection_error' or release
-        '_event__connect'.
-
-        Fix outline: same shape as SYN_SENT's CLOSE handler
-        fix - set 'CANCELED', release semaphore, then
-        transition.
-
-        Scenario:
-
-            1. Drive active-open to SYN_SENT, emit SYN.
-            2. Peer's bare SYN crosses ours -> SYN_RCVD
-               (simultaneous open).
-            3. Issue CLOSE while in SYN_RCVD.
-
-        Assertions:
-
-            * State is FIN_WAIT_1.
-            * 'session._connection_error is
-              ConnError.CANCELED'.
-            * 'session._event__connect.acquire(timeout=0)' is
-              True.
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing in SYN-RECEIVED).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -2288,13 +1492,16 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
     def test__active_open__outbound_syn_carries_tsopt_wscale_sackperm_together(self) -> None:
         """
-        Cross-RFC regression guard (Phase B1 of the test-coverage
-        audit): the active-open SYN MUST simultaneously carry
-        MSS (RFC 6691), WSCALE (RFC 7323 §2), TSopt (RFC 7323
-        §3), and SACK-Permitted (RFC 2018) - the canonical
-        modern-TCP option set. Pins that the four shipped option
-        emitters compose without one accidentally suppressing
-        another.
+        Ensure the active-open SYN simultaneously carries MSS,
+        WSCALE, Timestamps, and SACK-Permitted — the canonical
+        modern-TCP option set. Pins that the four shipped
+        option emitters compose without one accidentally
+        suppressing another.
+
+        Reference: RFC 6691 §2 (MSS calculation from MTU).
+        Reference: RFC 7323 §2 (WSCALE bilateral negotiation).
+        Reference: RFC 7323 §3 (Timestamps option wire format).
+        Reference: RFC 2018 §3 (SACK-Permitted option).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)

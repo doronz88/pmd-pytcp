@@ -116,6 +116,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         Ensure shutdown(SHUT_WR) triggers the same FIN-emission
         path as close(): session transitions to FIN_WAIT_1, FIN
         goes out on the wire.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -138,6 +140,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         """
         Ensure send() after shutdown(SHUT_WR) raises
         TcpSessionError, like send() after close().
+
+        Reference: RFC 9293 §3.9.1 (SEND on closed write half).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -151,6 +155,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         Ensure shutdown(SHUT_RD) silently discards subsequent
         inbound data: peer's segment is acknowledged but its
         bytes never enter '_rx_buffer'.
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE on closed read half).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -185,6 +191,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         """
         Ensure shutdown(SHUT_RDWR) is the union of SHUT_RD and
         SHUT_WR: both flags set, FIN emitted.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -203,9 +211,10 @@ class TestTcpShutdownApi(TcpSessionTestCase):
 
     def test__shutdown_wr__idempotent_does_not_re_emit_fin(self) -> None:
         """
-        Regression guard: a second shutdown(SHUT_WR) call after
-        the first one MUST be a no-op. The FIN is not re-emitted
-        at a new seq.
+        Ensure a second shutdown(SHUT_WR) call after the first
+        one is a no-op. The FIN is not re-emitted at a new seq.
+
+        Reference: RFC 9293 §3.4 (FIN consumes one seq, idempotent close).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -229,8 +238,10 @@ class TestTcpShutdownApi(TcpSessionTestCase):
 
     def test__shutdown_on_fresh_socket_is_noop(self) -> None:
         """
-        Regression guard: shutdown() on a TcpSocket with no
-        associated session is a no-op (no exception).
+        Ensure shutdown() on a TcpSocket with no associated
+        session is a no-op (no exception).
+
+        Reference: RFC 9293 §3.9.1 (User/TCP interface).
         """
 
         sock = TcpSocket(family=AddressFamily.INET4)
@@ -243,9 +254,11 @@ class TestTcpShutdownApi(TcpSessionTestCase):
     def test__shutdown_rd__already_buffered_data_stays_readable(self) -> None:
         """
         Ensure shutdown(SHUT_RD) discards FUTURE inbound data
-        but does NOT purge data already in '_rx_buffer'. POSIX
-        shutdown(SHUT_RD) semantics: stop new arrivals, keep
-        already-queued bytes available for recv().
+        but does NOT purge data already in '_rx_buffer'. The
+        POSIX shutdown(SHUT_RD) semantics: stop new arrivals,
+        keep already-queued bytes available for recv().
+
+        Reference: RFC 9293 §3.9.1 (RECEIVE on closed read half).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -301,11 +314,10 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         Ensure recv() returns empty bytes (end-of-stream) once
         the buffer is drained AND SHUT_RD is set, rather than
         blocking indefinitely waiting for data that will never
-        arrive.
+        arrive. SHUT_RD sets '_event__rx_buffer' so the wait
+        returns immediately.
 
-        This test calls receive() with timeout=0 to keep the
-        test fast: SHUT_RD sets '_event__rx_buffer' so the
-        wait returns immediately.
+        Reference: RFC 9293 §3.9.1 (RECEIVE returns EOF on closed read half).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -326,8 +338,10 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         """
         Ensure invalid 'how' values raise. The 'how' argument
         must be in {SHUT_RD=0, SHUT_WR=1, SHUT_RDWR=2}; anything
-        else MUST raise so callers see the API misuse instead of
+        else raises so callers see the API misuse instead of
         silently no-oping.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         sock, _ = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -343,6 +357,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         is equivalent to SHUT_RDWR: both directions are shut,
         FIN was emitted on the SHUT_WR step, and post-SHUT_RD
         inbound is discarded.
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

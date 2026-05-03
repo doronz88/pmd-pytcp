@@ -164,25 +164,13 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
     def test__cwnd__fields_exist_post_handshake(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure '_cwnd' and '_ssthresh' are distinct first-
+        class fields on TcpSession, not collapsed into
+        '_snd_ewn'. '_cwnd' is a positive integer post-
+        handshake; '_ssthresh' is set arbitrarily high so
+        the session starts in slow-start.
 
-        Ensure RFC 5681 §3.1: '_cwnd' and '_ssthresh' are
-        distinct first-class fields on 'TcpSession', not
-        collapsed into '_snd_ewn'.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Assert '_cwnd' is a positive integer (post-
-              handshake the canonical IW value, currently 1
-              SMSS pre-Phase-4, IW = 10*MSS post-Phase-4).
-            * Assert '_ssthresh' is set to a value strictly
-              greater than peer's advertised window so the
-              session starts in the slow-start phase per §3.1
-              ("ssthresh SHOULD be set arbitrarily high").
-
-        Fails today: 'TcpSession' has no '_cwnd' / '_ssthresh'
-        fields; the attribute access raises 'AttributeError'.
+        Reference: RFC 5681 §3.1 (cwnd / ssthresh definitions).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -233,34 +221,11 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
     def test__cwnd__slow_start_grows_cwnd_by_one_mss_per_cum_ack(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that while in slow-start phase
+        (cwnd < ssthresh), each cum-ACK that acknowledges
+        new data grows cwnd by min(bytes_acked, SMSS) bytes.
 
-        Ensure RFC 5681 §3.1: while in slow-start phase
-        ('cwnd < ssthresh'), each cum-ACK that acknowledges new
-        data MUST grow cwnd by 'min(bytes_acked, SMSS)' bytes.
-        The current pre-Phase-1 stand-in doubles '_snd_ewn'
-        per cum-ACK, which is a stronger growth rate that
-        diverges from the RFC for any cum-ACK covering more
-        than 1 MSS or any cum-ACK after the first.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Manually pin
-              cwnd = 2 * MSS and ssthresh = 100 * MSS so the
-              session is firmly in slow-start.
-            * Send 2 MSS of payload; advance two ticks so both
-              segments fire.
-            * Drive a single peer ACK covering both segments
-              (ack = ISS + 1 + 2*MSS).
-            * Assert cwnd post-ACK = 3 * MSS (= 2*MSS +
-              min(2*MSS, MSS)) per RFC 5681 §3.1.
-            * Pre-Phase-1 behaviour: cwnd doubled to 4 * MSS,
-              violating §3.1's "at most SMSS bytes per ACK"
-              clause.
-
-        Fails today: missing fields on 'TcpSession' (the test
-        attribute access for cwnd/ssthresh raises
-        'AttributeError' before the growth-rate assertion runs).
+        Reference: RFC 5681 §3.1 (slow-start growth formula).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -291,47 +256,22 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._cwnd,
             3 * PEER__MSS,
             msg=(
-                f"RFC 5681 §3.1 slow-start growth: a cum-ACK "
-                f"covering 2*MSS while cwnd=2*MSS MUST yield "
-                f"cwnd = 2*MSS + min(2*MSS, SMSS) = 3*MSS. "
-                f"Pre-Phase-1 stand-in doubles cwnd to 4*MSS. "
-                f"Got cwnd={session._cwnd}."
+                "Slow-start growth: a cum-ACK covering 2*MSS "
+                "while cwnd=2*MSS MUST yield cwnd = 2*MSS + "
+                f"min(2*MSS, SMSS) = 3*MSS. Got "
+                f"cwnd={session._cwnd}."
             ),
         )
 
     def test__cwnd__congestion_avoidance_grows_cwnd_sublinearly(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 5681 §3.1: while in congestion-avoidance
-        phase ('cwnd >= ssthresh'), each cum-ACK that
-        acknowledges new data MUST grow cwnd by approximately
-        'SMSS * SMSS / cwnd' bytes (≈ +1 MSS per RTT for a
+        Ensure that while in congestion-avoidance phase
+        (cwnd >= ssthresh), each cum-ACK that acknowledges
+        new data grows cwnd by approximately
+        'SMSS * SMSS / cwnd' bytes (~+1 MSS per RTT for a
         stream of MSS-sized cum-ACKs).
 
-        Concretely the recommended formula from §3.1 page 6:
-
-            cwnd += SMSS * SMSS / cwnd
-
-        with integer arithmetic and a floor of 1 byte to avoid
-        stalling progress on very large cwnd values.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Pin cwnd =
-              10 * MSS and ssthresh = 5 * MSS so cwnd >=
-              ssthresh and the session is in CA.
-            * Send 1 MSS of payload; advance one tick so the
-              segment fires.
-            * Drive a peer ACK covering the segment.
-            * Assert cwnd post-ACK = 10*MSS + max(1,
-              MSS*MSS // (10*MSS)) = 10*MSS + MSS//10
-              = 14600 + 146 = 14746 per the §3.1 formula.
-            * Pre-Phase-1 behaviour: cwnd doubled to 20*MSS
-              regardless of ssthresh, ignoring the slow-start
-              vs CA distinction entirely.
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 5681 §3.1 (congestion-avoidance growth formula).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -363,49 +303,22 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._cwnd,
             expected_cwnd,
             msg=(
-                f"RFC 5681 §3.1 congestion-avoidance growth: a "
-                f"cum-ACK while cwnd>=ssthresh MUST yield cwnd "
-                f"+= max(1, SMSS*SMSS // cwnd). Expected "
-                f"{expected_cwnd}, got {session._cwnd}. The "
-                f"pre-Phase-1 stand-in doubles cwnd "
-                f"unconditionally - violating §3.1's CA-phase "
-                f"linear-growth mandate."
+                "Congestion-avoidance growth: a cum-ACK while "
+                "cwnd>=ssthresh MUST yield cwnd += max(1, "
+                f"SMSS*SMSS // cwnd). Expected {expected_cwnd}, "
+                f"got {session._cwnd}."
             ),
         )
 
     def test__cwnd__snd_ewn_tracks_min_of_cwnd_and_snd_wnd(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure the effective send window '_snd_ewn' is
+        always the modular minimum of 'cwnd' (sender's
+        network bound) and 'snd_wnd' (peer's flow-control
+        bound). '_snd_ewn' is recomputed whenever either
+        input changes.
 
-        Ensure RFC 9293 §3.8.4 / RFC 5681 §3.1: the effective
-        send window '_snd_ewn' is always the modular minimum of
-        'cwnd' (sender's network bound) and 'snd_wnd' (peer's
-        flow-control bound). After Phase 1 splits the two,
-        '_snd_ewn' MUST be recomputed whenever either input
-        changes.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Set cwnd = 3 * MSS, snd_wnd = 5 * MSS. Force
-              '_snd_ewn' update via a no-op cwnd write.
-            * Assert '_snd_ewn == min(3*MSS, 5*MSS) = 3*MSS'.
-            * Set cwnd = 10 * MSS, snd_wnd = 5 * MSS. Force
-              '_snd_ewn' update.
-            * Assert '_snd_ewn == min(10*MSS, 5*MSS) = 5*MSS'.
-
-        This invariant is the contract that lets all the
-        existing call sites of '_snd_ewn' (the wire-level
-        transmit gate in '_transmit_data', the persist
-        machinery, the recovery exit) keep functioning
-        unchanged after Phase 1 - they continue to read a
-        single bound that already accounts for both
-        constraints.
-
-        Fails today: '_cwnd' does not exist; '_snd_ewn' is
-        the only window field and is set via a doubling
-        formula that doesn't respect any 'min(cwnd, snd_wnd)'
-        invariant.
+        Reference: RFC 9293 §3.8.4 (effective window = min(cwnd, snd_wnd)).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -421,9 +334,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._snd_ewn,
             3 * PEER__MSS,
             msg=(
-                "RFC 9293 §3.8.4: '_snd_ewn' = min(cwnd, "
-                "snd_wnd). With cwnd=3*MSS the cwnd is tighter; "
-                "_snd_ewn must equal 3*MSS."
+                "'_snd_ewn' = min(cwnd, " "snd_wnd). With cwnd=3*MSS the cwnd is tighter; " "_snd_ewn must equal 3*MSS."
             ),
         )
 
@@ -435,7 +346,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._snd_ewn,
             5 * PEER__MSS,
             msg=(
-                "RFC 9293 §3.8.4: '_snd_ewn' = min(cwnd, "
+                "'_snd_ewn' = min(cwnd, "
                 "snd_wnd). With snd_wnd=5*MSS peer's window is "
                 "tighter; _snd_ewn must equal 5*MSS."
             ),
@@ -443,22 +354,12 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
     def test__cwnd__post_handshake_starts_in_slow_start_phase(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure post-handshake the session starts in slow-
+        start phase: cwnd < ssthresh, so the very first
+        cum-ACK runs slow-start growth, not congestion-
+        avoidance.
 
-        Ensure RFC 5681 §3.1: post-handshake the session starts
-        in slow-start phase. The §3.1 invariant "if cwnd <
-        ssthresh, slow-start" must hold immediately after the
-        handshake completes - otherwise the very first cum-ACK
-        would run congestion-avoidance growth on a fresh
-        connection that has no loss-history yet, contradicting
-        the spec.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Assert cwnd < ssthresh.
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 5681 §3.1 (slow-start vs congestion-avoidance threshold).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -467,54 +368,21 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._cwnd,
             session._ssthresh,
             msg=(
-                f"RFC 5681 §3.1: a fresh session post-handshake "
-                f"MUST be in slow-start (cwnd < ssthresh). Got "
-                f"cwnd={session._cwnd}, ssthresh="
-                f"{session._ssthresh}. If ssthresh is too low, "
-                f"the first cum-ACK runs CA on an unloaded "
-                f"connection - wrong by the §3.1 narrative."
+                "A fresh session post-handshake MUST be in "
+                "slow-start (cwnd < ssthresh). Got "
+                f"cwnd={session._cwnd}, "
+                f"ssthresh={session._ssthresh}."
             ),
         )
 
     def test__cwnd__cum_ack_recomputes_snd_ewn_from_cwnd_via_runtime_path(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that a cum-ACK that grows '_cwnd' propagates
+        the new value into '_snd_ewn = min(_cwnd, _snd_wnd)'
+        through the actual '_process_ack_packet' code path.
 
-        Ensure RFC 9293 §3.8.4 / RFC 5681 §3.1 contract under
-        the actual '_process_ack_packet' code path: a cum-ACK
-        that grows '_cwnd' MUST propagate the new value into
-        '_snd_ewn = min(_cwnd, _snd_wnd)'. This is the
-        runtime-driven complement of the
-        'snd_ewn_tracks_min_of_cwnd_and_snd_wnd' regression
-        guard - that test sets fields manually, this one drives
-        a real peer ACK and asserts the runtime maintains the
-        invariant.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Pin
-              cwnd = 4 * MSS, ssthresh = INT32_MAX (default,
-              guarantees slow-start phase). Pin
-              snd_wnd = 100 * MSS so cwnd is the tighter bound.
-            * Send 1 MSS; advance one tick so the segment
-              fires.
-            * Drive a peer ACK covering the segment. Per RFC
-              5681 §3.1 the runtime MUST grow cwnd to
-              4*MSS + min(MSS, MSS) = 5*MSS, and per RFC 9293
-              §3.8.4 propagate that into _snd_ewn = min(5*MSS,
-              100*MSS) = 5*MSS.
-            * Assert post-ACK '_cwnd == 5*MSS'.
-            * Assert post-ACK '_snd_ewn == _cwnd' (the runtime
-              recomputed it from the new cwnd).
-            * Assert post-ACK '_snd_ewn == min(_cwnd,
-              _snd_wnd)' (the canonical RFC 9293 §3.8.4
-              invariant).
-
-        Fails today: '_process_ack_packet' computes
-        '_snd_ewn = min(_snd_ewn << 1, _snd_wnd)' directly,
-        ignoring '_cwnd' entirely. Post-ACK '_snd_ewn' would
-        be 8*MSS (doubled), '_cwnd' stays at 4*MSS (no
-        runtime touches it), so the invariant breaks.
+        Reference: RFC 9293 §3.8.4 (effective window invariant on cum-ACK).
+        Reference: RFC 5681 §3.1 (slow-start growth on cum-ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -553,23 +421,17 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._cwnd,
             expected_cwnd,
             msg=(
-                f"RFC 5681 §3.1: cum-ACK in slow-start MUST "
-                f"grow cwnd by min(bytes_acked, SMSS). Expected "
-                f"{expected_cwnd}, got {session._cwnd}. The "
-                f"runtime '_process_ack_packet' has no §3.1 "
-                f"growth hook today."
+                "Cum-ACK in slow-start MUST grow cwnd by "
+                f"min(bytes_acked, SMSS). Expected "
+                f"{expected_cwnd}, got {session._cwnd}."
             ),
         )
         self.assertEqual(
             session._snd_ewn,
             session._cwnd,
             msg=(
-                f"RFC 9293 §3.8.4: with snd_wnd >> cwnd, "
-                f"_snd_ewn MUST equal _cwnd post-ACK. The "
-                f"runtime currently does '_snd_ewn = "
-                f"min(_snd_ewn << 1, _snd_wnd)' which doubles "
-                f"_snd_ewn to {2 * 4 * PEER__MSS} bytes "
-                f"regardless of _cwnd; got "
+                "With snd_wnd >> cwnd, _snd_ewn MUST equal "
+                "_cwnd post-ACK. Got "
                 f"_snd_ewn={session._snd_ewn}, "
                 f"_cwnd={session._cwnd}."
             ),
@@ -578,9 +440,9 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
             session._snd_ewn,
             min(session._cwnd, session._snd_wnd),
             msg=(
-                f"RFC 9293 §3.8.4 canonical invariant: _snd_ewn "
-                f"= min(_cwnd, _snd_wnd) after every cum-ACK. "
-                f"Got _snd_ewn={session._snd_ewn}, "
+                "Canonical invariant: _snd_ewn = min(_cwnd, "
+                "_snd_wnd) after every cum-ACK. Got "
+                f"_snd_ewn={session._snd_ewn}, "
                 f"min={min(session._cwnd, session._snd_wnd)}."
             ),
         )
@@ -656,33 +518,13 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
 
     def test__cwnd__rto_sets_ssthresh_to_half_flight_size(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that on RTO the sender sets ssthresh =
+        max(FlightSize / 2, 2 * SMSS). With a multi-MSS
+        flight the FlightSize/2 branch dominates and
+        ssthresh records the slow-start exit point for the
+        recovery cycle. cwnd collapses to 1 SMSS.
 
-        Ensure RFC 5681 §3.1 step 1: on RTO, the sender MUST
-        set 'ssthresh = max(FlightSize / 2, 2 * SMSS)'. With
-        a multi-MSS flight at the moment of RTO, the
-        FlightSize/2 branch dominates: ssthresh records the
-        midpoint between the unacked low-water mark and the
-        high-water mark, which becomes the slow-start exit
-        point on the recovery cycle.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Pin cwnd =
-              100 * MSS so slow-start does not constrain the
-              initial 6-MSS flight.
-            * Send 6 * MSS of payload. Advance 6 ticks so all
-              segments fire (FlightSize = 6 * MSS at peak).
-            * Don't peer-ACK. Advance past the RTO timer
-              (1000 ms post-handshake-clamp) so
-              '_retransmit_packet_timeout' fires.
-            * Assert post-RTO ssthresh = max(6*MSS / 2, 2*MSS)
-              = max(3*MSS, 2*MSS) = 3*MSS.
-
-        Fails today: '_retransmit_packet_timeout' resets cwnd
-        to 1 SMSS but does not touch ssthresh. Pre-Phase-2
-        ssthresh stays at the constructor default (INT32_MAX),
-        which would let the post-RTO slow-start run unbounded.
+        Reference: RFC 5681 §3.1 (RTO ssthresh halving).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -712,45 +554,28 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
             session._ssthresh,
             expected_ssthresh,
             msg=(
-                f"RFC 5681 §3.1 step 1: RTO MUST set ssthresh "
-                f"= max(FlightSize / 2, 2*SMSS). With "
-                f"FlightSize = 6*MSS = {6 * PEER__MSS}, "
-                f"expected ssthresh = max(3*MSS, 2*MSS) = "
-                f"{expected_ssthresh}. Got "
-                f"{session._ssthresh}."
+                "RTO MUST set ssthresh = max(FlightSize / 2, "
+                f"2*SMSS). With FlightSize = 6*MSS = "
+                f"{6 * PEER__MSS}, expected ssthresh = "
+                f"max(3*MSS, 2*MSS) = {expected_ssthresh}. "
+                f"Got {session._ssthresh}."
             ),
         )
         # Phase 1 regression: cwnd reset to 1 SMSS.
         self.assertEqual(
             session._cwnd,
             session._snd_mss,
-            msg=(
-                f"Phase 1 regression: post-RTO cwnd MUST collapse "
-                f"to 1 SMSS for slow-start re-entry. Got "
-                f"cwnd={session._cwnd}."
-            ),
+            msg=("Post-RTO cwnd MUST collapse to 1 SMSS for " f"slow-start re-entry. Got cwnd={session._cwnd}."),
         )
 
     def test__cwnd__rto_with_minimal_flight_size_clamps_ssthresh_to_floor(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when in-flight bytes are small enough
+        that FlightSize/2 < 2*SMSS, the floor clamps
+        ssthresh to 2*SMSS so post-RTO slow-start does not
+        exit prematurely.
 
-        Ensure RFC 5681 §3.1 step 1's '2*SMSS' floor: when the
-        in-flight bytes are small enough that 'FlightSize/2 <
-        2*SMSS', the floor clamps ssthresh to 2*SMSS. Without
-        this clamp, a single small unacked segment would set
-        ssthresh below the canonical minimum and the post-RTO
-        slow-start would exit prematurely.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send 1 MSS only. FlightSize = 1*MSS, so
-              FlightSize/2 = 730 bytes < 2*MSS = 2920.
-            * Don't peer-ACK. Advance past RTO.
-            * Assert post-RTO ssthresh = 2 * MSS (the floor).
-
-        Fails today: ssthresh untouched by RTO.
+        Reference: RFC 5681 §3.1 (RTO ssthresh halving with 2*SMSS floor).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -766,12 +591,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
         self.assertEqual(
             session._ssthresh,
             2 * PEER__MSS,
-            msg=(
-                f"RFC 5681 §3.1 step 1 floor: when FlightSize/2 "
-                f"= {PEER__MSS // 2} bytes < 2*SMSS = "
-                f"{2 * PEER__MSS}, ssthresh MUST clamp to "
-                f"2*SMSS. Got {session._ssthresh}."
-            ),
+            msg=("When FlightSize/2 < 2*SMSS, ssthresh MUST " f"clamp to 2*SMSS. Got {session._ssthresh}."),
         )
 
 
@@ -880,30 +700,13 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
 
     def test__cwnd__fast_retransmit_halves_ssthresh_and_inflates_cwnd(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when the third duplicate ACK fires fast-
+        retransmit, the sender sets ssthresh =
+        max(FlightSize/2, 2*SMSS) and cwnd = ssthresh +
+        3*SMSS, granting permission to send three new
+        segments while the retransmit is in flight.
 
-        Ensure RFC 5681 §3.2 steps 2 + 3: when the third
-        duplicate ACK fires fast-retransmit, the sender MUST
-            ssthresh = max(FlightSize/2, 2*SMSS)
-            cwnd = ssthresh + 3*SMSS
-
-        Inflation by 3*SMSS compensates for the three segments
-        that left the network (the dup-ACKs prove they
-        arrived); the +3 gives the sender permission to send
-        three NEW segments while the retransmit is in flight.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Pin cwnd large.
-            * Send 5 * MSS so 5 segments are in flight.
-            * Drive 3 dup-ACKs at SND.UNA. The 3rd fires fast-
-              retransmit.
-            * Assert ssthresh = max(5*MSS/2, 2*MSS) = 3650.
-            * Assert cwnd = ssthresh + 3*MSS = 3650 + 4380
-              = 8030.
-
-        Fails today: '_retransmit_packet_request' sets
-        '_recovery_point' but does not touch cwnd or ssthresh.
+        Reference: RFC 5681 §3.2 (fast-retransmit ssthresh halving and cwnd inflation).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -914,8 +717,8 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
             session._ssthresh,
             expected_ssthresh,
             msg=(
-                f"RFC 5681 §3.2 step 2: fast-retransmit MUST "
-                f"set ssthresh = max(FlightSize/2, 2*SMSS) = "
+                "Fast-retransmit MUST set ssthresh = "
+                "max(FlightSize/2, 2*SMSS) = "
                 f"{expected_ssthresh}. Got {session._ssthresh}."
             ),
         )
@@ -923,8 +726,8 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
             session._cwnd,
             expected_ssthresh + 3 * PEER__MSS,
             msg=(
-                f"RFC 5681 §3.2 step 3: fast-retransmit MUST "
-                f"inflate cwnd to ssthresh + 3*SMSS = "
+                "Fast-retransmit MUST inflate cwnd to "
+                "ssthresh + 3*SMSS = "
                 f"{expected_ssthresh + 3 * PEER__MSS}. Got "
                 f"{session._cwnd}."
             ),
@@ -932,24 +735,11 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
 
     def test__cwnd__additional_dup_ack_in_recovery_inflates_cwnd_by_one_mss(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure each additional duplicate ACK received while
+        in recovery inflates cwnd by SMSS — representing one
+        more segment that left the network.
 
-        Ensure RFC 5681 §3.2 step 4: each additional duplicate
-        ACK received while in recovery MUST inflate cwnd by
-        SMSS - representing one more segment that left the
-        network and grants permission to send one more new
-        segment.
-
-        Scenario:
-
-            * Set up fast-retransmit recovery as in scenario #1.
-              Capture cwnd post-fast-retransmit.
-            * Drive a 4th duplicate ACK at the same ack value.
-            * Assert cwnd grew by exactly SMSS.
-
-        Fails today: dup-ACKs in recovery fall into the early-
-        return branch of '_retransmit_packet_request' without
-        any cwnd adjustment.
+        Reference: RFC 5681 §3.2 (additional dup-ACKs in recovery inflate cwnd).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -970,37 +760,21 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
             session._cwnd,
             cwnd_pre_dup4 + PEER__MSS,
             msg=(
-                f"RFC 5681 §3.2 step 4: the 4th dup-ACK in "
-                f"recovery MUST inflate cwnd by SMSS. "
-                f"Pre-dup4={cwnd_pre_dup4}, expected "
-                f"{cwnd_pre_dup4 + PEER__MSS}, got "
+                "The 4th dup-ACK in recovery MUST inflate "
+                f"cwnd by SMSS. Pre-dup4={cwnd_pre_dup4}, "
+                f"expected {cwnd_pre_dup4 + PEER__MSS}, got "
                 f"{session._cwnd}."
             ),
         )
 
     def test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when a cumulative ACK advances SND.UNA
+        past RecoveryPoint, exiting recovery, the sender
+        sets cwnd = ssthresh to undo the in-recovery
+        inflation. Recovery state is cleared.
 
-        Ensure RFC 5681 §3.2 step 6: when a cumulative ACK
-        advances SND.UNA past RecoveryPoint, exiting recovery,
-        the sender MUST set 'cwnd = ssthresh' to undo the
-        in-recovery inflation.
-
-        Scenario:
-
-            * Set up fast-retransmit recovery as in scenario #1.
-              Capture ssthresh.
-            * Drive a cum-ACK with 'ack = SND.MAX' (which equals
-              RecoveryPoint = LOCAL__ISS + 1 + 5*MSS).
-            * Assert cwnd post-ACK == ssthresh (deflated).
-            * Assert recovery state cleared
-              ('_recovery_point == 0').
-
-        Fails today: '_process_ack_packet' clears
-        '_recovery_point' on exit but does not set cwnd =
-        ssthresh, leaving cwnd at the inflated post-recovery
-        value plus whatever §3.1 growth fired on the cum-ACK.
+        Reference: RFC 5681 §3.2 (cwnd deflation on recovery exit).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1021,11 +795,7 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         self.assertEqual(
             session._cwnd,
             ssthresh,
-            msg=(
-                f"RFC 5681 §3.2 step 6: cum-ACK exiting recovery "
-                f"MUST set cwnd = ssthresh = {ssthresh} (the "
-                f"value set in step 2). Got cwnd={session._cwnd}."
-            ),
+            msg=("Cum-ACK exiting recovery MUST set cwnd = " f"ssthresh = {ssthresh}. Got " f"cwnd={session._cwnd}."),
         )
         self.assertEqual(
             session._recovery_point,
@@ -1091,21 +861,11 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
 
     def test__cwnd__post_handshake_initialises_cwnd_to_iw_10(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure post-handshake cwnd equals
+        min(10 * SMSS, max(2 * SMSS, 14600)) — the RFC 6928
+        Initial Window of 10 segments.
 
-        Ensure RFC 6928 §2: post-handshake 'cwnd' equals
-            min(10 * SMSS, max(2 * SMSS, 14600))
-
-        With the canonical SMSS = 1460:
-            min(14600, max(2920, 14600)) = 14600 = 10 * SMSS
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Assert cwnd post-handshake = 10 * MSS.
-
-        Fails today: PyTCP initialises cwnd to 1 * MSS per
-        RFC 5681 §3.1 (the pre-RFC-6928 default).
+        Reference: RFC 6928 §2 (Initial Window of 10 segments / 14600 bytes).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1115,30 +875,21 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
             session._cwnd,
             expected_iw,
             msg=(
-                f"RFC 6928 §2: post-handshake cwnd MUST equal "
-                f"min(10*MSS, max(2*MSS, 14600)) = {expected_iw}. "
-                f"Got cwnd={session._cwnd}."
+                "Post-handshake cwnd MUST equal min(10*MSS, "
+                f"max(2*MSS, 14600)) = {expected_iw}. Got "
+                f"cwnd={session._cwnd}."
             ),
         )
 
     def test__cwnd__post_handshake_iw_10_clamped_by_peer_win(self) -> None:
         """
-        Ensure RFC 9293 §3.8.4: even with IW=10 cwnd, the
-        effective send window respects peer's flow-control
-        bound. If peer advertises a small win, '_snd_ewn'
-        clamps to peer's value.
+        Ensure that even with IW=10 cwnd, the effective send
+        window respects peer's flow-control bound. If peer
+        advertises a small win, '_snd_ewn' clamps to peer's
+        value.
 
-        Scenario:
-
-            * Drive handshake with peer advertising a small
-              window (3 * MSS = 4380 bytes).
-            * Assert cwnd post-handshake = 10 * MSS (IW
-              respects RFC 6928 regardless of peer's win).
-            * Assert '_snd_ewn = min(cwnd, snd_wnd) = 3 * MSS'
-              (peer's bound dominates).
-
-        This is a regression guard for the '_snd_ewn' coherence
-        invariant under the new IW=10 default.
+        Reference: RFC 6928 §2 (Initial Window).
+        Reference: RFC 9293 §3.8.4 (effective window invariant).
         """
 
         small_win = 3 * PEER__MSS
@@ -1152,19 +903,15 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
         self.assertEqual(
             session._cwnd,
             expected_iw,
-            msg=(
-                f"RFC 6928 §2: cwnd MUST be the IW formula "
-                f"value ({expected_iw}) regardless of peer's "
-                f"advertised window."
-            ),
+            msg=(f"cwnd MUST be the IW formula value " f"({expected_iw}) regardless of peer's " f"advertised window."),
         )
         self.assertEqual(
             session._snd_ewn,
             small_win,
             msg=(
-                f"RFC 9293 §3.8.4: with snd_wnd={small_win} < "
-                f"cwnd={expected_iw}, _snd_ewn MUST clamp to "
-                f"peer's window. Got _snd_ewn={session._snd_ewn}."
+                f"With snd_wnd={small_win} < cwnd={expected_iw}, "
+                "_snd_ewn MUST clamp to peer's window. Got "
+                f"_snd_ewn={session._snd_ewn}."
             ),
         )
 
@@ -1287,30 +1034,12 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
 
     def test__newreno__partial_cum_ack_retransmits_next_gap(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure a partial cum-ACK during recovery triggers an
+        immediate retransmit of the next unacknowledged
+        segment (the first gap) without waiting for the RTO
+        timer.
 
-        Ensure RFC 6582 §3 step 3b: a partial cum-ACK during
-        recovery MUST trigger an immediate retransmit of the
-        next unacknowledged segment (the first gap), without
-        waiting for the RTO timer. Without NewReno, non-SACK
-        peers stall in recovery until RTO fires, costing an
-        RTO per additional loss in the same window.
-
-        Scenario:
-
-            * Set up multi-loss recovery (3 segments in flight,
-              3 dup-ACKs, fast retransmit fires for seg 1).
-            * Drive a partial cum-ACK acking only seg 1 (ack
-              advances by 1 MSS, well short of recovery_point
-              = SND.MAX = ISS + 1 + 3*MSS).
-            * Advance one tick.
-            * Assert the post-ACK tx burst includes a retransmit
-              of seg 2 (seq = ISS + 1 + MSS, payload matches
-              the original seg 2 bytes).
-
-        Without NewReno: no retransmit fires; the session
-        sits in recovery with seg 2 + seg 3 still missing
-        until RTO.
+        Reference: RFC 6582 §3 (NewReno step 3b retransmit on partial cum-ACK).
         """
 
         n_segments = 3
@@ -1345,37 +1074,20 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
         self.assertIsNotNone(
             retransmit_seg,
             msg=(
-                f"RFC 6582 §3 step 3b: partial cum-ACK MUST "
-                f"trigger immediate retransmit of seg 2 (seq = "
-                f"{LOCAL__ISS + 1 + PEER__MSS:#x}). Without "
-                f"NewReno the session stalls until RTO. Got "
+                "Partial cum-ACK MUST trigger immediate "
+                "retransmit of seg 2 (seq = "
+                f"{LOCAL__ISS + 1 + PEER__MSS:#x}). Got "
                 f"tx burst: {retransmit_tx!r}."
             ),
         )
 
     def test__newreno__partial_cum_ack_deflates_cwnd_per_step_3b(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure NewReno cwnd deflation on partial cum-ACK:
+        cwnd_new = cwnd_old - bytes_acked + SMSS (when
+        bytes_acked >= SMSS).
 
-        Ensure RFC 6582 §3 step 3b cwnd deflation:
-            cwnd_new = cwnd_old - bytes_acked
-            if bytes_acked >= SMSS:
-                cwnd_new += SMSS
-
-        Scenario:
-
-            * Set up multi-loss recovery with 3 segments.
-              Capture post-fast-retransmit cwnd
-              (= ssthresh + 3*SMSS per RFC 5681 §3.2 step 3).
-            * Drive a partial cum-ACK acking 1 MSS.
-            * Expected new cwnd = post_fr_cwnd - MSS + MSS
-              = post_fr_cwnd (1 SMSS deflated, 1 SMSS added
-              back).
-            * Hmm, that's unchanged. Try with 2*MSS bytes_acked:
-              new_cwnd = post_fr_cwnd - 2*MSS + MSS
-              = post_fr_cwnd - MSS.
-
-        Use the 2*MSS variant for an observable delta.
+        Reference: RFC 6582 §3 (NewReno step 3b cwnd deflation).
         """
 
         n_segments = 4  # so we can ack 2*MSS partially
@@ -1397,7 +1109,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
         )
         self._drive_rx(frame=partial_ack)
 
-        # Per RFC 6582 §3 step 3b:
+        # NewReno step 3b:
         #   cwnd -= bytes_acked = -2*MSS
         #   if bytes_acked >= MSS: cwnd += MSS
         # Net: cwnd -= MSS.
@@ -1406,11 +1118,12 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
             session._cwnd,
             expected_cwnd,
             msg=(
-                f"RFC 6582 §3 step 3b: partial cum-ACK acking "
-                f"{bytes_acked_partial} bytes MUST deflate cwnd "
-                f"by 'bytes_acked' then add SMSS back. Pre-ACK "
-                f"cwnd={post_fr_cwnd}, expected post-ACK cwnd="
-                f"{expected_cwnd}, got {session._cwnd}."
+                f"Partial cum-ACK acking "
+                f"{bytes_acked_partial} bytes MUST deflate "
+                "cwnd by 'bytes_acked' then add SMSS back. "
+                f"Pre-ACK cwnd={post_fr_cwnd}, expected "
+                f"post-ACK cwnd={expected_cwnd}, got "
+                f"{session._cwnd}."
             ),
         )
 
@@ -1475,41 +1188,13 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
     def test__newreno__multiple_consecutive_partial_cum_acks_each_deflate_cwnd(self) -> None:
         """
-        Ensure RFC 6582 §3 step 3b fires correctly for multiple
-        consecutive partial cum-ACKs in one recovery cycle: each
-        partial cum-ACK deflates cwnd by 'bytes_acked' (with the
-        SMSS add-back), and recovery exits only on the cum-ACK
-        that finally reaches recovery_point.
+        Ensure NewReno cwnd deflation fires correctly for
+        multiple consecutive partial cum-ACKs in one
+        recovery cycle: each deflates cwnd by 'bytes_acked'
+        (with SMSS add-back), and recovery exits only on
+        the cum-ACK that reaches recovery_point.
 
-        Scenario:
-
-            * Drive handshake (no SACK) and pin large cwnd.
-            * Send 3 MSS-sized segments. Advance 3 ticks; all
-              fire. recovery_point at fast-retransmit will
-              equal SND.MAX = ISS+1+3*MSS.
-            * Drive 3 dup-ACKs at SND.UNA. Fast retransmit
-              fires; cwnd inflates to ssthresh+3*SMSS. Advance
-              one tick - seg 1 retransmits.
-            * Drive partial cum-ACK acking seg 1 (ack=ISS+1+MSS).
-              cwnd deflates by SMSS - SMSS = 0 net (sub-cancel
-              case, MSS=MSS).
-            * Advance one tick - seg 2 retransmits via the
-              snd_nxt-still-rewound mechanism.
-            * Drive partial cum-ACK acking seg 2 (ack=ISS+1+
-              2*MSS). cwnd deflates again.
-            * Advance one tick - seg 3 retransmits.
-            * Drive full cum-ACK acking seg 3 (ack=ISS+1+3*MSS
-              = recovery_point). Recovery exits, cwnd =
-              ssthresh.
-
-        Asserts:
-            * cwnd unchanged across each partial cum-ACK (since
-              MSS=MSS the deflate and add-back cancel).
-            * recovery_point stays non-zero across both partial
-              cum-ACKs.
-            * On the full cum-ACK, recovery_point = 0 and
-              cwnd = ssthresh (the post-fast-retransmit ssthresh
-              value, NOT inflated).
+        Reference: RFC 6582 §3 (NewReno step 3b across multiple partial cum-ACKs).
         """
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1625,24 +1310,12 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
     def test__newreno__sack_active_partial_cum_ack_still_deflates_cwnd(self) -> None:
         """
-        Ensure RFC 6582 §3 step 3b deflation runs even when
-        SACK is bilaterally negotiated. RFC 6675 NextSeg
-        drives multi-gap retransmit selection, but cwnd
-        deflation accounting is independent of SACK and
-        applies on every partial cum-ACK during recovery.
+        Ensure NewReno cwnd deflation runs even when SACK
+        is bilaterally negotiated. The cwnd deflation
+        accounting is independent of SACK and applies on
+        every partial cum-ACK during recovery.
 
-        Scenario:
-
-            * Drive handshake with peer advertising SACK-Permitted.
-              Confirm '_send_sack == True'.
-            * Pin large cwnd. Send 3 segments.
-            * Drive 3 dup-ACKs (will trigger fast-retransmit
-              via the count-based rule; SACK byte rule may also
-              trigger but that's fine - same outcome).
-            * Drive partial cum-ACK acking 2*SMSS.
-            * Assert cwnd deflated per §3 step 3b (deflate by
-              2*SMSS, add back SMSS = net -SMSS). The SACK
-              path does NOT bypass this deflation.
+        Reference: RFC 6582 §3 (NewReno step 3b cwnd deflation, SACK-orthogonal).
         """
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS, sackperm=True)
@@ -1677,54 +1350,27 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         )
         self._drive_rx(frame=partial_ack)
 
-        # Per RFC 6582 §3 step 3b: cwnd -= 2*SMSS + add-back SMSS.
+        # NewReno step 3b: cwnd -= 2*SMSS + add-back SMSS.
         expected_cwnd = cwnd_post_fr - 2 * PEER__MSS + PEER__MSS
         self.assertEqual(
             session._cwnd,
             expected_cwnd,
             msg=(
-                f"RFC 6582 §3 step 3b deflation MUST run "
-                f"regardless of SACK state. With SACK active, "
-                f"expected post-deflate cwnd={expected_cwnd}, "
-                f"got {session._cwnd}."
+                "Step 3b deflation MUST run regardless of "
+                f"SACK state. Expected post-deflate "
+                f"cwnd={expected_cwnd}, got {session._cwnd}."
             ),
         )
 
     def test__newreno__partial_cum_ack_across_32bit_seq_wrap(self) -> None:
         """
-        Ensure RFC 6582 §3 step 3b works across the 32-bit seq
-        wrap. The recovery_point check uses 'lt32(snd_una,
-        recovery_point)' - a modular comparator. With ISS near
-        the 32-bit max, SND.MAX and recovery_point wrap past
-        zero. A peer cum-ACK with 'ack' on the post-wrap side
-        of recovery_point is modularly LESS than recovery_point
-        and MUST be classified as partial; the post-wrap ack
-        must NOT be classified as past-recovery_point via raw
-        Python '<'.
+        Ensure NewReno cwnd deflation works across the
+        32-bit seq wrap. The recovery_point check uses
+        modular comparison so a partial cum-ACK on the
+        post-wrap side of recovery_point is classified as
+        partial, not past-recovery_point.
 
-        Scenario:
-
-            * Drive handshake at ISS = 0xFFFF_FFE0.
-              SND.NXT = ISS+1 = 0xFFFF_FFE1, post-handshake
-              cwnd may be smaller than 14600 since we pin
-              cwnd later.
-            * Pin cwnd large, send 3*MSS payload.
-              segments at ISS+1, ISS+1+MSS, ISS+1+2*MSS.
-              Wrapped: 0xFFFF_FFE1, 0x000000xx, 0x000000xx.
-              recovery_point = SND.MAX (post-wrap).
-            * 3 dup-ACKs at SND.UNA fire fast retransmit.
-            * Tick - seg 1 retransmits.
-            * Drive partial cum-ACK at ack = ISS+1+MSS
-              (post-wrap). The raw integer ack is
-              numerically GREATER than recovery_point (since
-              recovery_point is also post-wrap, but seq math
-              is modular).
-            * Assert NewReno deflation fired (recovery_point
-              still set, cwnd deflated).
-
-        Without modular 'lt32' the boundary check would
-        misclassify the ack as past-recovery_point and exit
-        recovery prematurely.
+        Reference: RFC 6582 §3 (NewReno step 3b across modular seq wrap).
         """
 
         wrap_iss = 0xFFFF_FFE0
@@ -1850,11 +1496,14 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
 
     def test__cwnd__rto_during_fast_recovery_clears_recovery_point_and_resets_cwnd(self) -> None:
         """
-        Cross-RFC regression guard: an RTO timeout fired while
-        in fast recovery clears '_recovery_point' AND collapses
-        cwnd to LW=SMSS. Subsequent partial cum-ACK does NOT
-        run the NewReno deflation path because recovery state
-        is gone.
+        Ensure that an RTO timeout fired while in fast
+        recovery clears '_recovery_point' and collapses
+        cwnd to LW=SMSS. Subsequent partial cum-ACK does
+        not run the NewReno deflation path because
+        recovery state is gone.
+
+        Reference: RFC 5681 §3.1 (RTO collapses cwnd, slow-start re-entry).
+        Reference: RFC 6675 §5 (RecoveryPoint lifecycle).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1897,14 +1546,14 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
             session._recovery_point,
             0,
             msg=(
-                "RFC 5681 §3.1 RTO during fast recovery: "
-                "'_recovery_point' MUST be cleared so subsequent "
-                "partial cum-ACKs follow the §3.1 slow-start path, "
-                "not the §3.2 / RFC 6582 NewReno path."
+                "RTO during fast recovery: '_recovery_point' "
+                "MUST be cleared so subsequent partial "
+                "cum-ACKs follow the slow-start path, not "
+                "the NewReno path."
             ),
         )
         self.assertEqual(
             session._cwnd,
             session._snd_mss,
-            msg="RFC 5681 §3.1 RTO: cwnd MUST collapse to LW=SMSS for slow-start re-entry.",
+            msg="RTO: cwnd MUST collapse to LW=SMSS for slow-start re-entry.",
         )

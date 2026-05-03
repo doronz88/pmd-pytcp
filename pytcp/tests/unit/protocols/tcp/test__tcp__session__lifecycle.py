@@ -103,7 +103,8 @@ class TestTcpSessionInit(_TcpSessionFixture):
         """
         Ensure a fresh 'TcpSession' starts in the 'CLOSED' state. Every
         state transition in the FSM starts from this baseline.
-        Per RFC 9293 §3.3.2 (CLOSED is the initial state).
+
+        Reference: RFC 9293 §3.3.2 (CLOSED is the initial state).
         """
 
         session = self._make_session()
@@ -118,6 +119,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
         Ensure '__init__' registers the 'tcp_fsm' callback with
         'stack.timer.register_method' so the per-millisecond timer
         ticks drive the FSM.
+
         Reference: RFC 9293 §3.8 (TCP timers drive FSM transitions).
         """
 
@@ -148,7 +150,8 @@ class TestTcpSessionInit(_TcpSessionFixture):
         """
         Ensure the RX and TX buffers start empty so the first data
         event has a predictable starting point.
-        Reference: RFC 9293 §3.10.2 / §3.10.5 (SEND / RECEIVE buffers).
+
+        Reference: RFC 9293 §3.9.1 (SEND / RECEIVE buffers).
         """
 
         session = self._make_session()
@@ -166,10 +169,11 @@ class TestTcpSessionInit(_TcpSessionFixture):
     def test__tcp_session__init_window_parameters(self) -> None:
         """
         Ensure the receive and send window parameters start at their
-        canonical RFC-aligned defaults — the session advances these
-        as it negotiates with the peer.
-        Per RFC 9293 §3.7.1 (default MSS), RFC 7323 §2.2 (WSCALE),
-        and RFC 879 (536 minimum MSS).
+        canonical defaults — the session advances these as it
+        negotiates with the peer.
+
+        Reference: RFC 9293 §3.7.1 (default MSS).
+        Reference: RFC 7323 §2 (WSCALE bilateral negotiation).
         """
 
         session = self._make_session()
@@ -204,7 +208,8 @@ class TestTcpSessionInit(_TcpSessionFixture):
         Ensure the send-side sequence numbers start consistent with
         each other: '_snd_nxt', '_snd_max', and '_snd_una' must all
         equal '_snd_ini' at construction time.
-        Per RFC 9293 §3.4 (SND.NXT / SND.UNA / ISS initialization).
+
+        Reference: RFC 9293 §3.4 (SND.NXT / SND.UNA / ISS initialization).
         """
 
         session = self._make_session()
@@ -234,7 +239,8 @@ class TestTcpSessionInit(_TcpSessionFixture):
         Ensure the '_closing' flag starts 'False' — it only flips
         when the application issues CLOSE while the peer still has
         data to flush.
-        Reference: RFC 9293 §3.10.4 (CLOSE call).
+
+        Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
         session = self._make_session()
@@ -247,6 +253,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
         """
         Ensure '_connection_error' starts at 'ConnError.NONE'; any
         other value would pre-seed a spurious failure.
+
         Reference: RFC 9293 §3.10.1 (OPEN signalling fields).
         """
 
@@ -269,6 +276,7 @@ class TestTcpSessionProperties(_TcpSessionFixture):
         """
         Ensure every publicly exposed property (local/remote IP and
         port, socket, state) returns the matching private attribute.
+
         Reference: RFC 9293 §3.3.1 (TCB fields).
         """
 
@@ -284,6 +292,7 @@ class TestTcpSessionProperties(_TcpSessionFixture):
         """
         Ensure the '_tx_buffer_nxt' helper starts at 0 — 'snd_nxt'
         equals 'snd_ini' so their delta is 0, clamped by 'max(..., 0)'.
+
         Reference: RFC 9293 §3.4 (SND.NXT initialization).
         """
 
@@ -298,6 +307,7 @@ class TestTcpSessionProperties(_TcpSessionFixture):
         """
         Ensure the '_tx_buffer_una' helper starts at 0 for the same
         reason.
+
         Reference: RFC 9293 §3.4 (SND.UNA initialization).
         """
 
@@ -319,6 +329,7 @@ class TestTcpSessionStr(_TcpSessionFixture):
         Ensure '__str__' produces the canonical
         'local_ip/local_port/remote_ip/remote_port' slash-separated
         identifier used in log lines and timer names.
+
         Reference: RFC 9293 §3.3.1 (4-tuple connection identification).
         """
 

@@ -182,47 +182,12 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
 
     def test__close_time_wait__delay_expiry_transitions_to_closed(self) -> None:
         """
-        Ensure that the TIME_WAIT state transitions to CLOSED only
-        AFTER the configured TIME_WAIT delay elapses, and that the
-        socket is unregistered from 'stack.sockets' on the
-        transition. RFC 9293 §3.10.7.5 / §3.4.2.
+        Ensure the TIME_WAIT state transitions to CLOSED only
+        after the configured TIME_WAIT delay elapses, and that
+        the socket is unregistered from 'stack.sockets' on
+        the transition.
 
-        RFC 9293 §3.4.2:
-
-            "TIME-WAIT - represents waiting for enough time to pass
-             to be sure the remote TCP endpoint received the
-             acknowledgment of its connection termination request."
-
-        Scenario:
-
-            1. Patch 'TIME_WAIT_DELAY' to a small test value
-               (TEST__TIME_WAIT_DELAY_MS = 100 ms) so the suite
-               does not burn 30 s of virtual time per scenario.
-               This is allowed because the test asserts on the
-               BOUNDARY behaviour (just-before / just-after the
-               configured delay), not on any literal wall-clock
-               value of the constant.
-            2. Drive an active-close path through ESTABLISHED ->
-               FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT. At the
-               moment of transition, the TIME_WAIT timer is
-               registered with timeout = patched delay.
-            3. Advance the clock by (delay - 1) ms. State must
-               still be TIME_WAIT - the timer has not yet expired.
-            4. Advance one more ms. State must now be CLOSED -
-               the boundary tick fires the timer-expired branch
-               of '_tcp_fsm_time_wait' (line 1845).
-            5. Assert the socket is unregistered from
-               'stack.sockets'.
-
-        Assertions:
-
-            * Pre-boundary tick (delay - 1 ms after entry to
-              TIME_WAIT): state is TIME_WAIT, no segments emitted.
-            * Boundary tick (one more ms): state is CLOSED, no
-              segments emitted, socket unregistered.
-
-        This test passes on current code as a positive-control
-        regression guard for the TIME_WAIT timer-expiry path.
+        Reference: RFC 9293 §3.4.2 (TIME-WAIT 2*MSL).
         """
 
         # Patch TIME_WAIT_DELAY before driving the FSM into TIME_WAIT
@@ -275,11 +240,7 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
         self.assertIs(
             session.state,
             FsmState.CLOSED,
-            msg=(
-                "After the TIME_WAIT delay elapses, state must "
-                "transition to CLOSED per RFC 9293 §3.10.7.5 / "
-                "§3.4.2 (line 1845-1846 of '_tcp_fsm_time_wait')."
-            ),
+            msg=("After the TIME_WAIT delay elapses, state " "must transition to CLOSED."),
         )
         self.assertNotIn(
             socket_id,
@@ -293,111 +254,14 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
 
     def test__close_time_wait__late_peer_fin_retransmit_elicits_ack_and_rearms_timer(self) -> None:
         """
-        Ensure that a peer-issued FIN retransmit arriving while we
-        are in TIME_WAIT elicits an ACK acknowledging peer's FIN
-        AND restarts the TIME_WAIT timer, per RFC 9293 §3.10.7.5.
-        Without this behaviour, a peer that did not receive our
-        original ACK of its FIN can never confirm the connection
-        is closed cleanly - it will retransmit the FIN until its
-        own retransmit limit fires, ultimately RST-ing a
-        connection that we have already wrapped up.
+        Ensure a peer-issued FIN retransmit arriving while we
+        are in TIME_WAIT elicits an ACK acknowledging peer's
+        FIN AND restarts the 2*MSL timer. Without this
+        behaviour, a peer that did not receive our original
+        ACK of its FIN cannot confirm the connection is
+        closed cleanly.
 
-        RFC 9293 §3.10.7.5 (TIME-WAIT state segment processing):
-
-            "The only thing that can arrive in this state is a
-             retransmission of the remote FIN.  Acknowledge it,
-             and restart the 2 MSL timeout."
-
-        The "restart the 2 MSL timeout" clause is critical: a peer
-        retransmitting FIN late in our TIME_WAIT window means our
-        original ACK was lost. We must re-ACK AND restart the
-        timer so the new ACK has the same 2*MSL grace period to
-        be observed by the network as the original would have.
-
-        Scenario:
-
-            1. Patch 'TIME_WAIT_DELAY' to a small test value
-               (TEST__TIME_WAIT_DELAY_MS = 100 ms).
-            2. Drive an active-close path to TIME_WAIT. RCV.NXT =
-               PEER__ISS + 2 (we have already seen and ACKed
-               peer's FIN once).
-            3. Peer retransmits its FIN+ACK at the SAME wire shape
-               as the original (seq = PEER__ISS + 1, ack =
-               LOCAL__ISS + 2, flags={FIN, ACK}). The retransmit
-               is at the original seq because the FIN's seq does
-               not advance with retransmits - peer is replaying
-               the same byte of sequence space.
-            4. Drive RX. The TIME_WAIT handler MUST emit an ACK
-               at ack = PEER__ISS + 2 (re-acknowledging peer's
-               FIN) and restart the TIME_WAIT timer.
-            5. Advance (delay - 1) ms. State must still be
-               TIME_WAIT - the restarted timer has not yet
-               expired (it has its full 100 ms grace period).
-               The original timer (which would have expired by
-               now) was replaced by the restart.
-            6. Advance one more ms. State must now be CLOSED.
-
-        Assertions:
-
-            * Step 3-4: exactly one outbound ACK fires with
-              correct seq/ack/flags. The spec encoding.
-            * Step 4: state remains TIME_WAIT (the FIN
-              retransmit is not a fresh close).
-            * Step 5: after (delay - 1) ms past the FIN retransmit,
-              state is still TIME_WAIT - the restart took effect.
-            * Step 6: after one more ms, state is CLOSED.
-
-        [FLAGS BUG] - 'TcpSession._tcp_fsm_time_wait' (line 1835-
-        1846) is currently a single timer-only branch:
-
-            def _tcp_fsm_time_wait(self, *, timer: bool | None) -> None:
-                if timer and stack.timer.is_expired(f"{self}-time_wait"):
-                    self._change_state(FsmState.CLOSED)
-
-        It accepts no 'packet_rx_md' parameter at all. The FSM
-        dispatcher (line 1897-1898) reflects this:
-
-            case FsmState.TIME_WAIT:
-                self._tcp_fsm_time_wait(timer=timer)
-
-        i.e. inbound packets are silently dropped on the floor in
-        TIME_WAIT. The peer's FIN retransmit will get no reply,
-        will eventually exhaust the peer's retransmit budget, and
-        the peer will RST our 4-tuple after we are already gone -
-        exactly what TIME_WAIT exists to prevent.
-
-        The fix has three parts:
-
-        1. Add a 'packet_rx_md: TcpMetadata | None = None' parameter
-           to '_tcp_fsm_time_wait'.
-
-        2. Add an inbound-packet branch that recognises a
-           FIN-bearing segment with seq matching the original FIN
-           ('seq + 1 == self._rcv_nxt'), emits the ACK, and
-           restarts the TIME_WAIT timer:
-
-               if packet_rx_md and packet_rx_md.tcp__flag_fin:
-                   if packet_rx_md.tcp__seq + 1 == self._rcv_nxt:
-                       self._transmit_packet(flag_ack=True)
-                       stack.timer.register_timer(
-                           name=f"{self}-time_wait",
-                           timeout=TIME_WAIT_DELAY,
-                       )
-                   return
-
-        3. Update the FSM dispatcher to pass 'packet_rx_md':
-
-               case FsmState.TIME_WAIT:
-                   self._tcp_fsm_time_wait(
-                       packet_rx_md=packet_rx_md,
-                       timer=timer,
-                   )
-
-        On current code this test will see zero outbound TX after
-        the FIN retransmit - failing the inline-TX-count assertion.
-        Subsequent assertions (state still TIME_WAIT after delay-1)
-        also fail because the original timer was never restarted
-        and would expire on the very advance.
+        Reference: RFC 9293 §3.10.7.5 (TIME-WAIT segment processing).
         """
 
         self._start_patch(
@@ -597,26 +461,12 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
 
     def test__rfc1337__rst_in_time_wait_does_not_terminate(self) -> None:
         """
-        Ensure RFC 1337 §4 hazard #2 mitigation: a peer RST
-        arriving during TIME_WAIT MUST be silently dropped.
-        The session MUST stay in TIME_WAIT until its 2*MSL
-        delay timer naturally expires; the RST MUST NOT cause
-        a premature transition to CLOSED.
+        Ensure a peer RST arriving during TIME_WAIT is
+        silently dropped: the session stays in TIME_WAIT
+        until its 2*MSL delay timer naturally expires; no
+        outbound segment fires in response.
 
-        Without this mitigation, a delayed RST from an earlier
-        cycle of the connection (or a malicious off-path
-        injection) could prematurely terminate the TIME-WAIT
-        wait. A subsequent connection from the same 4-tuple
-        could then be confused by leftover state from the
-        previous cycle.
-
-        Scenario:
-
-            * Drive an active close to TIME_WAIT.
-            * Drive a peer RST.
-            * Assert session state is still TIME_WAIT.
-            * Assert no segment fired in response (no
-              challenge-ACK, no RST-response).
+        Reference: RFC 1337 §3 (TIME-WAIT assassination mitigations).
         """
 
         session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -635,42 +485,25 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
             session.state,
             FsmState.TIME_WAIT,
             msg=(
-                "RFC 1337 §4 hazard #2: a peer RST during "
-                "TIME_WAIT MUST be silently dropped; state "
-                f"MUST stay TIME_WAIT. Got "
-                f"state={session.state!r}."
+                "A peer RST during TIME_WAIT MUST be "
+                "silently dropped; state MUST stay TIME_WAIT. "
+                f"Got state={session.state!r}."
             ),
         )
         self.assertEqual(
             rst_tx,
             [],
-            msg=(
-                "RFC 1337 §4 hazard #2: the RST MUST be "
-                "silently dropped; no outbound segment may "
-                "fire in response."
-            ),
+            msg=("The RST MUST be silently dropped; no " "outbound segment may fire in response."),
         )
 
     def test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change(self) -> None:
         """
-        Ensure RFC 1337 §4 hazard #3 mitigation: a new SYN
-        arriving at TIME_WAIT elicits a challenge ACK
-        (RFC 9293 §3.10.7.4 / RFC 5961 §4) and does NOT
-        transition out of TIME_WAIT.
+        Ensure a new SYN arriving at TIME_WAIT elicits a
+        challenge ACK with our current SND.NXT and RCV.NXT
+        and does NOT transition out of TIME_WAIT.
 
-        Per RFC 9293 §3.10.7.4 a SYN-bearing segment in any
-        synchronized state should elicit a challenge ACK. The
-        challenge ACK lets peer's TCP determine whether the
-        SYN was an unsolicited blind-attack injection or a
-        legitimate request to recycle the 4-tuple.
-
-        Scenario:
-
-            * Drive to TIME_WAIT.
-            * Drive a peer SYN at fresh seq numbers.
-            * Assert outbound challenge ACK with our current
-              SND.NXT and RCV.NXT.
-            * Assert state still TIME_WAIT.
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 1337 §3 (TIME-WAIT assassination mitigations).
         """
 
         session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)

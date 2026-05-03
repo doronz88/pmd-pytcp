@@ -46,12 +46,6 @@ RFC 1122 §4.2.3.6 mandates four behavioural invariants:
        after 'KEEPALIVE_PROBE_MAX_COUNT' unanswered probes the
        connection is declared dead.
 
-The tests in this file are tests-first against the planned
-implementation: scenario 1 is a positive-control regression guard
-that passes today (no probe emission with the flag default OFF),
-and scenarios 2-6 are '[FLAGS BUG]' failures that the fix commits
-will flip green.
-
 Reference RFCs:
     RFC 1122 §4.2.3.6   TCP keep-alive
     RFC 9293 §3.8.4     references and defers to RFC 1122
@@ -185,32 +179,12 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
     def test__keepalive__disabled_by_default_no_probe_ever_fires(self) -> None:
         """
-        Ensure RFC 1122 §4.2.3.6's "MUST default to off" invariant:
-        a session that has not been opted in via
-        '_keepalive_enabled = True' MUST NOT emit any keep-alive
-        probe regardless of how long the connection sits idle.
+        Ensure that a session that has not been opted in via
+        '_keepalive_enabled = True' does not emit any
+        keep-alive probe regardless of how long the
+        connection sits idle.
 
-            "If keep-alive are included, the application MUST be
-             able to turn them on or off for each TCP connection,
-             and they MUST default to off."
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Confirm the
-              '_keepalive_enabled' default is False.
-            * Patch the keep-alive constants to small test values
-              so any spuriously-armed timer would fire well within
-              the test window.
-            * Advance virtual time by 5x the patched
-              KEEPALIVE_IDLE_TIME with no peer activity.
-            * Assert the captured TX list is empty - no keep-alive
-              probe was emitted.
-            * Assert state remains ESTABLISHED (no tear-down).
-
-        This test passes today as a positive control / regression
-        guard for the default-off invariant. It will continue to
-        pass after the fix commits as long as the keep-alive
-        machinery correctly gates on '_keepalive_enabled'.
+        Reference: RFC 1122 §4.2.3.6 (keep-alive defaults off).
         """
 
         self._patch_keepalive_constants()
@@ -239,45 +213,12 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
     def test__keepalive__enabled_idle_session_emits_probe_after_idle_time(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that when '_keepalive_enabled = True' and the
-        connection has been idle (no inbound or outbound data) for
-        'KEEPALIVE_IDLE_TIME', the session emits exactly one
-        keep-alive probe per RFC 1122 §4.2.3.6.
+        connection has been idle (no inbound or outbound
+        data) for 'KEEPALIVE_IDLE_TIME', the session emits
+        exactly one keep-alive probe.
 
-            "An implementation SHOULD send a keep-alive segment
-             with no data; however, it MAY be configurable to
-             send a keep-alive segment containing one garbage
-             octet, for compatibility with erroneous TCP
-             implementations."
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Set '_keepalive_enabled = True' (after handshake so
-              the bilateral-negotiation paths are not affected; the
-              flag is purely local).
-            * Patch keep-alive constants to small test values.
-            * Advance virtual time by exactly 'TEST__KEEPALIVE_IDLE_TIME_MS'
-              with peer silent. Expect: zero TX during this window
-              (timer not yet expired).
-            * Advance one more ms past the boundary. Expect: exactly
-              one keep-alive probe captured.
-            * Assert state remains ESTABLISHED throughout.
-
-        Current code: NO keep-alive timer is armed anywhere; the
-        '_advance' calls observe zero TX through the full window.
-        The test asserts that the boundary advance produces a
-        probe, which fails.
-
-        Fix outline: in TcpSession.__init__, when
-        '_keepalive_enabled' transitions True (or unconditionally
-        post-handshake, whichever the implementation chooses) arm
-        a 'KEEPALIVE_IDLE_TIME'-ms timer named '<session>-keepalive'.
-        On expiry emit a probe via '_transmit_packet' with
-        'flag_ack=True, seq=SND.NXT - 1' and re-arm the timer with
-        'KEEPALIVE_PROBE_INTERVAL'.
+        Reference: RFC 1122 §4.2.3.6 (idle-timer probe emission).
         """
 
         self._patch_keepalive_constants()
@@ -315,44 +256,10 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
     def test__keepalive__probe_wire_shape_is_ack_with_seq_snd_nxt_minus_one(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure the keep-alive probe wire shape is an ACK with
-        'SEG.SEQ = SND.NXT - 1' and no payload, per RFC 1122
-        §4.2.3.6:
+        'SEG.SEQ = SND.NXT - 1' and no payload.
 
-            "If a keep-alive segment is sent with no data, it MUST
-             ... be sent with SEG.SEQ = SND.NXT - 1 ..."
-
-        The 'minus one' shape forces peer's TCP to respond with an
-        ACK acknowledging the current SND.NXT (the probe's seq is
-        one byte before what peer last received, so peer's TCP
-        treats it as an already-received byte and dup-ACKs); peer's
-        application sees no segment text. This is the canonical
-        liveness check.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED, enable keep-alive,
-              patch constants.
-            * Drive past the idle boundary so the probe fires.
-            * Parse the probe TX. Assert:
-                - flag_ack = True
-                - flag_syn / flag_fin / flag_rst = False
-                - seq = session._snd_nxt - 1 (captured BEFORE the
-                  probe to avoid a moving target)
-                - payload is empty
-                - ack = session._rcv_nxt (current expected from-peer
-                  seq, signalling we have all peer bytes)
-
-        Current code: no probe is emitted, so the parse step has
-        nothing to inspect and the test fails on the 'len == 1'
-        precondition.
-
-        Fix outline: the probe emission in '_transmit_packet'
-        should be a regular ACK with explicit 'seq=SND.NXT - 1'
-        kwarg. Modular arithmetic via 'sub32(self._snd_nxt, 1)'
-        per RFC 9293 §3.4 so the wrap-around case is handled.
+        Reference: RFC 1122 §4.2.3.6 (probe SEG.SEQ = SND.NXT - 1).
         """
 
         self._patch_keepalive_constants()
@@ -398,45 +305,12 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
     def test__keepalive__peer_ack_of_probe_rearms_idle_timer(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when peer responds to a keep-alive probe
+        with an ACK at SND.NXT, the implementation treats it
+        as a probe-ack and re-arms the idle timer for another
+        full KEEPALIVE_IDLE_TIME interval.
 
-        Ensure that when peer responds to a keep-alive probe with
-        an ACK at SND.NXT, the implementation treats it as a probe-
-        ack and re-arms the idle timer for another full
-        KEEPALIVE_IDLE_TIME interval. Per RFC 1122 §4.2.3.6 this is
-        the normal liveness-confirmed path: an alive peer responds
-        promptly to the probe, and the connection should not flood
-        the wire with more probes.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED, enable keep-alive,
-              patch constants.
-            * Trigger the first probe at the idle boundary.
-            * Feed peer's ACK reply (ACK at SND.NXT, no data) via
-              '_drive_rx'.
-            * Advance another (KEEPALIVE_IDLE_TIME - 1) ms with no
-              peer activity. Expect: zero further TX (idle timer
-              re-armed, not yet expired).
-            * Advance past the boundary. Expect: exactly one new
-              keep-alive probe (the SECOND probe, indicating the
-              timer was correctly re-armed and re-fired after the
-              full idle interval).
-
-        Current code: no first probe fires, so the cascade never
-        starts; the assertion on the second probe count fails on
-        the first precondition.
-
-        Fix outline: on inbound ACK that hits the idle session's
-        ACK branch (no in-flight data, ack at SND.NXT), reset the
-        keep-alive probe-counter to 0 and re-arm the idle timer.
-        Care: this ACK shape is also the dup-ACK shape, so the
-        keep-alive bookkeeping must not interfere with RFC 5681
-        §3.2 fast-retransmit accounting (the simplest gate is
-        'no in-flight data' - the dup-ACK counter should not
-        increment when SND.UNA == SND.NXT, which the
-        '_retransmit_packet_request' fast-retransmit path already
-        depends on).
+        Reference: RFC 1122 §4.2.3.6 (probe-ack rearms idle timer).
         """
 
         self._patch_keepalive_constants()
@@ -489,48 +363,12 @@ class TestTcpKeepalive(TcpSessionTestCase):
         self,
     ) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when peer is silent and
+        'KEEPALIVE_PROBE_MAX_COUNT' consecutive probes go
+        unanswered, the connection is torn down (state ->
+        CLOSED).
 
-        Ensure that when peer is silent and 'KEEPALIVE_PROBE_MAX_COUNT'
-        consecutive probes go unanswered, the connection is torn
-        down (state -> CLOSED) per RFC 1122 §4.2.3.6:
-
-            "Implementers MAY include in their TCPs a keep-alive
-             mechanism ... If keep-alive are implemented, this
-             configuration MUST limit the number of probe segments
-             sent ..."
-
-        Common practice (Linux 'tcp_keepalive_probes = 9'): after
-        N unanswered probes the kernel marks the connection dead
-        and the next syscall returns ETIMEDOUT.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED, enable keep-alive,
-              patch constants (TEST__KEEPALIVE_PROBE_MAX_COUNT = 3).
-            * Trigger the first probe at the idle boundary.
-            * Stay silent for the full probe-retransmit window:
-              advance by KEEPALIVE_PROBE_MAX_COUNT *
-              KEEPALIVE_PROBE_INTERVAL ms.
-            * Assert:
-                - At least KEEPALIVE_PROBE_MAX_COUNT probes were
-                  emitted (the initial idle-boundary probe plus the
-                  retries; the exact count depends on the
-                  implementation choosing whether the boundary
-                  probe counts toward the max).
-                - 'session.state' is no longer ESTABLISHED (the
-                  connection has been torn down).
-
-        Current code: no probes fire at all, so the second
-        assertion fails (state stays ESTABLISHED indefinitely).
-
-        Fix outline: track an unanswered-probe counter on the
-        session ('_keepalive_probes_unacked'); each probe emission
-        increments it, each probe-ack resets it to 0. When it
-        reaches KEEPALIVE_PROBE_MAX_COUNT, transition to CLOSED
-        (or RST + CLOSED, per RFC 9293 abort semantics) and
-        signal any blocked recv() / send() with a connection-reset
-        error.
+        Reference: RFC 1122 §4.2.3.6 (probe-count tear-down).
         """
 
         self._patch_keepalive_constants()
@@ -569,55 +407,11 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
     def test__keepalive__data_activity_resets_idle_timer(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that data-bearing peer activity resets the
+        keep-alive idle timer; after a reset the timer
+        re-arms to fire one full KEEPALIVE_IDLE_TIME later.
 
-        Ensure that data-bearing peer activity resets the keep-alive
-        idle timer per RFC 1122 §4.2.3.6's "idle" definition: the
-        timer counts time since the LAST observed segment, not time
-        since handshake. After a reset, the timer must re-arm to
-        fire one full KEEPALIVE_IDLE_TIME later (NOT immediately,
-        not at the original boundary).
-
-        The test is structured to fail today on the FINAL "probe
-        fires after the new boundary" assertion, which requires the
-        keep-alive feature to actually exist. A weaker shape that
-        only checked "no probe in a small post-data window" would
-        pass vacuously today (no probes ever fire without the
-        feature) and would also tolerate a broken implementation
-        that disarms the timer entirely on data activity instead of
-        re-arming it.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED, enable keep-alive,
-              patch constants.
-            * Advance to (KEEPALIVE_IDLE_TIME - margin) ms. No probe
-              yet (we are just before the original boundary).
-            * Feed peer data (1 byte). The session inline-ACKs.
-            * Advance through what WOULD have been the original
-              idle boundary (now (KEEPALIVE_IDLE_TIME + margin) ms
-              since handshake). Expect: no keep-alive probe -
-              the timer was reset by the data activity, so the
-              old boundary is no longer relevant. Filter out the
-              data-ACK so we only count probes (probes use
-              seq=SND.NXT-1; data-acks use seq=SND.NXT).
-            * Advance further to one tick past the NEW boundary
-              ((KEEPALIVE_IDLE_TIME - margin) + KEEPALIVE_IDLE_TIME
-              + 1 ms since handshake). Expect: exactly one keep-
-              alive probe fires - this proves the timer was
-              correctly RE-ARMED, not just disarmed.
-
-        Current code (no keep-alive implementation): the final
-        "probe fires after the new boundary" assertion fails
-        because no probe ever fires. This is the [FLAGS BUG].
-
-        Fix outline: tag the ACK-processing path in
-        '_process_ack_packet' and the data-enqueue path in
-        '_tcp_fsm_established' / '_tcp_fsm_close_wait' /
-        '_tcp_fsm_fin_wait_*' with a helper that re-arms the
-        keep-alive idle timer for KEEPALIVE_IDLE_TIME and resets
-        the unanswered-probe counter. The same helper fires on
-        outbound data-bearing transmits in '_transmit_data'.
+        Reference: RFC 1122 §4.2.3.6 (idle timer counts time since last segment).
         """
 
         self._patch_keepalive_constants()
@@ -786,10 +580,7 @@ class TestTcpKeepaliveOverrides(TcpSessionTestCase):
         '_keepalive_arm_idle' use the per-connection value
         instead of 'tcp__constants.KEEPALIVE_IDLE_TIME'.
 
-        The override is set to DIFFERENT-from-default value (50 ms
-        vs the patched 100 ms default) so a regression that read
-        only the constant would surface: the probe would fire at
-        100 ms instead of the expected 50 ms.
+        Reference: RFC 1122 §4.2.3.6 (per-connection keep-alive timing).
         """
 
         self._patch_keepalive_constants()
@@ -854,27 +645,11 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
     def test__keepalive__listener_fork_inherits_so_keepalive(self) -> None:
         """
         Ensure that a listening 'TcpSocket' with
-        'setsockopt(SO_KEEPALIVE, 1)' produces an accept()'d child
-        socket whose '_so_keepalive' is True AND whose underlying
-        TcpSession's '_keepalive_enabled' is True. The inheritance
-        flows in two places:
+        'setsockopt(SO_KEEPALIVE, 1)' produces an accept()'d
+        child socket whose '_so_keepalive' is True AND whose
+        underlying TcpSession's '_keepalive_enabled' is True.
 
-          1. The fresh listening session created during the
-             listener-fork pivot (which serves the NEXT incoming
-             SYN) inherits from the listening socket's flag.
-          2. The new child socket created for the accepted
-             connection inherits the flag from the listening
-             socket too.
-
-        Both points are necessary: (1) so subsequent forks also
-        carry keep-alive, (2) so a getsockopt(SO_KEEPALIVE) on the
-        accept()'d child round-trips correctly.
-
-        End-to-end: after the SYN/SYN+ACK/ACK handshake completes,
-        the child session is in ESTABLISHED with keep-alive armed.
-        Advancing past 'KEEPALIVE_IDLE_TIME' produces a probe -
-        proving the inheritance is functionally complete, not just
-        a flag-copy.
+        Reference: RFC 1122 §4.2.3.6 (per-connection keep-alive opt-in inheritance).
         """
 
         self._patch_keepalive_constants()
@@ -1063,10 +838,13 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
 
     def test__keepalive__probe_during_fast_recovery_preserves_recovery_point(self) -> None:
         """
-        Cross-RFC regression guard: enter fast recovery, fire
-        a keep-alive probe (manually, by directly invoking the
-        keepalive helper), assert '_recovery_point' is
-        unchanged and 'cwnd' is unchanged.
+        Ensure that a keep-alive probe fired while the
+        session is in fast recovery does not clear
+        '_recovery_point' or otherwise interfere with the
+        fast-recovery state.
+
+        Reference: RFC 1122 §4.2.3.6 (keep-alive probe semantics).
+        Reference: RFC 5681 §3.2 (fast recovery state independence).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

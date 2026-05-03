@@ -142,75 +142,12 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__third_duplicate_ack_triggers_fast_retransmit(self) -> None:
         """
-        Ensure that the fast-retransmit algorithm fires only on the
-        THIRD duplicate ACK from the peer, not earlier, and that the
-        resulting retransmit reuses the original SEQ and payload
-        byte-for-byte (RFC 5681 §3.2 / RFC 9293 §3.7.6).
+        Ensure the fast-retransmit algorithm fires only on
+        the third duplicate ACK from the peer, not earlier,
+        and the resulting retransmit reuses the original
+        SEQ and payload byte-for-byte.
 
-        RFC 5681 §3.2:
-
-            "The fast retransmit algorithm uses the arrival of 3
-             duplicate ACKs (4 ACKs without the arrival of any other
-             intervening packets) as an indication that a segment has
-             been lost.  ...  After the fast retransmit algorithm
-             sends what appears to be the missing segment, the 'fast
-             recovery' algorithm governs the transmission of new data
-             until a non-duplicate ACK arrives."
-
-        A 'duplicate ACK' for this purpose is a received segment that
-        (per the same RFC's stricter clause):
-
-            * carries 'SEG.ACK == SND.UNA' (no advance), and
-            * carries no data, no SYN, no FIN, and
-            * the sender has outstanding unacknowledged data.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
-               peer's full advertised window so the initial transmit
-               is not throttled by slow-start.
-            2. Application sends one full-MSS data segment (1460 B,
-               all 'X'). On the next tick the original segment fires
-               at SEQ = LOCAL__ISS + 1.
-            3. Peer sends DUP-ACK #1 (ACK = LOCAL__ISS + 1, no data).
-               Tick once. NO retransmit may fire - we are still one
-               dup-ACK below the RFC-mandated trigger.
-            4. Peer sends DUP-ACK #2. Tick once. Still NO retransmit
-               permitted - we are exactly two dup-ACKs in, RFC 5681
-               §3.2 names the THIRD as the trigger.
-            5. Peer sends DUP-ACK #3. Tick once. Exactly ONE
-               retransmit must fire, carrying the original SEQ
-               (LOCAL__ISS + 1), the original payload byte-for-byte,
-               and PSH | ACK (PSH because it was the last segment of
-               the 'send()' call - RFC 1122 §4.2.2.2).
-
-        State assertions:
-
-            * 'session.state' remains ESTABLISHED throughout.
-            * 'SND.UNA' is unchanged from LOCAL__ISS + 1 (peer never
-               advanced our ack).
-            * The fast-retransmit counter is keyed by the dup-ACK's
-              ACK value; we don't assert on it directly (private
-              bookkeeping), but the wire-level retransmit count is
-              the externally visible contract that fully captures
-              the threshold rule.
-
-        [FLAGS BUG] - 'TcpSession._retransmit_packet_request' uses
-        the predicate 'counter > 1' to gate the retransmit, which
-        fires on the SECOND duplicate ACK. RFC 5681 §3.2 mandates
-        the THIRD. Step 4 of the scenario above will currently
-        observe a premature retransmit on the tick after dup-ACK #2,
-        and step 5 will observe a SECOND (already-redundant)
-        retransmit on the tick after dup-ACK #3.
-
-        The fix is a one-character change in
-        'pytcp/socket/tcp__session.py' line 817:
-
-            if self._tx_retransmit_request_counter[...] > 1:   # bug
-            if self._tx_retransmit_request_counter[...] > 2:   # rfc
-
-        with the test-method docstring above doubling as the spec
-        citation in the fix commit body.
+        Reference: RFC 5681 §3.2 (fast retransmit on third dup-ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -366,74 +303,13 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__data_bearing_same_ack_does_not_count_toward_threshold(self) -> None:
         """
-        Ensure that a peer segment carrying 'SEG.ACK == SND.UNA' but
-        also delivering NEW DATA does NOT count as a duplicate ACK
-        for the fast-retransmit threshold (RFC 5681 §3.2, footnote 4
-        of the algorithm definition):
+        Ensure a peer segment carrying SEG.ACK == SND.UNA
+        but also delivering new data does NOT count as a
+        duplicate ACK for the fast-retransmit threshold;
+        such segments are bidirectional traffic, not loss
+        signals.
 
-            "(a) the receiver of the ACK has outstanding data, ...
-             (b) the incoming acknowledgment carries no data,
-             (c) the SYN and FIN bits are both off,
-             (d) the acknowledgment number is equal to the greatest
-                 acknowledgment received on the given connection ...,
-             (e) the advertised window in the incoming acknowledgment
-                 equals the advertised window in the last incoming
-                 acknowledgment.
-
-             The corresponding ACK is considered a 'duplicate' iff
-             all of (a) - (e) hold. ..."
-
-        Concretely: even if the peer ACKs at the same SND.UNA across
-        many segments, those segments are bidirectional traffic
-        (data flowing toward us at the same time), not loss signals.
-        Counting them would falsely trip fast retransmit during a
-        normal bulk-receive while we have unacked data in flight.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' so
-               our send is unconstrained.
-            2. Application sends one full-MSS data segment. Tick:
-               original transmit fires at SEQ = LOCAL__ISS + 1.
-            3. Peer sends THREE back-to-back data-bearing segments,
-               each with 'ack = LOCAL__ISS + 1' (== SND.UNA, never
-               advanced) but each carrying 100 bytes of fresh,
-               in-order data starting at SEQ = PEER__ISS + 1.
-            4. Tick once.
-
-        Per the strict dup-ACK definition above, none of the three
-        peer segments qualify as a dup-ACK (clause (b) fails - they
-        carry data). They are processed by the data-handling branch
-        of '_tcp_fsm_established' as ordinary in-order receive,
-        advancing 'RCV.NXT' and queuing payload to '_rx_buffer'.
-        '_tx_retransmit_request_counter' must remain at zero entries
-        for our SND.UNA, so no fast retransmit is permitted on the
-        post-tick clock.
-
-        Assertions:
-
-            * After step 3: zero TX produced inline beyond ACK
-              traffic the data-handling path may emit (delayed-ACK
-              mechanism may schedule one ACK; we do not constrain
-              its presence here, only that NO retransmit of the
-              data segment fires).
-            * After step 4: NO retransmit at SEQ = LOCAL__ISS + 1
-              with the original payload.
-            * 'session._tx_retransmit_request_counter' contains no
-              entry at LOCAL__ISS + 1 (key never created since none
-              of the three segments matched the dup-ACK predicate).
-            * 'session._rcv_nxt' advanced by 3 * 100 = 300 bytes.
-            * 'session._rx_buffer' holds the 300 bytes in order.
-            * State remains ESTABLISHED.
-
-        This test is a positive-control regression guard for the
-        'not packet_rx_md.tcp__data' clause in
-        'TcpSession._tcp_fsm_established's dup-ACK predicate
-        (line 1377). A future change that dropped that clause -
-        e.g. counting any same-SND.UNA ACK regardless of payload -
-        would break this test by either (a) creating an entry in
-        '_tx_retransmit_request_counter[LOCAL__ISS + 1]' or
-        (b) firing a spurious retransmit on the post-tick clock.
+        Reference: RFC 5681 §3.2 (dup-ACK definition excludes data-bearing segments).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -547,77 +423,13 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__fast_retransmit_is_one_shot_per_loss_event(self) -> None:
         """
-        Ensure that the fast-retransmit algorithm fires EXACTLY ONCE
-        per loss event - additional duplicate ACKs after the third
-        MUST NOT cause the lost segment to be retransmitted again
-        (RFC 5681 §3.2 steps 3 and 4):
+        Ensure the fast-retransmit algorithm fires exactly
+        once per loss event: additional duplicate ACKs after
+        the third do not cause the lost segment to be
+        retransmitted again. Per-tick observation across 5
+        dup-ACKs: 0, 0, 1, 0, 0 retransmits.
 
-            "3. The lost segment starting at SND.UNA MUST be
-                retransmitted ...
-
-             4. For each additional duplicate ACK received (after
-                the third), cwnd MUST be incremented by SMSS. ..."
-
-        Step 3's "MUST be retransmitted" is singular. Step 4 names
-        the post-threshold action explicitly: cwnd inflation, not
-        re-retransmission. A naive implementation that re-fires the
-        retransmit on every dup-ACK above the threshold would flood
-        the network with redundant copies of the lost segment - a
-        textbook congestion-collapse vector.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' so
-               the original send is unconstrained.
-            2. Application sends one full-MSS data segment. Tick:
-               original transmit fires at SEQ = LOCAL__ISS + 1.
-            3. Peer sends FIVE back-to-back duplicate ACKs at
-               'ack = LOCAL__ISS + 1', no data. Tick once between
-               each so the timer-driven '_transmit_data' has a
-               chance to act on any state change.
-            4. Across the entire 5-dup-ACK sequence, exactly ONE
-               retransmit of the original payload may appear on the
-               wire. Per-tick observations:
-
-                 * After dup-ACK #1 + tick: 0 retransmits.
-                 * After dup-ACK #2 + tick: 0 retransmits (RFC
-                   threshold is 3, not 2).
-                 * After dup-ACK #3 + tick: 1 retransmit (RFC
-                   trigger).
-                 * After dup-ACK #4 + tick: 0 retransmits (one-shot
-                   rule - additional dup-ACKs inflate cwnd, not
-                   re-trigger).
-                 * After dup-ACK #5 + tick: 0 retransmits.
-
-            5. State remains ESTABLISHED throughout; SND.UNA is
-               unchanged at LOCAL__ISS + 1.
-
-        [FLAGS BUG] - 'TcpSession._retransmit_packet_request' uses
-        'counter > 1' as the gate to reset SND.NXT to SND.UNA.
-        Because the gate is '>'-style and the counter monotonically
-        increases as each dup-ACK arrives, EVERY dup-ACK above the
-        threshold re-arms a retransmit on the next tick, not just
-        the one that crossed the threshold. This violates two RFC
-        clauses simultaneously:
-
-            * The threshold is wrong (fires on #2 instead of #3).
-            * The trigger is repeated (fires on #2, #3, #4, #5
-              with the current code, instead of exactly once).
-
-        On current code this test will see four retransmits across
-        the 5-dup-ACK sequence (one each after dup-ACKs #2, #3, #4,
-        #5). The first failing assertion will be the post-tick
-        observation after dup-ACK #2.
-
-        The canonical fix in 'pytcp/socket/tcp__session.py:817' is
-        to change the threshold from '> 1' to '== 3', so that the
-        retransmit trigger is both:
-
-            * delayed to the third dup-ACK (matching the RFC), and
-            * one-shot (additional dup-ACKs at counter values 4, 5,
-              ... do not re-fire SND.NXT = SND.UNA).
-
-        This single change flips both scenarios #1 and #3 green.
+        Reference: RFC 5681 §3.2 (fast retransmit one-shot, dup-ACKs after threshold inflate cwnd).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -723,81 +535,15 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__rto_during_fast_retransmit_recovery_clears_recovery_point(self) -> None:
         """
-        Ensure that when an RTO fires while we are still inside a
-        fast-retransmit recovery episode, the '_recovery_point'
+        Ensure that when an RTO fires while inside a fast-
+        retransmit recovery episode, the '_recovery_point'
         marker is cleared so subsequent dup-ACKs can re-enter
-        recovery on a fresh loss event. Per RFC 5681 §3.1, RTO
-        is a hard reset (cwnd collapses to one SMSS, slow-start
-        re-entry); it represents a 'lost the entire window'
-        event distinct from the dup-ACK-driven fast-retransmit
-        recovery. The RFC 6675 §5 RecoveryPoint marker (the
-        SND.MAX at fast-retransmit entry) becomes meaningless
-        after RTO: SND.NXT has been rewound to SND.UNA and the
-        old SND.MAX no longer corresponds to any in-flight
-        boundary.
+        recovery on a fresh loss event. RTO collapses cwnd to
+        one SMSS and rewinds SND.NXT — the stale RecoveryPoint
+        becomes meaningless.
 
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. Pre-set
-               '_snd_ewn = PEER__WIN' so slow-start does not
-               constrain the test setup.
-            2. Application sends 1 MSS of data. Drain so the
-               segment fires.
-            3. Peer sends three dup-ACKs back-to-back. The
-               third triggers fast-retransmit:
-                   _recovery_point = SND.MAX (non-zero)
-                   _snd_nxt = SND.UNA
-            4. Drain the fast-retransmit segment. The segment's
-               retransmit timer is now at 2000ms (RFC 6298
-               exponential back-off; counter incremented once
-               by the original send + once by the fast-
-               retransmit re-arm).
-            5. Advance 3 seconds. The retransmit timer expires;
-               '_retransmit_packet_timeout' fires, collapsing
-               '_snd_ewn' to one SMSS and rewinding 'SND.NXT'
-               to 'SND.UNA' for slow-start re-entry.
-            6. Assert: '_recovery_point' is back at zero. A
-               subsequent loss event will be eligible to enter
-               recovery again.
-
-        Assertions:
-
-            * After the RTO firing: 'session._recovery_point == 0'.
-            * Sanity: 'session.state is FsmState.ESTABLISHED'
-              (we have not exhausted PACKET_RETRANSMIT_MAX_COUNT
-              retries; the connection is still alive).
-            * Sanity: 'session._snd_ewn == session._snd_mss'
-              (cwnd collapsed to one SMSS per RFC 5681 §3.1).
-
-        [FLAGS BUG] - 'TcpSession._retransmit_packet_timeout' (the
-        RTO handler near line 1190) collapses '_snd_ewn' and
-        rewinds 'SND.NXT' but does NOT reset '_recovery_point'.
-        It stays at the old SND.MAX from the fast-retransmit
-        entry. The next dup-ACK following the RTO retransmit
-        will hit the 'if self._recovery_point != 0: return'
-        guard at the top of '_retransmit_packet_request' and
-        SILENTLY SKIP fast-retransmit. Recovery-exit is then
-        gated on 'SND.UNA crosses the stale _recovery_point'
-        which - after RTO has reset SND.NXT to SND.UNA -
-        requires many ACKs of forward-progress data before
-        '_recovery_point' clears. Until then, fast-retransmit
-        is structurally inhibited.
-
-        Fix outline (separate commit): in
-        '_retransmit_packet_timeout', after the abort check but
-        before the '_snd_nxt = _snd_una' rewind, set
-        'self._recovery_point = 0'. The recovery state is
-        meaningless after RTO; the next dup-ACK should evaluate
-        recovery entry afresh.
-
-        Same recovery-point lifecycle gap exists on state
-        transitions out of ESTABLISHED (e.g. peer FIN -> we
-        enter CLOSE_WAIT but '_recovery_point' stays set -
-        post-half-close 'send()' that experiences loss is
-        blocked from fast-retransmit until the stale marker
-        clears). That's a related-but-separate bug class
-        ('_change_state' should clear loss-recovery state on
-        leaving ESTABLISHED) and tracked separately.
+        Reference: RFC 5681 §3.1 (RTO collapses cwnd, slow-start re-entry).
+        Reference: RFC 6675 §5 (RecoveryPoint lifecycle).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -882,81 +628,14 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__peer_fin_during_fast_retransmit_recovery_clears_recovery_point(self) -> None:
         """
-        Ensure that when peer's FIN arrives mid-recovery and the
-        FSM transitions ESTABLISHED -> CLOSE_WAIT without the
-        cumulative ACK advancing past the existing
-        '_recovery_point' marker, the marker is cleared as part
-        of leaving ESTABLISHED. The RFC 6675 §5 RecoveryPoint is
-        a SND.MAX boundary recorded at fast-retransmit entry; it
-        is meaningful only inside the ESTABLISHED loss-recovery
-        loop. Once the connection has half-closed (peer FIN), any
-        post-FIN application 'send()' that experiences loss must
-        be eligible to enter recovery afresh in CLOSE_WAIT - the
-        old marker references a high-water mark that may or may
-        not still be relevant, and leaving it set silently
-        inhibits fast-retransmit until cum-ACK eventually crosses
-        the stale value.
+        Ensure that when peer's FIN arrives mid-recovery and
+        the FSM transitions ESTABLISHED -> CLOSE_WAIT without
+        the cumulative ACK advancing past the existing
+        '_recovery_point' marker, the marker is cleared as
+        part of leaving ESTABLISHED so post-FIN sends can
+        re-enter recovery on a fresh loss.
 
-        Same bug class as the RTO-clears-recovery-point test
-        above (commit 'cc736ae' / fix '2f50480'); different
-        trigger (peer-driven state transition vs RTO timer
-        expiry); same fix surface ('_recovery_point' lifecycle
-        on leaving ESTABLISHED).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. '_snd_ewn =
-               PEER__WIN' to bypass slow-start.
-            2. Application sends 4 MSS of data. Drain so all
-               four segments fire and SND.MAX = LOCAL__ISS + 1
-               + 4*MSS.
-            3. Three dup-ACKs at 'ack = LOCAL__ISS + 1' trigger
-               fast-retransmit:
-                 _recovery_point = SND.MAX = LOCAL__ISS + 1 +
-                                              4*MSS
-                 _snd_nxt = SND.UNA = LOCAL__ISS + 1
-            4. Drain the fast-retransmit segment.
-            5. Peer sends FIN+ACK with 'ack = LOCAL__ISS + 1'
-               (the SAME unchanged cum-ACK; peer is closing
-               while still missing our outstanding data). The
-               FSM transitions ESTABLISHED -> CLOSE_WAIT
-               without SND.UNA advancing past
-               '_recovery_point'.
-            6. Assert: 'session._recovery_point == 0'. The
-               state-leave-ESTABLISHED clears the marker so a
-               post-FIN application send + loss can re-enter
-               recovery.
-
-        Assertions:
-
-            * After the FIN: 'session.state is FsmState.CLOSE_WAIT'
-              (sanity).
-            * 'session._recovery_point == 0' (the bug surface).
-            * 'session._snd_una' unchanged at LOCAL__ISS + 1
-              (sanity: the FIN's piggybacked ACK did not advance
-              SND.UNA past the marker, so the natural in-
-              '_process_ack_packet' clearing mechanism was NOT
-              what cleared the marker).
-
-        [FLAGS BUG] - 'TcpSession._change_state' (and the per-
-        state handlers that drive transitions) does not clear
-        '_recovery_point' when leaving ESTABLISHED. The marker
-        is cleared only inside '_process_ack_packet' when SND.UNA
-        crosses it; if peer's FIN cum-ACKs less than the marker
-        (the case constructed above), the marker survives the
-        transition. Subsequent post-half-close 'send()' that
-        experiences loss has '_retransmit_packet_request' short-
-        circuit at 'if self._recovery_point != 0: return',
-        silently skipping fast-retransmit. The connection
-        eventually progresses (cum-ACK eventually crosses the
-        stale marker, or RTO fires - which DOES now clear via
-        commit '2f50480') but visibly slower than it should.
-
-        Fix outline (separate commit): in '_change_state' (or in
-        the ESTABLISHED handlers' transitions out), clear
-        'self._recovery_point = 0' when leaving ESTABLISHED.
-        '_recovery_point' has no meaning outside the
-        ESTABLISHED loss-recovery loop.
+        Reference: RFC 6675 §5 (RecoveryPoint lifecycle on state transition).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

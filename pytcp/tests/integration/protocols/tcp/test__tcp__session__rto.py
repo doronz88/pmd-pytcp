@@ -196,28 +196,12 @@ class TestTcpRtoSampling(TcpSessionTestCase):
 
     def test__rto__outbound_data_segment_records_pending_sample(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that an outbound data segment in ESTABLISHED
+        records a pending RTT sample on TcpSession with
+        sample_seq, sample_send_time_ms, and the Karn taint
+        flag cleared.
 
-        Ensure RFC 6298 §4 sampling: an outbound data segment in
-        ESTABLISHED records a pending RTT sample on 'TcpSession'.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Post-handshake the
-              SYN sample has already been harvested by peer's
-              SYN+ACK, so '_rtt_sample_seq' is 'None'.
-            * Send a small payload; advance one tick so
-              '_transmit_data' fires.
-            * Assert '_rtt_sample_seq' equals the seq of the data
-              segment ('LOCAL__ISS + 1', i.e., the byte
-              immediately after the consumed SYN).
-            * Assert '_rtt_sample_send_time_ms' equals the virtual
-              clock at the moment '_transmit_packet' fired.
-            * Assert '_rtt_sample_retransmitted' is False (the
-              segment is fresh, not a retransmit).
-
-        Fails today: 'TcpSession' has no '_rtt_sample_seq' field;
-        the assertion below raises 'AttributeError'.
+        Reference: RFC 6298 §2.2 (RTT sampling first segment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -226,8 +210,8 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self.assertIsNone(
             session._rtt_sample_seq,
             msg=(
-                "RFC 6298 §4: post-handshake the SYN sample MUST "
-                "have been harvested by peer's SYN+ACK; "
+                "Post-handshake the SYN sample MUST have "
+                "been harvested by peer's SYN+ACK; "
                 "'_rtt_sample_seq' should be 'None'."
             ),
         )
@@ -241,7 +225,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rtt_sample_seq,
             LOCAL__ISS + 1,
             msg=(
-                "RFC 6298 §4: an outbound data segment in "
+                "An outbound data segment in"
                 "ESTABLISHED MUST record a pending RTT sample "
                 "with sample_seq equal to the segment's seq."
             ),
@@ -249,47 +233,26 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self.assertEqual(
             session._rtt_sample_send_time_ms,
             send_tick_now_ms,
-            msg=(
-                "RFC 6298 §4: the recorded send-time MUST equal "
-                "the virtual clock at the moment "
-                "'_transmit_packet' fired."
-            ),
+            msg=("The recorded send-time MUST equal the " "virtual clock at the moment " "'_transmit_packet' fired."),
         )
         self.assertFalse(
             session._rtt_sample_retransmitted,
             msg=(
-                "RFC 6298 §3: a fresh outbound segment MUST mark "
-                "the pending sample as not-retransmitted; Karn's "
+                "A fresh outbound segment MUST mark the "
+                "pending sample as not-retransmitted; Karn's "
                 "flag is set only on retransmit."
             ),
         )
 
     def test__rto__ack_covering_pending_sample_harvests_and_updates_rto_state(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that an ACK whose ack-field passes the
+        pending sample seq harvests the sample, advances
+        '_rto_state' via 'update(prior, observed_rtt_ms)',
+        and clears the sample tracker.
 
-        Ensure RFC 6298 §2.2 / §2.3: an ACK whose ack-field passes
-        the pending sample seq harvests the sample, advances the
-        '_rto_state' via 'update(prior, observed_rtt_ms)', and
-        clears the sample tracker.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Capture the post-
-              handshake '_rto_state' (already updated once by the
-              SYN sample harvest).
-            * Send a payload; advance one tick so the data
-              segment fires (and the sample is recorded).
-            * Advance an additional 9 ms with no peer activity so
-              the harvested RTT is exactly 10 ms.
-            * Drive a peer ACK covering the data segment.
-            * Compute 'expected = update(pre_ack_state, 10)' and
-              assert '_rto_state == expected'.
-            * Assert '_rtt_sample_seq is None' (cleared after
-              harvest).
-
-        Fails today: missing '_rto_state' / '_rtt_sample_seq'
-        fields on 'TcpSession'.
+        Reference: RFC 6298 §2.2 (first-sample formula).
+        Reference: RFC 6298 §2.3 (EWMA update).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -319,44 +282,28 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rto_state,
             expected_state,
             msg=(
-                f"RFC 6298 §2.3: ACK harvesting the pending sample "
-                f"MUST fold 'observed_rtt_ms={observed_rtt_ms}' "
-                f"into the prior state via 'update'. Expected "
+                "ACK harvesting the pending sample MUST fold "
+                f"'observed_rtt_ms={observed_rtt_ms}' into "
+                "the prior state via 'update'. Expected "
                 f"{expected_state!r}, got {session._rto_state!r}."
             ),
         )
         self.assertIsNone(
             session._rtt_sample_seq,
             msg=(
-                "RFC 6298 §4: after harvest the sample tracker "
-                "MUST be cleared so the next outbound segment can "
+                "After harvest the sample tracker MUST be "
+                "cleared so the next outbound segment can "
                 "start a fresh sample."
             ),
         )
 
     def test__rto__additional_data_while_sample_pending_does_not_overwrite(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure single-sample-per-RTT cadence: additional
+        outbound segments fired while a previous sample is
+        still pending do not overwrite the pending sample.
 
-        Ensure RFC 6298 §4 single-sample-per-RTT cadence:
-        additional outbound segments fired while a previous
-        sample is still pending MUST NOT overwrite the pending
-        sample.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send a 2*MSS payload (2920 bytes). Advance one tick
-              so the first segment fires; '_rtt_sample_seq' is
-              recorded as 'LOCAL__ISS + 1'.
-            * Advance another tick so the second segment fires.
-              '_transmit_data' calls '_transmit_packet' for the
-              second segment; the hook MUST NOT overwrite the
-              sample because '_rtt_sample_seq' is already set.
-            * Assert '_rtt_sample_seq' is still 'LOCAL__ISS + 1'
-              (not 'LOCAL__ISS + 1 + PEER__MSS').
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 6298 §2.2 (single sample per RTT).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -383,8 +330,8 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rtt_sample_seq,
             first_sample_seq,
             msg=(
-                "RFC 6298 §4: while a sample is pending, "
-                "subsequent outbound segments MUST NOT overwrite "
+                "While a sample is pending, subsequent "
+                "outbound segments MUST NOT overwrite "
                 "'_rtt_sample_seq'. Single-sample-per-RTT cadence."
             ),
         )
@@ -396,26 +343,11 @@ class TestTcpRtoSampling(TcpSessionTestCase):
 
     def test__rto__post_harvest_next_outbound_starts_fresh_sample(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 6298 §4: once the pending sample has been
+        Ensure that once the pending sample has been
         harvested by a covering ACK, the next outbound data
-        segment MUST start a fresh sample.
+        segment starts a fresh sample.
 
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send first payload, advance, peer-ACK it. Sample is
-              harvested; '_rtt_sample_seq' is 'None'.
-            * Send second payload, advance.
-            * Assert '_rtt_sample_seq' equals the seq of the
-              second segment (post-first-ACK
-              'LOCAL__ISS + 1 + len(first_payload)').
-            * Assert '_rtt_sample_send_time_ms' is the virtual
-              clock at the second-segment send (later than the
-              first-segment send time).
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 6298 §2.2 (single sample per RTT, fresh after harvest).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -451,7 +383,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rtt_sample_seq,
             LOCAL__ISS + 1 + len(first_payload),
             msg=(
-                "RFC 6298 §4: after a sample is harvested, the "
+                "After a sample is harvested, the "
                 "next outbound segment MUST start a fresh sample "
                 "with sample_seq equal to the new segment's seq."
             ),
@@ -459,50 +391,21 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self.assertEqual(
             session._rtt_sample_send_time_ms,
             second_send_now_ms,
-            msg=(
-                "RFC 6298 §4: the fresh sample's send-time MUST "
-                "equal the virtual clock at the second-segment "
-                "send."
-            ),
+            msg=("The fresh sample's send-time MUST " "equal the virtual clock at the second-segment " "send."),
         )
         self.assertFalse(
             session._rtt_sample_retransmitted,
-            msg=(
-                "RFC 6298 §3: a fresh post-harvest sample is not "
-                "Karn-tainted; '_rtt_sample_retransmitted' MUST "
-                "be False."
-            ),
+            msg=("A fresh post-harvest sample is not " "Karn-tainted; '_rtt_sample_retransmitted' MUST " "be False."),
         )
 
     def test__rto__retransmit_marks_pending_sample_as_karn_tainted(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when a segment with a pending sample is
+        retransmitted via the timeout path, the sample is
+        marked tainted (Karn's algorithm) so the eventual
+        ACK does not produce an RTT sample.
 
-        Ensure RFC 6298 §3 (Karn's algorithm): when a segment with
-        a pending sample is retransmitted via the timeout path,
-        the sample MUST be marked tainted so the eventual ACK does
-        not produce an RTT sample.
-
-            "Karn's algorithm prevents the RTO estimator from
-             being polluted by samples derived from retransmitted
-             segments, where the sender cannot tell whether the
-             ACK was for the original transmission or one of the
-             retransmits."
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send a payload, advance one tick so the data
-              segment fires and the sample is recorded.
-            * Advance past 'PACKET_RETRANSMIT_TIMEOUT' (1000 ms)
-              with no peer ACK so '_retransmit_packet_timeout'
-              fires.
-            * Assert '_rtt_sample_retransmitted' is True (Karn's
-              flag set).
-            * Assert '_rtt_sample_seq' is unchanged (still the
-              same segment).
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 6298 §3 (Karn's algorithm).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -519,7 +422,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self.assertTrue(
             session._rtt_sample_retransmitted,
             msg=(
-                "RFC 6298 §3 (Karn): retransmit of the sampled "
+                "Karn: retransmit of the sampled "
                 "segment MUST set '_rtt_sample_retransmitted' so "
                 "the eventual ACK does not poison the smoothed "
                 "estimate."
@@ -529,7 +432,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rtt_sample_seq,
             original_sample_seq,
             msg=(
-                "RFC 6298 §3: Karn's algorithm taints the sample "
+                "Karn's algorithm taints the sample "
                 "but does NOT clear it - 'sample_seq' must remain "
                 "set so the harvest path can recognise the "
                 "covering ACK and skip 'update'."
@@ -538,28 +441,13 @@ class TestTcpRtoSampling(TcpSessionTestCase):
 
     def test__rto__ack_of_karn_tainted_sample_clears_but_does_not_update_state(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure an ACK that harvests a Karn-tainted sample
+        clears the sample tracker without folding the
+        observed RTT into '_rto_state' — the smoothed
+        estimator stays stale until a fresh non-retransmitted
+        sample arrives.
 
-        Ensure RFC 6298 §3 (Karn's algorithm): an ACK that
-        harvests a Karn-tainted sample MUST clear the sample
-        tracker WITHOUT folding the observed RTT into
-        '_rto_state'. The smoothed estimator stays stale until a
-        fresh non-retransmitted sample arrives.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send a payload, advance, taint via retransmit
-              timeout (as in scenario #5). Capture the post-taint
-              '_rto_state' so we can verify it is unchanged.
-            * Drive a peer ACK covering the (re)transmitted
-              segment.
-            * Assert '_rtt_sample_seq is None' (cleared).
-            * Assert '_rto_state' is UNCHANGED from the pre-ACK
-              snapshot - 'update' MUST NOT have run on this
-              ambiguous sample.
-
-        Fails today: missing fields on 'TcpSession'.
+        Reference: RFC 6298 §3 (Karn's algorithm).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -590,8 +478,8 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self.assertIsNone(
             session._rtt_sample_seq,
             msg=(
-                "RFC 6298 §3: harvest of a Karn-tainted sample "
-                "MUST clear the sample tracker even though the "
+                "Harvest of a Karn-tainted sample MUST "
+                "clear the sample tracker even though the "
                 "smoothed estimate is not updated."
             ),
         )
@@ -599,10 +487,11 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             session._rto_state,
             pre_ack_rto_state,
             msg=(
-                "RFC 6298 §3 (Karn): the tainted sample's RTT "
-                "MUST NOT be folded into '_rto_state'. Expected "
-                f"the unchanged pre-ACK state {pre_ack_rto_state!r}, "
-                f"got {session._rto_state!r}."
+                "Karn: the tainted sample's RTT MUST NOT be "
+                "folded into '_rto_state'. Expected the "
+                f"unchanged pre-ACK state "
+                f"{pre_ack_rto_state!r}, got "
+                f"{session._rto_state!r}."
             ),
         )
 
@@ -615,17 +504,12 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
 
     def test__rto__fresh_session_initializes_rto_state_to_initial(self) -> None:
         """
-        Ensure RFC 6298 §2.1: a freshly-constructed 'TcpSession'
-        starts with '_rto_state == initial_state()' (SRTT and
-        RTTVAR uninitialised, RTO at 'INITIAL_RTO_MS') and an
-        empty sample tracker.
+        Ensure a freshly-constructed TcpSession starts with
+        '_rto_state == initial_state()' (SRTT and RTTVAR
+        uninitialised, RTO at INITIAL_RTO_MS) and an empty
+        sample tracker.
 
-        Passes today as a positive control / regression guard
-        for the construction-time invariant: this commit adds
-        the field declarations to 'TcpSession.__init__' so the
-        attributes exist with the canonical default values. The
-        sister tests in 'TestTcpRtoSampling' below assert the
-        runtime behaviour that the fix commit wires up.
+        Reference: RFC 6298 §2.1 (initial RTO = 1 second).
         """
 
         self._force_iss(LOCAL__ISS)
@@ -648,10 +532,10 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
             session._rto_state,
             initial_state(),
             msg=(
-                "RFC 6298 §2.1: a fresh session MUST initialise "
-                f"'_rto_state' to 'initial_state()' "
-                f"(srtt_ms=None, rttvar_ms=None, rto_ms="
-                f"{INITIAL_RTO_MS})."
+                "A fresh session MUST initialise "
+                "'_rto_state' to 'initial_state()' "
+                "(srtt_ms=None, rttvar_ms=None, "
+                f"rto_ms={INITIAL_RTO_MS})."
             ),
         )
         self.assertIsNone(
@@ -760,28 +644,12 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
 
     def test__rto__data_transmit_arms_session_level_retransmit_timer(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when a data segment is sent and no
+        retransmit timer is currently running, the session
+        arms a single 'f"{session}-retransmit"' timer with
+        timeout equal to '_rto_state.rto_ms'.
 
-        Ensure RFC 6298 §5.1: when a data segment is sent and no
-        retransmit timer is currently running, the session arms a
-        single 'f"{session}-retransmit"' timer (NOT the legacy
-        'f"{session}-retransmit_seq-{seq}"' family) with timeout
-        equal to '_rto_state.rto_ms'.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send a payload; advance one tick so '_transmit_data'
-              fires the data segment.
-            * Assert 'f"{session}-retransmit"' is registered in
-              'stack.timer.pending_timers'.
-            * Assert its remaining time equals
-              '_rto_state.rto_ms' (= 1000 ms post-handshake).
-            * Assert NO 'f"{session}-retransmit_seq-..."' key
-              survives - the per-seq family is gone.
-
-        Fails today: the per-seq family is still in use; the new
-        session-level name is never registered.
+        Reference: RFC 6298 §5.1 (start retransmission timer on data send).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -795,9 +663,9 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             session_retransmit_timer,
             self._timer.pending_timers,
             msg=(
-                f"RFC 6298 §5.1: a data send while no retransmit "
-                f"timer is running MUST arm "
-                f"'{session_retransmit_timer}'. Got pending timers: "
+                "A data send while no retransmit timer is "
+                f"running MUST arm '{session_retransmit_timer}'. "
+                f"Got pending timers: "
                 f"{sorted(self._timer.pending_timers)!r}."
             ),
         )
@@ -805,11 +673,10 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             self._timer.pending_timers[session_retransmit_timer],
             session._rto_state.rto_ms,
             msg=(
-                f"RFC 6298 §5.1 / §5.6: the session-level retransmit "
-                f"timer MUST be armed with '_rto_state.rto_ms' "
-                f"(= {session._rto_state.rto_ms} ms post-handshake), "
-                f"not a hand-rolled exponential of "
-                f"'PACKET_RETRANSMIT_TIMEOUT'."
+                "The session-level retransmit timer MUST be "
+                "armed with '_rto_state.rto_ms' "
+                f"(= {session._rto_state.rto_ms} ms "
+                f"post-handshake)."
             ),
         )
 
@@ -826,31 +693,11 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
 
     def test__rto__cumulative_ack_draining_in_flight_stops_retransmit_timer(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when a cumulative ACK fully drains the
+        in-flight bytes (all sent data is acknowledged),
+        the retransmit timer is turned off.
 
-        Ensure RFC 6298 §5.2: when a cumulative ACK fully drains
-        the in-flight bytes (all sent data is acknowledged), the
-        retransmit timer MUST be turned off.
-
-            "(5.2) When all outstanding data has been acknowledged,
-                   turn off the retransmission timer."
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send a payload; advance one tick so the data segment
-              fires (and the retransmit timer is armed).
-            * Drive a peer ACK covering all in-flight bytes.
-            * Assert NO timer whose name contains 'retransmit'
-              remains in 'stack.timer.pending_timers' (the session-
-              level entry was unregistered AND no leftover per-seq
-              entry from the legacy machinery).
-
-        Fails today: the legacy machinery purges
-        '_tx_retransmit_timeout_counter' on cum-ACK but does NOT
-        unregister the still-counting 'f"{session}-retransmit_seq-X"'
-        timer in 'stack.timer._timers'. Phase 3 explicitly turns
-        the session-level timer off.
+        Reference: RFC 6298 §5.2 (turn off retransmission timer when all data is acked).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -874,51 +721,21 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             retransmit_keys,
             [],
             msg=(
-                "RFC 6298 §5.2: a cum-ACK that drains all in-flight "
-                "bytes MUST turn off the retransmission timer. "
-                "Today the legacy per-seq machinery only purges its "
-                "internal counter dict and leaves the named stack-"
-                "timer entry counting down; Phase 3 must explicitly "
-                "unregister 'f\"{session}-retransmit\"'. Got "
+                "A cum-ACK that drains all in-flight bytes "
+                "MUST turn off the retransmission timer. Got "
                 f"surviving keys: {retransmit_keys!r}."
             ),
         )
 
     def test__rto__retransmit_timeout_backs_off_rto_state(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that when the retransmit timer expires,
+        '_rto_state.rto_ms' is doubled via 'back_off'
+        (capped at MAX_RTO_MS), SRTT / RTTVAR are unchanged,
+        and the timer is re-armed with the new rto_ms.
 
-        Ensure RFC 6298 §5.5: when the retransmit timer expires,
-        '_rto_state.rto_ms' MUST be doubled via 'tcp__rto.back_off'
-        (capped at 'MAX_RTO_MS') and the timer re-armed with the
-        new value.
-
-            "(5.5) The host MUST set RTO <- RTO * 2 ('back off the
-                   timer'). The maximum value discussed in (2.5)
-                   may be used to provide an upper bound to this
-                   doubling operation."
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Capture the post-
-              handshake '_rto_state' (rto_ms = 1000 via
-              'MIN_RTO_MS' clamp).
-            * Send a payload; advance one tick so the data
-              segment fires and the timer is armed.
-            * Advance past the timer's deadline (~1001 ms with
-              the post-handshake clamp) so
-              '_retransmit_packet_timeout' fires.
-            * Assert '_rto_state.rto_ms' has doubled (= 2000 ms).
-            * Assert SRTT and RTTVAR are unchanged - back_off
-              touches only RTO, leaves the smoothed estimator
-              alone (Karn's algorithm separates sample-driven
-              updates from timeout-driven backoffs).
-            * Assert 'f"{session}-retransmit"' is re-armed with
-              the new 'rto_ms = 2000' (RFC 6298 §5.6).
-
-        Fails today: '_retransmit_packet_timeout' uses a hand-
-        rolled '1000 * (1 << count)' formula and does NOT touch
-        '_rto_state'.
+        Reference: RFC 6298 §5.5 (binary backoff).
+        Reference: RFC 6298 §5.6 (re-arm timer with new RTO).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -942,10 +759,11 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             session._rto_state.rto_ms,
             pre_backoff_state.rto_ms * 2,
             msg=(
-                f"RFC 6298 §5.5: retransmit timeout MUST double "
-                f"'_rto_state.rto_ms' via 'back_off'. Pre-backoff "
-                f"rto_ms={pre_backoff_state.rto_ms}; expected "
-                f"{pre_backoff_state.rto_ms * 2} post-backoff; got "
+                "Retransmit timeout MUST double "
+                "'_rto_state.rto_ms' via 'back_off'. Pre-"
+                f"backoff rto_ms={pre_backoff_state.rto_ms}; "
+                f"expected {pre_backoff_state.rto_ms * 2} "
+                f"post-backoff; got "
                 f"{session._rto_state.rto_ms}."
             ),
         )
@@ -953,8 +771,8 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             session._rto_state.srtt_ms,
             pre_backoff_state.srtt_ms,
             msg=(
-                "RFC 6298 §5.5 'back_off' MUST NOT touch SRTT - "
-                "Karn's algorithm separates sample-driven updates "
+                "'back_off' MUST NOT touch SRTT - Karn's "
+                "algorithm separates sample-driven updates "
                 "from timeout-driven backoffs."
             ),
         )
@@ -962,8 +780,8 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             session._rto_state.rttvar_ms,
             pre_backoff_state.rttvar_ms,
             msg=(
-                "RFC 6298 §5.5 'back_off' MUST NOT touch RTTVAR - "
-                "Karn's algorithm separates sample-driven updates "
+                "'back_off' MUST NOT touch RTTVAR - Karn's "
+                "algorithm separates sample-driven updates "
                 "from timeout-driven backoffs."
             ),
         )
@@ -973,9 +791,9 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             session_retransmit_timer,
             self._timer.pending_timers,
             msg=(
-                f"RFC 6298 §5.6: after back_off, the retransmit "
-                f"timer MUST be re-armed with the new rto_ms. "
-                f"Got pending timers: "
+                "After back_off, the retransmit timer MUST "
+                "be re-armed with the new rto_ms. Got "
+                "pending timers: "
                 f"{sorted(self._timer.pending_timers)!r}."
             ),
         )
@@ -983,8 +801,8 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             self._timer.pending_timers[session_retransmit_timer],
             session._rto_state.rto_ms,
             msg=(
-                f"RFC 6298 §5.6: the re-armed timer's timeout "
-                f"MUST equal the post-backoff "
+                "The re-armed timer's timeout MUST equal "
+                "the post-backoff "
                 f"'_rto_state.rto_ms = {session._rto_state.rto_ms}'."
             ),
         )
@@ -1092,39 +910,13 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
 
     def test__rto__idle_longer_than_rto_resets_state_to_initial(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that a session quiescent for longer than the
+        in-flight 'rto_ms' resets '_rto_state' to
+        'initial_state()' on the next outbound segment, so
+        a stale smoothed estimator does not drive spurious
+        retransmits with a now-too-short RTO.
 
-        Ensure RFC 6298 §5.7: a session that has been quiescent
-        for longer than the in-flight 'rto_ms' MUST reset
-        '_rto_state' to 'initial_state()' on the next outbound
-        segment, so a stale smoothed estimator does not drive
-        spurious retransmits with a now-too-short RTO.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Post-handshake
-              '_rto_state' = update(initial, 1) = (1, 0, 1000)
-              with the 'MIN_RTO_MS' clamp keeping rto_ms at
-              1000.
-            * Send first payload, advance, peer-ACK. Timer
-              turns off (§5.2); '_last_send_time_ms' was
-              recorded at the first send.
-            * Advance well past 'rto_ms' of virtual time
-              (2000 ms here vs. 1000 ms RTO). No peer activity.
-            * Send second payload; advance one tick so the
-              segment fires.
-            * Assert '_rto_state == initial_state()' - the
-              §5.7 reset took effect inside '_transmit_packet'
-              before the new sample was recorded.
-            * Assert the new sample tracker fields are set
-              for the second segment - the reset does not
-              wipe sample collection itself.
-
-        Fails today: '_last_send_time_ms' does not exist on
-        'TcpSession'; the test attribute access raises
-        'AttributeError'. After the fix, the §5.7 reset hook
-        in '_transmit_packet' restores 'initial_state()' on
-        the second-payload send.
+        Reference: RFC 6298 §5.7 (restart-after-idle).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1156,50 +948,31 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
             session._rto_state,
             initial_state(),
             msg=(
-                f"RFC 6298 §5.7: idle for "
-                f"{self._timer.now_ms - (first_send_time or 0)} ms > "
-                f"rto_ms={1000}; '_rto_state' MUST reset to "
-                f"'initial_state()' on the next data send. Got "
-                f"{session._rto_state!r}."
+                "Idle for "
+                f"{self._timer.now_ms - (first_send_time or 0)}"
+                f" ms > rto_ms={1000}; '_rto_state' MUST "
+                "reset to 'initial_state()' on the next data "
+                f"send. Got {session._rto_state!r}."
             ),
         )
         self.assertEqual(
             session._rtt_sample_seq,
             LOCAL__ISS + 1 + len(first_payload),
             msg=(
-                "RFC 6298 §4: the §5.7 reset must not interfere "
-                "with sample collection - the new outbound "
-                "segment still records its sample seq."
+                "The §5.7 reset must not interfere with "
+                "sample collection - the new outbound segment "
+                "still records its sample seq."
             ),
         )
 
     def test__rto__idle_shorter_than_rto_preserves_state(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure the §5.7 reset is gated on the idle period
+        exceeding 'rto_ms'. A burst of writes spaced shorter
+        than the smoothed RTO preserves the smoothed
+        estimator.
 
-        Ensure RFC 6298 §5.7 reset is gated on the idle period
-        EXCEEDING 'rto_ms'. A burst of writes spaced shorter
-        than the smoothed RTO is normal application behaviour
-        and MUST preserve the smoothed estimator.
-
-        Scenario:
-
-            * Drive handshake to ESTABLISHED.
-            * Send + ACK first payload to enter quiescent
-              state. Capture '_rto_state' = (1, 0, 1000)
-              post-handshake-and-first-ACK.
-            * Idle 500 ms (well under 'rto_ms' = 1000 ms).
-            * Send second payload; advance one tick so the
-              segment fires.
-            * Assert '_rto_state' is unchanged from the pre-
-              idle snapshot - the short idle did not trigger
-              the §5.7 reset.
-
-        Fails today: '_last_send_time_ms' does not exist on
-        'TcpSession'; the test attribute access raises
-        'AttributeError'. After the fix, the §5.7 idle check
-        evaluates 'False' (now - last_send = 501 < rto_ms =
-        1000) and '_rto_state' remains the harvested value.
+        Reference: RFC 6298 §5.7 (restart-after-idle gated on idle > RTO).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1227,9 +1000,9 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
             session._rto_state,
             pre_idle_state,
             msg=(
-                "RFC 6298 §5.7: the idle-reset is gated on the "
-                "idle period EXCEEDING 'rto_ms'. A 500 ms idle "
-                "with rto_ms=1000 must not trigger the reset; "
+                "The idle-reset is gated on the idle period "
+                "exceeding 'rto_ms'. A 500 ms idle with "
+                "rto_ms=1000 must not trigger the reset; "
                 f"'_rto_state' must remain at "
                 f"{pre_idle_state!r}. Got {session._rto_state!r}."
             ),
@@ -1237,25 +1010,12 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
 
     def test__rto__transmit_updates_last_send_time(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that '_transmit_packet' records the virtual
-        clock at every outbound segment that consumes sequence
-        space (data / SYN / FIN), so the §5.7 idle check has
-        an accurate baseline.
+        clock at every outbound segment that consumes
+        sequence space (data / SYN / FIN), so the §5.7 idle
+        check has an accurate baseline.
 
-        Scenario:
-
-            * Drive handshake to ESTABLISHED. Post-handshake
-              '_last_send_time_ms' must be set (the SYN send
-              counted).
-            * Send a payload; advance one tick. After the
-              data segment fires, '_last_send_time_ms' must
-              equal the virtual clock at that send.
-
-        Fails today: '_last_send_time_ms' does not exist on
-        'TcpSession'; the test attribute access raises
-        'AttributeError'.
+        Reference: RFC 6298 §5.7 (last-send-time tracking for idle reset).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1267,10 +1027,10 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         self.assertIsNotNone(
             session._last_send_time_ms,
             msg=(
-                "RFC 6298 §5.7 baseline: '_last_send_time_ms' "
-                "MUST be recorded by the SYN send during "
-                "handshake. Otherwise the first post-handshake "
-                "data send sees 'None' and skips the §5.7 reset "
+                "Baseline: '_last_send_time_ms' MUST be "
+                "recorded by the SYN send during handshake. "
+                "Otherwise the first post-handshake data "
+                "send sees 'None' and skips the idle-reset "
                 "check entirely."
             ),
         )
@@ -1284,8 +1044,8 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
             session._last_send_time_ms,
             send_tick_now_ms,
             msg=(
-                "RFC 6298 §5.7 tracking: '_last_send_time_ms' "
-                "MUST equal the virtual clock at the moment "
+                "'_last_send_time_ms' MUST equal the "
+                "virtual clock at the moment "
                 "'_transmit_packet' fired the data segment."
             ),
         )
@@ -1341,34 +1101,13 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
 
     def test__rto__post_syn_retransmit_handshake_floors_rto_at_3000ms(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure RFC 6298 §5.7 second clause: when the SYN was
-        retransmitted at least once (peer's SYN+ACK arrives only
-        after the SYN retransmit fired), the post-handshake
-        '_rto_state.rto_ms' MUST be >= 3000 ms when data
+        Ensure that when the SYN was retransmitted at least
+        once (peer's SYN+ACK arrives only after the SYN
+        retransmit fired), the post-handshake
+        '_rto_state.rto_ms' is >= 3000 ms when data
         transmission begins.
 
-        Scenario:
-
-            * Drive an active-open SYN; observe the initial SYN.
-            * Advance virtual time past the initial RTO
-              (1000 ms) so the SYN's retransmit timer fires.
-              '_retransmit_count' increments to 1.
-            * Drive peer's SYN+ACK so the handshake completes.
-            * Assert state == ESTABLISHED.
-            * Assert '_retransmit_count > 0' (setup invariant -
-              we DID retransmit the SYN).
-            * Assert '_rto_state.rto_ms >= 3000' per RFC 6298
-              §5.7.
-
-        Fails today: PyTCP applies a uniform MIN_RTO_MS = 1000
-        floor and does not enforce the SYN-specific 3-second
-        floor when the handshake completes after a SYN
-        retransmit. After the post-handshake '_process_ack_packet'
-        on the SYN+ACK, '_rto_state.rto_ms' is whatever the
-        SRTT/RTTVAR estimator yields (typically 1000 ms via the
-        MIN_RTO_MS clamp).
+        Reference: RFC 6298 §5.7 (SYN-RTO 3-second floor after retransmit).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1416,27 +1155,24 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
             session._rto_state.rto_ms,
             3000,
             msg=(
-                "RFC 6298 §5.7 second clause: when the SYN was "
-                "retransmitted at least once before the handshake "
-                "completed, '_rto_state.rto_ms' MUST be re-initialized "
-                "to >= 3000 ms when data transmission begins. Got "
-                f"_rto_state.rto_ms={session._rto_state.rto_ms} ms; the "
-                "SYN-RTO floor is not being enforced."
+                "When the SYN was retransmitted at least "
+                "once before the handshake completed, "
+                "'_rto_state.rto_ms' MUST be re-initialized "
+                "to >= 3000 ms when data transmission "
+                "begins. Got _rto_state.rto_ms="
+                f"{session._rto_state.rto_ms} ms."
             ),
         )
 
     def test__rto__post_clean_handshake_no_syn_retransmit_skips_3000ms_floor(self) -> None:
         """
-        Regression guard: when the SYN was NOT retransmitted
-        (peer's SYN+ACK arrives before any SYN-RTO timer fires),
-        the RFC 6298 §5.7 second-clause floor does NOT apply.
-        '_rto_state.rto_ms' is whatever the canonical SRTT /
-        RTTVAR estimator yields - typically 1000 ms via the
-        MIN_RTO_MS clamp.
+        Ensure that when the SYN was not retransmitted
+        (peer's SYN+ACK arrives before any SYN-RTO timer
+        fires), the SYN-RTO 3-second floor does not apply
+        and '_rto_state.rto_ms' takes whatever value the
+        canonical SRTT / RTTVAR estimator yields.
 
-        This pins the negative case so the §5.7 fix above
-        cannot accidentally penalise clean (retransmit-free)
-        handshakes.
+        Reference: RFC 6298 §5.7 (SYN-RTO floor only applies on retransmit).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1474,12 +1210,12 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
             session._rto_state.rto_ms,
             3000,
             msg=(
-                "RFC 6298 §5.7: the 3-second floor applies ONLY when "
-                "the SYN was retransmitted. A clean handshake's "
-                "post-handshake '_rto_state.rto_ms' MUST be the "
-                "canonical estimator output (typically 1000 ms via "
-                f"MIN_RTO_MS), NOT 3000 ms. Got "
-                f"_rto_state.rto_ms={session._rto_state.rto_ms} ms."
+                "The 3-second floor applies ONLY when the "
+                "SYN was retransmitted. A clean handshake's "
+                "post-handshake '_rto_state.rto_ms' MUST be "
+                "the canonical estimator output, NOT 3000 ms. "
+                f"Got _rto_state.rto_ms="
+                f"{session._rto_state.rto_ms} ms."
             ),
         )
 
@@ -1512,35 +1248,12 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
 
     def test__rto__passive_open_with_syn_ack_retransmit_floors_rto_at_3000ms(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that the SYN-RTO 3-second floor applies on
+        the passive-open path: if our SYN+ACK was
+        retransmitted before peer's third-leg ACK arrived,
+        post-handshake '_rto_state.rto_ms' is >= 3000 ms.
 
-        Ensure RFC 6298 §5.7 second clause applies on the
-        passive-open path too: if our SYN+ACK was retransmitted
-        before peer's third-leg ACK arrived, post-handshake
-        '_rto_state.rto_ms' MUST be >= 3000 ms.
-
-        The §5.7 wording targets "the SYN segment" but the
-        spirit is "the handshake's first segment whose ACK we
-        had to wait for, with retransmits".  On the passive-
-        open path the analogous segment is OUR SYN+ACK.
-
-        Scenario:
-
-            * Build a listening socket; drive peer's SYN.
-            * Tick once so the SYN+ACK fires.
-            * Advance past the initial RTO so the SYN+ACK's
-              retransmit timer fires; '_retransmit_count' on
-              the child session increments to 1.
-            * Drive peer's third-leg ACK.
-            * Assert child session is ESTABLISHED.
-            * Assert post-handshake '_rto_state.rto_ms >= 3000'.
-
-        Fails today: '_tcp_fsm_syn_rcvd' has NO §5.7 floor.
-        The active-open fix (commit 'f232096') was scoped to
-        '_tcp_fsm_syn_sent' only. After Option B introduces a
-        '_syn_retransmit_count' field that survives
-        '_process_ack_packet's reset, the floor will be wired
-        at both ESTABLISHED-transition sites symmetrically.
+        Reference: RFC 6298 §5.7 (SYN-RTO 3-second floor, applied to passive-open SYN+ACK).
         """
 
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
@@ -1618,14 +1331,12 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
             child_session._rto_state.rto_ms,
             3000,
             msg=(
-                "RFC 6298 §5.7 second clause (passive-open shape): "
-                "when our SYN+ACK was retransmitted at least once "
-                "before peer's third-leg ACK arrived, "
-                "'_rto_state.rto_ms' MUST be re-initialized to "
-                ">= 3000 ms when data transmission begins. Got "
-                f"_rto_state.rto_ms={child_session._rto_state.rto_ms} ms; "
-                "the SYN-RTO floor is not enforced on the "
-                "passive-open path."
+                "When our SYN+ACK was retransmitted at "
+                "least once before peer's third-leg ACK "
+                "arrived, '_rto_state.rto_ms' MUST be re-"
+                "initialized to >= 3000 ms when data "
+                f"transmission begins. Got _rto_state.rto_ms="
+                f"{child_session._rto_state.rto_ms} ms."
             ),
         )
 
@@ -1637,12 +1348,12 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
 
     def test__rto__passive_open_clean_handshake_skips_3000ms_floor(self) -> None:
         """
-        Regression guard for the passive-open path: a clean
-        passive open (third-leg ACK arrives within the initial
-        RTO, no SYN+ACK retransmit) MUST NOT apply the §5.7
-        floor. Pins the negative case so the upcoming Option B
-        fix in '_tcp_fsm_syn_rcvd' cannot accidentally penalise
-        retransmit-free passive opens.
+        Ensure that a clean passive open (third-leg ACK
+        arrives within the initial RTO, no SYN+ACK
+        retransmit) does not apply the SYN-RTO 3-second
+        floor.
+
+        Reference: RFC 6298 §5.7 (SYN-RTO floor only on retransmit, passive-open shape).
         """
 
         listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
@@ -1705,12 +1416,12 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
             child_session._rto_state.rto_ms,
             3000,
             msg=(
-                "RFC 6298 §5.7 (passive-open shape): the floor applies "
-                "ONLY when our SYN+ACK was retransmitted. A clean "
-                "passive open's post-handshake '_rto_state.rto_ms' "
-                "MUST be the canonical estimator output (typically "
-                "1000 ms via MIN_RTO_MS), NOT 3000 ms. Got "
-                f"_rto_state.rto_ms={child_session._rto_state.rto_ms} ms."
+                "The floor applies ONLY when our SYN+ACK "
+                "was retransmitted. A clean passive open's "
+                "post-handshake '_rto_state.rto_ms' MUST be "
+                "the canonical estimator output, NOT 3000 ms. "
+                f"Got _rto_state.rto_ms="
+                f"{child_session._rto_state.rto_ms} ms."
             ),
         )
 
@@ -1720,36 +1431,14 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
 
     def test__rto__syn_retransmit_count_survives_process_ack_packet_reset(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that '_syn_retransmit_count' accumulates
+        SYN / SYN+ACK retransmit-timer fires while in
+        {SYN_SENT, SYN_RCVD} and is NOT reset by
+        '_process_ack_packet' on the SND.UNA-advancing
+        handshake-completing ACK, so the SYN-RTO floor
+        check is order-independent.
 
-        Ensure Option B: a dedicated '_syn_retransmit_count'
-        field accumulates SYN / SYN+ACK retransmit-timer
-        fires while in {SYN_SENT, SYN_RCVD} and is NOT reset
-        by '_process_ack_packet' on the SND.UNA-advancing
-        handshake-completing ACK.
-
-        This is the structural fix for the temporal-coupling
-        trap noted on commit 'f232096': '_retransmit_count'
-        is reset to 0 inside '_process_ack_packet' when peer's
-        ACK advances SND.UNA, so the active-open §5.7 check
-        had to capture the value BEFORE the call. A separate
-        '_syn_retransmit_count' that survives the reset makes
-        the check order-independent and removes the trap.
-
-        Scenario:
-
-            * Drive an active-open SYN; advance 1.5 s so the
-              SYN's retransmit timer fires once.
-            * Assert '_syn_retransmit_count == 1' (post-fix).
-            * Drive peer's SYN+ACK so the handshake completes
-              and '_process_ack_packet' runs.
-            * Assert '_syn_retransmit_count == 1' STILL after
-              the call (the field is NOT reset by §5.2 / §5.3
-              cum-ACK processing).
-
-        Fails today: '_syn_retransmit_count' does not exist;
-        '_retransmit_count' is reset to 0 by
-        '_process_ack_packet:1940' on the SYN+ACK ack.
+        Reference: RFC 6298 §5.7 (SYN-RTO floor relies on persistent retransmit count).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -1760,18 +1449,17 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
         self.assertTrue(
             hasattr(session, "_syn_retransmit_count"),
             msg=(
-                "Option B: TcpSession MUST expose a "
-                "'_syn_retransmit_count' field decoupled from the "
-                "general-purpose '_retransmit_count' that "
-                "'_process_ack_packet' resets."
+                "TcpSession MUST expose a "
+                "'_syn_retransmit_count' field decoupled "
+                "from the general-purpose '_retransmit_count'."
             ),
         )
         self.assertGreaterEqual(
             getattr(session, "_syn_retransmit_count", -1),
             1,
             msg=(
-                "Option B: '_syn_retransmit_count' MUST increment "
-                "on each SYN-RTO timer fire while in SYN_SENT. Got "
+                "'_syn_retransmit_count' MUST increment on "
+                "each SYN-RTO timer fire while in SYN_SENT. Got "
                 f"{getattr(session, '_syn_retransmit_count', None)}."
             ),
         )
@@ -1795,13 +1483,5 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
         self.assertGreaterEqual(
             getattr(session, "_syn_retransmit_count", -1),
             1,
-            msg=(
-                "Option B order-independence: "
-                "'_syn_retransmit_count' MUST survive "
-                "'_process_ack_packet's reset of "
-                "'_retransmit_count'. The §5.7 floor check "
-                "becomes order-independent and the temporal-"
-                "coupling trap noted on commit 'f232096' is "
-                "removed structurally."
-            ),
+            msg=("'_syn_retransmit_count' MUST survive " "'_process_ack_packet's reset of " "'_retransmit_count'."),
         )

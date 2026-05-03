@@ -48,6 +48,8 @@ class TestFakeTimer(TestCase):
     def test__fake_timer__starts_at_zero(self) -> None:
         """
         Ensure 'FakeTimer.now_ms' starts at 0 with no pending timers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
@@ -59,6 +61,8 @@ class TestFakeTimer(TestCase):
         """
         Ensure 'register_method' with the production default (delay=1,
         repeat_count=-1) fires the callback once per virtual ms.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
@@ -78,6 +82,8 @@ class TestFakeTimer(TestCase):
         """
         Ensure a named timer is reported as not expired until exactly
         'timeout' ms have elapsed, then is reported expired thereafter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
@@ -93,6 +99,8 @@ class TestFakeTimer(TestCase):
         """
         Ensure 'is_expired' returns True for any name that was never
         registered, matching production 'Timer.is_expired' semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
@@ -103,6 +111,8 @@ class TestFakeTimer(TestCase):
         """
         Ensure 'advance' rejects negative arguments to keep the virtual
         clock monotonic.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
@@ -120,6 +130,8 @@ class TestTcpSegmentFactory(TestCase):
         """
         Ensure 'build_tcp4' produces a frame that round-trips through
         the Ethernet/IPv4/TCP parsers and exposes the requested fields.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         from net_proto.lib.packet_rx import PacketRx
@@ -148,6 +160,8 @@ class TestTcpSegmentFactory(TestCase):
         """
         Ensure 'build_tcp6' produces an Ethernet/IPv6/TCP frame whose
         payload survives a parser round-trip.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         from net_proto.lib.packet_rx import PacketRx
@@ -173,6 +187,8 @@ class TestTcpSegmentFactory(TestCase):
         """
         Ensure the factory rejects a flag name outside the documented
         TCP flag set with a clear assertion.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -187,8 +203,10 @@ class TestTcpSegmentFactory(TestCase):
     def test__factory__timestamps_round_trip_through_parser(self) -> None:
         """
         Ensure 'build_tcp4' encodes the supplied 'tsval=' / 'tsecr='
-        as a TCP Timestamps option (RFC 7323 §3) that round-trips
-        through the parser as a 'TcpTimestamps(tsval, tsecr)'.
+        as a TCP Timestamps option that round-trips through the
+        parser as a 'TcpTimestamps(tsval, tsecr)'.
+
+        Reference: RFC 7323 §3 (Timestamps option wire format).
         """
 
         from net_proto.lib.packet_rx import PacketRx
@@ -226,9 +244,10 @@ class TestTcpSegmentFactory(TestCase):
     def test__factory__sack_blocks_round_trip_through_parser(self) -> None:
         """
         Ensure 'build_tcp4' encodes the requested 'sack_blocks=' as a
-        TCP SACK option (RFC 2018 §3) that round-trips through the
-        parser as a list of '(left, right)' pairs in the supplied
-        order.
+        TCP SACK option that round-trips through the parser as a
+        list of '(left, right)' pairs in the supplied order.
+
+        Reference: RFC 2018 §3 (SACK option wire format).
         """
 
         from net_proto.lib.packet_rx import PacketRx
@@ -271,6 +290,8 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
         Ensure 'TcpSessionTestCase.setUp' installs the 'FakeTimer' as
         'stack.timer' so production code calling 'stack.timer.*'
         reaches the deterministic clock.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -288,8 +309,9 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
         """
         Ensure '_drive_rx' end-to-end: an unsolicited SYN to a port
         with no listener triggers the packet handler's RST+ACK reply
-        and '_parse_tx' / '_assert_segment' read it correctly per
-        RFC 9293 §3.10.7.2.
+        and '_parse_tx' / '_assert_segment' read it correctly.
+
+        Reference: RFC 9293 §3.10.7.1 (RST generation for no-socket-match).
         """
 
         frame = build_tcp4(sport=33000, dport=2000, seq=0x4D2, flags=("SYN",))
@@ -318,6 +340,8 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
         Ensure '_advance' with nothing registered on the FakeTimer
         produces no TX frames and is therefore safe to call from
         scenario tests that have not yet opened any session.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tx_frames = self._advance(ms=100)
@@ -332,9 +356,9 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
         """
         Ensure '_force_iss' patches 'compute_iss' inside the TCP
         session module so any subsequently constructed 'TcpSession'
-        receives the chosen ISS - the wrap-aware tests rely on this.
-        Migrated from 'random.randint' to 'compute_iss' alongside
-        the RFC 6528 §3 ISN hash adoption.
+        receives the chosen ISS — the wrap-aware tests rely on this.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._force_iss(0xFFFF_FF00)

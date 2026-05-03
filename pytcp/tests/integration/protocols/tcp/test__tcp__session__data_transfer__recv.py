@@ -145,82 +145,13 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
     def test__data_transfer_recv__in_order_data_delivered_with_delayed_ack(self) -> None:
         """
-        Ensure that in-order data arriving on an ESTABLISHED session
-        is queued into '_rx_buffer' and acknowledged via the delayed-
-        ACK mechanism per RFC 1122 §4.2.3.2:
+        Ensure in-order data arriving on an ESTABLISHED
+        session is queued into '_rx_buffer' and acknowledged
+        via the delayed-ACK mechanism: no inline ACK on
+        arrival; the ACK fires within DELAYED_ACK_DELAY ms
+        carrying ack = RCV.NXT.
 
-            "A TCP SHOULD implement a delayed ACK, but an ACK should
-             not be excessively delayed; in particular, the delay
-             MUST be less than 0.5 seconds, and in a stream of
-             full-sized segments there SHOULD be an ACK for at least
-             every second segment."
-
-        Concretely, after a single in-order data segment arrives the
-        receiver MUST NOT respond with an immediate ACK on the very
-        next tick; instead the ACK is held for the delayed-ACK
-        interval (here 'DELAYED_ACK_DELAY = 100 ms'), giving the
-        application a chance to piggyback the ACK on outbound data.
-        Once the interval elapses (and well before the 500 ms upper
-        bound), the ACK fires with 'ack = RCV.NXT' so the peer can
-        free its retransmit buffer.
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. The 'delayed_ack'
-               timer must be armed at this point so the next inbound
-               segment is subject to a fresh delay.
-            2. Peer sends one segment of 5 data bytes (b"hello").
-               Inline drive must NOT produce any TX - the data
-               branch in '_tcp_fsm_established' processes the
-               segment without inline ACK; the ACK is delivered by
-               the timer-driven delayed-ACK mechanism.
-            3. The 5 bytes appear in 'session._rx_buffer'; '_rcv_nxt'
-               advances by 5; '_rcv_una' is unchanged (we have not
-               yet acknowledged the data).
-            4. For the first 50 ms after the data arrives, no TX may
-               be emitted - the delayed-ACK timer is still counting
-               down.
-            5. Within DELAYED_ACK_DELAY + a small grace (i.e. by
-               roughly 110 ms after the data arrived), exactly one
-               outbound bare ACK fires with 'ack = PEER__ISS + 1 + 5'.
-
-        Required wire shape of the delayed ACK:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = LOCAL__ISS + 1   (= SND.NXT, unchanged)
-            ack       = PEER__ISS + 6    (= RCV.NXT, post-data)
-            flags     = {ACK}            (bare ACK, no PSH or data)
-            payload   = b""
-            mss       = None
-            wscale    = None
-            win       = 65535
-
-        Side effects asserted:
-
-            * '_rcv_una' equals '_rcv_nxt' after the ACK fires.
-            * 'session.state' remains ESTABLISHED throughout.
-
-        [FLAGS BUG] - RFC 1122 §4.2.3.2 deviation
-        ----------------------------------------------------------
-        '_transmit_packet' arms the delayed-ACK timer ONLY when
-        called from ESTABLISHED. The third-leg ACK is emitted from
-        within the SYN_SENT handler before the state transitions to
-        ESTABLISHED, so the timer is never armed during the
-        handshake. After the handshake completes, the timer is
-        absent from 'stack.timer._timers'; '_delayed_ack.is_expired'
-        returns True; and the very FIRST inbound data segment
-        triggers an immediate ACK on the next tick rather than being
-        delayed. Subsequent segments DO get the delay (because the
-        previous ACK's '_transmit_packet' call armed the timer), but
-        the first one always slips through with zero delay.
-
-        This test is expected to FAIL on current code - the early-
-        window assertion ('no TX within 50 ms') catches the
-        immediate-ACK behaviour. The fix is to arm the delayed-ACK
-        timer when transitioning into ESTABLISHED (or whenever new
-        data is enqueued), so the FIRST received data segment is
-        delayed exactly like every subsequent one.
+        Reference: RFC 1122 §4.2.3.2 (delayed ACK timer < 500 ms).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -332,76 +263,13 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
     def test__data_transfer_recv__back_to_back_full_segments_trigger_immediate_ack(self) -> None:
         """
-        Ensure that when two back-to-back full-MSS data segments
-        arrive on an ESTABLISHED session, the receiver does NOT
-        delay its ACK for both - the second segment MUST trigger an
-        immediate inline ACK that covers everything received so far,
-        per RFC 1122 §4.2.3.2:
+        Ensure that when two back-to-back full-MSS data
+        segments arrive on an ESTABLISHED session, the second
+        segment triggers an immediate inline ACK covering
+        both segments rather than both being deferred via the
+        delayed-ACK timer.
 
-            "in a stream of full-sized segments there SHOULD be an
-             ACK for at least every second segment."
-
-        The "every second segment" rule prevents the delayed-ACK
-        mechanism from holding back acknowledgements during bulk
-        transfers, which would starve the sender's congestion
-        window. With MSS-sized segments each carrying the full
-        application MSS, the receiver tracks the count of pending
-        unacknowledged segments and emits an inline ACK as soon as
-        that count reaches two (or whatever the implementation
-        threshold is, but at minimum every other segment).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED.
-            2. Peer sends segment #1 of 1460 bytes
-               (seq = PEER__ISS + 1, b"X" * 1460). Drive RX.
-               No inline ACK fires - the first segment is subject
-               to the delayed-ACK timer.
-            3. Peer sends segment #2 of 1460 bytes
-               (seq = PEER__ISS + 1 + 1460, b"Y" * 1460).
-               Drive RX. Per the every-other-segment rule, an
-               inline ACK MUST fire as the segment is processed.
-            4. The inline ACK covers BOTH segments: ack = PEER__ISS
-               + 1 + 2920.
-            5. Both payloads land in the receive buffer in order.
-
-        Required wire shape of the immediate ACK after segment #2:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = LOCAL__ISS + 1
-            ack       = PEER__ISS + 1 + 2 * 1460   (= PEER__ISS + 2921)
-            flags     = {ACK}
-            payload   = b""
-            win       = 65535
-
-        Side effects asserted:
-
-            * 'session._rx_buffer' contains 'seg1_payload +
-              seg2_payload' in that order.
-            * 'session._rcv_nxt' equals 'PEER__ISS + 1 + 2920'.
-            * '_rcv_una' equals '_rcv_nxt' after the inline ACK
-              (we acknowledged everything we received).
-            * State stays ESTABLISHED.
-
-        [FLAGS BUG] - RFC 1122 §4.2.3.2 deviation
-        ----------------------------------------------------------
-        The data branch in '_tcp_fsm_established' processes inbound
-        data via '_process_ack_packet' without any inline ACK emit.
-        It does not track the count of unacknowledged segments, and
-        it does not consult the delayed-ACK timer to detect
-        back-to-back segments. Both segments end up queued for the
-        delayed ACK, which is then released by the timer-driven
-        '_delayed_ack' on a subsequent tick rather than inline as
-        the second segment is processed.
-
-        This test is expected to FAIL on current code: the second
-        segment's inline drive returns no TX (the ACK is held for
-        the timer). The fix requires tracking the count of
-        unacknowledged segments since the last ACK we emitted, and
-        forcing an inline 'self._transmit_packet(flag_ack=True)'
-        from '_process_ack_packet' (or from the data branch in
-        '_tcp_fsm_established') whenever that count reaches two.
+        Reference: RFC 1122 §4.2.3.2 (ACK at least every second segment).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -507,62 +375,14 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
     def test__data_transfer_recv__bare_ack_with_no_data_does_not_trigger_ack_loop(self) -> None:
         """
-        Ensure that a bare ACK from the peer (no SYN, no FIN, no
-        RST, no data) acknowledging an already-acknowledged byte
-        ('ack = SND.UNA') is processed quietly: '_rcv_nxt' must NOT
-        advance, '_snd_una' must NOT advance, and crucially we must
-        NOT emit any acknowledgement segment in response. Sending a
-        pure ACK in response to a pure ACK would create an infinite
-        ACK loop on the wire and is forbidden by basic TCP semantics
-        - RFC 9293 §3.8 makes this clear by defining ACK as a
-        cumulative-acknowledgement field rather than a request for
-        re-acknowledgement.
+        Ensure a bare ACK from the peer (no SYN, no FIN, no
+        RST, no data) acknowledging an already-acknowledged
+        byte is processed quietly: no inline TX, sequence
+        variables unchanged, no ACK fires after the delayed-
+        ACK interval — sending an ACK in response to a pure
+        ACK would create an infinite loop on the wire.
 
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. After this:
-                 SND.UNA == LOCAL__ISS + 1
-                 SND.NXT == LOCAL__ISS + 1
-                 RCV.NXT == PEER__ISS + 1
-                 RCV.UNA == PEER__ISS + 1
-            2. Peer sends a bare ACK at seq = PEER__ISS + 1 with
-               ack = LOCAL__ISS + 1 (re-acknowledging our SYN that
-               was already acknowledged during the handshake's
-               SYN+ACK). No data, no flags other than ACK.
-            3. Drive RX. Inline drive must produce NO outbound
-               segment - no inline ACK, no inline data.
-            4. State variables stay frozen: '_rcv_nxt', '_rcv_una',
-               '_snd_una', '_snd_nxt' are all unchanged.
-            5. Tick the virtual clock past the delayed-ACK interval
-               and verify still no segment - the bare ACK left
-               nothing pending that would trigger the timer's
-               'rcv_nxt > rcv_una' condition.
-
-        Side effects asserted:
-
-            * 'session._rx_buffer' is empty (the bare ACK carries
-              no data).
-            * '_rcv_nxt', '_rcv_una', '_snd_una', '_snd_nxt' all
-              equal their post-handshake values.
-            * State remains ESTABLISHED.
-            * No TX inline; no TX after the delayed-ACK interval.
-
-        This test passes on current code as a positive-control
-        regression guard. The relevant code paths:
-
-          - '_tcp_fsm_established' receives the bare ACK, hits the
-            "Suspected retransmit request" branch (because seq ==
-            rcv_nxt, ack == snd_una, and no data). That branch
-            increments a per-ack dup-counter but does not transmit
-            anything for the first arrival.
-          - '_delayed_ack' on the next tick checks 'rcv_nxt >
-            rcv_una' - both equal post-handshake, so no ACK fires.
-
-        A future regression that either (a) made the data branch
-        unconditionally emit an ACK on every received segment or
-        (b) advanced 'rcv_nxt' on a bare ACK would break this test
-        immediately and surface the ACK-loop / sequence-corruption
-        bug before any users were affected.
+        Reference: RFC 9293 §3.4 (cumulative-acknowledgement semantics).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -647,93 +467,13 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
     def test__data_transfer_recv__ack_beyond_snd_max_triggers_empty_ack_reply(self) -> None:
         """
-        Ensure that a segment whose acknowledgement number is BEYOND
-        'SND.MAX' (i.e. acknowledges data we have never sent) is
-        rejected per RFC 9293 §3.10.7.4 with an empty-ACK reply
-        carrying our current 'SND.NXT' / 'RCV.NXT', and that the
-        offending segment is discarded without affecting connection
-        state:
+        Ensure a segment whose acknowledgement number is
+        beyond SND.MAX (acknowledges data we have never
+        sent) is rejected with an empty-ACK reply carrying
+        our current SND.NXT / RCV.NXT; SND.UNA, SND.NXT,
+        RCV.NXT are unchanged and state stays ESTABLISHED.
 
-            "If the connection is in a synchronized state ..., any
-             unacceptable segment (out-of-window sequence number or
-             unacceptable acknowledgment number) must be responded
-             to with an empty acknowledgment segment (without any
-             user data) containing the current send sequence number
-             and an acknowledgment indicating the next sequence
-             number expected to be received, and the connection
-             remains in the same state."
-
-        The unacceptable-ACK case is important because it covers
-        forged or stale ACKs that an attacker (or buggy peer stack)
-        could use to confuse our retransmit logic. Without an
-        explicit empty-ACK reply, the offending sender cannot tell
-        their segment was rejected and may keep retrying; with the
-        reply, they receive an authoritative statement of our
-        current connection state and can correct their behaviour
-        (or be ignored as the bug-source).
-
-        Scenario:
-
-            1. Drive handshake to ESTABLISHED. After:
-                 SND.UNA == SND.NXT == SND.MAX == LOCAL__ISS + 1
-                 RCV.NXT == PEER__ISS + 1
-            2. Peer sends a segment at seq = PEER__ISS + 1 (=
-               RCV.NXT, so SEQ is acceptable) with ack =
-               LOCAL__ISS + 0xDEAD (= LOCAL__ISS + 57005, far
-               beyond SND.MAX = LOCAL__ISS + 1). Bare ACK, no
-               data.
-            3. Drive RX. Per RFC 9293 §3.10.7.4 the receiver MUST
-               emit an empty-ACK reply inline. The reply carries
-               OUR current SND.NXT (= LOCAL__ISS + 1) as seq and
-               OUR current RCV.NXT (= PEER__ISS + 1) as ack.
-
-        Required wire shape of the empty-ACK reply:
-
-            sport     = STACK__PORT
-            dport     = PEER__PORT
-            seq       = LOCAL__ISS + 1   (= SND.NXT)
-            ack       = PEER__ISS + 1    (= RCV.NXT)
-            flags     = {ACK}
-            payload   = b""
-            mss       = None
-            wscale    = None
-            win       = 65535
-
-        Side effects asserted:
-
-            * 'session._snd_una' is unchanged - the bogus ACK
-              acknowledged something we have not sent and must not
-              advance our send window.
-            * 'session._snd_nxt' is unchanged.
-            * 'session._rcv_nxt' is unchanged - the offending
-              segment had no data (and even if it had, the spec
-              says the segment is discarded).
-            * 'session.state' remains ESTABLISHED.
-
-        [FLAGS BUG] - RFC 9293 §3.10.7.4 deviation
-        ----------------------------------------------------------
-        '_tcp_fsm_established's data branch is gated on three
-        sub-conditions that all require
-        'self._snd_una <= packet_rx_md.tcp__ack <= self._snd_max':
-
-          - "Suspected retransmit request" requires
-            'tcp__ack == self._snd_una'. Fails for ack > snd_max.
-          - The OOO-storage branch and the regular-data branch
-            require the bound check explicitly.
-
-        When 'tcp__ack > self._snd_max', NONE of the sub-branches
-        match; the function returns silently with no outbound
-        segment. The peer (or attacker) receives no signal that
-        their unacceptable ACK was rejected, and our state stays
-        in the dark.
-
-        This test is expected to FAIL on current code with zero TX
-        frames. The fix requires an else / fall-through branch in
-        the ACK-only handler that emits
-        'self._transmit_packet(flag_ack=True)' whenever the inbound
-        ACK falls outside (SND.UNA, SND.MAX] - the same
-        empty-ACK reply RFC 9293 §3.10.7.4 mandates for any
-        unacceptable segment.
+        Reference: RFC 9293 §3.10.7.4 (step 5 ACK acknowledging unsent data).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -761,9 +501,9 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             len(inline_tx),
             1,
             msg=(
-                "An incoming segment with ACK > SND.MAX must elicit "
-                "exactly one inline empty-ACK reply per RFC 9293 "
-                f"§3.10.7.4. Got {len(inline_tx)} TX frames."
+                "An incoming segment with ACK > SND.MAX must "
+                "elicit exactly one inline empty-ACK reply. "
+                f"Got {len(inline_tx)} TX frames."
             ),
         )
 
@@ -796,8 +536,8 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             rcv_nxt_before,
             msg=(
                 "'_rcv_nxt' must be unchanged - the offending "
-                "segment carried no data, and per RFC 9293 §3.10.7.4 "
-                "any data on an unacceptable segment is discarded."
+                "segment carried no data, and any data on an "
+                "unacceptable segment is discarded."
             ),
         )
         self.assertIs(
