@@ -1730,16 +1730,16 @@ class TestTcpCwndPrr(TcpSessionTestCase):
     def test__cwnd__prr__bare_dup_ack_during_recovery_does_not_inflate_cwnd(self) -> None:
         """
         Ensure that a bare dup-ACK during recovery (no SACK
-        info, no cum-ACK advance) does not inflate cwnd.
-        Per RFC 6937 the dup-ACK delivers zero new bytes
-        ('DeliveredData = 0'), so PRR holds cwnd steady;
-        the RFC 5681 §3.2 step 4 'cwnd += SMSS per dup-ACK'
-        behaviour is the gap PRR fixes - that rule
-        over-inflates cwnd on bare dup-ACK bursts and causes
-        the post-recovery send burst that PRR is designed to
-        smooth out.
+        info, no cum-ACK advance) does not inflate cwnd. The
+        dup-ACK delivers zero new bytes
+        ('DeliveredData = 0'), so PRR's proportional pacing
+        holds cwnd steady; the legacy 'cwnd += SMSS per
+        dup-ACK' rule over-inflates on bare dup-ACK bursts
+        and causes the post-recovery send burst that PRR is
+        designed to smooth out.
 
         Reference: RFC 6937 §3.1 (PRR delivers proportional pacing only on delivered data).
+        Reference: RFC 5681 §3.2 (legacy '+SMSS per dup-ACK' rule that PRR replaces).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
