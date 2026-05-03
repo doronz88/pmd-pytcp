@@ -1289,3 +1289,196 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
                 "'_transmit_packet' fired the data segment."
             ),
         )
+
+
+class TestTcpRtoSynFloor(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 6298 §5.7 SECOND clause: the
+    SYN-RTO 3-second floor.
+
+    RFC 6298 §5.7 second sentence:
+
+        "If the timer expires awaiting the ACK of a SYN segment
+         and the TCP implementation is using an RTO less than
+         3 seconds, the RTO MUST be re-initialized to 3 seconds
+         when data transmission begins (i.e., after the three-
+         way handshake completes)."
+
+    The floor protects against pathologically aggressive RTOs
+    in environments where the SYN's RTT measurement (clamped to
+    MIN_RTO_MS = 1000 ms by the RFC 6298 §2.4 lower bound) is
+    optimistic relative to the path's actual RTT. By forcing
+    rto_ms >= 3000 ms after a SYN retransmit, the first
+    post-handshake data send is given a more conservative
+    timeout while the connection re-acquires fresh RTT samples.
+
+    The floor applies ONLY when the SYN was retransmitted at
+    least once (i.e., '_retransmit_count > 0' at handshake
+    completion). If the peer's SYN+ACK arrives before any SYN
+    retransmit fires, no floor applies - the canonical RTT
+    measurement (typically clamped to MIN_RTO_MS) stands.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def test__rto__post_syn_retransmit_handshake_floors_rto_at_3000ms(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.7 second clause: when the SYN was
+        retransmitted at least once (peer's SYN+ACK arrives only
+        after the SYN retransmit fired), the post-handshake
+        '_rto_state.rto_ms' MUST be >= 3000 ms when data
+        transmission begins.
+
+        Scenario:
+
+            * Drive an active-open SYN; observe the initial SYN.
+            * Advance virtual time past the initial RTO
+              (1000 ms) so the SYN's retransmit timer fires.
+              '_retransmit_count' increments to 1.
+            * Drive peer's SYN+ACK so the handshake completes.
+            * Assert state == ESTABLISHED.
+            * Assert '_retransmit_count > 0' (setup invariant -
+              we DID retransmit the SYN).
+            * Assert '_rto_state.rto_ms >= 3000' per RFC 6298
+              §5.7.
+
+        Fails today: PyTCP applies a uniform MIN_RTO_MS = 1000
+        floor and does not enforce the SYN-specific 3-second
+        floor when the handshake completes after a SYN
+        retransmit. After the post-handshake '_process_ack_packet'
+        on the SYN+ACK, '_rto_state.rto_ms' is whatever the
+        SRTT/RTTVAR estimator yields (typically 1000 ms via the
+        MIN_RTO_MS clamp).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        # Initial SYN goes out on the first tick.
+        initial_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(initial_tx),
+            1,
+            msg="Setup invariant: connect must emit one SYN frame on the first tick.",
+        )
+
+        # Advance past the initial RTO so the SYN's retransmit
+        # timer fires at least once.
+        self._advance(ms=1500)
+        self.assertGreaterEqual(
+            session._retransmit_count,
+            1,
+            msg=(
+                "Setup invariant: after 1.5 s of peer silence, the SYN's "
+                "retransmit timer (RTO=1000 ms) MUST have fired at least "
+                f"once. Got _retransmit_count={session._retransmit_count}."
+            ),
+        )
+
+        # Peer's SYN+ACK arrives; handshake completes.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: handshake MUST complete on peer SYN+ACK.",
+        )
+        self.assertGreaterEqual(
+            session._rto_state.rto_ms,
+            3000,
+            msg=(
+                "RFC 6298 §5.7 second clause: when the SYN was "
+                "retransmitted at least once before the handshake "
+                "completed, '_rto_state.rto_ms' MUST be re-initialized "
+                "to >= 3000 ms when data transmission begins. Got "
+                f"_rto_state.rto_ms={session._rto_state.rto_ms} ms; the "
+                "SYN-RTO floor is not being enforced."
+            ),
+        )
+
+    def test__rto__post_clean_handshake_no_syn_retransmit_skips_3000ms_floor(self) -> None:
+        """
+        Regression guard: when the SYN was NOT retransmitted
+        (peer's SYN+ACK arrives before any SYN-RTO timer fires),
+        the RFC 6298 §5.7 second-clause floor does NOT apply.
+        '_rto_state.rto_ms' is whatever the canonical SRTT /
+        RTTVAR estimator yields - typically 1000 ms via the
+        MIN_RTO_MS clamp.
+
+        This pins the negative case so the §5.7 fix above
+        cannot accidentally penalise clean (retransmit-free)
+        handshakes.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # Peer's SYN+ACK arrives within the initial RTO window;
+        # no SYN retransmit fires.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: clean handshake reaches ESTABLISHED.",
+        )
+        self.assertEqual(
+            session._retransmit_count,
+            0,
+            msg=(
+                "Setup invariant: no SYN retransmit fired before peer's "
+                f"SYN+ACK; _retransmit_count must be 0. Got "
+                f"{session._retransmit_count}."
+            ),
+        )
+        self.assertLess(
+            session._rto_state.rto_ms,
+            3000,
+            msg=(
+                "RFC 6298 §5.7: the 3-second floor applies ONLY when "
+                "the SYN was retransmitted. A clean handshake's "
+                "post-handshake '_rto_state.rto_ms' MUST be the "
+                "canonical estimator output (typically 1000 ms via "
+                f"MIN_RTO_MS), NOT 3000 ms. Got "
+                f"_rto_state.rto_ms={session._rto_state.rto_ms} ms."
+            ),
+        )
