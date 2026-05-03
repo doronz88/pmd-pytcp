@@ -1413,3 +1413,380 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
                 f"{expected_cwnd}, got {session._cwnd}."
             ),
         )
+
+
+class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
+    """
+    Extended integration coverage for RFC 6582 NewReno
+    scenarios that 'TestTcpCwndNewReno' (the basic single-
+    partial-cum-ACK happy path) does not exercise:
+
+      - Multiple consecutive partial cum-ACKs in one recovery
+        cycle.
+      - NewReno cwnd deflation with SACK-aware peer
+        (deflation runs regardless of SACK state).
+      - NewReno across the 32-bit seq wrap (modular 'lt32'
+        recovery_point check).
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake(self, *, iss: int, peer_iss: int, sackperm: bool = False) -> TcpSession:
+        """Drive handshake; optionally negotiate SACK."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=sackperm,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_sack == sackperm, (
+            f"Setup invariant: bilateral SACK negotiation expected={sackperm}, " f"got _send_sack={session._send_sack}."
+        )
+        return session
+
+    def test__newreno__multiple_consecutive_partial_cum_acks_each_deflate_cwnd(self) -> None:
+        """
+        Ensure RFC 6582 §3 step 3b fires correctly for multiple
+        consecutive partial cum-ACKs in one recovery cycle: each
+        partial cum-ACK deflates cwnd by 'bytes_acked' (with the
+        SMSS add-back), and recovery exits only on the cum-ACK
+        that finally reaches recovery_point.
+
+        Scenario:
+
+            * Drive handshake (no SACK) and pin large cwnd.
+            * Send 3 MSS-sized segments. Advance 3 ticks; all
+              fire. recovery_point at fast-retransmit will
+              equal SND.MAX = ISS+1+3*MSS.
+            * Drive 3 dup-ACKs at SND.UNA. Fast retransmit
+              fires; cwnd inflates to ssthresh+3*SMSS. Advance
+              one tick - seg 1 retransmits.
+            * Drive partial cum-ACK acking seg 1 (ack=ISS+1+MSS).
+              cwnd deflates by SMSS - SMSS = 0 net (sub-cancel
+              case, MSS=MSS).
+            * Advance one tick - seg 2 retransmits via the
+              snd_nxt-still-rewound mechanism.
+            * Drive partial cum-ACK acking seg 2 (ack=ISS+1+
+              2*MSS). cwnd deflates again.
+            * Advance one tick - seg 3 retransmits.
+            * Drive full cum-ACK acking seg 3 (ack=ISS+1+3*MSS
+              = recovery_point). Recovery exits, cwnd =
+              ssthresh.
+
+        Asserts:
+            * cwnd unchanged across each partial cum-ACK (since
+              MSS=MSS the deflate and add-back cancel).
+            * recovery_point stays non-zero across both partial
+              cum-ACKs.
+            * On the full cum-ACK, recovery_point = 0 and
+              cwnd = ssthresh (the post-fast-retransmit ssthresh
+              value, NOT inflated).
+        """
+
+        session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (3 * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(3):
+            self._advance(ms=1)
+
+        # 3 dup-ACKs trigger fast retransmit.
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+        # Tick - seg 1 retransmit fires.
+        self._advance(ms=1)
+        cwnd_post_fr = session._cwnd
+        ssthresh_post_fr = session._ssthresh
+        recovery_point = session._recovery_point
+
+        # First partial cum-ACK: ack seg 1.
+        partial_1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_1)
+
+        # bytes_acked=MSS: deflate by MSS, add back MSS, net 0.
+        self.assertEqual(
+            session._cwnd,
+            cwnd_post_fr,
+            msg=(
+                f"Partial cum-ACK #1 with bytes_acked=SMSS: "
+                f"deflate(-SMSS)+add-back(+SMSS) cancels. "
+                f"Expected {cwnd_post_fr}, got {session._cwnd}."
+            ),
+        )
+        self.assertEqual(
+            session._recovery_point,
+            recovery_point,
+            msg=("Partial cum-ACK #1 (snd_una < recovery_point): " "recovery state MUST be preserved."),
+        )
+
+        # Tick - seg 2 retransmits.
+        self._advance(ms=1)
+
+        # Second partial cum-ACK: ack seg 2.
+        partial_2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 2 * PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_2)
+
+        self.assertEqual(
+            session._cwnd,
+            cwnd_post_fr,
+            msg=("Partial cum-ACK #2 with bytes_acked=SMSS: " "same cancel. cwnd preserved."),
+        )
+        self.assertEqual(
+            session._recovery_point,
+            recovery_point,
+            msg="Partial cum-ACK #2: recovery state preserved.",
+        )
+
+        # Tick - seg 3 retransmits.
+        self._advance(ms=1)
+
+        # Final cum-ACK: ack seg 3, snd_una reaches recovery_point.
+        full_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 3 * PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=full_ack)
+
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                "Full cum-ACK at recovery_point: recovery_point "
+                "MUST be cleared (RFC 5681 §3.2 step 6 / RFC 6675 §5)."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            ssthresh_post_fr,
+            msg=(
+                f"Full cum-ACK: cwnd MUST deflate to ssthresh "
+                f"(RFC 5681 §3.2 step 6). Expected "
+                f"{ssthresh_post_fr}, got {session._cwnd}."
+            ),
+        )
+
+    def test__newreno__sack_active_partial_cum_ack_still_deflates_cwnd(self) -> None:
+        """
+        Ensure RFC 6582 §3 step 3b deflation runs even when
+        SACK is bilaterally negotiated. RFC 6675 NextSeg
+        drives multi-gap retransmit selection, but cwnd
+        deflation accounting is independent of SACK and
+        applies on every partial cum-ACK during recovery.
+
+        Scenario:
+
+            * Drive handshake with peer advertising SACK-Permitted.
+              Confirm '_send_sack == True'.
+            * Pin large cwnd. Send 3 segments.
+            * Drive 3 dup-ACKs (will trigger fast-retransmit
+              via the count-based rule; SACK byte rule may also
+              trigger but that's fine - same outcome).
+            * Drive partial cum-ACK acking 2*SMSS.
+            * Assert cwnd deflated per §3 step 3b (deflate by
+              2*SMSS, add back SMSS = net -SMSS). The SACK
+              path does NOT bypass this deflation.
+        """
+
+        session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS, sackperm=True)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (3 * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(3):
+            self._advance(ms=1)
+
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+        cwnd_post_fr = session._cwnd
+
+        partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 2 * PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_ack)
+
+        # Per RFC 6582 §3 step 3b: cwnd -= 2*SMSS + add-back SMSS.
+        expected_cwnd = cwnd_post_fr - 2 * PEER__MSS + PEER__MSS
+        self.assertEqual(
+            session._cwnd,
+            expected_cwnd,
+            msg=(
+                f"RFC 6582 §3 step 3b deflation MUST run "
+                f"regardless of SACK state. With SACK active, "
+                f"expected post-deflate cwnd={expected_cwnd}, "
+                f"got {session._cwnd}."
+            ),
+        )
+
+    def test__newreno__partial_cum_ack_across_32bit_seq_wrap(self) -> None:
+        """
+        Ensure RFC 6582 §3 step 3b works across the 32-bit seq
+        wrap. The recovery_point check uses 'lt32(snd_una,
+        recovery_point)' - a modular comparator. With ISS near
+        the 32-bit max, SND.MAX and recovery_point wrap past
+        zero. A peer cum-ACK with 'ack' on the post-wrap side
+        of recovery_point is modularly LESS than recovery_point
+        and MUST be classified as partial; the post-wrap ack
+        must NOT be classified as past-recovery_point via raw
+        Python '<'.
+
+        Scenario:
+
+            * Drive handshake at ISS = 0xFFFF_FFE0.
+              SND.NXT = ISS+1 = 0xFFFF_FFE1, post-handshake
+              cwnd may be smaller than 14600 since we pin
+              cwnd later.
+            * Pin cwnd large, send 3*MSS payload.
+              segments at ISS+1, ISS+1+MSS, ISS+1+2*MSS.
+              Wrapped: 0xFFFF_FFE1, 0x000000xx, 0x000000xx.
+              recovery_point = SND.MAX (post-wrap).
+            * 3 dup-ACKs at SND.UNA fire fast retransmit.
+            * Tick - seg 1 retransmits.
+            * Drive partial cum-ACK at ack = ISS+1+MSS
+              (post-wrap). The raw integer ack is
+              numerically GREATER than recovery_point (since
+              recovery_point is also post-wrap, but seq math
+              is modular).
+            * Assert NewReno deflation fired (recovery_point
+              still set, cwnd deflated).
+
+        Without modular 'lt32' the boundary check would
+        misclassify the ack as past-recovery_point and exit
+        recovery prematurely.
+        """
+
+        wrap_iss = 0xFFFF_FFE0
+        wrap_peer_iss = 0x0000_2000
+
+        session = self._drive_handshake(iss=wrap_iss, peer_iss=wrap_peer_iss)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (3 * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(3):
+            self._advance(ms=1)
+
+        # 3 dup-ACKs at our SND.UNA = ISS+1 (post-wrap value).
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=wrap_peer_iss + 1,
+                ack=(wrap_iss + 1) & 0xFFFF_FFFF,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+        self._advance(ms=1)
+        cwnd_post_fr = session._cwnd
+        recovery_point = session._recovery_point
+
+        # Partial cum-ACK at SND.UNA + MSS. Modular addition
+        # so the value lands on the post-wrap side.
+        partial_ack_value = (wrap_iss + 1 + PEER__MSS) & 0xFFFF_FFFF
+        partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=wrap_peer_iss + 1,
+            ack=partial_ack_value,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_ack)
+
+        self.assertNotEqual(
+            session._recovery_point,
+            0,
+            msg=(
+                f"Modular 'lt32(snd_una, recovery_point)' check "
+                f"MUST classify the post-wrap partial cum-ACK "
+                f"as partial. Got recovery_point="
+                f"{session._recovery_point} (expected non-zero, "
+                f"= {recovery_point})."
+            ),
+        )
+        # bytes_acked=MSS: deflate -MSS + add-back +MSS = 0 net.
+        self.assertEqual(
+            session._cwnd,
+            cwnd_post_fr,
+            msg=(
+                f"Across-wrap partial cum-ACK with "
+                f"bytes_acked=SMSS: deflate-add-back cancels. "
+                f"Expected cwnd={cwnd_post_fr}, got "
+                f"{session._cwnd}."
+            ),
+        )
