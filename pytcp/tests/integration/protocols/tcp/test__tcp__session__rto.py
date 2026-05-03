@@ -1482,3 +1482,326 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
                 f"_rto_state.rto_ms={session._rto_state.rto_ms} ms."
             ),
         )
+
+    def _make_listen_session(self, *, iss: int) -> tuple[TcpSocket, TcpSession]:
+        """
+        Build a wildcard-listen 'TcpSocket' / 'TcpSession' pair
+        ready to accept inbound SYNs. Mirrors the harness used
+        in 'handshake__passive.py'.
+        """
+
+        from net_addr import Ip4Address as _Ip4Address
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = _Ip4Address()
+        sock._remote_port = 0
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=_Ip4Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=SysCall.LISTEN)
+        return sock, session
+
+    def test__rto__passive_open_with_syn_ack_retransmit_floors_rto_at_3000ms(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.7 second clause applies on the
+        passive-open path too: if our SYN+ACK was retransmitted
+        before peer's third-leg ACK arrived, post-handshake
+        '_rto_state.rto_ms' MUST be >= 3000 ms.
+
+        The §5.7 wording targets "the SYN segment" but the
+        spirit is "the handshake's first segment whose ACK we
+        had to wait for, with retransmits".  On the passive-
+        open path the analogous segment is OUR SYN+ACK.
+
+        Scenario:
+
+            * Build a listening socket; drive peer's SYN.
+            * Tick once so the SYN+ACK fires.
+            * Advance past the initial RTO so the SYN+ACK's
+              retransmit timer fires; '_retransmit_count' on
+              the child session increments to 1.
+            * Drive peer's third-leg ACK.
+            * Assert child session is ESTABLISHED.
+            * Assert post-handshake '_rto_state.rto_ms >= 3000'.
+
+        Fails today: '_tcp_fsm_syn_rcvd' has NO §5.7 floor.
+        The active-open fix (commit 'f232096') was scoped to
+        '_tcp_fsm_syn_sent' only. After Option B introduces a
+        '_syn_retransmit_count' field that survives
+        '_process_ack_packet's reset, the floor will be wired
+        at both ESTABLISHED-transition sites symmetrically.
+        """
+
+        listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        # First tick fires the SYN+ACK from the freshly-spawned
+        # child in SYN_RCVD.
+        first_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(first_tx),
+            1,
+            msg="Setup invariant: SYN_RCVD must emit exactly one SYN+ACK on the first tick.",
+        )
+
+        # The original listening session has been mutated into
+        # the child bound to peer's 4-tuple. Resolve it via the
+        # child socket id.
+        from pytcp.socket import SocketType
+        from pytcp.socket.socket_id import SocketId
+
+        child_socket_id = SocketId(
+            address_family=AddressFamily.INET4,
+            socket_type=SocketType.STREAM,
+            local_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_address=PEER__IP,
+            remote_port=PEER__PORT,
+        )
+        child_sock = stack.sockets[child_socket_id]
+        assert isinstance(child_sock, TcpSocket)
+        child_session = child_sock._tcp_session
+        assert child_session is not None
+
+        # Advance past the SYN+ACK's retransmit RTO (1000 ms)
+        # so the retransmit timer fires once.
+        self._advance(ms=1500)
+        self.assertGreaterEqual(
+            child_session._retransmit_count,
+            1,
+            msg=(
+                "Setup invariant: after 1.5 s of peer silence, "
+                "the SYN+ACK's retransmit timer (RTO=1000 ms) "
+                "MUST have fired at least once. Got "
+                f"_retransmit_count={child_session._retransmit_count}."
+            ),
+        )
+
+        # Peer's third-leg ACK finally arrives; handshake
+        # completes.
+        third_leg_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=third_leg_ack)
+
+        self.assertIs(
+            child_session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: third-leg ACK must complete the handshake.",
+        )
+        self.assertGreaterEqual(
+            child_session._rto_state.rto_ms,
+            3000,
+            msg=(
+                "RFC 6298 §5.7 second clause (passive-open shape): "
+                "when our SYN+ACK was retransmitted at least once "
+                "before peer's third-leg ACK arrived, "
+                "'_rto_state.rto_ms' MUST be re-initialized to "
+                ">= 3000 ms when data transmission begins. Got "
+                f"_rto_state.rto_ms={child_session._rto_state.rto_ms} ms; "
+                "the SYN-RTO floor is not enforced on the "
+                "passive-open path."
+            ),
+        )
+
+        # Cleanup: drop spawned child socket so other tests in
+        # the class are not contaminated.
+        for sid in list(stack.sockets):
+            if sid != listen_sock.socket_id:
+                del stack.sockets[sid]
+
+    def test__rto__passive_open_clean_handshake_skips_3000ms_floor(self) -> None:
+        """
+        Regression guard for the passive-open path: a clean
+        passive open (third-leg ACK arrives within the initial
+        RTO, no SYN+ACK retransmit) MUST NOT apply the §5.7
+        floor. Pins the negative case so the upcoming Option B
+        fix in '_tcp_fsm_syn_rcvd' cannot accidentally penalise
+        retransmit-free passive opens.
+        """
+
+        listen_sock, _ = self._make_listen_session(iss=LOCAL__ISS)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        self._advance(ms=1)
+
+        from pytcp.socket import SocketType
+        from pytcp.socket.socket_id import SocketId
+
+        child_socket_id = SocketId(
+            address_family=AddressFamily.INET4,
+            socket_type=SocketType.STREAM,
+            local_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_address=PEER__IP,
+            remote_port=PEER__PORT,
+        )
+        child_sock = stack.sockets[child_socket_id]
+        assert isinstance(child_sock, TcpSocket)
+        child_session = child_sock._tcp_session
+        assert child_session is not None
+
+        # Peer's third-leg ACK arrives within the initial RTO
+        # window; no SYN+ACK retransmit fires.
+        third_leg_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=third_leg_ack)
+
+        self.assertIs(
+            child_session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: clean passive-open reaches ESTABLISHED.",
+        )
+        self.assertEqual(
+            child_session._retransmit_count,
+            0,
+            msg=(
+                "Setup invariant: no SYN+ACK retransmit fired before "
+                "peer's third-leg ACK; _retransmit_count must be 0. "
+                f"Got {child_session._retransmit_count}."
+            ),
+        )
+        self.assertLess(
+            child_session._rto_state.rto_ms,
+            3000,
+            msg=(
+                "RFC 6298 §5.7 (passive-open shape): the floor applies "
+                "ONLY when our SYN+ACK was retransmitted. A clean "
+                "passive open's post-handshake '_rto_state.rto_ms' "
+                "MUST be the canonical estimator output (typically "
+                "1000 ms via MIN_RTO_MS), NOT 3000 ms. Got "
+                f"_rto_state.rto_ms={child_session._rto_state.rto_ms} ms."
+            ),
+        )
+
+        for sid in list(stack.sockets):
+            if sid != listen_sock.socket_id:
+                del stack.sockets[sid]
+
+    def test__rto__syn_retransmit_count_survives_process_ack_packet_reset(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure Option B: a dedicated '_syn_retransmit_count'
+        field accumulates SYN / SYN+ACK retransmit-timer
+        fires while in {SYN_SENT, SYN_RCVD} and is NOT reset
+        by '_process_ack_packet' on the SND.UNA-advancing
+        handshake-completing ACK.
+
+        This is the structural fix for the temporal-coupling
+        trap noted on commit 'f232096': '_retransmit_count'
+        is reset to 0 inside '_process_ack_packet' when peer's
+        ACK advances SND.UNA, so the active-open §5.7 check
+        had to capture the value BEFORE the call. A separate
+        '_syn_retransmit_count' that survives the reset makes
+        the check order-independent and removes the trap.
+
+        Scenario:
+
+            * Drive an active-open SYN; advance 1.5 s so the
+              SYN's retransmit timer fires once.
+            * Assert '_syn_retransmit_count == 1' (post-fix).
+            * Drive peer's SYN+ACK so the handshake completes
+              and '_process_ack_packet' runs.
+            * Assert '_syn_retransmit_count == 1' STILL after
+              the call (the field is NOT reset by §5.2 / §5.3
+              cum-ACK processing).
+
+        Fails today: '_syn_retransmit_count' does not exist;
+        '_retransmit_count' is reset to 0 by
+        '_process_ack_packet:1940' on the SYN+ACK ack.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        self._advance(ms=1500)
+
+        self.assertTrue(
+            hasattr(session, "_syn_retransmit_count"),
+            msg=(
+                "Option B: TcpSession MUST expose a "
+                "'_syn_retransmit_count' field decoupled from the "
+                "general-purpose '_retransmit_count' that "
+                "'_process_ack_packet' resets."
+            ),
+        )
+        self.assertGreaterEqual(
+            getattr(session, "_syn_retransmit_count", -1),
+            1,
+            msg=(
+                "Option B: '_syn_retransmit_count' MUST increment "
+                "on each SYN-RTO timer fire while in SYN_SENT. Got "
+                f"{getattr(session, '_syn_retransmit_count', None)}."
+            ),
+        )
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: handshake completes on peer SYN+ACK.",
+        )
+        self.assertGreaterEqual(
+            getattr(session, "_syn_retransmit_count", -1),
+            1,
+            msg=(
+                "Option B order-independence: "
+                "'_syn_retransmit_count' MUST survive "
+                "'_process_ack_packet's reset of "
+                "'_retransmit_count'. The §5.7 floor check "
+                "becomes order-independent and the temporal-"
+                "coupling trap noted on commit 'f232096' is "
+                "removed structurally."
+            ),
+        )
