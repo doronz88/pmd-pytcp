@@ -35,7 +35,7 @@ plain Python integer arithmetic for sequence updates and plain
 '>' / '<=' comparators for ACK acceptability checks; both fail
 across the wrap boundary.
 
-The fix is the deferred migration to 'pytcp.lib.tcp_seq's modular
+The fix is the deferred migration to 'pytcp.protocols.tcp.tcp__seq's modular
 comparators ('lt32', 'le32', 'gt32', 'ge32', 'add32', 'sub32',
 'in_range32') that already exist with full unit-test coverage.
 This file is the forcing function for that migration.
@@ -84,7 +84,7 @@ PEER__PORT: int = 80
 PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
-# 32-bit modular constants. These mirror what 'pytcp.lib.tcp_seq'
+# 32-bit modular constants. These mirror what 'pytcp.protocols.tcp.tcp__seq'
 # uses; pinning them here keeps the test arithmetic readable.
 SEQ32__MAX: int = 0xFFFF_FFFF
 SEQ32__MOD: int = 0x1_0000_0000
@@ -211,7 +211,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
         struct-error traceback.
 
         The fix is the deferred migration of 'tcp__session.py' to
-        the 'pytcp.lib.tcp_seq' modular comparators - replacing
+        the 'pytcp.protocols.tcp.tcp__seq' modular comparators - replacing
         all 'seq + len + flags' assignments with
         'add32(seq, len + flags)' and all '<' / '<=' comparisons
         on sequence numbers with 'lt32' / 'le32' / etc. The
@@ -302,7 +302,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
                 "'tcp__session.py:593' propagates a non-32-bit "
                 "value into the assembler's 'struct.pack(\"!I\", "
                 "...)' call, which rejects it. Fix: migrate "
-                "'tcp__session.py' to use 'pytcp.lib.tcp_seq's "
+                "'tcp__session.py' to use 'pytcp.protocols.tcp.tcp__seq's "
                 "'add32' helper."
             )
 
@@ -498,7 +498,7 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
                 "False; SND.UNA stays at 0xFFFF_FFFE and peer's "
                 "in-flight data is silently unacknowledged. Fix: "
                 "replace '<=' with 'le32' from "
-                "'pytcp.lib.tcp_seq'."
+                "'pytcp.protocols.tcp.tcp__seq'."
             ),
         )
 
@@ -688,7 +688,7 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
                 "'_process_ack_packet' (line 893 area) leaked past "
                 "the 32-bit modular space; the next outbound ACK "
                 "will fail at 'struct.pack(\"!I\", ...)'. Fix: "
-                "migrate to 'add32' from 'pytcp.lib.tcp_seq'."
+                "migrate to 'add32' from 'pytcp.protocols.tcp.tcp__seq'."
             ),
         )
 
@@ -847,7 +847,7 @@ class TestTcpSeqWraparound__Purge(TcpSessionTestCase):
                 "so the stale entry leaks across the wrap. Fix: "
                 "migrate the three purge loops in "
                 "'_process_ack_packet' to 'lt32' from "
-                "'pytcp.lib.tcp_seq'."
+                "'pytcp.protocols.tcp.tcp__seq'."
             ),
         )
 
@@ -953,7 +953,7 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
         SND.UNA does not advance. Same gap exists in
         '_tcp_fsm_fin_wait_1', '_tcp_fsm_fin_wait_2',
         '_tcp_fsm_closing', '_tcp_fsm_last_ack'. The fix
-        migrates each chain to 'le32' from 'pytcp.lib.tcp_seq'
+        migrates each chain to 'le32' from 'pytcp.protocols.tcp.tcp__seq'
         ('le32(SND.UNA, ack) AND le32(ack, SND.MAX)').
         """
 
@@ -1260,7 +1260,7 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
         Same gap appears in 'FIN_WAIT_2' / 'CLOSING' transitions
         that test 'ack >= SND.FIN'. Fix: migrate to
         'ge32(packet_rx_md.tcp__ack, self._snd_fin)' from
-        'pytcp.lib.tcp_seq'.
+        'pytcp.protocols.tcp.tcp__seq'.
         """
 
         session = self._drive_handshake_to_established(
@@ -1303,7 +1303,7 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
                 "FIN_WAIT_2. Current code's raw '>=' compares "
                 "0x00 >= 0xFFFF_FFFF numerically (False), so the "
                 "transition never fires near the wrap. Fix: "
-                "migrate to 'ge32' from 'pytcp.lib.tcp_seq'."
+                "migrate to 'ge32' from 'pytcp.protocols.tcp.tcp__seq'."
             ),
         )
 
@@ -1474,7 +1474,7 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
                 "'0xFFFF_FFFF < 0x00 <= 0x00' which is False "
                 "numerically and wrongly rejects the segment with "
                 "'<SEQ=SEG.ACK><CTL=RST>'. Fix: migrate to "
-                "'lt32 / le32' from 'pytcp.lib.tcp_seq'."
+                "'lt32 / le32' from 'pytcp.protocols.tcp.tcp__seq'."
             ),
         )
         self.assertIs(

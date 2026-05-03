@@ -24,10 +24,10 @@
 
 """
 This module contains tests for the TCP modular sequence-number arithmetic
-helpers in 'pytcp.lib.tcp_seq', covering RFC 9293 §3.4 comparison semantics
+helpers in 'pytcp.protocols.tcp.tcp__seq', covering RFC 9293 §3.4 comparison semantics
 and the wrap-aware add/sub/in-range utilities.
 
-pytcp/tests/unit/lib/test__lib__tcp_seq.py
+pytcp/tests/unit/protocols/tcp/test__tcp__seq.py
 
 ver 3.0.4
 """
@@ -38,7 +38,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.int_checks import UINT_32__MAX
-from pytcp.lib.tcp_seq import (
+from pytcp.protocols.tcp.tcp__seq import (
     SEQ32__HALF,
     add32,
     ge32,

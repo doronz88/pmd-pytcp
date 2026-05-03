@@ -39,8 +39,8 @@ from net_addr import IpVersion
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.tcp_seq import add32
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__seq import add32
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession

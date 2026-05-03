@@ -29,19 +29,19 @@
 """
 This module contains tests for the RFC 6675 Conservative Loss
 Recovery predicates (IsLost, NextSeg, Pipe) in
-'pytcp.lib.tcp_loss_recovery', covering both triggers of IsLost
+'pytcp.protocols.tcp.tcp__loss_recovery', covering both triggers of IsLost
 (count threshold, byte threshold), NextSeg's gap-then-is-lost
 gate, and Pipe's in-flight-minus-sacked accounting.
 
-pytcp/tests/unit/lib/test__lib__tcp_loss_recovery.py
+pytcp/tests/unit/protocols/tcp/test__tcp__loss_recovery.py
 
 ver 3.0.4
 """
 
 from unittest import TestCase
 
-from pytcp.lib.tcp_loss_recovery import is_lost, next_seg, pipe
-from pytcp.lib.tcp_sack import SackScoreboard
+from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
+from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 
 # Canonical IPv4-Ethernet MSS used across the helper tests.
 MSS: int = 1460

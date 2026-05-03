@@ -52,7 +52,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
-from pytcp.lib.tcp_loss_recovery import pipe
+from pytcp.protocols.tcp.tcp__loss_recovery import pipe
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,

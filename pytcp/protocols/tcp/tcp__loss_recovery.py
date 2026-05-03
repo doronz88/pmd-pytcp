@@ -28,14 +28,14 @@ predicates (IsLost, NextSeg, Pipe) used by 'TcpSession' to drive
 SACK-aware fast retransmit decisions on top of the
 'SackScoreboard' helper.
 
-pytcp/lib/tcp_loss_recovery.py
+pytcp/protocols/tcp/tcp__loss_recovery.py
 
 ver 3.0.4
 """
 
 from net_proto.lib.int_checks import is_uint32
-from pytcp.lib.tcp_sack import SackScoreboard
-from pytcp.lib.tcp_seq import Seq32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__sack import SackScoreboard
+from pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32, sub32
 
 # RFC 6675 §3 default DupThresh (matches RFC 5681's count-based
 # fast-retransmit threshold).

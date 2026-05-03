@@ -50,7 +50,7 @@ ISS to the 4-tuple so an attacker who learns one ISN learns nothing
 about ISNs for other peers, and the time-driven M component prevents
 replay of stale ISNs against fresh connections.
 
-pytcp/lib/tcp_iss.py
+pytcp/protocols/tcp/tcp__iss.py
 
 ver 3.0.4
 """

@@ -28,12 +28,12 @@
 
 """
 This module contains tests for the TCP SACK scoreboard helper in
-'pytcp.lib.tcp_sack', covering RFC 2018 §3 union semantics, modular
+'pytcp.protocols.tcp.tcp__sack', covering RFC 2018 §3 union semantics, modular
 comparisons across the 32-bit seq wrap, and the prune / first-gap
 operations the phase-5 RFC 6675 NextSeg / IsLost wrappers will
 build on.
 
-pytcp/tests/unit/lib/test__lib__tcp_sack.py
+pytcp/tests/unit/protocols/tcp/test__tcp__sack.py
 
 ver 3.0.4
 """
@@ -44,7 +44,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.int_checks import UINT_32__MAX
-from pytcp.lib.tcp_sack import SackScoreboard
+from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 
 
 class TestSackScoreboard__Init(TestCase):

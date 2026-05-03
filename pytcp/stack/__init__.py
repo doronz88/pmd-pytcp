@@ -74,7 +74,7 @@ GITHUB_REPO = "https://github.com/ccie18643/PyTCP"
 # RFC 6528 §3 Initial Sequence Number secret. Generated once at
 # module import via 'secrets.token_bytes(16)' so each PyTCP stack
 # process has a fresh 128-bit keying value for the TCP ISN hash.
-# 'pytcp.lib.tcp_iss.compute_iss' reads this when TcpSession picks
+# 'pytcp.protocols.tcp.tcp__iss.compute_iss' reads this when TcpSession picks
 # its initial sequence number; the secret never leaves the process
 # and is regenerated on restart, so attackers who learn one ISN
 # cannot infer ISNs for any other 4-tuple or for any future

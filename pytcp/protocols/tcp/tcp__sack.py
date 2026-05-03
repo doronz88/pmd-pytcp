@@ -27,13 +27,13 @@ This module contains the 'SackScoreboard' helper class tracking
 non-contiguous SACK-acked seq ranges in 32-bit modular space, per
 RFC 2018 §3 / RFC 6675 §3.
 
-pytcp/lib/tcp_sack.py
+pytcp/protocols/tcp/tcp__sack.py
 
 ver 3.0.4
 """
 
 from net_proto.lib.int_checks import UINT_32__MAX, is_uint32
-from pytcp.lib.tcp_seq import Seq32, ge32, in_range32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__seq import Seq32, ge32, in_range32, le32, lt32, sub32
 
 
 class SackScoreboard:
@@ -51,7 +51,7 @@ class SackScoreboard:
     expected to uphold is that every block in the scoreboard lives
     in the forward half-window above 'SND.UNA' (i.e. SACK never
     covers cumulatively-ACKed bytes), so all comparisons reduce to
-    the modular helpers in 'pytcp.lib.tcp_seq' without sign
+    the modular helpers in 'pytcp.protocols.tcp.tcp__seq' without sign
     ambiguity at the diametric midpoint.
     """
 

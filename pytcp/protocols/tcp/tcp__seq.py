@@ -26,7 +26,7 @@
 This module contains modular 32-bit arithmetic helpers for TCP sequence
 and acknowledgement numbers, per RFC 9293 §3.4.
 
-pytcp/lib/tcp_seq.py
+pytcp/protocols/tcp/tcp__seq.py
 
 ver 3.0.4
 """

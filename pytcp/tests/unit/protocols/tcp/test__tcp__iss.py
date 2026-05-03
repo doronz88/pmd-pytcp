@@ -42,7 +42,7 @@ Reference RFCs:
     RFC 6528 §3   Defending Against Sequence Number Attacks
     RFC 1948      Defending Against Sequence Number Attacks (orig)
 
-pytcp/tests/unit/lib/test__lib__tcp_iss.py
+pytcp/tests/unit/protocols/tcp/test__tcp__iss.py
 
 ver 3.0.4
 """
@@ -50,7 +50,7 @@ ver 3.0.4
 from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
-from pytcp.lib.tcp_iss import ISS_CLOCK_RATE_US, compute_iss
+from pytcp.protocols.tcp.tcp__iss import ISS_CLOCK_RATE_US, compute_iss
 
 # A fixed test secret (NOT for production; tests pin a known value
 # so outputs are deterministic and known-vector tests are

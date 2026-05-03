@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pytcp.lib.tcp_seq import Seq32
+from pytcp.protocols.tcp.tcp__seq import Seq32
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
 

@@ -40,10 +40,6 @@ from typing import TYPE_CHECKING, override
 from net_addr import Ip4Address, Ip6Address
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.tcp_iss import compute_iss
-from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
-from pytcp.lib.tcp_sack import SackScoreboard
-from pytcp.lib.tcp_seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
@@ -52,6 +48,10 @@ from pytcp.protocols.tcp.tcp__enums import (
     TcpSessionError,
 )
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
+from pytcp.protocols.tcp.tcp__iss import compute_iss
+from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
+from pytcp.protocols.tcp.tcp__sack import SackScoreboard
+from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -225,7 +225,7 @@ class TcpSession:
         # ACK that carries a SACK option (gated on
         # '_send_sack'); pruned by '_prune_sack_scoreboard'
         # when SND.UNA advances. Phase 5 will consult it via
-        # 'pytcp.lib.tcp_loss_recovery' for NextSeg / IsLost /
+        # 'pytcp.protocols.tcp.tcp__loss_recovery' for NextSeg / IsLost /
         # Pipe.
         self._sack_scoreboard: SackScoreboard = SackScoreboard()
 
