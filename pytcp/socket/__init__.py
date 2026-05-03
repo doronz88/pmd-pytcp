@@ -31,6 +31,7 @@ ver 3.0.4
 """
 
 from abc import ABC
+from enum import IntEnum
 from types import TracebackType
 from typing import Any, override
 
@@ -50,6 +51,32 @@ IPPROTO_IP6 = IpProto.IP6
 IPPROTO_ICMPV6 = IpProto.ICMP6
 IPPROTO_ICMP6 = IpProto.ICMP6
 IPPROTO_RAW = IpProto.RAW
+
+# BSD setsockopt 'level' parameter for socket-level options.
+# Linux number, matching stdlib 'socket.SOL_SOCKET'. The TCP-
+# level option counterpart reuses 'IPPROTO_TCP' (= IpProto.TCP
+# = 6) above, keeping the existing module surface.
+SOL_SOCKET: int = 1
+
+
+class SocketOption(IntEnum):
+    """
+    BSD setsockopt 'optname' parameter values, by integer number
+    matching Linux. Setsockopt validates the (level, optname)
+    pair: socket-level options use 'SOL_SOCKET' as level, TCP-
+    level options use 'IPPROTO_TCP'.
+    """
+
+    SO_KEEPALIVE = 9  # level=SOL_SOCKET; bool: enable keep-alive (RFC 1122 §4.2.3.6)
+    TCP_KEEPIDLE = 4  # level=IPPROTO_TCP; int seconds: per-conn idle override
+    TCP_KEEPINTVL = 5  # level=IPPROTO_TCP; int seconds: per-conn probe interval override
+    TCP_KEEPCNT = 6  # level=IPPROTO_TCP; int count: per-conn max probes override
+
+
+SO_KEEPALIVE = SocketOption.SO_KEEPALIVE
+TCP_KEEPIDLE = SocketOption.TCP_KEEPIDLE
+TCP_KEEPINTVL = SocketOption.TCP_KEEPINTVL
+TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
 
 
 class gaierror(OSError):
