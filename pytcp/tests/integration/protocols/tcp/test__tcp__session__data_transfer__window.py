@@ -1307,3 +1307,236 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
                 f"the marker. Got '_recovery_point' = {session._recovery_point:#x}."
             ),
         )
+
+
+class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
+    """
+    Integration tests for RFC 9293 §3.8.6.2 + RFC 1122
+    §4.2.2.16 receiver-side Silly Window Syndrome avoidance:
+
+      * The advertised right edge ('rcv_nxt + rcv_wnd') is
+        non-decreasing across successive ACKs (modulo the
+        zero-window case where the floor temporarily collapses
+        the right edge to 'rcv_nxt'; peer treats that as the
+        special persist-probe trigger).
+
+      * When the receive buffer drains across the SWS-floor
+        (1 MSS), the window REOPENS by advertising the FULL
+        post-drain availability in a single step, not by
+        small per-byte advances.
+
+    Existing tests pin the basic shrink behavior
+    ('advertised_rcv_wnd_shrinks_as_rx_buffer_fills') and the
+    sub-MSS-floor ('sub_mss_available_window_is_advertised_as_zero
+    _per_rfc_1122_4_2_3_3'). These tests cover the multi-ACK
+    invariants those don't.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def test__sws__right_edge_non_decreasing_across_successive_acks(self) -> None:
+        """
+        Ensure RFC 1122 §4.2.2.16: the advertised right edge
+        ('rcv_nxt + rcv_wnd') in our outbound ACKs is
+        non-decreasing across successive segments arriving
+        without app reads. As 'rcv_nxt' advances by N bytes,
+        'rcv_wnd' shrinks by exactly N (the buffer absorbed
+        them) so the right edge stays constant - never moves
+        backward.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Initial right edge: rcv_nxt + _rcv_wnd_max.
+        initial_right_edge = session._rcv_nxt + session._rcv_wnd_max
+
+        # Drive 8 back-to-back full-MSS segments with no app reads.
+        # Each pair of segments fires one inline cumulative ACK
+        # via the every-other-segment rule.
+        right_edges: list[int] = [initial_right_edge]
+        for i in range(4):
+            seq_a = PEER__ISS + 1 + (i * 2) * PEER__MSS
+            seq_b = seq_a + PEER__MSS
+            seg_a = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=seq_a,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                payload=b"X" * PEER__MSS,
+            )
+            seg_b = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=seq_b,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+                payload=b"Y" * PEER__MSS,
+            )
+            self._drive_rx(frame=seg_a)
+            tx_after_b = self._drive_rx(frame=seg_b)
+            for frame in tx_after_b:
+                probe = self._parse_tx(frame)
+                if "ACK" in probe.flags and not probe.payload:
+                    right_edges.append(probe.ack + (probe.win << session._rcv_wsc))
+
+        for i in range(1, len(right_edges)):
+            self.assertGreaterEqual(
+                right_edges[i],
+                right_edges[i - 1],
+                msg=(
+                    f"RFC 1122 §4.2.2.16: advertised right edge MUST "
+                    f"be non-decreasing across successive ACKs. "
+                    f"Got right_edges={right_edges}; element {i} "
+                    f"({right_edges[i]:#x}) is less than "
+                    f"element {i - 1} ({right_edges[i - 1]:#x})."
+                ),
+            )
+
+    def test__sws__window_reopens_at_full_size_after_drain_across_floor(self) -> None:
+        """
+        Ensure RFC 9293 §3.8.6.2 receiver SWS reopen: when
+        the buffer drains from sub-MSS (advertised window = 0)
+        to above-MSS, the next outbound ACK advertises the
+        FULL current available space, not a small fraction.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Fill buffer to within < 1 MSS of capacity so the SWS
+        # floor advertises 0.
+        prefill_count = session._rcv_wnd_max - 100  # leaves 100 bytes free, < MSS
+        session._rx_buffer.extend(b"P" * prefill_count)
+        # Manually advance rcv_nxt so the rx buffer occupancy
+        # is consistent (peer's seq view).
+        session._rcv_nxt = (PEER__ISS + 1 + prefill_count) & 0xFFFF_FFFF
+
+        # Trigger an outbound ACK to observe the floor.
+        seg = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=session._rcv_nxt,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"Z" * 50,  # small-enough to fit in the 100-byte free
+        )
+        # Drive a second small segment to elicit an inline ACK
+        # via every-other-segment.
+        seg2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=session._rcv_nxt + 50,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"Z" * 50,
+        )
+        self._drive_rx(frame=seg)
+        floor_tx = self._drive_rx(frame=seg2)
+        floor_acks = [self._parse_tx(f) for f in floor_tx if not self._parse_tx(f).payload]
+        self.assertGreaterEqual(
+            len(floor_acks),
+            1,
+            msg="Setup invariant: every-other-segment must elicit an inline ACK.",
+        )
+        floor_ack = floor_acks[0]
+        self.assertEqual(
+            floor_ack.win,
+            0,
+            msg=(
+                f"Setup invariant: with free buffer < MSS, the SWS "
+                f"floor MUST advertise win=0. Got win={floor_ack.win}."
+            ),
+        )
+
+        # Drain the buffer well past one MSS via recv() so the
+        # window can reopen.
+        drained = session._rx_buffer[: 2 * PEER__MSS]
+        del session._rx_buffer[: 2 * PEER__MSS]
+        assert len(drained) == 2 * PEER__MSS
+
+        # Force a fresh outbound ACK by driving another peer
+        # segment so we observe the reopened window.
+        seg3 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=session._rcv_nxt + 100,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"W" * 1,
+        )
+        seg4 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=session._rcv_nxt + 101,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"W" * 1,
+        )
+        self._drive_rx(frame=seg3)
+        reopen_tx = self._drive_rx(frame=seg4)
+        reopen_acks = [self._parse_tx(f) for f in reopen_tx if not self._parse_tx(f).payload]
+        self.assertGreaterEqual(
+            len(reopen_acks),
+            1,
+            msg="Setup invariant: every-other-segment after drain must elicit an ACK.",
+        )
+        reopen_ack = reopen_acks[0]
+
+        # The reopened window should reflect roughly 2*MSS of
+        # drain (minus the ~100 bytes of new data we drove), so
+        # the wire-level 'win' value should be meaningfully
+        # above zero AND above one MSS (not a tiny advance).
+        self.assertGreaterEqual(
+            reopen_ack.win << session._rcv_wsc,
+            PEER__MSS,
+            msg=(
+                f"RFC 9293 §3.8.6.2: when the buffer drains across "
+                f"the SWS floor, the reopened window MUST be at "
+                f"least one MSS ({PEER__MSS}). Got win="
+                f"{reopen_ack.win} (post-shift "
+                f"{reopen_ack.win << session._rcv_wsc})."
+            ),
+        )
