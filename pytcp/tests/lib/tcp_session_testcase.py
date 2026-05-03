@@ -170,11 +170,17 @@ class TcpSessionTestCase(NetworkTestCase):
         """
         Force the next 'TcpSession' constructed in this test to choose
         'value' as its initial sequence number, so wrap-aware paths
-        can be exercised deterministically. Patches 'random.randint'
-        in the 'pytcp.protocols.tcp.tcp__session' module scope.
+        can be exercised deterministically. Patches 'compute_iss' in
+        the 'pytcp.protocols.tcp.tcp__session' module scope; the
+        canonical ISN choice was migrated from 'random.randint' to
+        the RFC 6528 §3 hash in commit 'ac0d98b' / wired into
+        TcpSession in the follow-up.
         """
 
-        self._start_patch("pytcp.protocols.tcp.tcp__session.random.randint", lambda _lo, _hi: value)
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__session.compute_iss",
+            lambda *_args, **_kwargs: value,
+        )
 
     def _drive_rx(self, *, frame: bytes) -> list[bytes]:
         """

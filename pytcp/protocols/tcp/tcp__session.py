@@ -33,13 +33,14 @@ ver 3.0.4
 
 from __future__ import annotations
 
-import random
 import threading
+import time
 from typing import TYPE_CHECKING, override
 
 from net_addr import Ip4Address, Ip6Address
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.lib.tcp_iss import compute_iss
 from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -258,8 +259,21 @@ class TcpSession:
         # Sending window parameters.
         ###
 
-        # Initial sequence number.
-        self._snd_ini: Seq32 = random.randint(0, 0xFFFFFFFF)
+        # Initial sequence number per RFC 6528 §3: hash of the
+        # 4-tuple plus a stack-wide secret, plus a monotonically
+        # advancing 'M' clock. Defends against blind sequence-
+        # number injection by binding the ISN to the 4-tuple so
+        # an attacker who learns one ISN cannot infer ISNs for
+        # other connections; the time-driven M component prevents
+        # replay of stale ISNs against fresh connections.
+        self._snd_ini: Seq32 = compute_iss(
+            local_address=local_ip_address,
+            local_port=local_port,
+            remote_address=remote_ip_address,
+            remote_port=remote_port,
+            secret=stack.TCP__ISS_SECRET,
+            clock_us=time.monotonic_ns() // 1000,
+        )
 
         # Next sequence number to be sent.
         self._snd_nxt: Seq32 = self._snd_ini

@@ -33,6 +33,7 @@ ver 3.0.4
 
 from unittest import TestCase
 
+from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.tests.lib.fake_timer import FakeTimer
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4, build_tcp6
@@ -297,19 +298,28 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
             msg="Advancing the virtual clock with no registered tasks must not produce any TX frames.",
         )
 
-    def test__harness__force_iss_patches_random_randint(self) -> None:
+    def test__harness__force_iss_patches_compute_iss(self) -> None:
         """
-        Ensure '_force_iss' patches 'random.randint' inside the TCP
+        Ensure '_force_iss' patches 'compute_iss' inside the TCP
         session module so any subsequently constructed 'TcpSession'
         receives the chosen ISS - the wrap-aware tests rely on this.
+        Migrated from 'random.randint' to 'compute_iss' alongside
+        the RFC 6528 §3 ISN hash adoption.
         """
 
         self._force_iss(0xFFFF_FF00)
 
-        from pytcp.protocols.tcp.tcp__session import random as tcp_session_random
+        from pytcp.protocols.tcp.tcp__session import compute_iss as tcp_session_compute_iss
 
         self.assertEqual(
-            tcp_session_random.randint(0, 0xFFFF_FFFF),
+            tcp_session_compute_iss(
+                local_address=Ip4Address("10.0.0.1"),
+                local_port=12345,
+                remote_address=Ip4Address("10.0.0.2"),
+                remote_port=80,
+                secret=b"\x00" * 16,
+                clock_us=0,
+            ),
             0xFFFF_FF00,
-            msg="'_force_iss' must redirect 'random.randint' to return the supplied ISS.",
+            msg="'_force_iss' must redirect 'compute_iss' to return the supplied ISS.",
         )

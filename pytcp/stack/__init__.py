@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import secrets
 import struct
 import sys
 from typing import TYPE_CHECKING, Any
@@ -69,6 +70,16 @@ IFF_NO_PI = 0x1000
 # PyTCP code metadata.
 PYTCP_VERSION = "ver 3.0.4"
 GITHUB_REPO = "https://github.com/ccie18643/PyTCP"
+
+# RFC 6528 §3 Initial Sequence Number secret. Generated once at
+# module import via 'secrets.token_bytes(16)' so each PyTCP stack
+# process has a fresh 128-bit keying value for the TCP ISN hash.
+# 'pytcp.lib.tcp_iss.compute_iss' reads this when TcpSession picks
+# its initial sequence number; the secret never leaves the process
+# and is regenerated on restart, so attackers who learn one ISN
+# cannot infer ISNs for any other 4-tuple or for any future
+# stack-process lifetime.
+TCP__ISS_SECRET: bytes = secrets.token_bytes(16)
 
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500
