@@ -50,6 +50,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
+from pytcp.protocols.tcp.tcp__newreno import partial_cum_ack_deflate
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -1893,9 +1894,7 @@ class TcpSession:
             #   - not in recovery: RFC 5681 §3.1 slow-start vs
             #     congestion-avoidance growth.
             if self._recovery_point != 0 and lt32(self._snd_una, self._recovery_point):
-                self._cwnd = max(self._snd_mss, self._cwnd - bytes_acked)
-                if bytes_acked >= self._snd_mss:
-                    self._cwnd += self._snd_mss
+                self._cwnd = partial_cum_ack_deflate(self._cwnd, bytes_acked, self._snd_mss)
             elif self._cwnd < self._ssthresh:
                 self._cwnd += min(bytes_acked, self._snd_mss)
             else:
