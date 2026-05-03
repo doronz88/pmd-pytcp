@@ -73,6 +73,7 @@ class TestCwndGrowPerAck__SlowStart(TestCase):
         """
         bytes_acked < SMSS in slow-start: cwnd grows by
         bytes_acked exactly.
+        Per RFC 5681 §3.1 (slow-start growth = min(N, SMSS)).
         """
 
         result = cwnd_grow_per_ack(cwnd=1460, ssthresh=14600, bytes_acked=500, smss=1460)
@@ -87,6 +88,7 @@ class TestCwndGrowPerAck__SlowStart(TestCase):
         """
         bytes_acked == SMSS in slow-start: cwnd grows by SMSS
         (boundary of the min() cap).
+        Per RFC 5681 §3.1 (slow-start cap at SMSS).
         """
 
         result = cwnd_grow_per_ack(cwnd=1460, ssthresh=14600, bytes_acked=1460, smss=1460)
@@ -102,6 +104,7 @@ class TestCwndGrowPerAck__SlowStart(TestCase):
         bytes_acked > SMSS in slow-start: cwnd grows by SMSS
         only (the min() cap fires). Models a delayed-ACK that
         cumulatively acknowledges multiple segments.
+        Per RFC 5681 §3.1 (slow-start cap at SMSS regardless of bytes_acked).
         """
 
         result = cwnd_grow_per_ack(cwnd=1460, ssthresh=14600, bytes_acked=10 * 1460, smss=1460)
@@ -116,6 +119,7 @@ class TestCwndGrowPerAck__SlowStart(TestCase):
         """
         bytes_acked = 0 (degenerate ACK) leaves cwnd unchanged
         in slow-start.
+        Per RFC 5681 §3.1 (no growth when no new data is ACKed).
         """
 
         result = cwnd_grow_per_ack(cwnd=1460, ssthresh=14600, bytes_acked=0, smss=1460)
@@ -137,6 +141,7 @@ class TestCwndGrowPerAck__CongestionAvoidance(TestCase):
         """
         cwnd == ssthresh boundary uses the CA branch (the
         condition is 'cwnd < ssthresh', so '==' falls into CA).
+        Per RFC 5681 §3.1 (slow-start vs CA boundary).
         """
 
         result = cwnd_grow_per_ack(cwnd=14600, ssthresh=14600, bytes_acked=1460, smss=1460)
@@ -152,6 +157,7 @@ class TestCwndGrowPerAck__CongestionAvoidance(TestCase):
         """
         Standard CA formula: cwnd += SMSS*SMSS // cwnd. With
         SMSS=1460 and cwnd=14600 -> +146 (= 1460*1460 // 14600).
+        Per RFC 5681 §3.1 (CA growth = SMSS^2 / cwnd).
         """
 
         result = cwnd_grow_per_ack(cwnd=14600, ssthresh=1460, bytes_acked=1460, smss=1460)
@@ -167,6 +173,7 @@ class TestCwndGrowPerAck__CongestionAvoidance(TestCase):
         When cwnd is much larger than SMSS*SMSS, integer
         floor-div would yield 0; the max(1, ...) clamps to 1
         so cwnd always grows by at least one byte.
+        Per RFC 5681 §3.1 (CA must grow by at least 1 byte per ACK).
         """
 
         result = cwnd_grow_per_ack(cwnd=1_000_000_000, ssthresh=1460, bytes_acked=1460, smss=1460)
@@ -183,6 +190,7 @@ class TestCwndGrowPerAck__CongestionAvoidance(TestCase):
         by bytes_acked. Two cum-ACKs with different
         bytes_acked but identical cwnd / ssthresh / smss
         produce identical post-growth cwnd.
+        Per RFC 5681 §3.1 (CA per-ACK growth formula).
         """
 
         a = cwnd_grow_per_ack(cwnd=29200, ssthresh=14600, bytes_acked=1460, smss=1460)
@@ -205,6 +213,7 @@ class TestCwndGrowPerAck__ArgumentAsserts(TestCase):
         cwnd must be positive (zero / negative cwnd is
         non-sensical for a connection that has begun
         transmitting).
+        Reference: RFC 5681 §3 (cwnd is positive byte count).
         """
 
         with self.assertRaises(AssertionError):
@@ -214,6 +223,7 @@ class TestCwndGrowPerAck__ArgumentAsserts(TestCase):
         """
         ssthresh must be positive (it is the slow-start exit
         threshold; zero would never enter CA correctly).
+        Reference: RFC 5681 §3 (ssthresh is positive).
         """
 
         with self.assertRaises(AssertionError):
@@ -223,6 +233,7 @@ class TestCwndGrowPerAck__ArgumentAsserts(TestCase):
         """
         bytes_acked must be non-negative (a cum-ACK that
         retreats SND.UNA is a wire-format violation).
+        Reference: RFC 9293 §3.4 (cumulative ACK never retreats).
         """
 
         with self.assertRaises(AssertionError):
@@ -232,6 +243,7 @@ class TestCwndGrowPerAck__ArgumentAsserts(TestCase):
         """
         smss must be positive (the per-ACK growth cap and CA
         numerator).
+        Reference: RFC 5681 §2 (SMSS is positive).
         """
 
         with self.assertRaises(AssertionError):
@@ -249,6 +261,7 @@ class TestComputeLossEventSsthresh(TestCase):
         flight_size = 0: max(0, 2*SMSS) = 2*SMSS. The floor
         prevents post-recovery slow-start from exiting
         immediately.
+        Per RFC 5681 §3.1 / §3.2 step 2 (ssthresh floor at 2*SMSS).
         """
 
         result = compute_loss_event_ssthresh(flight_size=0, smss=1460)
@@ -263,6 +276,7 @@ class TestComputeLossEventSsthresh(TestCase):
         """
         flight_size = SMSS: max(730, 2920) = 2920. Still
         below the floor.
+        Per RFC 5681 §3.1 / §3.2 step 2 (ssthresh floor at 2*SMSS).
         """
 
         result = compute_loss_event_ssthresh(flight_size=1460, smss=1460)
@@ -277,6 +291,7 @@ class TestComputeLossEventSsthresh(TestCase):
         """
         flight_size = 4*SMSS: max(2*SMSS, 2*SMSS) = 2*SMSS.
         Exact boundary where the two clamps meet.
+        Per RFC 5681 §3.1 / §3.2 step 2 (ssthresh formula boundary).
         """
 
         result = compute_loss_event_ssthresh(flight_size=4 * 1460, smss=1460)
@@ -291,6 +306,7 @@ class TestComputeLossEventSsthresh(TestCase):
         """
         flight_size = 100*SMSS: max(50*SMSS, 2*SMSS) =
         50*SMSS. The floor is irrelevant here.
+        Per RFC 5681 §3.1 / §3.2 step 2 (ssthresh = FlightSize/2).
         """
 
         result = compute_loss_event_ssthresh(flight_size=100 * 1460, smss=1460)
@@ -305,6 +321,7 @@ class TestComputeLossEventSsthresh(TestCase):
         """
         flight_size that doesn't divide evenly: integer
         floor-div applies. flight_size=10001 -> 5000.
+        Per RFC 5681 §3.1 / §3.2 step 2 (integer halving).
         """
 
         result = compute_loss_event_ssthresh(flight_size=10001, smss=1460)
@@ -318,6 +335,7 @@ class TestComputeLossEventSsthresh(TestCase):
     def test__ssthresh__negative_flight_size_raises(self) -> None:
         """
         flight_size must be non-negative.
+        Reference: RFC 5681 §3 (FlightSize is non-negative byte count).
         """
 
         with self.assertRaises(AssertionError):
@@ -326,6 +344,7 @@ class TestComputeLossEventSsthresh(TestCase):
     def test__ssthresh__zero_smss_raises(self) -> None:
         """
         smss must be positive (it determines the floor).
+        Reference: RFC 5681 §2 (SMSS is positive).
         """
 
         with self.assertRaises(AssertionError):
@@ -341,6 +360,7 @@ class TestInitialWindow(TestCase):
     def test__iw__canonical_1460_mss_yields_14600(self) -> None:
         """
         SMSS = 1460 (canonical 1500-MTU): IW = 10*1460 = 14600.
+        Per RFC 6928 §2 (Initial Window of 10 segments).
         """
 
         result = initial_window(smss=1460)
@@ -355,6 +375,7 @@ class TestInitialWindow(TestCase):
         """
         SMSS = 100: max(200, 14600) = 14600; min(1000, 14600)
         = 1000. The 10*SMSS cap dominates here.
+        Per RFC 6928 §2 (10*SMSS cap).
         """
 
         result = initial_window(smss=100)
@@ -370,6 +391,7 @@ class TestInitialWindow(TestCase):
         SMSS = 1500: max(3000, 14600) = 14600; min(15000,
         14600) = 14600. The 14600 floor dominates the 2*SMSS
         clamp; the 10*SMSS cap kicks in to clamp to 14600.
+        Per RFC 6928 §2 (14600-byte floor).
         """
 
         result = initial_window(smss=1500)
@@ -384,6 +406,7 @@ class TestInitialWindow(TestCase):
         """
         SMSS = 9000 (jumbo frames): max(18000, 14600) = 18000;
         min(90000, 18000) = 18000. The 2*SMSS clamp dominates.
+        Per RFC 6928 §2 (jumbo-MSS path).
         """
 
         result = initial_window(smss=9000)
@@ -398,6 +421,7 @@ class TestInitialWindow(TestCase):
         """
         SMSS = 65535 (UINT16 max): max(131070, 14600) =
         131070; min(655350, 131070) = 131070.
+        Per RFC 6928 §2 (Initial Window upper bound).
         """
 
         result = initial_window(smss=65535)
@@ -411,6 +435,7 @@ class TestInitialWindow(TestCase):
     def test__iw__zero_smss_raises(self) -> None:
         """
         smss must be positive (degenerate at 0).
+        Reference: RFC 6928 §2 / RFC 5681 §2 (SMSS positive).
         """
 
         with self.assertRaises(AssertionError):

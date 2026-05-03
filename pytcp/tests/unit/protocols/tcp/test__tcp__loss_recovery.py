@@ -56,6 +56,7 @@ class TestIsLost(TestCase):
         """
         Ensure 'is_lost' returns False when the scoreboard has no
         blocks - neither the count nor the byte threshold can fire.
+        Reference: RFC 6675 §3 (IsLost predicate).
         """
 
         scoreboard = SackScoreboard()
@@ -69,6 +70,7 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' fires on the count rule when at least
         'dup_thresh' (default 3) discontiguous SACK blocks lie at
         or above 'seq'.
+        Per RFC 6675 §3 (IsLost count rule, condition (1)).
         """
 
         scoreboard = SackScoreboard()
@@ -85,6 +87,7 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' is False with two blocks of small total
         size - count rule needs three blocks, byte rule needs
         more than '(dup_thresh-1) * mss' bytes.
+        Per RFC 6675 §3 (IsLost neither rule satisfied).
         """
 
         scoreboard = SackScoreboard()
@@ -103,6 +106,7 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' fires on the byte rule when a single
         SACK block above 'seq' carries more than
         '(dup_thresh - 1) * mss' bytes (default = '2 * mss').
+        Per RFC 6675 §3 (IsLost byte rule, condition (2)).
         """
 
         scoreboard = SackScoreboard()
@@ -119,6 +123,7 @@ class TestIsLost(TestCase):
         equal exactly '(dup_thresh - 1) * mss' - the spec
         requires STRICTLY MORE than that (the inequality is '>',
         not '>=').
+        Per RFC 6675 §3 (IsLost byte-rule strict inequality).
         """
 
         scoreboard = SackScoreboard()
@@ -135,6 +140,8 @@ class TestIsLost(TestCase):
         """
         Ensure a caller-supplied 'dup_thresh' lowers the count
         trigger - two blocks fire IsLost when 'dup_thresh = 2'.
+        Per RFC 6675 §3 (IsLost DupThresh parameter) +
+        RFC 5681 §3.2 (DupThresh default value).
         """
 
         scoreboard = SackScoreboard()
@@ -150,6 +157,7 @@ class TestIsLost(TestCase):
         Ensure 'is_lost' ignores blocks whose left edge falls
         below 'seq' - only blocks at or above 'seq' contribute
         to either threshold.
+        Per RFC 6675 §3 (IsLost considers blocks above the candidate seq).
         """
 
         scoreboard = SackScoreboard()
@@ -166,6 +174,7 @@ class TestIsLost(TestCase):
         """
         Ensure 'is_lost' asserts when 'seq' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
@@ -184,6 +193,7 @@ class TestNextSeg(TestCase):
         empty - even though there is a gap at SND.UNA, IsLost
         cannot fire without any SACK info, so no retransmit is
         warranted.
+        Per RFC 6675 §3 (NextSeg procedure, no candidate when IsLost False).
         """
 
         scoreboard = SackScoreboard()
@@ -197,6 +207,7 @@ class TestNextSeg(TestCase):
         Ensure 'next_seg' returns the gap (= SND.UNA in this
         scenario) when three blocks above it trigger IsLost via
         the count rule.
+        Per RFC 6675 §3 (NextSeg returns first IsLost-positive seq).
         """
 
         scoreboard = SackScoreboard()
@@ -213,6 +224,7 @@ class TestNextSeg(TestCase):
         """
         Ensure 'next_seg' returns None when only one small block
         is above the gap - IsLost is not satisfied.
+        Per RFC 6675 §3 (NextSeg returns no candidate when IsLost False).
         """
 
         scoreboard = SackScoreboard()
@@ -226,6 +238,7 @@ class TestNextSeg(TestCase):
         """
         Ensure 'next_seg' returns None when the gap is at or
         above SND.MAX - there is no in-flight byte at that seq.
+        Per RFC 6675 §3 (NextSeg upper bound at SND.MAX).
         """
 
         scoreboard = SackScoreboard()
@@ -241,6 +254,7 @@ class TestNextSeg(TestCase):
         """
         Ensure 'next_seg' returns the gap when IsLost's byte rule
         fires from a single large block above the gap.
+        Per RFC 6675 §3 (NextSeg using byte-rule IsLost).
         """
 
         scoreboard = SackScoreboard()
@@ -262,6 +276,7 @@ class TestPipe(TestCase):
         Ensure 'pipe' returns 'snd_max - snd_una' when the
         scoreboard is empty - nothing has been SACKed, so every
         sent-but-uncum-acked byte is still considered in flight.
+        Per RFC 6675 §4 (Pipe estimate of FlightSize).
         """
 
         scoreboard = SackScoreboard()
@@ -275,6 +290,7 @@ class TestPipe(TestCase):
         """
         Ensure 'pipe' subtracts SACKed bytes from the in-flight
         estimate.
+        Per RFC 6675 §4 (Pipe subtracts SACKed bytes).
         """
 
         scoreboard = SackScoreboard()
@@ -289,6 +305,7 @@ class TestPipe(TestCase):
         """
         Ensure 'pipe' sums the bytes across multiple SACK blocks
         and subtracts the total.
+        Per RFC 6675 §4 (Pipe sums all SACKed bytes).
         """
 
         scoreboard = SackScoreboard()
@@ -306,6 +323,7 @@ class TestPipe(TestCase):
         Ensure 'pipe' ignores blocks whose edges fall outside
         '[SND.UNA, SND.MAX]' - a defensive sum that cannot make
         the result negative.
+        Per RFC 6675 §4 (Pipe operates on in-flight window only).
         """
 
         scoreboard = SackScoreboard()
@@ -321,6 +339,7 @@ class TestPipe(TestCase):
         """
         Ensure 'pipe' asserts when 'snd_una' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
