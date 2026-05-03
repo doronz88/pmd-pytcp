@@ -33,6 +33,7 @@ ver 3.0.4
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pytcp.lib.logger import log
@@ -115,6 +116,17 @@ def fsm__syn_rcvd(
             # ACK).
             session._cwnd = initial_window(session._snd_mss)
             session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            # RFC 6298 §5.7 second clause (passive- and
+            # simultaneous-open shape): if our SYN+ACK was
+            # retransmitted at least once before peer's
+            # third-leg ACK arrived, RTO MUST be re-
+            # initialized to >= 3 s when data transmission
+            # begins. The dedicated '_syn_retransmit_count'
+            # field survives '_process_ack_packet's reset of
+            # '_retransmit_count' so the check is order-
+            # independent.
+            if session._syn_retransmit_count > 0 and session._rto_state.rto_ms < 3000:
+                session._rto_state = replace(session._rto_state, rto_ms=3000)
             # Inline ACK if peer piggybacked data so peer's
             # retransmit machinery sees the data acknowledged
             # without waiting for delayed-ACK to fire (matches

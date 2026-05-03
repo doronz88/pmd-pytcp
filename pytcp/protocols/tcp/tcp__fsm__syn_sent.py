@@ -169,12 +169,6 @@ def fsm__syn_sent(
             # '_tcp_fsm_listen'.
             if packet_rx_md.tcp__data:
                 session._enqueue_rx_buffer(packet_rx_md.tcp__data)
-            # Capture the SYN-retransmit count BEFORE
-            # '_process_ack_packet' resets it: the RFC 6298 §5.7
-            # second-clause floor below is gated on whether the
-            # SYN itself was retransmitted, not on subsequent
-            # in-flight retransmits.
-            syn_retransmits = session._retransmit_count
             # Process ACK packet (uses '_snd_wsc=0' still, so
             # the SYN+ACK's win is preserved unshifted).
             session._process_ack_packet(packet_rx_md)
@@ -193,9 +187,12 @@ def fsm__syn_sent(
             # environments where the SYN's RTT clamp
             # (MIN_RTO_MS = 1000 ms) is optimistic relative to
             # the path's actual RTT. A clean handshake
-            # ('_retransmit_count == 0') skips the floor and
-            # uses the canonical estimator output.
-            if syn_retransmits > 0 and session._rto_state.rto_ms < 3000:
+            # ('_syn_retransmit_count == 0') skips the floor
+            # and uses the canonical estimator output. The
+            # dedicated counter survives '_process_ack_packet's
+            # reset of the general-purpose '_retransmit_count'
+            # so the check is order-independent.
+            if session._syn_retransmit_count > 0 and session._rto_state.rto_ms < 3000:
                 session._rto_state = replace(session._rto_state, rto_ms=3000)
             # WSCALE bilateral negotiation per RFC 7323 §2.2:
             # store peer's wscale only if WE offered our own.

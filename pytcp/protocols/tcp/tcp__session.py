@@ -292,6 +292,18 @@ class TcpSession:
         self._rtt_sample_send_time_ms: int | None = None
         self._rtt_sample_retransmitted: bool = False
         self._retransmit_count: int = 0
+        # RFC 6298 §5.7 second-clause SYN-retransmit counter.
+        # Decoupled from '_retransmit_count' (which
+        # '_process_ack_packet' resets on cum-ACK progress per
+        # §5.2 / §5.3) so the post-handshake §5.7 floor check
+        # is order-independent: the count survives the
+        # SND.UNA-advancing handshake-completing ACK and is
+        # observable from the ESTABLISHED-transition sites in
+        # both '_tcp_fsm_syn_sent' (active open) and
+        # '_tcp_fsm_syn_rcvd' (passive / simultaneous open).
+        # Incremented in '_retransmit_packet_timeout' iff the
+        # session is currently in {SYN_SENT, SYN_RCVD}.
+        self._syn_retransmit_count: int = 0
         # RFC 6298 §5.7 restart-after-idle baseline. 'None' until
         # the first outbound segment fires; '_transmit_packet'
         # then refreshes it on every send that consumes sequence
@@ -1707,6 +1719,16 @@ class TcpSession:
         # silent peer cannot drive 'rto_ms' to overflow.
         self._rto_state = back_off(self._rto_state)
         self._retransmit_count += 1
+        # RFC 6298 §5.7 second-clause SYN-retransmit counter.
+        # Increment when the retransmit fires while the
+        # handshake is still in progress: SYN_SENT (active
+        # open's SYN) or SYN_RCVD (passive / simultaneous
+        # open's SYN+ACK). Survives '_process_ack_packet's
+        # cum-ACK reset of '_retransmit_count' so the §5.7
+        # floor checks at the ESTABLISHED-transition sites
+        # see the count regardless of evaluation order.
+        if self._state in {FsmState.SYN_SENT, FsmState.SYN_RCVD}:
+            self._syn_retransmit_count += 1
         stack.timer.register_timer(
             name=f"{self}-retransmit",
             timeout=self._rto_state.rto_ms,
