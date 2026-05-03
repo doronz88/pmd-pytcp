@@ -215,6 +215,8 @@ class TcpSocket(socket):
                 rcv_wnd=0,
                 snd_mss=0,
                 rcv_mss=0,
+                snd_wsc=0,
+                rcv_wsc=0,
                 tx_buffer_len=0,
                 rx_buffer_len=0,
             )
@@ -231,6 +233,8 @@ class TcpSocket(socket):
             rcv_wnd=session._rcv_wnd,
             snd_mss=session._snd_mss,
             rcv_mss=session._rcv_mss,
+            snd_wsc=session._snd_wsc,
+            rcv_wsc=session._rcv_wsc,
             tx_buffer_len=len(session._tx_buffer),
             rx_buffer_len=len(session._rx_buffer),
         )

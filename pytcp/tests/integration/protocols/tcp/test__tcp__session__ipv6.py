@@ -529,3 +529,47 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             )
         finally:
             stack.interface_mtu = original_mtu
+
+    def test__ipv6__inbound_mss_65535_clamped_by_local_mtu(self) -> None:
+        """
+        Ensure peer's MSS=65535 (the RFC 2675 §5 jumbogram-
+        capable signal) on an IPv6 SYN+ACK is interpreted by
+        PyTCP as "use local MSS as the upper bound" — the
+        existing clamp logic ('_snd_mss = min(peer_mss,
+        interface_mtu - _ip_tcp_overhead)') subjects peer's
+        signal to our local MSS ceiling. Without RFC 2675
+        IPv6 jumbograms support at the IP layer, that's the
+        correct behaviour: we don't accept arbitrarily large
+        peer MSS values just because the wire signal allows
+        them.
+        """
+
+        session = self._make_active_session_ip6(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # Peer sends MSS=65535 as the RFC 2675 jumbogram-capable
+        # signal. With our default 1500 MTU, our local MSS
+        # ceiling is 1440 (= 1500 - 60).
+        peer_syn_ack = build_tcp6(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=0xFFFF,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(session.state, FsmState.ESTABLISHED)
+        self.assertEqual(
+            session._snd_mss,
+            1500 - 60,
+            msg=(
+                "Peer's MSS=65535 (RFC 2675 jumbogram signal) MUST "
+                "still be clamped by our local 'interface_mtu - 60' "
+                f"ceiling on a non-jumbogram-capable IP layer. "
+                f"Got _snd_mss={session._snd_mss}, expected 1440."
+            ),
+        )

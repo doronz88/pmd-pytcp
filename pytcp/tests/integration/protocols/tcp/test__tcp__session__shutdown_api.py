@@ -239,3 +239,126 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         sock.shutdown(SHUT_RDWR)
 
         self.assertIsNone(sock.tcp_session)
+
+    def test__shutdown_rd__already_buffered_data_stays_readable(self) -> None:
+        """
+        Ensure shutdown(SHUT_RD) discards FUTURE inbound data
+        but does NOT purge data already in '_rx_buffer'. POSIX
+        shutdown(SHUT_RD) semantics: stop new arrivals, keep
+        already-queued bytes available for recv().
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Drive some peer data BEFORE shutting down read side.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"already-queued",
+        )
+        self._drive_rx(frame=peer_data)
+        self.assertEqual(
+            len(session._rx_buffer),
+            len(b"already-queued"),
+            msg="Setup: pre-shutdown data must be in _rx_buffer.",
+        )
+
+        sock.shutdown(SHUT_RD)
+
+        # Already-queued data MUST still be there.
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"already-queued",
+            msg=("shutdown(SHUT_RD) MUST NOT purge already-buffered " f"data. Got {bytes(session._rx_buffer)!r}."),
+        )
+
+        # NEW data MUST be discarded.
+        peer_data_after = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + len(b"already-queued"),
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"discarded",
+        )
+        self._drive_rx(frame=peer_data_after)
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"already-queued",
+            msg=(
+                "shutdown(SHUT_RD): post-shutdown inbound data MUST "
+                "be discarded; _rx_buffer MUST stay at its pre-shutdown "
+                f"contents. Got {bytes(session._rx_buffer)!r}."
+            ),
+        )
+
+    def test__shutdown_rd__recv_returns_empty_bytes_after_buffer_drains(self) -> None:
+        """
+        Ensure recv() returns empty bytes (end-of-stream) once
+        the buffer is drained AND SHUT_RD is set, rather than
+        blocking indefinitely waiting for data that will never
+        arrive.
+
+        This test calls receive() with timeout=0 to keep the
+        test fast: SHUT_RD sets '_event__rx_buffer' so the
+        wait returns immediately.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock.shutdown(SHUT_RD)
+
+        # _event__rx_buffer MUST be set so recv() unblocks.
+        self.assertTrue(
+            session._event__rx_buffer.is_set(),
+            msg=(
+                "shutdown(SHUT_RD) MUST set '_event__rx_buffer' so "
+                "blocked recv() callers unblock immediately rather "
+                "than waiting forever for data that will never arrive."
+            ),
+        )
+
+    def test__shutdown__invalid_how_value_raises(self) -> None:
+        """
+        Ensure invalid 'how' values raise. The 'how' argument
+        must be in {SHUT_RD=0, SHUT_WR=1, SHUT_RDWR=2}; anything
+        else MUST raise so callers see the API misuse instead of
+        silently no-oping.
+        """
+
+        sock, _ = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        with self.assertRaises(AssertionError):
+            sock.shutdown(3)
+        with self.assertRaises(AssertionError):
+            sock.shutdown(-1)
+
+    def test__shutdown_wr_then_shut_rd__sets_both_flags(self) -> None:
+        """
+        Ensure two-step half-close (SHUT_WR followed by SHUT_RD)
+        is equivalent to SHUT_RDWR: both directions are shut,
+        FIN was emitted on the SHUT_WR step, and post-SHUT_RD
+        inbound is discarded.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock.shutdown(SHUT_WR)
+        self._advance(ms=1)
+        self._advance(ms=1)
+        self.assertTrue(session._shut_wr)
+        self.assertFalse(
+            session._shut_rd,
+            msg="Setup invariant: SHUT_WR alone MUST NOT set _shut_rd.",
+        )
+
+        sock.shutdown(SHUT_RD)
+        self.assertTrue(session._shut_rd)
+        self.assertTrue(
+            session._shut_wr,
+            msg="Sequential shutdown: _shut_wr MUST remain set after the second shutdown(SHUT_RD).",
+        )

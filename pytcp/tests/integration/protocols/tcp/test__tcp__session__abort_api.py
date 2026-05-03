@@ -41,6 +41,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__enums import ConnError
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
@@ -229,4 +230,137 @@ class TestTcpAbortApi(TcpSessionTestCase):
         self.assertIsNone(
             sock.tcp_session,
             msg="No session should be created by abort() on a fresh socket.",
+        )
+
+    def test__abort__in_close_wait_emits_rst(self) -> None:
+        """
+        Ensure RFC 9293 §3.9.1 ABORT in CLOSE_WAIT (synchronized
+        state) emits a RST. Pins the per-state RST gate.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Drive into CLOSE_WAIT: peer FIN.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.CLOSE_WAIT
+
+        before = len(self._frames_tx)
+        sock.abort()
+        self._advance(ms=1)
+        tx = list(self._frames_tx[before:])
+        rsts = [self._parse_tx(f) for f in tx if "RST" in self._parse_tx(f).flags]
+
+        self.assertGreaterEqual(
+            len(rsts),
+            1,
+            msg="ABORT in CLOSE_WAIT MUST emit a RST (synchronized state).",
+        )
+        self.assertIs(session.state, FsmState.CLOSED)
+
+    def test__abort__in_syn_sent_does_not_emit_rst(self) -> None:
+        """
+        Ensure RFC 9293 §3.9.1 ABORT in SYN_SENT (unsynchronized
+        state) tears down the TCB WITHOUT emitting a RST.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        sock = session._socket
+        assert isinstance(sock, TcpSocket)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        assert session.state is FsmState.SYN_SENT
+
+        before = len(self._frames_tx)
+        sock.abort()
+        self._advance(ms=1)
+        tx = list(self._frames_tx[before:])
+        rsts = [self._parse_tx(f) for f in tx if "RST" in self._parse_tx(f).flags]
+
+        self.assertEqual(
+            len(rsts),
+            0,
+            msg=(
+                "RFC 9293 §3.9.1 ABORT in SYN_SENT MUST NOT emit a "
+                f"RST (unsynchronized state). Got {len(rsts)} RST(s)."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="ABORT in SYN_SENT MUST transition to CLOSED.",
+        )
+
+    def test__abort__sets_connection_error_to_canceled(self) -> None:
+        """
+        Ensure ABORT marks '_connection_error = CANCELED' so
+        any blocked recv() / connect() caller observes the
+        cancellation via the standard error-propagation path.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock.abort()
+
+        self.assertIs(
+            session._connection_error,
+            ConnError.CANCELED,
+            msg=(
+                "ABORT MUST set '_connection_error' to CANCELED so "
+                f"blocked callers see the abort. Got {session._connection_error!r}."
+            ),
+        )
+
+    def test__abort__releases_blocked_rx_buffer_event(self) -> None:
+        """
+        Ensure ABORT sets '_event__rx_buffer' so a thread blocked
+        in recv() unblocks and the FSM-state check yields the
+        connection-cancelled error.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Pre-clear the event to verify abort() sets it.
+        session._event__rx_buffer.clear()
+
+        sock.abort()
+
+        self.assertTrue(
+            session._event__rx_buffer.is_set(),
+            msg=("ABORT MUST set '_event__rx_buffer' so blocked recv() " "callers unblock immediately."),
+        )
+
+    def test__abort__discards_pending_tx_buffer_data(self) -> None:
+        """
+        Ensure ABORT does NOT retransmit pending TX buffer data
+        post-RST. The connection is gone; the application's
+        unsent bytes are discarded per the RFC's "abandon all
+        pending SENDs" semantics.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Queue some bytes that haven't been sent yet.
+        session.send(data=b"unsent payload")
+
+        before = len(self._frames_tx)
+        sock.abort()
+        # Advance enough to fire any retransmit timers.
+        self._advance(ms=2000)
+        tx_post_abort = list(self._frames_tx[before:])
+        data_segments = [self._parse_tx(f) for f in tx_post_abort if self._parse_tx(f).payload]
+
+        self.assertEqual(
+            len(data_segments),
+            0,
+            msg=(
+                "RFC 9293 §3.9.1 ABORT MUST discard pending SENDs; the "
+                "TX buffer's unsent payload MUST NOT be transmitted "
+                f"post-RST. Got {len(data_segments)} data segment(s) "
+                "after abort."
+            ),
         )

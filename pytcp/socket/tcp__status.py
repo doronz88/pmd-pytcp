@@ -59,5 +59,7 @@ class TcpStatus:
     rcv_wnd: int
     snd_mss: int
     rcv_mss: int
+    snd_wsc: int
+    rcv_wsc: int
     tx_buffer_len: int
     rx_buffer_len: int

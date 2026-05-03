@@ -212,3 +212,116 @@ class TestTcpStatusApi(TcpSessionTestCase):
             PEER__ISS + 1 + len(b"hello world"),
             msg="rcv_nxt MUST advance past received data.",
         )
+
+    def test__status__listening_socket_returns_state_listen(self) -> None:
+        """
+        Ensure status() on a session in LISTEN state returns
+        state=LISTEN. Pins the listening-socket diagnostic
+        path.
+        """
+
+        from net_addr import Ip4Address as _Ip4Address
+
+        self._force_iss(LOCAL__ISS)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = _Ip4Address()
+        sock._remote_port = 0
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=_Ip4Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=SysCall.LISTEN)
+
+        status = sock.status()
+
+        self.assertIs(
+            status.state,
+            FsmState.LISTEN,
+            msg=f"Listening socket: status().state MUST be LISTEN. Got {status.state}.",
+        )
+        self.assertEqual(
+            status.local_port,
+            STACK__PORT,
+            msg="Listening socket's local_port MUST reflect the bind port.",
+        )
+
+    def test__status__reflects_state_through_fin_wait_1(self) -> None:
+        """
+        Ensure status().state tracks the FSM through close():
+        ESTABLISHED -> FIN_WAIT_1 after close() + 2 ticks.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self.assertIs(sock.status().state, FsmState.ESTABLISHED)
+
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        self.assertIs(
+            sock.status().state,
+            FsmState.FIN_WAIT_1,
+            msg="status() MUST reflect state transitions through close().",
+        )
+
+    def test__status__reflects_wscale_post_handshake(self) -> None:
+        """
+        Ensure status().rcv_wsc / .snd_wsc reflect the bilateral
+        WSCALE negotiation result. PyTCP advertises rcv_wsc=7 by
+        default; if peer's SYN+ACK echoes WSCALE the snd_wsc is
+        set to peer's value.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        sock = session._socket
+        assert isinstance(sock, TcpSocket)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            wscale=8,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        status = sock.status()
+        self.assertEqual(
+            status.snd_wsc,
+            8,
+            msg=f"snd_wsc MUST reflect peer's wscale (8). Got {status.snd_wsc}.",
+        )
+        self.assertEqual(
+            status.rcv_wsc,
+            7,
+            msg=f"rcv_wsc MUST reflect our advertised wscale (7). Got {status.rcv_wsc}.",
+        )
+
+    def test__status__after_close_completes_returns_state_closed(self) -> None:
+        """
+        Ensure status() on a fully-closed session (post-LAST_ACK
+        / TIME_WAIT expiry) reflects state=CLOSED.
+        """
+
+        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Force-transition to CLOSED (simpler than driving the
+        # full TIME_WAIT timeout).
+        session._change_state(FsmState.CLOSED)
+
+        status = sock.status()
+        self.assertIs(
+            status.state,
+            FsmState.CLOSED,
+            msg="status().state MUST be CLOSED after the FSM transitions to CLOSED.",
+        )
