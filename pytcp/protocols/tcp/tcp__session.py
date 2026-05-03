@@ -50,6 +50,7 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
     TcpSessionError,
 )
+from pytcp.protocols.tcp.tcp__fsm__closed import fsm__closed
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -1625,14 +1626,7 @@ class TcpSession:
         TCP FSM CLOSED state handler.
         """
 
-        # Got CONNECT syscall -> Send SYN packet (this actually will be done in
-        # SYN_SENT state) / change state to SYN_SENT.
-        if syscall is SysCall.CONNECT:
-            self._change_state(FsmState.SYN_SENT)
-
-        # Got LISTEN syscall -> Change state to LISTEN.
-        if syscall is SysCall.LISTEN:
-            self._change_state(FsmState.LISTEN)
+        fsm__closed(self, packet_rx_md=None, syscall=syscall, timer=None)
 
     def _tcp_fsm_listen(self, *, packet_rx_md: TcpMetadata | None, syscall: SysCall | None) -> None:
         """
