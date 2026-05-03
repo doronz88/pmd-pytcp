@@ -479,3 +479,53 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             FsmState.TIME_WAIT,
             msg="State must be TIME_WAIT after peer's FIN+ACK in FIN_WAIT_2.",
         )
+
+    def test__ipv6__outbound_mss_caps_at_uint16_max_on_jumbogram_path(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 9293 §3.7.5 / RFC 2675 §5 wire signal: when
+        the local interface MTU is large enough that the
+        derived '_rcv_mss = MTU - 60' would exceed the 16-bit
+        TCP MSS option field, the on-wire MSS MUST be capped at
+        65535. Per RFC 2675 §5, MSS=65535 on an IPv6 SYN is the
+        canonical signal "use the path MTU minus the IPv6+TCP
+        header size" - i.e. the special-case marker for
+        jumbogram-capable paths.
+
+        PyTCP does not implement RFC 2675 IPv6 Jumbograms at
+        the IP layer (no Jumbo Payload Hop-by-Hop option), so
+        this path is purely defensive: ensure that a mis-
+        configured 'stack.interface_mtu > 65535+60' on an IPv6
+        session produces a valid wire-level SYN rather than
+        overflowing the 16-bit MSS field.
+        """
+
+        # Force the interface MTU into the jumbogram regime.
+        original_mtu = stack.interface_mtu
+        stack.interface_mtu = 70000
+        try:
+            session = self._make_active_session_ip6(iss=LOCAL__ISS)
+            session.tcp_fsm(syscall=SysCall.CONNECT)
+            tx = self._advance(ms=1)
+            self.assertEqual(
+                len(tx),
+                1,
+                msg="Setup invariant: outbound SYN must fire on the next tick.",
+            )
+            syn_probe = self._parse_tx(tx[0])
+            self.assertIn("SYN", syn_probe.flags)
+            mss = syn_probe.mss
+            self.assertIsNotNone(mss, msg="Outbound SYN MUST carry MSS option.")
+            assert mss is not None
+            self.assertLessEqual(
+                mss,
+                0xFFFF,
+                msg=(
+                    "RFC 2675 §5: outbound SYN's MSS option is a "
+                    "16-bit field; values exceeding 65535 MUST be "
+                    f"capped at 65535. Got mss={mss}."
+                ),
+            )
+        finally:
+            stack.interface_mtu = original_mtu
