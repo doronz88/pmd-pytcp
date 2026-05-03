@@ -1,357 +1,360 @@
-# PyTCP — RFC 5681 Congestion Control: Phased Plan
+# PyTCP — RFC 5681 Congestion Control: Project Record
 
-Self-contained handoff plan for landing **proper RFC 5681
-congestion control** in PyTCP. Replaces the simplified
-`_snd_ewn`-doubling stand-in with separate `_cwnd` /
-`_ssthresh` tracking, slow-start vs congestion-avoidance phase
-distinction, fast-recovery cwnd inflation / deflation, and
-RFC 6928's IW = 10 initial window.
+**Status: SHIPPED** (Phase 1 cwnd/ssthresh fields + slow-start
+vs CA + Phase 2 RTO ssthresh halving + Phase 3 fast-recovery
+inflate/deflate + Phase 4 RFC 6928 IW = 10).
 
-This is the largest deferred TCP item per
-`tcp_sack_implementation.md` §7.1 and `tcp_rto_integration.md`
-§7.1. Landing it transitively unblocks RFC 6928 (initial
-window), RFC 6937 (PRR), RFC 9438 (CUBIC), and tightens the
-pipe-bounded `_snd_ewn` interaction with the SACK scoreboard.
-
----
-
-## 1. Mission
-
-PyTCP's current `_snd_ewn` field conflates two distinct
-concepts:
-
-  - **cwnd** — the congestion window (sender-side flow-control
-    bound that throttles us according to network capacity).
-  - **snd_wnd** — peer's advertised receive window (their
-    flow-control bound).
-
-The effective send window is `min(cwnd, snd_wnd)` per RFC 9293
-§3.8.4, and `_snd_ewn` carries that combined value. The
-problems:
-
-  1. **No slow-start vs CA distinction** (RFC 5681 §3.1).
-     Current code: `_snd_ewn = min(_snd_ewn << 1, _snd_wnd)`
-     on every cum-ACK — pure exponential. RFC mandates
-     additive increase (linear) once cwnd ≥ ssthresh.
-  2. **No `ssthresh` tracking** at all. Without it, RTO and
-     fast-retransmit cannot halve the threshold per §3.1 /
-     §3.2 step 2.
-  3. **No fast-recovery cwnd handling** (RFC 5681 §3.2 step
-     2-4). On 3rd dup-ACK we currently leave `_snd_ewn`
-     untouched and just rewind `SND.NXT`. The RFC mandates:
-       - `ssthresh = max(FlightSize/2, 2*SMSS)`
-       - `cwnd = ssthresh + 3*SMSS` (inflate)
-       - `cwnd += SMSS` per additional dup-ACK
-       - `cwnd = ssthresh` on cum-ACK exiting recovery
-         (deflate)
-  4. **Initial Window stuck at 1 MSS**. RFC 6928 raised IW to
-     10 MSS for fast-start; PyTCP doesn't.
-
-After this project ships, `cwnd` and `ssthresh` are
-independent first-class state, the four growth/reduction
-phases of RFC 5681 each have explicit hook points, and IW = 10
-is the default (with an opt-out for legacy / RFC 5681 §3.1
-strict mode).
+This document was originally a phased plan; it has been
+rewritten as a completion record for future sessions that
+want to **extend** the congestion-control surface (e.g. land
+RFC 6582 NewReno fallback, RFC 6937 PRR, or RFC 9438 CUBIC).
+The implementation history, phase-by-phase commit map, test
+inventory, and explicitly-deferred-work list are all captured
+below.
 
 ---
 
-## 2. Standing principles (preserved)
+## 1. Scope and references
 
-1. **Tests-first per phase.** Each phase opens with a
-   `[FLAGS BUG]` tests-first commit, then the impl flips them
-   green. Mirror the SACK / RTO project workflow.
-2. **Suite invariant.** Pass count never drops across a green
-   commit boundary. Baseline at the start of this plan: 7894
-   passing, 17 skipped, 0 failures.
-3. **`_snd_ewn` stays as the effective-window field.**
-   Existing callers (`_transmit_data`, `_retransmit_packet_timeout`)
-   and many tests reference it as the bound `min(cwnd, snd_wnd)`.
-   Phase 1 keeps that surface — the new code computes
-   `_snd_ewn = min(_cwnd, _snd_wnd)` whenever `_cwnd` or
-   `_snd_wnd` changes. Tests that set
-   `session._snd_ewn = PEER__WIN` to bypass slow-start
-   continue to work as direct effective-window overrides;
-   they just don't bypass `_cwnd` itself anymore.
-4. **`_cwnd` is the canonical congestion window.** All RFC
+| RFC      | Title                                              | Use |
+|----------|----------------------------------------------------|-----|
+| RFC 5681 | TCP Congestion Control                             | §3.1 slow-start vs CA + §3.1 RTO + §3.2 fast-recovery |
+| RFC 6928 | Increasing TCP's Initial Window                    | §2 IW = min(10*MSS, max(2*MSS, 14600)) |
+| RFC 9293 | TCP (consolidated)                                 | §3.8.4 effective window = min(cwnd, snd_wnd) |
+
+PyTCP now maintains 'cwnd' and 'ssthresh' as separate
+first-class state, applies the §3.1 slow-start vs
+congestion-avoidance growth-rate distinction on cum-ACKs,
+halves ssthresh on RTO and fast-retransmit per §3.1 / §3.2
+step 2, inflates cwnd by SMSS per dup-ACK during recovery
+per §3.2 step 4, deflates cwnd to ssthresh on recovery exit
+per §3.2 step 6, and starts at the RFC 6928 IW = 10*SMSS
+post-handshake.
+
+---
+
+## 2. Standing principles (preserved for future extensions)
+
+1. **`_snd_ewn` is the derived effective window.** The
+   wire-level transmit gate in `_transmit_data` reads
+   `_snd_ewn = min(_cwnd, _snd_wnd)`. Every code path that
+   mutates `_cwnd` or `_snd_wnd` recomputes `_snd_ewn`
+   immediately so the invariant always holds.
+2. **`_cwnd` is the canonical congestion window.** All RFC
    5681 §3 growth / reduction logic touches `_cwnd`, never
-   `_snd_ewn` directly.
-5. **No bug fixes during the migration.** Anything surfaced
-   that isn't strictly RFC 5681 compliance gets recorded and
-   deferred to a separate fix branch. Each phase commit is
-   reversible with a single revert.
+   `_snd_ewn` directly. Tests that override `_snd_ewn` to
+   constrain the effective window continue to work, but the
+   semantically-correct override is `_cwnd`.
+3. **§3.1 growth fires only on cum-ACK that advances
+   SND.UNA.** Dup-ACKs and in-order data segments without
+   ack-advance do not grow cwnd (RFC 5681 §3.1 wording: "for
+   each ACK received that cumulatively acknowledges new
+   data").
+4. **Recovery exit deflate via the recovery_point check.**
+   The RFC 6675 §5 RecoveryPoint marker (set on
+   fast-retransmit entry, cleared in `_process_ack_packet`
+   when SND.UNA passes it) is the trigger for the §3.2 step
+   6 cwnd = ssthresh deflation. Mid-recovery partial cum-ACKs
+   leave cwnd alone (NewReno-style; RFC 6582 partial deflate
+   is deferred — see §7.1).
+5. **RFC 6928 IW set after handshake-ack-processing.** The
+   active-open path in `tcp__fsm__syn_sent` and the passive /
+   simultaneous-open path in `tcp__fsm__syn_rcvd` set
+   `_cwnd = IW` AFTER `_process_ack_packet` runs, so the
+   §3.1 growth on the SYN-ack-advance does not inflate cwnd
+   above IW.
+6. **Fast-retransmit stays tightly scoped.** RFC 5681 §3.2
+   triggers (3rd dup-ACK or SACK byte rule per RFC 6675 §3)
+   and reductions apply once per loss event, gated on the
+   one-shot RecoveryPoint marker. Multiple back-to-back
+   triggers in the same loss event do not re-fire the
+   ssthresh halving.
 
 ---
 
-## 3. Architecture (target final state)
+## 3. Architecture (final state)
 
 ```
-TcpSession new state:
-    _cwnd: int              # RFC 5681 congestion window
-    _ssthresh: int          # RFC 5681 slow-start threshold
-    _flight_size: int       # SND.MAX - SND.UNA (computed property OR cached)
+TcpSession state:
+    _cwnd: int                # RFC 5681 congestion window
+    _ssthresh: int            # RFC 5681 slow-start threshold
+    _snd_ewn: int             # = min(_cwnd, _snd_wnd) (derived)
+    _snd_wnd: int             # peer's advertised window (post-wscale)
+    _recovery_point: Seq32    # RFC 6675 §5 marker (Phase 3 deflate trigger)
 
-TcpSession derived state (replaces direct _snd_ewn mutation):
-    _snd_ewn: int           # = min(_cwnd, _snd_wnd); recomputed
-                              on cwnd / snd_wnd change.
+Constants (in tcp__constants.py):
+    INITIAL_WINDOW_FACTOR = 10        # RFC 6928 §2 multiplier
+    INITIAL_WINDOW_BYTES = 14600      # RFC 6928 §2 floor for small MSS
 
 Hook points:
 
-    _process_ack_packet (on lt32(_snd_una, ack)):
-        - flight_size = SND.MAX - SND.UNA (post-ack)
-        - if _recovery_point != 0 and ack >= _recovery_point:
-            # Exit recovery (RFC 5681 §3.2 step 6)
-            _cwnd = _ssthresh
-        - elif _cwnd < _ssthresh:
-            # Slow start (§3.1): cwnd += min(N, SMSS) per ACK
-            _cwnd += min(bytes_acked, _snd_mss)
-        - else:
-            # Congestion avoidance (§3.1): cwnd += SMSS*SMSS/cwnd
-            _cwnd += max(1, _snd_mss * _snd_mss // _cwnd)
-        - _snd_ewn = min(_cwnd, _snd_wnd)
+    _process_ack_packet (cum-ACK on lt32(_snd_una, ack)):
+        bytes_acked = (ack - _snd_una) & 0xFFFF_FFFF
+        _snd_una = ack
+        if _cwnd < _ssthresh:
+            _cwnd += min(bytes_acked, _snd_mss)        # §3.1 slow-start
+        else:
+            _cwnd += max(1, _snd_mss² // _cwnd)        # §3.1 CA
+        _snd_ewn = min(_cwnd, _snd_wnd)
 
-    _retransmit_packet_request (3rd dup-ACK / SACK byte rule):
-        - ssthresh = max(FlightSize / 2, 2 * SMSS)
-        - cwnd = ssthresh + 3 * SMSS  # inflate
-        - _snd_ewn = min(_cwnd, _snd_wnd)
-        (existing rewind / NextSeg logic unchanged)
+    _process_ack_packet (snd_wnd update):
+        _snd_wnd = packet_rx_md.tcp__win << _snd_wsc
+        _snd_ewn = min(_cwnd, _snd_wnd)
 
-    Fast-recovery dup-ACK inflation (in _retransmit_packet_request
-    or a new helper, depending on phase 3 design):
-        - _cwnd += _snd_mss  # per additional dup-ACK in recovery
-        - _snd_ewn = min(_cwnd, _snd_wnd)
+    _process_ack_packet (recovery exit):
+        if _recovery_point != 0 and le32(_recovery_point, _snd_una):
+            _cwnd = _ssthresh                          # §3.2 step 6
+            _snd_ewn = min(_cwnd, _snd_wnd)
+            _recovery_point = 0
+
+    _retransmit_packet_request (entry, count or SACK byte trigger):
+        flight_size = (_snd_max - _snd_una) & 0xFFFF_FFFF
+        _ssthresh = max(flight_size // 2, 2 * _snd_mss)  # §3.2 step 2
+        _cwnd = _ssthresh + 3 * _snd_mss                  # §3.2 step 3
+        _snd_ewn = min(_cwnd, _snd_wnd)
+
+    _retransmit_packet_request (additional dup-ACK in recovery):
+        _cwnd += _snd_mss                              # §3.2 step 4
+        _snd_ewn = min(_cwnd, _snd_wnd)
 
     _retransmit_packet_timeout (RTO):
-        - ssthresh = max(FlightSize / 2, 2 * SMSS)
-        - cwnd = LW = 1 * SMSS  # slow-start re-entry per §3.1
-        - _snd_ewn = min(_cwnd, _snd_wnd)
-        (existing back_off / rewind logic unchanged)
+        flight_size = (_snd_max - _snd_una) & 0xFFFF_FFFF
+        _ssthresh = max(flight_size // 2, 2 * _snd_mss)  # §3.1 step 1
+        _cwnd = _snd_mss                                  # §3.1 LW
+        _snd_ewn = min(_cwnd, _snd_wnd)
 
-    Handshake completion (in tcp__fsm__syn_sent / __listen):
-        - cwnd = IW (RFC 6928: min(10*SMSS, max(2*SMSS, 14600)))
-                 OR fall back to RFC 5681 §3.1 IW (1-4*SMSS)
-        - ssthresh = INITIAL_SSTHRESH (peer's advertised
-                     window OR a large constant like 0x7FFF)
+    tcp__fsm__syn_sent (active-open ESTABLISHED transition):
+        # After _process_ack_packet on SYN+ACK:
+        _cwnd = min(10 * _snd_mss, max(2 * _snd_mss, 14600))  # RFC 6928
+        _snd_ewn = min(_cwnd, _snd_wnd)
+
+    tcp__fsm__syn_rcvd (passive / simultaneous-open ESTABLISHED transition):
+        # After _process_ack_packet on third-leg ACK: same IW assignment.
 ```
 
 ---
 
-## 4. Phase-by-phase plan
+## 4. Phase-by-phase completion record
 
-### Phase 1 — Add `_cwnd` / `_ssthresh` fields + slow-start vs CA
+| Phase | Description                                             | Commits             | Tests added |
+|-------|---------------------------------------------------------|---------------------|-------------|
+| 1     | `_cwnd`/`_ssthresh` fields + §3.1 slow-start vs CA      | `76a9ad2` + `c14ff2f` + `5b5f411` | 6 (3 [FLAGS BUG] flipped) |
+| 2     | §3.1 RTO ssthresh halving                               | `a3d08eb` + `006e452` | 2 |
+| 3     | §3.2 fast-recovery inflate/deflate                      | `8470ddc` + `6a16323` | 3 |
+| 4     | RFC 6928 §2 Initial Window 10                           | `5712ecb` + `4fea806` | 2 |
+| 5     | Convert plan to completion record                       | this commit          | 0 |
 
-Tests-first commit + fix commit.
-
-**Tests** (`pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py`,
-new file):
-
-  1. `test__cwnd__post_handshake_initialises_cwnd_to_one_mss`
-     [FLAGS BUG] - field exists with default `_snd_mss`.
-  2. `test__cwnd__post_handshake_initialises_ssthresh_high`
-     [FLAGS BUG] - `_ssthresh` defaults to a large value
-     (peer's win OR 0x7FFF) so first cum-ACKs run in
-     slow-start phase.
-  3. `test__cwnd__slow_start_phase_grows_cwnd_by_mss_per_ack`
-     [FLAGS BUG] - on cum-ACK while `cwnd < ssthresh`, cwnd
-     grows by `min(bytes_acked, MSS)`. Currently `_snd_ewn`
-     doubles, which is "exponential per cum-ACK" not "+MSS
-     per cum-ACK". The doubling-vs-additive distinction
-     matters once we also track ssthresh transitions.
-  4. `test__cwnd__congestion_avoidance_phase_grows_cwnd_linearly`
-     [FLAGS BUG] - once `cwnd >= ssthresh`, cwnd grows by
-     `SMSS*SMSS/cwnd` per ACK (≈ +1 MSS per RTT for a stream
-     of MSS-sized cum-ACKs).
-  5. `test__cwnd__snd_ewn_tracks_min_of_cwnd_and_snd_wnd`
-     [FLAGS BUG] - `_snd_ewn` always equals
-     `min(_cwnd, _snd_wnd)` after any cwnd or snd_wnd
-     change. Validates the "effective window stays derived"
-     invariant.
-
-**Fix commit:** add the fields + slow-start / CA logic in
-`_process_ack_packet`. Replace `_snd_ewn` doubling with
-explicit `_cwnd` adjustment + `_snd_ewn` recompute. Update
-the three FSM init points (`tcp__fsm__syn_sent.py` x2,
-`tcp__fsm__listen.py`) to set `_cwnd` and `_ssthresh`
-alongside `_snd_ewn`.
-
-Estimated: 2-3 commits. Risk: medium. Touches 3 FSM modules
-+ 1 process_ack hook + 5+ test fixtures.
-
-### Phase 2 — RTO ssthresh reduction (RFC 5681 §3.1)
-
-Tests-first commit + fix commit.
-
-**Tests:**
-
-  1. `test__cwnd__rto_sets_ssthresh_to_half_flight_size`
-     [FLAGS BUG] - on RTO, `ssthresh = max(FlightSize/2,
-     2*SMSS)`. Today RTO collapses `_snd_ewn` but doesn't
-     touch ssthresh.
-  2. `test__cwnd__rto_resets_cwnd_to_one_mss`
-     - regression guard for the existing slow-start re-entry
-     (cwnd post-RTO = 1 SMSS).
-  3. `test__cwnd__rto_with_minimal_flight_size_clamps_ssthresh_floor`
-     [FLAGS BUG] - if FlightSize/2 < 2*SMSS, `ssthresh =
-     2*SMSS` (the §3.1 floor).
-
-**Fix commit:** ~5 LOC in `_retransmit_packet_timeout` after
-`back_off` runs.
-
-Estimated: 1-2 commits. Risk: low.
-
-### Phase 3 — Fast-recovery cwnd inflation/deflation (RFC 5681 §3.2)
-
-Tests-first commit + fix commit. Most invasive phase.
-
-**Tests:**
-
-  1. `test__cwnd__fast_retransmit_halves_ssthresh_and_inflates_cwnd`
-     [FLAGS BUG] - on 3rd dup-ACK entering recovery,
-     `ssthresh = max(FlightSize/2, 2*SMSS)` and
-     `cwnd = ssthresh + 3*SMSS`.
-  2. `test__cwnd__additional_dup_ack_during_recovery_inflates_cwnd_by_one_mss`
-     [FLAGS BUG] - 4th, 5th, ... dup-ACKs in recovery each
-     bump cwnd by 1 SMSS (lets the sender transmit one new
-     segment per dup-ACK).
-  3. `test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh`
-     [FLAGS BUG] - on cum-ACK that advances SND.UNA past
-     `_recovery_point`, `cwnd = ssthresh` (deflate per §3.2
-     step 6).
-  4. `test__cwnd__fast_retransmit_byte_rule_path_also_halves_ssthresh`
-     [FLAGS BUG] - the SACK byte-rule trigger (RFC 6675 §3
-     IsLost) hits the same RFC 5681 §3.2 cwnd / ssthresh
-     adjustments as the count-based trigger.
-
-**Fix commit:** modify `_retransmit_packet_request` to apply
-the §3.2 step 2 reduction; add a dup-ACK inflation hook; add
-the deflation path in `_process_ack_packet` recovery exit.
-
-Estimated: 2-3 commits. Risk: medium-high (interacts with the
-existing RFC 6675 NextSeg path).
-
-### Phase 4 — RFC 6928 Initial Window 10
-
-Tests-first commit + fix commit. Cleanest phase, separate so
-it can be reverted independently.
-
-**Tests:**
-
-  1. `test__cwnd__post_handshake_initialises_cwnd_to_iw_10`
-     [FLAGS BUG] - default `cwnd` post-handshake is
-     `min(10*MSS, max(2*MSS, 14600))` per RFC 6928. With MSS
-     = 1460: IW = `min(14600, max(2920, 14600))` = 14600
-     (= 10 MSS exactly).
-  2. `test__cwnd__post_handshake_iw_10_clamped_by_peer_win`
-     - regression guard: if peer advertises a tiny win,
-     `_snd_ewn = min(IW, peer_win)` still respects peer's
-     flow-control.
-
-**Fix commit:** change the IW constant in `tcp__constants.py`
-or wherever the post-handshake `_cwnd = MSS` line lives.
-~3 LOC + test fixture updates.
-
-Estimated: 1 commit. Risk: low.
-
-### Phase 5 — Documentation
-
-Convert this plan to a completion record (mirror
-`tcp_sack_implementation.md` / `tcp_rto_integration.md`) once
-phases 1-4 ship. Update memory pointer. Estimated: 1 commit.
+Total: **9 code commits, 13 RFC-5681-specific tests, ~40 LOC
+of production code in `tcp__session.py` + ~20 LOC across
+three FSM modules + 2 new constants in `tcp__constants.py`.**
 
 ---
 
-## 5. Existing-test impact audit
+## 5. Test inventory (final)
 
-Files likely to need updates in the fix commits:
+All 13 tests live in
+`pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py`:
 
-| File                                                         | Likely impact                                                                  |
-|--------------------------------------------------------------|--------------------------------------------------------------------------------|
-| `data_transfer__send.py`                                     | Multiple tests set `_snd_ewn = PEER__WIN`. With Phase 1 they keep working as direct effective-window overrides; with Phase 4 (IW=10) some `len(initial_tx) == 1` assertions may need to grow to multiple segments depending on payload size |
-| `data_transfer__retransmit_dupack.py`                        | Phase 3 cwnd inflation changes the post-recovery cwnd value. Asserts on `_snd_ewn` after fast-retransmit may need updating |
-| `data_transfer__retransmit_timeout.py`                       | Phase 2 ssthresh reduction. Test #2 may need a fresh assertion that ssthresh halved post-RTO |
-| `sack.py` (integration)                                      | Phase 3 fast-recovery byte-rule path interacts with SACK NextSeg; one or two assertions on `_snd_ewn` value during recovery may need updating |
-| `data_transfer__window.py`                                   | Phase 1 tightens the `_snd_ewn = min(cwnd, snd_wnd)` invariant. Tests that mutate `_snd_wnd` directly should still work |
-| `harness_smoke.py`                                           | Should be unaffected; it doesn't touch `_snd_ewn` |
+### TestTcpCwndPhase1 (6 tests)
+- `fields_exist_post_handshake` — regression guard
+- `slow_start_grows_cwnd_by_one_mss_per_cum_ack` — §3.1 slow-start
+- `congestion_avoidance_grows_cwnd_sublinearly` — §3.1 CA
+- `snd_ewn_tracks_min_of_cwnd_and_snd_wnd` — RFC 9293 §3.8.4
+- `post_handshake_starts_in_slow_start_phase` — regression guard
+- `cum_ack_recomputes_snd_ewn_from_cwnd_via_runtime_path` — runtime-driven §3.8.4
 
----
+### TestTcpCwndPhase2 (2 tests)
+- `rto_sets_ssthresh_to_half_flight_size` — §3.1 step 1 main path
+- `rto_with_minimal_flight_size_clamps_ssthresh_to_floor` — §3.1 step 1 floor
 
-## 6. Anti-patterns to avoid
+### TestTcpCwndPhase3 (3 tests)
+- `fast_retransmit_halves_ssthresh_and_inflates_cwnd` — §3.2 steps 2+3
+- `additional_dup_ack_in_recovery_inflates_cwnd_by_one_mss` — §3.2 step 4
+- `cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh` — §3.2 step 6
 
-- **Don't merge cwnd and ssthresh into a single field.** They
-  encode independent concepts: cwnd is "how much can I send
-  right now" and ssthresh is "the slow-start / CA boundary".
-  PyTCP's `_snd_ewn`-only model worked only because the
-  fast-retransmit + RTO paths bypassed the §3.1 ssthresh
-  rules entirely.
+### TestTcpCwndPhase4 (2 tests)
+- `post_handshake_initialises_cwnd_to_iw_10` — RFC 6928 §2
+- `post_handshake_iw_10_clamped_by_peer_win` — RFC 9293 §3.8.4 with IW=10
 
-- **Don't apply fast-retransmit cwnd inflation on every
-  dup-ACK from the start.** RFC 5681 §3.2 specifies that the
-  inflation begins on the THIRD dup-ACK (the one that
-  triggers fast-retransmit), not the first. The PyTCP entry
-  point for that is `_retransmit_packet_request`'s existing
-  `count_trigger == 3` / `sack_trigger` gates.
+### Cross-references covered indirectly
 
-- **Don't forget the §3.2 step 6 deflation.** When SND.UNA
-  advances past `_recovery_point`, cwnd MUST drop back to
-  ssthresh. Without the deflate, cwnd stays inflated post-
-  recovery and the sender becomes too aggressive.
-
-- **Don't apply §3.1 cwnd growth on dup-ACKs.** Slow-start /
-  CA growth fires only on cum-ACKs that ADVANCE SND.UNA. The
-  existing `_process_ack_packet` already gates on
-  `lt32(_snd_una, ack)` — keep using that gate.
-
-- **Don't change the wire-level effective-window contract.**
-  `_transmit_data` still gates on `_snd_ewn`. If we ever
-  remove `_snd_ewn` and recompute on every transmit, do it
-  in a separate refactor commit AFTER the cwnd / ssthresh
-  semantics are stable.
-
-- **Don't over-eager IW=10 in Phase 4 without checking peer
-  win.** RFC 6928 says IW = `min(10*MSS, max(2*MSS, 14600))`,
-  but `_snd_ewn` is then `min(IW, snd_wnd)` — peer's
-  advertised window still bounds the actual transmittable
-  amount. Tests that assert on the FIRST burst of segments
-  need to confirm peer's win is large enough.
+- `data_transfer__send.py` tests that pin `_snd_ewn`
+  directly continue to work — the override happens at the
+  effective-window layer, post-Phase-1 the runtime computes
+  this from `min(_cwnd, _snd_wnd)` only on cum-ACKs that
+  advance SND.UNA.
+- `data_transfer__retransmit_dupack.py` integration tests
+  cover the fast-retransmit triggers; Phase 3's cwnd
+  inflation/deflation is added on top.
+- `data_transfer__retransmit_timeout.py` tests cover RTO
+  cadence; Phase 2 adds ssthresh tracking on top.
 
 ---
 
-## 7. Estimated effort
+## 6. Production code map
 
-| Phase | Description                                       | Commits | Risk    |
-|-------|---------------------------------------------------|---------|---------|
-| 1     | cwnd/ssthresh fields + slow-start vs CA           | 2-3     | medium  |
-| 2     | RTO ssthresh reduction                            | 1-2     | low     |
-| 3     | Fast-recovery cwnd inflation/deflation            | 2-3     | medium-high |
-| 4     | RFC 6928 IW = 10                                  | 1       | low     |
-| 5     | Convert plan to completion record                 | 1       | trivial |
-
-Total: **7-10 commits**, ~4-6 hours of focused work.
+| File                                              | Purpose                                       |
+|---------------------------------------------------|-----------------------------------------------|
+| `pytcp/protocols/tcp/tcp__constants.py`           | `INITIAL_WINDOW_FACTOR`, `INITIAL_WINDOW_BYTES` |
+| `pytcp/protocols/tcp/tcp__session.py:__init__`    | `_cwnd`, `_ssthresh` field declarations       |
+| `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet` | §3.1 cwnd growth + §3.2 step 6 deflate + §3.8.4 snd_ewn recompute |
+| `pytcp/protocols/tcp/tcp__session.py:_retransmit_packet_request` | §3.2 step 2-4 ssthresh halve + cwnd inflate |
+| `pytcp/protocols/tcp/tcp__session.py:_retransmit_packet_timeout` | §3.1 step 1 ssthresh halve + cwnd LW reset |
+| `pytcp/protocols/tcp/tcp__fsm__syn_sent.py`       | RFC 6928 IW assignment (active-open + simultaneous-open init) |
+| `pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py`       | RFC 6928 IW assignment (passive-open + simultaneous-open ESTABLISHED) |
+| `pytcp/protocols/tcp/tcp__fsm__listen.py`         | `_cwnd = _snd_mss` init at SYN arrival (handshake not yet complete) |
 
 ---
 
-## 8. Re-orient command for new sessions
+## 7. Deferred work (out of scope for "the RFC 5681 project")
+
+These items were considered and explicitly skipped. They
+belong to adjacent projects, not RFC 5681 polish.
+
+### 7.1 RFC 6582 NewReno partial-cum-ACK handling
+
+PyTCP's Phase 3 deflate fires only on cum-ACK that crosses
+RecoveryPoint. RFC 6582 specifies a more nuanced response:
+on a partial cum-ACK during recovery (advances SND.UNA but
+does not cross RecoveryPoint), deflate cwnd by bytes_acked
+(less SMSS) and retransmit the next gap. PyTCP currently
+leaves cwnd untouched on partial cum-ACK during recovery.
+
+The impact: on multi-gap loss with non-SACK peers, recovery
+takes one extra RTT per additional lost segment. With SACK
+peers (the common case post-bilateral negotiation), RFC 6675
+NextSeg drives the multi-gap recovery directly via the
+scoreboard, so RFC 6582 is mostly moot.
+
+When to land: if PyTCP's RFC 6675 SACK byte-rule path
+proves insufficient against non-SACK peers in real-world
+testing. ~2-3 commits, modest test surface.
+
+### 7.2 RFC 6937 Proportional Rate Reduction (PRR)
+
+PRR replaces the §3.2 step 4 dup-ACK "+SMSS" inflation with
+a more precise pacing algorithm that tracks how much data is
+in flight vs how much was lost, and grows cwnd in proportion.
+The result is smoother send pacing during recovery and
+faster total loss recovery.
+
+When to land: after the deferred-work item below (CUBIC)
+since CUBIC and PRR are typically deployed together. ~3-4
+commits, larger test surface.
+
+### 7.3 RFC 9438 CUBIC congestion control
+
+CUBIC replaces Reno's linear CA growth with a cubic function
+of time-since-last-loss. Default congestion control on Linux
+and Windows; very different cwnd dynamics from RFC 5681.
+
+The cleanest path: keep the `_cwnd / _ssthresh` substrate
+shipped here as the "Reno-style mode" and add a CC-mode
+selector that switches to CUBIC. The §3.2 fast-retransmit
+inflation/deflation and §3.1 RTO ssthresh halving are
+shared between Reno and CUBIC; only the CA-phase growth
+formula changes.
+
+When to land: separate "RFC 9438 CUBIC project". ~10+
+commits with substantial test surface (CUBIC's cubic-curve
+math has multiple regions).
+
+### 7.4 RFC 8312 BBR (informational)
+
+BBR (Bottleneck Bandwidth and Round-trip propagation time)
+is Google's loss-agnostic congestion control. Not RFC-
+mandated; deferred indefinitely.
+
+---
+
+## 8. Anti-patterns (preserved for future extensions)
+
+- **Don't conflate `_cwnd` with `_snd_ewn`.** They encode
+  independent concepts: cwnd is the network bound, snd_ewn
+  is the wire-level transmit gate (= min(cwnd, snd_wnd)).
+  Mutate cwnd, recompute snd_ewn.
+
+- **Don't apply §3.1 cwnd growth on the recovery-exit
+  cum-ACK.** Per §3.2 step 6 the recovery exit unilaterally
+  sets cwnd = ssthresh, bypassing §3.1. PyTCP's
+  `_process_ack_packet` order ensures the §3.1 growth fires
+  first (then the deflate overrides if exiting recovery);
+  if the order is ever swapped, ensure the deflate is the
+  last cwnd write.
+
+- **Don't compute FlightSize after the SND.NXT rewind.**
+  Both `_retransmit_packet_request` (Phase 3) and
+  `_retransmit_packet_timeout` (Phase 2) compute
+  `flight_size = SND.MAX - SND.UNA` BEFORE rewinding
+  SND.NXT to SND.UNA, so the value reflects the unacked-
+  bytes count at the moment of loss detection. After the
+  rewind, SND.NXT == SND.UNA and the modular subtraction
+  would yield 0.
+
+- **Don't apply RFC 6928 IW at the `_cwnd = _snd_mss` init
+  lines in the FSM modules.** Those run BEFORE
+  `_process_ack_packet` on the handshake ACK, which fires
+  §3.1 growth; setting cwnd = IW there would result in a
+  post-handshake cwnd of IW + 1 (the +1 from the SYN-ack-
+  advance). The IW assignment lives at the ESTABLISHED
+  transition in `tcp__fsm__syn_sent` (active-open) and
+  `tcp__fsm__syn_rcvd` (passive / simultaneous-open) so
+  the post-handshake value is exactly IW.
+
+- **Don't forget the §3.2 step 2 floor `2*SMSS`.** A small
+  in-flight burst at fast-retransmit time would otherwise
+  set ssthresh below the canonical minimum and cause the
+  post-recovery slow-start to exit immediately into CA.
+
+- **Don't double-count the §3.2 entry inflation.** When the
+  3rd dup-ACK fires the trigger, §3.2 step 3 sets cwnd =
+  ssthresh + 3*SMSS. Each subsequent dup-ACK in recovery
+  adds SMSS via the early-return branch of
+  `_retransmit_packet_request` (Phase 3 hook). The 3rd
+  dup-ACK MUST NOT also fire the additional-dup-ACK path
+  (the trigger gate at line 1716/1717 of `tcp__session.py`
+  short-circuits before the early-return branch).
+
+---
+
+## 9. Extender's re-orient command
+
+If you want to extend the congestion control surface (e.g.
+land RFC 6582 NewReno fallback, RFC 6937 PRR, or RFC 9438
+CUBIC), start with:
 
 ```bash
-git log --oneline --grep="cwnd\|RFC 5681\|congestion" master..HEAD
-ls pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py 2>/dev/null
-grep -n "_cwnd\|_ssthresh" pytcp/protocols/tcp/tcp__session.py | head
+git log --oneline --grep="cwnd\|RFC 5681\|RFC 6928" master..HEAD
 make test 2>&1 | tail -5
+ls pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py
+grep -n "_cwnd\|_ssthresh" pytcp/protocols/tcp/tcp__session.py | head
 ```
 
-What it tells you:
-- No cwnd grep matches → Phase 1 not started.
-- `_cwnd` exists but no `test__rto__rto_sets_ssthresh_to_half_flight_size` → Phase 2 not started.
-- All four phases visible → Phase 5 (docs) is the wrap-up.
+Read the docstrings of:
+- `pytcp/protocols/tcp/tcp__session.py::_process_ack_packet`
+  (§3.1 growth + §3.2 deflate)
+- `pytcp/protocols/tcp/tcp__session.py::_retransmit_packet_request`
+  (§3.2 entry + dup-ACK inflation)
+- `pytcp/protocols/tcp/tcp__session.py::_retransmit_packet_timeout`
+  (§3.1 RTO ssthresh halving)
+- `pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py` (RFC 6928 IW
+  assignment at passive-open ESTABLISHED transition)
 
-Match against §4 to pick up where the prior session left off.
+Then decide whether the extension fits the deferred-work
+taxonomy in §7 above, or is a new direction entirely.
 
 ---
 
-## 9. Cross-references
+## 10. Cross-references
 
+- Workflow + reporting format:
+  `.claude/rules/tcp_session_integration_tests.md` §7
 - Coding style: `.claude/rules/coding_style.md`
 - Unit test authoring: `.claude/rules/unit_tests.md`
-- Integration test workflow: `.claude/rules/tcp_session_integration_tests.md`
-- Adjacent: `.claude/rules/tcp_rto_integration.md` §7.1 (cwnd
-  interaction with `back_off`); `.claude/rules/tcp_sack_implementation.md`
-  §7.1 (broader cwnd rework rationale).
+- Adjacent shipped: `.claude/rules/tcp_rto_integration.md`
+  (RFC 6298 RTO estimator that drives the retransmit timer
+  whose RTO halves ssthresh in Phase 2 here).
+- Adjacent shipped: `.claude/rules/tcp_sack_implementation.md`
+  (RFC 2018 + 6675 SACK that provides the byte-rule trigger
+  for fast-retransmit and NextSeg for multi-gap recovery
+  in Phase 3 here).
