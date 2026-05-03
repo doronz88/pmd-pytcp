@@ -55,6 +55,8 @@ pytcp/lib/tcp_iss.py
 ver 3.0.4
 """
 
+import hashlib
+
 from net_addr import Ip4Address, Ip6Address
 
 # RFC 6528 §3 'M' clock rate. The standard cadence is one tick every
@@ -88,6 +90,23 @@ def compute_iss(
     component advances naturally.
     """
 
-    raise NotImplementedError(
-        "RFC 6528 §3 ISS hash is not yet implemented; see " "pytcp/lib/tcp_iss.py for the planned formula"
-    )
+    # F = SHA-256(secret || local_addr || local_port || remote_addr ||
+    # remote_port) truncated to 32 bits. Address bytes come from each
+    # net_addr class's '__bytes__' (4 bytes for IPv4, 16 for IPv6);
+    # ports are encoded big-endian on 2 bytes. The secret prefix is
+    # the keying material per RFC 6528 §3 - distinct per host so an
+    # attacker who reverse-engineers the algorithm still cannot
+    # compute a victim's ISNs without knowing the secret.
+    digest = hashlib.sha256(
+        secret
+        + bytes(local_address)
+        + local_port.to_bytes(2, "big")
+        + bytes(remote_address)
+        + remote_port.to_bytes(2, "big")
+    ).digest()
+    f = int.from_bytes(digest[:4], "big")
+    # M = clock_us / ISS_CLOCK_RATE_US (mod 2**32). The
+    # monotonically advancing component prevents replay of stale
+    # ISNs against fresh connections.
+    m = (clock_us // ISS_CLOCK_RATE_US) & 0xFFFF_FFFF
+    return (m + f) & 0xFFFF_FFFF
