@@ -724,6 +724,30 @@ class TcpSession:
         seq = seq if seq is not None else self._snd_nxt
         ack = self._rcv_nxt if flag_ack else 0
 
+        # RFC 6298 §5.7 restart-after-idle: when a session has
+        # been silent for longer than the in-flight 'rto_ms' the
+        # smoothed RTT estimator may be stale (the network
+        # conditions that produced the current SRTT/RTTVAR may
+        # no longer hold). Reset to 'initial_state()' so the
+        # next sample re-establishes the estimator from scratch
+        # and avoids spurious retransmits with a now-too-short
+        # RTO. The '_last_send_time_ms is not None' guard
+        # ensures the reset never fires on a fresh session
+        # before any send has occurred.
+        if (
+            (data or flag_syn or flag_fin)
+            and self._last_send_time_ms is not None
+            and stack.timer.now_ms - self._last_send_time_ms > self._rto_state.rto_ms
+        ):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 6298 §5.7 idle-reset: now="
+                f"{stack.timer.now_ms} last_send="
+                f"{self._last_send_time_ms} rto_ms="
+                f"{self._rto_state.rto_ms}; resetting estimator",
+            )
+            self._rto_state = initial_state()
+
         # RFC 6298 §4 sample collection: record one in-flight RTT
         # sample at a time. The covering ACK harvest hook in
         # '_process_ack_packet' folds the observed RTT into
@@ -741,6 +765,13 @@ class TcpSession:
             self._rtt_sample_seq = seq
             self._rtt_sample_send_time_ms = stack.timer.now_ms
             self._rtt_sample_retransmitted = False
+
+        # RFC 6298 §5.7 idle-baseline tracking: refresh the
+        # last-send timestamp on every outbound segment that
+        # consumes sequence space, so the §5.7 idle-check above
+        # has an accurate baseline for the next send.
+        if data or flag_syn or flag_fin:
+            self._last_send_time_ms = stack.timer.now_ms
 
         # WSCALE shift on outbound 'win' field per RFC 7323 §2.3:
         # post-handshake segments use 'rcv_wnd >> rcv_wsc'; the
