@@ -37,17 +37,21 @@ import functools
 import random
 import threading
 from collections.abc import Callable
-from enum import auto
 from typing import TYPE_CHECKING, Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.name_enum import NameEnum
 from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__enums import (
+    ConnError,
+    FsmState,
+    SysCall,
+    TcpSessionError,
+)
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -80,51 +84,6 @@ CHALLENGE_ACK_RATE_LIMIT_MS = 1000
 # window stays at zero, so the timer never gives up - only the connection's R2
 # timeout (handled by '_retransmit_packet_timeout') tears the session down.
 PERSIST_TIMEOUT_MAX = 60_000
-
-
-class TcpSessionError(Exception):
-    """
-    Critical errors.
-    """
-
-
-class SysCall(NameEnum):
-    """
-    System call identifier.
-    """
-
-    LISTEN = auto()
-    CONNECT = auto()
-    CLOSE = auto()
-
-
-class FsmState(NameEnum):
-    """
-    TCP Finite State Machine state identifier.
-    """
-
-    CLOSED = auto()
-    LISTEN = auto()
-    SYN_SENT = auto()
-    SYN_RCVD = auto()
-    ESTABLISHED = auto()
-    FIN_WAIT_1 = auto()
-    FIN_WAIT_2 = auto()
-    CLOSING = auto()
-    CLOSE_WAIT = auto()
-    LAST_ACK = auto()
-    TIME_WAIT = auto()
-
-
-class ConnError(NameEnum):
-    """
-    Connection fail reasons.
-    """
-
-    NONE = auto()
-    REFUSED = auto()
-    TIMEOUT = auto()
-    CANCELED = auto()
 
 
 def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:
