@@ -1028,7 +1028,13 @@ class TcpSession:
             tcp__seq=seq,
             tcp__ack=ack,
             tcp__win=tcp__win,
-            tcp__mss=self._rcv_mss if flag_syn else None,
+            # RFC 9293 §3.7.5 / RFC 2675 §5: the MSS option wire
+            # field is 16-bit, so '_rcv_mss > 65535' (e.g. on a
+            # mis-configured super-jumbo MTU) would otherwise
+            # overflow the assembler's uint16 assert. Cap at 65535
+            # which RFC 2675 reserves as the "use path-MTU-derived
+            # MSS" signal for jumbogram-capable IPv6 paths.
+            tcp__mss=min(self._rcv_mss, 0xFFFF) if flag_syn else None,
             tcp__wscale=tcp__wscale,
             tcp__sackperm=tcp__sackperm,
             tcp__sack_blocks=tcp__sack_blocks,
