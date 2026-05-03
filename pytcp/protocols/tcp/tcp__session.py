@@ -66,6 +66,7 @@ from pytcp.protocols.tcp.tcp__fsm__fin_wait_1 import fsm__fin_wait_1
 from pytcp.protocols.tcp.tcp__fsm__fin_wait_2 import fsm__fin_wait_2
 from pytcp.protocols.tcp.tcp__fsm__last_ack import fsm__last_ack
 from pytcp.protocols.tcp.tcp__fsm__listen import fsm__listen
+from pytcp.protocols.tcp.tcp__fsm__syn_rcvd import fsm__syn_rcvd
 from pytcp.protocols.tcp.tcp__fsm__time_wait import fsm__time_wait
 
 if TYPE_CHECKING:
@@ -1877,132 +1878,7 @@ class TcpSession:
         TCP FSM SYN_RCVD state handler.
         """
 
-        # Got timer event -> Resend SYN packet if its timer expired.
-        if timer:
-            self._retransmit_packet_timeout()
-            self._transmit_data()
-            return
-
-        # Got SYN-bearing segment without RST in SYN_RCVD -> Send a challenge
-        # ACK per RFC 9293 §3.10.7.4 step 1 / step 4 (folding RFC 5961 §4).
-        # SYN_RECEIVED is a synchronized state per RFC 9293; the peer's
-        # original SYN's sequence space has already been consumed
-        # ('RCV.NXT = peer.ISN + 1'), so any SYN arriving here has SEG.SEQ
-        # one byte before our window and is therefore "unacceptable" per
-        # step 1 - the spec form of that response is the same challenge ACK
-        # step 4 prescribes for SYN-on-synchronized:
-        #   <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-        # The branch matches SYN-bearing segments that do NOT also carry RST
-        # so the existing RST+ACK and RST branches below still take priority
-        # for tear-down semantics. This is the symmetric analog of the
-        # SYN-on-established branch in '_tcp_fsm_established'.
-        if packet_rx_md and packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
-            self._emit_challenge_ack()
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Sent challenge ACK for SYN-in-syn_rcvd (RFC 9293 §3.10.7.4)",
-            )
-            return
-
-        # Got ACK packet -> Change state to ESTABLISHED.
-        if (
-            packet_rx_md
-            and all({packet_rx_md.tcp__flag_ack})
-            and not any(
-                {
-                    packet_rx_md.tcp__flag_syn,
-                    packet_rx_md.tcp__flag_fin,
-                    packet_rx_md.tcp__flag_rst,
-                }
-            )
-        ):
-            # Packet sanity check. RFC 9293 §3.10.7.4 step 7 ("Once
-            # in the ESTABLISHED state, it is possible to deliver
-            # segment text to user RECEIVE buffers") explicitly
-            # permits piggybacked data on the third-leg ACK; the
-            # data is NOT gated here, '_process_ack_packet' below
-            # enqueues it via its overlap-prefix logic (RCV.NXT is
-            # still at 'peer_ISS + 1' here, so the overlap prefix
-            # is 0 and the full payload is enqueued).
-            if packet_rx_md.tcp__seq == self._rcv_nxt and packet_rx_md.tcp__ack == self._snd_nxt:
-                self._process_ack_packet(packet_rx_md)
-                # Inline ACK if peer piggybacked data so peer's
-                # retransmit machinery sees the data acknowledged
-                # without waiting for delayed-ACK to fire (matches
-                # the same idiom used for FIN+ACK with data in
-                # '_tcp_fsm_established' and the data-bearing ACK
-                # branches in the half-close states).
-                if packet_rx_md.tcp__data:
-                    self._transmit_packet(flag_ack=True)
-                # Change state to ESTABLISHED.
-                self._change_state(FsmState.ESTABLISHED)
-                # Passive-open path: inform the listening socket so
-                # accept() can pick up the child. Simultaneous-open
-                # path (active-open with peer's SYN crossing ours)
-                # has no parent socket - the session itself is the
-                # application-visible one; only the connect-event
-                # release matters there. The 'is not None' gate
-                # handles both paths uniformly without an assert
-                # that would crash the active-open simultaneous-open
-                # handshake.
-                parent_socket = self._socket._parent_socket  # pylint: disable=protected-access
-                if parent_socket is not None:
-                    parent_socket._tcp_accept.append(self._socket)  # pylint: disable=protected-access
-                    parent_socket._event__tcp_session_established.release()  # pylint: disable=protected-access
-                # Inform connect syscall that connection related
-                # event happened. Required for the active-open
-                # simultaneous-open path (where the application
-                # thread is blocked on '_event__connect.acquire()');
-                # harmless on the passive-open path because no
-                # caller is blocked on that semaphore there
-                # ('Semaphore.release()' just increments the count).
-                self._event__connect.release()
-                return
-
-        # Got RST packet (bare RST or RST+ACK) -> Process per RFC
-        # 9293 §3.10.7.4 three-way classification via the shared
-        # helper. Mirrors CLOSE_WAIT's predicate shape (commit
-        # '991931e'); the helper skips the 'ack' in-range guard
-        # for bare RST so both forms reach the case-1 reset path.
-        # On case-1 reset the connect-event semaphore is released
-        # with 'ConnError.REFUSED' so any active-open caller
-        # blocked on '_event__connect.acquire()' (typical for the
-        # simultaneous-open path that reaches SYN_RCVD via peer's
-        # bare SYN crossing our outbound SYN) unblocks with the
-        # canonical "connection refused" signal. The release on
-        # an already-non-blocked semaphore is harmless
-        # ('Semaphore.release()' just increments the counter), so
-        # the same path applies uniformly to passive-open
-        # listener-fork children where no caller is blocked.
-        if (
-            packet_rx_md
-            and packet_rx_md.tcp__flag_rst
-            and not any(
-                {
-                    packet_rx_md.tcp__flag_fin,
-                    packet_rx_md.tcp__flag_syn,
-                }
-            )
-        ):
-            if self._check_rst_acceptability(packet_rx_md):
-                self._connection_error = ConnError.REFUSED
-                self._event__connect.release()
-                self._change_state(FsmState.CLOSED)
-            return
-
-        # Got CLOSE syscall in SYN_RCVD -> change state to FIN_WAIT_1;
-        # the FIN packet is emitted from that state on the next timer
-        # tick. The pre-handshake-completion close is legal per
-        # RFC 9293 §3.10.4 (CLOSE in SYN-RECEIVED). Also signal any
-        # blocked CONNECT caller (active-open simultaneous-open path)
-        # with 'ConnError.CANCELED' so they unblock with
-        # 'TcpSessionError("Connection canceled")' rather than
-        # hanging through the entire FIN-exchange lifecycle.
-        if syscall is SysCall.CLOSE:
-            self._connection_error = ConnError.CANCELED
-            self._event__connect.release()
-            self._change_state(FsmState.FIN_WAIT_1)
-            return
+        fsm__syn_rcvd(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=timer)
 
     def _tcp_fsm_established(
         self,
