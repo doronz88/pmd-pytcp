@@ -1375,3 +1375,291 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg="Sending data must not transition the session out of ESTABLISHED.",
         )
+
+
+class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 9293 §3.8.6.1 zero-window
+    persist-timer cadence:
+
+        "The transmitting host SHOULD send the first zero-window
+         probe when a zero window has existed for the
+         retransmission timeout period (see Section 3.8.1), and
+         SHOULD increase exponentially the interval between
+         successive probes (MUST-58)."
+
+    PyTCP's implementation (tcp__session.py:1589-1610):
+
+        initial: PACKET_RETRANSMIT_TIMEOUT (1000 ms)
+        after each probe: persist_timeout = min(persist_timeout * 2,
+                                                PERSIST_TIMEOUT_MAX)
+        cap: PERSIST_TIMEOUT_MAX (60_000 ms)
+
+    Cadence: 1 s -> 2 s -> 4 s -> 8 s -> 16 s -> 32 s -> 60 s
+             -> 60 s -> ... (capped indefinitely until peer
+             reopens window or R2 fires).
+
+    The existing 'test__data_transfer_send__zero_window_triggers_persist_probe_at_rto'
+    in this file pins the FIRST probe at t=1000 ms. These
+    tests pin the doubling cadence and the 60-second cap.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def _drive_into_persist_with_data_pending(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the session into persist state with data pending:
+        handshake, send some bytes, peer ACKs with win=0, send
+        more bytes (cannot go out, persist arms).
+        """
+
+        session = self._drive_handshake_to_established(iss=iss, peer_iss=peer_iss)
+        session.send(data=b"hello")
+        self._advance(ms=1)
+        peer_zero_window = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss + 1,
+            ack=iss + 1 + 5,
+            flags=("ACK",),
+            win=0,
+        )
+        self._drive_rx(frame=peer_zero_window)
+        assert session._snd_wnd == 0, "Setup: peer must have shut the window."
+        session.send(data=b"x" * 10)
+        return session
+
+    def test__persist__second_probe_fires_at_double_initial_timeout(self) -> None:
+        """
+        Ensure RFC 9293 §3.8.6.1 'increase exponentially': the
+        SECOND persist probe fires after 2*RTO (= 2000 ms),
+        not after another 1*RTO. Pins the doubling cadence
+        from probe #1 to probe #2.
+        """
+
+        self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        first_probe_tx = self._advance(ms=1001)
+        first_probes = [self._parse_tx(f) for f in first_probe_tx]
+        self.assertEqual(
+            sum(1 for p in first_probes if p.payload),
+            1,
+            msg=f"Setup: exactly one probe must fire by t=1001 ms. Got {len(first_probes)}.",
+        )
+
+        too_early_tx = self._advance(ms=1000)
+        early_probes = [self._parse_tx(f) for f in too_early_tx if self._parse_tx(f).payload]
+        self.assertEqual(
+            len(early_probes),
+            0,
+            msg=(
+                "RFC 9293 §3.8.6.1 doubling: probe #2 MUST NOT fire "
+                "at t = probe#1 + 1000 ms. The persist interval "
+                "after probe #1 is 2*RTO = 2000 ms, so the timer "
+                "should still be counting down. Got "
+                f"{len(early_probes)} probe(s) at t=2001 ms."
+            ),
+        )
+
+        late_tx = self._advance(ms=1100)
+        late_probes = [self._parse_tx(f) for f in late_tx if self._parse_tx(f).payload]
+        self.assertEqual(
+            len(late_probes),
+            1,
+            msg=(
+                "RFC 9293 §3.8.6.1 doubling: probe #2 MUST fire at "
+                "t = probe#1 + 2*RTO = ~3000 ms. Got "
+                f"{len(late_probes)} probe(s) in the [2001, 3101] ms "
+                "window."
+            ),
+        )
+
+    def test__persist__fourth_probe_fires_at_8x_initial_timeout(self) -> None:
+        """
+        Ensure cumulative doubling: probe #1 at 1 s, #2 at 3 s
+        (1+2), #3 at 7 s (1+2+4), #4 at 15 s (1+2+4+8). The
+        intervals 1 / 2 / 4 / 8 s pin the geometric series
+        through four probes.
+        """
+
+        self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        probe_arrival_times: list[int] = []
+        clock_ms = 0
+        while clock_ms < 16_000:
+            tx = self._advance(ms=100)
+            clock_ms += 100
+            for frame in tx:
+                probe = self._parse_tx(frame)
+                if probe.payload:
+                    probe_arrival_times.append(clock_ms)
+
+        self.assertGreaterEqual(
+            len(probe_arrival_times),
+            4,
+            msg=(
+                "RFC 9293 §3.8.6.1: by t=16 s with peer's window "
+                "shut, at least 4 persist probes MUST have fired "
+                "(at ~1, ~3, ~7, ~15 s). Got "
+                f"{len(probe_arrival_times)} probe(s) at "
+                f"{probe_arrival_times}."
+            ),
+        )
+        expected = [1000, 3000, 7000, 15000]
+        actual = probe_arrival_times[:4]
+        for i, (exp, act) in enumerate(zip(expected, actual)):
+            self.assertLessEqual(
+                abs(act - exp),
+                150,
+                msg=(
+                    f"RFC 9293 §3.8.6.1 doubling cadence: probe "
+                    f"#{i + 1} expected at ~{exp} ms (cumulative "
+                    f"of intervals {[2 ** k * 1000 for k in range(i + 1)]}), "
+                    f"got {act} ms. Tolerance: 150 ms (one tick "
+                    f"step). All probe times: {probe_arrival_times}."
+                ),
+            )
+
+    def test__persist__interval_caps_at_60_seconds(self) -> None:
+        """
+        Ensure RFC 9293 §3.8.6.1 cap: after enough probes that
+        the doubled interval would exceed PERSIST_TIMEOUT_MAX
+        (60 s), the cap kicks in and subsequent probes fire on
+        a fixed 60 s schedule.
+        """
+
+        from pytcp.protocols.tcp import tcp__constants
+
+        session = self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Touch the persist machinery so it has been initialized.
+        self._advance(ms=1001)
+        # Pin '_persist_timeout' to the cap directly and re-arm
+        # the timer at that interval. The next probe must fire
+        # at exactly PERSIST_TIMEOUT_MAX, NOT 2 * PERSIST_TIMEOUT_MAX.
+        session._persist_timeout = tcp__constants.PERSIST_TIMEOUT_MAX
+        stack.timer.register_timer(name=f"{session}-persist", timeout=tcp__constants.PERSIST_TIMEOUT_MAX)
+
+        early_tx = self._advance(ms=tcp__constants.PERSIST_TIMEOUT_MAX - 100)
+        early_probes = [self._parse_tx(f) for f in early_tx if self._parse_tx(f).payload]
+        self.assertEqual(
+            len(early_probes),
+            0,
+            msg=(
+                f"At t = cap - 100 ms, no probe should fire "
+                f"(timer still counting). Got {len(early_probes)} "
+                "probe(s)."
+            ),
+        )
+
+        cap_tx = self._advance(ms=200)
+        cap_probes = [self._parse_tx(f) for f in cap_tx if self._parse_tx(f).payload]
+        self.assertEqual(
+            len(cap_probes),
+            1,
+            msg=(
+                f"RFC 9293 §3.8.6.1 cap: probe MUST fire at t = "
+                f"{tcp__constants.PERSIST_TIMEOUT_MAX} ms after the "
+                f"previous one (the cap'd interval). Got "
+                f"{len(cap_probes)} probe(s)."
+            ),
+        )
+        self.assertEqual(
+            session._persist_timeout,
+            tcp__constants.PERSIST_TIMEOUT_MAX,
+            msg=(
+                "RFC 9293 §3.8.6.1 cap: '_persist_timeout' MUST stay "
+                "at PERSIST_TIMEOUT_MAX after a post-cap probe. The "
+                "'min()' clamp at tcp__session.py:1609 prevents drift. "
+                f"Got _persist_timeout={session._persist_timeout} ms."
+            ),
+        )
+
+    def test__persist__peer_window_reopen_resets_timeout_to_initial(self) -> None:
+        """
+        Regression guard: when peer reopens the window, the
+        persist timer is deactivated AND '_persist_timeout' is
+        reset to the initial value (PACKET_RETRANSMIT_TIMEOUT)
+        so a future zero-window event starts fresh at 1 s, not
+        at the previously-doubled value.
+        """
+
+        from pytcp.protocols.tcp import tcp__constants
+
+        session = self._drive_into_persist_with_data_pending(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Advance past several probes so '_persist_timeout' has
+        # doubled multiple times.
+        self._advance(ms=8000)
+        self.assertGreater(
+            session._persist_timeout,
+            1000,
+            msg=(
+                "Setup invariant: after several probes, "
+                "'_persist_timeout' MUST be > 1000 ms (doubled). "
+                f"Got {session._persist_timeout} ms."
+            ),
+        )
+
+        peer_window_update = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 5,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_window_update)
+
+        self.assertFalse(
+            session._persist_active,
+            msg="Peer's window reopen MUST deactivate persist mode.",
+        )
+        self.assertEqual(
+            session._persist_timeout,
+            tcp__constants.PACKET_RETRANSMIT_TIMEOUT,
+            msg=(
+                "RFC 9293 §3.8.6.1: peer's window reopen MUST reset "
+                "'_persist_timeout' to PACKET_RETRANSMIT_TIMEOUT "
+                "(1000 ms) so a future zero-window event restarts "
+                "the geometric series from the beginning, not from "
+                "the previously-doubled value. Got "
+                f"_persist_timeout={session._persist_timeout} ms."
+            ),
+        )
