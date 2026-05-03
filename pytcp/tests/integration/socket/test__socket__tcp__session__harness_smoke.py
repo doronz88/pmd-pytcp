@@ -306,7 +306,7 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
 
         self._force_iss(0xFFFF_FF00)
 
-        from pytcp.socket.tcp__session import random as tcp_session_random
+        from pytcp.protocols.tcp.tcp__session import random as tcp_session_random
 
         self.assertEqual(
             tcp_session_random.randint(0, 0xFFFF_FFFF),

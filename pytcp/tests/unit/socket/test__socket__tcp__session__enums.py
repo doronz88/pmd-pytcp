@@ -34,7 +34,7 @@ ver 3.0.4
 
 from unittest import TestCase
 
-from pytcp.socket.tcp__session import (
+from pytcp.protocols.tcp.tcp__session import (
     DELAYED_ACK_DELAY,
     PACKET_RETRANSMIT_MAX_COUNT,
     PACKET_RETRANSMIT_TIMEOUT,

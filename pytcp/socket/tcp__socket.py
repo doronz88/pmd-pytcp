@@ -48,6 +48,7 @@ from pytcp.lib.ip_helper import (
     pick_local_port,
 )
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
 from pytcp.socket import (
     AddressFamily,
     IpProto,
@@ -55,7 +56,6 @@ from pytcp.socket import (
     gaierror,
     socket,
 )
-from pytcp.socket.tcp__session import FsmState, TcpSession, TcpSessionError
 
 if TYPE_CHECKING:
     from threading import Semaphore

@@ -36,7 +36,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address
-from pytcp.socket.tcp__session import FsmState, TcpSession
+from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession
 
 
 class _TcpSessionFixture(TestCase):
@@ -60,13 +60,13 @@ class _TcpSessionFixture(TestCase):
             unregister_method=lambda _: None,
         )
         self._timer_patch = patch(
-            "pytcp.socket.tcp__session.stack.timer",
+            "pytcp.protocols.tcp.tcp__session.stack.timer",
             self._timer,
         )
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.socket.tcp__session.stack.interface_mtu",
+            "pytcp.protocols.tcp.tcp__session.stack.interface_mtu",
             1500,
             create=True,
         )
@@ -242,7 +242,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
         other value would pre-seed a spurious failure.
         """
 
-        from pytcp.socket.tcp__session import ConnError
+        from pytcp.protocols.tcp.tcp__session import ConnError
 
         session = self._make_session()
         self.assertIs(

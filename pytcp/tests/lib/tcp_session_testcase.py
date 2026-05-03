@@ -171,10 +171,10 @@ class TcpSessionTestCase(NetworkTestCase):
         Force the next 'TcpSession' constructed in this test to choose
         'value' as its initial sequence number, so wrap-aware paths
         can be exercised deterministically. Patches 'random.randint'
-        in the 'pytcp.socket.tcp__session' module scope.
+        in the 'pytcp.protocols.tcp.tcp__session' module scope.
         """
 
-        self._start_patch("pytcp.socket.tcp__session.random.randint", lambda _lo, _hi: value)
+        self._start_patch("pytcp.protocols.tcp.tcp__session.random.randint", lambda _lo, _hi: value)
 
     def _drive_rx(self, *, frame: bytes) -> list[bytes]:
         """

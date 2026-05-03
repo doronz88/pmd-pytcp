@@ -56,12 +56,12 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__session import (
+from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
     TcpSession,
 )
+from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,

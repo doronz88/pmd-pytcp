@@ -38,8 +38,8 @@ from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
+from pytcp.protocols.tcp.tcp__session import FsmState, TcpSessionError
 from pytcp.socket import AddressFamily, SocketType, gaierror
-from pytcp.socket.tcp__session import FsmState, TcpSessionError
 from pytcp.socket.tcp__socket import TcpSocket
 
 
