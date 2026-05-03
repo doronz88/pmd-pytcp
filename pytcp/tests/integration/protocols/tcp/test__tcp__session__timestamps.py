@@ -784,3 +784,162 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
                 f"{session._rto_state!r}."
             ),
         )
+
+
+class TestTcpTimestampsPhase4(TcpSessionTestCase):
+    """
+    Phase 4 invariants: PAWS (Protection Against Wrapped
+    Sequence numbers) per RFC 7323 §5.
+
+    PAWS drops inbound segments whose TSval is less than
+    '_ts_recent' (modular 32-bit comparison) - this defends
+    against wrapped-sequence attacks across the 4 GB seq
+    space.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__paws__stale_tsval_segment_dropped(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §5: an inbound data segment with TSval
+        STRICTLY LESS than '_ts_recent' is dropped without
+        affecting session state. PAWS defends against
+        wrapped-sequence attacks where an old segment delayed
+        in the network re-emerges with a low TSval but a
+        newly-valid seq number.
+
+        Scenario:
+
+            * Drive handshake; '_ts_recent = PEER__TSVAL_INITIAL'.
+            * Drive a peer DATA segment with
+              'tsval = PEER__TSVAL_INITIAL - 100' (stale).
+            * Assert RX buffer NOT extended (segment dropped).
+            * Assert session state unchanged (RCV.NXT same).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        rcv_nxt_pre = session._rcv_nxt
+        rx_buffer_pre = bytes(session._rx_buffer)
+
+        stale_tsval = PEER__TSVAL_INITIAL - 100
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=stale_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+            payload=b"stale-data",
+        )
+        self._drive_rx(frame=peer_data)
+
+        self.assertEqual(
+            session._rcv_nxt,
+            rcv_nxt_pre,
+            msg=(
+                f"RFC 7323 §5 PAWS: stale-TSval segment "
+                f"(tsval={stale_tsval:#x} < _ts_recent="
+                f"{PEER__TSVAL_INITIAL:#x}) MUST be dropped "
+                f"without advancing RCV.NXT. Got "
+                f"_rcv_nxt={session._rcv_nxt}."
+            ),
+        )
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            rx_buffer_pre,
+            msg=("RFC 7323 §5 PAWS: stale-TSval segment's data " "MUST NOT enter the RX buffer."),
+        )
+
+    def test__paws__current_tsval_segment_accepted(self) -> None:
+        """
+        Regression guard: an inbound segment with TSval
+        greater than or equal to '_ts_recent' is accepted
+        normally. PAWS only rejects strictly-stale TSvals.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        fresh_tsval = PEER__TSVAL_INITIAL + 1
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=fresh_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+            payload=b"fresh-data",
+        )
+        self._drive_rx(frame=peer_data)
+
+        self.assertEqual(
+            session._rcv_nxt,
+            PEER__ISS + 1 + len(b"fresh-data"),
+            msg=(
+                "RFC 7323 §5 PAWS: a fresh-TSval segment MUST "
+                "be accepted normally; RCV.NXT advances past "
+                "the data."
+            ),
+        )
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"fresh-data",
+            msg="Fresh-TSval segment's data MUST enter the RX buffer.",
+        )
