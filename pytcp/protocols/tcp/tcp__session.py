@@ -1104,6 +1104,40 @@ class TcpSession:
         self._emit_challenge_ack()
         return False
 
+    def _check_paws_and_update_ts_recent(self, packet_rx_md: TcpMetadata) -> bool:
+        """
+        RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh as a
+        single helper invoked at every inbound dispatch
+        boundary. Returns True when the segment passes PAWS
+        (caller may continue normal processing) and False
+        when the segment must be silently dropped per §5.4.
+
+        Side effect: on a non-stale segment carrying TSopt,
+        '_ts_recent' is refreshed to the segment's TSval.
+
+        Bilateral-success-gated: returns True (and skips both
+        the PAWS check and the '_ts_recent' update) when
+        '_send_ts' is False or the inbound segment carries no
+        TSopt. Legacy non-TSopt peers fall through unchanged.
+
+        Modular comparison via 'lt32' so the check is correct
+        across the 32-bit TSval clock wrap (24 days at 1 ms
+        granularity).
+        """
+
+        if not self._send_ts or packet_rx_md.tcp__tsval is None:
+            return True
+        if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - PAWS: dropping stale-TSval segment "
+                f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
+                f"{self._ts_recent})",
+            )
+            return False
+        self._ts_recent = packet_rx_md.tcp__tsval
+        return True
+
     def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
         """
         RFC 9293 §3.10.7.4 / RFC 5961 §3.2 three-way RST handling
@@ -1835,39 +1869,19 @@ class TcpSession:
         Process regular data/ACK packet.
         """
 
-        # RFC 7323 §5 PAWS: drop inbound segments whose TSval is
-        # strictly less than '_ts_recent' to defend against
-        # wrapped-sequence attacks across the 4 GB seq space.
-        # Gated on bilateral '_send_ts' so legacy non-TSopt
-        # peers fall through unchanged. Modular 'lt32' so the
-        # comparison is correct across the 32-bit TS clock wrap
-        # (24 days at 1 ms granularity).
-        if self._send_ts and packet_rx_md.tcp__tsval is not None and lt32(packet_rx_md.tcp__tsval, self._ts_recent):
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - PAWS: dropping stale-TSval segment "
-                f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
-                f"{self._ts_recent})",
-            )
+        # RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh: handled
+        # by '_check_paws_and_update_ts_recent' so the same
+        # gate applies on every inbound dispatch path
+        # (dup-ACK fast-retransmit, OOO insert, TIME_WAIT late
+        # segments, etc.). Stale-TSval segments are silently
+        # dropped per RFC 7323 §5.4.
+        if not self._check_paws_and_update_ts_recent(packet_rx_md):
             return
 
         # RFC 1122 §4.2.3.6: peer activity (ACK and / or data)
         # resets the keep-alive idle timer. No-op when keep-alive
         # is disabled.
         self._keepalive_arm_idle()
-
-        # RFC 7323 §4.3 _ts_recent update: refresh the cached
-        # peer TSval on every accepted inbound segment that
-        # carries TSopt. Gated on bilateral '_send_ts' so the
-        # update fires only when both sides negotiated. The
-        # 'tcp__tsval >= _ts_recent' modular check would
-        # ordinarily live here, but during normal forward
-        # progress peer's TSval increases monotonically and the
-        # update is unconditionally beneficial; PAWS-driven
-        # rejection of stale-TSval segments lives at the
-        # inbound dispatch (Phase 4 hook).
-        if self._send_ts and packet_rx_md.tcp__tsval is not None:
-            self._ts_recent = packet_rx_md.tcp__tsval
 
         # Make note of the local SEQ that has been acked by peer.
         # Modular 'max': SND.UNA advances iff peer's ack is

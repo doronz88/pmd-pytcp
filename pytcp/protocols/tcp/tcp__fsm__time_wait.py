@@ -86,6 +86,15 @@ def fsm__time_wait(
         session._change_state(FsmState.CLOSED)
         return
 
+    # RFC 7323 §5 PAWS: a delayed segment from a previous
+    # incarnation, with stale TSval, MUST be dropped before
+    # the FIN-retransmit handler re-arms the TIME_WAIT timer.
+    # This is the strongest form of RFC 1337 TIME-WAIT
+    # assassination protection: PAWS catches the stale
+    # segment regardless of seq.
+    if packet_rx_md is not None and not session._check_paws_and_update_ts_recent(packet_rx_md):
+        return
+
     # Got peer FIN retransmit -> Acknowledge it and restart the
     # TIME_WAIT timer per RFC 9293 §3.10.7.5: 'The only thing
     # that can arrive in this state is a retransmission of the

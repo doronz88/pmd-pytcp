@@ -92,6 +92,13 @@ def fsm__established(
     if packet_rx_md is not None and not session._check_segment_acceptability(packet_rx_md):
         return
 
+    # RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh applied
+    # at the dispatch boundary so the dup-ACK fast-retransmit
+    # branch and OOO-queue branch below benefit from the same
+    # protection as the regular '_process_ack_packet' path.
+    if packet_rx_md is not None and not session._check_paws_and_update_ts_recent(packet_rx_md):
+        return
+
     # Got ACK packet.
     if (
         packet_rx_md
