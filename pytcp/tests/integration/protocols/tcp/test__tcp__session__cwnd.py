@@ -1557,3 +1557,282 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
             session._snd_mss,
             msg="RTO: cwnd MUST collapse to LW=SMSS for slow-start re-entry.",
         )
+
+
+class TestTcpCwndPrr(TcpSessionTestCase):
+    """
+    Integration tests for RFC 6937 'Proportional Rate
+    Reduction for TCP'. PRR replaces the coarse RFC 5681
+    §3.2 step 4 'cwnd += SMSS per dup-ACK' inflation during
+    recovery with a per-ACK send-pacing algorithm that
+    aims for ssthresh / RecoverFS proportionality. The
+    result: smoother send pacing during loss recovery, no
+    end-of-recovery burst, and faster total recovery on
+    bursty drop patterns.
+
+    PRR per-recovery state (RFC 6937 §3.1):
+
+        RecoverFS:     pipe (FlightSize) at recovery entry
+        prr_delivered: cumulative bytes ACK'd / SACK'd in recovery
+        prr_out:       cumulative bytes sent in recovery
+
+    Per-ACK during recovery (simplified):
+
+        pipe = current FlightSize (RFC 6675 §4)
+        prr_delivered += DeliveredData
+        if pipe > ssthresh:
+            sndcnt = CEIL(prr_delivered * ssthresh / RecoverFS) - prr_out
+        else:
+            # PRR-CRB / PRR-SSRB
+            limit = max(prr_delivered - prr_out, DeliveredData) + SMSS
+            sndcnt = MIN(ssthresh - pipe, limit)
+        cwnd = pipe + sndcnt
+        # transmit up to sndcnt; prr_out += amount sent
+
+    The tests below pin the structural invariants:
+
+        1. Recovery entry initialises 'RecoverFS' from
+           FlightSize at entry; PRR counters reset to 0.
+        2. A bare dup-ACK during recovery (no SACK info, no
+           cum-ACK advance) delivers no data, so PRR holds
+           cwnd steady - the current RFC 5681 §3.2 step 4
+           '+SMSS per dup-ACK' behaviour is the gap PRR fixes.
+        3. Recovery exit clears the PRR state so a future
+           loss event starts cleanly.
+
+    Note: 'TestTcpCwndPhase3.test__cwnd__additional_dup_ack_in_recovery_inflates_cwnd_by_one_mss'
+    pins the legacy '+SMSS per dup-ACK' behaviour and will
+    be removed when the PRR fix lands - the two cannot both
+    pass.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open three-way handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def _send_n_segments_and_enter_recovery(
+        self,
+        *,
+        session: TcpSession,
+        n_segments: int,
+    ) -> None:
+        """
+        Pre-fill 'n_segments' MSS-sized payloads in flight,
+        drive 3 dup-ACKs at SND.UNA so the count-based
+        fast-retransmit trigger fires, then advance one
+        tick so the retransmit emits.
+        """
+
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (n_segments * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(n_segments):
+            self._advance(ms=1)
+
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+    def test__cwnd__prr__recovery_entry_initialises_recover_fs_and_prr_counters(self) -> None:
+        """
+        Ensure that on fast-retransmit recovery entry, PRR
+        per-recovery state is initialised: '_recover_fs'
+        snapshots FlightSize at entry, '_prr_delivered' is
+        zero (no delivered data yet), and '_prr_out'
+        reflects the bytes already sent during recovery
+        (the retransmitted segment).
+
+        Reference: RFC 6937 §3.1 (PRR per-recovery state initialisation).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_enter_recovery(session=session, n_segments=5)
+
+        # 5 segments in flight at recovery entry.
+        expected_recover_fs = 5 * PEER__MSS
+        self.assertEqual(
+            session._recover_fs,
+            expected_recover_fs,
+            msg=(
+                "RFC 6937 §3.1: '_recover_fs' MUST snapshot "
+                "FlightSize (= SND.MAX - SND.UNA) at recovery "
+                f"entry. Expected {expected_recover_fs}, got "
+                f"{session._recover_fs}."
+            ),
+        )
+        self.assertEqual(
+            session._prr_delivered,
+            0,
+            msg=(
+                "RFC 6937 §3.1: '_prr_delivered' MUST be zero "
+                "at recovery entry - no data has been delivered "
+                f"yet. Got {session._prr_delivered}."
+            ),
+        )
+        # The retransmit consumed one SMSS of send budget.
+        self.assertEqual(
+            session._prr_out,
+            PEER__MSS,
+            msg=(
+                "RFC 6937 §3.1: '_prr_out' MUST equal SMSS "
+                "after the recovery-entry retransmit (one "
+                "segment's worth of send budget consumed). "
+                f"Got {session._prr_out}."
+            ),
+        )
+
+    def test__cwnd__prr__bare_dup_ack_during_recovery_does_not_inflate_cwnd(self) -> None:
+        """
+        Ensure that a bare dup-ACK during recovery (no SACK
+        info, no cum-ACK advance) does not inflate cwnd.
+        Per RFC 6937 the dup-ACK delivers zero new bytes
+        ('DeliveredData = 0'), so PRR holds cwnd steady;
+        the RFC 5681 §3.2 step 4 'cwnd += SMSS per dup-ACK'
+        behaviour is the gap PRR fixes - that rule
+        over-inflates cwnd on bare dup-ACK bursts and causes
+        the post-recovery send burst that PRR is designed to
+        smooth out.
+
+        Reference: RFC 6937 §3.1 (PRR delivers proportional pacing only on delivered data).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_enter_recovery(session=session, n_segments=5)
+        cwnd_at_entry = session._cwnd
+
+        # 4th dup-ACK (bare, no SACK, same ack as the prior
+        # three). Delivers zero new bytes.
+        bare_dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=bare_dup_ack)
+
+        self.assertEqual(
+            session._cwnd,
+            cwnd_at_entry,
+            msg=(
+                "RFC 6937 §3.1: a bare dup-ACK during "
+                "recovery (DeliveredData=0) MUST NOT inflate "
+                "cwnd. PRR's proportional pacing keys off "
+                "delivered data, not the dup-ACK arrival "
+                "alone. Pre-dup4="
+                f"{cwnd_at_entry}, expected {cwnd_at_entry} "
+                f"(unchanged), got {session._cwnd}. The "
+                "current RFC 5681 §3.2 step 4 '+SMSS per "
+                "dup-ACK' rule violates this PRR invariant."
+            ),
+        )
+        # '_prr_delivered' must also stay at zero (no
+        # DeliveredData on this ACK).
+        self.assertEqual(
+            session._prr_delivered,
+            0,
+            msg=(
+                "RFC 6937 §3.1: 'prr_delivered' MUST stay "
+                "zero across a bare dup-ACK that delivers no "
+                f"new bytes. Got {session._prr_delivered}."
+            ),
+        )
+
+    def test__cwnd__prr__recovery_exit_resets_prr_state(self) -> None:
+        """
+        Ensure that when a cumulative ACK exits recovery
+        (advances SND.UNA past RecoveryPoint), the PRR
+        per-recovery state is cleared so a subsequent loss
+        event starts with fresh state. Without the clear,
+        stale '_prr_delivered' / '_prr_out' / '_recover_fs'
+        from the prior recovery would corrupt the next
+        recovery's pacing math.
+
+        Reference: RFC 6937 §3.1 (PRR state lifecycle scoped to a single recovery episode).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_enter_recovery(session=session, n_segments=5)
+
+        # Cum-ACK covering all 5 segments exits recovery.
+        cum_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 5 * PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=cum_ack)
+
+        self.assertEqual(
+            session._recover_fs,
+            0,
+            msg=(
+                "RFC 6937 §3.1: '_recover_fs' MUST reset to "
+                "zero on recovery exit so the next loss event "
+                "snapshots a fresh value. Got "
+                f"{session._recover_fs}."
+            ),
+        )
+        self.assertEqual(
+            session._prr_delivered,
+            0,
+            msg=(
+                "RFC 6937 §3.1: '_prr_delivered' MUST reset "
+                "to zero on recovery exit. Got "
+                f"{session._prr_delivered}."
+            ),
+        )
+        self.assertEqual(
+            session._prr_out,
+            0,
+            msg=("RFC 6937 §3.1: '_prr_out' MUST reset to " f"zero on recovery exit. Got {session._prr_out}."),
+        )

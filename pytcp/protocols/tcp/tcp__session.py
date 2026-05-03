@@ -258,6 +258,25 @@ class TcpSession:
         # and a new round of dup-ACKs can re-enter recovery.
         self._recovery_point: Seq32 = 0
 
+        # RFC 6937 PRR per-recovery state. Declared with
+        # canonical defaults so the [FLAGS BUG] tests-first
+        # suite can exercise the attribute access; the actual
+        # send-pacing logic (replacing RFC 5681 §3.2 step 4
+        # 'cwnd += SMSS per dup-ACK') is wired by the PRR
+        # implementation commit.
+        #   _recover_fs:    snapshot of pipe (FlightSize) at
+        #                   recovery entry; zero outside recovery.
+        #   _prr_delivered: cumulative bytes ACK'd / SACK'd
+        #                   during the current recovery episode.
+        #   _prr_out:       cumulative bytes sent during the
+        #                   current recovery episode.
+        # All three reset to zero on recovery exit (when SND.UNA
+        # crosses '_recovery_point') so the next loss event
+        # snapshots a fresh value.
+        self._recover_fs: int = 0
+        self._prr_delivered: int = 0
+        self._prr_out: int = 0
+
         # RFC 2883 DSACK: when peer retransmits data we already
         # received (fully-duplicate segment OR overlap prefix of
         # a partially-duplicate segment) we record the duplicate
