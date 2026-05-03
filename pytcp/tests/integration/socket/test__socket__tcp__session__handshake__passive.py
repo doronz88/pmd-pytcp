@@ -812,6 +812,254 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             msg=("Processing a SYN-with-data must leave the listener " "available to accept further connections."),
         )
 
+    def test__passive_open__third_leg_ack_with_payload_completes_handshake_and_delivers_data(self) -> None:
+        """
+        Ensure that the peer's third-leg ACK arriving in SYN_RCVD
+        with piggybacked data completes the handshake AND queues the
+        data per RFC 9293 §3.10.7.4 step 7.
+
+        RFC 9293 §3.10.7.4 step 5 (SYN-RECEIVED, ACK processing on
+        the third leg):
+
+            "If SND.UNA < SEG.ACK =< SND.NXT, then enter ESTABLISHED
+             state and continue processing with the variables below
+             set to: ... [proceed to step 6, then step 7]"
+
+        and step 7 (segment text processing, applies once ESTABLISHED
+        is reached or while still in SYN-RECEIVED with data):
+
+            "Once in the ESTABLISHED state, it is possible to deliver
+             segment text to user RECEIVE buffers. Text from segments
+             can be moved into buffers until either the buffer is
+             full or the segment is empty. ... Send an acknowledgment
+             of the form: <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>."
+
+        Concretely: peer's third-leg ACK with piggybacked data MUST
+        transition us to ESTABLISHED, the data MUST be enqueued into
+        '_rx_buffer' for the application's eventual 'recv()',
+        'RCV.NXT' MUST advance past the data, and we MUST emit an
+        ACK acknowledging the data. None of this requires special
+        TFO-style negotiation - it is the canonical fast-start
+        behaviour any peer is allowed to use.
+
+        Wire shape of the third-leg ACK we feed:
+
+            sport   = PEER__PORT
+            dport   = LISTEN__PORT
+            seq     = PEER__ISS + 1
+            ack     = LOCAL__ISS + 1
+            flags   = {ACK}
+            payload = b"hello-from-peer"   (15 bytes)
+
+        Required outbound ACK shape (after the segment is processed):
+
+            seq     = LOCAL__ISS + 1
+            ack     = PEER__ISS + 1 + 15      (consumes peer's data)
+            flags   = {ACK}
+            payload = b""
+
+        Side effects asserted:
+
+            * 'child_session.state' is FsmState.ESTABLISHED.
+            * 'child_session._rx_buffer' equals the payload.
+            * 'child_session._rcv_nxt' equals 'PEER__ISS + 1 + 15'.
+            * Listening socket still in LISTEN.
+
+        [FLAGS BUG] - 'TcpSession._tcp_fsm_syn_rcvd' line ~2155-2158
+        in the third-leg ACK branch:
+
+            if (
+                packet_rx_md.tcp__seq == self._rcv_nxt
+                and packet_rx_md.tcp__ack == self._snd_nxt
+                and not packet_rx_md.tcp__data
+            ):
+                self._process_ack_packet(packet_rx_md)
+                self._change_state(FsmState.ESTABLISHED)
+                ...
+
+        The 'not packet_rx_md.tcp__data' sanity check rejects any
+        third-leg ACK that carries a payload. The branch body is
+        skipped, the function falls through every other branch
+        (none of which match a bare ACK in SYN_RCVD), and returns
+        silently. Effects:
+
+          - State stays SYN_RCVD.
+          - '_rx_buffer' stays empty.
+          - 'RCV.NXT' is unchanged at 'PEER__ISS + 1' (still
+            consuming only peer's SYN's seq byte).
+          - No ACK is emitted.
+
+        Peer keeps retransmitting their third-leg-ACK-with-data on
+        their RTO; PyTCP keeps silently dropping. The connection
+        eventually times out at peer's R2 (~100 s).
+
+        Severity: MEDIUM. Affects every peer stack that piggybacks
+        application data on the third-leg ACK as a fast-start
+        optimisation. Modern HTTP/QUIC-aware kernels and embedded
+        TCP stacks under load both do this. The same root-cause
+        pattern affects '_tcp_fsm_syn_sent' line ~1945-1946 (the
+        symmetric SYN+ACK-with-data case in the active-open path);
+        a complete fix touches both branches.
+
+        Fix outline (separate commit): drop the 'not data' guard
+        from the sanity check, then enqueue any payload into
+        '_rx_buffer' and advance 'RCV.NXT' past the data before
+        the state transition fires. The shape mirrors the LISTEN-
+        side fix already applied to '_tcp_fsm_listen' for the
+        SYN-with-data case (see test
+        'test__passive_open__syn_with_payload_to_listen_queues_data_and_acks_it').
+        After enqueueing, emit a cumulative ACK so peer learns
+        their data is received - without it peer would keep
+        retransmitting until they noticed the cumulative-ACK from
+        the next outbound segment, which may not happen soon if
+        we have nothing to send.
+
+        Scenario:
+
+            1. Drive into SYN_RCVD via a bare SYN; tick to fire the
+               SYN+ACK.
+            2. Peer sends third-leg ACK with 15-byte payload at
+               'seq = PEER__ISS + 1' (consumes our SYN+ACK's ack
+               point), 'ack = LOCAL__ISS + 1' (acknowledges our SYN).
+            3. Drive RX. The session MUST transition to ESTABLISHED
+               and queue the data.
+
+        On current code this test fails: the data-bearing third-leg
+        ACK is silently dropped, state stays SYN_RCVD, '_rx_buffer'
+        empty.
+        """
+
+        listen_socket, _ = self._make_listen_session(iss=LOCAL__ISS)
+
+        # Stage 1: drive SYN -> child in SYN_RCVD; tick SYN+ACK out.
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        self._advance(ms=1)  # SYN+ACK fires.
+
+        child_socket = stack.sockets[self._child_socket_id()]
+        assert isinstance(child_socket, TcpSocket)
+        child_session = child_socket._tcp_session
+        assert child_session is not None
+        self.assertIs(
+            child_session.state,
+            FsmState.SYN_RCVD,
+            msg="Setup precondition: child must be in SYN_RCVD after the SYN+ACK tick.",
+        )
+        # Clear the SYN+ACK from the TX log so the assertions below
+        # only reflect the third-leg-ACK-with-data response.
+        self._frames_tx.clear()
+
+        # Stage 2: peer sends third-leg ACK with piggybacked data.
+        payload = b"hello-from-peer"
+        third_leg_with_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=payload,
+        )
+        tx_frames = self._drive_rx(frame=third_leg_with_data)
+
+        # Stage 3: assert ESTABLISHED + data delivered.
+        self.assertIs(
+            child_session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 5, a SYN_RCVD third-leg "
+                "ACK whose 'ack' is in (SND.UNA, SND.NXT] MUST "
+                "transition the session to ESTABLISHED, regardless "
+                "of whether the segment also carries data. Today "
+                "'_tcp_fsm_syn_rcvd' line ~2155-2158 gates on "
+                "'not packet_rx_md.tcp__data', so a data-bearing "
+                "third-leg ACK is silently dropped and the child "
+                "session stays in SYN_RCVD. Fix: drop the 'not "
+                "data' guard; enqueue the payload into '_rx_buffer' "
+                "and advance 'RCV.NXT' past it before the state "
+                f"transition fires. Got state: {child_session.state!r}."
+            ),
+        )
+        self.assertEqual(
+            bytes(child_session._rx_buffer),
+            payload,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 7, the data piggybacked "
+                "on the third-leg ACK MUST be enqueued into the "
+                "child session's '_rx_buffer' so the application can "
+                f"receive it via 'recv()'. Got: "
+                f"{bytes(child_session._rx_buffer)!r}, expected: "
+                f"{payload!r}."
+            ),
+        )
+        self.assertEqual(
+            child_session._rcv_nxt,
+            PEER__ISS + 1 + len(payload),
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 7 ('it advances RCV.NXT "
+                "over the data accepted'), 'RCV.NXT' MUST advance "
+                "past every byte of the third-leg ACK's payload. "
+                f"Got: {child_session._rcv_nxt:#x}, expected: "
+                f"{PEER__ISS + 1 + len(payload):#x}."
+            ),
+        )
+        # The cumulative ACK acknowledging the data should fire on
+        # this same drive (RFC 9293 §3.10.7.4 step 7: 'Send an
+        # acknowledgment of the form: <SEQ=SND.NXT><ACK=RCV.NXT>
+        # <CTL=ACK>'). Without it, peer keeps retransmitting their
+        # data segment until our next outbound segment piggybacks
+        # the cumulative ACK - which may take a while.
+        self.assertGreaterEqual(
+            len(tx_frames),
+            1,
+            msg=(
+                "Per RFC 9293 §3.10.7.4 step 7, after enqueueing "
+                "the third-leg ACK's payload the receiver MUST send "
+                "an acknowledgment so peer learns the data is "
+                "received. Without it peer's RTO fires and they "
+                "needlessly retransmit. Today no outbound ACK is "
+                "emitted because the data-bearing third-leg ACK is "
+                f"silently dropped. Got {len(tx_frames)} TX frame(s)."
+            ),
+        )
+        if tx_frames:
+            cum_ack = self._parse_tx(tx_frames[-1])
+            self.assertEqual(
+                cum_ack.flags,
+                frozenset({"ACK"}),
+                msg=("The reply must be a bare ACK (no SYN / FIN / RST flags) per RFC 9293 §3.10.7.4 step 7."),
+            )
+            self.assertEqual(
+                cum_ack.seq,
+                LOCAL__ISS + 1,
+                msg=("The reply's SEQ must equal SND.NXT after our SYN+ACK was sent (= LOCAL__ISS + 1)."),
+            )
+            self.assertEqual(
+                cum_ack.ack,
+                PEER__ISS + 1 + len(payload),
+                msg=(
+                    "The reply's ACK must acknowledge every byte of "
+                    "peer's third-leg payload. Got: "
+                    f"{cum_ack.ack:#x}, expected: "
+                    f"{PEER__ISS + 1 + len(payload):#x}."
+                ),
+            )
+
+        # The listening socket is unaffected.
+        self.assertIs(
+            listen_socket._tcp_session.state,  # type: ignore[union-attr]
+            FsmState.LISTEN,
+            msg=("Third-leg ACK on the child session must not disturb the listener."),
+        )
+
     def test__passive_open__syn_without_mss_option_defaults_send_mss_to_536(self) -> None:
         """
         Ensure that when an inbound SYN omits the MSS option (a legal
