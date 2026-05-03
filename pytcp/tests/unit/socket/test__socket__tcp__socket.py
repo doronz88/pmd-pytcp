@@ -39,7 +39,14 @@ from unittest.mock import MagicMock, patch
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSessionError
-from pytcp.socket import AddressFamily, SocketType, gaierror
+from pytcp.socket import (
+    IPPROTO_TCP,
+    SO_KEEPALIVE,
+    SOL_SOCKET,
+    AddressFamily,
+    SocketType,
+    gaierror,
+)
 from pytcp.socket.tcp__socket import TcpSocket
 
 
@@ -659,3 +666,165 @@ class TestTcpSocketStateProperty(_TcpSocketTestCase):
             FsmState.CLOSED,
             msg="TcpSocket.state must return CLOSED when tcp_session is None.",
         )
+
+
+class TestTcpSocketOptions(_TcpSocketTestCase):
+    """
+    The 'TcpSocket.setsockopt' / 'getsockopt' BSD-API tests, per
+    RFC 1122 §4.2.3.6 (keep-alive must be application-controllable
+    per connection) and POSIX 'setsockopt' / 'getsockopt' shape.
+    """
+
+    def test__tcp_socket__getsockopt__so_keepalive_default_zero(self) -> None:
+        """
+        Ensure a freshly-constructed 'TcpSocket' reports
+        'SO_KEEPALIVE = 0' from 'getsockopt', matching the RFC 1122
+        §4.2.3.6 MUST: "If keep-alive are included, ... they MUST
+        default to off." Regression guard for the default-off
+        invariant at the socket-API layer.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
+            0,
+            msg=("RFC 1122 §4.2.3.6: 'SO_KEEPALIVE' MUST default to 0 on a " "freshly-constructed socket."),
+        )
+
+    def test__tcp_socket__setsockopt__so_keepalive_stores_one(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)' stores the
+        flag and a subsequent 'getsockopt' round-trips it as 1. Today
+        'TcpSocket' has no setsockopt / getsockopt methods at all,
+        so this fails with AttributeError.
+
+        Fix outline: add 'setsockopt(level, optname, value)' that
+        dispatches on '(level, optname)' and stores into
+        '_so_keepalive: bool'; add 'getsockopt(level, optname) -> int'
+        that reads it back. Validate the (level, optname) pair and
+        normalise non-zero 'value' to 1 (matches Linux for boolean
+        options).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
+            1,
+            msg=("setsockopt(SO_KEEPALIVE, 1) followed by getsockopt(SO_KEEPALIVE) " "must round-trip as 1."),
+        )
+
+    def test__tcp_socket__setsockopt__so_keepalive_zero_disables(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, 0)' after a
+        previous '..., 1)' clears the flag. The application must be
+        able to disable keep-alive, not just enable it (RFC 1122
+        §4.2.3.6 "the application MUST be able to turn them on or
+        off for each TCP connection").
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 0)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
+            0,
+            msg="setsockopt(SO_KEEPALIVE, 0) after a prior enable must clear the flag.",
+        )
+
+    def test__tcp_socket__setsockopt__nonzero_value_normalises_to_one(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure boolean-shaped options collapse any non-zero integer
+        to 1 on storage, matching Linux 'setsockopt(SO_KEEPALIVE,
+        42, ...)' semantics. Without this, a later 'getsockopt'
+        would surface a value the application never directly stored.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 42)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
+            1,
+            msg="Boolean options (SO_KEEPALIVE) must normalise any non-zero value to 1.",
+        )
+
+    def test__tcp_socket__setsockopt__unknown_level_raises(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure 'setsockopt' on an unknown 'level' parameter raises
+        rather than silently dropping the call. POSIX dictates
+        'OSError(ENOPROTOOPT)' / 'OSError(EINVAL)'; PyTCP uses
+        'OSError' so the failure shape is greppable across the
+        stdlib-compatible boundary.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(
+            OSError,
+            msg="setsockopt on an unknown 'level' must raise OSError.",
+        ):
+            s.setsockopt(0xDEAD, SO_KEEPALIVE, 1)
+
+    def test__tcp_socket__setsockopt__unknown_optname_raises(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure 'setsockopt' on a known level but unknown 'optname'
+        parameter raises. Same POSIX semantics as the unknown-level
+        case.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(
+            OSError,
+            msg="setsockopt on an unknown 'optname' must raise OSError.",
+        ):
+            s.setsockopt(SOL_SOCKET, 0xBEEF, 1)
+
+    def test__tcp_socket__setsockopt__so_keepalive_at_tcp_level_raises(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure that 'setsockopt(IPPROTO_TCP, SO_KEEPALIVE, 1)'
+        (wrong level for SO_KEEPALIVE) raises rather than silently
+        succeeding. SO_KEEPALIVE is an SOL_SOCKET-level option;
+        applying it at IPPROTO_TCP is a programmer error worth
+        flagging at the boundary.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(
+            OSError,
+            msg="setsockopt with SO_KEEPALIVE at IPPROTO_TCP level must raise.",
+        ):
+            s.setsockopt(IPPROTO_TCP, SO_KEEPALIVE, 1)
+
+    def test__tcp_socket__getsockopt__unknown_level_raises(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure 'getsockopt' raises symmetrically for unknown
+        '(level, optname)' pairs.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(
+            OSError,
+            msg="getsockopt on an unknown (level, optname) pair must raise OSError.",
+        ):
+            s.getsockopt(0xDEAD, SO_KEEPALIVE)

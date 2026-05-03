@@ -50,6 +50,8 @@ from pytcp.lib.ip_helper import (
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
 from pytcp.socket import (
+    SO_KEEPALIVE,
+    SOL_SOCKET,
     AddressFamily,
     IpProto,
     SocketType,
@@ -111,6 +113,14 @@ class TcpSocket(socket):
         self._tcp_session: TcpSession | None = tcp_session
         self._parent_socket: TcpSocket | None = None
 
+        # RFC 1122 §4.2.3.6 SO_KEEPALIVE flag, settable via
+        # 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, ...)'. Defaults
+        # False per the RFC's MUST. The socket holds the flag
+        # pre-handshake; 'connect()' / 'listen()' propagate it
+        # into the freshly-constructed 'TcpSession' before the
+        # FSM starts firing.
+        self._so_keepalive: bool = False
+
         # Create established socket based on established TCP session, called by
         # listening sockets only.
         if tcp_session:
@@ -162,6 +172,45 @@ class TcpSocket(socket):
         """
 
         return self._parent_socket
+
+    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+        """
+        Set a socket option per the BSD 'setsockopt' API.
+
+        Currently supports the RFC 1122 §4.2.3.6 keep-alive
+        option 'SO_KEEPALIVE' at the 'SOL_SOCKET' level. Boolean
+        options collapse any non-zero 'value' to 1; setting 0
+        disables. Unknown 'level' / 'optname' pairs raise OSError
+        (mirrors POSIX 'ENOPROTOOPT' / 'EINVAL' shape, kept as
+        plain OSError so callers can grep without importing
+        errno enums).
+
+        Example:
+
+            sock = socket(family=AddressFamily.INET4, type_=SocketType.SOCK_STREAM)
+            sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+            sock.connect(("10.0.1.7", 80))
+            # Connection now has RFC 1122 §4.2.3.6 keep-alive enabled.
+        """
+
+        if level == SOL_SOCKET and optname == SO_KEEPALIVE:
+            self._so_keepalive = bool(value)
+            return
+        raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
+
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+        """
+        Get a socket option per the BSD 'getsockopt' API.
+
+        Symmetric to 'setsockopt': only the (level, optname)
+        pairs accepted by 'setsockopt' are accepted here.
+        Returns the stored value as 'int' (boolean options
+        return 0 or 1).
+        """
+
+        if level == SOL_SOCKET and optname == SO_KEEPALIVE:
+            return int(self._so_keepalive)
+        raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def _get_ip_addresses(
         self,
