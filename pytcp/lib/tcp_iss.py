@@ -1,0 +1,93 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the RFC 6528 §3 Initial Sequence Number generator.
+
+RFC 6528 §3 specifies a hash-based ISN to defend against blind sequence-
+number prediction attacks (RFC 1948 / Bellovin 1996):
+
+    ISN = M + F(localip, localport, remoteip, remoteport, secretkey)
+
+where:
+  - M is a 32-bit value driven by a monotonically increasing clock
+    (typically one tick every 4 microseconds, wrapping the 32-bit
+    space every ~4.77 hours).
+  - F is a cryptographic pseudorandom function (PRF) seeded with a
+    per-host secret. PyTCP uses SHA-256 truncated to 32 bits.
+  - secretkey is a per-host high-entropy random value, typically
+    16 bytes from 'secrets.token_bytes(16)'.
+
+This replaces the naive 'random.randint(0, 0xFFFFFFFF)' ISS choice.
+The naive choice is hard for a blind off-path attacker to predict
+in absolute terms but offers no protection against an attacker who
+can learn one ISS for the host-pair: subsequent ISS values for the
+same pair are independently random and don't help, but the attacker
+can already inject into ANY connection on that pair with a single
+guess, since there's no binding to the 4-tuple. The hash form binds
+ISS to the 4-tuple so an attacker who learns one ISN learns nothing
+about ISNs for other peers, and the time-driven M component prevents
+replay of stale ISNs against fresh connections.
+
+pytcp/lib/tcp_iss.py
+
+ver 3.0.4
+"""
+
+from net_addr import Ip4Address, Ip6Address
+
+# RFC 6528 §3 'M' clock rate. The standard cadence is one tick every
+# 4 microseconds, which makes M wrap the 32-bit space every
+# (2**32 * 4) / 1e6 / 3600 ~= 4.77 hours. Faster rates leak less
+# information about the clock; slower rates risk M wrap collisions
+# during typical TIME-WAIT windows.
+ISS_CLOCK_RATE_US: int = 4
+
+
+def compute_iss(
+    local_address: Ip4Address | Ip6Address,
+    local_port: int,
+    remote_address: Ip4Address | Ip6Address,
+    remote_port: int,
+    secret: bytes,
+    *,
+    clock_us: int = 0,
+) -> int:
+    """
+    Compute the RFC 6528 §3 Initial Sequence Number.
+
+    The result is deterministic for a fixed (4-tuple, secret,
+    clock_us) and depends on every input: changing any address,
+    port, secret byte, or the clock yields a different ISN.
+    The output is a 32-bit unsigned integer.
+
+    'clock_us' is the current monotonic clock in microseconds.
+    Pass 0 for tests that want a fixed time-zero baseline; in
+    production, pass 'time.monotonic_ns() // 1000' so the M
+    component advances naturally.
+    """
+
+    raise NotImplementedError(
+        "RFC 6528 §3 ISS hash is not yet implemented; see " "pytcp/lib/tcp_iss.py for the planned formula"
+    )
