@@ -1622,15 +1622,23 @@ class TcpSession:
             f"#{self._retransmit_count})",
         )
 
-        # RFC 5681 §3.1: on RTO, the congestion window collapses
-        # to LW = 1 SMSS for slow-start re-entry. Phase 2 of the
-        # RFC 5681 plan adds 'ssthresh = max(FlightSize/2,
-        # 2*SMSS)' here so the post-RTO slow-start exits at the
-        # previous loss point; today the cwnd reset alone is
-        # tracked. RFC 9293 §3.8.6.1 / RFC 1122 §4.2.2.16 still
-        # require respecting peer's advertised window: a 0-window
-        # peer means '_snd_ewn = 0' so '_transmit_data' falls
-        # through to the persist branch.
+        # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
+        # post-RTO slow-start exits at the previously-observed
+        # loss point. The 'max(FlightSize/2, 2*SMSS)' floor
+        # prevents a single tiny in-flight segment from
+        # collapsing ssthresh below the canonical minimum and
+        # prematurely terminating slow-start. FlightSize is
+        # computed BEFORE the SND.NXT rewind below so it
+        # reflects the unacked-bytes count at the moment of
+        # loss detection. Modular subtraction per RFC 9293 §3.4
+        # so the value is correct across the 32-bit wrap.
+        flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+        self._ssthresh = max(flight_size // 2, 2 * self._snd_mss)
+        # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
+        # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
+        # §4.2.2.16 still require respecting peer's advertised
+        # window: a 0-window peer means '_snd_ewn = 0' so
+        # '_transmit_data' falls through to the persist branch.
         self._cwnd = self._snd_mss
         self._snd_ewn = min(self._cwnd, self._snd_wnd)
         self._snd_nxt = self._snd_una
