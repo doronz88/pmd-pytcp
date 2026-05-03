@@ -133,6 +133,21 @@ class Timer(Subsystem):
         self._tasks = []
         self._timers = {}
 
+    @property
+    def now_ms(self) -> int:
+        """
+        Get the wall-clock time in milliseconds, used by the RFC
+        6298 RTO sample-collection hooks in 'TcpSession' to record
+        outbound-segment send times and compute observed RTTs on
+        ACK harvest. Backed by 'time.monotonic_ns()' so the value
+        increases monotonically and is unaffected by wall-clock
+        adjustments. Test deployments swap this 'Timer' for the
+        deterministic 'FakeTimer' fixture which exposes the same
+        'now_ms' surface over its virtual clock.
+        """
+
+        return time.monotonic_ns() // 1_000_000
+
     @override
     def _subsystem_loop(self) -> None:
         """

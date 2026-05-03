@@ -50,7 +50,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
-from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state
+from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 
@@ -717,6 +717,24 @@ class TcpSession:
 
         seq = seq if seq is not None else self._snd_nxt
         ack = self._rcv_nxt if flag_ack else 0
+
+        # RFC 6298 §4 sample collection: record one in-flight RTT
+        # sample at a time. The covering ACK harvest hook in
+        # '_process_ack_packet' folds the observed RTT into
+        # '_rto_state' via 'tcp__rto.update' (skipping the fold
+        # iff Karn's flag is set per RFC 6298 §3). The
+        # '_rtt_sample_seq is None' gate enforces single-sample-
+        # per-RTT cadence: subsequent in-flight segments do not
+        # overwrite the pending sample, and a retransmit of the
+        # sampled segment lands here with '_rtt_sample_seq' set
+        # so no fresh sample is recorded - the original
+        # send-time stays paired with the original seq, with the
+        # taint flag controlling whether the eventual ACK
+        # produces an estimator update.
+        if (data or flag_syn or flag_fin) and self._rtt_sample_seq is None:
+            self._rtt_sample_seq = seq
+            self._rtt_sample_send_time_ms = stack.timer.now_ms
+            self._rtt_sample_retransmitted = False
 
         # WSCALE shift on outbound 'win' field per RFC 7323 §2.3:
         # post-handshake segments use 'rcv_wnd >> rcv_wsc'; the
@@ -1488,6 +1506,16 @@ class TcpSession:
                 # Change state to CLOSED
                 self._change_state(FsmState.CLOSED)
                 return
+            # RFC 6298 §3 (Karn): if the segment now being
+            # retransmitted carries a pending RTT sample, taint
+            # the sample so the harvest hook in
+            # '_process_ack_packet' clears the tracker without
+            # folding the (now-ambiguous) RTT into '_rto_state'.
+            # The pending sample's send-time and seq remain set
+            # so the harvest path can recognise the covering
+            # ACK; only the "skip update" flag flips.
+            if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_una:
+                self._rtt_sample_retransmitted = True
             # RFC 5681 §3.1: on RTO, ssthresh is set to FlightSize/2
             # (not tracked in PyTCP's simplified cwnd model) and the
             # congestion window collapses to one SMSS for slow-start
@@ -1639,6 +1667,31 @@ class TcpSession:
         # uses numerical order, which is wrong across the wrap.
         if lt32(self._snd_una, packet_rx_md.tcp__ack):
             self._snd_una = packet_rx_md.tcp__ack
+        # RFC 6298 §4 sample harvest: peer's cumulative ACK has
+        # advanced past the seq of our pending RTT sample. Fold
+        # the observed RTT into '_rto_state' iff the sample was
+        # not retransmitted (Karn's algorithm, RFC 6298 §3); in
+        # either case clear the tracker so the next outbound
+        # segment can start a fresh sample. Modular 'gt32' so the
+        # harvest fires correctly when both seq and ack straddle
+        # the 32-bit wrap.
+        if self._rtt_sample_seq is not None and gt32(packet_rx_md.tcp__ack, self._rtt_sample_seq):
+            if not self._rtt_sample_retransmitted:
+                assert self._rtt_sample_send_time_ms is not None
+                observed_rtt_ms = stack.timer.now_ms - self._rtt_sample_send_time_ms
+                self._rto_state = update(self._rto_state, observed_rtt_ms)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RTT sample harvested: rtt={observed_rtt_ms} ms, " f"rto_state={self._rto_state}",
+                )
+            else:
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RTT sample tainted by retransmit (Karn); " f"skipping update of {self._rto_state}",
+                )
+            self._rtt_sample_seq = None
+            self._rtt_sample_send_time_ms = None
+            self._rtt_sample_retransmitted = False
         # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
         # §3: prune any blocks now absorbed by the cumulative ACK,
         # then ingest fresh blocks the peer reported on this
