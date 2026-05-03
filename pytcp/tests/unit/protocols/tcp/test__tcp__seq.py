@@ -195,6 +195,7 @@ class TestTcpSeq__Comparators(TestCase):
         Ensure for any two 32-bit values exactly one of (a<b, a==b, a>b)
         holds and 'le32' / 'ge32' agree with their strict counterparts
         plus equality.
+        Reference: RFC 9293 §3.4 (modular sequence-number ordering).
         """
 
         is_lt = lt32(self._a, self._b)
@@ -290,6 +291,7 @@ class TestTcpSeq__AddSub(TestCase):
         """
         Ensure 'add32(a, n)' returns '(a + n) mod 2**32' as a 32-bit
         unsigned integer for any 'n', positive, zero, or negative.
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
         result = add32(self._a, self._n)
@@ -308,6 +310,7 @@ class TestTcpSeq__AddSub(TestCase):
         """
         Ensure 'sub32(a, n)' returns '(a - n) mod 2**32' as a 32-bit
         unsigned integer for any 'n', positive, zero, or negative.
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
         result = sub32(self._a, self._n)
@@ -447,6 +450,7 @@ class TestTcpSeq__InRange(TestCase):
         """
         Ensure 'in_range32(x, lo, hi)' is True iff 'x' lies on the
         forward modular path from 'lo' to 'hi' (inclusive at both ends).
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
         self.assertEqual(
@@ -648,6 +652,7 @@ class TestTcpSeqAdd32__Variadic(TestCase):
         Ensure 'add32(seq, len, flag_syn, flag_fin)' - the canonical
         TCP session usage pattern - wraps modulo 2**32 when the
         cumulative sum exceeds the 32-bit ceiling.
+        Reference: RFC 9293 §3.4 (SYN/FIN consume one seq each; modular wrap).
         """
 
         # seq just below the wrap, plus a 4-byte payload, plus

@@ -55,6 +55,7 @@ class TestSackScoreboard__Init(TestCase):
     def test__sack_scoreboard__init__blocks_empty(self) -> None:
         """
         Ensure a fresh scoreboard has zero tracked blocks.
+        Reference: RFC 2018 §3 (SACK option, scoreboard initial state).
         """
 
         scoreboard = SackScoreboard()
@@ -68,6 +69,7 @@ class TestSackScoreboard__Init(TestCase):
         """
         Ensure 'is_sacked' returns False for any seq when the
         scoreboard is empty - nothing has been SACK-acked yet.
+        Reference: RFC 2018 §3 (SACK option, empty scoreboard semantics).
         """
 
         scoreboard = SackScoreboard()
@@ -80,6 +82,7 @@ class TestSackScoreboard__Init(TestCase):
         """
         Ensure 'is_sacked' returns False at the modular ceiling on an
         empty scoreboard (no off-by-one or sign-flip at the wrap).
+        Reference: RFC 2018 §3 + RFC 9293 §3.4 (32-bit modular seq space).
         """
 
         scoreboard = SackScoreboard()
@@ -97,6 +100,7 @@ class TestSackScoreboard__AddBlock(TestCase):
     def test__sack_scoreboard__add_block__single_stored_unchanged(self) -> None:
         """
         Ensure adding one '[left, right)' block stores it verbatim.
+        Reference: RFC 2018 §3 (SACK option block format).
         """
 
         scoreboard = SackScoreboard()
@@ -111,6 +115,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure two strictly disjoint, non-adjacent blocks are kept
         as separate entries (no spurious merge).
+        Reference: RFC 2018 §3 (multiple SACK blocks).
         """
 
         scoreboard = SackScoreboard()
@@ -141,6 +146,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure adjacency detection is symmetric: adding the high
         block first then the low one still coalesces.
+        Reference: RFC 2018 §3 (SACK union semantics, order-agnostic).
         """
 
         scoreboard = SackScoreboard()
@@ -156,6 +162,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure overlapping blocks merge into the union of their
         ranges (lower left edge, higher right edge).
+        Reference: RFC 2018 §3 (SACK union semantics, overlap merge).
         """
 
         scoreboard = SackScoreboard()
@@ -171,6 +178,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure a smaller block fully contained inside an existing
         block is absorbed without changing the existing range.
+        Reference: RFC 2018 §3 (nested SACK absorption).
         """
 
         scoreboard = SackScoreboard()
@@ -187,6 +195,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         Ensure a larger block subsumes a smaller existing block:
         only one '[left, right)' tuple remains, with the larger
         edges.
+        Reference: RFC 2018 §3 (containing-block subsumption).
         """
 
         scoreboard = SackScoreboard()
@@ -202,6 +211,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure a bridging block that connects two formerly-disjoint
         ranges coalesces all three into one (transitive merge).
+        Reference: RFC 2018 §3 (transitive SACK union).
         """
 
         scoreboard = SackScoreboard()
@@ -220,6 +230,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         coalesce: '[0xFFFFFFE0, 0xFFFFFFFF)' adjacent to
         '[0xFFFFFFFF, 0x0000_0010)' produces a single block of 48
         bytes spanning the wrap boundary.
+        Reference: RFC 2018 §3 + RFC 9293 §3.4 (modular seq arithmetic).
         """
 
         scoreboard = SackScoreboard()
@@ -237,6 +248,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         wrap stay separate: '[0xFFFF_FF00, 0xFFFF_FF20)' and
         '[0x0000_0100, 0x0000_0200)' have a gap across the wrap and
         must not merge.
+        Reference: RFC 2018 §3 + RFC 9293 §3.4 (modular seq arithmetic).
         """
 
         scoreboard = SackScoreboard()
@@ -252,6 +264,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure 'add_block' asserts when 'left == right' (a SACK
         block must cover at least one byte).
+        Reference: RFC 2018 §3 (SACK block edge half-open invariant).
         """
 
         scoreboard = SackScoreboard()
@@ -263,6 +276,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         Ensure 'add_block' asserts when 'lt32(left, right)' fails
         (a block must point forward in modular seq space and span
         less than half the 32-bit range).
+        Reference: RFC 2018 §3 + RFC 9293 §3.4 (forward seq direction).
         """
 
         scoreboard = SackScoreboard()
@@ -273,6 +287,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure 'add_block' asserts when 'left' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
@@ -283,6 +298,7 @@ class TestSackScoreboard__AddBlock(TestCase):
         """
         Ensure 'add_block' asserts when 'right' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
@@ -374,6 +390,7 @@ class TestSackScoreboard__IsSacked(TestCase):
         """
         Ensure 'is_sacked' returns the expected boolean for each
         (block-set, query-seq) case.
+        Reference: RFC 2018 §3 + RFC 6675 §3 (SACK block coverage query).
         """
 
         scoreboard = SackScoreboard()
@@ -394,6 +411,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
     def test__sack_scoreboard__prune_below__empty_is_no_op(self) -> None:
         """
         Ensure 'prune_below' on an empty scoreboard leaves it empty.
+        Reference: RFC 2018 §3 / RFC 6675 §6 (cumulative-ACK absorption).
         """
 
         scoreboard = SackScoreboard()
@@ -408,6 +426,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
         """
         Ensure a block whose right edge is at or below 'snd_una' is
         dropped entirely (cumulative ACK has absorbed it).
+        Reference: RFC 2018 §3 / RFC 6675 §6 (cumulative-ACK absorption).
         """
 
         scoreboard = SackScoreboard()
@@ -422,6 +441,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
     def test__sack_scoreboard__prune_below__strictly_below_is_dropped(self) -> None:
         """
         Ensure a block strictly below the new 'snd_una' is dropped.
+        Reference: RFC 2018 §3 / RFC 6675 §6 (cumulative-ACK absorption).
         """
 
         scoreboard = SackScoreboard()
@@ -438,6 +458,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
         Ensure a block whose left edge is below 'snd_una' but right
         edge is above is trimmed: the surviving block has 'left ==
         snd_una' and 'right' unchanged.
+        Reference: RFC 2018 §3 / RFC 6675 §6 (cumulative-ACK trimming).
         """
 
         scoreboard = SackScoreboard()
@@ -452,6 +473,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
     def test__sack_scoreboard__prune_below__entirely_above_is_kept(self) -> None:
         """
         Ensure a block strictly above 'snd_una' is kept verbatim.
+        Reference: RFC 2018 §3 / RFC 6675 §6 (above-cum-ACK retention).
         """
 
         scoreboard = SackScoreboard()
@@ -468,6 +490,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
         Ensure a mixed scoreboard - one block below, one straddling,
         one above 'snd_una' - is partitioned correctly: below dropped,
         straddling trimmed, above kept.
+        Reference: RFC 2018 §3 / RFC 6675 §6 (cumulative-ACK partition).
         """
 
         scoreboard = SackScoreboard()
@@ -486,6 +509,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
         Ensure 'prune_below' near the 32-bit wrap keeps a block on
         the opposite side of the wrap (which is still 'above'
         'snd_una' in modular terms).
+        Reference: RFC 2018 §3 + RFC 9293 §3.4 (modular cum-ACK).
         """
 
         scoreboard = SackScoreboard()
@@ -501,6 +525,7 @@ class TestSackScoreboard__PruneBelow(TestCase):
         """
         Ensure 'prune_below' asserts when 'snd_una' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
@@ -518,6 +543,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         Ensure 'first_gap' on an empty scoreboard returns 'snd_una'
         verbatim - the first uncovered seq is right at SND.UNA when
         nothing is SACKed.
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -531,6 +557,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' returns 'snd_una' when no tracked block
         starts at 'snd_una' (the gap is the byte at SND.UNA itself).
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -545,6 +572,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' walks a single block whose left edge
         equals 'snd_una' and returns the block's right edge.
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -560,6 +588,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         Ensure 'first_gap' walks through a chain of blocks that
         are exactly contiguous starting at 'snd_una' and returns the
         right edge of the last block in the chain.
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -580,6 +609,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' on a single coalesced block starting at
         'snd_una' returns the right edge of that block.
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -596,6 +626,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' ignores blocks that sit below 'snd_una'
         (defensive against callers who skip 'prune_below').
+        Reference: RFC 6675 §4 (NextSeg gap-walking primitive).
         """
 
         scoreboard = SackScoreboard()
@@ -610,6 +641,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' walks through a coalesced chain that
         crosses the 32-bit wrap and reports the chain's right edge.
+        Reference: RFC 6675 §4 + RFC 9293 §3.4 (modular gap walk).
         """
 
         scoreboard = SackScoreboard()
@@ -625,6 +657,7 @@ class TestSackScoreboard__FirstGap(TestCase):
         """
         Ensure 'first_gap' asserts when 'snd_una' is outside the
         32-bit unsigned range.
+        Reference: RFC 9293 §3.4 (32-bit sequence number space).
         """
 
         scoreboard = SackScoreboard()
@@ -642,6 +675,7 @@ class TestSackScoreboard__Blocks(TestCase):
         Ensure 'blocks' returns a fresh list snapshot - mutations of
         the returned list must not affect the scoreboard's internal
         state.
+        Reference: RFC 2018 §3 (SACK block list immutability).
         """
 
         scoreboard = SackScoreboard()
@@ -706,6 +740,7 @@ class TestSackScoreboard__InsertSequenceMatrix(TestCase):
         """
         Ensure repeated 'add_block' insertions produce the expected
         merged block set.
+        Reference: RFC 2018 §3 (SACK block union semantics, end-to-end).
         """
 
         scoreboard = SackScoreboard()
