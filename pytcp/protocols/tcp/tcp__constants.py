@@ -58,3 +58,21 @@ CHALLENGE_ACK_RATE_LIMIT_MS = 1000
 # window stays at zero, so the timer never gives up - only the connection's R2
 # timeout (handled by '_retransmit_packet_timeout') tears the session down.
 PERSIST_TIMEOUT_MAX = 60_000
+
+# RFC 1122 §4.2.3.6 TCP keep-alive. Optional mechanism to detect a peer
+# that has silently gone away on an otherwise idle connection. RFC 1122
+# requires:
+#   - The mechanism MUST default to OFF; the application MUST be able to
+#     enable / disable it per-connection (in PyTCP, via the
+#     'TcpSession._keepalive_enabled' flag).
+#   - The keep-alive idle timer MUST default to no less than 2 hours.
+# After the idle timer expires the session emits a probe ('ACK' with
+# 'SEG.SEQ = SND.NXT - 1' so peer's TCP responds with a current-window
+# ACK without the application observing any data); on probe-ack the
+# idle timer is reset, on lack of response the probe is retransmitted
+# every KEEPALIVE_PROBE_INTERVAL up to KEEPALIVE_PROBE_MAX_COUNT times,
+# at which point the connection is declared dead and torn down.
+# Defaults match Linux: 7200 s idle, 75 s probe interval, 9 probes.
+KEEPALIVE_IDLE_TIME = 7_200_000
+KEEPALIVE_PROBE_INTERVAL = 75_000
+KEEPALIVE_PROBE_MAX_COUNT = 9

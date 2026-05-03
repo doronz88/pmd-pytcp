@@ -170,6 +170,16 @@ class TcpSession:
         # (phase 4).
         self._send_sack: bool = False
 
+        # RFC 1122 §4.2.3.6 keep-alive opt-in flag. Defaults False
+        # per the RFC's MUST: "If keep-alive are included, the
+        # application MUST be able to turn them on or off for
+        # each TCP connection, and they MUST default to off."
+        # Flip True before CONNECT / LISTEN to enable. The
+        # session-internal keep-alive machinery is gated on this
+        # flag throughout (idle-timer arming, probe emission,
+        # unanswered-probe tear-down).
+        self._keepalive_enabled: bool = False
+
         # SACK scoreboard tracking peer-SACKed-but-not-yet-
         # cumulatively-acked send-side ranges per RFC 2018 §3 /
         # RFC 6675 §3. Updated by '_ingest_sack_info' on every
