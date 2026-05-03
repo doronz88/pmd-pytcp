@@ -1833,6 +1833,22 @@ class TcpSession:
         Process regular data/ACK packet.
         """
 
+        # RFC 7323 §5 PAWS: drop inbound segments whose TSval is
+        # strictly less than '_ts_recent' to defend against
+        # wrapped-sequence attacks across the 4 GB seq space.
+        # Gated on bilateral '_send_ts' so legacy non-TSopt
+        # peers fall through unchanged. Modular 'lt32' so the
+        # comparison is correct across the 32-bit TS clock wrap
+        # (24 days at 1 ms granularity).
+        if self._send_ts and packet_rx_md.tcp__tsval is not None and lt32(packet_rx_md.tcp__tsval, self._ts_recent):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - PAWS: dropping stale-TSval segment "
+                f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
+                f"{self._ts_recent})",
+            )
+            return
+
         # RFC 1122 §4.2.3.6: peer activity (ACK and / or data)
         # resets the keep-alive idle timer. No-op when keep-alive
         # is disabled.
