@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
-from pytcp.protocols.tcp.tcp__seq import add32, ge32, gt32, in_range32, le32, lt32
+from pytcp.protocols.tcp.tcp__seq import add32, ge32, gt32, in_range32, le32, lt32, sub32
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession
@@ -254,6 +254,22 @@ def fsm__established(
                 "tcp-ss",
                 f"[{session}] - Sent empty ACK reply for unacceptable "
                 f"ACK={packet_rx_md.tcp__ack} > SND.MAX={session._snd_max}",
+            )
+            return
+        # RFC 5961 §5 lower-bound ACK acceptability: an ACK
+        # below 'SND.UNA - MAX.SND.WND' is an off-path blind
+        # injection (or a wedged peer with a very stale view).
+        # Emit a rate-limited challenge ACK so the legitimate
+        # peer can re-sync; without this gate, very-stale ACKs
+        # would be silently dropped.
+        ack_lower_bound = sub32(session._snd_una, session._max_window)
+        if lt32(packet_rx_md.tcp__ack, ack_lower_bound):
+            session._emit_challenge_ack()
+            __debug__ and log(
+                "tcp-ss",
+                f"[{session}] - Sent challenge ACK for unacceptable "
+                f"ACK={packet_rx_md.tcp__ack} < SND.UNA - MAX.SND.WND="
+                f"{ack_lower_bound} (RFC 5961 §5)",
             )
         return
 

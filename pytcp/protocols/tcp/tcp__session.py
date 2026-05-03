@@ -370,6 +370,15 @@ class TcpSession:
         # in '_process_ack_packet'.
         self._snd_wnd: int = self._snd_mss
 
+        # RFC 5961 §5 'MAX.SND.WND': the largest 'snd_wnd' value
+        # ever observed from peer. Used as the lower-bound
+        # tolerance for ACK acceptability ('SND.UNA - MAX.SND.WND
+        # <= SEG.ACK <= SND.NXT'); ACKs below 'SND.UNA -
+        # MAX.SND.WND' are blind-injected very-stale ACKs and
+        # MUST elicit a challenge ACK. Updated alongside
+        # '_snd_wnd' in '_process_ack_packet'.
+        self._max_window: int = self._snd_mss
+
         # Effective send window - PyTCP's simplified congestion-
         # control variable that conflates RFC 5681 cwnd and
         # ssthresh. Doubles on each cum-ACK in
@@ -2111,6 +2120,12 @@ class TcpSession:
             # min(cwnd, snd_wnd) regardless of which side just
             # moved.
             self._snd_ewn = min(self._cwnd, self._snd_wnd)
+        # RFC 5961 §5 'MAX.SND.WND': running maximum of peer's
+        # advertised window. Used as the lower-bound tolerance
+        # for ACK acceptability ('SND.UNA - MAX.SND.WND <=
+        # SEG.ACK <= SND.NXT').
+        if self._snd_wnd > self._max_window:
+            self._max_window = self._snd_wnd
         # If peer has reopened their receive window, deactivate the
         # persist timer and reset the back-off interval so the next
         # zero-window event starts fresh at the initial RTO
