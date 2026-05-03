@@ -707,6 +707,45 @@ class TcpSession:
 
         self.tcp_fsm(syscall=SysCall.CLOSE)
 
+    def abort(self) -> None:
+        """
+        The 'ABORT' syscall per RFC 9293 §3.9.1.
+
+        Aborts the connection without graceful close: any pending
+        SENDs are discarded, blocked RECEIVEs are released with
+        an error, and a RST is emitted for synchronized states
+        (SYN_RCVD, ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2,
+        CLOSE_WAIT). For unsynchronized states (CLOSED, LISTEN,
+        SYN_SENT) and the post-close states (CLOSING, LAST_ACK,
+        TIME_WAIT), the TCB is simply torn down without a wire-
+        level RST per RFC 9293 §3.9.1's per-state ABORT spec.
+
+        After abort() the session transitions to CLOSED and any
+        blocked CONNECT / RECEIVE callers unblock with a connection
+        error.
+        """
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - <ly>[{self._state}]</> - got <r>ABORT</> syscall",
+        )
+
+        if self._state in {
+            FsmState.SYN_RCVD,
+            FsmState.ESTABLISHED,
+            FsmState.FIN_WAIT_1,
+            FsmState.FIN_WAIT_2,
+            FsmState.CLOSE_WAIT,
+        }:
+            # RFC 9293 §3.9.1 ABORT in synchronized states: emit
+            # RST + ACK at SND.NXT, RCV.NXT.
+            self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_nxt)
+        # Mark connection as aborted so any blocked recv() raises.
+        self._connection_error = ConnError.CANCELED
+        self._event__rx_buffer.set()
+        self._event__connect.release()
+        self._change_state(FsmState.CLOSED)
+
     def _change_state(self, state: FsmState) -> None:
         """
         Change the state of TCP finite state machine.

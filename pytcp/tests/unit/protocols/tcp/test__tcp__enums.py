@@ -162,14 +162,14 @@ class TestSysCall(TestCase):
 
     def test__tcp_session__syscall_members(self) -> None:
         """
-        Ensure 'SysCall' exposes the three syscalls the session
-        recognizes: LISTEN, CONNECT, CLOSE.
+        Ensure 'SysCall' exposes the four syscalls the session
+        recognizes: LISTEN, CONNECT, CLOSE, ABORT.
         """
 
         self.assertEqual(
             {member.name for member in SysCall},
-            {"LISTEN", "CONNECT", "CLOSE"},
-            msg="SysCall must expose exactly LISTEN, CONNECT, CLOSE.",
+            {"LISTEN", "CONNECT", "CLOSE", "ABORT"},
+            msg="SysCall must expose exactly LISTEN, CONNECT, CLOSE, ABORT.",
         )
 
     def test__tcp_session__syscall_str_is_name(self) -> None:

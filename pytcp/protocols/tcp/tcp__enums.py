@@ -49,6 +49,7 @@ class SysCall(NameEnum):
     LISTEN = auto()
     CONNECT = auto()
     CLOSE = auto()
+    ABORT = auto()
 
 
 class FsmState(NameEnum):

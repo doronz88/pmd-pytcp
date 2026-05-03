@@ -588,6 +588,22 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 
+    def abort(self) -> None:
+        """
+        Abort the TCP connection per RFC 9293 §3.9.1 ABORT.
+
+        Emits a RST for synchronized states (ESTABLISHED, FIN_WAIT_*,
+        CLOSE_WAIT, SYN_RCVD) and tears down the session immediately
+        without graceful close. Pending recv() / connect() callers
+        unblock with a connection error. On a fresh / closed socket
+        with no associated session, this is a no-op.
+        """
+
+        if self._tcp_session is not None:
+            self._tcp_session.abort()
+
+        __debug__ and log("socket", f"<g>[{self}]</> - Aborted socket")
+
     def process_tcp_packet(self, packet_rx_md: TcpMetadata) -> None:
         """
         Process incoming packet's metadata.
