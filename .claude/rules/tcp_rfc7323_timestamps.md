@@ -182,14 +182,26 @@ All 11 tests live in
 
 ## 7. Deferred work
 
-### 7.1 RFC 1337 TIME-WAIT assassination mitigation
+### 7.1 RFC 1337 TIME-WAIT assassination mitigation — SHIPPED
 
-PAWS-based protection: when a TIME-WAIT session receives a
-segment from peer with stale TSval, drop it (already
-covered by the Phase 4 PAWS check if the session is in
-TIME-WAIT, but the `_process_ack_packet` path may not be
-the one that handles TIME-WAIT segments). Audit needed.
-~2-3 commits.
+All three RFC 1337 §3 hazards are mitigated:
+
+- **Hazard #1** (duplicate FIN): `tcp__fsm__time_wait.py:105-115`
+  re-ACKs and restarts the 2*MSL timer; pinned by
+  `test__close_time_wait__late_peer_fin_retransmit_elicits_ack_and_rearms_timer`.
+- **Hazard #2** (RST): `tcp__fsm__time_wait.py` does not
+  recognise RST as a recognised segment type, so it falls
+  through to the implicit no-op return — TIME-WAIT cannot
+  be assassinated by a delayed or maliciously-injected RST.
+  Pinned by `test__rfc1337__rst_in_time_wait_does_not_terminate`.
+- **Hazard #3** (new SYN): `tcp__fsm__time_wait.py:122-128`
+  emits a challenge ACK without transitioning out of
+  TIME-WAIT. Pinned by
+  `test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change`.
+
+PAWS strengthening (commit `79ed38e`,
+`tcp__fsm__time_wait.py:95-96`) extends Hazard #2 to drop
+ANY stale-TSval segment, not just RSTs.
 
 ### 7.2 RFC 6191 TIME-WAIT 4-tuple reuse
 

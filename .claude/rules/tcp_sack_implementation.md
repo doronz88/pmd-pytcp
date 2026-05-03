@@ -207,22 +207,26 @@ Estimated effort: ~10 commits, full new test surface (slow-start /
 congestion-avoidance / recovery / retransmit-after-RTO matrix). Frame
 this as **"RFC 5681 conformance project"**, not SACK polish.
 
-### 7.2 DSACK case-2 generation
+### 7.2 DSACK case-2 generation — SHIPPED
 
-Phase 7 lands the SENDER-side detection of both DSACK signatures
-(below cum-ACK + contained-in-outer) but only generates case-1 on
-the RECEIVER side (duplicate below cum-ACK). Case-2 generation —
-emitting DSACK when peer retransmits bytes already in our OOO queue
-— is not implemented.
+Receiver-side case-2 generation is implemented in
+`tcp__fsm__established.py:179-205`: when an OOO segment arrives
+whose range overlaps an existing OOO-queue entry, the intersection
+is computed via `ge32` / `le32` / `lt32` and stashed in
+`session._pending_dsack = (ovl_left, ovl_right)`. The next
+outbound ACK emits the DSACK block first, followed by the regular
+OOO blocks — matching the RFC 2883 §4 case-2 signature.
 
-To add: when an OOO segment arrives whose range overlaps an existing
-OOO-queue entry, set `_pending_dsack = (overlap_left, overlap_right)`.
-The generated SACK option will have the inner DSACK first, followed
-by the outer OOO block(s), naturally matching the RFC 2883 §4 case-2
-signature.
+Pinned by three integration tests in
+`pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py`:
 
-Estimated effort: 1-2 commits, ~2 integration tests. Defer until a
-real interop need arises.
+- `test__sack__dsack__case_2__full_duplicate_of_ooo_queued_segment_elicits_dsack`
+- `test__sack__dsack__case_2__partial_overlap_with_ooo_queued_segment_elicits_dsack`
+- `test__sack__dsack__case_2__disjoint_ooo_segments_emit_no_dsack` (negative control)
+
+plus the cross-RFC interaction test
+`test__sack__cross_rfc__paws_drops_stale_segment_before_dsack_detector`
+that pins PAWS taking precedence over DSACK detection.
 
 ### 7.3 Formal RFC 6675 NextSeg loop
 
