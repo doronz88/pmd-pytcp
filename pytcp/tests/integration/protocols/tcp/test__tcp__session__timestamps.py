@@ -1320,3 +1320,229 @@ class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
         for sid in list(stack.sockets):
             if sid != listen_sock.socket_id:
                 del stack.sockets[sid]
+
+
+class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
+    """
+    Regression guards for RFC 7323 §3 freshness on retransmit:
+    a retransmitted segment MUST carry the CURRENT 'now_ms' as
+    TSval (not a value captured at original-queue time) and the
+    CURRENT '_ts_recent' as TSecr (not a stale captured value).
+
+    PyTCP's '_transmit_packet' computes both fields at the
+    moment of transmission ('tcp__session.py:880-906'), so a
+    retransmit naturally picks up the latest clock and the
+    latest peer TSval. These tests pin that behaviour so a
+    future refactor that introduces a per-segment queue or
+    captures TSopt at enqueue time cannot silently re-introduce
+    the original-vs-retransmit ambiguity that TSopt is meant
+    to resolve at the wire level.
+
+    RFC 7323 §3 wording: "The Timestamp Value field (TSval)
+    contains the current value of the timestamp clock of the
+    TCP sending the option." The 'current value' MUST mean
+    "current at transmission", not "current at queue time".
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__retransmit__tsval_reflects_current_now_ms_not_queue_time(self) -> None:
+        """
+        Ensure RFC 7323 §3: a retransmitted segment carries
+        TSval = current 'now_ms', NOT the value captured at
+        the original transmission. With Karn's algorithm
+        obviated by TSopt, the freshness of TSval is the
+        load-bearing invariant: peer's RTT measurement on the
+        retransmit's ACK uses 'now - TSval' to identify which
+        transmission it acknowledges.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        session.send(data=b"hello")
+        original_send_now_ms = self._timer.now_ms + 1
+        original_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(original_tx),
+            1,
+            msg="Setup invariant: original data segment must fire on the next tick.",
+        )
+        original_probe = self._parse_tx(original_tx[0])
+        self.assertEqual(
+            original_probe.tsval,
+            original_send_now_ms,
+            msg=(
+                "Setup invariant: original segment's TSval MUST equal "
+                f"the now_ms at send time ({original_send_now_ms}). "
+                f"Got {original_probe.tsval}."
+            ),
+        )
+
+        # Advance past the RTO so the retransmit fires.
+        retransmit_send_now_ms_lower = self._timer.now_ms + 1
+        retransmit_tx = self._advance(ms=1500)
+        retransmit_probes = [self._parse_tx(f) for f in retransmit_tx if f]
+        retransmits = [p for p in retransmit_probes if p.payload]
+        self.assertGreaterEqual(
+            len(retransmits),
+            1,
+            msg=(
+                "Setup invariant: by t=original+1500 ms the RTO MUST "
+                "have fired and a retransmit MUST be on the wire. "
+                f"Got {len(retransmits)} data segment(s)."
+            ),
+        )
+        first_retransmit = retransmits[0]
+
+        retransmit_tsval = first_retransmit.tsval
+        original_tsval = original_probe.tsval
+        assert retransmit_tsval is not None and original_tsval is not None
+        self.assertGreater(
+            retransmit_tsval,
+            original_tsval,
+            msg=(
+                "RFC 7323 §3 freshness: retransmit's TSval MUST be "
+                f"GREATER than the original's TSval ({original_tsval}). "
+                f"Got retransmit TSval={retransmit_tsval}. A stale "
+                "captured-at-queue-time value would equal the "
+                "original's TSval, re-introducing the original-vs-"
+                "retransmit ambiguity that TSopt resolves at the wire "
+                "level."
+            ),
+        )
+        self.assertGreaterEqual(
+            retransmit_tsval,
+            retransmit_send_now_ms_lower,
+            msg=(
+                "RFC 7323 §3 freshness: retransmit's TSval MUST be at "
+                "least the now_ms at the moment the retransmit was "
+                f"scheduled ({retransmit_send_now_ms_lower}). Got "
+                f"TSval={retransmit_tsval}."
+            ),
+        )
+
+    def test__retransmit__tsecr_reflects_current_ts_recent_not_stale_capture(self) -> None:
+        """
+        Ensure RFC 7323 §3 + §4.3: a retransmitted segment
+        carries TSecr = CURRENT '_ts_recent', not a value
+        captured at the original transmission. If peer sent
+        any other segment in the meantime (e.g. wnd-update,
+        keep-alive probe-ack), its TSval has updated
+        '_ts_recent' and the retransmit MUST echo the latest
+        value.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        session.send(data=b"hello")
+        original_tx = self._advance(ms=1)
+        original_probe = self._parse_tx(original_tx[0])
+        self.assertEqual(
+            original_probe.tsecr,
+            PEER__TSVAL_INITIAL,
+            msg=(
+                "Setup invariant: original segment's TSecr MUST echo "
+                f"_ts_recent at send time ({PEER__TSVAL_INITIAL}). "
+                f"Got {original_probe.tsecr}."
+            ),
+        )
+
+        # Peer sends a wnd-update (dup-ACK shape with new win)
+        # carrying a fresh TSval. The PAWS helper updates
+        # '_ts_recent' on accepted in-window segments per
+        # RFC 7323 §4.3.
+        fresh_peer_tsval = PEER__TSVAL_INITIAL + 500
+        peer_wnd_update = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,  # snd_una; doesn't ack the data
+            flags=("ACK",),
+            win=PEER__WIN + 1,
+            tsval=fresh_peer_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=peer_wnd_update)
+        self.assertEqual(
+            session._ts_recent,
+            fresh_peer_tsval,
+            msg=(
+                "Setup invariant: peer's wnd-update TSval MUST refresh "
+                f"_ts_recent to {fresh_peer_tsval}. Got "
+                f"_ts_recent={session._ts_recent}."
+            ),
+        )
+
+        # Advance past the RTO; retransmit fires.
+        retransmit_tx = self._advance(ms=1500)
+        retransmit_probes = [self._parse_tx(f) for f in retransmit_tx if f]
+        retransmits = [p for p in retransmit_probes if p.payload]
+        self.assertGreaterEqual(
+            len(retransmits),
+            1,
+            msg=("Setup invariant: RTO MUST have fired by t=1500 ms. " f"Got {len(retransmits)} data segment(s)."),
+        )
+        first_retransmit = retransmits[0]
+
+        self.assertEqual(
+            first_retransmit.tsecr,
+            fresh_peer_tsval,
+            msg=(
+                "RFC 7323 §3 + §4.3 freshness: retransmit's TSecr "
+                "MUST echo the CURRENT '_ts_recent' "
+                f"({fresh_peer_tsval}, refreshed by peer's wnd-update "
+                "between original send and retransmit), NOT the "
+                f"value captured at original transmission "
+                f"({PEER__TSVAL_INITIAL}). Got "
+                f"TSecr={first_retransmit.tsecr}."
+            ),
+        )
