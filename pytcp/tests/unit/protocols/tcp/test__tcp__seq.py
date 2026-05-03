@@ -144,8 +144,10 @@ class TestTcpSeq__Comparators(TestCase):
 
     def test__lib__tcp_seq__lt32(self) -> None:
         """
-        Ensure 'lt32(a, b)' is True iff 'a' is strictly before 'b' in
-        modular 32-bit sequence-number space (RFC 9293 §3.4).
+        Ensure 'lt32(a, b)' is True iff 'a' is strictly before 'b'
+        in modular 32-bit sequence-number space.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
         self.assertEqual(
@@ -157,7 +159,9 @@ class TestTcpSeq__Comparators(TestCase):
     def test__lib__tcp_seq__le32(self) -> None:
         """
         Ensure 'le32(a, b)' is True iff 'a' is before or equal to 'b'
-        in modular 32-bit sequence-number space (RFC 9293 §3.4).
+        in modular 32-bit sequence-number space.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
         self.assertEqual(
@@ -168,8 +172,10 @@ class TestTcpSeq__Comparators(TestCase):
 
     def test__lib__tcp_seq__gt32(self) -> None:
         """
-        Ensure 'gt32(a, b)' is True iff 'a' is strictly after 'b' in
-        modular 32-bit sequence-number space (RFC 9293 §3.4).
+        Ensure 'gt32(a, b)' is True iff 'a' is strictly after 'b'
+        in modular 32-bit sequence-number space.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
         self.assertEqual(
@@ -181,7 +187,9 @@ class TestTcpSeq__Comparators(TestCase):
     def test__lib__tcp_seq__ge32(self) -> None:
         """
         Ensure 'ge32(a, b)' is True iff 'a' is after or equal to 'b'
-        in modular 32-bit sequence-number space (RFC 9293 §3.4).
+        in modular 32-bit sequence-number space.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
         self.assertEqual(
@@ -195,6 +203,7 @@ class TestTcpSeq__Comparators(TestCase):
         Ensure for any two 32-bit values exactly one of (a<b, a==b, a>b)
         holds and 'le32' / 'ge32' agree with their strict counterparts
         plus equality.
+
         Reference: RFC 9293 §3.4 (modular sequence-number ordering).
         """
 
@@ -291,6 +300,7 @@ class TestTcpSeq__AddSub(TestCase):
         """
         Ensure 'add32(a, n)' returns '(a + n) mod 2**32' as a 32-bit
         unsigned integer for any 'n', positive, zero, or negative.
+
         Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
@@ -310,6 +320,7 @@ class TestTcpSeq__AddSub(TestCase):
         """
         Ensure 'sub32(a, n)' returns '(a - n) mod 2**32' as a 32-bit
         unsigned integer for any 'n', positive, zero, or negative.
+
         Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
@@ -450,6 +461,7 @@ class TestTcpSeq__InRange(TestCase):
         """
         Ensure 'in_range32(x, lo, hi)' is True iff 'x' lies on the
         forward modular path from 'lo' to 'hi' (inclusive at both ends).
+
         Reference: RFC 9293 §3.4 (modular sequence-number comparison).
         """
 
@@ -468,6 +480,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__lt32__rejects_negative_a(self) -> None:
         """
         Ensure 'lt32' rejects a negative 'a' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -482,6 +496,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__lt32__rejects_negative_b(self) -> None:
         """
         Ensure 'lt32' rejects a negative 'b' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -496,6 +512,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__lt32__rejects_overflow_a(self) -> None:
         """
         Ensure 'lt32' rejects an 'a' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -504,6 +522,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__lt32__rejects_overflow_b(self) -> None:
         """
         Ensure 'lt32' rejects a 'b' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -512,6 +532,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__le32__rejects_negative_a(self) -> None:
         """
         Ensure 'le32' rejects a negative 'a' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -520,6 +542,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__le32__rejects_overflow_b(self) -> None:
         """
         Ensure 'le32' rejects a 'b' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -528,6 +552,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__gt32__delegates_assertion_to_lt32(self) -> None:
         """
         Ensure 'gt32' inherits 'lt32' bounds checks via delegation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -536,6 +562,8 @@ class TestTcpSeq__ComparatorAsserts(TestCase):
     def test__lib__tcp_seq__ge32__delegates_assertion_to_le32(self) -> None:
         """
         Ensure 'ge32' inherits 'le32' bounds checks via delegation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -550,6 +578,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_negative_x(self) -> None:
         """
         Ensure 'in_range32' rejects a negative 'x' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -564,6 +594,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_negative_lo(self) -> None:
         """
         Ensure 'in_range32' rejects a negative 'lo' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -578,6 +610,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_negative_hi(self) -> None:
         """
         Ensure 'in_range32' rejects a negative 'hi' argument.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -592,6 +626,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_overflow_x(self) -> None:
         """
         Ensure 'in_range32' rejects an 'x' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -600,6 +636,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_overflow_lo(self) -> None:
         """
         Ensure 'in_range32' rejects a 'lo' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -608,6 +646,8 @@ class TestTcpSeq__InRangeAsserts(TestCase):
     def test__lib__tcp_seq__in_range32__rejects_overflow_hi(self) -> None:
         """
         Ensure 'in_range32' rejects a 'hi' argument greater than 2**32-1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -626,6 +666,8 @@ class TestTcpSeqAdd32__Variadic(TestCase):
         """
         Ensure 'add32(a)' (no trailing operands) returns 'a'
         unchanged - the empty-rest sum is 0.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
         self.assertEqual(
@@ -638,6 +680,8 @@ class TestTcpSeqAdd32__Variadic(TestCase):
         """
         Ensure 'add32(a, b, c)' matches the chained binary form
         'add32(add32(a, b), c)'.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
         a, b, c = 0xFFFF_FF00, 0x100, 0x50
@@ -652,6 +696,7 @@ class TestTcpSeqAdd32__Variadic(TestCase):
         Ensure 'add32(seq, len, flag_syn, flag_fin)' - the canonical
         TCP session usage pattern - wraps modulo 2**32 when the
         cumulative sum exceeds the 32-bit ceiling.
+
         Reference: RFC 9293 §3.4 (SYN/FIN consume one seq each; modular wrap).
         """
 
@@ -673,6 +718,8 @@ class TestTcpSeqAdd32__Variadic(TestCase):
         Ensure five-operand variadic add equals iterative binary
         accumulation - sanity check on the implementation's
         'sum(rest)' fold.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
         """
 
         operands = [0xDEAD_BEEF, 0x1, 0x2, 0x3, 0x4]

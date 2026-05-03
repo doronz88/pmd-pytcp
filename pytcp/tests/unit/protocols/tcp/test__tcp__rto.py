@@ -37,10 +37,6 @@ Tests assert:
   * RFC 6298 §5.5 binary backoff (RTO doubles, capped at MAX).
   * Karn's algorithm spirit: 'back_off' preserves SRTT / RTTVAR.
 
-The tests are tests-first: every function in the helper module
-raises 'NotImplementedError' until the next commit ships the
-real formulas, so each test below fails [FLAGS BUG] today.
-
 Reference RFCs:
     RFC 6298   Computing TCP's Retransmission Timer
     RFC 8961   Requirements for Time-Based Loss Detection (initial RTO)
@@ -77,8 +73,9 @@ class TestRtoConstants(TestCase):
 
     def test__rto__initial_rto_is_1_second(self) -> None:
         """
-        RFC 6298 §2.1 / RFC 8961: the initial RTO before any RTT
-        sample MUST be 1 second.
+        Ensure the initial RTO before any RTT sample is 1 second.
+
+        Reference: RFC 6298 §2.1 (initial RTO = 1 second).
         """
 
         self.assertEqual(
@@ -89,7 +86,9 @@ class TestRtoConstants(TestCase):
 
     def test__rto__min_rto_is_at_least_1_second(self) -> None:
         """
-        RFC 6298 §2.4: RTO SHOULD be rounded up to at least 1 s.
+        Ensure the RTO lower bound is at least 1 second.
+
+        Reference: RFC 6298 §2.4 (RTO lower bound).
         """
 
         self.assertGreaterEqual(
@@ -100,8 +99,9 @@ class TestRtoConstants(TestCase):
 
     def test__rto__max_rto_is_at_least_60_seconds(self) -> None:
         """
-        RFC 6298 §2.5: an upper bound on RTO MAY be placed,
-        provided it is at least 60 seconds.
+        Ensure the RTO upper bound is at least 60 seconds.
+
+        Reference: RFC 6298 §2.5 (RTO upper bound).
         """
 
         self.assertGreaterEqual(
@@ -112,14 +112,18 @@ class TestRtoConstants(TestCase):
 
     def test__rto__k_multiplier_is_4(self) -> None:
         """
-        RFC 6298 §2.2 / §2.3 specifies K = 4.
+        Ensure the K multiplier on RTTVAR is 4.
+
+        Reference: RFC 6298 §2.2 (K = 4).
         """
 
         self.assertEqual(K, 4, msg="RFC 6298 mandates K = 4.")
 
     def test__rto__alpha_is_one_eighth(self) -> None:
         """
-        RFC 6298 §2.3: α = 1/8 EWMA weight on SRTT samples.
+        Ensure the SRTT EWMA weight α is 1/8.
+
+        Reference: RFC 6298 §2.3 (alpha = 1/8).
         """
 
         self.assertEqual(
@@ -130,7 +134,9 @@ class TestRtoConstants(TestCase):
 
     def test__rto__beta_is_one_quarter(self) -> None:
         """
-        RFC 6298 §2.3: β = 1/4 EWMA weight on RTTVAR samples.
+        Ensure the RTTVAR EWMA weight β is 1/4.
+
+        Reference: RFC 6298 §2.3 (beta = 1/4).
         """
 
         self.assertEqual(
@@ -147,10 +153,10 @@ class TestRtoInitialState(TestCase):
 
     def test__rto__initial_state__rto_is_initial_rto_ms(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'initial_state()' returns RTO = INITIAL_RTO_MS
-        (1000 ms) per RFC 6298 §2.1 / RFC 8961.
+        (1000 ms).
+
+        Reference: RFC 6298 §2.1 (initial RTO before any sample).
         """
 
         state = initial_state()
@@ -163,13 +169,10 @@ class TestRtoInitialState(TestCase):
 
     def test__rto__initial_state__srtt_and_rttvar_uninitialized(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'initial_state()' returns 'srtt_ms = None' and
-        'rttvar_ms = None' to mark "no RTT measurement yet" per
-        RFC 6298 §2 ("until a round-trip time (RTT) measurement
-        has been made for a segment ... the sender SHOULD set
-        RTO <- 1 second").
+        'rttvar_ms = None' to mark "no RTT measurement yet".
+
+        Reference: RFC 6298 §2 (uninitialized SRTT/RTTVAR).
         """
 
         state = initial_state()
@@ -194,11 +197,11 @@ class TestRtoUpdateFirstSample(TestCase):
 
     def test__rto__update__first_sample_500ms_canonical_values(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that a first sample of 500 ms produces SRTT = 500,
         RTTVAR = 250, and RTO = 500 + max(1, 4 * 250) = 1500 ms
         (within the [MIN, MAX] bounds, no clamping applied).
+
+        Reference: RFC 6298 §2.2 (first-sample formula).
         """
 
         state = update(initial_state(), 500)
@@ -221,15 +224,14 @@ class TestRtoUpdateFirstSample(TestCase):
 
     def test__rto__update__first_sample_small_R_clamped_to_min_rto(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure that a small first sample (e.g., 10 ms — typical of
+        Ensure that a small first sample (e.g., 10 ms - typical of
         a same-host loopback) produces a pre-clamp RTO well below
-        1 second, which gets clamped UP to MIN_RTO_MS = 1000 ms
-        per RFC 6298 §2.4.
+        1 second, which gets clamped UP to MIN_RTO_MS = 1000 ms.
 
         Pre-clamp: RTO = 10 + max(1, 4 * 5) = 10 + 20 = 30 ms.
         Post-clamp: RTO = MIN_RTO_MS = 1000 ms.
+
+        Reference: RFC 6298 §2.4 (RTO lower-bound clamp).
         """
 
         state = update(initial_state(), 10)
@@ -270,10 +272,10 @@ class TestRtoUpdateSubsequentSample(TestCase):
 
     def test__rto__update__subsequent_sample_canonical_formula(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure the §2.3 EWMA update yields the canonical integer-
+        Ensure the EWMA update yields the canonical integer-
         arithmetic values for a known input pair.
+
+        Reference: RFC 6298 §2.3 (EWMA update).
         """
 
         state = update(initial_state(), 500)
@@ -297,13 +299,12 @@ class TestRtoUpdateSubsequentSample(TestCase):
 
     def test__rto__update__subsequent_sample_clamped_to_min(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that a subsequent sample yielding a sub-second RTO
-        is clamped UP to MIN_RTO_MS per RFC 6298 §2.4. Two short
-        samples back-to-back (10 ms then 12 ms) yield SRTT and
-        RTTVAR small enough that the unclamped RTO is far below
-        1 second.
+        is clamped UP to MIN_RTO_MS. Two short samples back-to-
+        back (10 ms then 12 ms) yield SRTT and RTTVAR small
+        enough that the unclamped RTO is far below 1 second.
+
+        Reference: RFC 6298 §2.4 (RTO lower-bound clamp).
         """
 
         state = update(initial_state(), 10)
@@ -317,13 +318,13 @@ class TestRtoUpdateSubsequentSample(TestCase):
 
     def test__rto__update__sample_yielding_huge_rto_clamped_to_max(self) -> None:
         """
-        [FLAGS BUG]
-
-        Ensure that a pathological RTT sample (e.g., 30 s — a
+        Ensure that a pathological RTT sample (e.g., 30 s - a
         link with multi-second latency) yields an unclamped RTO
         far above 60 s on the first sample (RTO = 30000 +
         max(1, 4 * 15000) = 90000 ms), which clamps DOWN to
-        MAX_RTO_MS per RFC 6298 §2.5.
+        MAX_RTO_MS.
+
+        Reference: RFC 6298 §2.5 (RTO upper-bound clamp).
         """
 
         state = update(initial_state(), 30_000)
@@ -342,10 +343,10 @@ class TestRtoBackOff(TestCase):
 
     def test__rto__back_off__doubles_rto(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure 'back_off' doubles the current RTO
+        ("RTO <- RTO * 2 ('back off the timer')").
 
-        Ensure 'back_off' doubles the current RTO per RFC 6298
-        §5.5 ("RTO <- RTO * 2 ('back off the timer')").
+        Reference: RFC 6298 §5.5 (binary backoff).
         """
 
         # Reach a stable RTO well below the upper bound.
@@ -362,11 +363,10 @@ class TestRtoBackOff(TestCase):
 
     def test__rto__back_off__caps_at_max_rto(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure 'back_off' caps at MAX_RTO_MS so a long-silent
+        peer cannot drive the doubled RTO past the upper bound.
 
-        Ensure 'back_off' caps at MAX_RTO_MS per RFC 6298 §2.5
-        (which §5.5 explicitly references for the upper bound on
-        the doubling operation).
+        Reference: RFC 6298 §5.5 (backoff capped at MAX_RTO).
         """
 
         # Construct a state with RTO already near the cap.
@@ -385,14 +385,14 @@ class TestRtoBackOff(TestCase):
 
     def test__rto__back_off__preserves_srtt_and_rttvar(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure 'back_off' leaves SRTT and RTTVAR unchanged.
+        Karn's algorithm prohibits updating the estimator from
+        a retransmitted-segment sample, so the smoothed values
+        must remain stale across the entire retransmit-and-
+        back-off cycle until a fresh non-retransmitted sample
+        arrives.
 
-        Ensure 'back_off' leaves SRTT and RTTVAR unchanged. RFC
-        6298 §3 (Karn's algorithm) prohibits updating the
-        estimator from a retransmitted-segment sample, so the
-        smoothed values must remain stale across the entire
-        retransmit-and-back-off cycle until a fresh non-
-        retransmitted sample arrives.
+        Reference: RFC 6298 §3 (Karn's algorithm).
         """
 
         state = update(initial_state(), 500)  # SRTT=500, RTTVAR=250
@@ -418,10 +418,10 @@ class TestRtoClamp(TestCase):
 
     def test__rto__clamp_rto__within_bounds_unchanged(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure values within '[MIN_RTO_MS, MAX_RTO_MS]' pass
         through unchanged.
+
+        Reference: RFC 6298 §2.4 (RTO bounds).
         """
 
         for rto_ms in (MIN_RTO_MS, 1500, 30_000, MAX_RTO_MS):
@@ -434,10 +434,10 @@ class TestRtoClamp(TestCase):
 
     def test__rto__clamp_rto__below_min_clamped_up(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'clamp_rto' on values below 'MIN_RTO_MS' returns
-        'MIN_RTO_MS' per RFC 6298 §2.4.
+        'MIN_RTO_MS'.
+
+        Reference: RFC 6298 §2.4 (RTO lower-bound clamp).
         """
 
         for rto_ms in (0, 1, 100, 999):
@@ -450,10 +450,10 @@ class TestRtoClamp(TestCase):
 
     def test__rto__clamp_rto__above_max_clamped_down(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'clamp_rto' on values above 'MAX_RTO_MS' returns
-        'MAX_RTO_MS' per RFC 6298 §2.5.
+        'MAX_RTO_MS'.
+
+        Reference: RFC 6298 §2.5 (RTO upper-bound clamp).
         """
 
         for rto_ms in (MAX_RTO_MS + 1, 100_000, 1_000_000):
@@ -475,14 +475,14 @@ class TestRtoConvergence(TestCase):
 
     def test__rto__update__many_identical_samples_converge_to_sample(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that after a long run of identical samples, SRTT
         converges to the sample value and RTTVAR converges
         toward zero. After 50 samples of 500 ms, SRTT should be
         within a few ms of 500 and RTTVAR should be small enough
         that 'K * RTTVAR < CLOCK_GRANULARITY_MS' is plausible
         (or at least that RTTVAR is much smaller than SRTT).
+
+        Reference: RFC 6298 §2.3 (EWMA convergence).
         """
 
         state = update(initial_state(), 500)
