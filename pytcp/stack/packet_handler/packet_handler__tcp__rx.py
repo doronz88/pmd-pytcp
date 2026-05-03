@@ -131,8 +131,6 @@ class PacketHandlerTcpRx(ABC):
                 else tuple((block.left, block.right) for block in sack_blocks)
             ),
             tcp__data=packet_rx.tcp.payload,
-            tcp__flag_urg=packet_rx.tcp.flag_urg,
-            tcp__urg=packet_rx.tcp.urg,
             tracker=packet_rx.tracker,
         )
 

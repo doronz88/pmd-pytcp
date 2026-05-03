@@ -69,15 +69,6 @@ class TcpMetadata:
     tcp__sack_blocks: tuple[tuple[Seq32, Seq32], ...]
     tcp__data: memoryview
 
-    # RFC 1122 §4.2.2.4 urgent-pointer fields. Defaulted so existing
-    # call sites stay backward-compatible while the URG receive-side
-    # handling is wired up. The 'tcp__urg' value is a 16-bit unsigned
-    # offset relative to 'tcp__seq': the urgent endpoint sequence
-    # number per RFC 1122 §4.2.2.4 ("urgent pointer points to LAST
-    # octet of urgent data") is 'add32(tcp__seq, tcp__urg)'.
-    tcp__flag_urg: bool = False
-    tcp__urg: int = 0
-
     tracker: Tracker | None = None
 
     @property
