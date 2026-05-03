@@ -63,10 +63,12 @@ class TestPartialCumAckDeflate__SubMssAcked(TestCase):
 
     def test__newreno__sub_mss_acked_deflates_by_bytes_acked_only(self) -> None:
         """
-        RFC 6582 §3 step 3b: a partial cum-ACK acking less
-        than 1 SMSS deflates cwnd by 'bytes_acked' and does
-        NOT add back any SMSS (the add-back is gated on
-        'bytes_acked >= SMSS').
+        Ensure a partial cum-ACK acking less than 1 SMSS
+        deflates cwnd by 'bytes_acked' and does NOT add back
+        any SMSS (the add-back is gated on 'bytes_acked >=
+        SMSS').
+
+        Reference: RFC 6582 §3 step 3b (sub-MSS deflation only).
         """
 
         result = partial_cum_ack_deflate(cwnd=10000, bytes_acked=500, smss=1460)
@@ -79,9 +81,11 @@ class TestPartialCumAckDeflate__SubMssAcked(TestCase):
 
     def test__newreno__sub_mss_acked_just_below_floor_clamps(self) -> None:
         """
-        When the deflation would push cwnd below SMSS, the
-        floor clamps it to SMSS and no add-back fires.
-        Per RFC 6582 §3 step 3b (deflation floor at SMSS).
+        Ensure that when the deflation would push cwnd below
+        SMSS, the floor clamps it to SMSS and no add-back
+        fires.
+
+        Reference: RFC 6582 §3 step 3b (deflation floor at SMSS).
         """
 
         result = partial_cum_ack_deflate(cwnd=2000, bytes_acked=1000, smss=1460)
@@ -105,9 +109,11 @@ class TestPartialCumAckDeflate__ExactMssAcked(TestCase):
 
     def test__newreno__exact_mss_acked_leaves_cwnd_unchanged(self) -> None:
         """
-        RFC 6582 §3 step 3b: bytes_acked = SMSS triggers both
-        the deflation (-SMSS) and the add-back (+SMSS); the
-        two operations cancel and cwnd ends up unchanged.
+        Ensure that bytes_acked = SMSS triggers both the
+        deflation (-SMSS) and the add-back (+SMSS); the two
+        operations cancel and cwnd ends up unchanged.
+
+        Reference: RFC 6582 §3 step 3b (deflation+add-back cancel).
         """
 
         result = partial_cum_ack_deflate(cwnd=10000, bytes_acked=1460, smss=1460)
@@ -132,9 +138,10 @@ class TestPartialCumAckDeflate__MultiMssAcked(TestCase):
 
     def test__newreno__double_mss_acked_deflates_by_one_mss_net(self) -> None:
         """
-        bytes_acked = 2*SMSS: deflation -2*SMSS + add-back
-        +SMSS = -1*SMSS net change.
-        Per RFC 6582 §3 step 3b (multi-SMSS deflation accounting).
+        Ensure bytes_acked = 2*SMSS yields deflation -2*SMSS +
+        add-back +SMSS = -1*SMSS net change.
+
+        Reference: RFC 6582 §3 step 3b (multi-SMSS deflation accounting).
         """
 
         result = partial_cum_ack_deflate(cwnd=10000, bytes_acked=2 * 1460, smss=1460)
@@ -147,9 +154,10 @@ class TestPartialCumAckDeflate__MultiMssAcked(TestCase):
 
     def test__newreno__triple_mss_acked_deflates_by_two_mss_net(self) -> None:
         """
-        bytes_acked = 3*SMSS: deflation -3*SMSS + add-back
-        +SMSS = -2*SMSS net.
-        Per RFC 6582 §3 step 3b (multi-SMSS deflation accounting).
+        Ensure bytes_acked = 3*SMSS yields deflation -3*SMSS +
+        add-back +SMSS = -2*SMSS net.
+
+        Reference: RFC 6582 §3 step 3b (multi-SMSS deflation accounting).
         """
 
         result = partial_cum_ack_deflate(cwnd=10000, bytes_acked=3 * 1460, smss=1460)
@@ -162,12 +170,13 @@ class TestPartialCumAckDeflate__MultiMssAcked(TestCase):
 
     def test__newreno__large_acked_clamps_cwnd_to_floor_then_adds_smss(self) -> None:
         """
-        When bytes_acked is large enough that the raw
-        deflation would drive cwnd below SMSS, the floor
+        Ensure that when bytes_acked is large enough that the
+        raw deflation would drive cwnd below SMSS, the floor
         clamps the deflation to SMSS, and then the add-back
-        applies on top because bytes_acked >= SMSS.
-        Result: cwnd = 2 * SMSS.
-        Per RFC 6582 §3 step 3b (deflation floor + add-back).
+        applies on top because bytes_acked >= SMSS. Result:
+        cwnd = 2 * SMSS.
+
+        Reference: RFC 6582 §3 step 3b (deflation floor + add-back).
         """
 
         result = partial_cum_ack_deflate(cwnd=2000, bytes_acked=10 * 1460, smss=1460)
@@ -192,10 +201,11 @@ class TestPartialCumAckDeflate__BoundaryCwnd(TestCase):
 
     def test__newreno__cwnd_at_floor_with_sub_mss_acked_stays_at_floor(self) -> None:
         """
-        cwnd already at SMSS, partial cum-ACK acks less than
-        SMSS: deflation clamped to SMSS, no add-back. Result:
-        cwnd unchanged at SMSS.
-        Per RFC 6582 §3 step 3b (floor invariant).
+        Ensure that with cwnd already at SMSS and a partial
+        cum-ACK acking less than SMSS, deflation clamps to
+        SMSS, no add-back fires, and cwnd stays at the floor.
+
+        Reference: RFC 6582 §3 step 3b (floor invariant).
         """
 
         result = partial_cum_ack_deflate(cwnd=1460, bytes_acked=100, smss=1460)
@@ -208,9 +218,10 @@ class TestPartialCumAckDeflate__BoundaryCwnd(TestCase):
 
     def test__newreno__cwnd_at_floor_with_full_mss_acked_grows_to_double_mss(self) -> None:
         """
-        cwnd at SMSS, partial cum-ACK acks exactly SMSS:
-        deflation clamped to SMSS, add-back fires (since
-        bytes_acked >= SMSS). Result: cwnd = 2 * SMSS.
+        Ensure that with cwnd at SMSS and a partial cum-ACK
+        acking exactly SMSS, deflation clamps to SMSS and the
+        add-back fires (since bytes_acked >= SMSS), yielding
+        cwnd = 2 * SMSS.
 
         This is the only case where partial cum-ACK GROWS
         cwnd. It happens because the floor protects the
@@ -219,6 +230,8 @@ class TestPartialCumAckDeflate__BoundaryCwnd(TestCase):
         means we're right at the slow-start re-entry value
         and the recovery is barely making progress; the
         small permissive grant is RFC-correct.
+
+        Reference: RFC 6582 §3 step 3b (floor + add-back permissive grant).
         """
 
         result = partial_cum_ack_deflate(cwnd=1460, bytes_acked=1460, smss=1460)
@@ -238,7 +251,8 @@ class TestPartialCumAckDeflate__ArgumentAsserts(TestCase):
 
     def test__newreno__negative_cwnd_raises(self) -> None:
         """
-        cwnd < 0 is non-sensical; the helper asserts.
+        Ensure cwnd < 0 raises (non-sensical input).
+
         Reference: RFC 6582 §3 (cwnd is non-negative byte count).
         """
 
@@ -247,7 +261,8 @@ class TestPartialCumAckDeflate__ArgumentAsserts(TestCase):
 
     def test__newreno__negative_bytes_acked_raises(self) -> None:
         """
-        bytes_acked < 0 is non-sensical; the helper asserts.
+        Ensure bytes_acked < 0 raises (non-sensical input).
+
         Reference: RFC 6582 §3 (bytes_acked is non-negative).
         """
 
@@ -256,8 +271,9 @@ class TestPartialCumAckDeflate__ArgumentAsserts(TestCase):
 
     def test__newreno__zero_smss_raises(self) -> None:
         """
-        smss must be positive (it is the floor + add-back
-        value, both of which would be degenerate at 0).
+        Ensure smss must be positive (it is the floor + add-
+        back value, both of which would be degenerate at 0).
+
         Reference: RFC 6582 §3 (SMSS is positive byte count).
         """
 
@@ -266,13 +282,14 @@ class TestPartialCumAckDeflate__ArgumentAsserts(TestCase):
 
     def test__newreno__zero_bytes_acked_passes_through(self) -> None:
         """
-        bytes_acked = 0 is degenerate (a partial cum-ACK
-        should advance SND.UNA by at least one byte) but the
-        helper does not assert on it - the caller's
-        SND.UNA-advancement gate is the actual filter. With
-        bytes_acked=0 the helper returns max(smss, cwnd) and
-        skips the add-back, which is RFC-equivalent to "do
-        nothing" for any reasonable cwnd.
+        Ensure bytes_acked = 0 passes through. This is
+        degenerate (a partial cum-ACK should advance SND.UNA
+        by at least one byte) but the helper does not assert
+        on it - the caller's SND.UNA-advancement gate is the
+        actual filter. With bytes_acked=0 the helper returns
+        max(smss, cwnd) and skips the add-back, which is
+        RFC-equivalent to "do nothing" for any reasonable cwnd.
+
         Reference: RFC 6582 §3 step 3b (no-op on no-progress).
         """
 
