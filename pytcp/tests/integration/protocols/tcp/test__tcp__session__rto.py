@@ -672,3 +672,314 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
             RtoState,
             msg=("'_rto_state' must be the typed 'RtoState' " "dataclass from 'pytcp.protocols.tcp.tcp__rto'."),
         )
+
+
+class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 6298 §5 session-level retransmit
+    timer machinery (Phase 3 of '.claude/rules/tcp_rto_integration.md').
+
+    Phase 3 replaces PyTCP's per-seq retransmit-timer family
+    ('f"{session}-retransmit_seq-{seq}"' keyed by '_tx_retransmit_timeout_counter')
+    with a single session-level timer 'f"{session}-retransmit"' driven
+    by '_rto_state.rto_ms'. The five RFC 6298 §5 invariants the new
+    machinery must satisfy:
+
+        §5.1  Every time a packet containing data is sent (including
+              a retransmission), if the timer is not running, start
+              it running so that it will expire after RTO seconds.
+        §5.2  When all outstanding data has been acknowledged, turn
+              off the retransmission timer.
+        §5.3  When an ACK is received that acknowledges new data,
+              restart the retransmission timer so that it will
+              expire after RTO seconds.
+        §5.4  Retransmit the earliest segment that has not been
+              acknowledged.
+        §5.5  Set RTO = RTO * 2 ('back off the timer'), capped at
+              the upper bound (MAX_RTO_MS).
+
+    The tests below exercise §5.1 / §5.2 / §5.5 directly. §5.3 and
+    §5.4 are covered transitively by the existing
+    'data_transfer__retransmit_timeout' integration suite (whose
+    cadence assertions stay green via the 'MIN_RTO_MS' clamp).
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
+        would. Returns the session in CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED
+        and bypass slow-start so the data tests can fire at the
+        full advertised window.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rto__data_transmit_arms_session_level_retransmit_timer(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.1: when a data segment is sent and no
+        retransmit timer is currently running, the session arms a
+        single 'f"{session}-retransmit"' timer (NOT the legacy
+        'f"{session}-retransmit_seq-{seq}"' family) with timeout
+        equal to '_rto_state.rto_ms'.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED.
+            * Send a payload; advance one tick so '_transmit_data'
+              fires the data segment.
+            * Assert 'f"{session}-retransmit"' is registered in
+              'stack.timer.pending_timers'.
+            * Assert its remaining time equals
+              '_rto_state.rto_ms' (= 1000 ms post-handshake).
+            * Assert NO 'f"{session}-retransmit_seq-..."' key
+              survives - the per-seq family is gone.
+
+        Fails today: the per-seq family is still in use; the new
+        session-level name is never registered.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        payload = b"hello, world!"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        session_retransmit_timer = f"{session}-retransmit"
+        self.assertIn(
+            session_retransmit_timer,
+            self._timer.pending_timers,
+            msg=(
+                f"RFC 6298 §5.1: a data send while no retransmit "
+                f"timer is running MUST arm "
+                f"'{session_retransmit_timer}'. Got pending timers: "
+                f"{sorted(self._timer.pending_timers)!r}."
+            ),
+        )
+        self.assertEqual(
+            self._timer.pending_timers[session_retransmit_timer],
+            session._rto_state.rto_ms,
+            msg=(
+                f"RFC 6298 §5.1 / §5.6: the session-level retransmit "
+                f"timer MUST be armed with '_rto_state.rto_ms' "
+                f"(= {session._rto_state.rto_ms} ms post-handshake), "
+                f"not a hand-rolled exponential of "
+                f"'PACKET_RETRANSMIT_TIMEOUT'."
+            ),
+        )
+
+        legacy_per_seq_keys = [k for k in self._timer.pending_timers if k.startswith(f"{session}-retransmit_seq-")]
+        self.assertEqual(
+            legacy_per_seq_keys,
+            [],
+            msg=(
+                "Phase 3 retires the per-seq retransmit-timer family. "
+                "No 'f\"{session}-retransmit_seq-X\"' keys may survive "
+                f"after a fresh data send. Got: {legacy_per_seq_keys!r}."
+            ),
+        )
+
+    def test__rto__cumulative_ack_draining_in_flight_stops_retransmit_timer(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.2: when a cumulative ACK fully drains
+        the in-flight bytes (all sent data is acknowledged), the
+        retransmit timer MUST be turned off.
+
+            "(5.2) When all outstanding data has been acknowledged,
+                   turn off the retransmission timer."
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED.
+            * Send a payload; advance one tick so the data segment
+              fires (and the retransmit timer is armed).
+            * Drive a peer ACK covering all in-flight bytes.
+            * Assert NO timer whose name contains 'retransmit'
+              remains in 'stack.timer.pending_timers' (the session-
+              level entry was unregistered AND no leftover per-seq
+              entry from the legacy machinery).
+
+        Fails today: the legacy machinery purges
+        '_tx_retransmit_timeout_counter' on cum-ACK but does NOT
+        unregister the still-counting 'f"{session}-retransmit_seq-X"'
+        timer in 'stack.timer._timers'. Phase 3 explicitly turns
+        the session-level timer off.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        payload = b"hello, world!"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        retransmit_keys = [k for k in self._timer.pending_timers if "retransmit" in k]
+        self.assertEqual(
+            retransmit_keys,
+            [],
+            msg=(
+                "RFC 6298 §5.2: a cum-ACK that drains all in-flight "
+                "bytes MUST turn off the retransmission timer. "
+                "Today the legacy per-seq machinery only purges its "
+                "internal counter dict and leaves the named stack-"
+                "timer entry counting down; Phase 3 must explicitly "
+                "unregister 'f\"{session}-retransmit\"'. Got "
+                f"surviving keys: {retransmit_keys!r}."
+            ),
+        )
+
+    def test__rto__retransmit_timeout_backs_off_rto_state(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6298 §5.5: when the retransmit timer expires,
+        '_rto_state.rto_ms' MUST be doubled via 'tcp__rto.back_off'
+        (capped at 'MAX_RTO_MS') and the timer re-armed with the
+        new value.
+
+            "(5.5) The host MUST set RTO <- RTO * 2 ('back off the
+                   timer'). The maximum value discussed in (2.5)
+                   may be used to provide an upper bound to this
+                   doubling operation."
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Capture the post-
+              handshake '_rto_state' (rto_ms = 1000 via
+              'MIN_RTO_MS' clamp).
+            * Send a payload; advance one tick so the data
+              segment fires and the timer is armed.
+            * Advance past the timer's deadline (~1001 ms with
+              the post-handshake clamp) so
+              '_retransmit_packet_timeout' fires.
+            * Assert '_rto_state.rto_ms' has doubled (= 2000 ms).
+            * Assert SRTT and RTTVAR are unchanged - back_off
+              touches only RTO, leaves the smoothed estimator
+              alone (Karn's algorithm separates sample-driven
+              updates from timeout-driven backoffs).
+            * Assert 'f"{session}-retransmit"' is re-armed with
+              the new 'rto_ms = 2000' (RFC 6298 §5.6).
+
+        Fails today: '_retransmit_packet_timeout' uses a hand-
+        rolled '1000 * (1 << count)' formula and does NOT touch
+        '_rto_state'.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        pre_backoff_state = session._rto_state
+
+        payload = b"hello, world!"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Advance past the per-handshake-clamped RTO. With the
+        # MIN_RTO_MS clamp the timer is armed at 1000 ms; +1 ms
+        # past the boundary fires the retransmit handler.
+        self._advance(ms=1001)
+
+        self.assertEqual(
+            session._rto_state.rto_ms,
+            pre_backoff_state.rto_ms * 2,
+            msg=(
+                f"RFC 6298 §5.5: retransmit timeout MUST double "
+                f"'_rto_state.rto_ms' via 'back_off'. Pre-backoff "
+                f"rto_ms={pre_backoff_state.rto_ms}; expected "
+                f"{pre_backoff_state.rto_ms * 2} post-backoff; got "
+                f"{session._rto_state.rto_ms}."
+            ),
+        )
+        self.assertEqual(
+            session._rto_state.srtt_ms,
+            pre_backoff_state.srtt_ms,
+            msg=(
+                "RFC 6298 §5.5 'back_off' MUST NOT touch SRTT - "
+                "Karn's algorithm separates sample-driven updates "
+                "from timeout-driven backoffs."
+            ),
+        )
+        self.assertEqual(
+            session._rto_state.rttvar_ms,
+            pre_backoff_state.rttvar_ms,
+            msg=(
+                "RFC 6298 §5.5 'back_off' MUST NOT touch RTTVAR - "
+                "Karn's algorithm separates sample-driven updates "
+                "from timeout-driven backoffs."
+            ),
+        )
+
+        session_retransmit_timer = f"{session}-retransmit"
+        self.assertIn(
+            session_retransmit_timer,
+            self._timer.pending_timers,
+            msg=(
+                f"RFC 6298 §5.6: after back_off, the retransmit "
+                f"timer MUST be re-armed with the new rto_ms. "
+                f"Got pending timers: "
+                f"{sorted(self._timer.pending_timers)!r}."
+            ),
+        )
+        self.assertEqual(
+            self._timer.pending_timers[session_retransmit_timer],
+            session._rto_state.rto_ms,
+            msg=(
+                f"RFC 6298 §5.6: the re-armed timer's timeout "
+                f"MUST equal the post-backoff "
+                f"'_rto_state.rto_ms = {session._rto_state.rto_ms}'."
+            ),
+        )
