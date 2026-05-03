@@ -363,6 +363,27 @@ class TcpSession:
         # ceiling.
         self._snd_ewn: int = self._snd_mss
 
+        # RFC 5681 Phase 1 fields (see
+        # '.claude/rules/tcp_rfc5681_cwnd.md'). Declared with
+        # canonical defaults so the [FLAGS BUG] tests-first
+        # suite can exercise the attribute access; the actual
+        # growth / reduction logic is wired by the Phase 1 fix
+        # commit (slow-start vs CA in '_process_ack_packet'),
+        # Phase 2 fix (RTO ssthresh halving), and Phase 3 fix
+        # (fast-recovery inflation/deflation in
+        # '_retransmit_packet_request' and the recovery exit
+        # path). Pre-Phase-1, these fields are observable but
+        # unused by the runtime - '_snd_ewn' is still the
+        # single source of truth.
+        self._cwnd: int = self._snd_mss
+        # RFC 5681 §3.1: "ssthresh SHOULD be set arbitrarily high
+        # (e.g., to the size of the largest possible advertised
+        # window)". 'INT32_MAX' (0x7FFFFFFF) is the canonical
+        # large-constant choice (mirrors Linux's 'int_max'); it
+        # is well above any realistic peer-advertised window so
+        # the session enters slow-start cleanly post-handshake.
+        self._ssthresh: int = 0x7FFF_FFFF
+
         # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
         # don't use wscale for backward compatibility.
         self._snd_wsc: int = 0
