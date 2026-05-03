@@ -8,10 +8,21 @@ already landed under
 
 ---
 
+> **Note (2026-05-02 update).** `tcp__session.py` has since
+> moved to `pytcp/protocols/tcp/tcp__session.py` and was split
+> into per-state free-function modules
+> (`tcp__fsm__<state>.py`) plus a `tcp__fsm.py` dispatch table.
+> Test files moved to
+> `pytcp/tests/{unit,integration}/protocols/tcp/test__tcp__*.py`.
+> See `.claude/rules/tcp_session_split.md` for the move + split
+> record. References below to `pytcp/socket/tcp__session.py` and
+> `tests/integration/socket/` should be read in light of those
+> renames; the workflow and reporting conventions are unchanged.
+
 ## 1. Mission
 
 Build a comprehensive integration-test suite for
-`pytcp/socket/tcp__session.py` that:
+`pytcp/protocols/tcp/tcp__session.py` that:
 
 1. Drives the TCP FSM end-to-end through the real packet handler
    (TX out via mocked `TxRing`, RX in via real `_phrx_ethernet`).

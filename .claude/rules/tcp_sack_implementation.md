@@ -54,6 +54,7 @@ pytcp/
         tcp_loss_recovery.py          is_lost / next_seg / pipe predicates (RFC 6675 §3-§4)
     socket/
         tcp__metadata.py              tcp__sackperm + tcp__sack_blocks fields
+    protocols/tcp/
         tcp__session.py               SACK attributes / helpers / FSM integration (see §6)
     stack/packet_handler/
         packet_handler__tcp__rx.py    Populates tcp__sackperm + tcp__sack_blocks from parser
@@ -290,7 +291,7 @@ ls pytcp/tests/integration/socket/test__socket__tcp__session__sack.py
 Read the docstrings of:
 - `pytcp/lib/tcp_sack.py::SackScoreboard`
 - `pytcp/lib/tcp_loss_recovery.py` (all three predicates)
-- `pytcp/socket/tcp__session.py::TcpSession.__init__` (SACK attributes
+- `pytcp/protocols/tcp/tcp__session.py::TcpSession.__init__` (SACK attributes
   with their inline docstrings)
 
 Then decide whether the extension fits the deferred-work taxonomy in

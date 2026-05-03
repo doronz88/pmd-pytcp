@@ -674,7 +674,7 @@ through the container.
   `RawSocket` based on the `type_` argument. Mirror BSD socket
   semantics — method names (`bind`, `listen`, `accept`, `connect`,
   `send`, `recv`, `close`) match the stdlib `socket` module.
-- TCP's FSM is implemented in `pytcp/socket/tcp__session.py` using
+- TCP's FSM is implemented in `pytcp/protocols/tcp/tcp__session.py` using
   `FsmState` and `SysCall` enums. Keep state transitions inside the
   session object; the socket class is a thin BSD-API shim over it.
 
@@ -932,8 +932,9 @@ When in doubt, mirror the structure of:
   `from_proto` factory.
 - `pytcp/lib/subsystem.py` — `Subsystem` base and the
   `_event__stop_subsystem` / `_thread__subsystem` pattern.
-- `pytcp/socket/__init__.py` + `pytcp/socket/tcp__session.py` —
-  the BSD-socket facade and the TCP FSM.
+- `pytcp/socket/__init__.py` + `pytcp/protocols/tcp/tcp__session.py` —
+  the BSD-socket facade and the TCP FSM (the FSM is split into
+  per-state free-function modules under `pytcp/protocols/tcp/tcp__fsm__<state>.py`).
 
 These files are the canonical examples. Any deviation from this
 rule should be justified by something that appears in one of them —
