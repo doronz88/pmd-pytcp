@@ -570,39 +570,53 @@ class TestTcpKeepalive(TcpSessionTestCase):
         """
         [FLAGS BUG]
 
-        Ensure that any data-bearing peer activity (an inbound data
-        segment, an outbound data segment, or an inbound ACK
-        advancing SND.UNA) resets the keep-alive idle timer per RFC
-        1122 §4.2.3.6's "idle" definition: the timer counts time
-        since the LAST observed segment, not time since handshake.
+        Ensure that data-bearing peer activity resets the keep-alive
+        idle timer per RFC 1122 §4.2.3.6's "idle" definition: the
+        timer counts time since the LAST observed segment, not time
+        since handshake. After a reset, the timer must re-arm to
+        fire one full KEEPALIVE_IDLE_TIME later (NOT immediately,
+        not at the original boundary).
+
+        The test is structured to fail today on the FINAL "probe
+        fires after the new boundary" assertion, which requires the
+        keep-alive feature to actually exist. A weaker shape that
+        only checked "no probe in a small post-data window" would
+        pass vacuously today (no probes ever fire without the
+        feature) and would also tolerate a broken implementation
+        that disarms the timer entirely on data activity instead of
+        re-arming it.
 
         Scenario:
 
             * Drive handshake to ESTABLISHED, enable keep-alive,
               patch constants.
-            * Advance to (KEEPALIVE_IDLE_TIME - 30) ms. No probe
-              yet (we are just before the boundary).
-            * Feed a peer data segment (1 byte at SND.NXT, RCV.NXT,
-              "X"). The session ACKs it.
-            * Advance another 30 ms. Without a reset the idle timer
-              would now have expired (we are 60 ms past the
-              ORIGINAL boundary). Expect: zero keep-alive probes -
-              data activity reset the timer back to zero.
+            * Advance to (KEEPALIVE_IDLE_TIME - margin) ms. No probe
+              yet (we are just before the original boundary).
+            * Feed peer data (1 byte). The session inline-ACKs.
+            * Advance through what WOULD have been the original
+              idle boundary (now (KEEPALIVE_IDLE_TIME + margin) ms
+              since handshake). Expect: no keep-alive probe -
+              the timer was reset by the data activity, so the
+              old boundary is no longer relevant. Filter out the
+              data-ACK so we only count probes (probes use
+              seq=SND.NXT-1; data-acks use seq=SND.NXT).
+            * Advance further to one tick past the NEW boundary
+              ((KEEPALIVE_IDLE_TIME - margin) + KEEPALIVE_IDLE_TIME
+              + 1 ms since handshake). Expect: exactly one keep-
+              alive probe fires - this proves the timer was
+              correctly RE-ARMED, not just disarmed.
 
-        Current code: no idle timer is armed at all, so this
-        passes vacuously. Once the fix lands, the assertion
-        enforces the reset semantics; the [FLAGS BUG] tag refers
-        to the missing implementation that this test is designed
-        to constrain. (The 'all_tx' list will contain the inline
-        ACK we sent in response to peer's data; the test filters
-        those out via the parsed-flag check.)
+        Current code (no keep-alive implementation): the final
+        "probe fires after the new boundary" assertion fails
+        because no probe ever fires. This is the [FLAGS BUG].
 
-        Fix outline: tag every outbound or inbound data-bearing
-        path (or, more cleanly, the post-ACK-processing path in
+        Fix outline: tag the ACK-processing path in
         '_process_ack_packet' and the data-enqueue path in
-        '_tcp_fsm_established') with 'self._keepalive_idle_reset()'
-        which re-arms the timer and clears the unanswered-probe
-        counter.
+        '_tcp_fsm_established' / '_tcp_fsm_close_wait' /
+        '_tcp_fsm_fin_wait_*' with a helper that re-arms the
+        keep-alive idle timer for KEEPALIVE_IDLE_TIME and resets
+        the unanswered-probe counter. The same helper fires on
+        outbound data-bearing transmits in '_transmit_data'.
         """
 
         self._patch_keepalive_constants()
@@ -618,7 +632,9 @@ class TestTcpKeepalive(TcpSessionTestCase):
             msg="Setup: no probe must fire before the idle boundary.",
         )
 
-        # Peer sends one byte of data. Session ACKs.
+        # Peer sends one byte. The session inline-ACKs at the
+        # post-data RCV.NXT (so seq=SND.NXT, distinguishable from
+        # a probe at seq=SND.NXT-1).
         peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -629,30 +645,46 @@ class TestTcpKeepalive(TcpSessionTestCase):
             payload=b"X",
         )
         ack_tx = self._drive_rx(frame=peer_data)
+        snd_nxt_after_data = session._snd_nxt
 
-        # Advance past the ORIGINAL idle boundary (now at
-        # IDLE_TIME + margin total since handshake) and stop just
-        # before what would be a NEW boundary if the timer reset.
-        post_data_tx = self._advance(ms=margin_ms * 2)
+        def _is_probe(frame: bytes) -> bool:
+            """A probe is the ACK with seq=SND.NXT-1; data-ACKs use seq=SND.NXT."""
+            return self._parse_tx(frame).seq != snd_nxt_after_data
 
-        # Filter out the ACK we sent in response to peer's data;
-        # we only care about whether a KEEPALIVE PROBE was emitted.
-        # Probes have empty payload AND seq == SND.NXT - 1; the
-        # data-ack we sent has seq == SND.NXT and empty payload too,
-        # so we cannot distinguish them by payload alone. The
-        # cleanest check: zero probes means zero TX frames whose
-        # seq does NOT match the current SND.NXT (probes use
-        # SND.NXT - 1).
-        snd_nxt_now = session._snd_nxt
-        probe_count = sum(1 for frame in (ack_tx + post_data_tx) if self._parse_tx(frame).seq != snd_nxt_now)
-
+        # Advance through the ORIGINAL boundary (now at
+        # IDLE_TIME + margin total since handshake) and just past
+        # it. If the timer was NOT reset, a probe would have fired
+        # somewhere in this window.
+        through_old_boundary_tx = self._advance(ms=2 * margin_ms)
+        probes_before_new_boundary = sum(1 for frame in (ack_tx + through_old_boundary_tx) if _is_probe(frame))
         self.assertEqual(
-            probe_count,
+            probes_before_new_boundary,
             0,
             msg=(
                 "RFC 1122 §4.2.3.6: data activity must reset the idle timer; "
-                f"no keep-alive probe must fire within the {margin_ms * 2} ms "
-                "after a peer data segment. Got "
-                f"{probe_count} probe(s)."
+                f"no keep-alive probe must fire within {2 * margin_ms} ms after a "
+                f"peer data segment (i.e., past the ORIGINAL idle boundary). "
+                f"Got {probes_before_new_boundary} probe(s)."
+            ),
+        )
+
+        # Advance to one tick past the NEW idle boundary (full
+        # KEEPALIVE_IDLE_TIME after the data activity). The timer,
+        # if correctly re-armed, must fire exactly one probe here.
+        # Total elapsed since data activity at this point will be
+        # (2 * margin) + remaining = KEEPALIVE_IDLE_TIME + 1, so
+        # advance the difference.
+        remaining_to_new_boundary = TEST__KEEPALIVE_IDLE_TIME_MS - 2 * margin_ms + 1
+        new_boundary_tx = self._advance(ms=remaining_to_new_boundary)
+        probes_at_new_boundary = sum(1 for frame in new_boundary_tx if _is_probe(frame))
+        self.assertEqual(
+            probes_at_new_boundary,
+            1,
+            msg=(
+                "RFC 1122 §4.2.3.6: after data activity resets the idle timer, "
+                "the timer must re-arm and fire ONE probe at the NEW boundary "
+                f"(KEEPALIVE_IDLE_TIME={TEST__KEEPALIVE_IDLE_TIME_MS} ms after "
+                f"the data). Got {probes_at_new_boundary} probe(s) - the timer "
+                "either disarmed entirely or never fired."
             ),
         )
