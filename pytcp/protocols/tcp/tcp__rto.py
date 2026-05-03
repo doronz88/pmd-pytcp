@@ -120,10 +120,7 @@ def initial_state() -> RtoState:
     'INITIAL_RTO_MS' (RFC 6298 §2.1).
     """
 
-    raise NotImplementedError(
-        "RFC 6298 RTO 'initial_state' is not yet implemented; see "
-        "pytcp/protocols/tcp/tcp__rto.py for the planned formula"
-    )
+    return RtoState(srtt_ms=None, rttvar_ms=None, rto_ms=INITIAL_RTO_MS)
 
 
 def update(state: RtoState, sample_ms: int) -> RtoState:
@@ -145,9 +142,19 @@ def update(state: RtoState, sample_ms: int) -> RtoState:
     to this function.
     """
 
-    raise NotImplementedError(
-        "RFC 6298 RTO 'update' is not yet implemented; see " "pytcp/protocols/tcp/tcp__rto.py for the planned formula"
-    )
+    if state.srtt_ms is None:
+        # RFC 6298 §2.2 first-sample case.
+        srtt = sample_ms
+        rttvar = sample_ms // 2
+    else:
+        # RFC 6298 §2.3 subsequent-sample EWMA. SRTT and RTTVAR are
+        # set together so 'rttvar_ms is not None' whenever SRTT is
+        # not None; the assert is for mypy.
+        assert state.rttvar_ms is not None
+        rttvar = ((BETA_DEN - BETA_NUM) * state.rttvar_ms + BETA_NUM * abs(state.srtt_ms - sample_ms)) // BETA_DEN
+        srtt = ((ALPHA_DEN - ALPHA_NUM) * state.srtt_ms + ALPHA_NUM * sample_ms) // ALPHA_DEN
+    rto = srtt + max(CLOCK_GRANULARITY_MS, K * rttvar)
+    return RtoState(srtt_ms=srtt, rttvar_ms=rttvar, rto_ms=clamp_rto(rto))
 
 
 def back_off(state: RtoState) -> RtoState:
@@ -160,8 +167,10 @@ def back_off(state: RtoState) -> RtoState:
     non-retransmitted sample arrives).
     """
 
-    raise NotImplementedError(
-        "RFC 6298 RTO 'back_off' is not yet implemented; see " "pytcp/protocols/tcp/tcp__rto.py for the planned formula"
+    return RtoState(
+        srtt_ms=state.srtt_ms,
+        rttvar_ms=state.rttvar_ms,
+        rto_ms=min(state.rto_ms * 2, MAX_RTO_MS),
     )
 
 
@@ -173,7 +182,4 @@ def clamp_rto(rto_ms: int) -> int:
     'update' / 'back_off'.
     """
 
-    raise NotImplementedError(
-        "RFC 6298 RTO 'clamp_rto' is not yet implemented; see "
-        "pytcp/protocols/tcp/tcp__rto.py for the planned formula"
-    )
+    return max(MIN_RTO_MS, min(rto_ms, MAX_RTO_MS))
