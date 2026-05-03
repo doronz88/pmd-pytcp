@@ -266,10 +266,10 @@ LOC.
 
 Estimated: 2 commits. Risk: low (mechanical replication).
 
-### Phase D1 — Deferred timestamps work (RFC 7323)
+### Phase D1 — Extend RFC 7323 to non-`_process_ack_packet` paths
 
 The completion record `tcp_rfc7323_timestamps.md` §7.4 / §7.5
-flagged two deferrals:
+flagged two scope-limited paths:
 
   - PAWS check applies only to segments routed through
     `_process_ack_packet`; dup-ACK / OOO / TIME-WAIT paths
@@ -284,7 +284,7 @@ True if the segment passes PAWS, and updates `_ts_recent` as
 a side effect. Call it at the top of every FSM state handler's
 accepted-segment branch.
 
-**Tests-first**: 2-3 [FLAGS BUG] tests:
+**Tests-first**: 3 [FLAGS BUG] tests:
   1. `test__paws__dup_ack_with_stale_tsval_dropped` — peer's
      dup-ACK with stale TSval dropped at the FSM dispatcher.
   2. `test__ts_recent__updated_on_dup_ack_with_fresh_tsval` —
@@ -296,34 +296,62 @@ accepted-segment branch.
 Estimated: 2-3 commits, medium risk (touches multiple FSM
 modules).
 
-### Phase D2 — Deferred RFC 5961 strengthening
+### Phase D2 — RFC 5961 ACK-acceptability hardening
 
-Beyond the RST hardening in Phase C1, RFC 5961 also specifies
-ACK-acceptability hardening (challenge-ACK on unacceptable
-ACK). PyTCP fix #12 (commit `7893c97` per the integration
-tests record) addressed part of this; the rest is
-state-by-state coverage.
+Beyond the RST hardening in Phase C1, RFC 5961 §5 specifies
+ACK-acceptability hardening: an ACK with `seg.ack` outside
+`[snd_una - max_window, snd_nxt]` MUST elicit a challenge-ACK
+rather than be silently dropped. PyTCP fix #12 (commit
+`7893c97` per the integration tests record) addressed part of
+this — the unacceptable-ACK -> empty-ACK-reply path. RFC 5961
+§5 is more nuanced: the "blind data injection" attack vector
+needs the `max_window` lookback, not just the strict `snd_nxt`
+upper bound.
 
-Skip in this audit project — track separately as an "RFC 5961
-full hardening" project if it becomes priority.
+**Tests-first** (`robustness__blind_attacks.py`):
+
+  1. `test__ack__blind_in_window_below_snd_una_emits_challenge_ack`
+     [FLAGS BUG] — RFC 5961 §5: ACK below `snd_una -
+     max_window` triggers challenge-ACK, not silent drop.
+  2. `test__ack__above_snd_nxt_emits_challenge_ack` regression
+     guard — already implemented per fix #12.
+
+**Fix**: extend the existing acceptable-ACK gate to the RFC
+5961 §5 window. Track `_max_window` (the largest `snd_wnd`
+ever seen) and use `[snd_una - max_window, snd_nxt]` as the
+acceptable range. ~10 LOC.
+
+Estimated: 2 commits. Risk: low-medium.
 
 ---
 
 ## 2. Project ordering and commit budget
 
-Recommended order (highest impact first):
+Execute every phase. No deferrals. Recommended order
+(foundation → real RFC gaps → coverage → docs):
 
-| Phase | Description | Commits | Risk | Impact |
-|---|---|---|---|---|
-| A1 | `tcp__cwnd.py` helper + 20 unit tests | 1-2 | low | High - matches project pattern |
-| C1 | RFC 5961 RST in-window acceptance | 2 | low-medium | High - real RFC gap |
-| C3 | SYN-on-synchronized in half-close states | 2 | low | Medium - real RFC gap |
-| C2 | RFC 6691 IPv6 MSS | 2 | low | Medium - real RFC gap |
-| B1 | Cross-RFC interaction tests | 1-2 | low | Medium - regression guards |
-| D1 | Deferred PAWS / `_ts_recent` extension | 2-3 | medium | Low-medium |
-| B2 | Memory pointer cleanup | 1 | trivial | Trivial |
+| Phase | Description | Commits | Risk |
+|---|---|---|---|
+| A1 | `tcp__cwnd.py` helper + ~20 unit tests | 1-2 | low |
+| C1 | RFC 5961 RST in-window acceptance | 2 | low-medium |
+| C2 | RFC 6691 IPv6 MSS = MTU - 60 | 2 | low |
+| C3 | SYN-on-synchronized in 5 half-close states | 2 | low |
+| D1 | Extend PAWS + `_ts_recent` to non-`_process_ack_packet` paths | 2-3 | medium |
+| D2 | RFC 5961 §5 ACK-acceptability hardening | 2 | low-medium |
+| B1 | 5 cross-RFC interaction tests | 1-2 | low |
+| B2 | Memory pointer + completion-record updates | 1 | trivial |
 
-**Total: 11-14 commits, ~4-6 hours of focused work.**
+**Total: 13-16 commits, ~5-7 hours of focused work.**
+
+Stop conditions (when to pause and report rather than push
+through):
+  - `make test` fails with regressions on existing tests AND
+    the failure isn't trivially fixable in <30 LOC. Capture
+    the failure and ask before deviating from the plan.
+  - A phase's [FLAGS BUG] tests pass against current code
+    (would mean the bug is already fixed). Audit the existing
+    code path to confirm, mark the test as a regression
+    guard, continue.
 
 ---
 
@@ -382,11 +410,15 @@ Recommended order (highest impact first):
 After `/compact`, a fresh session can execute the plan with:
 
 ```
-Execute Phase A1 of .claude/rules/tcp_test_coverage_audit.md.
-After it lands, continue with Phase C1, then C3, C2, B1.
-Skip D1 unless suite count exceeds 8000 (indicates A1-C2 all
-landed and we have budget).
+Execute every phase of .claude/rules/tcp_test_coverage_audit.md
+in this order: A1 -> C1 -> C2 -> C3 -> D1 -> D2 -> B1 -> B2.
+Do not skip or defer any phase. Pause and report only on
+unrecoverable test regressions (existing tests breaking with
+no <30-LOC fix available).
 ```
 
-This sequence delivers ~50 new tests (20 unit + 30 integration)
-and 3 RFC-conformance fixes in 8-10 commits.
+Total deliverable: ~55 new tests (~20 unit + ~35 integration),
+4 RFC-conformance fixes (5961 §3 RST, 5961 §5 ACK, 6691 IPv6
+MSS, 9293 SYN-in-half-close), and the long-deferred PAWS /
+`_ts_recent` extension to all FSM paths. Final suite count
+target: ~7990-8000.
