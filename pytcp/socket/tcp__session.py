@@ -1941,8 +1941,13 @@ class TcpSession:
             and all({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_ack})
             and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_rst})
         ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__ack == self._snd_nxt and not packet_rx_md.tcp__data:
+            # Packet sanity check. RFC 9293 §3.10.7.3 step 4 ("If
+            # there are other controls or text in the segment, then
+            # continue processing at the sixth step under Section
+            # 3.10.7.4 ...") explicitly permits piggybacked data on
+            # the SYN+ACK; the data is NOT gated here, it is
+            # enqueued into '_rx_buffer' below.
+            if packet_rx_md.tcp__ack == self._snd_nxt:
                 # Clamp the effective send-MSS to RFC 879 / RFC 6691
                 # bounds: at most 'mtu - 40' (so we never fragment on
                 # the local link), at least 'TCP__MIN_MSS = 536' (the
@@ -1979,6 +1984,16 @@ class TcpSession:
                 # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
                 self._peer_contacted = True
                 self._snd_ewn = self._snd_mss
+                # Enqueue any piggybacked SYN+ACK data per RFC 9293
+                # §3.10.7.4 step 7 BEFORE '_process_ack_packet'
+                # runs: the helper's overlap-prefix calculation
+                # would otherwise classify all data bytes as
+                # already-received (since RCV.NXT was pre-advanced
+                # past them above) and silently drop them. Mirrors
+                # the LISTEN-side handling for SYN-with-data in
+                # '_tcp_fsm_listen'.
+                if packet_rx_md.tcp__data:
+                    self._enqueue_rx_buffer(packet_rx_md.tcp__data)
                 # Process ACK packet (uses '_snd_wsc=0' still, so
                 # the SYN+ACK's win is preserved unshifted).
                 self._process_ack_packet(packet_rx_md)
@@ -2151,13 +2166,24 @@ class TcpSession:
                 }
             )
         ):
-            # Packet sanity check.
-            if (
-                packet_rx_md.tcp__seq == self._rcv_nxt
-                and packet_rx_md.tcp__ack == self._snd_nxt
-                and not packet_rx_md.tcp__data
-            ):
+            # Packet sanity check. RFC 9293 §3.10.7.4 step 7 ("Once
+            # in the ESTABLISHED state, it is possible to deliver
+            # segment text to user RECEIVE buffers") explicitly
+            # permits piggybacked data on the third-leg ACK; the
+            # data is NOT gated here, '_process_ack_packet' below
+            # enqueues it via its overlap-prefix logic (RCV.NXT is
+            # still at 'peer_ISS + 1' here, so the overlap prefix
+            # is 0 and the full payload is enqueued).
+            if packet_rx_md.tcp__seq == self._rcv_nxt and packet_rx_md.tcp__ack == self._snd_nxt:
                 self._process_ack_packet(packet_rx_md)
+                # Inline ACK if peer piggybacked data so peer's
+                # retransmit machinery sees the data acknowledged
+                # without waiting for delayed-ACK to fire (matches
+                # the same idiom used for FIN+ACK with data in
+                # '_tcp_fsm_established' and the data-bearing ACK
+                # branches in the half-close states).
+                if packet_rx_md.tcp__data:
+                    self._transmit_packet(flag_ack=True)
                 # Change state to ESTABLISHED.
                 self._change_state(FsmState.ESTABLISHED)
                 # Passive-open path: inform the listening socket so
