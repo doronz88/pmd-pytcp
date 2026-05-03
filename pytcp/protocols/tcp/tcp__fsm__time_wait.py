@@ -56,6 +56,29 @@ def fsm__time_wait(
 ) -> None:
     """
     TCP FSM TIME_WAIT state handler.
+
+    Implements the RFC 1337 'TIME-WAIT Assassination Hazards'
+    mitigations:
+
+      Hazard #1 (old duplicate FIN): re-ACK and restart the
+        2*MSL timer (RFC 9293 §3.10.7.5; explicit branch
+        below).
+      Hazard #2 (old duplicate RST): silently drop. The
+        handler does not recognise RST as a recognised
+        segment type, so it falls through to the implicit
+        no-op return at the end - PyTCP's TIME-WAIT cannot
+        be "assassinated" by a delayed or maliciously-
+        injected RST. Pinned by
+        'TestTcpClose__TimeWaitRfc1337::test__rfc1337__rst_in_time_wait_does_not_terminate'.
+      Hazard #3 (new SYN): elicit a challenge ACK without
+        transitioning out of TIME-WAIT (RFC 9293 §3.10.7.4 /
+        RFC 5961 §4; explicit branch below).
+
+    The PAWS check shipped in RFC 7323 §5 (commit '79ed38e')
+    extends Hazard #2 to ALSO drop stale-TSval segments, not
+    just RSTs - any segment from an earlier seq cycle that
+    has been delayed in the network is rejected at the
+    inbound dispatch.
     """
 
     # Got timer event -> Run TIME_WAIT delay.

@@ -498,3 +498,230 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
             FsmState.CLOSED,
             msg=("After the restarted TIME_WAIT timer expires, state " "must transition to CLOSED."),
         )
+
+
+class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 1337 'TIME-WAIT Assassination
+    Hazards' mitigations. RFC 1337 §4 identifies three hazards
+    where late-arriving segments could prematurely terminate
+    TIME-WAIT and corrupt subsequent connections:
+
+        1. Old duplicate FIN: must re-ACK and stay in TIME-WAIT
+           (RFC 9293 §3.10.7.5; covered by
+           'late_peer_fin_retransmit_elicits_ack_and_rearms_timer'
+           above).
+        2. Old duplicate RST: MUST be silently dropped; TIME-
+           WAIT MUST NOT close. PyTCP's '_tcp_fsm_time_wait'
+           handler doesn't recognise RST as a recognised
+           segment type, so it falls through to the implicit
+           drop. This test pins that behaviour against future
+           regressions.
+        3. New SYN: must elicit a challenge ACK without
+           transitioning out of TIME-WAIT.
+
+    The PAWS check shipped in commit '79ed38e' (RFC 7323 §5)
+    extends mitigation #2 to ALSO drop stale-TSval segments,
+    not just RSTs.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open three-way handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def _drive_to_time_wait(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive a normal active-close into TIME_WAIT."""
+
+        session = self._drive_handshake_to_established(iss=iss, peer_iss=peer_iss)
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss + 1,
+            ack=iss + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss + 1,
+            ack=iss + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.TIME_WAIT
+        return session
+
+    def test__rfc1337__rst_in_time_wait_does_not_terminate(self) -> None:
+        """
+        Ensure RFC 1337 §4 hazard #2 mitigation: a peer RST
+        arriving during TIME_WAIT MUST be silently dropped.
+        The session MUST stay in TIME_WAIT until its 2*MSL
+        delay timer naturally expires; the RST MUST NOT cause
+        a premature transition to CLOSED.
+
+        Without this mitigation, a delayed RST from an earlier
+        cycle of the connection (or a malicious off-path
+        injection) could prematurely terminate the TIME-WAIT
+        wait. A subsequent connection from the same 4-tuple
+        could then be confused by leftover state from the
+        previous cycle.
+
+        Scenario:
+
+            * Drive an active close to TIME_WAIT.
+            * Drive a peer RST.
+            * Assert session state is still TIME_WAIT.
+            * Assert no segment fired in response (no
+              challenge-ACK, no RST-response).
+        """
+
+        session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        peer_rst = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 2,
+            ack=LOCAL__ISS + 2,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        rst_tx = self._drive_rx(frame=peer_rst)
+
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=(
+                "RFC 1337 §4 hazard #2: a peer RST during "
+                "TIME_WAIT MUST be silently dropped; state "
+                f"MUST stay TIME_WAIT. Got "
+                f"state={session.state!r}."
+            ),
+        )
+        self.assertEqual(
+            rst_tx,
+            [],
+            msg=(
+                "RFC 1337 §4 hazard #2: the RST MUST be "
+                "silently dropped; no outbound segment may "
+                "fire in response."
+            ),
+        )
+
+    def test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change(self) -> None:
+        """
+        Ensure RFC 1337 §4 hazard #3 mitigation: a new SYN
+        arriving at TIME_WAIT elicits a challenge ACK
+        (RFC 9293 §3.10.7.4 / RFC 5961 §4) and does NOT
+        transition out of TIME_WAIT.
+
+        Per RFC 9293 §3.10.7.4 a SYN-bearing segment in any
+        synchronized state should elicit a challenge ACK. The
+        challenge ACK lets peer's TCP determine whether the
+        SYN was an unsolicited blind-attack injection or a
+        legitimate request to recycle the 4-tuple.
+
+        Scenario:
+
+            * Drive to TIME_WAIT.
+            * Drive a peer SYN at fresh seq numbers.
+            * Assert outbound challenge ACK with our current
+              SND.NXT and RCV.NXT.
+            * Assert state still TIME_WAIT.
+        """
+
+        session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x0000_5000,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        challenge_tx = self._drive_rx(frame=peer_syn)
+
+        self.assertEqual(
+            len(challenge_tx),
+            1,
+            msg=(
+                "RFC 1337 §4 hazard #3 / RFC 9293 §3.10.7.4: "
+                "a SYN in TIME_WAIT MUST elicit exactly one "
+                f"challenge ACK. Got {len(challenge_tx)} "
+                "frames."
+            ),
+        )
+        probe = self._parse_tx(challenge_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK"}),
+            msg=(
+                "RFC 9293 §3.10.7.4: challenge ACK is an "
+                "ACK-only segment (no RST/SYN/FIN). Got "
+                f"flags={probe.flags!r}."
+            ),
+        )
+        self.assertEqual(
+            probe.seq,
+            LOCAL__ISS + 2,  # post-FIN: seq = ISS + SYN + FIN = ISS + 2
+            msg=("RFC 9293 §3.10.7.4: challenge ACK seq MUST " "equal SND.NXT."),
+        )
+        self.assertEqual(
+            probe.ack,
+            PEER__ISS + 2,  # post-peer-FIN: ack = peer_ISS + SYN + FIN = peer_ISS + 2
+            msg=("RFC 9293 §3.10.7.4: challenge ACK ack MUST " "equal RCV.NXT."),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=(
+                "RFC 1337 §4 hazard #3: a SYN in TIME_WAIT "
+                "MUST NOT transition out of TIME_WAIT. Got "
+                f"state={session.state!r}."
+            ),
+        )
