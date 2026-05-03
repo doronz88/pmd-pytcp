@@ -558,3 +558,368 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
                 f"state={session.state!r}."
             ),
         )
+
+
+# Peer's TS clock starting value (arbitrary, well clear of zero so
+# the post-handshake _ts_recent is non-trivial).
+PEER__TSVAL_INITIAL: int = 0x1000_0000
+
+
+class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
+    """
+    Integration tests for RFC 6191 'Reducing the TIME-WAIT
+    State Using TCP Timestamps'. RFC 6191 §3 specifies an
+    optimisation on top of RFC 9293 §3.10.7.4 / RFC 1337 §3
+    Hazard #3: when a SYN to a TIME_WAIT 4-tuple carries a
+    Timestamps option whose TSval is strictly greater than
+    the cached '_ts_recent' of the TIME_WAIT session, the
+    TIME_WAIT session MAY be terminated and the SYN accepted
+    as a fresh connection.
+
+    The Timestamps comparison is the safety guarantee: a
+    TSval strictly greater than the last accepted TSval on
+    this 4-tuple proves the new SYN cannot be a delayed
+    segment from the previous incarnation (whose clock would
+    have been monotonically lower at every send). The
+    receiver can therefore short-circuit the 2*MSL wait
+    without risking sequence-number confusion.
+
+    Without RFC 6191, short-lived connection storms (e.g.
+    HTTP keep-alive churn, repeated 'curl' hits, bench
+    fixtures cycling sockets) accumulate stale TIME_WAIT
+    entries that block legitimate reconnects on the same
+    4-tuple for the full TIME_WAIT_DELAY (~30 s in PyTCP).
+
+    The bilateral matrix:
+
+        TS-active TIME-WAIT, TSval > _ts_recent  -> reuse 4-tuple
+        TS-active TIME-WAIT, TSval == _ts_recent -> challenge ACK
+        TS-active TIME-WAIT, no TSopt on SYN     -> challenge ACK
+        Non-TS TIME-WAIT, any SYN                -> challenge ACK
+                          (covered by 'TestTcpClose__TimeWaitRfc1337
+                          ::test__rfc1337__syn_in_time_wait_elicits_
+                          challenge_ack_without_state_change')
+
+    PAWS interaction: a SYN with TSval strictly less than
+    '_ts_recent' is dropped silently by the PAWS check
+    ('_check_paws_and_update_ts_recent') BEFORE it reaches
+    the SYN-handling branch, so RFC 6191 never sees stale-
+    TSval SYNs. The boundary case 'TSval == _ts_recent'
+    passes PAWS (strict '<' comparison) but does NOT trigger
+    RFC 6191 reuse (which requires strict '>') - so it must
+    fall through to the challenge-ACK path.
+
+    Per the active-close handshake with bilateral TSopt:
+    after we transition into TIME_WAIT, '_ts_recent' equals
+    the latest peer TSval seen (peer's final FIN+ACK's
+    TSval). The new SYN's TSval is compared against that
+    cached value.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_to_time_wait_with_tsopt(
+        self,
+        *,
+        iss: int,
+        peer_iss: int,
+        peer_tsval_initial: int,
+    ) -> TcpSession:
+        """
+        Drive an active-open + active-close cycle with
+        bilateral TSopt so '_send_ts' is True post-handshake
+        and '_ts_recent' is populated when we land in
+        TIME_WAIT. Returns the session in TIME_WAIT with
+        '_ts_recent == peer_tsval_initial + 2' (advanced by
+        peer's SYN+ACK and FIN+ACK).
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # Peer SYN+ACK with TSopt.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval_initial,
+            tsecr=self._timer.now_ms,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts, "Bilateral TSopt must be active for RFC 6191 to apply."
+
+        # Active close.
+        session.close()
+        self._advance(ms=1)
+        self._advance(ms=1)
+
+        # Peer ACK of our FIN.
+        peer_ack_of_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss + 1,
+            ack=iss + 2,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=peer_tsval_initial + 1,
+            tsecr=self._timer.now_ms,
+        )
+        self._drive_rx(frame=peer_ack_of_fin)
+        assert session.state is FsmState.FIN_WAIT_2
+
+        # Peer FIN+ACK -> TIME_WAIT.
+        peer_fin = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss + 1,
+            ack=iss + 2,
+            flags=("FIN", "ACK"),
+            win=PEER__WIN,
+            tsval=peer_tsval_initial + 2,
+            tsecr=self._timer.now_ms,
+        )
+        self._drive_rx(frame=peer_fin)
+        assert session.state is FsmState.TIME_WAIT
+        assert session._ts_recent == peer_tsval_initial + 2, (
+            "Setup invariant: post-TIME_WAIT '_ts_recent' must equal "
+            f"peer's last TSval. Got {session._ts_recent}, expected "
+            f"{peer_tsval_initial + 2}."
+        )
+        return session
+
+    def test__rfc6191__fresh_tsval_syn_terminates_time_wait_and_emits_syn_ack(self) -> None:
+        """
+        Ensure that when a peer SYN to our TIME_WAIT 4-tuple
+        carries a TSval strictly greater than the cached
+        '_ts_recent', the TIME_WAIT session is terminated
+        and the SYN is accepted as a fresh connection — the
+        outbound segment is a SYN+ACK at our fresh ISS, NOT
+        a challenge ACK, and the session transitions to
+        SYN_RCVD ready to complete a fresh three-way
+        handshake.
+
+        Reference: RFC 6191 §3 (TIME-WAIT termination via TSval comparison).
+        """
+
+        session = self._drive_to_time_wait_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval_initial=PEER__TSVAL_INITIAL,
+        )
+        ts_recent_before = session._ts_recent
+
+        # Peer's NEW SYN: fresh ISS, source port matches the
+        # original 4-tuple, TSval strictly greater than our
+        # cached '_ts_recent' (= peer_tsval_initial + 2). This
+        # is the canonical RFC 6191 §3 trigger.
+        new_peer_iss = 0x0000_5000
+        fresh_tsval = ts_recent_before + 100
+        new_peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=new_peer_iss,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=fresh_tsval,
+            tsecr=0,
+        )
+        reuse_tx = self._drive_rx(frame=new_peer_syn)
+
+        self.assertEqual(
+            len(reuse_tx),
+            1,
+            msg=(
+                "RFC 6191 §3: a fresh-TSval SYN to a TIME_WAIT "
+                "4-tuple MUST elicit exactly one outbound "
+                "segment (the SYN+ACK accepting the new "
+                f"connection). Got {len(reuse_tx)} frames."
+            ),
+        )
+        probe = self._parse_tx(reuse_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK", "SYN"}),
+            msg=(
+                "RFC 6191 §3: fresh-TSval SYN-on-TIME_WAIT MUST "
+                "elicit a SYN+ACK (NOT a challenge ACK) — peer's "
+                "new connection is being accepted, not rejected. "
+                f"Got flags={probe.flags!r}."
+            ),
+        )
+        self.assertEqual(
+            probe.ack,
+            new_peer_iss + 1,
+            msg=(
+                "RFC 6191 §3 / RFC 9293 §3.5: SYN+ACK's 'ack' MUST "
+                "equal peer's new ISS + 1, acknowledging peer's "
+                f"new SYN. Got ack={probe.ack}, expected "
+                f"{new_peer_iss + 1}."
+            ),
+        )
+        self.assertIsNotNone(
+            probe.tsval,
+            msg="RFC 7323 §3: outbound SYN+ACK MUST carry TSopt.",
+        )
+        self.assertEqual(
+            probe.tsecr,
+            fresh_tsval,
+            msg=(
+                "RFC 7323 §4: SYN+ACK's TSecr MUST echo the peer's "
+                f"SYN TSval ({fresh_tsval}). Got TSecr={probe.tsecr}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg=(
+                "RFC 6191 §3: after accepting the fresh-TSval SYN, "
+                "the session MUST transition out of TIME_WAIT into "
+                f"SYN_RCVD. Got state={session.state!r}."
+            ),
+        )
+
+    def test__rfc6191__equal_tsval_syn_falls_back_to_challenge_ack(self) -> None:
+        """
+        Ensure that when a peer SYN to our TIME_WAIT 4-tuple
+        carries a TSval EQUAL to the cached '_ts_recent'
+        (boundary case: passes PAWS strict-less-than but
+        fails RFC 6191's strict-greater-than), the response
+        falls back to the RFC 9293 §3.10.7.4 / RFC 1337 §3
+        challenge ACK and TIME_WAIT is preserved.
+
+        Reference: RFC 6191 §3 (strict-greater-than TSval gate).
+        """
+
+        session = self._drive_to_time_wait_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval_initial=PEER__TSVAL_INITIAL,
+        )
+        ts_recent_before = session._ts_recent
+
+        new_peer_iss = 0x0000_5000
+        # Boundary: TSval == _ts_recent. PAWS passes (strict '<'),
+        # RFC 6191 declines (needs strict '>') -> challenge ACK.
+        new_peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=new_peer_iss,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=ts_recent_before,
+            tsecr=0,
+        )
+        challenge_tx = self._drive_rx(frame=new_peer_syn)
+
+        self.assertEqual(
+            len(challenge_tx),
+            1,
+            msg=(
+                "Boundary case (TSval == _ts_recent): RFC 6191 §3 "
+                "requires strict '>', so the SYN must fall through "
+                "to the RFC 9293 §3.10.7.4 challenge-ACK path. "
+                f"Got {len(challenge_tx)} frames."
+            ),
+        )
+        probe = self._parse_tx(challenge_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK"}),
+            msg=(
+                "Equal-TSval SYN-on-TIME_WAIT MUST elicit a "
+                "challenge ACK (ACK-only, no SYN/RST/FIN). Got "
+                f"flags={probe.flags!r}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=("Equal-TSval SYN MUST NOT terminate TIME_WAIT. " f"Got state={session.state!r}."),
+        )
+
+    def test__rfc6191__syn_without_tsopt_falls_back_to_challenge_ack(self) -> None:
+        """
+        Ensure that when a peer SYN to our TIME_WAIT 4-tuple
+        omits the Timestamps option entirely, RFC 6191 §3
+        cannot apply (no TSval to compare) and the response
+        falls back to the RFC 9293 §3.10.7.4 / RFC 1337 §3
+        challenge ACK with TIME_WAIT preserved. This is the
+        asymmetric case: our TIME_WAIT session has TSopt
+        active ('_send_ts == True') but peer's new SYN
+        doesn't carry one.
+
+        Reference: RFC 6191 §3 (TSopt required on the SYN for reuse).
+        """
+
+        session = self._drive_to_time_wait_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval_initial=PEER__TSVAL_INITIAL,
+        )
+
+        new_peer_iss = 0x0000_5000
+        new_peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=new_peer_iss,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            # No tsval/tsecr -> SYN omits TSopt.
+        )
+        challenge_tx = self._drive_rx(frame=new_peer_syn)
+
+        self.assertEqual(
+            len(challenge_tx),
+            1,
+            msg=(
+                "RFC 6191 §3 requires TSopt on the SYN to apply; "
+                "without it, the response MUST fall back to the "
+                "RFC 9293 §3.10.7.4 challenge-ACK path. Got "
+                f"{len(challenge_tx)} frames."
+            ),
+        )
+        probe = self._parse_tx(challenge_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK"}),
+            msg=(
+                "SYN-without-TSopt on TIME_WAIT MUST elicit a "
+                "challenge ACK (ACK-only). Got "
+                f"flags={probe.flags!r}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=("SYN-without-TSopt MUST NOT terminate TIME_WAIT. " f"Got state={session.state!r}."),
+        )
