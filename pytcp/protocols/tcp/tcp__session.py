@@ -174,10 +174,14 @@ class TcpSession:
         # per the RFC's MUST: "If keep-alive are included, the
         # application MUST be able to turn them on or off for
         # each TCP connection, and they MUST default to off."
-        # Flip True before CONNECT / LISTEN to enable. The
-        # session-internal keep-alive machinery is gated on this
-        # flag throughout (idle-timer arming, probe emission,
-        # unanswered-probe tear-down).
+        # Set via 'TcpSocket.setsockopt(SOL_SOCKET, SO_KEEPALIVE,
+        # 1)'; the socket layer propagates the flag onto this
+        # field at TcpSession construction time (see
+        # 'TcpSocket.connect()' / 'TcpSocket.listen()' and the
+        # listener-fork pivot in 'tcp__fsm__listen.py'). The
+        # session-internal keep-alive machinery
+        # ('_keepalive_arm_idle' / '_keepalive_tick') is gated
+        # on this flag throughout.
         self._keepalive_enabled: bool = False
 
         # Counter of consecutive unanswered keep-alive probes per
