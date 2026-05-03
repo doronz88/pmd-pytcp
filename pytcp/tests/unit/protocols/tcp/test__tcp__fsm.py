@@ -125,6 +125,7 @@ class TestTcpSessionChangeState(_TcpSessionFsmFixture):
     def test__tcp_session__change_state_updates_state(self) -> None:
         """
         Ensure '_change_state' writes the new state into '_state'.
+        Reference: RFC 9293 §3.3.2 (state machine).
         """
 
         session = self._make_session()
@@ -141,6 +142,7 @@ class TestTcpSessionChangeState(_TcpSessionFsmFixture):
         Ensure transitioning to 'CLOSED' pops the associated socket
         from 'stack.sockets' — this is how closed sessions stop
         receiving packets.
+        Reference: RFC 9293 §3.3.2 (CLOSED state) + §3.10.4 (CLOSE call).
         """
 
         session = self._make_session()
@@ -164,6 +166,7 @@ class TestTcpFsmClosed(_TcpSessionFsmFixture):
         """
         Ensure CONNECT from the CLOSED state transitions the FSM to
         'SYN_SENT'. This is the active-open path.
+        Per RFC 9293 §3.10.1 (OPEN call) + §3.5 (active open).
         """
 
         session = self._make_session()
@@ -179,6 +182,7 @@ class TestTcpFsmClosed(_TcpSessionFsmFixture):
         """
         Ensure LISTEN from the CLOSED state transitions the FSM to
         'LISTEN'. This is the passive-open path.
+        Per RFC 9293 §3.10.1 (OPEN call) + §3.5 (passive open).
         """
 
         session = self._make_session()
@@ -194,6 +198,7 @@ class TestTcpFsmClosed(_TcpSessionFsmFixture):
         """
         Ensure CLOSE in the CLOSED state is a no-op — the FSM stays
         put and does not crash.
+        Per RFC 9293 §3.10.4 (CLOSE call from CLOSED).
         """
 
         session = self._make_session()
@@ -215,6 +220,7 @@ class TestTcpFsmListen(_TcpSessionFsmFixture):
         """
         Ensure CLOSE in the LISTEN state transitions the FSM to
         'CLOSED'. Canonical server shutdown path.
+        Per RFC 9293 §3.10.4 (CLOSE call from LISTEN).
         """
 
         session = self._make_session()
@@ -238,6 +244,7 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
         """
         Ensure CLOSE in the SYN_SENT state transitions the FSM to
         'CLOSED'. Happens when the caller abandons a pending connect.
+        Per RFC 9293 §3.10.4 (CLOSE call from SYN-SENT).
         """
 
         session = self._make_session()
@@ -255,7 +262,8 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
         """
         Ensure a bare SYN packet received while in SYN_SENT triggers
         the simultaneous-open branch — the FSM transitions to
-        SYN_RCVD and a SYN+ACK is sent. RFC 793 §3.4.
+        SYN_RCVD and a SYN+ACK is sent. Per RFC 9293 §3.5 / §3.10.7.3
+        (simultaneous open).
         """
 
         session = self._make_session()
@@ -309,6 +317,7 @@ class TestTcpFsmEstablished(_TcpSessionFsmFixture):
         changing state immediately — the session only transitions to
         'FIN_WAIT_1' once the TX buffer has been flushed (handled in
         the timer branch).
+        Per RFC 9293 §3.10.4 (CLOSE call from ESTABLISHED).
         """
 
         session = self._make_session()
@@ -337,6 +346,7 @@ class TestTcpFsmSynRcvd(_TcpSessionFsmFixture):
         Ensure CLOSE from 'SYN_RCVD' transitions the FSM to
         'FIN_WAIT_1' so the session can emit a FIN and begin active
         close without waiting for the peer's data path.
+        Per RFC 9293 §3.10.4 (CLOSE call from SYN-RECEIVED).
         """
 
         session = self._make_session()
@@ -361,6 +371,7 @@ class TestTcpFsmCloseWait(_TcpSessionFsmFixture):
         Ensure CLOSE from 'CLOSE_WAIT' sets the '_closing' flag — the
         actual transition to 'LAST_ACK' happens once the TX buffer
         drains (in the timer branch).
+        Per RFC 9293 §3.10.4 (CLOSE call from CLOSE-WAIT).
         """
 
         session = self._make_session()
@@ -390,6 +401,7 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
         function handler matching the current '_state'. Exercised by
         seeding each state in turn and verifying the corresponding
         entry in the FSM_HANDLERS dispatch table was called.
+        Reference: RFC 9293 §3.3.2 (state machine dispatch).
         """
 
         from pytcp.protocols.tcp.tcp__fsm import FSM_HANDLERS
@@ -414,6 +426,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
         Ensure '_transmit_packet' delegates to
         'stack.packet_handler.send_tcp_packet' with the expected
         keyword arguments (local/remote IPs, ports, seq, ack, flags).
+        Reference: RFC 9293 §3.10.3 (SEND call) — segment construction.
         """
 
         handler = MagicMock()
@@ -464,6 +477,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
         Ensure '_transmit_packet' advances '_snd_nxt' by
         'len(data) + flag_syn + flag_fin'. This is the invariant the
         retransmit / ACK logic relies on.
+        Per RFC 9293 §3.4 (sequence numbers consume one for SYN/FIN).
         """
 
         handler = MagicMock()
@@ -487,6 +501,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
         Ensure '_transmit_packet' with 'flag_fin=True' records the
         next sequence number into '_snd_fin' so the session can detect
         the peer's ACK of our FIN.
+        Per RFC 9293 §3.4 (FIN consumes one sequence number).
         """
 
         handler = MagicMock()
@@ -515,6 +530,7 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
         Ensure '_enqueue_rx_buffer' extends '_rx_buffer' with the
         supplied memoryview and releases the rx-ready event so
         receive() can wake.
+        Reference: RFC 9293 §3.10.5 (RECEIVE call) — buffer delivery.
         """
 
         session = self._make_session()
@@ -530,6 +546,7 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
         """
         Ensure the assertion guard rejects non-memoryview input — the
         helper only accepts memoryview to keep the data path zero-copy.
+        Reference: RFC 9293 §3.10.5 (RECEIVE call) — implementation guard.
         """
 
         session = self._make_session()
