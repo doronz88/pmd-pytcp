@@ -61,6 +61,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 )
 from pytcp.protocols.tcp.tcp__fsm__closed import fsm__closed
 from pytcp.protocols.tcp.tcp__fsm__closing import fsm__closing
+from pytcp.protocols.tcp.tcp__fsm__fin_wait_1 import fsm__fin_wait_1
 from pytcp.protocols.tcp.tcp__fsm__fin_wait_2 import fsm__fin_wait_2
 from pytcp.protocols.tcp.tcp__fsm__last_ack import fsm__last_ack
 from pytcp.protocols.tcp.tcp__fsm__time_wait import fsm__time_wait
@@ -2395,104 +2396,7 @@ class TcpSession:
         TCP FSM FIN_WAIT_1 state handler.
         """
 
-        # Got timer event -> Transmit final FIN packet.
-        if timer:
-            self._retransmit_packet_timeout()
-            self._transmit_data()
-            return
-
-        # Got SYN-bearing segment in a synchronized state -> Send a
-        # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4
-        # ('irrespective of the sequence number, TCP endpoints MUST
-        # send a challenge ACK to the remote peer'). Mirrors the
-        # ESTABLISHED / SYN_RCVD branches.
-        if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._emit_challenge_ack()
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Sent challenge ACK for SYN-in-fin_wait_1 (RFC 9293 §3.10.7.4)",
-            )
-            return
-
-        # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
-        # check; on unacceptable segments the helper emits the
-        # mandated ACK reply and returns False, the caller drops.
-        if packet_rx_md is not None and not self._check_segment_acceptability(packet_rx_md):
-            return
-
-        # Got ACK (acking our FIN) packet -> Change state to FIN_WAIT_2.
-        if (
-            packet_rx_md
-            and all({packet_rx_md.tcp__flag_ack})
-            and not any(
-                {
-                    packet_rx_md.tcp__flag_syn,
-                    packet_rx_md.tcp__flag_rst,
-                    packet_rx_md.tcp__flag_fin,
-                }
-            )
-        ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                self._process_ack_packet(packet_rx_md)
-                # Immediately acknowledge the received data if any.
-                if packet_rx_md.tcp__data:
-                    self._transmit_packet(flag_ack=True)
-                # Check if packet acks our FIN.
-                if ge32(packet_rx_md.tcp__ack, self._snd_fin):
-                    # Change state to FIN_WAIT_2.
-                    self._change_state(FsmState.FIN_WAIT_2)
-                return
-            # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
-            # data we have never sent (ack > SND.MAX) MUST elicit
-            # an empty-ACK reply carrying our current SND.NXT and
-            # RCV.NXT. Same gap class as the CLOSING handler's
-            # fix in commit '95a2a4e'.
-            if gt32(packet_rx_md.tcp__ack, self._snd_max):
-                self._emit_challenge_ack()
-            return
-
-        # Got FIN + ACK packet -> Send ACK packet / change state to TIME_WAIT
-        # or CLOSING.
-        if (
-            packet_rx_md
-            and all({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_ack})
-            and not any({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst})
-        ):
-            # Packet sanity check.
-            if packet_rx_md.tcp__seq == self._rcv_nxt and in_range32(
-                packet_rx_md.tcp__ack, self._snd_una, self._snd_max
-            ):
-                self._process_ack_packet(packet_rx_md)
-                # Send out final ACK packet.
-                self._transmit_packet(flag_ack=True)
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Sent final ACK ({self._rcv_nxt}) packet",
-                )
-                # Check if packet acks our FIN.
-                if ge32(packet_rx_md.tcp__ack, self._snd_fin):
-                    # Change state to TIME_WAIT
-                    self._change_state(FsmState.TIME_WAIT)
-                    # Initialize TIME_WAIT delay.
-                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
-                else:
-                    # Change state to CLOSING.
-                    self._change_state(FsmState.CLOSING)
-            return
-
-        # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
-        # three-way classification via the shared helper.
-        if (
-            packet_rx_md
-            and packet_rx_md.tcp__flag_rst
-            and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
-        ):
-            if self._check_rst_acceptability(packet_rx_md):
-                self._change_state(FsmState.CLOSED)
-            return
+        fsm__fin_wait_1(self, packet_rx_md=packet_rx_md, syscall=None, timer=timer)
 
     def _tcp_fsm_fin_wait_2(
         self,
