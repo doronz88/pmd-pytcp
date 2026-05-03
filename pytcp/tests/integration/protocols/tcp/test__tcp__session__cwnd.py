@@ -1167,3 +1167,249 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
                 f"peer's window. Got _snd_ewn={session._snd_ewn}."
             ),
         )
+
+
+class TestTcpCwndNewReno(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 6582 NewReno modification to
+    RFC 5681 §3.2 fast recovery: partial-cum-ACK handling for
+    non-SACK peers.
+
+    RFC 6582 §3 step 3b: when a partial cum-ACK arrives during
+    fast recovery (advances SND.UNA but does NOT reach
+    'recovery_point'), the sender MUST:
+
+        (1) retransmit the first unacknowledged segment;
+        (2) deflate cwnd by the bytes acked;
+        (3) if bytes_acked >= SMSS, add back SMSS bytes
+            (so the retransmit can fire immediately).
+
+    Without NewReno, multi-loss recovery on non-SACK peers
+    costs an RTO per additional loss in the same window. With
+    NewReno, the sender retransmits one missing segment per
+    RTT - same behaviour as RFC 6675 SACK NextSeg, but for
+    legacy non-SACK peers.
+
+    SACK-aware peers use RFC 6675 NextSeg directly; the
+    NewReno snd_nxt rewind is gated on '_send_sack == False'
+    so we don't double-step backward through gaps SACK has
+    already marked.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the handshake and disable SACK + TSopt for the NewReno path."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+
+        # Confirm non-SACK / non-TSopt peer scenario.
+        assert not session._send_sack, "Setup invariant: peer's SYN+ACK had no SACK-Permitted."
+        assert not session._send_ts, "Setup invariant: peer's SYN+ACK had no TSopt."
+        return session
+
+    def _setup_multi_loss_recovery(
+        self,
+        *,
+        iss: int,
+        peer_iss: int,
+        n_segments: int,
+    ) -> tuple[TcpSession, int, int]:
+        """
+        Set up a multi-loss recovery scenario:
+            1. Drive handshake (no SACK, no TSopt).
+            2. Pin cwnd large enough that all N segments fire.
+            3. Send N*MSS payload; advance N ticks so all
+               segments hit the wire.
+            4. Drive 3 dup-ACKs at SND.UNA. Fast retransmit
+               fires.
+            5. Advance one tick so the retransmit goes out.
+
+        Returns (session, post_fast_retransmit_cwnd, recovery_point).
+        """
+
+        session = self._drive_handshake_to_established(iss=iss, peer_iss=peer_iss)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (n_segments * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(n_segments):
+            self._advance(ms=1)
+
+        # Three dup-ACKs - the 3rd triggers fast retransmit.
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=peer_iss + 1,
+                ack=iss + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+        # Tick so the retransmitted seg 1 fires.
+        self._advance(ms=1)
+        return session, session._cwnd, session._recovery_point
+
+    def test__newreno__partial_cum_ack_retransmits_next_gap(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6582 §3 step 3b: a partial cum-ACK during
+        recovery MUST trigger an immediate retransmit of the
+        next unacknowledged segment (the first gap), without
+        waiting for the RTO timer. Without NewReno, non-SACK
+        peers stall in recovery until RTO fires, costing an
+        RTO per additional loss in the same window.
+
+        Scenario:
+
+            * Set up multi-loss recovery (3 segments in flight,
+              3 dup-ACKs, fast retransmit fires for seg 1).
+            * Drive a partial cum-ACK acking only seg 1 (ack
+              advances by 1 MSS, well short of recovery_point
+              = SND.MAX = ISS + 1 + 3*MSS).
+            * Advance one tick.
+            * Assert the post-ACK tx burst includes a retransmit
+              of seg 2 (seq = ISS + 1 + MSS, payload matches
+              the original seg 2 bytes).
+
+        Without NewReno: no retransmit fires; the session
+        sits in recovery with seg 2 + seg 3 still missing
+        until RTO.
+        """
+
+        n_segments = 3
+        session, _, _ = self._setup_multi_loss_recovery(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            n_segments=n_segments,
+        )
+
+        # Drive partial cum-ACK acking only seg 1.
+        partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_ack)
+
+        # Tick so the next-gap retransmit fires.
+        retransmit_tx = self._advance(ms=1)
+
+        # Find a frame at seq = ISS + 1 + MSS (seg 2 retransmit).
+        retransmit_seg = None
+        for frame in retransmit_tx:
+            probe = self._parse_tx(frame)
+            if probe.seq == LOCAL__ISS + 1 + PEER__MSS and len(probe.payload) > 0:
+                retransmit_seg = probe
+                break
+
+        self.assertIsNotNone(
+            retransmit_seg,
+            msg=(
+                f"RFC 6582 §3 step 3b: partial cum-ACK MUST "
+                f"trigger immediate retransmit of seg 2 (seq = "
+                f"{LOCAL__ISS + 1 + PEER__MSS:#x}). Without "
+                f"NewReno the session stalls until RTO. Got "
+                f"tx burst: {retransmit_tx!r}."
+            ),
+        )
+
+    def test__newreno__partial_cum_ack_deflates_cwnd_per_step_3b(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6582 §3 step 3b cwnd deflation:
+            cwnd_new = cwnd_old - bytes_acked
+            if bytes_acked >= SMSS:
+                cwnd_new += SMSS
+
+        Scenario:
+
+            * Set up multi-loss recovery with 3 segments.
+              Capture post-fast-retransmit cwnd
+              (= ssthresh + 3*SMSS per RFC 5681 §3.2 step 3).
+            * Drive a partial cum-ACK acking 1 MSS.
+            * Expected new cwnd = post_fr_cwnd - MSS + MSS
+              = post_fr_cwnd (1 SMSS deflated, 1 SMSS added
+              back).
+            * Hmm, that's unchanged. Try with 2*MSS bytes_acked:
+              new_cwnd = post_fr_cwnd - 2*MSS + MSS
+              = post_fr_cwnd - MSS.
+
+        Use the 2*MSS variant for an observable delta.
+        """
+
+        n_segments = 4  # so we can ack 2*MSS partially
+        session, post_fr_cwnd, _ = self._setup_multi_loss_recovery(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            n_segments=n_segments,
+        )
+
+        # Drive partial cum-ACK acking 2*MSS.
+        bytes_acked_partial = 2 * PEER__MSS
+        partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + bytes_acked_partial,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_ack)
+
+        # Per RFC 6582 §3 step 3b:
+        #   cwnd -= bytes_acked = -2*MSS
+        #   if bytes_acked >= MSS: cwnd += MSS
+        # Net: cwnd -= MSS.
+        expected_cwnd = post_fr_cwnd - bytes_acked_partial + PEER__MSS
+        self.assertEqual(
+            session._cwnd,
+            expected_cwnd,
+            msg=(
+                f"RFC 6582 §3 step 3b: partial cum-ACK acking "
+                f"{bytes_acked_partial} bytes MUST deflate cwnd "
+                f"by 'bytes_acked' then add SMSS back. Pre-ACK "
+                f"cwnd={post_fr_cwnd}, expected post-ACK cwnd="
+                f"{expected_cwnd}, got {session._cwnd}."
+            ),
+        )
