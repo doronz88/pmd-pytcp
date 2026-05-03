@@ -31,13 +31,6 @@ sequence-number prediction attacks:
 
     ISN = M + F(localip, localport, remoteip, remoteport, secretkey)
 
-The tests in this file are tests-first: they assert the RFC 6528
-properties against the planned implementation. Until the fix
-commit replaces the 'NotImplementedError' stub with the actual
-SHA-256-based hash, every test fails with NotImplementedError -
-the unambiguous '[FLAGS BUG]' signal that the feature is not yet
-shipped.
-
 Reference RFCs:
     RFC 6528 §3   Defending Against Sequence Number Attacks
     RFC 1948      Defending Against Sequence Number Attacks (orig)
@@ -75,14 +68,14 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__same_args_same_iss(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'compute_iss' is deterministic: identical inputs
-        produce identical outputs. RFC 6528 §3 requires the hash
-        component F to be a pure function of its arguments;
-        without determinism, blind-attack defence is no stronger
-        than the legacy 'random.randint' approach because peer
-        retransmits couldn't even reach a stable target.
+        produce identical outputs. The hash component F must be
+        a pure function of its arguments; without determinism,
+        blind-attack defence is no stronger than the legacy
+        'random.randint' approach because peer retransmits
+        couldn't even reach a stable target.
+
+        Reference: RFC 6528 §3 (hash-based ISN generator).
         """
 
         first = compute_iss(
@@ -110,11 +103,11 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_local_address__different_iss(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure changing the local address changes the ISS. The
+        ISN is bound to the full 4-tuple so an attacker who
+        learns one ISN cannot predict ISNs for any other 4-tuple.
 
-        Ensure changing the local address changes the ISS. RFC 6528
-        §3 binds ISN to the full 4-tuple so an attacker who learns
-        one ISN cannot predict ISNs for any other 4-tuple.
+        Reference: RFC 6528 §3 (4-tuple binding).
         """
 
         first = compute_iss(
@@ -142,10 +135,10 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_remote_address__different_iss(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure changing the remote address changes the ISS.
         Symmetric to the local-address case.
+
+        Reference: RFC 6528 §3 (4-tuple binding).
         """
 
         first = compute_iss(
@@ -173,9 +166,9 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_local_port__different_iss(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure changing the local port changes the ISS.
+
+        Reference: RFC 6528 §3 (4-tuple binding).
         """
 
         first = compute_iss(
@@ -203,9 +196,9 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_remote_port__different_iss(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure changing the remote port changes the ISS.
+
+        Reference: RFC 6528 §3 (4-tuple binding).
         """
 
         first = compute_iss(
@@ -233,12 +226,12 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_secret__different_iss(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure changing the secret changes the ISS. The secret
+        is the load-bearing keying material for the PRF F;
+        without secret-dependence an attacker could compute
+        ISNs for any 4-tuple just by knowing the algorithm.
 
-        Ensure changing the secret changes the ISS. The secret is
-        the load-bearing keying material for RFC 6528 §3's PRF F;
-        without secret-dependence an attacker could compute ISNs
-        for any 4-tuple just by knowing the algorithm.
+        Reference: RFC 6528 §3 (secret-keyed PRF).
         """
 
         first = compute_iss(
@@ -269,13 +262,12 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__output_is_uint32(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'compute_iss' returns a value within the 32-bit
         unsigned integer range '[0, 2**32 - 1]'. TCP sequence
-        numbers are 32-bit (RFC 9293 §3.4); a return value
-        outside the range would corrupt outbound segment
-        construction.
+        numbers are 32-bit; a return value outside the range
+        would corrupt outbound segment construction.
+
+        Reference: RFC 9293 §3.4 (32-bit sequence-number space).
         """
 
         result = compute_iss(
@@ -300,19 +292,19 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__monotonic_in_clock_us(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure the time-driven 'M' component of the ISN advances
-        with 'clock_us' per RFC 6528 §3. Specifically, two ISN
-        values for the same 4-tuple computed at clocks differing
-        by 'delta_us' must differ by 'delta_us / ISS_CLOCK_RATE_US'
-        (modulo the 32-bit wrap), because M advances one tick
-        per ISS_CLOCK_RATE_US µs and F is identical for identical
+        with 'clock_us'. Specifically, two ISN values for the
+        same 4-tuple computed at clocks differing by 'delta_us'
+        must differ by 'delta_us / ISS_CLOCK_RATE_US' (modulo
+        the 32-bit wrap), because M advances one tick per
+        ISS_CLOCK_RATE_US µs and F is identical for identical
         4-tuples.
 
         The delta uses 32 ticks so the test is robust to the M
-        component's resolution while still well below the 32-bit
-        wrap window (~4.77 h).
+        component's resolution while still well below the
+        32-bit wrap window (~4.77 h).
+
+        Reference: RFC 6528 §3 (time-driven M component).
         """
 
         delta_ticks = 32
@@ -350,14 +342,14 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__different_4tuple_at_same_clock_yields_different_iss(self) -> None:
         """
-        [FLAGS BUG]
+        Ensure that for a SAME clock value, two unrelated
+        4-tuples produce different ISN values. This is the
+        4-tuple-binding property in aggregate: the F component
+        must dominate the ISN bits (the M component is
+        identical when clocks match, so any difference between
+        two ISNs at the same clock comes entirely from F).
 
-        Ensure that for a SAME clock value, two unrelated 4-tuples
-        produce different ISN values. This is the 4-tuple-binding
-        property in aggregate: the F component must dominate the
-        ISN bits (the M component is identical when clocks match,
-        so any difference between two ISNs at the same clock
-        comes entirely from F).
+        Reference: RFC 6528 §3 (F-component 4-tuple distinguishability).
         """
 
         iss_a = compute_iss(
@@ -385,11 +377,11 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__ip6_addresses_supported(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'compute_iss' accepts IPv6 addresses for both
-        local and remote endpoints. PyTCP supports both address
-        families; the ISN generator must too.
+        local and remote endpoints. PyTCP supports both
+        address families; the ISN generator must too.
+
+        Reference: RFC 6528 §3 (works on any address-family 4-tuple).
         """
 
         result = compute_iss(
@@ -406,14 +398,14 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__ip4_and_ip6_for_same_logical_4tuple_differ(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure an IPv4 4-tuple and a (notional) IPv6 4-tuple
         with the "same" port shape produce different ISNs. The
         binding includes the address bytes, not just an
-        abstract identity, so a host running parallel IPv4 / IPv6
-        services on the same port pair MUST get different ISNs
-        per address family.
+        abstract identity, so a host running parallel IPv4 /
+        IPv6 services on the same port pair MUST get different
+        ISNs per address family.
+
+        Reference: RFC 6528 §3 (address bytes in PRF input).
         """
 
         iss_v4 = compute_iss(
@@ -444,11 +436,10 @@ class TestComputeIss(TestCase):
 
     def test__compute_iss__same_4tuple_post_msl_yields_different_iss(self) -> None:
         """
-        Ensure RFC 9293 §3.4.3 Quiet Time alternative: PyTCP
-        skips the literal MSL "keep quiet for an MSL on
-        startup" requirement (which §3.4.3 explicitly allows
-        as a MAY) and relies on the RFC 6528 hashed ISS for
-        the equivalent collision-resistance guarantee.
+        Ensure that PyTCP skips the literal MSL Quiet Time
+        wait on startup (the spec explicitly allows this as a
+        MAY) and relies on the hashed ISS for the equivalent
+        collision-resistance guarantee.
 
         Specifically, after one MSL has elapsed (PyTCP's
         TIME_WAIT_DELAY = 30 s = 30_000_000 µs), an ISS for
@@ -459,9 +450,7 @@ class TestComputeIss(TestCase):
         sequence-window, so a delayed segment from a prior
         incarnation cannot collide with a fresh ISN.
 
-        This test pins the §3.4.3 alternative protection as
-        an explicit invariant, complementing the existing
-        'monotonic_in_clock_us' test.
+        Reference: RFC 9293 §3.4.3 (Quiet Time MAY-skip alternative).
         """
 
         msl_us = 30_000_000  # PyTCP's TIME_WAIT_DELAY in microseconds.
