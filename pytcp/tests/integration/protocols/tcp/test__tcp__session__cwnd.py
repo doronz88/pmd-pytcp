@@ -1032,3 +1032,138 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
             0,
             msg=("Recovery state must be cleared once SND.UNA " "passes RecoveryPoint."),
         )
+
+
+class TestTcpCwndPhase4(TcpSessionTestCase):
+    """
+    Integration tests for RFC 6928 Phase 4 invariants:
+    Initial Window 10*SMSS post-handshake.
+
+    RFC 6928 §2 raises the canonical IW from 1*SMSS (RFC 5681
+    §3.1 default) to 'min(10*SMSS, max(2*SMSS, 14600))'. The
+    practical effect: post-handshake the sender can fire up
+    to 10 segments without waiting for the first peer ACK,
+    materially shortening startup latency for short-lived
+    connections (HTTP requests, RPC calls).
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int, peer_win: int = PEER__WIN) -> TcpSession:
+        """Drive the active-open three-way handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=peer_win,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def test__cwnd__post_handshake_initialises_cwnd_to_iw_10(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 6928 §2: post-handshake 'cwnd' equals
+            min(10 * SMSS, max(2 * SMSS, 14600))
+
+        With the canonical SMSS = 1460:
+            min(14600, max(2920, 14600)) = 14600 = 10 * SMSS
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED.
+            * Assert cwnd post-handshake = 10 * MSS.
+
+        Fails today: PyTCP initialises cwnd to 1 * MSS per
+        RFC 5681 §3.1 (the pre-RFC-6928 default).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        expected_iw = min(10 * PEER__MSS, max(2 * PEER__MSS, 14600))
+        self.assertEqual(
+            session._cwnd,
+            expected_iw,
+            msg=(
+                f"RFC 6928 §2: post-handshake cwnd MUST equal "
+                f"min(10*MSS, max(2*MSS, 14600)) = {expected_iw}. "
+                f"Got cwnd={session._cwnd}."
+            ),
+        )
+
+    def test__cwnd__post_handshake_iw_10_clamped_by_peer_win(self) -> None:
+        """
+        Ensure RFC 9293 §3.8.4: even with IW=10 cwnd, the
+        effective send window respects peer's flow-control
+        bound. If peer advertises a small win, '_snd_ewn'
+        clamps to peer's value.
+
+        Scenario:
+
+            * Drive handshake with peer advertising a small
+              window (3 * MSS = 4380 bytes).
+            * Assert cwnd post-handshake = 10 * MSS (IW
+              respects RFC 6928 regardless of peer's win).
+            * Assert '_snd_ewn = min(cwnd, snd_wnd) = 3 * MSS'
+              (peer's bound dominates).
+
+        This is a regression guard for the '_snd_ewn' coherence
+        invariant under the new IW=10 default.
+        """
+
+        small_win = 3 * PEER__MSS
+        session = self._drive_handshake_to_established(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_win=small_win,
+        )
+
+        expected_iw = min(10 * PEER__MSS, max(2 * PEER__MSS, 14600))
+        self.assertEqual(
+            session._cwnd,
+            expected_iw,
+            msg=(
+                f"RFC 6928 §2: cwnd MUST be the IW formula "
+                f"value ({expected_iw}) regardless of peer's "
+                f"advertised window."
+            ),
+        )
+        self.assertEqual(
+            session._snd_ewn,
+            small_win,
+            msg=(
+                f"RFC 9293 §3.8.4: with snd_wnd={small_win} < "
+                f"cwnd={expected_iw}, _snd_ewn MUST clamp to "
+                f"peer's window. Got _snd_ewn={session._snd_ewn}."
+            ),
+        )
