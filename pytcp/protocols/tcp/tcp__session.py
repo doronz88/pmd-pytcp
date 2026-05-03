@@ -101,6 +101,19 @@ class TcpSession:
         # Keeps data sent by application but not acknowledged by peer yet.
         self._tx_buffer: bytearray = bytearray()
 
+        # RFC 1122 §4.2.2.4 urgent-pointer receive-side state.
+        # 'None' means no URG segment has ever been received on this
+        # connection (vs. '0' which would be a valid sequence number
+        # post-wrap). Updated by '_update_urg_state' each time an
+        # inbound segment carries 'flag_urg=True'; the highest URG
+        # endpoint ever seen is preserved (modular max). The
+        # '_rcv_urg_pending' flag is the application-observable
+        # "asynchronous notification" the RFC mandates: True means
+        # there is unconsumed urgent-data context the application
+        # has not yet inspected.
+        self._rcv_urg_seq: Seq32 | None = None
+        self._rcv_urg_pending: bool = False
+
         ###
         # Receiving window parameters.
         ###
@@ -989,6 +1002,23 @@ class TcpSession:
             )
             self._emit_challenge_ack()
         return False
+
+    def _update_urg_state(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Process the RFC 1122 §4.2.2.4 urgent-pointer state update for
+        an inbound segment. When the segment carries 'flag_urg=True'
+        the urgent endpoint is at 'add32(SEG.SEQ, urg_ptr)' and
+        becomes the new RCV.URG.SEQ (modularly), with RCV.URG.PENDING
+        set so the application's observable URG status reflects the
+        new arrival or advance per the RFC's MUST-inform-application
+        clause. Non-URG segments leave the state unchanged.
+
+        Stub: the actual update logic lands in the fix commit; this
+        no-op makes the matching unit tests fail [FLAGS BUG] until
+        then.
+        """
+
+        # pylint: disable=unused-argument
 
     def _emit_challenge_ack(self) -> None:
         """
