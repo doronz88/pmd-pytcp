@@ -350,3 +350,202 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
 # bilateral-negotiation logic on the active side; the passive
 # side will be covered transitively when Phase 2's
 # per-segment emission tests drive both directions.
+
+
+class TestTcpTimestampsPhase2(TcpSessionTestCase):
+    """
+    Phase 2 invariants: post-handshake TSopt emission on every
+    segment + '_ts_recent' tracking on accepted inbound segments.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake with bilateral
+        TSopt negotiation. Returns the established session with
+        '_send_ts == True' and '_ts_recent == peer_tsval'.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts, "Setup invariant: bilateral TSopt negotiation must succeed."
+        # Bypass slow-start.
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__ts__post_handshake_data_segment_carries_tsopt(self) -> None:
+        """
+        Ensure RFC 7323 §3: post-handshake outbound segments
+        carry TSopt with 'TSval = now_ms' and 'TSecr =
+        _ts_recent' when bilateral negotiation succeeded.
+
+        Regression guard - the non-SYN TSopt emission gate was
+        wired in Phase 1 but only handshake segments were
+        explicitly tested.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        payload = b"hello"
+        session.send(data=payload)
+        send_now_ms = self._timer.now_ms + 1
+        tx = self._advance(ms=1)
+
+        probe = self._parse_tx(tx[0])
+        self.assertEqual(
+            probe.tsval,
+            send_now_ms,
+            msg=(
+                f"RFC 7323 §3: post-handshake data segment MUST "
+                f"carry TSval = current TS clock ({send_now_ms}). "
+                f"Got TSval={probe.tsval}."
+            ),
+        )
+        self.assertEqual(
+            probe.tsecr,
+            PEER__TSVAL_INITIAL,
+            msg=(
+                f"RFC 7323 §3: TSecr MUST equal '_ts_recent' "
+                f"(= peer's last seen TSval = "
+                f"{PEER__TSVAL_INITIAL:#x}). Got "
+                f"TSecr={probe.tsecr}."
+            ),
+        )
+
+    def test__ts__ts_recent_updated_on_accepted_inbound_segment(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §4.3: an accepted inbound segment's
+        TSval MUST update '_ts_recent' so subsequent outbound
+        TSecr echoes the latest peer TS clock value.
+
+        Scenario:
+
+            * Drive handshake with peer TSval=PEER__TSVAL_INITIAL.
+              Capture initial _ts_recent.
+            * Drive a peer ACK (in-sequence, no data) with
+              TSval=PEER__TSVAL_INITIAL + 100.
+            * Assert '_ts_recent' updated to the new TSval.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        new_tsval = PEER__TSVAL_INITIAL + 100
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=new_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._ts_recent,
+            new_tsval,
+            msg=(
+                f"RFC 7323 §4.3: an accepted inbound segment's "
+                f"TSval MUST update '_ts_recent'. Expected "
+                f"{new_tsval:#x}, got {session._ts_recent:#x}."
+            ),
+        )
+
+    def test__ts__post_update_outbound_segment_echoes_new_ts_recent(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 7323 §3 / §4.3: after '_ts_recent' updates
+        from an inbound segment, the next outbound segment's
+        TSecr reflects the new value.
+
+        Scenario:
+
+            * Drive handshake.
+            * Drive a peer ACK with TSval=NEW_TSVAL to update
+              '_ts_recent'.
+            * Send data; advance one tick to fire the segment.
+            * Assert outbound TSecr == NEW_TSVAL.
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        new_tsval = PEER__TSVAL_INITIAL + 200
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=new_tsval,
+            tsecr=PEER__TSVAL_INITIAL,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        session.send(data=b"world")
+        tx = self._advance(ms=1)
+        probe = self._parse_tx(tx[0])
+
+        self.assertEqual(
+            probe.tsecr,
+            new_tsval,
+            msg=(
+                f"RFC 7323 §3: outbound TSecr MUST reflect the "
+                f"updated '_ts_recent' = {new_tsval:#x}. Got "
+                f"TSecr={probe.tsecr}."
+            ),
+        )
