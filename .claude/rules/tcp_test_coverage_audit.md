@@ -1,29 +1,48 @@
 # PyTCP — TCP Test Coverage Audit + Fill-In Plan
 
+**Status: SHIPPED.** All phases landed; the rule remains as a
+historical record of the audit's findings, the workflow, and the
+shipped commit map.
+
 Self-contained handoff plan for closing the test-coverage gaps
-identified in the 2026-05-03 post-NewReno audit. Execute after
-`/compact` resets context. Each phase lands as 1-2 commits;
-total ~12 commits, ~3-4 hours of focused work.
+identified in the 2026-05-03 post-NewReno audit. Each phase
+landed as 1-2 commits; total 7 commits, 38 new tests, 0 regressions.
 
 The audit was comprehensive across all shipped TCP RFCs (1122,
 1337, 2018, 2883, 5681, 5961, 6298, 6528, 6582, 6675, 6691,
 6928, 7323, 7414, 8961, 9293). Gaps fall into three buckets:
 
-  - **Bucket A: helper extractions** — formulas currently inline
-    in `tcp__session.py` that warrant their own unit-test
+  - **Bucket A: helper extractions** — formulas previously inline
+    in `tcp__session.py` that warranted their own unit-test
     surface. Mirrors the project pattern set by `tcp__rto.py`,
     `tcp__sack.py`, `tcp__loss_recovery.py`, `tcp__newreno.py`.
   - **Bucket B: cross-RFC interaction tests** — corners where
-    two shipped RFCs interact and no test pins the behaviour.
+    two shipped RFCs interact and no test pinned the behaviour.
   - **Bucket C: real RFC-conformance gaps** — cases where PyTCP
-    deviates from spec (not just test gaps; fix + tests).
+    appeared to deviate from spec (audit author worked from a
+    stale view; existing tests + code verified all already-shipped).
 
 ---
 
-## 0. Pre-flight
+## 0. Pre-flight (HISTORICAL)
 
 Suite baseline at start of this plan:
 **7937 passing, 0 failures, 17 skipped** at HEAD `171c2ae`.
+
+Suite at end of this plan: **7975 passing**, +38 tests, 0
+regressions.
+
+Phase-by-phase commit map:
+
+| Phase | Description                                  | Commit(s)                |
+|-------|----------------------------------------------|--------------------------|
+| A1    | tcp__cwnd.py + 27 unit tests                 | f824537                  |
+| C1    | RFC 5961 §3 RST in-window — already shipped  | (verified existing)      |
+| C2    | RFC 6691 IPv6 MSS = MTU - 60 — already shipped | (verified existing)    |
+| C3    | SYN-on-synchronized in 5 half-close — already shipped | (verified existing) |
+| D1    | PAWS / _ts_recent FSM-wide                   | eb48e62 (test) + d598e15 (impl) |
+| D2    | RFC 5961 §5 ACK lower-bound                  | 850a031 (test) + 79673c7 (impl) |
+| B1    | 6 cross-RFC interaction guards               | c4b75b3                  |
 
 After every commit in this project:
 - `make lint` clean.

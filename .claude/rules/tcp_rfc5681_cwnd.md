@@ -82,9 +82,15 @@ TcpSession state:
     _snd_wnd: int             # peer's advertised window (post-wscale)
     _recovery_point: Seq32    # RFC 6675 §5 marker (Phase 3 deflate trigger)
 
-Constants (in tcp__constants.py):
+Constants (in tcp__cwnd.py, post-Phase-6):
     INITIAL_WINDOW_FACTOR = 10        # RFC 6928 §2 multiplier
     INITIAL_WINDOW_BYTES = 14600      # RFC 6928 §2 floor for small MSS
+
+Helper module (post-Phase-6):
+    pytcp/protocols/tcp/tcp__cwnd.py
+        cwnd_grow_per_ack(cwnd, ssthresh, bytes_acked, smss) -> int
+        compute_loss_event_ssthresh(flight_size, smss) -> int
+        initial_window(smss) -> int
 
 Hook points:
 
@@ -142,11 +148,13 @@ Hook points:
 | 2     | §3.1 RTO ssthresh halving                               | `a3d08eb` + `006e452` | 2 |
 | 3     | §3.2 fast-recovery inflate/deflate                      | `8470ddc` + `6a16323` | 3 |
 | 4     | RFC 6928 §2 Initial Window 10                           | `5712ecb` + `4fea806` | 2 |
-| 5     | Convert plan to completion record                       | this commit          | 0 |
+| 5     | Convert plan to completion record                       | (rewrite commit)    | 0 |
+| 6     | Helper extraction `tcp__cwnd.py` + 27 unit tests        | `f824537`           | 27 unit |
 
-Total: **9 code commits, 13 RFC-5681-specific tests, ~40 LOC
+Total: **10 code commits, 40 RFC-5681-specific tests, ~40 LOC
 of production code in `tcp__session.py` + ~20 LOC across
-three FSM modules + 2 new constants in `tcp__constants.py`.**
+three FSM modules + the dedicated `tcp__cwnd.py` helper module
+(64 LOC + 27 unit tests).**
 
 ---
 
@@ -195,7 +203,7 @@ All 13 tests live in
 
 | File                                              | Purpose                                       |
 |---------------------------------------------------|-----------------------------------------------|
-| `pytcp/protocols/tcp/tcp__constants.py`           | `INITIAL_WINDOW_FACTOR`, `INITIAL_WINDOW_BYTES` |
+| `pytcp/protocols/tcp/tcp__cwnd.py`                | `cwnd_grow_per_ack`, `compute_loss_event_ssthresh`, `initial_window` (post-Phase-6 helper module; `INITIAL_WINDOW_FACTOR` / `INITIAL_WINDOW_BYTES` moved here from `tcp__constants.py`) |
 | `pytcp/protocols/tcp/tcp__session.py:__init__`    | `_cwnd`, `_ssthresh` field declarations       |
 | `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet` | §3.1 cwnd growth + §3.2 step 6 deflate + §3.8.4 snd_ewn recompute |
 | `pytcp/protocols/tcp/tcp__session.py:_retransmit_packet_request` | §3.2 step 2-4 ssthresh halve + cwnd inflate |

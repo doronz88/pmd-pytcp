@@ -171,7 +171,8 @@ All 11 tests live in
 | `pytcp/lib/packet_stats.py`                         | `tcp__opt_timestamps` counter                 |
 | `pytcp/protocols/tcp/tcp__session.py:__init__`      | `_advertise_ts`, `_send_ts`, `_ts_recent` fields |
 | `pytcp/protocols/tcp/tcp__session.py:_transmit_packet` | TSopt emission gating per segment kind     |
-| `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet` | PAWS check (top), `_ts_recent` update, TSecr RTTM |
+| `pytcp/protocols/tcp/tcp__session.py:_check_paws_and_update_ts_recent` | RFC 7323 §5 PAWS + §4.3 `_ts_recent` refresh helper, called from `_process_ack_packet`, `_tcp_fsm_established`, and `_tcp_fsm_time_wait` |
+| `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet` | TSecr RTTM (PAWS + `_ts_recent` delegated to the helper) |
 | `pytcp/protocols/tcp/tcp__fsm__syn_sent.py`         | Active-open + simultaneous-open negotiation    |
 | `pytcp/protocols/tcp/tcp__fsm__listen.py`           | Passive-open negotiation                      |
 | `pytcp/tests/lib/tcp_segment_factory.py`            | `tsval` / `tsecr` kwargs in `build_tcp4` / `build_tcp6` |
@@ -205,22 +206,19 @@ is the building block; full RACK requires per-segment
 send-time tracking and a separate scoreboard. ~10+ commits;
 substantial new substrate.
 
-### 7.4 PAWS in dup-ACK / OOO / TIME-WAIT paths
+### 7.4 PAWS in dup-ACK / OOO / TIME-WAIT paths — SHIPPED
 
-Phase 4 only checks PAWS in `_process_ack_packet`. Other
-inbound dispatch paths (dup-ACK fast-retransmit, OOO queue,
-TIME-WAIT late-FIN) bypass `_process_ack_packet` and
-therefore bypass PAWS. Full coverage requires a session-
-level helper called at the top of every FSM state's accepted
-segment branch. ~2-3 commits.
+Closed by Phase D1 of the test-coverage audit (commits
+`eb48e62` + `d598e15`). The `_check_paws_and_update_ts_recent`
+session helper is now invoked from `_process_ack_packet`,
+`_tcp_fsm_established` (covers dup-ACK + OOO), and
+`_tcp_fsm_time_wait`.
 
-### 7.5 `_ts_recent` update for non-`_process_ack_packet` paths
+### 7.5 `_ts_recent` update for non-`_process_ack_packet` paths — SHIPPED
 
-Per RFC 7323 §4.3, `_ts_recent` should update on ANY
-accepted segment in receive sequence space, including dup-
-ACKs and OOO segments. Phase 2 only updates on
-`_process_ack_packet`. Real-world impact small (next data
-segment refreshes), but full conformance gap. ~1-2 commits.
+Closed alongside Phase 7.4 by the same `_check_paws_and_update_ts_recent`
+helper, which refreshes `_ts_recent` as a side effect on every
+accepted segment carrying TSopt.
 
 ---
 
