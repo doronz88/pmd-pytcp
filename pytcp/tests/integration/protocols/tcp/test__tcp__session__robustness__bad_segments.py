@@ -45,8 +45,8 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__constants import DELAYED_ACK_DELAY
 from pytcp.protocols.tcp.tcp__session import (
-    DELAYED_ACK_DELAY,
     FsmState,
     SysCall,
     TcpSession,

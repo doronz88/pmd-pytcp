@@ -24,8 +24,9 @@
 
 """
 This module contains tests for the 'FsmState', 'SysCall', and
-'ConnError' enums plus the 'TcpSessionError' exception class exposed
-by 'pytcp/socket/tcp__session.py'.
+'ConnError' enums plus the 'TcpSessionError' exception class
+defined in 'pytcp/protocols/tcp/tcp__enums.py' and the module-
+level constants in 'pytcp/protocols/tcp/tcp__constants.py'.
 
 pytcp/tests/unit/protocols/tcp/test__tcp__enums.py
 
@@ -34,11 +35,13 @@ ver 3.0.4
 
 from unittest import TestCase
 
-from pytcp.protocols.tcp.tcp__session import (
+from pytcp.protocols.tcp.tcp__constants import (
     DELAYED_ACK_DELAY,
     PACKET_RETRANSMIT_MAX_COUNT,
     PACKET_RETRANSMIT_TIMEOUT,
     TIME_WAIT_DELAY,
+)
+from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,
     SysCall,

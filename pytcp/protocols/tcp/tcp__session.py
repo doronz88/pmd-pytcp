@@ -44,14 +44,6 @@ from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__constants import (  # noqa: F401  (re-export for tests)
-    CHALLENGE_ACK_RATE_LIMIT_MS,
-    DELAYED_ACK_DELAY,
-    PACKET_RETRANSMIT_MAX_COUNT,
-    PACKET_RETRANSMIT_TIMEOUT,
-    PERSIST_TIMEOUT_MAX,
-    TIME_WAIT_DELAY,
-)
 from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,

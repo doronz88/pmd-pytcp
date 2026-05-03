@@ -59,8 +59,8 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__constants import PACKET_RETRANSMIT_TIMEOUT
 from pytcp.protocols.tcp.tcp__session import (
-    PACKET_RETRANSMIT_TIMEOUT,
     FsmState,
     SysCall,
     TcpSession,
