@@ -58,17 +58,7 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
     TcpSessionError,
 )
-from pytcp.protocols.tcp.tcp__fsm__close_wait import fsm__close_wait
-from pytcp.protocols.tcp.tcp__fsm__closed import fsm__closed
-from pytcp.protocols.tcp.tcp__fsm__closing import fsm__closing
-from pytcp.protocols.tcp.tcp__fsm__established import fsm__established
-from pytcp.protocols.tcp.tcp__fsm__fin_wait_1 import fsm__fin_wait_1
-from pytcp.protocols.tcp.tcp__fsm__fin_wait_2 import fsm__fin_wait_2
-from pytcp.protocols.tcp.tcp__fsm__last_ack import fsm__last_ack
-from pytcp.protocols.tcp.tcp__fsm__listen import fsm__listen
-from pytcp.protocols.tcp.tcp__fsm__syn_rcvd import fsm__syn_rcvd
-from pytcp.protocols.tcp.tcp__fsm__syn_sent import fsm__syn_sent
-from pytcp.protocols.tcp.tcp__fsm__time_wait import fsm__time_wait
+from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -1613,130 +1603,6 @@ class TcpSession:
             )
             self.tcp_fsm(ooo_packet)
 
-    def _tcp_fsm_closed(self, *, syscall: SysCall | None) -> None:
-        """
-        TCP FSM CLOSED state handler.
-        """
-
-        fsm__closed(self, packet_rx_md=None, syscall=syscall, timer=None)
-
-    def _tcp_fsm_listen(self, *, packet_rx_md: TcpMetadata | None, syscall: SysCall | None) -> None:
-        """
-        TCP FSM LISTEN state handler.
-        """
-
-        fsm__listen(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=None)
-
-    def _tcp_fsm_syn_sent(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        syscall: SysCall | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM SYN_SENT state handler.
-        """
-
-        fsm__syn_sent(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=timer)
-
-    def _tcp_fsm_syn_rcvd(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        syscall: SysCall | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM SYN_RCVD state handler.
-        """
-
-        fsm__syn_rcvd(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=timer)
-
-    def _tcp_fsm_established(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        syscall: SysCall | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM ESTABLISHED state handler.
-        """
-
-        fsm__established(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=timer)
-
-    def _tcp_fsm_fin_wait_1(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM FIN_WAIT_1 state handler.
-        """
-
-        fsm__fin_wait_1(self, packet_rx_md=packet_rx_md, syscall=None, timer=timer)
-
-    def _tcp_fsm_fin_wait_2(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-    ) -> None:
-        """
-        TCP FSM FIN_WAIT_2 state handler.
-        """
-
-        fsm__fin_wait_2(self, packet_rx_md=packet_rx_md, syscall=None, timer=None)
-
-    def _tcp_fsm_closing(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-    ) -> None:
-        """
-        TCP FSM CLOSING state handler.
-        """
-
-        fsm__closing(self, packet_rx_md=packet_rx_md, syscall=None, timer=None)
-
-    def _tcp_fsm_close_wait(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        syscall: SysCall | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM CLOSE_WAIT state handler.
-        """
-
-        fsm__close_wait(self, packet_rx_md=packet_rx_md, syscall=syscall, timer=timer)
-
-    def _tcp_fsm_last_ack(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM LAST_ACK state handler.
-        """
-
-        fsm__last_ack(self, packet_rx_md=packet_rx_md, syscall=None, timer=timer)
-
-    def _tcp_fsm_time_wait(
-        self,
-        *,
-        packet_rx_md: TcpMetadata | None,
-        timer: bool | None,
-    ) -> None:
-        """
-        TCP FSM TIME_WAIT state handler.
-        """
-
-        fsm__time_wait(self, packet_rx_md=packet_rx_md, syscall=None, timer=timer)
-
     def tcp_fsm(
         self,
         packet_rx_md: TcpMetadata | None = None,
@@ -1747,44 +1613,10 @@ class TcpSession:
         Run TCP finite state machine.
         """
 
-        # Process event.
         with self._lock__fsm:
-            match self._state:
-                case FsmState.CLOSED:
-                    self._tcp_fsm_closed(syscall=syscall)
-                case FsmState.LISTEN:
-                    self._tcp_fsm_listen(packet_rx_md=packet_rx_md, syscall=syscall)
-                case FsmState.SYN_SENT:
-                    self._tcp_fsm_syn_sent(
-                        packet_rx_md=packet_rx_md,
-                        syscall=syscall,
-                        timer=timer,
-                    )
-                case FsmState.SYN_RCVD:
-                    self._tcp_fsm_syn_rcvd(
-                        packet_rx_md=packet_rx_md,
-                        syscall=syscall,
-                        timer=timer,
-                    )
-                case FsmState.ESTABLISHED:
-                    self._tcp_fsm_established(
-                        packet_rx_md=packet_rx_md,
-                        syscall=syscall,
-                        timer=timer,
-                    )
-                case FsmState.FIN_WAIT_1:
-                    self._tcp_fsm_fin_wait_1(packet_rx_md=packet_rx_md, timer=timer)
-                case FsmState.FIN_WAIT_2:
-                    self._tcp_fsm_fin_wait_2(packet_rx_md=packet_rx_md)
-                case FsmState.CLOSING:
-                    self._tcp_fsm_closing(packet_rx_md=packet_rx_md)
-                case FsmState.CLOSE_WAIT:
-                    self._tcp_fsm_close_wait(
-                        packet_rx_md=packet_rx_md,
-                        syscall=syscall,
-                        timer=timer,
-                    )
-                case FsmState.LAST_ACK:
-                    self._tcp_fsm_last_ack(packet_rx_md=packet_rx_md, timer=timer)
-                case FsmState.TIME_WAIT:
-                    self._tcp_fsm_time_wait(packet_rx_md=packet_rx_md, timer=timer)
+            tcp_fsm_dispatch(
+                self,
+                packet_rx_md=packet_rx_md,
+                syscall=syscall,
+                timer=timer,
+            )

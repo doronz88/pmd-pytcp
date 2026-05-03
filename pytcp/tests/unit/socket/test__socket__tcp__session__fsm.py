@@ -385,30 +385,20 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
 
     def test__tcp_session__fsm_dispatches_by_current_state(self) -> None:
         """
-        Ensure 'tcp_fsm' routes the event to the handler matching the
-        current '_state'. Exercised by seeding each state in turn and
-        verifying the corresponding private handler was called.
+        Ensure 'tcp_fsm' routes the event to the per-state free-
+        function handler matching the current '_state'. Exercised by
+        seeding each state in turn and verifying the corresponding
+        entry in the FSM_HANDLERS dispatch table was called.
         """
 
-        dispatch_map = {
-            FsmState.CLOSED: "_tcp_fsm_closed",
-            FsmState.LISTEN: "_tcp_fsm_listen",
-            FsmState.SYN_SENT: "_tcp_fsm_syn_sent",
-            FsmState.SYN_RCVD: "_tcp_fsm_syn_rcvd",
-            FsmState.ESTABLISHED: "_tcp_fsm_established",
-            FsmState.FIN_WAIT_1: "_tcp_fsm_fin_wait_1",
-            FsmState.FIN_WAIT_2: "_tcp_fsm_fin_wait_2",
-            FsmState.CLOSING: "_tcp_fsm_closing",
-            FsmState.CLOSE_WAIT: "_tcp_fsm_close_wait",
-            FsmState.LAST_ACK: "_tcp_fsm_last_ack",
-            FsmState.TIME_WAIT: "_tcp_fsm_time_wait",
-        }
+        from pytcp.protocols.tcp.tcp__fsm import FSM_HANDLERS
 
-        for state, handler_name in dispatch_map.items():
+        for state in FSM_HANDLERS:
             with self.subTest(state=state):
                 session = self._make_session()
                 session._state = state
-                with patch.object(session, handler_name) as mock_handler:
+                mock_handler = MagicMock()
+                with patch.dict(FSM_HANDLERS, {state: mock_handler}):
                     session.tcp_fsm()
                 mock_handler.assert_called_once()
 
