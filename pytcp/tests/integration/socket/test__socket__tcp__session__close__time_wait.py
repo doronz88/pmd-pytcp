@@ -228,7 +228,7 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
         # Patch TIME_WAIT_DELAY before driving the FSM into TIME_WAIT
         # so the timer is registered with the small test value.
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__session.TIME_WAIT_DELAY",
+            "pytcp.protocols.tcp.tcp__constants.TIME_WAIT_DELAY",
             TEST__TIME_WAIT_DELAY_MS,
         )
 
@@ -401,7 +401,7 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__session.TIME_WAIT_DELAY",
+            "pytcp.protocols.tcp.tcp__constants.TIME_WAIT_DELAY",
             TEST__TIME_WAIT_DELAY_MS,
         )
 

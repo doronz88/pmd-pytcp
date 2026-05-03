@@ -44,7 +44,8 @@ from pytcp.lib.logger import log
 from pytcp.lib.tcp_loss_recovery import is_lost, next_seg
 from pytcp.lib.tcp_sack import SackScoreboard
 from pytcp.lib.tcp_seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
-from pytcp.protocols.tcp.tcp__constants import (
+from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.tcp__constants import (  # noqa: F401  (re-export for tests)
     CHALLENGE_ACK_RATE_LIMIT_MS,
     DELAYED_ACK_DELAY,
     PACKET_RETRANSMIT_MAX_COUNT,
@@ -59,6 +60,7 @@ from pytcp.protocols.tcp.tcp__enums import (
     TcpSessionError,
 )
 from pytcp.protocols.tcp.tcp__fsm__closed import fsm__closed
+from pytcp.protocols.tcp.tcp__fsm__time_wait import fsm__time_wait
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -301,10 +303,10 @@ class TcpSession:
         # an ACK while we still have data to send; it flips False
         # when peer reopens the window. '_persist_timeout' carries
         # the current back-off interval (initial =
-        # PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
-        # PERSIST_TIMEOUT_MAX).
+        # tcp__constants.PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
+        # tcp__constants.PERSIST_TIMEOUT_MAX).
         self._persist_active: bool = False
-        self._persist_timeout: int = PACKET_RETRANSMIT_TIMEOUT
+        self._persist_timeout: int = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
 
         # Number of in-order data segments received since we last transmitted
         # an ACK. Tracks the RFC 1122 §4.2.3.2 "ACK every other segment"
@@ -753,7 +755,7 @@ class TcpSession:
 
         # If in ESTABLISHED state then reset ACK delay timer.
         if self._state is FsmState.ESTABLISHED:
-            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=DELAYED_ACK_DELAY)
+            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
 
         # If packet contains data then Initialize / adjust packet's retransmit
         # counter and timer.
@@ -761,7 +763,7 @@ class TcpSession:
             self._tx_retransmit_timeout_counter[seq] = self._tx_retransmit_timeout_counter.get(seq, -1) + 1
             stack.timer.register_timer(
                 name=f"{self}-retransmit_seq-{seq}",
-                timeout=PACKET_RETRANSMIT_TIMEOUT * (1 << self._tx_retransmit_timeout_counter[seq]),
+                timeout=tcp__constants.PACKET_RETRANSMIT_TIMEOUT * (1 << self._tx_retransmit_timeout_counter[seq]),
             )
 
         __debug__ and log(
@@ -948,7 +950,7 @@ class TcpSession:
             )
             return
         self._transmit_packet(flag_ack=True)
-        stack.timer.register_timer(name=rate_limit_timer, timeout=CHALLENGE_ACK_RATE_LIMIT_MS)
+        stack.timer.register_timer(name=rate_limit_timer, timeout=tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -1199,14 +1201,14 @@ class TcpSession:
                     # on first entry into the state, then on each
                     # expiry emit a 1-byte probe at SND.UNA and re-arm
                     # with double the timeout (capped at
-                    # PERSIST_TIMEOUT_MAX). RFC 1122 §4.2.2.17 makes
+                    # tcp__constants.PERSIST_TIMEOUT_MAX). RFC 1122 §4.2.2.17 makes
                     # probing mandatory because without it the
                     # connection would stall indefinitely whenever the
                     # peer temporarily closed its window.
                     persist_timer = f"{self}-persist"
                     if not self._persist_active:
                         self._persist_active = True
-                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                        self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
                         stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
                         __debug__ and log(
                             "tcp-ss",
@@ -1223,7 +1225,7 @@ class TcpSession:
                         # The probe is by definition a partial; track
                         # it for Nagle so subsequent partials defer.
                         self._snd_sml = self._snd_nxt
-                        self._persist_timeout = min(self._persist_timeout * 2, PERSIST_TIMEOUT_MAX)
+                        self._persist_timeout = min(self._persist_timeout * 2, tcp__constants.PERSIST_TIMEOUT_MAX)
                         stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
                 return
 
@@ -1248,7 +1250,7 @@ class TcpSession:
                     "tcp-ss",
                     f"[{self}] - Sent out delayed ACK ({self._rcv_nxt})",
                 )
-            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=DELAYED_ACK_DELAY)
+            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
 
     def _retransmit_packet_timeout(self) -> None:
         """
@@ -1258,7 +1260,7 @@ class TcpSession:
         if self._snd_una in self._tx_retransmit_timeout_counter and stack.timer.is_expired(
             f"{self}-retransmit_seq-{self._snd_una}"
         ):
-            if self._tx_retransmit_timeout_counter[self._snd_una] == PACKET_RETRANSMIT_MAX_COUNT:
+            if self._tx_retransmit_timeout_counter[self._snd_una] == tcp__constants.PACKET_RETRANSMIT_MAX_COUNT:
                 # Send RST to peer iff peer was actually contacted
                 # (i.e. we processed at least one inbound segment
                 # post-handshake-start). The check uses the explicit
@@ -1509,7 +1511,7 @@ class TcpSession:
         # how we acknowledge it: count pending unacked segments since the
         # last ACK, force an inline ACK once two segments are pending
         # ("every other segment"), and otherwise arm the delayed-ACK
-        # timer so the ACK fires within DELAYED_ACK_DELAY rather than
+        # timer so the ACK fires within tcp__constants.DELAYED_ACK_DELAY rather than
         # immediately. Arming the timer here (rather than only inside
         # '_transmit_packet') ensures the FIRST inbound data segment
         # after the handshake is properly delayed - without this, the
@@ -1539,8 +1541,8 @@ class TcpSession:
             else:
                 # First pending segment: ensure the delayed-ACK timer is
                 # armed so the timer-driven '_delayed_ack' will fire the
-                # ACK after DELAYED_ACK_DELAY rather than immediately.
-                stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=DELAYED_ACK_DELAY)
+                # ACK after tcp__constants.DELAYED_ACK_DELAY rather than immediately.
+                stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
         # Purge acked data from TX buffer.
         with self._lock__tx_buffer:
             del self._tx_buffer[: self._tx_buffer_una]
@@ -1563,7 +1565,7 @@ class TcpSession:
         if self._snd_wnd > 0 and self._persist_active:
             __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
             self._persist_active = False
-            self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+            self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
         # RFC 5681 §3.1 slow-start: each cum-ACK doubles the
         # congestion window up to the receiver-advertised window
         # ceiling. PyTCP's simplified model conflates cwnd and
@@ -2231,7 +2233,7 @@ class TcpSession:
                             f"[{self}] - Persist: peer reopened window via wnd-update, deactivating timer",
                         )
                         self._persist_active = False
-                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                        self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
                     self._ingest_sack_info(packet_rx_md)
                     return
                 # Window unchanged -> true duplicate ACK per RFC
@@ -2472,7 +2474,7 @@ class TcpSession:
                     # Change state to TIME_WAIT
                     self._change_state(FsmState.TIME_WAIT)
                     # Initialize TIME_WAIT delay.
-                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
+                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
                 else:
                     # Change state to CLOSING.
                     self._change_state(FsmState.CLOSING)
@@ -2562,7 +2564,7 @@ class TcpSession:
                 # Change state to TIME_WAIT.
                 self._change_state(FsmState.TIME_WAIT)
                 # Initialize TIME_WAIT delay
-                stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
+                stack.timer.register_timer(name=f"{self}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
                 return
 
         # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
@@ -2634,7 +2636,7 @@ class TcpSession:
                 # If our FIN is now acked, enter TIME_WAIT.
                 if ge32(self._snd_una, self._snd_fin):
                     self._change_state(FsmState.TIME_WAIT)
-                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=TIME_WAIT_DELAY)
+                    stack.timer.register_timer(name=f"{self}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
                 return
             # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
             # data we have never sent (ack > SND.MAX) MUST elicit
@@ -2739,7 +2741,7 @@ class TcpSession:
                             f"[{self}] - Persist: peer reopened window via wnd-update, deactivating timer",
                         )
                         self._persist_active = False
-                        self._persist_timeout = PACKET_RETRANSMIT_TIMEOUT
+                        self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
                     self._ingest_sack_info(packet_rx_md)
                     return
                 # Window unchanged -> true duplicate ACK per RFC
@@ -2910,42 +2912,7 @@ class TcpSession:
         TCP FSM TIME_WAIT state handler.
         """
 
-        # Got timer event -> Run TIME_WAIT delay.
-        if timer and stack.timer.is_expired(f"{self}-time_wait"):
-            self._change_state(FsmState.CLOSED)
-            return
-
-        # Got peer FIN retransmit -> Acknowledge it and restart the
-        # TIME_WAIT timer per RFC 9293 §3.10.7.5: 'The only thing
-        # that can arrive in this state is a retransmission of the
-        # remote FIN. Acknowledge it, and restart the 2 MSL
-        # timeout.' The FIN's seq does not advance with retransmits,
-        # so peer is replaying the same byte of sequence space we
-        # already accepted (RCV.NXT - 1).
-        if packet_rx_md and packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == self._rcv_nxt:
-            self._transmit_packet(flag_ack=True)
-            stack.timer.register_timer(
-                name=f"{self}-time_wait",
-                timeout=TIME_WAIT_DELAY,
-            )
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",
-            )
-            return
-
-        # Got SYN-bearing segment in TIME_WAIT -> Send a challenge
-        # ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4. PyTCP does not
-        # implement the Timestamp Option (PAWS), so RFC 9293's
-        # TIME_WAIT-special connection-recycling path is unreachable
-        # and the default challenge-ACK behaviour applies.
-        if packet_rx_md and packet_rx_md.tcp__flag_syn:
-            self._emit_challenge_ack()
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Sent challenge ACK for SYN-in-time_wait (RFC 9293 §3.10.7.4)",
-            )
-            return
+        fsm__time_wait(self, packet_rx_md=packet_rx_md, syscall=None, timer=timer)
 
     def tcp_fsm(
         self,
