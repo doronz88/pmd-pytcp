@@ -1131,3 +1131,125 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
                 "scales."
             ),
         )
+
+    def test__wscale__active_open_us_only_peer_omits_wscale_disables_scaling(self) -> None:
+        """
+        Cross-RFC bilateral matrix completion: active open
+        where WE advertise WSCALE on the SYN but peer's SYN+ACK
+        OMITS WSCALE. Per RFC 7323 §2.2, the asymmetric offer
+        MUST be ignored on both sides.
+
+        Result: '_rcv_wsc' set to our advertised value (the
+        offer is on the wire), but the bilateral-success flag
+        path keeps '_snd_wsc = 0' (no scaling on outbound), and
+        '_snd_wnd' equals peer's raw 'win' field unshifted.
+        Existing 'asymmetric_offer_we_disabled_advertising_ignores_peer_wscale'
+        covers the symmetric mirror (peer-only). This test
+        covers the us-only direction.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        syn_tx = self._advance(ms=1)
+        syn_probe = self._parse_tx(syn_tx[0])
+        self.assertIsNotNone(
+            syn_probe.wscale,
+            msg=("Setup invariant: outbound SYN MUST advertise WSCALE " "(default-on per shipped behaviour)."),
+        )
+
+        # Peer's SYN+ACK omits WSCALE.
+        peer_post_handshake_win = 32768
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=peer_post_handshake_win,
+            mss=PEER__MSS,
+            # wscale=None (deliberately omitted).
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup invariant: handshake must complete on peer SYN+ACK.",
+        )
+        self.assertEqual(
+            session._snd_wsc,
+            0,
+            msg=(
+                "RFC 7323 §2.2 us-only asymmetric: peer omitted WSCALE, "
+                f"so '_snd_wsc' MUST stay at 0. Got {session._snd_wsc}."
+            ),
+        )
+        self.assertEqual(
+            session._snd_wnd,
+            peer_post_handshake_win,
+            msg=(
+                f"RFC 7323 §2.2 us-only asymmetric: '_snd_wnd' MUST equal "
+                f"peer's raw 'win' ({peer_post_handshake_win}) unshifted. "
+                f"Got {session._snd_wnd}."
+            ),
+        )
+
+    def test__wscale__active_open_neither_advertises_disables_scaling(self) -> None:
+        """
+        Cross-RFC bilateral matrix completion: active open
+        where NEITHER side advertises WSCALE. Per RFC 7323
+        §2.2, scaling is simply not in effect; '_snd_wsc' and
+        '_rcv_wsc' both remain 0 and '_snd_wnd' equals peer's
+        raw 'win' field.
+
+        Existing 'passive_open_omits_wscale_when_peer_did_not_offer'
+        covers the passive shape (we mirror peer's omission);
+        this test covers the active shape (we explicitly opt
+        out, peer omits).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session._advertise_wscale = False
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        syn_tx = self._advance(ms=1)
+        syn_probe = self._parse_tx(syn_tx[0])
+        self.assertIsNone(
+            syn_probe.wscale,
+            msg="Setup invariant: opt-out -> outbound SYN MUST NOT carry WSCALE.",
+        )
+
+        # Peer's SYN+ACK also omits WSCALE.
+        peer_post_handshake_win = 32768
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=peer_post_handshake_win,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(session.state, FsmState.ESTABLISHED)
+        self.assertEqual(
+            session._snd_wsc,
+            0,
+            msg=("Neither side offered WSCALE: '_snd_wsc' MUST be 0. " f"Got {session._snd_wsc}."),
+        )
+        self.assertEqual(
+            session._rcv_wsc,
+            0,
+            msg=("Neither side offered WSCALE: '_rcv_wsc' MUST be 0. " f"Got {session._rcv_wsc}."),
+        )
+        self.assertEqual(
+            session._snd_wnd,
+            peer_post_handshake_win,
+            msg=(
+                f"Neither side offered WSCALE: '_snd_wnd' MUST equal "
+                f"peer's raw 'win' ({peer_post_handshake_win}) "
+                f"unshifted. Got {session._snd_wnd}."
+            ),
+        )
