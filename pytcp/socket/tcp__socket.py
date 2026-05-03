@@ -588,6 +588,22 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 
+    def shutdown(self, how: int, /) -> None:
+        """
+        BSD 'shutdown(how)' half-close per POSIX:
+            SHUT_RD   (0): no further reads.
+            SHUT_WR   (1): no further writes; FIN emitted.
+            SHUT_RDWR (2): both.
+
+        On a fresh / closed socket with no associated session,
+        this is a no-op.
+        """
+
+        if self._tcp_session is not None:
+            self._tcp_session.shutdown(how=how)
+
+        __debug__ and log("socket", f"<g>[{self}]</> - shutdown(how={how})")
+
     def abort(self) -> None:
         """
         Abort the TCP connection per RFC 9293 §3.9.1 ABORT.

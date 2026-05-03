@@ -455,6 +455,15 @@ class TcpSession:
         # waiting for the delayed-ACK timer to fire.
         self._delayed_ack_segments_pending: int = 0
 
+        # BSD-socket half-close flags per RFC 9293 §3.9.1 + POSIX
+        # 'shutdown()'. '_shut_rd' silently discards subsequent
+        # inbound data and makes 'recv()' return 0 once the buffer
+        # drains. '_shut_wr' triggers FIN emission (same effect as
+        # 'close()' on the write side) but leaves '_shut_rd'
+        # untouched so the receive side stays open.
+        self._shut_rd: bool = False
+        self._shut_wr: bool = False
+
         ###
         # Other variables.
         ###
@@ -642,7 +651,7 @@ class TcpSession:
         # timer tick after the TX buffer drains. Without this guard,
         # the post-close-but-pre-tick window would silently accept
         # writes that get serialised onto the wire ahead of the FIN.
-        if self._closing:
+        if self._closing or self._shut_wr:
             raise TcpSessionError("TCP session is closing")
 
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
@@ -706,6 +715,47 @@ class TcpSession:
         )
 
         self.tcp_fsm(syscall=SysCall.CLOSE)
+
+    def shutdown(self, *, how: int) -> None:
+        """
+        BSD 'shutdown(how)' half-close per RFC 9293 §3.9.1
+        + POSIX shutdown semantics.
+
+        'how' values (matching pytcp.socket.SHUT_*):
+            SHUT_RD   (0): no further reads. Inbound data is
+                           silently discarded; recv() returns 0
+                           after the buffer drains.
+            SHUT_WR   (1): no further writes. Drains the TX
+                           buffer and emits FIN (same effect as
+                           close() on the write side); the read
+                           side stays open until peer's FIN.
+            SHUT_RDWR (2): both. Equivalent to close().
+
+        Idempotent: shutdown() on a direction already shut is a
+        no-op. Setting SHUT_WR on an already-closing session
+        does NOT re-emit FIN.
+        """
+
+        assert how in (0, 1, 2), f"shutdown 'how' must be in {{SHUT_RD, SHUT_WR, SHUT_RDWR}}; got {how}."
+
+        # SHUT_RD or SHUT_RDWR: discard subsequent inbound data
+        # and unblock any pending recv() with end-of-stream.
+        if how in (0, 2):
+            if not self._shut_rd:
+                self._shut_rd = True
+                # Wake any blocked recv() so it observes the
+                # shutdown and returns 0 (the FSM check + empty
+                # buffer makes recv() yield empty bytes).
+                self._event__rx_buffer.set()
+                __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_RD): receive side closed")
+
+        # SHUT_WR or SHUT_RDWR: trigger FIN emission via the
+        # existing close() machinery if not already closing.
+        if how in (1, 2):
+            if not self._shut_wr and not self._closing:
+                self._shut_wr = True
+                self.tcp_fsm(syscall=SysCall.CLOSE)
+                __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_WR): send side closed")
 
     def abort(self) -> None:
         """
@@ -1466,6 +1516,13 @@ class TcpSession:
         """
 
         assert isinstance(data, memoryview)  # memoryview: check to ensure data gets here as memoryview not bytes.
+
+        # POSIX 'shutdown(SHUT_RD)' silently discards inbound
+        # data per RFC 9293 §3.9.1 half-close semantics. The
+        # peer's ACK still acknowledges the seq space (advancing
+        # RCV.NXT), but the application never sees the bytes.
+        if self._shut_rd:
+            return
 
         with self._lock__rx_buffer:
             self._rx_buffer.extend(data)

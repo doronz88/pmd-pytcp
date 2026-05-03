@@ -79,6 +79,15 @@ TCP_KEEPINTVL = SocketOption.TCP_KEEPINTVL
 TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
 
 
+# BSD-socket 'shutdown(how)' constants per POSIX. Linux-numbered
+# values matching stdlib 'socket.SHUT_*'. RFC 9293 §3.9.1
+# half-close support: SHUT_WR triggers FIN emission like CLOSE
+# but leaves the read side open; SHUT_RD discards inbound data.
+SHUT_RD: int = 0
+SHUT_WR: int = 1
+SHUT_RDWR: int = 2
+
+
 class gaierror(OSError):
     """
     BSD Socket error for compatibility.
