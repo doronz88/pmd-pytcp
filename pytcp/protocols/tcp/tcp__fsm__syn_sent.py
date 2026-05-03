@@ -34,6 +34,7 @@ ver 3.0.4
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
@@ -168,6 +169,12 @@ def fsm__syn_sent(
             # '_tcp_fsm_listen'.
             if packet_rx_md.tcp__data:
                 session._enqueue_rx_buffer(packet_rx_md.tcp__data)
+            # Capture the SYN-retransmit count BEFORE
+            # '_process_ack_packet' resets it: the RFC 6298 §5.7
+            # second-clause floor below is gated on whether the
+            # SYN itself was retransmitted, not on subsequent
+            # in-flight retransmits.
+            syn_retransmits = session._retransmit_count
             # Process ACK packet (uses '_snd_wsc=0' still, so
             # the SYN+ACK's win is preserved unshifted).
             session._process_ack_packet(packet_rx_md)
@@ -178,6 +185,18 @@ def fsm__syn_sent(
             # exact post-handshake cwnd, not IW + 1.
             session._cwnd = initial_window(session._snd_mss)
             session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            # RFC 6298 §5.7 second clause: when the SYN was
+            # retransmitted at least once before the handshake
+            # completed, RTO MUST be re-initialized to >= 3 s
+            # when data transmission begins. The floor protects
+            # against pathologically aggressive RTOs in
+            # environments where the SYN's RTT clamp
+            # (MIN_RTO_MS = 1000 ms) is optimistic relative to
+            # the path's actual RTT. A clean handshake
+            # ('_retransmit_count == 0') skips the floor and
+            # uses the canonical estimator output.
+            if syn_retransmits > 0 and session._rto_state.rto_ms < 3000:
+                session._rto_state = replace(session._rto_state, rto_ms=3000)
             # WSCALE bilateral negotiation per RFC 7323 §2.2:
             # store peer's wscale only if WE offered our own.
             # The check 'packet_rx_md.tcp__wscale != 0' is the
