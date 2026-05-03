@@ -195,7 +195,8 @@ def fsm__listen(
             # ACKs over an OOO-buffered queue.
             session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
             session._rcv_ini = packet_rx_md.tcp__seq
-            session._snd_ewn = session._snd_mss
+            session._cwnd = session._snd_mss
+            session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # Make note of the remote SEQ number, advancing past the
             # SYN's one byte AND every byte of any piggybacked payload
             # so the SYN+ACK we emit acknowledges the data and the

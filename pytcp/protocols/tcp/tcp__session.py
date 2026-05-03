@@ -1622,23 +1622,17 @@ class TcpSession:
             f"#{self._retransmit_count})",
         )
 
-        # RFC 5681 §3.1: on RTO, ssthresh is set to FlightSize/2
-        # (not tracked in PyTCP's simplified cwnd model) and the
-        # congestion window collapses to one SMSS for slow-start
-        # re-entry. The window then re-grows on each cum-ACK via
-        # '_process_ack_packet'. PyTCP conflates cwnd and the
-        # effective send window into '_snd_ewn'; the reset to
-        # 'min(_snd_mss, _snd_wnd)' here is the slow-start
-        # re-entry clamped by peer's flow-control. RFC 9293
-        # §3.8.6.1 / RFC 1122 §4.2.2.16 require respecting
-        # peer's advertised window across all transmissions
-        # including retransmits; without the '_snd_wnd' clamp
-        # an RTO firing while peer has advertised a 0-window
-        # would emit a data segment in violation of peer's
-        # flow-control. The clamp lets '_transmit_data' fall
-        # through to the persist branch when peer's window is
-        # closed (RFC 9293 §3.8.6.1 zero-window probing).
-        self._snd_ewn = min(self._snd_mss, self._snd_wnd)
+        # RFC 5681 §3.1: on RTO, the congestion window collapses
+        # to LW = 1 SMSS for slow-start re-entry. Phase 2 of the
+        # RFC 5681 plan adds 'ssthresh = max(FlightSize/2,
+        # 2*SMSS)' here so the post-RTO slow-start exits at the
+        # previous loss point; today the cwnd reset alone is
+        # tracked. RFC 9293 §3.8.6.1 / RFC 1122 §4.2.2.16 still
+        # require respecting peer's advertised window: a 0-window
+        # peer means '_snd_ewn = 0' so '_transmit_data' falls
+        # through to the persist branch.
+        self._cwnd = self._snd_mss
+        self._snd_ewn = min(self._cwnd, self._snd_wnd)
         self._snd_nxt = self._snd_una
         # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
         # event, distinct from the dup-ACK-driven fast-
@@ -1771,7 +1765,31 @@ class TcpSession:
         # "ahead" of it in the 32-bit modular sense. Plain 'max()'
         # uses numerical order, which is wrong across the wrap.
         if lt32(self._snd_una, packet_rx_md.tcp__ack):
+            # Modular bytes-acked computation per RFC 9293 §3.4
+            # so the §3.1 cwnd growth formula gets the correct
+            # delta when the cum-ACK straddles the 32-bit wrap.
+            bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
             self._snd_una = packet_rx_md.tcp__ack
+            # RFC 5681 §3.1 cwnd growth on cum-ACK that advances
+            # SND.UNA. The slow-start vs congestion-avoidance
+            # gate is a single 'cwnd < ssthresh' comparison:
+            #   - slow start: 'cwnd += min(bytes_acked, SMSS)'
+            #     ("at most SMSS bytes for each ACK received")
+            #   - CA:         'cwnd += max(1, SMSS*SMSS / cwnd)'
+            #     ("approximately SMSS bytes per RTT")
+            # The 'max(1, ...)' floor in CA prevents zero growth
+            # on very large cwnd values where integer
+            # 'SMSS*SMSS // cwnd' rounds down to 0; without it a
+            # connection past 'cwnd > SMSS²' would stall.
+            if self._cwnd < self._ssthresh:
+                self._cwnd += min(bytes_acked, self._snd_mss)
+            else:
+                self._cwnd += max(1, self._snd_mss * self._snd_mss // self._cwnd)
+            # RFC 9293 §3.8.4: the effective send window is
+            # 'min(cwnd, snd_wnd)'. Recompute now so
+            # '_transmit_data' sees the new value on the same
+            # FSM tick.
+            self._snd_ewn = min(self._cwnd, self._snd_wnd)
             # RFC 6298 §5.2 / §5.3: peer has acknowledged new
             # data, fresh evidence of liveness. Reset the R2
             # abort counter and manage the retransmit timer:
@@ -1929,6 +1947,12 @@ class TcpSession:
                 f"[{self}] - Updated sending window size {self._snd_wnd} -> {packet_rx_md.tcp__win << self._snd_wsc}",
             )
             self._snd_wnd = packet_rx_md.tcp__win << self._snd_wsc
+            # RFC 9293 §3.8.4: '_snd_ewn = min(cwnd, snd_wnd)'.
+            # Recompute when peer's advertised window changes so
+            # the wire-level transmit gate sees a coherent
+            # min(cwnd, snd_wnd) regardless of which side just
+            # moved.
+            self._snd_ewn = min(self._cwnd, self._snd_wnd)
         # If peer has reopened their receive window, deactivate the
         # persist timer and reset the back-off interval so the next
         # zero-window event starts fresh at the initial RTO
@@ -1937,18 +1961,9 @@ class TcpSession:
             __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
             self._persist_active = False
             self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
-        # RFC 5681 §3.1 slow-start: each cum-ACK doubles the
-        # congestion window up to the receiver-advertised window
-        # ceiling. PyTCP's simplified model conflates cwnd and
-        # ssthresh into a single doubling-then-clamped variable;
-        # a proper RFC 5681 implementation would switch to
-        # congestion avoidance (linear +1 SMSS per RTT) once
-        # cwnd > ssthresh, but that distinction is deferred (see
-        # '.claude/rules/tcp_sack_implementation.md' §7.1).
-        self._snd_ewn = min(self._snd_ewn << 1, self._snd_wnd)
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - Updated effective sending window to {self._snd_ewn}",
+            f"[{self}] - cwnd={self._cwnd} ssthresh={self._ssthresh} snd_ewn={self._snd_ewn}",
         )
         # Purge expired tx packet retransmit requests. Modular '<'
         # via 'lt32' so entries near the 32-bit wrap are dropped

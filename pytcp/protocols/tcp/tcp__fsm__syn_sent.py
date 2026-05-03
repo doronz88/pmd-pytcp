@@ -155,7 +155,8 @@ def fsm__syn_sent(
             # the RST even when 'RCV.NXT' happens to equal
             # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
             session._peer_contacted = True
-            session._snd_ewn = session._snd_mss
+            session._cwnd = session._snd_mss
+            session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # Enqueue any piggybacked SYN+ACK data per RFC 9293
             # §3.10.7.4 step 7 BEFORE '_process_ack_packet'
             # runs: the helper's overlap-prefix calculation
@@ -250,7 +251,8 @@ def fsm__syn_sent(
             session._peer_contacted = True
             # Reset slow-start to one MSS now that we know peer's
             # MSS for real.
-            session._snd_ewn = session._snd_mss
+            session._cwnd = session._snd_mss
+            session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # Send SYN + ACK at our original SYN's seq so peer
             # accepts it as the simultaneous-open response. RFC
             # 9293 §3.5.1 figure 8: the simultaneous-open SYN+ACK

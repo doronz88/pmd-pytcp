@@ -520,9 +520,15 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         # Pin slow-start regime with cwnd as the tighter bound.
+        # 'PEER__WIN' (64240 ~= 44 MSS) is comfortably larger
+        # than 'cwnd = 4 * MSS = 5840', so 'min(cwnd, snd_wnd)'
+        # tracks cwnd. Setting '_snd_wnd' directly is pointless
+        # because '_process_ack_packet' overwrites it from the
+        # peer ACK's 'win' field; the wire-level 16-bit window
+        # cap and the wscale shift do their own thing inside
+        # the runtime.
         session._cwnd = 4 * PEER__MSS
         session._ssthresh = 0x7FFF_FFFF
-        session._snd_wnd = 100 * PEER__MSS
         session._snd_ewn = min(session._cwnd, session._snd_wnd)
 
         # Send 1 MSS, let it fire.
@@ -530,14 +536,14 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=1)
 
-        # Drive cum-ACK.
+        # Drive cum-ACK with peer's full advertised window.
         peer_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=PEER__ISS + 1,
             ack=LOCAL__ISS + 1 + PEER__MSS,
             flags=("ACK",),
-            win=100 * PEER__MSS,
+            win=PEER__WIN,
         )
         self._drive_rx(frame=peer_ack)
 
