@@ -1802,3 +1802,234 @@ class TestTcpCwndPrr(TcpSessionTestCase):
             0,
             msg=("RFC 6937 §3.1: '_prr_out' MUST reset to " f"zero on recovery exit. Got {session._prr_out}."),
         )
+
+    def _drive_handshake_to_established_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Bilateral SACK handshake variant: peer offers
+        SACK-Permitted on its SYN+ACK so '_send_sack' is True
+        post-handshake. Required for SACK-delta tests.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_sack, "Bilateral SACK must be active for SACK-delta tests."
+        return session
+
+    def test__cwnd__prr__sack_bearing_dup_ack_increments_prr_delivered(self) -> None:
+        """
+        Ensure that when a dup-ACK during recovery carries
+        new SACK info covering one segment that was not
+        previously SACK'd, '_prr_delivered' increases by
+        that segment's byte count. Without this delta
+        tracking, PRR's per-ACK 'sndcnt = ceil(prr_delivered
+        * ssthresh / RecoverFS) - prr_out' computation
+        cannot pace the sender correctly during recovery -
+        only cum-ACK deliveries would feed the proportional
+        ratio, leaving SACK-delivered bytes invisible to the
+        algorithm.
+
+        Reference: RFC 6937 §3.1 (DeliveredData includes SACK delivery delta).
+        """
+
+        session = self._drive_handshake_to_established_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Pre-fill 5 segments and enter recovery via the
+        # count-based trigger.
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session.send(data=b"x" * (5 * PEER__MSS))
+        for _ in range(5):
+            self._advance(ms=1)
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+        prr_delivered_pre = session._prr_delivered
+        self.assertEqual(
+            prr_delivered_pre,
+            0,
+            msg="Setup invariant: '_prr_delivered' MUST be zero post-entry.",
+        )
+
+        # 4th dup-ACK with a NEW SACK block covering segment
+        # 3 (1 SMSS of newly-delivered information).
+        seg3_left = LOCAL__ISS + 1 + 2 * PEER__MSS
+        seg3_right = LOCAL__ISS + 1 + 3 * PEER__MSS
+        sack_dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(seg3_left, seg3_right)],
+        )
+        self._drive_rx(frame=sack_dup_ack)
+
+        self.assertEqual(
+            session._prr_delivered,
+            PEER__MSS,
+            msg=(
+                "RFC 6937 §3.1: a SACK-bearing dup-ACK that "
+                "delivers one MSS of newly-SACK'd bytes MUST "
+                "increment '_prr_delivered' by SMSS. Got "
+                f"{session._prr_delivered}, expected {PEER__MSS}."
+            ),
+        )
+
+    def test__cwnd__prr__multi_segment_sack_block_increments_prr_delivered_by_total(self) -> None:
+        """
+        Ensure that when a dup-ACK carries a SACK block
+        covering multiple newly-delivered segments,
+        '_prr_delivered' increases by the full block byte
+        count - not capped at one SMSS, not undercounted.
+        Multi-segment SACK blocks are common when peer
+        receives a burst of out-of-order data and reports
+        the whole contiguous range in a single block.
+
+        Reference: RFC 6937 §3.1 (DeliveredData covers full SACK delivery byte count).
+        """
+
+        session = self._drive_handshake_to_established_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session.send(data=b"x" * (5 * PEER__MSS))
+        for _ in range(5):
+            self._advance(ms=1)
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+        # SACK block covering segments 3 + 4 + 5 (3 SMSS
+        # contiguous range, all newly delivered).
+        block_left = LOCAL__ISS + 1 + 2 * PEER__MSS
+        block_right = LOCAL__ISS + 1 + 5 * PEER__MSS
+        sack_dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(block_left, block_right)],
+        )
+        self._drive_rx(frame=sack_dup_ack)
+
+        expected_delivered = 3 * PEER__MSS
+        self.assertEqual(
+            session._prr_delivered,
+            expected_delivered,
+            msg=(
+                "RFC 6937 §3.1: a SACK block covering 3 "
+                "newly-delivered MSS-sized segments MUST "
+                "increment '_prr_delivered' by 3*SMSS = "
+                f"{expected_delivered}. Got "
+                f"{session._prr_delivered}."
+            ),
+        )
+
+    def test__cwnd__prr__repeated_sack_info_does_not_double_count_prr_delivered(self) -> None:
+        """
+        Ensure that when a dup-ACK retransmits a SACK block
+        covering bytes ALREADY in the scoreboard (peer
+        repeats the same SACK info), '_prr_delivered' does
+        NOT double-count those bytes. Only the delta between
+        the scoreboard before and after ingestion counts as
+        DeliveredData.
+
+        Reference: RFC 6937 §3.1 (DeliveredData is a delta, not a sum of all SACK ranges).
+        """
+
+        session = self._drive_handshake_to_established_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session.send(data=b"x" * (5 * PEER__MSS))
+        for _ in range(5):
+            self._advance(ms=1)
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+        self._advance(ms=1)
+
+        block_left = LOCAL__ISS + 1 + 2 * PEER__MSS
+        block_right = LOCAL__ISS + 1 + 3 * PEER__MSS
+
+        # First dup-ACK with the SACK block - delivers 1 MSS
+        # of new SACK info.
+        first_sack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(block_left, block_right)],
+        )
+        self._drive_rx(frame=first_sack)
+        prr_after_first = session._prr_delivered
+        self.assertEqual(
+            prr_after_first,
+            PEER__MSS,
+            msg="Setup precondition: first SACK delta MUST equal SMSS.",
+        )
+
+        # Second dup-ACK with the SAME SACK info - peer is
+        # repeating itself; no new delivery.
+        second_sack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(block_left, block_right)],
+        )
+        self._drive_rx(frame=second_sack)
+
+        self.assertEqual(
+            session._prr_delivered,
+            prr_after_first,
+            msg=(
+                "RFC 6937 §3.1: a repeated SACK block "
+                "covering bytes already in the scoreboard "
+                "MUST NOT double-count - 'DeliveredData' is "
+                "the delta of newly-SACK'd bytes, not a sum "
+                f"of all SACK ranges seen. Pre={prr_after_first}, "
+                f"got {session._prr_delivered}, expected unchanged."
+            ),
+        )
