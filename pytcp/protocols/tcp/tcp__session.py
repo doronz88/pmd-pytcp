@@ -50,7 +50,7 @@ from pytcp.protocols.tcp.tcp__enums import (
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
-from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state, update
+from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
 
@@ -263,17 +263,18 @@ class TcpSession:
         # '_process_ack_packet' (harvest on covering ACK and run
         # 'update' iff Karn's flag is False), and in
         # '_retransmit_packet_timeout' (set Karn's flag per §3 on
-        # the in-flight sample). 'rto_ms' is observed in Phase 2
-        # but the per-seq retransmit timer family
-        # ('_tx_retransmit_timeout_counter') still drives the wire
-        # cadence; Phase 3 replaces the per-seq machinery with a
-        # session-level retransmit timer keyed on
-        # '_rto_state.rto_ms' (see
-        # '.claude/rules/tcp_rto_integration.md').
+        # the in-flight sample). 'rto_ms' drives the session-level
+        # 'f"{self}-retransmit"' timer; on each timeout fire,
+        # '_retransmit_packet_timeout' applies 'back_off' (§5.5)
+        # and re-arms with the new value. The R2 abort counter
+        # ('_retransmit_count') tracks consecutive timeouts since
+        # the last cum-ACK that advanced SND.UNA; cleared on
+        # progress in '_process_ack_packet'.
         self._rto_state: RtoState = initial_state()
         self._rtt_sample_seq: Seq32 | None = None
         self._rtt_sample_send_time_ms: int | None = None
         self._rtt_sample_retransmitted: bool = False
+        self._retransmit_count: int = 0
 
         ###
         # Sending window parameters.
@@ -393,10 +394,6 @@ class TcpSession:
         # Keeps track of number of DUP packets sent by peer to determine if any
         # is a retransmit request.
         self._tx_retransmit_request_counter: dict[int, int] = {}
-
-        # Keeps track of the timestamps for the sent out packets, used to
-        # determine when to retransmit packet.
-        self._tx_retransmit_timeout_counter: dict[int, int] = {}
 
         # Used to help translate local_seq_send and snd_una numbers to
         # the TX buffer pointers.
@@ -674,7 +671,7 @@ class TcpSession:
             # so they do not accumulate as stale entries after the
             # session is gone. Timer keys all start with 'str(self)-'
             # (e.g. '<session>-delayed_ack',
-            # '<session>-retransmit_seq-{seq}',
+            # '<session>-retransmit',
             # '<session>-time_wait', '<session>-persist',
             # '<session>-challenge_ack'); the prefix scan pops them
             # uniformly without per-suffix bookkeeping.
@@ -863,13 +860,21 @@ class TcpSession:
         if self._state is FsmState.ESTABLISHED:
             stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
 
-        # If packet contains data then Initialize / adjust packet's retransmit
-        # counter and timer.
-        if data or flag_syn or flag_fin:
-            self._tx_retransmit_timeout_counter[seq] = self._tx_retransmit_timeout_counter.get(seq, -1) + 1
+        # RFC 6298 §5.1: every packet containing data (including a
+        # retransmission) starts the retransmit timer if it is not
+        # already running. The 'is_expired' check returns True both
+        # when the timer has never been registered AND after it has
+        # expired, so this branch correctly arms a fresh timer
+        # post-§5.2-shutdown without spuriously re-arming a still-
+        # running one. Re-arming on every send would diverge from
+        # §5.1's "if not running, start it" wording; the §5.3
+        # restart-on-cum-ACK fires from '_process_ack_packet'
+        # instead, and the timeout-driven re-arm fires from
+        # '_retransmit_packet_timeout' after 'back_off'.
+        if (data or flag_syn or flag_fin) and stack.timer.is_expired(f"{self}-retransmit"):
             stack.timer.register_timer(
-                name=f"{self}-retransmit_seq-{seq}",
-                timeout=tcp__constants.PACKET_RETRANSMIT_TIMEOUT * (1 << self._tx_retransmit_timeout_counter[seq]),
+                name=f"{self}-retransmit",
+                timeout=self._rto_state.rto_ms,
             )
 
         __debug__ and log(
@@ -1462,113 +1467,152 @@ class TcpSession:
     def _retransmit_packet_timeout(self) -> None:
         """
         Retransmit packet after expired timeout.
+
+        RFC 6298 §5 specifies the timer's lifecycle:
+            §5.1 Arm on data send if not running.
+            §5.2 Stop on cum-ACK that drains all in-flight.
+            §5.3 Restart on cum-ACK that advances SND.UNA.
+            §5.4 Retransmit the earliest unacked segment.
+            §5.5 Back off RTO (cap at MAX_RTO_MS).
+            §5.6 Re-arm with the new RTO.
         """
 
-        if self._snd_una in self._tx_retransmit_timeout_counter and stack.timer.is_expired(
-            f"{self}-retransmit_seq-{self._snd_una}"
-        ):
-            if self._tx_retransmit_timeout_counter[self._snd_una] == tcp__constants.PACKET_RETRANSMIT_MAX_COUNT:
-                # Send RST to peer iff peer was actually contacted
-                # (i.e. we processed at least one inbound segment
-                # post-handshake-start). The check uses the explicit
-                # '_peer_contacted' flag rather than 'RCV.NXT > 0'
-                # because 'RCV.NXT' is a Seq32 that legitimately
-                # takes the value 0 when peer's ISN happened to be
-                # 0xFFFF_FFFF ('add32(peer_isn, 1)' wraps to 0); a
-                # raw '> 0' comparison would suppress the RST in
-                # that case.
-                if self._peer_contacted:
-                    self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
-                    __debug__ and log(
-                        "tcp-ss",
-                        f"[{self}] - Packet retransmit counter expired, resetting session",
-                    )
-                else:
-                    __debug__ and log(
-                        "tcp-ss",
-                        f"[{self}] - Packet retransmit counter expired",
-                    )
-                # If in any state with established connection inform socket
-                # about connection failure.
-                if self._state in {
-                    FsmState.ESTABLISHED,
-                    FsmState.FIN_WAIT_1,
-                    FsmState.FIN_WAIT_2,
-                    FsmState.CLOSE_WAIT,
-                }:
-                    self._connection_error = ConnError.TIMEOUT
-                    self._event__rx_buffer.set()
-                # If in SYN_SENT state inform CONNECT syscall that the
-                # connection related event happened.
-                if self._state is FsmState.SYN_SENT:
-                    self._connection_error = ConnError.TIMEOUT
-                    self._event__connect.release()
-                # Change state to CLOSED
-                self._change_state(FsmState.CLOSED)
-                return
-            # RFC 6298 §3 (Karn): if the segment now being
-            # retransmitted carries a pending RTT sample, taint
-            # the sample so the harvest hook in
-            # '_process_ack_packet' clears the tracker without
-            # folding the (now-ambiguous) RTT into '_rto_state'.
-            # The pending sample's send-time and seq remain set
-            # so the harvest path can recognise the covering
-            # ACK; only the "skip update" flag flips.
-            if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_una:
-                self._rtt_sample_retransmitted = True
-            # RFC 5681 §3.1: on RTO, ssthresh is set to FlightSize/2
-            # (not tracked in PyTCP's simplified cwnd model) and the
-            # congestion window collapses to one SMSS for slow-start
-            # re-entry. The window then re-grows on each cum-ACK via
-            # '_process_ack_packet'. PyTCP conflates cwnd and the
-            # effective send window into '_snd_ewn'; the reset to
-            # 'min(_snd_mss, _snd_wnd)' here is the slow-start
-            # re-entry clamped by peer's flow-control. RFC 9293
-            # §3.8.6.1 / RFC 1122 §4.2.2.16 require respecting
-            # peer's advertised window across all transmissions
-            # including retransmits; without the '_snd_wnd' clamp
-            # an RTO firing while peer has advertised a 0-window
-            # would emit a data segment in violation of peer's
-            # flow-control. The clamp lets '_transmit_data' fall
-            # through to the persist branch when peer's window is
-            # closed (RFC 9293 §3.8.6.1 zero-window probing).
-            self._snd_ewn = min(self._snd_mss, self._snd_wnd)
-            self._snd_nxt = self._snd_una
-            # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
-            # event, distinct from the dup-ACK-driven fast-
-            # retransmit recovery. The RFC 6675 §5 RecoveryPoint
-            # marker (the SND.MAX at fast-retransmit entry) is
-            # meaningless once SND.NXT has been rewound to
-            # SND.UNA above; leaving it set would inhibit the
-            # next dup-ACK from re-entering recovery via the
-            # one-shot guard in '_retransmit_packet_request'.
-            self._recovery_point = 0
-            # SYN and FIN consume one byte of sequence space but do
-            # not occupy a slot in the TX buffer. After
-            # '_transmit_packet' fired the original SYN/FIN it
-            # incremented '_tx_buffer_seq_mod' by 1 to account for
-            # that phantom byte; on retransmit we walk the offset
-            # back so the packet builder finds the pre-SYN/FIN
-            # alignment again. The FIN branch compares against
-            # 'sub32(_snd_fin, 1)' because '_snd_fin' carries the
-            # post-FIN-seq (assigned in '_transmit_packet' AFTER
-            # 'SND.NXT' was already advanced past the FIN's byte),
-            # while the rewind above sets 'SND.NXT = SND.UNA =
-            # FIN_seq = _snd_fin - 1' on the canonical "FIN sent,
-            # peer ACKed everything before it but not the FIN"
-            # path. The branch is gated on '_fin_sent' to prevent
-            # the sentinel '_snd_fin = 0' from colliding with a
-            # post-wrap 'SND.NXT == 0xFFFF_FFFF' (which would
-            # otherwise walk '_tx_buffer_seq_mod' back spuriously
-            # and silently corrupt subsequent transmissions).
-            if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == sub32(self._snd_fin, 1)):
-                self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - Got retransmit timeout, sending segment "
-                f"{self._snd_nxt}, resetting snd_ewn to {self._snd_ewn}",
-            )
+        # RFC 6298 §5: only act when the session-level retransmit
+        # timer has fired. 'is_expired' returns True both when the
+        # timer is dropped (its countdown reached zero) AND when it
+        # was never registered, so the second guard 'snd_una !=
+        # snd_max' filters out the quiescent "nothing in flight"
+        # case where 'is_expired' is True only because no timer is
+        # running.
+        if not stack.timer.is_expired(f"{self}-retransmit"):
             return
+        if self._snd_una == self._snd_max:
+            return
+
+        # RFC 1122 §4.2.3.5 R2: after PACKET_RETRANSMIT_MAX_COUNT
+        # consecutive timeouts without progress, abort the
+        # connection. The counter resets on every cum-ACK that
+        # advances SND.UNA in '_process_ack_packet', so the abort
+        # is gated on prolonged silence, not lifetime retransmits.
+        if self._retransmit_count >= tcp__constants.PACKET_RETRANSMIT_MAX_COUNT:
+            # Send RST to peer iff peer was actually contacted
+            # (i.e. we processed at least one inbound segment
+            # post-handshake-start). The check uses the explicit
+            # '_peer_contacted' flag rather than 'RCV.NXT > 0'
+            # because 'RCV.NXT' is a Seq32 that legitimately
+            # takes the value 0 when peer's ISN happened to be
+            # 0xFFFF_FFFF ('add32(peer_isn, 1)' wraps to 0); a
+            # raw '> 0' comparison would suppress the RST in
+            # that case.
+            if self._peer_contacted:
+                self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Packet retransmit counter expired, resetting session",
+                )
+            else:
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - Packet retransmit counter expired",
+                )
+            # If in any state with established connection inform socket
+            # about connection failure.
+            if self._state in {
+                FsmState.ESTABLISHED,
+                FsmState.FIN_WAIT_1,
+                FsmState.FIN_WAIT_2,
+                FsmState.CLOSE_WAIT,
+            }:
+                self._connection_error = ConnError.TIMEOUT
+                self._event__rx_buffer.set()
+            # If in SYN_SENT state inform CONNECT syscall that the
+            # connection related event happened.
+            if self._state is FsmState.SYN_SENT:
+                self._connection_error = ConnError.TIMEOUT
+                self._event__connect.release()
+            # Change state to CLOSED
+            self._change_state(FsmState.CLOSED)
+            return
+
+        # RFC 6298 §3 (Karn): if the segment now being
+        # retransmitted carries a pending RTT sample, taint
+        # the sample so the harvest hook in
+        # '_process_ack_packet' clears the tracker without
+        # folding the (now-ambiguous) RTT into '_rto_state'.
+        # The pending sample's send-time and seq remain set
+        # so the harvest path can recognise the covering
+        # ACK; only the "skip update" flag flips.
+        if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_una:
+            self._rtt_sample_retransmitted = True
+
+        # RFC 6298 §5.5 binary backoff and §5.6 re-arm with the
+        # new RTO. 'back_off' caps at 'MAX_RTO_MS' so a long-
+        # silent peer cannot drive 'rto_ms' to overflow.
+        self._rto_state = back_off(self._rto_state)
+        self._retransmit_count += 1
+        stack.timer.register_timer(
+            name=f"{self}-retransmit",
+            timeout=self._rto_state.rto_ms,
+        )
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - RFC 6298 §5.5 back-off: rto_ms -> "
+            f"{self._rto_state.rto_ms} (retry "
+            f"#{self._retransmit_count})",
+        )
+
+        # RFC 5681 §3.1: on RTO, ssthresh is set to FlightSize/2
+        # (not tracked in PyTCP's simplified cwnd model) and the
+        # congestion window collapses to one SMSS for slow-start
+        # re-entry. The window then re-grows on each cum-ACK via
+        # '_process_ack_packet'. PyTCP conflates cwnd and the
+        # effective send window into '_snd_ewn'; the reset to
+        # 'min(_snd_mss, _snd_wnd)' here is the slow-start
+        # re-entry clamped by peer's flow-control. RFC 9293
+        # §3.8.6.1 / RFC 1122 §4.2.2.16 require respecting
+        # peer's advertised window across all transmissions
+        # including retransmits; without the '_snd_wnd' clamp
+        # an RTO firing while peer has advertised a 0-window
+        # would emit a data segment in violation of peer's
+        # flow-control. The clamp lets '_transmit_data' fall
+        # through to the persist branch when peer's window is
+        # closed (RFC 9293 §3.8.6.1 zero-window probing).
+        self._snd_ewn = min(self._snd_mss, self._snd_wnd)
+        self._snd_nxt = self._snd_una
+        # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
+        # event, distinct from the dup-ACK-driven fast-
+        # retransmit recovery. The RFC 6675 §5 RecoveryPoint
+        # marker (the SND.MAX at fast-retransmit entry) is
+        # meaningless once SND.NXT has been rewound to
+        # SND.UNA above; leaving it set would inhibit the
+        # next dup-ACK from re-entering recovery via the
+        # one-shot guard in '_retransmit_packet_request'.
+        self._recovery_point = 0
+        # SYN and FIN consume one byte of sequence space but do
+        # not occupy a slot in the TX buffer. After
+        # '_transmit_packet' fired the original SYN/FIN it
+        # incremented '_tx_buffer_seq_mod' by 1 to account for
+        # that phantom byte; on retransmit we walk the offset
+        # back so the packet builder finds the pre-SYN/FIN
+        # alignment again. The FIN branch compares against
+        # 'sub32(_snd_fin, 1)' because '_snd_fin' carries the
+        # post-FIN-seq (assigned in '_transmit_packet' AFTER
+        # 'SND.NXT' was already advanced past the FIN's byte),
+        # while the rewind above sets 'SND.NXT = SND.UNA =
+        # FIN_seq = _snd_fin - 1' on the canonical "FIN sent,
+        # peer ACKed everything before it but not the FIN"
+        # path. The branch is gated on '_fin_sent' to prevent
+        # the sentinel '_snd_fin = 0' from colliding with a
+        # post-wrap 'SND.NXT == 0xFFFF_FFFF' (which would
+        # otherwise walk '_tx_buffer_seq_mod' back spuriously
+        # and silently corrupt subsequent transmissions).
+        if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == sub32(self._snd_fin, 1)):
+            self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Got retransmit timeout, sending segment "
+            f"{self._snd_nxt}, resetting snd_ewn to {self._snd_ewn}",
+        )
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -1667,6 +1711,25 @@ class TcpSession:
         # uses numerical order, which is wrong across the wrap.
         if lt32(self._snd_una, packet_rx_md.tcp__ack):
             self._snd_una = packet_rx_md.tcp__ack
+            # RFC 6298 §5.2 / §5.3: peer has acknowledged new
+            # data, fresh evidence of liveness. Reset the R2
+            # abort counter and manage the retransmit timer:
+            # turn it off iff every in-flight byte is now
+            # acked (§5.2), else restart it with the current
+            # 'rto_ms' (§5.3). 'unregister_timers_with_prefix'
+            # with the full timer name as prefix is the
+            # canonical "stop this timer" idiom in the
+            # codebase; it incidentally drops any legacy
+            # 'f"{self}-retransmit_seq-X"' keys too, though
+            # Phase 3 no longer creates those.
+            self._retransmit_count = 0
+            if self._snd_una == self._snd_max:
+                stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
+            else:
+                stack.timer.register_timer(
+                    name=f"{self}-retransmit",
+                    timeout=self._rto_state.rto_ms,
+                )
         # RFC 6298 §4 sample harvest: peer's cumulative ACK has
         # advanced past the seq of our pending RTT sample. Fold
         # the observed RTT into '_rto_state' iff the sample was
@@ -1835,14 +1898,6 @@ class TcpSession:
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Purged expired TX packet retransmit request counter for {seq}",
-                )
-        # Purge expired tx packet retransmit timeouts.
-        for seq in list(self._tx_retransmit_timeout_counter):
-            if lt32(seq, packet_rx_md.tcp__ack):
-                self._tx_retransmit_timeout_counter.pop(seq)
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Purged expired TX packet retransmit timeout for {seq}",
                 )
         # Bring next packet from ooo_packet_queue if available.
         if ooo_packet := self._ooo_packet_queue.pop(self._rcv_nxt, None):

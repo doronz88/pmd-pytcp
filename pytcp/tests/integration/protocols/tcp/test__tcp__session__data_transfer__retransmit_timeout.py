@@ -310,69 +310,75 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
     def test__retransmit_timeout__peer_ack_mid_back_off_clears_counters_and_grows_window(self) -> None:
         """
         Ensure that when a peer ACK arrives in the middle of the
-        retransmit back-off window, the receiver-side bookkeeping
-        unwinds cleanly:
+        retransmit back-off window, the sender-side bookkeeping
+        unwinds cleanly per RFC 6298 §5.2 / §5.3:
 
-            * The retransmit-timeout counter for the now-acknowledged
-              SEQ is purged from '_tx_retransmit_timeout_counter', so
-              subsequent expirations of the still-pending timer are
-              silently ignored.
+            * The session-level 'f"{session}-retransmit"' timer
+              MUST be turned off (§5.2 - "When all outstanding
+              data has been acknowledged, turn off the
+              retransmission timer").
             * 'SND.UNA' advances past the acknowledged data, freeing
               the corresponding range of the TX buffer.
-            * '_snd_ewn' doubles (slow-start growth per RFC 5681 §3.1
-              and the simplified slow-start-style logic in
-              '_process_ack_packet'), restoring sending capacity that
-              the retransmit-timeout reset had collapsed back to one
-              MSS.
-            * No spurious retransmits fire on subsequent ticks - the
-              session has nothing to retransmit and the cleared
-              counter prevents the still-armed timer from re-entering
-              the abort logic.
+            * '_retransmit_count' resets to 0 (peer's progress is
+              fresh evidence of liveness).
+            * '_snd_ewn' doubles (slow-start growth per RFC 5681
+              §3.1 and the simplified slow-start-style logic in
+              '_process_ack_packet'), restoring sending capacity
+              that the retransmit-timeout reset had collapsed back
+              to one MSS.
+            * No spurious retransmits fire on subsequent ticks -
+              the timer was unregistered AND the TX buffer is
+              empty so '_transmit_data' has nothing to send.
 
         Scenario:
 
-            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn' to
-               peer's full advertised window so the initial
+            1. Drive handshake to ESTABLISHED. Pre-set '_snd_ewn'
+               to peer's full advertised window so the initial
                transmission goes out unconstrained.
-            2. Application sends one full-MSS data segment (1460 B).
-               Tick once - initial transmit fires.
-            3. Advance ~1.5 s of virtual time. The first retransmit
-               (RTO = 1 s after initial) fires inside this window.
-               '_snd_ewn' is reset to MSS and
-               '_tx_retransmit_timeout_counter[SND.UNA]' is bumped
-               from 0 to 1.
-            4. Snapshot pre-ACK state: counter present, '_snd_una'
-               unchanged, '_snd_ewn' equal to MSS.
-            5. Peer ACKs with ack = SND.NXT (= LOCAL__ISS + 1 + 1460),
-               implicitly acknowledging both the initial transmit
-               and the retransmit.
+            2. Application sends one full-MSS data segment
+               (1460 B). Tick once - initial transmit fires; the
+               session-level retransmit timer is armed at
+               '_rto_state.rto_ms = 1000'.
+            3. Advance ~1.5 s of virtual time. The first
+               retransmit (RTO = 1 s after initial) fires inside
+               this window. '_retransmit_count' bumps from 0 to 1
+               and '_rto_state' is backed off (rto_ms 1000 ->
+               2000); '_snd_ewn' collapses to one MSS.
+            4. Snapshot pre-ACK state: '_retransmit_count == 1',
+               session-level timer present, '_snd_una' unchanged,
+               '_snd_ewn' equal to MSS.
+            5. Peer ACKs with ack = SND.NXT (= LOCAL__ISS + 1 +
+               1460), implicitly acknowledging both the initial
+               transmit and the retransmit.
             6. Drive RX. '_process_ack_packet' runs and:
-                 - advances 'SND.UNA' to LOCAL__ISS + 1 + 1460
-                 - purges 'tx_retransmit_timeout_counter' entries
-                   with seq < SND.UNA
+                 - advances 'SND.UNA' to 'LOCAL__ISS + 1 + 1460'
+                 - resets '_retransmit_count' to 0
+                 - turns the session-level retransmit timer off
+                   (§5.2 - all in-flight is acked)
                  - doubles '_snd_ewn'
-            7. Advance an additional 10 s of virtual time. No TX may
-               fire during this window - all retransmit state has
-               been cleared and the TX buffer has been purged of
+            7. Advance an additional 10 s of virtual time. No TX
+               may fire during this window - the timer is
+               unregistered AND the TX buffer has been purged of
                acknowledged bytes.
 
-        Side effects asserted:
+        Side effects asserted (post-Phase-3 session-level shape):
 
-            * 'tx_retransmit_timeout_counter' no longer contains the
-              key 'LOCAL__ISS + 1'.
-            * '_snd_una' equals 'LOCAL__ISS + 1 + 1460'.
-            * '_snd_ewn' is strictly greater than the value it had
-              after the retransmit reset (MSS = 1460).
-            * 'len(_tx_buffer)' is zero (acknowledged bytes purged).
+            * 'f"{session}-retransmit"' is NOT in
+              'self._timer.pending_timers'.
+            * '_retransmit_count == 0'.
+            * '_snd_una == LOCAL__ISS + 1 + 1460'.
+            * '_snd_ewn' is strictly greater than the value it
+              had after the retransmit reset (MSS = 1460).
+            * 'len(_tx_buffer) == 0' (acknowledged bytes purged).
             * State remains ESTABLISHED throughout.
 
-        This test passes on current code as a positive-control
-        regression guard for '_process_ack_packet's counter-purge
-        loop (and the per-tick ACK doubling of '_snd_ewn'). A
-        future change that removed the purge or skipped the slow-
-        start growth would be caught immediately - the post-ACK
-        retransmit timer would still fire (counter not cleared) or
-        the connection would stay throttled at one-MSS bursts.
+        This test passes as a positive-control regression guard
+        for the §5.2 / §5.3 timer lifecycle plus the per-cum-ACK
+        doubling of '_snd_ewn'. A future change that removed the
+        timer-stop or skipped the slow-start growth would be
+        caught immediately - either the post-ACK retransmit
+        timer would still fire OR the connection would stay
+        throttled at one-MSS bursts.
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -404,13 +410,22 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         )
 
         # Snapshot pre-ACK state.
-        self.assertIn(
-            LOCAL__ISS + 1,
-            session._tx_retransmit_timeout_counter,
+        self.assertEqual(
+            session._retransmit_count,
+            1,
             msg=(
-                "Pre-ACK precondition: the retransmit-timeout counter "
-                "for SND.UNA must be present after the first retransmit "
-                "fired."
+                "Pre-ACK precondition: '_retransmit_count' must be 1 "
+                "after exactly one retransmit-timeout fire (the first "
+                "RTO at 1 s after the initial transmission)."
+            ),
+        )
+        self.assertIn(
+            f"{session}-retransmit",
+            self._timer.pending_timers,
+            msg=(
+                "Pre-ACK precondition: the session-level retransmit "
+                "timer must be re-armed (via 'back_off') after the "
+                "first retransmit fired."
             ),
         )
         self.assertEqual(
@@ -441,14 +456,21 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertNotIn(
-            LOCAL__ISS + 1,
-            session._tx_retransmit_timeout_counter,
+            f"{session}-retransmit",
+            self._timer.pending_timers,
             msg=(
-                "After the ACK arrives, the retransmit-timeout counter "
-                "for the acknowledged SEQ must be purged from "
-                "'_tx_retransmit_timeout_counter' so the still-armed "
-                "stack-timer entry is silently ignored on its next "
-                "expiry."
+                "RFC 6298 §5.2: a cum-ACK that drains all in-flight "
+                "bytes MUST turn off the session-level retransmit "
+                "timer."
+            ),
+        )
+        self.assertEqual(
+            session._retransmit_count,
+            0,
+            msg=(
+                "Peer's progress ACK must reset the R2 abort counter - "
+                "fresh evidence of liveness restores the connection's "
+                "retransmit budget."
             ),
         )
         self.assertEqual(
@@ -472,19 +494,17 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             msg=("The TX buffer must be empty after the peer ACKs all " "outstanding data."),
         )
 
-        # Advance an additional 10 s of virtual time. The cleared
-        # retransmit-timeout counter must prevent any spurious
-        # retransmits even though the stack-level timer entry may
-        # still be in 'stack.timer._timers' counting down.
+        # Advance an additional 10 s of virtual time. With the
+        # session-level timer turned off and the TX buffer empty,
+        # no spurious retransmit may fire.
         silent_window_tx = self._advance(ms=10_000)
         self.assertEqual(
             silent_window_tx,
             [],
             msg=(
-                "After the peer ACK clears the retransmit state, NO "
-                "further TX may fire on subsequent ticks - the TX "
-                "buffer is empty and the counter purge has neutered "
-                "the still-armed stack timer."
+                "After the peer ACK turns off the retransmit timer, "
+                "NO further TX may fire on subsequent ticks - the TX "
+                "buffer is empty and the timer is unregistered."
             ),
         )
 

@@ -928,10 +928,15 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=1)
 
-        # Advance past the per-handshake-clamped RTO. With the
-        # MIN_RTO_MS clamp the timer is armed at 1000 ms; +1 ms
-        # past the boundary fires the retransmit handler.
-        self._advance(ms=1001)
+        # Advance to exactly the per-handshake-clamped RTO
+        # boundary. With the MIN_RTO_MS clamp the timer is armed
+        # at 1000 ms; the last tick of this advance is the one
+        # that drops the timer to 0 AND fires
+        # '_retransmit_packet_timeout' (FakeTimer ticks _timers
+        # before _tasks, so the post-backoff re-arm sees the new
+        # 'rto_ms' decremented zero further times by 'advance'
+        # before the assertion sees it).
+        self._advance(ms=1000)
 
         self.assertEqual(
             session._rto_state.rto_ms,
