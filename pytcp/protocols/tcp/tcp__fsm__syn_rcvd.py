@@ -36,6 +36,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 
 if TYPE_CHECKING:
@@ -103,6 +104,20 @@ def fsm__syn_rcvd(
         # is 0 and the full payload is enqueued).
         if packet_rx_md.tcp__seq == session._rcv_nxt and packet_rx_md.tcp__ack == session._snd_nxt:
             session._process_ack_packet(packet_rx_md)
+            # RFC 6928 §2 Initial Window: post-handshake cwnd
+            # = min(10*MSS, max(2*MSS, 14600)). Set after
+            # '_process_ack_packet' has fired §3.1 growth on
+            # the third-leg ack-advance so the IW value is
+            # the exact post-handshake cwnd. Covers both the
+            # passive-open path (peer's SYN -> our SYN+ACK ->
+            # peer's third-leg ACK) and the simultaneous-open
+            # path (both sides SYN, both SYN+ACK, third-leg
+            # ACK).
+            session._cwnd = min(
+                tcp__constants.INITIAL_WINDOW_FACTOR * session._snd_mss,
+                max(2 * session._snd_mss, tcp__constants.INITIAL_WINDOW_BYTES),
+            )
+            session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # Inline ACK if peer piggybacked data so peer's
             # retransmit machinery sees the data acknowledged
             # without waiting for delayed-ACK to fire (matches

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__seq import add32, le32, lt32
 
@@ -170,6 +171,16 @@ def fsm__syn_sent(
             # Process ACK packet (uses '_snd_wsc=0' still, so
             # the SYN+ACK's win is preserved unshifted).
             session._process_ack_packet(packet_rx_md)
+            # RFC 6928 §2 Initial Window: post-handshake cwnd
+            # = min(10*MSS, max(2*MSS, 14600)). Set after
+            # '_process_ack_packet' has fired §3.1 growth on
+            # the SYN+ACK ack-advance so the IW value is the
+            # exact post-handshake cwnd, not IW + 1.
+            session._cwnd = min(
+                tcp__constants.INITIAL_WINDOW_FACTOR * session._snd_mss,
+                max(2 * session._snd_mss, tcp__constants.INITIAL_WINDOW_BYTES),
+            )
+            session._snd_ewn = min(session._cwnd, session._snd_wnd)
             # WSCALE bilateral negotiation per RFC 7323 §2.2:
             # store peer's wscale only if WE offered our own.
             # The check 'packet_rx_md.tcp__wscale != 0' is the
