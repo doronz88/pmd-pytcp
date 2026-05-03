@@ -40,7 +40,7 @@ from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
-from pytcp.protocols.tcp.tcp__seq import add32
+from pytcp.protocols.tcp.tcp__seq import add32, gt32
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession
@@ -86,6 +86,14 @@ def fsm__time_wait(
         session._change_state(FsmState.CLOSED)
         return
 
+    # Capture '_ts_recent' BEFORE the PAWS helper runs - the
+    # helper updates '_ts_recent' to the segment's TSval as a
+    # side effect on any non-stale TSopt-bearing segment, and
+    # the RFC 6191 §3 strict-greater comparison below must be
+    # against the value cached AT ENTRY (not the just-updated
+    # one, which would always compare equal).
+    ts_recent_at_entry = session._ts_recent
+
     # RFC 7323 §5 PAWS: a delayed segment from a previous
     # incarnation, with stale TSval, MUST be dropped before
     # the FIN-retransmit handler re-arms the TIME_WAIT timer.
@@ -93,6 +101,37 @@ def fsm__time_wait(
     # assassination protection: PAWS catches the stale
     # segment regardless of seq.
     if packet_rx_md is not None and not session._check_paws_and_update_ts_recent(packet_rx_md):
+        return
+
+    # RFC 6191 §3 TIME-WAIT 4-tuple reuse: a SYN whose TSval
+    # is strictly greater than the cached '_ts_recent' proves
+    # it cannot be a delayed segment from the previous
+    # incarnation (whose TS clock was monotonically lower at
+    # every send). Terminate this TIME-WAIT instance and
+    # accept the SYN as a fresh connection without waiting
+    # the full 2*MSL. The boundary case 'TSval ==
+    # _ts_recent' passes PAWS (strict '<') but fails this
+    # gate (strict '>') and falls through to the RFC 1337 /
+    # RFC 9293 §3.10.7.4 challenge-ACK path below.
+    if (
+        packet_rx_md
+        and packet_rx_md.tcp__flag_syn
+        and not packet_rx_md.tcp__flag_ack
+        and not packet_rx_md.tcp__flag_rst
+        and session._send_ts
+        and packet_rx_md.tcp__tsval is not None
+        and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry)
+    ):
+        __debug__ and log(
+            "tcp-ss",
+            f"[{session}] - RFC 6191 §3 reuse: peer TSval "
+            f"{packet_rx_md.tcp__tsval} > cached "
+            f"_ts_recent {ts_recent_at_entry}; "
+            "terminating TIME_WAIT and accepting fresh SYN",
+        )
+        session._reinit_for_rfc6191_reuse(packet_rx_md)
+        session._change_state(FsmState.SYN_RCVD)
+        session._transmit_packet(flag_syn=True, flag_ack=True)
         return
 
     # Got peer FIN retransmit -> Acknowledge it and restart the

@@ -38,6 +38,7 @@ import time
 from typing import TYPE_CHECKING, override
 
 from net_addr import Ip4Address, Ip6Address
+from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
@@ -1296,6 +1297,126 @@ class TcpSession:
             )
             self._emit_challenge_ack()
         return False
+
+    def _reinit_for_rfc6191_reuse(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        RFC 6191 §3 TIME-WAIT 4-tuple reuse: re-initialise
+        this session's runtime state in place so a fresh
+        three-way handshake can proceed against peer's new
+        SYN. The 4-tuple is unchanged (RFC 6191 reuse
+        applies on the same 4-tuple); the helper resets
+        send-side seq state to a fresh ISS, refreshes
+        peer-derived parameters (MSS / window / WSCALE /
+        SACK / TSopt) from the inbound SYN, clears the
+        previous-incarnation buffers and recovery state, and
+        cancels every per-session timer the prior incarnation
+        may have armed.
+
+        After the helper returns, the caller transitions to
+        SYN_RCVD and emits the SYN+ACK. The previously-
+        registered 'TIME-WAIT' timer is dropped via the
+        prefix-keyed unregister so any other per-session
+        timers (delayed-ACK, retransmit, persist, keep-
+        alive) are also cleared - they would otherwise fire
+        against the stale state of the prior connection.
+        """
+
+        # Cancel every per-session timer the prior incarnation may
+        # have armed. The prefix matches every timer keyed on
+        # 'f"{self}-..."' (TIME-WAIT, retransmit, delayed-ACK,
+        # persist, keep-alive idle/probe, challenge-ACK rate limit).
+        stack.timer.unregister_timers_with_prefix(f"{self}-")
+
+        # Fresh ISS for the new incarnation. The 4-tuple is
+        # unchanged but the time-driven 'M' clock advance in
+        # 'compute_iss' guarantees a different ISS from the
+        # previous incarnation, preserving RFC 6528's blind-
+        # injection defence across the reuse boundary.
+        new_iss = compute_iss(
+            local_address=self._local_ip_address,
+            local_port=self._local_port,
+            remote_address=self._remote_ip_address,
+            remote_port=self._remote_port,
+            secret=stack.TCP__ISS_SECRET,
+            clock_us=time.monotonic_ns() // 1000,
+        )
+        self._snd_ini = new_iss
+        self._snd_una = new_iss
+        self._snd_nxt = new_iss
+        self._snd_max = new_iss
+        self._snd_sml = new_iss
+        self._snd_fin = 0
+        self._fin_sent = False
+        self._tx_buffer_seq_mod = new_iss
+
+        # Adopt peer's new SYN parameters. MSS is clamped to the
+        # RFC 879 / RFC 6691 bounds; an explicit floor at TCP__MIN_MSS
+        # treats peer-advertised 0 (or any malformed sub-floor value)
+        # as 'option absent'.
+        self._snd_mss = max(
+            TCP__MIN_MSS,
+            min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
+        )
+        self._snd_wnd = packet_rx_md.tcp__win
+        self._max_window = self._snd_wnd
+
+        # Re-run the bilateral negotiation against peer's new SYN -
+        # WSCALE / SACK / TSopt may all differ between incarnations.
+        if self._advertise_wscale and packet_rx_md.tcp__wscale:
+            self._snd_wsc = packet_rx_md.tcp__wscale
+        else:
+            self._rcv_wsc = 0
+            self._snd_wsc = 0
+        self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
+        self._send_ts = self._advertise_ts and packet_rx_md.tcp__tsval is not None
+        # '_ts_recent' was already refreshed to peer's new TSval
+        # by the PAWS helper in the FSM handler before this point.
+
+        # RFC 5681 §3.1 + RFC 6928 §2: reset cwnd to the post-handshake
+        # IW and ssthresh to the canonical large-constant default. The
+        # actual IW assignment happens at the SYN_RCVD -> ESTABLISHED
+        # transition; here we set the SYN-RCVD-phase value
+        # (one SMSS) so the outbound SYN+ACK is emitted correctly.
+        self._cwnd = self._snd_mss
+        self._ssthresh = 0x7FFF_FFFF
+        self._snd_ewn = min(self._cwnd, self._snd_wnd)
+
+        # Receive-side state from the new SYN.
+        self._rcv_ini = packet_rx_md.tcp__seq
+        self._rcv_nxt = add32(
+            packet_rx_md.tcp__seq,
+            packet_rx_md.tcp__flag_syn,
+            len(packet_rx_md.tcp__data),
+        )
+        self._rcv_una = self._rcv_nxt
+        self._peer_contacted = True
+
+        # Reset RFC 6298 RTO estimator + sample tracker so the new
+        # incarnation re-establishes its own RTT measurements.
+        self._rto_state = initial_state()
+        self._retransmit_count = 0
+        self._last_send_time_ms = None
+        self._rtt_sample_seq = None
+        self._rtt_sample_send_time_ms = None
+        self._rtt_sample_retransmitted = False
+
+        # Clear SACK + DSACK + recovery state from the prior incarnation.
+        self._sack_scoreboard = SackScoreboard()
+        self._recovery_point = 0
+        self._pending_dsack = None
+        self._dsack_received = 0
+
+        # Clear OOO queue + buffers (TIME-WAIT should already have
+        # them empty, but be defensive against state that an earlier
+        # bug or a spurious-FIN-retransmit path may have left).
+        self._ooo_packet_queue.clear()
+        self._tx_buffer.clear()
+        self._rx_buffer.clear()
+
+        # Queue any data the new SYN piggybacked (RFC 9293 §3.10.7.2
+        # step 3 permits this; rare but legal).
+        if packet_rx_md.tcp__data:
+            self._enqueue_rx_buffer(packet_rx_md.tcp__data)
 
     def _emit_challenge_ack(self) -> None:
         """
