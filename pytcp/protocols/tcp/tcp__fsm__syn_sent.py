@@ -201,6 +201,14 @@ def fsm__syn_sent(
             # enabled iff WE advertised on the SYN we sent
             # AND peer echoed SACK-Permitted on the SYN+ACK.
             session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            # RFC 7323 §3 bilateral negotiation: enable post-
+            # handshake TSopt iff WE advertised on our SYN AND
+            # peer's SYN+ACK carried TSopt. Cache peer's TSval
+            # as '_ts_recent' so the third-leg ACK and all
+            # subsequent segments echo it via TSecr.
+            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+                session._send_ts = True
+                session._ts_recent = packet_rx_md.tcp__tsval
             # Send initial ACK packet.
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
@@ -253,6 +261,11 @@ def fsm__syn_sent(
                 session._snd_wsc = 0
             # SACK bilateral negotiation per RFC 2018 §2.
             session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            # RFC 7323 §3 bilateral negotiation (simultaneous-
+            # open path): same shape as the SYN+ACK case above.
+            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+                session._send_ts = True
+                session._ts_recent = packet_rx_md.tcp__tsval
             # Receive sequence space: advance past peer's SYN.
             session._rcv_ini = packet_rx_md.tcp__seq
             session._rcv_nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)

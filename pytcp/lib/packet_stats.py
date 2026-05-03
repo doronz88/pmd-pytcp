@@ -253,6 +253,7 @@ class PacketStatsTx(PacketStats):
     tcp__opt_wscale: int = 0
     tcp__opt_sackperm: int = 0
     tcp__opt_sack: int = 0
+    tcp__opt_timestamps: int = 0
 
     udp__pre_assemble: int = 0
     udp__send: int = 0

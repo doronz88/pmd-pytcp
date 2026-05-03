@@ -77,6 +77,8 @@ class PacketHandlerTcpRx(ABC):
             tcp__wscale: int | None = None,
             tcp__sackperm: bool = False,
             tcp__sack_blocks: list[tuple[int, int]] | None = None,
+            tcp__tsval: int | None = None,
+            tcp__tsecr: int | None = None,
             tcp__win: int = 0,
             tcp__urg: int = 0,
             tcp__payload: bytes = bytes(),
@@ -129,6 +131,10 @@ class PacketHandlerTcpRx(ABC):
                 ()
                 if (sack_blocks := packet_rx.tcp._options.sack) is None
                 else tuple((block.left, block.right) for block in sack_blocks)
+            ),
+            tcp__tsval=(timestamps.tsval if (timestamps := packet_rx.tcp._options.timestamps) is not None else None),
+            tcp__tsecr=(
+                packet_rx.tcp._options.timestamps.tsecr if packet_rx.tcp._options.timestamps is not None else None
             ),
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,

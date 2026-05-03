@@ -869,6 +869,40 @@ class TcpSession:
         else:
             tcp__sack_blocks = None
 
+        # RFC 7323 §3 Timestamps option:
+        #   - Active-open SYN (flag_syn AND not flag_ack): emit
+        #     iff '_advertise_ts'. tsval=now_ms, tsecr=0 (peer's
+        #     TSval not yet known).
+        #   - Passive-open SYN+ACK (flag_syn AND flag_ack): emit
+        #     iff bilateral '_send_ts' set. tsval=now_ms,
+        #     tsecr=_ts_recent (peer's TSval from its SYN).
+        #   - Non-SYN segments: emit iff '_send_ts'. tsval=now_ms,
+        #     tsecr=_ts_recent. (Phase 2 wires this; Phase 1 only
+        #     handles handshake.)
+        tcp__tsval: int | None
+        tcp__tsecr: int | None
+        if flag_syn and not flag_ack:
+            if self._advertise_ts:
+                tcp__tsval = stack.timer.now_ms
+                tcp__tsecr = 0
+            else:
+                tcp__tsval = None
+                tcp__tsecr = None
+        elif flag_syn and flag_ack:
+            if self._send_ts:
+                tcp__tsval = stack.timer.now_ms
+                tcp__tsecr = self._ts_recent
+            else:
+                tcp__tsval = None
+                tcp__tsecr = None
+        else:
+            if self._send_ts:
+                tcp__tsval = stack.timer.now_ms
+                tcp__tsecr = self._ts_recent
+            else:
+                tcp__tsval = None
+                tcp__tsecr = None
+
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -886,6 +920,8 @@ class TcpSession:
             tcp__wscale=tcp__wscale,
             tcp__sackperm=tcp__sackperm,
             tcp__sack_blocks=tcp__sack_blocks,
+            tcp__tsval=tcp__tsval,
+            tcp__tsecr=tcp__tsecr,
             tcp__payload=data,
         )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted

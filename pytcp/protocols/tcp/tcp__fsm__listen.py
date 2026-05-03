@@ -194,6 +194,14 @@ def fsm__listen(
             # subsequent SACK-option emission on outbound
             # ACKs over an OOO-buffered queue.
             session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            # RFC 7323 §3 bilateral negotiation: enable TSopt
+            # on our SYN+ACK and all subsequent segments iff we
+            # advertise AND peer's SYN carried TSopt. Cache
+            # peer's TSval as '_ts_recent' so the SYN+ACK we
+            # emit next echoes it via TSecr.
+            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+                session._send_ts = True
+                session._ts_recent = packet_rx_md.tcp__tsval
             session._rcv_ini = packet_rx_md.tcp__seq
             session._cwnd = session._snd_mss
             session._snd_ewn = min(session._cwnd, session._snd_wnd)

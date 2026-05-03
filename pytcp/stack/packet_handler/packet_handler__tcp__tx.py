@@ -48,6 +48,7 @@ from net_proto.protocols.tcp.options.tcp__option__sack import (
     TcpSackBlock,
 )
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
+from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTimestamps
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -115,6 +116,8 @@ class PacketHandlerTcpTx(ABC):
         tcp__wscale: int | None = None,
         tcp__sackperm: bool = False,
         tcp__sack_blocks: list[tuple[int, int]] | None = None,
+        tcp__tsval: int | None = None,
+        tcp__tsecr: int | None = None,
         tcp__win: int = 0,
         tcp__urg: int = 0,
         tcp__payload: bytes = bytes(),
@@ -154,6 +157,10 @@ class PacketHandlerTcpTx(ABC):
         if tcp__sack_blocks:
             self._packet_stats_tx.tcp__opt_sack += 1
             opts.append(TcpOptionSack(blocks=[TcpSackBlock(left, right) for left, right in tcp__sack_blocks]))
+
+        if tcp__tsval is not None and tcp__tsecr is not None:
+            self._packet_stats_tx.tcp__opt_timestamps += 1
+            opts.append(TcpOptionTimestamps(tsval=tcp__tsval, tsecr=tcp__tsecr))
 
         pad_count = (-sum(len(opt) for opt in opts)) % 4
         opts.extend(TcpOptionNop() for _ in range(pad_count))
@@ -247,6 +254,8 @@ class PacketHandlerTcpTx(ABC):
         tcp__mss: int | None = None,
         tcp__sackperm: bool = False,
         tcp__sack_blocks: list[tuple[int, int]] | None = None,
+        tcp__tsval: int | None = None,
+        tcp__tsecr: int | None = None,
         tcp__payload: bytes = bytes(),
     ) -> TxStatus:
         """
@@ -270,5 +279,7 @@ class PacketHandlerTcpTx(ABC):
             tcp__mss=tcp__mss,
             tcp__sackperm=tcp__sackperm,
             tcp__sack_blocks=tcp__sack_blocks,
+            tcp__tsval=tcp__tsval,
+            tcp__tsecr=tcp__tsecr,
             tcp__payload=tcp__payload,
         )
