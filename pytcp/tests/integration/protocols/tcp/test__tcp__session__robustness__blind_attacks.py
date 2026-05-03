@@ -967,3 +967,155 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg="Sanity: rate-limited or not, the burst MUST NOT change FSM state.",
         )
+
+
+class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
+    """
+    Integration tests for RFC 5961 §5 blind ACK acceptability
+    hardening. The receiver tracks 'MAX.SND.WND' (largest peer
+    window ever seen) and considers an inbound ACK acceptable
+    only when 'SND.UNA - MAX.SND.WND <= SEG.ACK <= SND.NXT'.
+
+    Above SND.MAX is already covered (commit '7893c97' / fix
+    #12) - the gap is the LOWER bound: an ACK below
+    'SND.UNA - MAX.SND.WND' MUST elicit a rate-limited
+    challenge ACK rather than silent drop, so a legitimate
+    peer with a wedged stale view of the connection can
+    re-sync.
+
+    Reference RFC:
+        RFC 5961 §5 Mitigating Blind Data Injection
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        return session
+
+    def test__ack__below_snd_una_minus_max_window_emits_challenge_ack(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5961 §5: an inbound ACK with SEG.ACK below
+        'SND.UNA - MAX.SND.WND' MUST elicit a rate-limited
+        challenge ACK rather than silent drop.
+
+        Currently '_process_ack_packet' silently drops any
+        ACK that doesn't satisfy 'lt32(_snd_una, ack)' -
+        very-stale ACKs disappear without any observable
+        response, leaving a wedged peer unable to re-sync.
+
+        Scenario:
+            * Drive handshake; SND.UNA = LOCAL__ISS + 1,
+              MAX.SND.WND = PEER__WIN = 64240.
+            * Compute a stale-ACK value far below the
+              acceptable lower bound:
+                stale_ack = (SND.UNA - 2*MAX.SND.WND) & 0xFFFF_FFFF
+            * Drive a peer ACK with that value.
+            * Assert challenge-ACK emitted (1 outbound ACK
+              after the 1-tick advance).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Burn the initial-window challenge-ACK token so we
+        # observe only this segment's response.
+        self._advance(ms=1100)
+
+        snd_una_pre = session._snd_una
+        max_snd_wnd = PEER__WIN
+        stale_ack = (snd_una_pre - 2 * max_snd_wnd) & 0xFFFF_FFFF
+        stale_ack_seg = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=stale_ack,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        tx = self._drive_rx(frame=stale_ack_seg)
+
+        self.assertGreaterEqual(
+            len(tx),
+            1,
+            msg=(
+                f"RFC 5961 §5: an ACK with SEG.ACK={stale_ack} below "
+                f"SND.UNA - MAX.SND.WND ({snd_una_pre - max_snd_wnd}) "
+                f"MUST elicit a challenge ACK. Got {len(tx)} outbound "
+                "frames."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="A blind stale ACK MUST NOT change FSM state.",
+        )
+
+    def test__ack__within_max_window_silently_dropped(self) -> None:
+        """
+        Regression guard: a stale-but-within-MAX.SND.WND ACK
+        is silently dropped (no challenge-ACK). Only ACKs
+        BELOW 'SND.UNA - MAX.SND.WND' trigger the §5 hardening
+        path.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._advance(ms=1100)
+
+        snd_una_pre = session._snd_una
+        almost_stale_ack = (snd_una_pre - PEER__WIN // 2) & 0xFFFF_FFFF
+        almost_stale_seg = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=almost_stale_ack,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        tx = self._drive_rx(frame=almost_stale_seg)
+
+        self.assertEqual(
+            len(tx),
+            0,
+            msg=(
+                "Stale ACK within MAX.SND.WND is acceptable per RFC "
+                "5961 §5 - silent drop, no challenge-ACK. Got "
+                f"{len(tx)} outbound frames."
+            ),
+        )
