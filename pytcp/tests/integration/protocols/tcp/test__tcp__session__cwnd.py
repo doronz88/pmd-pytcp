@@ -773,3 +773,256 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
                 f"2*SMSS. Got {session._ssthresh}."
             ),
         )
+
+
+class TestTcpCwndPhase3(TcpSessionTestCase):
+    """
+    Integration tests for RFC 5681 §3.2 Phase 3 invariants:
+    fast-retransmit cwnd inflation on entry, per-dup-ACK
+    inflation while in recovery, and deflation on recovery
+    exit.
+
+    Per §3.2 the four-step protocol:
+
+        Step 2: ssthresh = max(FlightSize/2, 2*SMSS)
+        Step 3: cwnd = ssthresh + 3*SMSS (entry inflation)
+        Step 4: cwnd += SMSS per additional dup-ACK in recovery
+        Step 6: cwnd = ssthresh (deflation on recovery exit)
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        return session
+
+    def _send_n_segments_and_drain_dupacks(
+        self,
+        *,
+        session: TcpSession,
+        n_segments: int,
+    ) -> None:
+        """
+        Send 'n_segments' MSS-sized payloads and let them fire,
+        then drive 3 duplicate ACKs at SND.UNA so the count-
+        based fast-retransmit trigger fires on the third.
+        """
+
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        payload = b"x" * (n_segments * PEER__MSS)
+        session.send(data=payload)
+        for _ in range(n_segments):
+            self._advance(ms=1)
+
+        # Three dup-ACKs at LOCAL__ISS+1.
+        for _ in range(3):
+            dup_ack = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup_ack)
+
+    def test__cwnd__fast_retransmit_halves_ssthresh_and_inflates_cwnd(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5681 §3.2 steps 2 + 3: when the third
+        duplicate ACK fires fast-retransmit, the sender MUST
+            ssthresh = max(FlightSize/2, 2*SMSS)
+            cwnd = ssthresh + 3*SMSS
+
+        Inflation by 3*SMSS compensates for the three segments
+        that left the network (the dup-ACKs prove they
+        arrived); the +3 gives the sender permission to send
+        three NEW segments while the retransmit is in flight.
+
+        Scenario:
+
+            * Drive handshake to ESTABLISHED. Pin cwnd large.
+            * Send 5 * MSS so 5 segments are in flight.
+            * Drive 3 dup-ACKs at SND.UNA. The 3rd fires fast-
+              retransmit.
+            * Assert ssthresh = max(5*MSS/2, 2*MSS) = 3650.
+            * Assert cwnd = ssthresh + 3*MSS = 3650 + 4380
+              = 8030.
+
+        Fails today: '_retransmit_packet_request' sets
+        '_recovery_point' but does not touch cwnd or ssthresh.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_drain_dupacks(session=session, n_segments=5)
+
+        expected_ssthresh = max(5 * PEER__MSS // 2, 2 * PEER__MSS)
+        self.assertEqual(
+            session._ssthresh,
+            expected_ssthresh,
+            msg=(
+                f"RFC 5681 §3.2 step 2: fast-retransmit MUST "
+                f"set ssthresh = max(FlightSize/2, 2*SMSS) = "
+                f"{expected_ssthresh}. Got {session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            expected_ssthresh + 3 * PEER__MSS,
+            msg=(
+                f"RFC 5681 §3.2 step 3: fast-retransmit MUST "
+                f"inflate cwnd to ssthresh + 3*SMSS = "
+                f"{expected_ssthresh + 3 * PEER__MSS}. Got "
+                f"{session._cwnd}."
+            ),
+        )
+
+    def test__cwnd__additional_dup_ack_in_recovery_inflates_cwnd_by_one_mss(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5681 §3.2 step 4: each additional duplicate
+        ACK received while in recovery MUST inflate cwnd by
+        SMSS - representing one more segment that left the
+        network and grants permission to send one more new
+        segment.
+
+        Scenario:
+
+            * Set up fast-retransmit recovery as in scenario #1.
+              Capture cwnd post-fast-retransmit.
+            * Drive a 4th duplicate ACK at the same ack value.
+            * Assert cwnd grew by exactly SMSS.
+
+        Fails today: dup-ACKs in recovery fall into the early-
+        return branch of '_retransmit_packet_request' without
+        any cwnd adjustment.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_drain_dupacks(session=session, n_segments=5)
+        cwnd_pre_dup4 = session._cwnd
+
+        dup_ack_4 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=dup_ack_4)
+
+        self.assertEqual(
+            session._cwnd,
+            cwnd_pre_dup4 + PEER__MSS,
+            msg=(
+                f"RFC 5681 §3.2 step 4: the 4th dup-ACK in "
+                f"recovery MUST inflate cwnd by SMSS. "
+                f"Pre-dup4={cwnd_pre_dup4}, expected "
+                f"{cwnd_pre_dup4 + PEER__MSS}, got "
+                f"{session._cwnd}."
+            ),
+        )
+
+    def test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh(self) -> None:
+        """
+        [FLAGS BUG]
+
+        Ensure RFC 5681 §3.2 step 6: when a cumulative ACK
+        advances SND.UNA past RecoveryPoint, exiting recovery,
+        the sender MUST set 'cwnd = ssthresh' to undo the
+        in-recovery inflation.
+
+        Scenario:
+
+            * Set up fast-retransmit recovery as in scenario #1.
+              Capture ssthresh.
+            * Drive a cum-ACK with 'ack = SND.MAX' (which equals
+              RecoveryPoint = LOCAL__ISS + 1 + 5*MSS).
+            * Assert cwnd post-ACK == ssthresh (deflated).
+            * Assert recovery state cleared
+              ('_recovery_point == 0').
+
+        Fails today: '_process_ack_packet' clears
+        '_recovery_point' on exit but does not set cwnd =
+        ssthresh, leaving cwnd at the inflated post-recovery
+        value plus whatever §3.1 growth fired on the cum-ACK.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self._send_n_segments_and_drain_dupacks(session=session, n_segments=5)
+        ssthresh = session._ssthresh
+
+        # Cum-ACK covering all 5 segments exits recovery.
+        cum_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 5 * PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=cum_ack)
+
+        self.assertEqual(
+            session._cwnd,
+            ssthresh,
+            msg=(
+                f"RFC 5681 §3.2 step 6: cum-ACK exiting recovery "
+                f"MUST set cwnd = ssthresh = {ssthresh} (the "
+                f"value set in step 2). Got cwnd={session._cwnd}."
+            ),
+        )
+        self.assertEqual(
+            session._recovery_point,
+            0,
+            msg=("Recovery state must be cleared once SND.UNA " "passes RecoveryPoint."),
+        )
