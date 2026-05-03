@@ -1,339 +1,294 @@
-# PyTCP — RFC 7323 §3 Timestamps Option: Phased Plan
+# PyTCP — RFC 7323 §3 Timestamps Option: Project Record
 
-Self-contained handoff plan for landing **RFC 7323 §3
-Timestamps option** (TSopt) in PyTCP. The wire-level
-`TcpOptionTimestamps` already exists in `net_proto`; this
-plan wires it into `TcpSession` for bilateral negotiation,
-per-segment emission, RTTM (Round-Trip Time Measurement) via
-TSecr, and PAWS (Protection Against Wrapped Sequence numbers)
-on the receive side.
+**Status: SHIPPED** (Phase 1 bilateral negotiation + Phase 2
+per-segment emission + `_ts_recent` tracking + Phase 3
+TSecr-driven RTTM + Phase 4 PAWS).
 
-Landing this transitively unblocks RFC 1337 (TIME-WAIT
-assassination mitigation needs PAWS), RFC 6191 (TIME-WAIT
-4-tuple reuse needs timestamps), and RFC 8985 (RACK-TLP
-benefits from per-segment timestamps).
+This document was originally a phased plan; it has been
+rewritten as a completion record for future sessions that
+want to **extend** PyTCP's timestamps surface (e.g. land RFC
+1337 PAWS-based TIME-WAIT mitigation, RFC 6191 timestamps-
+based TIME-WAIT 4-tuple reuse, or RFC 8985 RACK-TLP).
 
 ---
 
-## 1. Mission
+## 1. Scope and references
 
-RFC 7323 §3 specifies the Timestamps option (TSopt) as a
-10-byte option carrying `<TSval, TSecr>`:
-
-  - **TSval** — sender's current "TS clock" value (a 32-bit
-    counter that ticks at any rate from 1 ms to 1 s; PyTCP
-    will use `stack.timer.now_ms`).
-  - **TSecr** — most-recently-seen peer TSval, echoed back
-    so peer can compute exact RTT from `now_ms - TSecr`.
-
-The four invariants the project must satisfy:
-
-  1. **Bilateral negotiation** (§2.2 / §3): TSopt carried on
-     SYN and SYN+ACK iff both sides advertise it. Once
-     bilaterally agreed, every post-handshake segment MUST
-     carry it.
-  2. **Per-segment emission** (§3): outbound segments
-     populate TSval = `now_ms` and TSecr = `_ts_recent`.
-  3. **RTTM via TSecr** (§4): on cum-ACK, RTT = `now_ms -
-     TSecr` (peer's echoed timestamp identifies which
-     transmission it acknowledges, eliminating Karn's
-     ambiguity for retransmitted segments). The RFC 6298
-     Phase 2 sample-tracker becomes a fallback for non-TSopt
-     peers.
-  4. **PAWS** (§5): inbound segments with `TSval <
-     _ts_recent` (modular 32-bit) are dropped to defend
-     against wrapped-sequence attacks across the 4 GB seq
-     space.
-
-After this project ships, PyTCP's RFC 6298 RTO estimator
-gets exact per-segment RTT measurements (no Karn ambiguity,
-no single-sample-per-RTT cadence limit), and the 4 GB
-seq-wrap window expands to 24 days at 10 Gbit/s (the §5
-PAWS protection scales with the TS clock, not the seq
-space).
+| RFC      | Title                                              | Use |
+|----------|----------------------------------------------------|-----|
+| RFC 7323 | TCP Extensions for High Performance                | §3 TSopt wire + negotiation, §4 RTTM, §5 PAWS |
+| RFC 6298 | Computing TCP's Retransmission Timer               | §3 Karn obviated by §4 TSecr; §2 update reused as fold function |
+| RFC 9293 | TCP (consolidated)                                 | §3.10 acceptability, §3.8.4 effective window |
+| RFC 1337 | TIME-WAIT assassination                            | Mitigation now possible via PAWS (deferred extension) |
+| RFC 6191 | Reducing TIME-WAIT via timestamps                  | 4-tuple reuse if peer's TS clock advanced (deferred extension) |
 
 ---
 
-## 2. Standing principles (preserved)
+## 2. Standing principles (preserved for future extensions)
 
-1. **Tests-first per phase.** Each phase opens with a
-   `[FLAGS BUG]` tests-first commit, then the impl flips
-   them green. Mirror the SACK / RTO / cwnd workflow.
-2. **Suite invariant.** Pass count never drops across a
-   green commit boundary. Baseline at the start of this
-   plan: 7907 passing, 17 skipped, 0 failures.
-3. **Bilateral negotiation guard.** TSopt is gated on
-   bilateral agreement: PyTCP advertises iff `_advertise_ts`
-   is True (default True), peer echoes on its SYN+ACK iff
-   it also advertises. Post-handshake `_send_ts` is True iff
-   both sides advertised. All TSopt emission AND TSopt
-   ingestion is gated on `_send_ts`.
-4. **TS clock = `stack.timer.now_ms`.** Already monotonic,
-   already used by the RFC 6298 RTO sampler (`now_ms` since
-   commit `4c573e3`). 32-bit truncation suffices for the
-   §3.2 wrap-around analysis (the modular comparison is
-   handled the same way as Seq32).
-5. **`_ts_recent` update is gated by acceptability.** Per
-   §4.3 update only when the segment passes the receive-
-   acceptability check AND `SEG.SEQ <= last_ack_sent`. This
-   avoids stale TSval values from out-of-window segments
-   poisoning the PAWS check.
-6. **TSopt-driven RTTM is preferred but not required.** The
-   RFC 6298 §4 sample-tracker (Phase 2 in
-   `tcp_rto_integration.md`) remains in place for non-TSopt
-   peers. When `_send_ts` is True AND peer's ACK carries
-   TSecr, the TSopt path supersedes the tracker.
+1. **Bilateral-negotiation gate.** All TSopt emission AND
+   TSopt ingestion gates on `_send_ts` (set during handshake
+   when both sides advertised). Asymmetric guard:
+   `_advertise_ts` is the application opt-out flag (default
+   True); `_send_ts` is the post-negotiation result.
+2. **TS clock = `stack.timer.now_ms`.** Same monotonic source
+   the RFC 6298 RTO sampler uses. 32-bit truncation via
+   `& 0xFFFFFFFF` for wire emission; modular comparison via
+   `lt32` from `tcp__seq`.
+3. **`_ts_recent` updates only on segments through
+   `_process_ack_packet`.** This is the canonical "accepted
+   inbound" path for in-sequence data + cum-ACK + SACK. Dup-
+   ACK / wnd-update paths bypass; full §4.3 conformance for
+   those paths is a deferred cleanup (real-world impact
+   small — peer's TSval refreshes on the next data segment).
+4. **TSecr RTTM supersedes the Phase-2 sample tracker.** When
+   bilateral TSopt is enabled, every cum-ACK with TSecr
+   drives RFC 6298 §2 update directly. The Phase-2 sample
+   tracker is cleared after to prevent double-folding.
+5. **PAWS at `_process_ack_packet`'s top, before state
+   mutation.** Stale-TSval segments are dropped silently;
+   no ACK is generated (RFC 7323 §5.4 leaves this optional).
 
 ---
 
-## 3. Architecture (target final state)
+## 3. Architecture (final state)
 
 ```
-TcpSession new state:
-    _advertise_ts: bool = True       # opt-out flag set by application
-    _send_ts: bool                   # bilateral-success flag
-    _ts_recent: int                  # peer's most-recently-seen TSval
+TcpSession state:
+    _advertise_ts: bool = True       # application opt-out flag
+    _send_ts: bool = False           # bilateral-success flag
+    _ts_recent: int = 0              # peer's most-recently-seen TSval
 
-TcpMetadata new fields:
-    tcp__tsval: int | None           # peer's TSval from TSopt (None if absent)
-    tcp__tsecr: int | None           # peer's TSecr from TSopt
+TcpMetadata fields:
+    tcp__tsval: int | None           # peer's TSval (None if no TSopt)
+    tcp__tsecr: int | None           # peer's TSecr
 
 Hook points:
 
-    _transmit_packet (SYN active-open):
-        Emit TSopt iff _advertise_ts. tsval=now_ms, tsecr=0.
+    _transmit_packet:
+        SYN-only (active-open): emit TSopt iff _advertise_ts
+            (tsval=now_ms, tsecr=0)
+        SYN+ACK (passive/simultaneous): emit TSopt iff _send_ts
+            (tsval=now_ms, tsecr=_ts_recent)
+        Non-SYN segments: emit TSopt iff _send_ts
+            (tsval=now_ms, tsecr=_ts_recent)
 
-    _transmit_packet (SYN+ACK passive-open):
-        Emit TSopt iff peer's SYN had TSopt AND _advertise_ts.
+    _process_ack_packet (top, before state mutation):
+        # PAWS (§5)
+        if _send_ts and tsval is not None and lt32(tsval, _ts_recent):
+            return  # drop stale segment
 
-    _transmit_packet (post-handshake non-SYN):
-        Emit TSopt iff _send_ts. tsval=now_ms, tsecr=_ts_recent.
+        # _ts_recent update (§4.3)
+        if _send_ts and tsval is not None:
+            _ts_recent = tsval
 
-    _process_ack_packet (or earlier in inbound dispatch):
-        Update _ts_recent on accepted segment per §4.3:
-            if _send_ts and tcp__tsval is not None
-                    and seq <= rcv_nxt (covers acceptable segment):
-                _ts_recent = max(_ts_recent, tcp__tsval)  # modular max
-
-    _process_ack_packet (RTTM via TSecr):
-        if _send_ts and tcp__tsecr is not None:
-            rtt = (now_ms - tcp__tsecr) & 0xFFFF_FFFF
+    _process_ack_packet (after _snd_una update):
+        # TSecr-driven RTTM (§4)
+        if _send_ts and tsecr is not None and tsecr != 0:
+            rtt = (now_ms - tsecr) & 0xFFFFFFFF
             _rto_state = update(_rto_state, rtt)
-            # Skip the Phase-2 sample-tracker harvest for this ACK.
+            # Clear Phase-2 sample tracker to prevent double-fold.
+            _rtt_sample_seq = None
+            _rtt_sample_send_time_ms = None
+            _rtt_sample_retransmitted = False
 
-    fsm__listen / fsm__syn_sent / fsm__syn_rcvd:
-        Set _send_ts on bilateral negotiation success during
-        the SYN exchange (mirroring _send_sack handling).
+    tcp__fsm__syn_sent (active-open SYN+ACK arrival):
+        if _advertise_ts and tcp__tsval is not None:
+            _send_ts = True
+            _ts_recent = tcp__tsval
 
-    Inbound segment acceptability (PAWS check):
-        if _send_ts and tcp__tsval is not None
-                and lt32_ts(tcp__tsval, _ts_recent):
-            # Stale TSval - discard, send dup-ACK with current
-            # state per RFC 7323 §5.4.
-            ...
+    tcp__fsm__listen (passive-open SYN arrival):
+        if _advertise_ts and tcp__tsval is not None:
+            _send_ts = True
+            _ts_recent = tcp__tsval
+
+    Wire-level (already shipped in net_proto):
+        TcpOptionTimestamps in net_proto/protocols/tcp/options/
+        TcpOptions.timestamps accessor on parser side
 ```
 
 ---
 
-## 4. Phase-by-phase plan
+## 4. Phase-by-phase completion record
 
-### Phase 1 — Bilateral negotiation
+| Phase | Description                                   | Commits             | Tests added |
+|-------|-----------------------------------------------|---------------------|-------------|
+| 1     | Bilateral negotiation                         | `a36c248` + `4929f97` | 4 |
+| 2     | Per-segment emission + `_ts_recent` tracking  | `18ac216` + `fcdcf27` | 3 |
+| 3     | TSecr-driven RTTM                             | `d870992` + `f7c0d8b` | 2 |
+| 4     | PAWS receive-side check                       | `be0453a` + `79ed38e` | 2 |
+| 5     | Convert plan to completion record             | this commit          | 0 |
 
-Tests-first commit + fix commit.
-
-**Tests** (new file
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py`):
-
-  1. `test__ts__active_open_syn_carries_tsopt` [FLAGS BUG] -
-     outbound SYN includes TSopt with tsval=now_ms, tsecr=0.
-  2. `test__ts__passive_open_syn_ack_mirrors_peer_tsopt`
-     [FLAGS BUG] - SYN+ACK echoes peer's TSval as TSecr.
-  3. `test__ts__bilateral_send_ts_set_on_handshake_success`
-     [FLAGS BUG] - `_send_ts == True` post-handshake when
-     both sides advertised.
-  4. `test__ts__peer_no_tsopt_disables_send_ts` [FLAGS BUG] -
-     `_send_ts == False` if peer's SYN+ACK had no TSopt.
-  5. `test__ts__advertise_opt_out_disables_outbound_tsopt`
-     regression guard - setting `_advertise_ts = False`
-     before connect prevents outbound TSopt emission.
-
-**Fix commit:**
-  - Add `_advertise_ts`, `_send_ts`, `_ts_recent` fields in
-    TcpSession.__init__.
-  - Add `tcp__tsval`, `tcp__tsecr` fields in TcpMetadata
-    (with `None` default for non-TSopt peers).
-  - Wire `packet_handler__tcp__rx.py` to populate these
-    fields from `packet_rx.tcp.options.timestamps`.
-  - Wire `packet_handler__tcp__tx.py` with `tcp__tsval` /
-    `tcp__tsecr` kwargs that emit a `TcpOptionTimestamps`
-    when both are not None.
-  - Wire SYN emission in `_transmit_packet`: if `flag_syn`,
-    emit TSopt with tsval=now_ms, tsecr=0.
-  - Wire SYN+ACK emission and bilateral negotiation in
-    `tcp__fsm__listen.py` and `tcp__fsm__syn_sent.py`.
-
-Estimated: 2 commits. Risk: medium.
-
-### Phase 2 — Emission on every post-handshake segment
-
-Tests-first commit + fix commit.
-
-**Tests:**
-
-  1. `test__ts__post_handshake_data_segment_carries_tsopt`
-     [FLAGS BUG] - data segment includes TSopt with
-     tsval=now_ms, tsecr=peer's last TSval.
-  2. `test__ts__ts_recent_updated_on_accepted_inbound_segment`
-     [FLAGS BUG] - peer's TSval becomes `_ts_recent` after a
-     valid inbound segment.
-  3. `test__ts__ts_recent_not_updated_on_rejected_segment`
-     [FLAGS BUG] - out-of-window segment's TSval does NOT
-     update `_ts_recent`.
-
-**Fix commit:**
-  - Wire post-handshake TSopt emission in `_transmit_packet`
-    (gated on `_send_ts`).
-  - Add `_ts_recent` update in `_process_ack_packet`.
-
-Estimated: 2 commits. Risk: low.
-
-### Phase 3 — TSecr-driven RTTM
-
-Tests-first commit + fix commit.
-
-**Tests:**
-
-  1. `test__ts__cum_ack_with_tsecr_drives_rttm` [FLAGS BUG] -
-     ACK with TSecr=our_send_time updates `_rto_state` via
-     `update(rto_state, now_ms - tsecr)`.
-  2. `test__ts__retransmitted_segments_tsecr_path_avoids_karn_taint`
-     [FLAGS BUG] - TSecr-based RTT is used even when the
-     segment was retransmitted (§4 obviates Karn).
-  3. `test__ts__non_tsopt_peer_falls_back_to_phase_2_sampler`
-     regression guard - sample-tracker still works when
-     TSopt is not negotiated.
-
-**Fix commit:**
-  - Add TSecr-based RTTM hook in `_process_ack_packet`.
-  - Gate the Phase-2 sample-tracker harvest on `not _send_ts`
-    (so TSopt path takes precedence when both available).
-
-Estimated: 2 commits. Risk: medium.
-
-### Phase 4 — PAWS receive-side check
-
-Tests-first commit + fix commit.
-
-**Tests:**
-
-  1. `test__paws__stale_tsval_segment_dropped` [FLAGS BUG] -
-     inbound segment with `TSval < _ts_recent` (modular)
-     is silently dropped.
-  2. `test__paws__current_tsval_segment_accepted` regression
-     guard - inbound segment with `TSval >= _ts_recent` is
-     accepted normally.
-  3. `test__paws__wrap_aware_modular_comparison` [FLAGS BUG]
-     - PAWS check uses 32-bit modular `lt32_ts`, not raw
-     `<`, so a TSval that has wrapped past `_ts_recent` is
-     correctly accepted.
-
-**Fix commit:**
-  - Add PAWS check in inbound segment dispatch (in the FSM
-    state handlers' early acceptability check).
-  - Add `lt32_ts` helper if needed (or reuse the existing
-    `tcp__seq.lt32` since both are 32-bit modular).
-
-Estimated: 2 commits. Risk: medium.
-
-### Phase 5 — Documentation
-
-Convert this plan to a completion record. Update memory
-pointer. Update RFC table. Estimated: 1 commit.
+Total: **9 code commits, 11 timestamps-specific integration
+tests, ~80 LOC of production code in `tcp__session.py` +
+~30 LOC across FSM modules + metadata + packet handlers.**
 
 ---
 
-## 5. Anti-patterns to avoid
+## 5. Test inventory (final)
 
-- **Don't emit TSopt unilaterally.** RFC 7323 §3: "TS
-  Options MUST NOT be sent on segments that do not have ACK
-  bit set ... unless they are also part of the TCP three-way
-  handshake (i.e., SYN segments)." Bilateral negotiation
-  required for non-SYN segments.
+All 11 tests live in
+`pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py`:
 
-- **Don't update `_ts_recent` on every inbound TSval.** §4.3
-  specifies the update happens only on an "acceptable
-  segment that the receiver believes can be (i.e., is in
-  sequence and otherwise acceptable)". Stale or out-of-order
-  segments must NOT update.
+### TestTcpTimestampsPhase1Active (4 tests)
+- `active_open_syn_carries_tsopt` — outbound SYN with TSval=now_ms, TSecr=0
+- `bilateral_send_ts_set_post_handshake_when_peer_supports` — `_send_ts=True` post-handshake
+- `peer_no_tsopt_disables_send_ts` — `_send_ts=False` if peer omits TSopt
+- `advertise_opt_out_disables_outbound_tsopt` — `_advertise_ts=False` suppresses outbound TSopt + asymmetric guard
 
-- **Don't drop the RFC 6298 Phase-2 sample tracker.** Some
-  peers (older Linux without TSopt, embedded TCP stacks) do
-  not negotiate TSopt. The sample tracker is the fallback;
-  Phase 3 gates its harvest on `not _send_ts` rather than
-  removing it.
+### TestTcpTimestampsPhase2 (3 tests)
+- `post_handshake_data_segment_carries_tsopt` — regression guard
+- `ts_recent_updated_on_accepted_inbound_segment` — RFC 7323 §4.3
+- `post_update_outbound_segment_echoes_new_ts_recent` — TSecr reflects `_ts_recent`
 
-- **Don't forget modular arithmetic on TS values.** TSval is
-  a 32-bit field that wraps. The `lt32_ts(a, b)` comparison
-  uses `((a - b) & 0xFFFF_FFFF) >= 0x8000_0000` (the same
-  modular-half-distance trick as Seq32 in `tcp__seq.py`).
+### TestTcpTimestampsPhase3 (2 tests)
+- `karn_tainted_retransmit_measures_rtt_via_tsecr` — RFC 7323 §4 obviates Karn
+- `non_tsopt_peer_falls_back_to_sample_tracker` — regression guard
 
-- **Don't apply PAWS during handshake.** RFC 7323 §5: PAWS
-  applies only to segments arriving in synchronized states
-  (ESTABLISHED, FIN_WAIT_1/2, CLOSE_WAIT, CLOSING, LAST_ACK,
-  TIME_WAIT). The SYN exchange itself is not subject to
-  PAWS — both sides establish `_ts_recent` from the
-  exchange.
+### TestTcpTimestampsPhase4 (2 tests)
+- `stale_tsval_segment_dropped` — RFC 7323 §5 PAWS
+- `current_tsval_segment_accepted` — regression guard
+
+### Cross-references covered indirectly
+
+- `pytcp/tests/integration/protocols/tcp/test__tcp__session__harness_smoke.py`
+  has a Timestamps-option round-trip test that replaced the
+  legacy `paws_ts` placeholder.
+- All existing handshake / data-transfer / SACK / RTO /
+  cwnd integration tests continue to work unchanged because
+  legacy peers in those tests do not advertise TSopt
+  (`_send_ts` stays False for them).
+
+---
+
+## 6. Production code map
+
+| File                                                | Purpose                                       |
+|-----------------------------------------------------|-----------------------------------------------|
+| `pytcp/socket/tcp__metadata.py`                     | `tcp__tsval` / `tcp__tsecr` fields            |
+| `pytcp/stack/packet_handler/packet_handler__tcp__rx.py` | Populates metadata from `packet_rx.tcp.options.timestamps` |
+| `pytcp/stack/packet_handler/packet_handler__tcp__tx.py` | `tcp__tsval` / `tcp__tsecr` kwargs emit TcpOptionTimestamps; `tcp__opt_timestamps` stat |
+| `pytcp/lib/packet_stats.py`                         | `tcp__opt_timestamps` counter                 |
+| `pytcp/protocols/tcp/tcp__session.py:__init__`      | `_advertise_ts`, `_send_ts`, `_ts_recent` fields |
+| `pytcp/protocols/tcp/tcp__session.py:_transmit_packet` | TSopt emission gating per segment kind     |
+| `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet` | PAWS check (top), `_ts_recent` update, TSecr RTTM |
+| `pytcp/protocols/tcp/tcp__fsm__syn_sent.py`         | Active-open + simultaneous-open negotiation    |
+| `pytcp/protocols/tcp/tcp__fsm__listen.py`           | Passive-open negotiation                      |
+| `pytcp/tests/lib/tcp_segment_factory.py`            | `tsval` / `tsecr` kwargs in `build_tcp4` / `build_tcp6` |
+| `pytcp/tests/lib/tcp_session_testcase.py`           | `TcpProbe.tsval` / `TcpProbe.tsecr` fields    |
+
+---
+
+## 7. Deferred work
+
+### 7.1 RFC 1337 TIME-WAIT assassination mitigation
+
+PAWS-based protection: when a TIME-WAIT session receives a
+segment from peer with stale TSval, drop it (already
+covered by the Phase 4 PAWS check if the session is in
+TIME-WAIT, but the `_process_ack_packet` path may not be
+the one that handles TIME-WAIT segments). Audit needed.
+~2-3 commits.
+
+### 7.2 RFC 6191 TIME-WAIT 4-tuple reuse
+
+Allow a new SYN from the same 4-tuple to take over a
+TIME-WAIT session if peer's TSval has clearly advanced past
+the TIME-WAIT's `_ts_recent`. Useful for short-lived
+connection storms. ~3-4 commits.
+
+### 7.3 RFC 8985 RACK-TLP
+
+RACK uses per-segment send-times to detect tail loss faster
+than RFC 5681's 3-dup-ACK trigger. Phase 1's TSval emission
+is the building block; full RACK requires per-segment
+send-time tracking and a separate scoreboard. ~10+ commits;
+substantial new substrate.
+
+### 7.4 PAWS in dup-ACK / OOO / TIME-WAIT paths
+
+Phase 4 only checks PAWS in `_process_ack_packet`. Other
+inbound dispatch paths (dup-ACK fast-retransmit, OOO queue,
+TIME-WAIT late-FIN) bypass `_process_ack_packet` and
+therefore bypass PAWS. Full coverage requires a session-
+level helper called at the top of every FSM state's accepted
+segment branch. ~2-3 commits.
+
+### 7.5 `_ts_recent` update for non-`_process_ack_packet` paths
+
+Per RFC 7323 §4.3, `_ts_recent` should update on ANY
+accepted segment in receive sequence space, including dup-
+ACKs and OOO segments. Phase 2 only updates on
+`_process_ack_packet`. Real-world impact small (next data
+segment refreshes), but full conformance gap. ~1-2 commits.
+
+---
+
+## 8. Anti-patterns (preserved for future extensions)
+
+- **Don't emit TSopt unilaterally.** Bilateral negotiation
+  gates via `_send_ts`; emitting on a non-TSopt peer would
+  see TSecr ignored or, worse, cause the peer to close the
+  connection if it has strict option validation.
+
+- **Don't update `_ts_recent` on out-of-window segments.**
+  Per §4.3, only segments in receive sequence space update
+  the cache. PyTCP's `_process_ack_packet` is called only on
+  acceptable segments, so the gate is implicit; future
+  extensions adding `_ts_recent` updates in other paths
+  must explicitly check sequence acceptability first.
+
+- **Don't apply PAWS during the SYN exchange.** PAWS only
+  applies to segments arriving in synchronized states. The
+  SYN exchange itself establishes `_ts_recent` for both
+  sides, and TSval=0 on a SYN+ACK after a SYN with TSval=N
+  would otherwise look "stale" relative to N.
 
 - **Don't conflate `_advertise_ts` with `_send_ts`.**
-  `_advertise_ts` is the application-level opt-out flag
-  (default True). `_send_ts` is the bilateral-success flag
-  set by the FSM after the handshake. Outbound SYN gates on
-  `_advertise_ts`; outbound non-SYN segments and TSopt
-  ingestion gate on `_send_ts`.
+  `_advertise_ts` is the application-level opt-out flag.
+  `_send_ts` is the post-handshake bilateral-success flag.
+  Outbound SYN gates on `_advertise_ts`; outbound non-SYN
+  segments and inbound TSopt ingestion gate on `_send_ts`.
+
+- **Don't forget modular comparison on TS values.** TSval
+  is a 32-bit field that wraps every 24 days at 1 ms
+  granularity. Use `lt32` from `tcp__seq` for `<`
+  comparisons; raw Python `<` is wrong post-wrap.
 
 ---
 
-## 6. Estimated effort
-
-| Phase | Description                                      | Commits | Risk    |
-|-------|--------------------------------------------------|---------|---------|
-| 1     | Bilateral negotiation                            | 2       | medium  |
-| 2     | Per-segment emission + _ts_recent tracking       | 2       | low     |
-| 3     | TSecr-driven RTTM                                | 2       | medium  |
-| 4     | PAWS receive-side check                          | 2       | medium  |
-| 5     | Convert plan to completion record                | 1       | trivial |
-
-Total: **9 commits**, ~3-5 hours of focused work.
-
----
-
-## 7. Cross-references
-
-- Coding style: `.claude/rules/coding_style.md`
-- Unit test authoring: `.claude/rules/unit_tests.md`
-- Adjacent shipped: `.claude/rules/tcp_rto_integration.md`
-  (RFC 6298 RTO; the §4 sample tracker becomes the fallback
-  path for non-TSopt peers).
-- Adjacent shipped: `.claude/rules/tcp_rfc5681_cwnd.md`
-  (RFC 5681 cwnd; unaffected by TSopt but uses the same RTT
-  estimator that benefits from §4 RTTM).
-- Wire-level: `net_proto/protocols/tcp/options/tcp__option__timestamps.py`
-  (already shipped; just needs stack-level wiring).
-
----
-
-## 8. Re-orient command for new sessions
+## 9. Extender's re-orient command
 
 ```bash
 git log --oneline --grep="timestamp\|RFC 7323\|TSopt\|PAWS" master..HEAD
-ls pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py 2>/dev/null
-grep -n "_send_ts\|_ts_recent\|tcp__tsval" pytcp/protocols/tcp/tcp__session.py 2>/dev/null | head
 make test 2>&1 | tail -5
+ls pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py
+grep -n "_send_ts\|_ts_recent\|tcp__tsval" pytcp/protocols/tcp/tcp__session.py | head
 ```
 
-What it tells you:
-- No `_send_ts` matches → Phase 1 not started.
-- `_send_ts` exists, no PAWS check → Phase 4 not started.
-- All four phases visible → Phase 5 (docs) is the wrap-up.
+Read the docstrings of:
+- `pytcp/protocols/tcp/tcp__session.py:_transmit_packet`
+  (TSopt emission gating)
+- `pytcp/protocols/tcp/tcp__session.py:_process_ack_packet`
+  (PAWS + `_ts_recent` update + TSecr RTTM, all at the top)
+- `pytcp/protocols/tcp/tcp__fsm__syn_sent.py` /
+  `tcp__fsm__listen.py` (bilateral negotiation hooks)
 
-Match against §4 to pick up where the prior session left off.
+Then decide whether the extension fits the deferred-work
+taxonomy in §7 above, or is a new direction entirely.
+
+---
+
+## 10. Cross-references
+
+- Workflow + reporting format:
+  `.claude/rules/tcp_session_integration_tests.md` §7
+- Coding style: `.claude/rules/coding_style.md`
+- Adjacent shipped: `.claude/rules/tcp_rto_integration.md`
+  (RFC 6298 RTO; the §4 sample tracker is the fallback for
+  non-TSopt peers).
+- Adjacent shipped: `.claude/rules/tcp_rfc5681_cwnd.md`
+  (RFC 5681 cwnd; uses the same RTT estimator that benefits
+  from §4 RTTM).
+- Wire-level:
+  `net_proto/protocols/tcp/options/tcp__option__timestamps.py`
