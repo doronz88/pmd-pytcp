@@ -138,6 +138,21 @@ class SackScoreboard:
 
         return list(self._blocks)
 
+    def total_sacked_bytes(self) -> int:
+        """
+        Return the total number of bytes covered by the
+        scoreboard, summing modular block widths. Used by the
+        RFC 6937 PRR delta-tracking hook in '_ingest_sack_info'
+        to compute 'DeliveredData' from before/after totals
+        across a SACK-block ingestion.
+
+        The merge invariant guarantees no two tracked blocks
+        overlap, so a plain modular sum of '(right - left)'
+        widths is the exact byte coverage.
+        """
+
+        return sum((right - left) & UINT_32__MAX for left, right in self._blocks)
+
     def first_gap(self, snd_una: Seq32) -> Seq32 | None:
         """
         Return the lowest seq >= 'snd_una' that is NOT covered by

@@ -710,6 +710,104 @@ class TestSackScoreboard__Blocks(TestCase):
         )
 
 
+class TestSackScoreboard__TotalSackedBytes(TestCase):
+    """
+    The 'SackScoreboard.total_sacked_bytes' helper used by the
+    RFC 6937 PRR delta-tracking hook in '_ingest_sack_info'.
+    """
+
+    def test__sack_scoreboard__total_sacked_bytes__empty_returns_zero(self) -> None:
+        """
+        Ensure an empty scoreboard reports zero sacked bytes.
+
+        Reference: RFC 6937 §3.1 (DeliveredData = 0 baseline before any SACK).
+        """
+
+        scoreboard = SackScoreboard()
+        self.assertEqual(
+            scoreboard.total_sacked_bytes(),
+            0,
+            msg="Empty scoreboard must report zero sacked bytes.",
+        )
+
+    def test__sack_scoreboard__total_sacked_bytes__single_block_byte_count(self) -> None:
+        """
+        Ensure a single block reports its width as the byte count.
+
+        Reference: RFC 6937 §3.1 (single-block byte coverage).
+        """
+
+        scoreboard = SackScoreboard()
+        scoreboard.add_block(100, 250)
+        self.assertEqual(
+            scoreboard.total_sacked_bytes(),
+            150,
+            msg="Single block [100,250) covers 150 bytes.",
+        )
+
+    def test__sack_scoreboard__total_sacked_bytes__multiple_disjoint_blocks_sum(self) -> None:
+        """
+        Ensure multiple disjoint blocks sum their widths.
+
+        Reference: RFC 6937 §3.1 (sum of disjoint coverage).
+        """
+
+        scoreboard = SackScoreboard()
+        scoreboard.add_block(100, 200)
+        scoreboard.add_block(300, 350)
+        scoreboard.add_block(500, 700)
+        self.assertEqual(
+            scoreboard.total_sacked_bytes(),
+            100 + 50 + 200,
+            msg="Three disjoint blocks must sum to the total byte coverage.",
+        )
+
+    def test__sack_scoreboard__total_sacked_bytes__merged_blocks_no_double_count(self) -> None:
+        """
+        Ensure overlapping inserts that merge in the
+        scoreboard count their union width once - the merge
+        invariant guarantees no double-counting.
+
+        Reference: RFC 6937 §3.1 (no double-counting under SACK union semantics).
+        """
+
+        scoreboard = SackScoreboard()
+        scoreboard.add_block(100, 250)
+        scoreboard.add_block(200, 300)
+        # Merged into [100, 300) = 200 bytes, NOT 150 + 100.
+        self.assertEqual(
+            scoreboard.total_sacked_bytes(),
+            200,
+            msg="Overlapping inserts merge into one block whose width is counted once.",
+        )
+
+    def test__sack_scoreboard__total_sacked_bytes__cross_wrap_block_byte_count(self) -> None:
+        """
+        Ensure a block straddling the 32-bit modular wrap
+        reports its modular width correctly. PyTCP's seq
+        space is 2**32 modular; '(right - left) & 0xFFFF_FFFF'
+        recovers the forward distance even when 'right'
+        wraps below 'left' numerically.
+
+        Reference: RFC 9293 §3.4 (modular sequence-number arithmetic).
+        """
+
+        scoreboard = SackScoreboard()
+        # Block [0xFFFF_FF00, 0x0000_0100) - 256 bytes
+        # straddling the wrap (right = 256 < left = 4294967040
+        # numerically, but modular distance is 512).
+        scoreboard.add_block(0xFFFF_FF00, 0x0000_0100)
+        self.assertEqual(
+            scoreboard.total_sacked_bytes(),
+            512,
+            msg=(
+                "Cross-wrap block [0xFFFF_FF00, 0x0000_0100) "
+                "covers 512 bytes via modular arithmetic. "
+                f"Got {scoreboard.total_sacked_bytes()}."
+            ),
+        )
+
+
 @parameterized_class(
     [
         {

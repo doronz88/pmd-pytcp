@@ -1637,9 +1637,25 @@ class TcpSession:
             self._dsack_received += 1
             blocks = blocks[1:]
 
+        # RFC 6937 §3.1 SACK delta tracking: when in recovery,
+        # the bytes added to the scoreboard by THIS ingestion
+        # count as 'DeliveredData' and feed PRR's per-ACK
+        # 'sndcnt = ceil(prr_delivered * ssthresh / RecoverFS)
+        # - prr_out' formula. Snapshot the scoreboard total
+        # before adding the new blocks; the post-add total
+        # minus the snapshot is the exact byte delta (the
+        # merge invariant guarantees no overlap so the sum is
+        # exact). DSACK blocks are excluded above (the slice
+        # 'blocks[1:]') so they do not double-count peer's
+        # report of bytes we already knew about.
+        bytes_before = self._sack_scoreboard.total_sacked_bytes() if self._recovery_point != 0 else 0
+
         for left, right in blocks:
             if le32(self._snd_una, left) and le32(right, self._snd_max) and lt32(left, right):
                 self._sack_scoreboard.add_block(left, right)
+
+        if self._recovery_point != 0:
+            self._prr_delivered += self._sack_scoreboard.total_sacked_bytes() - bytes_before
 
     def _prune_sack_scoreboard(self) -> None:
         """
