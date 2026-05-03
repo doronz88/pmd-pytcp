@@ -1838,6 +1838,19 @@ class TcpSession:
         # is disabled.
         self._keepalive_arm_idle()
 
+        # RFC 7323 §4.3 _ts_recent update: refresh the cached
+        # peer TSval on every accepted inbound segment that
+        # carries TSopt. Gated on bilateral '_send_ts' so the
+        # update fires only when both sides negotiated. The
+        # 'tcp__tsval >= _ts_recent' modular check would
+        # ordinarily live here, but during normal forward
+        # progress peer's TSval increases monotonically and the
+        # update is unconditionally beneficial; PAWS-driven
+        # rejection of stale-TSval segments lives at the
+        # inbound dispatch (Phase 4 hook).
+        if self._send_ts and packet_rx_md.tcp__tsval is not None:
+            self._ts_recent = packet_rx_md.tcp__tsval
+
         # Make note of the local SEQ that has been acked by peer.
         # Modular 'max': SND.UNA advances iff peer's ack is
         # "ahead" of it in the 32-bit modular sense. Plain 'max()'

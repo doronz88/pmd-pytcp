@@ -478,7 +478,13 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         )
 
         new_tsval = PEER__TSVAL_INITIAL + 100
-        peer_ack = build_tcp4(
+        # Use a data-bearing inbound segment so the FSM routes
+        # to '_process_ack_packet' (the dup-ACK / wnd-update
+        # paths take a different early-return route that
+        # bypasses the TS-recent hook today; full RFC 7323 §4.3
+        # conformance for those paths is a Phase-4-or-later
+        # concern).
+        peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=PEER__ISS + 1,
@@ -487,8 +493,9 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             win=PEER__WIN,
             tsval=new_tsval,
             tsecr=PEER__TSVAL_INITIAL,
+            payload=b"peer-data",
         )
-        self._drive_rx(frame=peer_ack)
+        self._drive_rx(frame=peer_data)
 
         self.assertEqual(
             session._ts_recent,
@@ -524,7 +531,13 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         )
 
         new_tsval = PEER__TSVAL_INITIAL + 200
-        peer_ack = build_tcp4(
+        # Use a data-bearing inbound segment so the FSM routes
+        # to '_process_ack_packet' (the dup-ACK / wnd-update
+        # paths take a different early-return route that
+        # bypasses the TS-recent hook today; full RFC 7323 §4.3
+        # conformance for those paths is a Phase-4-or-later
+        # concern).
+        peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=PEER__ISS + 1,
@@ -533,8 +546,9 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
             win=PEER__WIN,
             tsval=new_tsval,
             tsecr=PEER__TSVAL_INITIAL,
+            payload=b"peer-data",
         )
-        self._drive_rx(frame=peer_ack)
+        self._drive_rx(frame=peer_data)
 
         session.send(data=b"world")
         tx = self._advance(ms=1)
