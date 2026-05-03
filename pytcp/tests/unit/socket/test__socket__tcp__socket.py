@@ -828,3 +828,90 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="getsockopt on an unknown (level, optname) pair must raise OSError.",
         ):
             s.getsockopt(0xDEAD, SO_KEEPALIVE)
+
+    def test__tcp_socket__connect_propagates_so_keepalive_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(SO_KEEPALIVE, 1)' followed by 'connect()'
+        propagates the flag to the freshly-constructed TcpSession's
+        '_keepalive_enabled' attribute. Without this propagation,
+        the keep-alive feature has no path from the BSD-socket API
+        to the protocol runtime.
+
+        The test uses 'assertIs(..., True)' rather than 'assertTrue'
+        because the mocked TcpSession is a MagicMock - reading any
+        previously-unset attribute returns a new MagicMock, which
+        is truthy. Identity-checking against the literal 'True'
+        catches both cases.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertIs(
+            self._session_cls.return_value._keepalive_enabled,
+            True,
+            msg=(
+                "connect() must propagate '_so_keepalive' to the new TcpSession's "
+                "'_keepalive_enabled' so RFC 1122 §4.2.3.6 keep-alive arms."
+            ),
+        )
+
+    def test__tcp_socket__connect_propagates_default_disable_to_session(self) -> None:
+        """
+        Ensure connect() without setsockopt sets the new
+        TcpSession's '_keepalive_enabled' to False explicitly
+        (not "leave unset"), preserving RFC 1122 §4.2.3.6's
+        "MUST default to off" invariant via the BSD-socket API.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertIs(
+            self._session_cls.return_value._keepalive_enabled,
+            False,
+            msg=(
+                "connect() without setsockopt(SO_KEEPALIVE, 1) must explicitly "
+                "set '_keepalive_enabled = False' on the session."
+            ),
+        )
+
+    def test__tcp_socket__listen_propagates_so_keepalive_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(SO_KEEPALIVE, 1)' followed by 'listen()'
+        propagates the flag to the freshly-constructed listening
+        TcpSession's '_keepalive_enabled'. Listener-fork children
+        inherit through the listening session's flag, so a
+        listening socket that opted in via setsockopt produces
+        keep-alive-enabled child sessions for every incoming SYN.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        s._local_ip_address = Ip4Address("10.0.0.1")
+        s._local_port = 80
+        s.listen()
+
+        self.assertIs(
+            self._session_cls.return_value._keepalive_enabled,
+            True,
+            msg=(
+                "listen() must propagate '_so_keepalive' to the new listening "
+                "TcpSession's '_keepalive_enabled' so accepted children inherit."
+            ),
+        )

@@ -117,14 +117,23 @@ def fsm__listen(
             # mutable references to each other - callers that
             # cached 'listen_socket._tcp_session' BEFORE the SYN
             # arrived must re-resolve it after the drive.
+            # Capture the listening parent socket reference BEFORE
+            # the in-place pivot below clobbers 'session._socket'.
+            # Both the fresh listening session and the new child
+            # socket inherit RFC 1122 §4.2.3.6 SO_KEEPALIVE from
+            # this parent.
+            listen_socket = session._socket
             tcp_session = TcpSession(
                 local_ip_address=session._local_ip_address,
                 local_port=session._local_port,
                 remote_ip_address=session._remote_ip_address,
                 remote_port=session._remote_port,
-                socket=session._socket,
+                socket=listen_socket,
             )
             tcp_session.listen()
+            # Inherit SO_KEEPALIVE on the fresh listening session
+            # so each subsequent accept fork carries the flag too.
+            tcp_session._keepalive_enabled = listen_socket._so_keepalive
             session._socket._tcp_session = tcp_session  # pylint: disable=protected-access
             # Re-bind 'session' to the peer's 4-tuple and create a
             # new TcpSocket that exposes this child session to
@@ -139,6 +148,11 @@ def fsm__listen(
                 ),
                 tcp_session=session,
             )
+            # Propagate SO_KEEPALIVE from the listening parent
+            # onto the new child socket so a future
+            # 'getsockopt(SO_KEEPALIVE)' on the accept()'d child
+            # round-trips correctly.
+            session._socket._so_keepalive = listen_socket._so_keepalive
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the

@@ -69,7 +69,7 @@ from pytcp.protocols.tcp.tcp__session import (
     SysCall,
     TcpSession,
 )
-from pytcp.socket import AddressFamily
+from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET, AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -693,5 +693,194 @@ class TestTcpKeepalive(TcpSessionTestCase):
                 "accounting for the §4.2.3.2 delayed-ACK that the session sends "
                 f"in response to peer's data). Got {probes_at_new_boundary} "
                 "probe(s) - the timer either disarmed entirely or never fired."
+            ),
+        )
+
+
+class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
+    """
+    Integration test for the listener-fork keep-alive inheritance
+    path: a listening socket that has set 'SO_KEEPALIVE' via
+    'setsockopt' MUST produce accept()'d child sockets / sessions
+    that inherit the flag, so the entire fork lineage benefits
+    from the per-listener keep-alive opt-in.
+    """
+
+    def _patch_keepalive_constants(self) -> None:
+        """
+        Patch keep-alive timer constants to small test values so a
+        full idle / probe cycle completes in a few hundred
+        milliseconds of virtual time.
+        """
+
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_IDLE_TIME",
+            TEST__KEEPALIVE_IDLE_TIME_MS,
+        )
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_INTERVAL",
+            TEST__KEEPALIVE_PROBE_INTERVAL_MS,
+        )
+        self._start_patch(
+            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_MAX_COUNT",
+            TEST__KEEPALIVE_PROBE_MAX_COUNT,
+        )
+
+    def test__keepalive__listener_fork_inherits_so_keepalive(self) -> None:
+        """
+        Ensure that a listening 'TcpSocket' with
+        'setsockopt(SO_KEEPALIVE, 1)' produces an accept()'d child
+        socket whose '_so_keepalive' is True AND whose underlying
+        TcpSession's '_keepalive_enabled' is True. The inheritance
+        flows in two places:
+
+          1. The fresh listening session created during the
+             listener-fork pivot (which serves the NEXT incoming
+             SYN) inherits from the listening socket's flag.
+          2. The new child socket created for the accepted
+             connection inherits the flag from the listening
+             socket too.
+
+        Both points are necessary: (1) so subsequent forks also
+        carry keep-alive, (2) so a getsockopt(SO_KEEPALIVE) on the
+        accept()'d child round-trips correctly.
+
+        End-to-end: after the SYN/SYN+ACK/ACK handshake completes,
+        the child session is in ESTABLISHED with keep-alive armed.
+        Advancing past 'KEEPALIVE_IDLE_TIME' produces a probe -
+        proving the inheritance is functionally complete, not just
+        a flag-copy.
+        """
+
+        self._patch_keepalive_constants()
+        self._force_iss(0x3000)
+
+        # Build a listening TcpSocket with SO_KEEPALIVE set, then
+        # construct its TcpSession the way 'TcpSocket.listen()'
+        # would (mirroring the 'handshake__passive' fixture but
+        # going through setsockopt to exercise the propagation).
+        listen_socket = TcpSocket(family=AddressFamily.INET4)
+        listen_socket.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        listen_socket._local_ip_address = STACK__IP
+        listen_socket._local_port = STACK__PORT
+        listen_socket._remote_ip_address = Ip4Address()
+        listen_socket._remote_port = 0
+        listen_session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=Ip4Address(),
+            remote_port=0,
+            socket=listen_socket,
+        )
+        listen_socket._tcp_session = listen_session
+        # Mirror what TcpSocket.listen() does post-construction:
+        # propagate SO_KEEPALIVE before driving the FSM into LISTEN.
+        listen_session._keepalive_enabled = listen_socket._so_keepalive
+        stack.sockets[listen_socket.socket_id] = listen_socket
+        listen_session.tcp_fsm(syscall=SysCall.LISTEN)
+
+        self.assertIs(
+            listen_session._keepalive_enabled,
+            True,
+            msg=(
+                "Setup precondition: the listening session must have "
+                "'_keepalive_enabled = True' so the fork pivot can "
+                "inherit it."
+            ),
+        )
+
+        # Drive a peer SYN. 'tcp__fsm__listen' performs the in-place
+        # pivot: 'listen_session' becomes the child session, a fresh
+        # listening session takes over the listening role, and a new
+        # child socket is created for the application's eventual
+        # 'accept()'.
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x4000,
+            ack=0,
+            flags=("SYN",),
+            win=64240,
+            mss=1460,
+        )
+        self._drive_rx(frame=peer_syn)
+
+        # After the pivot:
+        #   - 'listen_session' is now the child session (mutated in-
+        #     place); it must retain its '_keepalive_enabled = True'.
+        #   - 'listen_session._socket' is now the NEW child socket;
+        #     'child._so_keepalive' must be True (inherited from the
+        #     listening parent).
+        #   - 'listen_socket._tcp_session' is now the FRESH listening
+        #     session; its '_keepalive_enabled' must also be True so
+        #     subsequent forks inherit too.
+        child_session = listen_session
+        child_socket = child_session._socket
+        fresh_listen_session = listen_socket._tcp_session
+
+        self.assertIs(
+            child_session._keepalive_enabled,
+            True,
+            msg=(
+                "Listener-fork must preserve '_keepalive_enabled' on the "
+                "child session (which is the in-place-mutated original)."
+            ),
+        )
+        self.assertIs(
+            child_socket._so_keepalive,
+            True,
+            msg=(
+                "The new child TcpSocket created for the accepted "
+                "connection must inherit '_so_keepalive' from the "
+                "listening parent socket."
+            ),
+        )
+        self.assertIs(
+            fresh_listen_session._keepalive_enabled,
+            True,
+            msg=(
+                "The fresh listening session created during the fork must "
+                "inherit '_keepalive_enabled' so the NEXT incoming SYN's "
+                "child also benefits from keep-alive."
+            ),
+        )
+
+        # End-to-end: drive the third leg of the handshake to bring
+        # the child session into ESTABLISHED, then advance past
+        # KEEPALIVE_IDLE_TIME and assert exactly one probe fires -
+        # proving keep-alive is FUNCTIONALLY armed on the accepted
+        # child, not just configured.
+        self._advance(ms=1)  # let SYN+ACK fire from SYN_RCVD timer branch
+        peer_third_leg_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=0x4001,
+            ack=child_session._snd_nxt,
+            flags=("ACK",),
+            win=64240,
+        )
+        self._drive_rx(frame=peer_third_leg_ack)
+        self.assertIs(
+            child_session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: child session must reach ESTABLISHED.",
+        )
+
+        # Advance past the keep-alive idle boundary. Filter probes
+        # (seq=SND.NXT-1) from any incidental data-acks (seq=SND.NXT).
+        snd_nxt_when_idle = child_session._snd_nxt
+
+        def _is_probe(frame: bytes) -> bool:
+            return self._parse_tx(frame).seq != snd_nxt_when_idle
+
+        all_tx = self._advance(ms=TEST__KEEPALIVE_IDLE_TIME_MS + 1)
+        probe_count = sum(1 for frame in all_tx if _is_probe(frame))
+        self.assertEqual(
+            probe_count,
+            1,
+            msg=(
+                "After listener-fork inheritance, the accepted child must "
+                "fire exactly one keep-alive probe past KEEPALIVE_IDLE_TIME "
+                f"of idle time. Got {probe_count} probe(s)."
             ),
         )

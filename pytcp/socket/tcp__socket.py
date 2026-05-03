@@ -351,6 +351,14 @@ class TcpSocket(socket):
             socket=self,
         )
 
+        # RFC 1122 §4.2.3.6: propagate the SO_KEEPALIVE flag to
+        # the freshly-constructed TcpSession before the FSM
+        # starts firing. The session-internal keep-alive
+        # machinery is gated on '_keepalive_enabled'; without
+        # this hook, 'setsockopt(SO_KEEPALIVE, 1)' would have no
+        # effect.
+        self._tcp_session._keepalive_enabled = self._so_keepalive
+
         __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
         try:
@@ -391,6 +399,13 @@ class TcpSocket(socket):
             remote_port=self._remote_port,
             socket=self,
         )
+
+        # RFC 1122 §4.2.3.6: propagate SO_KEEPALIVE to the
+        # listening TcpSession so accepted children inherit
+        # through the listener-fork pivot in
+        # 'pytcp/protocols/tcp/tcp__fsm__listen.py' (which
+        # mutates this session in-place into the child).
+        self._tcp_session._keepalive_enabled = self._so_keepalive
 
         __debug__ and log(
             "socket",
