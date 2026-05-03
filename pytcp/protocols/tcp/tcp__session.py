@@ -1877,18 +1877,26 @@ class TcpSession:
             # delta when the cum-ACK straddles the 32-bit wrap.
             bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
             self._snd_una = packet_rx_md.tcp__ack
-            # RFC 5681 §3.1 cwnd growth on cum-ACK that advances
-            # SND.UNA. The slow-start vs congestion-avoidance
-            # gate is a single 'cwnd < ssthresh' comparison:
-            #   - slow start: 'cwnd += min(bytes_acked, SMSS)'
-            #     ("at most SMSS bytes for each ACK received")
-            #   - CA:         'cwnd += max(1, SMSS*SMSS / cwnd)'
-            #     ("approximately SMSS bytes per RTT")
-            # The 'max(1, ...)' floor in CA prevents zero growth
-            # on very large cwnd values where integer
-            # 'SMSS*SMSS // cwnd' rounds down to 0; without it a
-            # connection past 'cwnd > SMSS²' would stall.
-            if self._cwnd < self._ssthresh:
+            # Cwnd update on cum-ACK that advances SND.UNA.
+            # Three branches gated on recovery state:
+            #   - in recovery, partial cum-ACK (snd_una hasn't
+            #     reached recovery_point): RFC 6582 NewReno §3
+            #     step 3b deflation (cwnd -= bytes_acked, then
+            #     add back SMSS if bytes_acked >= SMSS). Helps
+            #     non-SACK peers recover from multi-segment
+            #     loss without taking an RTO per additional
+            #     loss.
+            #   - in recovery, full cum-ACK (snd_una reached
+            #     recovery_point): RFC 5681 §3.2 step 6
+            #     deflation (cwnd = ssthresh) - handled at the
+            #     recovery-exit branch below.
+            #   - not in recovery: RFC 5681 §3.1 slow-start vs
+            #     congestion-avoidance growth.
+            if self._recovery_point != 0 and lt32(self._snd_una, self._recovery_point):
+                self._cwnd = max(self._snd_mss, self._cwnd - bytes_acked)
+                if bytes_acked >= self._snd_mss:
+                    self._cwnd += self._snd_mss
+            elif self._cwnd < self._ssthresh:
                 self._cwnd += min(bytes_acked, self._snd_mss)
             else:
                 self._cwnd += max(1, self._snd_mss * self._snd_mss // self._cwnd)
