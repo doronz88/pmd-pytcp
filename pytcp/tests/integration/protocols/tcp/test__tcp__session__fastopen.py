@@ -136,21 +136,15 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
     def test__fastopen__server_issues_cookie_on_tfo_request_syn(self) -> None:
         """
-        Ensure that when an inbound SYN carries the RFC 7413 §2
-        TFO option with an empty cookie (the 'cookie request'
-        form, Length = 2), our SYN+ACK reply carries the TFO
-        option with a non-empty cookie that the peer can cache
-        and present on a subsequent connection. Cookie length
-        MUST fall in the RFC 7413 §2 range (4..16 bytes); the
-        cookie value itself is opaque from the peer's
+        Ensure that when an inbound SYN carries the Fast Open
+        option with an empty cookie (the cookie-request form,
+        Length = 2), our SYN+ACK reply carries the Fast Open
+        option with a non-empty 4..16 byte cookie that the
+        peer can cache and present on a subsequent connection.
+        The cookie value itself is opaque from the peer's
         perspective.
 
-        Today PyTCP recognises kind = 34 only as a generic
-        unknown TCP option (decoded as 'TcpOptionUnknown'); the
-        session ignores it entirely and emits a vanilla SYN+ACK
-        with no TFO response. This test pins the desired RFC
-        7413 §3.1 behaviour.
-
+        Reference: RFC 7413 §2 (Fast Open option wire format and cookie length 4..16 bytes).
         Reference: RFC 7413 §3.1 (server-side cookie issuance on TFO request).
         """
 
