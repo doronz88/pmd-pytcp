@@ -48,6 +48,7 @@ from pytcp.protocols.tcp.tcp__cwnd import (
     cwnd_grow_per_ack,
 )
 from pytcp.protocols.tcp.tcp__enums import (
+    CcMode,
     ConnError,
     FsmState,
     SysCall,
@@ -707,6 +708,42 @@ class TcpSession:
         # is well above any realistic peer-advertised window so
         # the session enters slow-start cleanly post-handshake.
         self._ssthresh: int = 0x7FFF_FFFF
+
+        # RFC 9438 CUBIC state (active when '_cc_mode == CUBIC';
+        # in 'RENO' mode all fields stay at their initial values
+        # and the existing RFC 5681 cwnd helpers run unchanged).
+        # Phase 7 of '.claude/rules/tcp_rfc9438_cubic.md' will
+        # flip the default to 'CUBIC' and add a setsockopt hook
+        # to override per-connection.
+        self._cc_mode: CcMode = CcMode.RENO
+        # 'W_max' anchor for the cubic curve (bytes). Updated on
+        # every loss event (RFC 9438 §4.6); the cubic growth
+        # formula uses '_cubic_w_max' as the inflection point.
+        self._cubic_w_max: int = 0
+        # Prior 'W_max' kept for the §4.7 fast-convergence
+        # comparison: when the new W_max is smaller than this
+        # one, fast convergence reduces W_max further.
+        self._cubic_w_last_max: int = 0
+        # Curve inflection time (ms). Computed from the cubic
+        # cube-root formula on each loss event (RFC 9438 §4.2
+        # figure 2).
+        self._cubic_K_ms: int = 0
+        # Virtual-clock anchor for the cubic curve (ms). Reset
+        # on every loss event so 'W_cubic(t = now - epoch_start)'
+        # measures elapsed time since the start of the current
+        # CA stage (RFC 9438 §4.2).
+        self._cubic_epoch_start_ms: int = 0
+        # Reno-friendly W_est tracker (bytes). Updated per
+        # cum-ACK in CA when '_cc_mode == CUBIC'. Selected as
+        # the active cwnd value when the cubic formula yields a
+        # smaller cwnd than Reno would (RFC 9438 §4.3).
+        self._cubic_w_est: int = 0
+        # Whether the session is currently in the CA phase per
+        # RFC 9438 §4.6. True post-loss-event (or after the
+        # first cwnd >= ssthresh crossing); the CUBIC formula
+        # only fires when this is True. Slow-start exits via
+        # the existing Reno path until this flag flips.
+        self._cubic_in_ca: bool = False
 
         # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
         # don't use wscale for backward compatibility.

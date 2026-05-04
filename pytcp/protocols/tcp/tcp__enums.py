@@ -73,3 +73,15 @@ class ConnError(NameEnum):
     REFUSED = auto()
     TIMEOUT = auto()
     CANCELED = auto()
+
+
+class CcMode(NameEnum):
+    """
+    Congestion-control algorithm selector per RFC 9438 §1.
+
+    RENO  - RFC 5681 Reno (legacy, linear CA growth, beta=0.5).
+    CUBIC - RFC 9438 CUBIC (cubic CA growth, beta_cubic=0.7).
+    """
+
+    RENO = auto()
+    CUBIC = auto()
