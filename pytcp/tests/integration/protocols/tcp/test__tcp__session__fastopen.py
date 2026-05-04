@@ -379,3 +379,74 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"{bytes(listen_session._rx_buffer)!r}."
             ),
         )
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way
+        'connect()' would, returning the session in CLOSED.
+        """
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = PEER__PORT_FOR_FASTOPEN  # arbitrary client port
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = LISTEN__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=PEER__PORT_FOR_FASTOPEN,
+            remote_ip_address=PEER__IP,
+            remote_port=LISTEN__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def test__fastopen__active_open_syn_advertises_tfo_cookie_request(self) -> None:
+        """
+        Ensure that on an active-open connection the
+        outbound SYN carries the Fast Open option in the
+        cookie-request form (Length = 2, empty cookie).
+        This is the canonical client-side first-connect
+        behaviour: the client has no cached cookie for
+        this server yet, so it advertises an empty cookie
+        request to elicit the server's cookie issuance in
+        the SYN+ACK reply. On a subsequent connection the
+        client would replay the cached cookie + data
+        payload to skip the data RTT.
+
+        Reference: RFC 7413 §3.1 (client first connect emits TFO cookie request).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN MUST fire on the first tick.",
+        )
+        syn = self._parse_tx(syn_tx[0])
+
+        self.assertEqual(
+            syn.flags,
+            frozenset({"SYN"}),
+            msg=("Setup precondition: outbound segment MUST be " f"a pure SYN (active open). Got flags={syn.flags!r}."),
+        )
+        # The spec encoding: TFO option present with empty
+        # cookie payload (Length = 2, the cookie-request form).
+        self.assertEqual(
+            syn.fastopen_cookie,
+            b"",
+            msg=(
+                "RFC 7413 §3.1: client's active-open SYN MUST "
+                "carry the Fast Open option in the cookie-request "
+                "form (empty cookie). Got "
+                f"fastopen_cookie={syn.fastopen_cookie!r}; "
+                "the option appears absent from the wire (None) "
+                "today because PyTCP does not yet emit TFO on "
+                "outbound active-open SYNs."
+            ),
+        )
