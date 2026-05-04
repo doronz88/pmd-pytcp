@@ -210,3 +210,172 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"({syn_ack.fastopen_cookie!r})."
             ),
         )
+
+    def test__fastopen__server_discards_syn_data_when_cookie_invalid(self) -> None:
+        """
+        Ensure that when a peer SYN carries the Fast Open
+        option with an INVALID (or empty / cookie-request)
+        cookie alongside a data payload, the server
+        discards the data and falls back to a standard
+        three-way handshake. The SYN+ACK 'ack' field MUST
+        cover only the SYN (peer_iss + 1) - NOT the SYN
+        plus data length - and the data MUST NOT be queued
+        into the receive buffer where a future 'recv()'
+        could deliver it to the application. The cookie
+        gate is the canonical amplification-attack defence:
+        an off-path attacker spoofing a SYN with data
+        cannot commit server memory without first proving
+        peer-IP reachability via a valid cookie.
+
+        Reference: RFC 7413 §3.1 (server discards data on invalid TFO cookie).
+        Reference: RFC 7413 §4.1.2 (cookie validation gate before data acceptance).
+        """
+
+        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS)
+
+        # Peer SYN with the empty-cookie request form
+        # (invalid for data acceptance per §4.1.2) plus a
+        # non-trivial data payload that would otherwise be
+        # delivered to the application's recv() buffer.
+        syn_data = b"hello-tfo"
+        peer_syn_data_no_cookie = build_tcp4(
+            sport=PEER__PORT_FOR_FASTOPEN,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=b"",  # cookie-request form, invalid for data
+            payload=syn_data,
+        )
+        self._drive_rx(frame=peer_syn_data_no_cookie)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        self.assertEqual(
+            syn_ack.flags & frozenset({"SYN", "ACK", "RST", "FIN"}),
+            frozenset({"SYN", "ACK"}),
+            msg=(
+                "Setup precondition: outbound segment MUST be a " f"SYN+ACK (no RST/FIN). Got flags={syn_ack.flags!r}."
+            ),
+        )
+        # The spec encoding: ack covers only the SYN's
+        # one byte of seq space; the data is discarded.
+        self.assertEqual(
+            syn_ack.ack,
+            PEER__ISS + 1,
+            msg=(
+                "RFC 7413 §3.1: SYN+ACK 'ack' MUST equal "
+                f"peer_iss + 1 = {PEER__ISS + 1} when the "
+                "TFO cookie is invalid - the server MUST NOT "
+                "ack the SYN-data. Got "
+                f"{syn_ack.ack} (= peer_iss + 1 + "
+                f"{syn_ack.ack - PEER__ISS - 1}); the server "
+                "is acking the data despite the missing valid "
+                "cookie, which violates the §4.1.2 "
+                "amplification-attack defence."
+            ),
+        )
+        # Data MUST NOT be queued into the listening child's
+        # receive buffer. Today PyTCP queues SYN-data
+        # unconditionally per RFC 9293 §3.10.7.2 step 3;
+        # the TFO cookie gate is the security override.
+        self.assertEqual(
+            bytes(listen_session._rx_buffer),
+            b"",
+            msg=(
+                "RFC 7413 §3.1: invalid TFO cookie + SYN-data "
+                "MUST result in the data being discarded - the "
+                "child session's '_rx_buffer' MUST be empty. "
+                f"Got {bytes(listen_session._rx_buffer)!r}."
+            ),
+        )
+
+    def test__fastopen__server_accepts_syn_data_with_valid_cookie(self) -> None:
+        """
+        Ensure that when a peer SYN carries the Fast Open
+        option with a previously-issued (and therefore
+        valid for this peer IP) cookie alongside a data
+        payload, the server accepts the data: the SYN+ACK
+        'ack' field covers both the SYN and the data
+        ('peer_iss + 1 + len(data)') and the data is
+        queued into the child session's receive buffer
+        ready for the application's eventual 'recv()'.
+
+        The valid cookie is computed via the same HMAC
+        helper the server uses for issuance, so the test
+        exercises the round-trip the cookie validation
+        path is gated on.
+
+        Reference: RFC 7413 §3.1 (server accepts SYN-data on valid TFO cookie).
+        """
+
+        from pytcp import stack
+        from pytcp.protocols.tcp.tcp__fastopen import generate_cookie
+
+        # Compute the cookie the server WOULD issue for our
+        # test peer IP - this is what a peer would have
+        # cached after a previous round-trip and would now
+        # replay on a TFO-fast-open SYN.
+        valid_cookie = generate_cookie(
+            peer_address=PEER__IP,
+            secret=stack.TCP__FASTOPEN_SECRET,
+        )
+
+        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS)
+
+        syn_data = b"valid-tfo-data"
+        peer_syn_with_cookie_and_data = build_tcp4(
+            sport=PEER__PORT_FOR_FASTOPEN,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=valid_cookie,
+            payload=syn_data,
+        )
+        self._drive_rx(frame=peer_syn_with_cookie_and_data)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        # The spec encoding: ack covers SYN + data.
+        self.assertEqual(
+            syn_ack.ack,
+            PEER__ISS + 1 + len(syn_data),
+            msg=(
+                "RFC 7413 §3.1: SYN+ACK 'ack' MUST equal "
+                f"peer_iss + 1 + len(data) = "
+                f"{PEER__ISS + 1 + len(syn_data)} when the "
+                "TFO cookie is valid. The server has "
+                f"accepted the {len(syn_data)} bytes of "
+                f"SYN-data. Got {syn_ack.ack}."
+            ),
+        )
+        # Data MUST be queued for delivery to the
+        # application via 'recv()'.
+        self.assertEqual(
+            bytes(listen_session._rx_buffer),
+            syn_data,
+            msg=(
+                "RFC 7413 §3.1: SYN-data with valid TFO "
+                "cookie MUST be queued into the child "
+                f"session's '_rx_buffer'. Expected "
+                f"{syn_data!r}, got "
+                f"{bytes(listen_session._rx_buffer)!r}."
+            ),
+        )
