@@ -107,3 +107,127 @@ class RackSegment:
     xmit_ts: int
     retransmitted: bool
     lost: bool
+
+
+def rack_sent_after(t1_xmit_ts: int, t1_end_seq: int, t2_xmit_ts: int, t2_end_seq: int) -> bool:
+    """
+    Return True if segment 1 was 'sent after' segment 2 in the
+    RFC 8985 §6.2 step 2 lexicographic sense:
+
+        (t1.xmit_ts, t1.end_seq) > (t2.xmit_ts, t2.end_seq)
+
+    Ties on 'xmit_ts' are broken by the segment's 'end_seq' so
+    two segments transmitted in the same millisecond keep a
+    stable relative order.
+
+    The 'end_seq' tie-breaker uses modular comparison via the
+    ordinary signed delta: when both segments belong to the
+    same flight (i.e. their end_seqs are within UINT_31 of each
+    other in modular space) the comparison is unambiguous. The
+    pseudocode in RFC 8985 uses '>' on the seq field, which
+    PyTCP implements via the modular helpers in
+    'pytcp.protocols.tcp.tcp__seq'.
+    """
+
+    if t1_xmit_ts != t2_xmit_ts:
+        return t1_xmit_ts > t2_xmit_ts
+    # Modular '>' on end_seq via the standard PyTCP helper.
+    from pytcp.protocols.tcp.tcp__seq import gt32
+
+    return gt32(t1_end_seq, t2_end_seq)
+
+
+def rack_update(
+    *,
+    newly_acked_segments: list[RackSegment],
+    now_ms: int,
+    ts_recent_echo_ms: int | None,
+    prior_min_rtt_ms: int,
+    prior_rack_rtt_ms: int,
+    prior_rack_xmit_ts: int,
+    prior_rack_end_seq: int,
+) -> tuple[int, int, int, int]:
+    """
+    Apply the RFC 8985 §6.2 step 1-2 update on the per-connection
+    RACK scalars given a list of segments freshly acknowledged
+    by an inbound ACK.
+
+    Pseudocode (RFC 8985 §6.2 step 2):
+
+        For each newly-acked segment in ascending xmit_ts order:
+            rtt = now_ms - segment.xmit_ts
+            If segment.retransmitted:
+                If TSecr < segment.xmit_ts: continue
+                If rtt < min_RTT: continue
+            min_RTT = min(min_RTT, rtt)   # §B.1 algorithm
+            RACK.rtt = rtt
+            If RACK_sent_after(segment.xmit_ts, segment.end_seq,
+                               RACK.xmit_ts, RACK.end_seq):
+                RACK.xmit_ts = segment.xmit_ts
+                RACK.end_seq = segment.end_seq
+
+    The two retransmit-skip conditions guard against using a
+    spurious retransmit's RTT to update RACK.rtt: 'TSecr <
+    segment.xmit_ts' indicates the ACK is for an earlier
+    transmission of this segment (RFC 7323 §4 disambiguation),
+    while 'rtt < min_RTT' is a heuristic for the same condition
+    when timestamps are unavailable.
+
+    Parameters:
+        newly_acked_segments: segments whose 'end_seq' is
+                              newly covered by SND.UNA on this
+                              ACK; the caller computes this
+                              set before the cum-ACK pruning
+                              fires.
+        now_ms:               virtual clock at the moment the
+                              ACK was received.
+        ts_recent_echo_ms:    peer's TSecr value if RFC 7323
+                              timestamps are negotiated; None
+                              otherwise.
+        prior_min_rtt_ms:     RACK.min_RTT before this ACK
+                              (0 means uninitialized).
+        prior_rack_rtt_ms:    RACK.rtt before this ACK.
+        prior_rack_xmit_ts:   RACK.xmit_ts before this ACK.
+        prior_rack_end_seq:   RACK.end_seq before this ACK.
+
+    Returns: (new_min_rtt_ms, new_rack_rtt_ms,
+              new_rack_xmit_ts, new_rack_end_seq).
+    """
+
+    min_rtt_ms = prior_min_rtt_ms
+    rack_rtt_ms = prior_rack_rtt_ms
+    rack_xmit_ts = prior_rack_xmit_ts
+    rack_end_seq = prior_rack_end_seq
+
+    # Iterate in ascending xmit_ts order per the RFC pseudocode.
+    # Sort by (xmit_ts, end_seq) so segments transmitted in the
+    # same millisecond remain in seq order.
+    for seg in sorted(newly_acked_segments, key=lambda s: (s.xmit_ts, s.end_seq)):
+        rtt_ms = now_ms - seg.xmit_ts
+
+        if seg.retransmitted:
+            # Skip if peer's TSecr identifies an earlier
+            # transmission of this segment (RFC 7323 §4
+            # disambiguation, RFC 8985 §6.2 step 2 condition 1).
+            if ts_recent_echo_ms is not None and ts_recent_echo_ms < seg.xmit_ts:
+                continue
+            # Skip if rtt is implausibly small compared to the
+            # minimum observed RTT - heuristic guard against
+            # spurious-retransmit samples in non-TSopt
+            # connections (RFC 8985 §6.2 step 2 condition 2).
+            if min_rtt_ms > 0 and rtt_ms < min_rtt_ms:
+                continue
+
+        # RFC 8985 §B.1 min_RTT update: track the minimum across
+        # all accepted samples. 'min_rtt_ms == 0' is the
+        # uninitialized sentinel; on the first sample seed it
+        # rather than taking the minimum with zero.
+        if min_rtt_ms == 0 or rtt_ms < min_rtt_ms:
+            min_rtt_ms = rtt_ms
+        rack_rtt_ms = rtt_ms
+
+        if rack_sent_after(seg.xmit_ts, seg.end_seq, rack_xmit_ts, rack_end_seq):
+            rack_xmit_ts = seg.xmit_ts
+            rack_end_seq = seg.end_seq
+
+    return min_rtt_ms, rack_rtt_ms, rack_xmit_ts, rack_end_seq

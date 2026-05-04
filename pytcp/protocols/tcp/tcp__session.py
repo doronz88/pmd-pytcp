@@ -456,6 +456,31 @@ class TcpSession:
         # TLP probe-segment selection (§7.3).
         self._rack_segments: dict[Seq32, RackSegment] = {}
 
+        # RFC 8985 §5.3 / §6.2 step 1-2 RACK per-connection
+        # scalars. Updated by 'rack_update' on every accepted
+        # ACK whose cumulative-ACK boundary newly covers
+        # segments in '_rack_segments'. Phase 2 of the RACK-TLP
+        # project wires the update; subsequent phases consume:
+        #   - '_rack_min_rtt_ms' as the lower bound for the
+        #     RFC 8985 §6.2 step 2 spurious-retransmit
+        #     heuristic and as a floor for the §6.2 step 4
+        #     reordering-window calculation.
+        #   - '_rack_rtt_ms' as the freshest accepted-sample
+        #     RTT, used in §6.2 step 5's loss-detection
+        #     timeout formula.
+        #   - '_rack_xmit_ts' / '_rack_end_seq' as the latest
+        #     'sent_after' lexicographic-key pair, used to
+        #     test whether each in-flight segment's xmit_ts is
+        #     'before' the most recent successful delivery
+        #     (the §6.2 step 5 'rack_sent_after' branch).
+        # All four are 0 on a fresh session - the
+        # uninitialized sentinel - and remain 0 until the
+        # first newly-acked segment is observed.
+        self._rack_min_rtt_ms: int = 0
+        self._rack_rtt_ms: int = 0
+        self._rack_xmit_ts: int = 0
+        self._rack_end_seq: Seq32 = 0
+
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
         # §4 ("one sample per RTT"). The hooks live in

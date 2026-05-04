@@ -280,3 +280,264 @@ class TestTcpRackPhase1(TcpSessionTestCase):
                 f"surviving entries: {sorted(session._rack_segments)!r}."
             ),
         )
+
+
+class TestTcpRackPhase2(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §6.2 step 1-2 update on
+    'TcpSession._rack_xmit_ts' / '_rack_end_seq' / '_rack_rtt_ms'
+    / '_rack_min_rtt_ms' driven by inbound ACKs.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair the way
+        'TcpSocket.connect()' would. Returns the session in
+        CLOSED state.
+        """
+
+        self._force_iss(iss)
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive the active-open three-way handshake to ESTABLISHED
+        and bypass slow-start.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rack__cum_ack_updates_rack_xmit_ts_and_rtt(self) -> None:
+        """
+        Ensure that a cum-ACK covering an in-flight segment
+        advances '_rack_xmit_ts' to the segment's xmit_ts,
+        '_rack_end_seq' to the segment's end_seq, and
+        '_rack_rtt_ms' to the observed RTT.
+
+        Reference: RFC 8985 §6.2 (RACK.xmit_ts / RACK.end_seq / RACK.rtt update).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        payload = b"hello, world!"
+        send_seq = session._snd_nxt
+        session.send(data=payload)
+        send_tick_now_ms = self._timer.now_ms + 1
+        self._advance(ms=1)
+
+        # Allow some elapsed time before the ACK to produce a
+        # measurable RTT.
+        self._advance(ms=9)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        observed_rtt_ms = self._timer.now_ms - send_tick_now_ms
+
+        self.assertEqual(
+            session._rack_xmit_ts,
+            send_tick_now_ms,
+            msg=(
+                "'_rack_xmit_ts' MUST advance to the acked "
+                f"segment's xmit_ts. Expected {send_tick_now_ms}, "
+                f"got {session._rack_xmit_ts}."
+            ),
+        )
+        self.assertEqual(
+            session._rack_end_seq,
+            send_seq + len(payload),
+            msg=(
+                "'_rack_end_seq' MUST equal the acked segment's "
+                f"end_seq. Expected {send_seq + len(payload)}, "
+                f"got {session._rack_end_seq}."
+            ),
+        )
+        self.assertEqual(
+            session._rack_rtt_ms,
+            observed_rtt_ms,
+            msg=(
+                "'_rack_rtt_ms' MUST equal the observed RTT. "
+                f"Expected {observed_rtt_ms}, got {session._rack_rtt_ms}."
+            ),
+        )
+
+    def test__rack__retransmit_with_stale_rtt_skipped(self) -> None:
+        """
+        Ensure that a retransmitted segment whose freshly-
+        observed rtt is below '_rack_min_rtt_ms' (RFC 8985
+        §6.2 step 2 condition 2) does not poison the RACK
+        scalars - the rtt is silently discarded.
+
+        Reference: RFC 8985 §6.2 (Karn-style guard: rtt < min_rtt skip).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send + ACK a first payload at long RTT so '_rack_min_rtt_ms'
+        # is seeded above 0.
+        first_payload = b"hello"
+        session.send(data=first_payload)
+        first_send_now_ms = self._timer.now_ms + 1
+        self._advance(ms=1)
+        self._advance(ms=99)
+        first_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(first_payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=first_ack)
+
+        prior_min_rtt = session._rack_min_rtt_ms
+        prior_rack_rtt = session._rack_rtt_ms
+        self.assertGreater(
+            prior_min_rtt,
+            0,
+            msg=(
+                "Setup invariant: the first ACK MUST have seeded "
+                "'_rack_min_rtt_ms' above zero so the next ACK has "
+                f"a baseline. Got {prior_min_rtt}; first send "
+                f"@{first_send_now_ms}."
+            ),
+        )
+
+        # Now hand-craft a retransmitted RackSegment with rtt
+        # well below '_rack_min_rtt_ms' so the rack_update Karn
+        # guard fires. We simulate via direct-injection rather
+        # than driving an actual retransmit path, since Phase 2
+        # only tests the update logic.
+        rt_seq = session._snd_nxt
+        rt_xmit_ts = self._timer.now_ms - (prior_min_rtt // 2)  # rtt = prior_min_rtt//2 < prior_min_rtt
+        session._rack_segments[rt_seq] = RackSegment(
+            end_seq=rt_seq + 5,
+            xmit_ts=rt_xmit_ts,
+            retransmitted=True,
+            lost=False,
+        )
+        session._snd_nxt = rt_seq + 5
+        session._snd_max = rt_seq + 5
+
+        # ACK that covers the retransmit.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=rt_seq + 5,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # The retransmit's rtt was below min_rtt, so RACK
+        # scalars must be unchanged.
+        self.assertEqual(
+            session._rack_min_rtt_ms,
+            prior_min_rtt,
+            msg=(
+                "RFC 8985 §6.2 step 2 condition 2: a retransmit "
+                "with 'rtt < min_rtt' MUST be skipped, leaving "
+                "'_rack_min_rtt_ms' unchanged."
+            ),
+        )
+        self.assertEqual(
+            session._rack_rtt_ms,
+            prior_rack_rtt,
+            msg=("RFC 8985 §6.2 step 2 condition 2: a skipped " "retransmit MUST NOT update '_rack_rtt_ms'."),
+        )
+
+    def test__rack__min_rtt_tracks_smallest_observed(self) -> None:
+        """
+        Ensure '_rack_min_rtt_ms' tracks the minimum across
+        successive ACKs, falling when a new smaller RTT is
+        observed.
+
+        Reference: RFC 8985 §B.1 (min_RTT minimum tracking).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # First send + slow ACK -> high RTT.
+        first_payload = b"slow!"
+        session.send(data=first_payload)
+        self._advance(ms=1)
+        self._advance(ms=99)
+        first_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(first_payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=first_ack)
+        first_min_rtt = session._rack_min_rtt_ms
+
+        # Second send + faster ACK -> lower RTT.
+        second_payload = b"fast!"
+        session.send(data=second_payload)
+        self._advance(ms=1)
+        self._advance(ms=9)
+        second_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + len(first_payload) + len(second_payload),
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=second_ack)
+
+        self.assertLess(
+            session._rack_min_rtt_ms,
+            first_min_rtt,
+            msg=(
+                "'_rack_min_rtt_ms' MUST drop when a smaller RTT "
+                f"is observed. Was {first_min_rtt}, expected "
+                f"smaller; got {session._rack_min_rtt_ms}."
+            ),
+        )
