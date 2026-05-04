@@ -68,6 +68,13 @@ def fsm__established(
         # re-run rack_detect_loss + arm a fresh timer if
         # more pending candidates exist.
         session._rack_reorder_tick()
+        # RFC 8985 §7.3 Tail Loss Probe service. When the
+        # f'{session}-tlp' timer expires, send a probe -
+        # retransmit of the highest-seq segment (most common
+        # tail-loss case after _transmit_data has drained the
+        # buffer). The new-data branch fires only when fresh
+        # bytes arrive between TLP arming and PTO expiry.
+        session._tlp_pto_tick()
         if session._closing and not session._tx_buffer:
             session._change_state(FsmState.FIN_WAIT_1)
         return

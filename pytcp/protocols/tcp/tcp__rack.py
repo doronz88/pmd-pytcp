@@ -446,7 +446,13 @@ def tlp_calc_pto(
 
     if rto_expiration_ms is not None:
         rto_remaining = rto_expiration_ms - now_ms
-        if rto_remaining > 0 and pto > rto_remaining:
-            pto = rto_remaining
+        # 'pto < rto_remaining' (strict) so TLP fires at least
+        # one millisecond BEFORE RTO when both would otherwise
+        # land on the same tick. The RFC's 'do not outlast'
+        # clause permits equality, but PyTCP's FSM-tick order
+        # runs '_retransmit_packet_timeout' before
+        # '_tlp_pto_tick'; an equal PTO would let RTO preempt.
+        if rto_remaining > 0 and pto >= rto_remaining:
+            pto = rto_remaining - 1
 
     return pto

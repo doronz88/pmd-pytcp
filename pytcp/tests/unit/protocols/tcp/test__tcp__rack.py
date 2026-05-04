@@ -710,13 +710,15 @@ class TestTlpCalcPto(TestCase):
 
     def test__tlp__pto__capped_by_rto_remaining(self) -> None:
         """
-        Ensure that the PTO is clamped to 'RTO_expiration -
-        now' so the probe always fires before the RTO timer.
+        Ensure that the PTO is clamped strictly below 'RTO -
+        now' so TLP always fires at least one ms before the
+        RTO timer when both would otherwise expire on the
+        same tick.
 
         Reference: RFC 8985 §7.2 (do-not-outlast-RTO clamp).
         """
 
-        # PTO = 200, RTO remaining = 50 -> clamp to 50.
+        # PTO = 200, RTO remaining = 50 -> clamp to 49.
         self.assertEqual(
             tlp_calc_pto(
                 srtt_ms=100,
@@ -726,6 +728,6 @@ class TestTlpCalcPto(TestCase):
                 rto_expiration_ms=50,
                 now_ms=0,
             ),
-            50,
-            msg="PTO MUST clamp to RTO remaining when smaller.",
+            49,
+            msg="PTO MUST clamp strictly below RTO remaining when smaller.",
         )

@@ -550,6 +550,13 @@ class TcpSession:
         self._tlp_is_retrans: bool = False
         self._tlp_end_seq: Seq32 | None = None
         self._tlp_max_ack_delay_ms: int = 25
+        # Gate the _tlp_pto_tick firing on actual arming. Set
+        # True when '_transmit_packet' registers an
+        # 'f"{self}-tlp"' timer; reset False once the probe
+        # fires or the timer is cancelled. Distinct from
+        # 'stack.timer.is_expired' which conflates "expired"
+        # with "never registered".
+        self._tlp_armed: bool = False
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
@@ -1577,13 +1584,31 @@ class TcpSession:
         # because a probe during recovery would race the
         # ongoing retransmit machinery. Only fires for data
         # segments, not SYN / FIN / pure-ACK probes.
-        if data and self._recovery_point == 0 and not self._frto_active:
+        # RFC 8985 §7.2 TLP arming. Gated on:
+        #   - data segment fired (not SYN / FIN / pure-ACK),
+        #   - no recovery in progress (recovery_point == 0
+        #     and not frto_active),
+        #   - SRTT measurement available. The RFC permits a
+        #     1000 ms fallback when SRTT is unavailable, but
+        #     in that regime PTO equals the initial RTO so
+        #     TLP and RTO would race; PyTCP defers to the
+        #     RTO-only path until the first RTT sample arrives,
+        #     then enables TLP for tail-loss probing.
+        # Arm TLP only when SRTT is available and non-zero
+        # (i.e. a measurable RTT sample exists). The RFC
+        # permits a 1000 ms fallback when SRTT is unavailable,
+        # but in that regime PTO equals the initial RTO and
+        # would race the RTO timer; PyTCP defers to the
+        # RTO-only path until a real RTT sample arrives.
+        if data and self._recovery_point == 0 and not self._frto_active and (self._rto_state.srtt_ms or 0) > 0:
             flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-            # Use the in-flight RTO to upper-bound the PTO via
-            # the §7.2 'do not outlast RTO' clamp. The session
-            # tracks rto_ms (the per-event timeout); add to
-            # 'now_ms' to recover the absolute expiration.
-            rto_expiration_ms = stack.timer.now_ms + self._rto_state.rto_ms
+            # Use the IN-FLIGHT RTO timer's actual remaining
+            # time (when accessible) so the §7.2 'do not
+            # outlast RTO' clamp respects the real expiration.
+            # Fall back to None when the timer subsystem does
+            # not expose internal state (e.g. unit-test stubs).
+            rto_remaining_ms = getattr(stack.timer, "_timers", {}).get(f"{self}-retransmit")
+            rto_expiration_ms = (stack.timer.now_ms + rto_remaining_ms) if rto_remaining_ms else None
             pto_ms = tlp_calc_pto(
                 srtt_ms=self._rto_state.srtt_ms,
                 flight_size=flight_size,
@@ -1594,6 +1619,7 @@ class TcpSession:
             )
             if pto_ms > 0:
                 stack.timer.register_timer(name=f"{self}-tlp", timeout=pto_ms)
+                self._tlp_armed = True
 
         __debug__ and log(
             "tcp-ss",
@@ -2720,6 +2746,93 @@ class TcpSession:
             f"recovery_point {self._recovery_point}",
         )
 
+    def _tlp_pto_tick(self) -> None:
+        """
+        Per-tick service for the RFC 8985 §7.3 Tail Loss
+        Probe. Fires when the f'{session}-tlp' timer expires
+        and there is data in flight. Prefers sending new data
+        from the TX buffer (when available); falls back to
+        retransmitting the highest-seq in-flight segment.
+
+        On emission, marks '_tlp_is_retrans' (True for
+        retransmit, False for new-data probe) and stashes the
+        post-probe SND.MAX in '_tlp_end_seq' so the §7.4
+        loss-detection path can reason about the probe's fate.
+        Re-arms the RTO timer at 'rto_state.rto_ms' so the
+        connection still has a timeout-driven recovery path
+        if the probe itself is lost.
+        """
+
+        # _tlp_armed gates the firing path: only when the
+        # arming logic in '_transmit_packet' actually
+        # registered a TLP timer should this tick treat an
+        # 'is_expired' result as a real timer expiration.
+        # Without this gate, 'is_expired' would return True
+        # for any session that never armed a TLP (the timer
+        # is absent from the dict), and _tlp_pto_tick would
+        # spuriously fire a retransmit on every FSM tick.
+        if not self._tlp_armed:
+            return
+        if not stack.timer.is_expired(f"{self}-tlp"):
+            return
+        if self._snd_una == self._snd_max:
+            # Nothing in flight - no tail to probe.
+            return
+        # RFC 8985 §7 once-per-tail gate: TLP fires at most one
+        # probe per outstanding tail. '_tlp_end_seq' is set on
+        # probe emission and cleared by §7.4 loss-detection
+        # logic (Phase 8) once the probe outcome is determined,
+        # OR by '_process_ack_packet' when a cum-ACK drains all
+        # in-flight bytes (no tail left).
+        if self._tlp_end_seq is not None:
+            return
+        # RFC 8985 §8 timer arbitration: if RTO recovery is in
+        # progress (this tick's _retransmit_packet_timeout
+        # incremented _retransmit_count, OR a fast-recovery is
+        # underway, OR F-RTO is active), TLP yields. The
+        # ongoing recovery machinery handles the loss already;
+        # a TLP probe would race it and emit a duplicate.
+        if self._retransmit_count > 0 or self._recovery_point != 0 or self._frto_active:
+            return
+
+        # New-data probe path: the TX buffer has bytes past
+        # SND.MAX (i.e. data the application has queued but
+        # the wire has not yet seen). When this is the case
+        # we send the next segment from SND.MAX rather than
+        # retransmitting an already-sent one. Compute the
+        # buffer offset of SND.MAX modularly so a wrapped
+        # session is handled correctly.
+        tx_buffer_max = sub32(self._snd_max, self._tx_buffer_seq_mod)
+        new_data_available = tx_buffer_max < len(self._tx_buffer) and self._snd_ewn > tx_buffer_max
+        if new_data_available:
+            # Force '_transmit_data' to start at SND.MAX (the
+            # bytes immediately past the highest-seq sent).
+            self._snd_nxt = self._snd_max
+            self._tlp_is_retrans = False
+        else:
+            # Retransmit-style probe: walk SND.NXT back by one
+            # MSS (or less if in-flight is shorter) so
+            # _transmit_data re-sends the highest-seq segment.
+            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            walk_back = min(self._snd_mss, flight_size)
+            self._snd_nxt = sub32(self._snd_max, walk_back)
+            self._tlp_is_retrans = True
+
+        self._transmit_data()
+        self._tlp_end_seq = self._snd_max
+        # Probe is in flight; clear armed flag so the next
+        # tick's _tlp_pto_tick early-returns. The flag is
+        # re-set by '_transmit_packet' when a fresh TLP timer
+        # arms, e.g. on a subsequent data send.
+        self._tlp_armed = False
+
+        # RFC 8985 §7.3: re-arm the RTO timer after probe so
+        # the connection retains its timeout fallback.
+        stack.timer.register_timer(
+            name=f"{self}-retransmit",
+            timeout=self._rto_state.rto_ms,
+        )
+
     def _rack_reorder_tick(self) -> None:
         """
         Per-tick service for the RFC 8985 §6.2 step 5
@@ -2947,7 +3060,13 @@ class TcpSession:
                 # cum-ACK drains all in-flight bytes, there is
                 # no tail to probe. Cancel the TLP timer so a
                 # late expiry does not fire a stale probe.
+                # Also clear the once-per-tail '_tlp_end_seq'
+                # marker so the next tail can fire its own
+                # probe.
                 stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
+                self._tlp_end_seq = None
+                self._tlp_is_retrans = False
+                self._tlp_armed = False
             else:
                 stack.timer.register_timer(
                     name=f"{self}-retransmit",

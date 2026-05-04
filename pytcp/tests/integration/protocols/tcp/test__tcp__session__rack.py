@@ -700,7 +700,11 @@ class TestTcpRackPhase4(TcpSessionTestCase):
     def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
         session = self._make_active_session(iss=iss)
         session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
+        # Advance ~50 ms before delivering SYN+ACK so the RFC
+        # 6298 RTT sampler observes a non-zero round-trip and
+        # the TLP arming gate (which requires SRTT >= 10 ms)
+        # accepts subsequent data segments.
+        self._advance(ms=50)
         peer_syn_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -918,7 +922,11 @@ class TestTcpRackPhase5(TcpSessionTestCase):
     def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
         session = self._make_active_session(iss=iss)
         session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
+        # Advance ~50 ms before delivering SYN+ACK so the RFC
+        # 6298 RTT sampler observes a non-zero round-trip and
+        # the TLP arming gate (which requires SRTT >= 10 ms)
+        # accepts subsequent data segments.
+        self._advance(ms=50)
         peer_syn_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1090,7 +1098,11 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
     def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
         session = self._make_active_session(iss=iss)
         session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
+        # Advance ~50 ms before delivering SYN+ACK so the RFC
+        # 6298 RTT sampler observes a non-zero round-trip and
+        # the TLP arming gate (which requires SRTT >= 10 ms)
+        # accepts subsequent data segments.
+        self._advance(ms=50)
         peer_syn_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1236,7 +1248,11 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
     def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
         session = self._make_active_session(iss=iss)
         session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
+        # Advance ~50 ms before delivering SYN+ACK so the RFC
+        # 6298 RTT sampler observes a non-zero round-trip and
+        # the TLP arming gate (which requires SRTT >= 10 ms)
+        # accepts subsequent data segments.
+        self._advance(ms=50)
         peer_syn_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1311,39 +1327,32 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         """
         Ensure that when new data is available in the TX
         buffer at TLP PTO expiry, the probe is the new
-        segment starting at SND.NXT, with
+        segment starting at SND.MAX, with
         '_tlp_is_retrans = False'.
 
         Reference: RFC 8985 §7.3 (probe sends new data when available).
         """
 
         session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        # Constrain peer's window to 1 MSS so subsequent data
-        # stays buffered until the probe time. Send 2 * MSS
-        # so 1 segment fires inline + 1 stays buffered.
-        session._snd_ewn = PEER__MSS
-        session._snd_wnd = PEER__MSS
 
-        session.send(data=b"x" * (2 * PEER__MSS))
-        self._advance(ms=1)
-        # The unacked first segment has consumed the window;
-        # the buffered tail is still in 'self._tx_buffer'.
-        self.assertGreater(
-            len(session._tx_buffer),
-            0,
-            msg="Setup invariant: buffered tail must exist for the probe.",
-        )
+        session.send(data=b"x" * PEER__MSS)
+        self._advance(ms=1)  # seg1 fires.
 
-        # Open the window to allow the probe's new segment to
-        # fly. Without this the probe would be a retransmit.
-        session._snd_ewn = 2 * PEER__MSS
-        session._snd_wnd = 2 * PEER__MSS
+        # Inject buffered data and trigger the TLP path
+        # synchronously: with the FSM-tick worker '_transmit_data'
+        # firing every ms, the auto-transmit would naturally
+        # drain the buffered tail before the TLP PTO expiry
+        # fires it as a probe. Bypass that race by popping the
+        # TLP timer (so 'is_expired' returns True) and calling
+        # the tick handler directly. The probe path's choice
+        # between new-data and retransmit is then deterministic.
+        with session._lock__tx_buffer:
+            session._tx_buffer.extend(b"new data tail")
 
-        snd_nxt_pre_probe = session._snd_nxt
-        self._advance(ms=1500)
+        snd_max_pre_probe = session._snd_max
+        stack.timer._timers.pop(f"{session}-tlp", None)
+        session._tlp_pto_tick()
 
-        # TLP path must have set _tlp_end_seq (non-None marker
-        # of probe emission) and chosen new-data over retransmit.
         self.assertIsNotNone(
             session._tlp_end_seq,
             msg="TLP probe MUST set '_tlp_end_seq' on emission.",
@@ -1358,10 +1367,10 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         )
         self.assertGreater(
             session._snd_max,
-            snd_nxt_pre_probe,
+            snd_max_pre_probe,
             msg=(
                 "A new-data TLP probe MUST advance SND.MAX past "
-                f"{snd_nxt_pre_probe}. Got SND.MAX={session._snd_max}."
+                f"{snd_max_pre_probe}. Got SND.MAX={session._snd_max}."
             ),
         )
 
