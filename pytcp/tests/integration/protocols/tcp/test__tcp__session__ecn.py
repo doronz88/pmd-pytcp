@@ -436,11 +436,11 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         inbound ACK carrying the ECE flag - the wire signal
         that the receiver observed a CE-marked segment along
         the forward path - the sender treats it as a single-
-        packet loss event per RFC 3168 §6.1.2: ssthresh is
-        halved (clamped at 2*SMSS) and cwnd is collapsed to
-        ssthresh. This is the substrate response that lets
-        ECN drive cwnd reduction without the latency penalty
-        of detecting loss via timeout or three dup-ACKs.
+        packet loss event: ssthresh is halved (clamped at
+        2*SMSS) and cwnd is collapsed to ssthresh. This is
+        the substrate response that lets ECN drive cwnd
+        reduction without the latency penalty of detecting
+        loss via timeout or three dup-ACKs.
 
         Reference: RFC 3168 §6.1.2 (sender-side cwnd reduction on ECE).
         """
