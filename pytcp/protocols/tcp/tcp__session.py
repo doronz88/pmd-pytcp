@@ -341,6 +341,19 @@ class TcpSession:
         # segment with IP-ECN codepoint CE (3).
         self._accecn_r_cep: int = 5
 
+        # RFC 9341 §3.2.3 receiver-side per-codepoint TCP-
+        # payload byte counters. Each counter accumulates the
+        # cumulative byte count of TCP payload received in
+        # segments carrying the corresponding IP-ECN
+        # codepoint, modulo 2^24 per the AccECN option's
+        # counter width. The three counters are emitted in
+        # the AccECN0 option (kind=172) on every outbound
+        # non-SYN segment so the sender can compute precise
+        # per-codepoint deltas across ACKs.
+        self._accecn_r_ect0_b: int = 0
+        self._accecn_r_ce_b: int = 0
+        self._accecn_r_ect1_b: int = 0
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -1262,6 +1275,22 @@ class TcpSession:
             # SYN+ACK carries a TFO cookie.
             tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
 
+        # RFC 9341 §3.2.3 receiver-side AccECN option emission.
+        # On every outbound non-SYN segment of an AccECN-
+        # enabled connection, attach the AccECN0 option with
+        # the cumulative byte counters so the sender can
+        # compute precise per-codepoint feedback deltas
+        # across ACKs. Skipped on SYN-only segments (where
+        # the codepoint encoding in AE/CWR/ECE handles
+        # negotiation) and RST.
+        tcp__accecn0_counters: tuple[int, int, int] | None = None
+        if self._accecn_enabled and not flag_rst and not (flag_syn and not flag_ack):
+            tcp__accecn0_counters = (
+                self._accecn_r_ect0_b,
+                self._accecn_r_ce_b,
+                self._accecn_r_ect1_b,
+            )
+
         # RFC 3168 §6.1.5: when bilateral ECN has been
         # negotiated, every outbound data segment MUST set
         # the IP ECN field to ECT(0) ('10' = 2) so routers
@@ -1301,6 +1330,7 @@ class TcpSession:
             tcp__tsval=tcp__tsval,
             tcp__tsecr=tcp__tsecr,
             tcp__fastopen_cookie=tcp__fastopen_cookie,
+            tcp__accecn0_counters=tcp__accecn0_counters,
             tcp__payload=data,
         )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted
@@ -2811,14 +2841,24 @@ class TcpSession:
                     self._send_ece = False
                 if packet_rx_md.ip__ecn == 3:
                     self._send_ece = True
-            # RFC 9341 §3.2.2 receiver-side r.cep counter
-            # increment. On AccECN-enabled connections, count
-            # inbound CE-marked segments and let the ACE field
-            # encoding in '_transmit_packet' echo the cumulative
-            # count back to the sender. The counter wraps at
-            # 2^24 per the AccECN option's counter width.
-            if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.ip__ecn == 3:
-                self._accecn_r_cep = (self._accecn_r_cep + 1) & 0xFF_FFFF
+            # RFC 9341 §3.2.2 / §3.2.3 receiver-side counter
+            # accumulation. On AccECN-enabled connections,
+            # count inbound segments per IP-ECN codepoint: the
+            # r.cep packet counter increments on CE only (low
+            # 3 bits feed the ACE field); the three byte
+            # counters increment by the TCP-payload length on
+            # every codepoint (the option carries them on
+            # outbound segments). Counters wrap at 2^24 per
+            # the AccECN option width.
+            if self._accecn_enabled and packet_rx_md is not None:
+                payload_len = len(packet_rx_md.tcp__data)
+                if packet_rx_md.ip__ecn == 3:
+                    self._accecn_r_cep = (self._accecn_r_cep + 1) & 0xFF_FFFF
+                    self._accecn_r_ce_b = (self._accecn_r_ce_b + payload_len) & 0xFF_FFFF
+                elif packet_rx_md.ip__ecn == 2:
+                    self._accecn_r_ect0_b = (self._accecn_r_ect0_b + payload_len) & 0xFF_FFFF
+                elif packet_rx_md.ip__ecn == 1:
+                    self._accecn_r_ect1_b = (self._accecn_r_ect1_b + payload_len) & 0xFF_FFFF
             # RFC 3168 §6.1.2 sender-side response to inbound
             # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
             # cwnd to ssthresh, and arm '_ecn_send_cwr' so the

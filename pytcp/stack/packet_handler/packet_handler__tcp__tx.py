@@ -43,6 +43,7 @@ from net_proto import (
     Tracker,
 )
 from net_proto.protocols.tcp.options.tcp__option import TcpOption
+from net_proto.protocols.tcp.options.tcp__option__accecn0 import TcpOptionAccecn0
 from net_proto.protocols.tcp.options.tcp__option__fastopen import TcpOptionFastOpen
 from net_proto.protocols.tcp.options.tcp__option__sack import (
     TcpOptionSack,
@@ -123,6 +124,7 @@ class PacketHandlerTcpTx(ABC):
         tcp__tsval: int | None = None,
         tcp__tsecr: int | None = None,
         tcp__fastopen_cookie: bytes | None = None,
+        tcp__accecn0_counters: tuple[int, int, int] | None = None,
         tcp__win: int = 0,
         tcp__urg: int = 0,
         tcp__payload: bytes = bytes(),
@@ -169,6 +171,15 @@ class PacketHandlerTcpTx(ABC):
 
         if tcp__fastopen_cookie is not None:
             opts.append(TcpOptionFastOpen(cookie=tcp__fastopen_cookie))
+
+        if tcp__accecn0_counters is not None:
+            opts.append(
+                TcpOptionAccecn0(
+                    ee0b=tcp__accecn0_counters[0],
+                    eceb=tcp__accecn0_counters[1],
+                    ee1b=tcp__accecn0_counters[2],
+                )
+            )
 
         pad_count = (-sum(len(opt) for opt in opts)) % 4
         opts.extend(TcpOptionNop() for _ in range(pad_count))
@@ -271,6 +282,7 @@ class PacketHandlerTcpTx(ABC):
         tcp__tsval: int | None = None,
         tcp__tsecr: int | None = None,
         tcp__fastopen_cookie: bytes | None = None,
+        tcp__accecn0_counters: tuple[int, int, int] | None = None,
         tcp__payload: bytes = bytes(),
     ) -> TxStatus:
         """
@@ -301,5 +313,6 @@ class PacketHandlerTcpTx(ABC):
             tcp__tsval=tcp__tsval,
             tcp__tsecr=tcp__tsecr,
             tcp__fastopen_cookie=tcp__fastopen_cookie,
+            tcp__accecn0_counters=tcp__accecn0_counters,
             tcp__payload=tcp__payload,
         )

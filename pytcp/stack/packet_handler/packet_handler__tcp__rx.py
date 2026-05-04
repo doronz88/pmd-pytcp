@@ -81,6 +81,7 @@ class PacketHandlerTcpRx(ABC):
             tcp__tsval: int | None = None,
             tcp__tsecr: int | None = None,
             tcp__fastopen_cookie: bytes | None = None,
+            tcp__accecn0_counters: tuple[int, int, int] | None = None,
             tcp__win: int = 0,
             tcp__urg: int = 0,
             tcp__payload: bytes = bytes(),
