@@ -854,3 +854,61 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"({early_data!r})."
             ),
         )
+
+    def test__fastopen__server_does_not_issue_cookie_when_tfo_disabled(self) -> None:
+        """
+        Ensure that when the listening socket has not opted
+        in to TCP Fast Open via 'setsockopt(IPPROTO_TCP,
+        TCP_FASTOPEN, qlen)' with a positive queue depth,
+        the server MUST NOT issue a TFO cookie even when
+        the inbound SYN carries the option in the
+        cookie-request form. The cookie issuance is gated
+        on the listening socket's '_tcp_fastopen_qlen > 0';
+        without explicit opt-in the server falls back to a
+        standard TCP handshake. This matches Linux's
+        TFO-disabled-by-default semantics and gives the
+        application a clear opt-in switch for TFO support.
+
+        Reference: RFC 7413 §3.1 (server opts in to TFO via setsockopt).
+        """
+
+        listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS)
+        # Sanity: the socket must NOT have opted in to TFO.
+        self.assertEqual(
+            listen_sock._tcp_fastopen_qlen,
+            0,
+            msg="Setup precondition: TCP_FASTOPEN MUST default to 0.",
+        )
+
+        peer_syn_tfo_request = build_tcp4(
+            sport=PEER__PORT_FOR_FASTOPEN,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=b"",
+        )
+        self._drive_rx(frame=peer_syn_tfo_request)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+        self.assertIsNone(
+            syn_ack.fastopen_cookie,
+            msg=(
+                "RFC 7413 §3.1: server MUST NOT issue a TFO "
+                "cookie when the listening socket has not opted "
+                "in via 'setsockopt(IPPROTO_TCP, TCP_FASTOPEN, "
+                "qlen)' with qlen > 0. Today PyTCP issues "
+                "cookies unconditionally on any TFO-bearing "
+                "SYN, leaking TFO support to clients even when "
+                "the application has not enabled it. Got "
+                f"fastopen_cookie={syn_ack.fastopen_cookie!r}."
+            ),
+        )
