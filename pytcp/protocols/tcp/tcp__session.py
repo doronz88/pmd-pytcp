@@ -257,6 +257,18 @@ class TcpSession:
         # and a new round of dup-ACKs can re-enter recovery.
         self._recovery_point: Seq32 = 0
 
+        # RFC 7413 §3.1 Fast Open server-side state. When peer's
+        # passive-open SYN carries the TFO option, the LISTEN
+        # handler generates a cookie and stashes it here so the
+        # SYN+ACK we emit on the next tick carries it back. The
+        # field is consumed (cleared back to None) by
+        # '_transmit_packet' once the SYN+ACK fires so a SYN+ACK
+        # retransmit does not re-issue a stale cookie. This is
+        # purely the server-side cookie-issuance path; client-
+        # side TFO (cookie cache + connect-with-data) is a
+        # subsequent project.
+        self._fastopen_cookie_to_emit: bytes | None = None
+
         # RFC 6937 PRR per-recovery state. Declared with
         # canonical defaults so the [FLAGS BUG] tests-first
         # suite can exercise the attribute access; the actual
@@ -1041,6 +1053,23 @@ class TcpSession:
                 tcp__tsval = None
                 tcp__tsecr = None
 
+        # RFC 7413 §3.1 Fast Open option emission. Only the
+        # passive-open SYN+ACK carries a TFO option today
+        # (server-side cookie issuance); when
+        # '_fastopen_cookie_to_emit' is set the next SYN+ACK
+        # we send carries it. The field is consumed (cleared)
+        # after the SYN+ACK fires so a retransmit doesn't
+        # spuriously re-issue a stale cookie.
+        tcp__fastopen_cookie: bytes | None = None
+        if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
+            tcp__fastopen_cookie = self._fastopen_cookie_to_emit
+            # Consume the cookie so a SYN+ACK retransmit does
+            # not spuriously re-issue it. RFC 7413 §3.1 has
+            # peer cache the cookie on first receipt and replay
+            # it on subsequent connections, so re-issuing on
+            # retransmit gains nothing.
+            self._fastopen_cookie_to_emit = None
+
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -1066,6 +1095,7 @@ class TcpSession:
             tcp__sack_blocks=tcp__sack_blocks,
             tcp__tsval=tcp__tsval,
             tcp__tsecr=tcp__tsecr,
+            tcp__fastopen_cookie=tcp__fastopen_cookie,
             tcp__payload=data,
         )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted

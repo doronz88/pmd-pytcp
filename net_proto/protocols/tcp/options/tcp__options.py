@@ -37,6 +37,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.tcp.options.tcp__option import TcpOption, TcpOptionType
 from net_proto.protocols.tcp.options.tcp__option__eol import TcpOptionEol
+from net_proto.protocols.tcp.options.tcp__option__fastopen import TcpOptionFastOpen
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
 from net_proto.protocols.tcp.options.tcp__option__nop import (
     TCP__OPTION__NOP__LEN,
@@ -128,6 +129,21 @@ class TcpOptions(ProtoOptions):
 
         return None
 
+    @property
+    def fastopen(self) -> bytes | None:
+        """
+        Get the TCP Fast Open cookie if the Fast Open TCP option
+        is present. Returns 'b""' for the empty-cookie request
+        form, the cookie bytes for the cookie-response/use form,
+        and 'None' when the option is absent on the wire.
+        """
+
+        for option in self._options:
+            if isinstance(option, TcpOptionFastOpen):
+                return option.cookie
+
+        return None
+
     @staticmethod
     def validate_integrity(
         *,
@@ -186,6 +202,8 @@ class TcpOptions(ProtoOptions):
                     options.append(TcpOptionSack.from_buffer(buffer[offset:]))
                 case TcpOptionType.TIMESTAMPS:
                     options.append(TcpOptionTimestamps.from_buffer(buffer[offset:]))
+                case TcpOptionType.FASTOPEN:
+                    options.append(TcpOptionFastOpen.from_buffer(buffer[offset:]))
                 case _:
                     options.append(TcpOptionUnknown.from_buffer(buffer[offset:]))
 

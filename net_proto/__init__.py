@@ -334,6 +334,12 @@ from net_proto.protocols.tcp.options.tcp__option__eol import (
     TCP__OPTION__EOL__LEN,
     TcpOptionEol,
 )
+from net_proto.protocols.tcp.options.tcp__option__fastopen import (
+    TCP__OPTION__FASTOPEN__COOKIE_LEN_MAX,
+    TCP__OPTION__FASTOPEN__COOKIE_LEN_MIN,
+    TCP__OPTION__FASTOPEN__LEN_MIN,
+    TcpOptionFastOpen,
+)
 from net_proto.protocols.tcp.options.tcp__option__mss import (
     TCP__OPTION__MSS__LEN,
     TcpOptionMss,
@@ -549,6 +555,9 @@ __all__ = [
     "TCP__HEADER__LEN",
     "TCP__OPTIONS__MAX_LEN",
     "TCP__OPTION__EOL__LEN",
+    "TCP__OPTION__FASTOPEN__COOKIE_LEN_MAX",
+    "TCP__OPTION__FASTOPEN__COOKIE_LEN_MIN",
+    "TCP__OPTION__FASTOPEN__LEN_MIN",
     "TCP__OPTION__LEN",
     "TCP__OPTION__MSS__LEN",
     "TCP__OPTION__NOP__LEN",
@@ -563,6 +572,7 @@ __all__ = [
     "TcpIntegrityError",
     "TcpOption",
     "TcpOptionEol",
+    "TcpOptionFastOpen",
     "TcpOptionMss",
     "TcpOptionNop",
     "TcpOptionSack",

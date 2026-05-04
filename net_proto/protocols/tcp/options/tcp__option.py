@@ -50,6 +50,7 @@ class TcpOptionType(ProtoOptionType):
     SACKPERM = 4
     SACK = 5
     TIMESTAMPS = 8
+    FASTOPEN = 34
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

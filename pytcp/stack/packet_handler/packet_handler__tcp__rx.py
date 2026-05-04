@@ -79,6 +79,7 @@ class PacketHandlerTcpRx(ABC):
             tcp__sack_blocks: list[tuple[int, int]] | None = None,
             tcp__tsval: int | None = None,
             tcp__tsecr: int | None = None,
+            tcp__fastopen_cookie: bytes | None = None,
             tcp__win: int = 0,
             tcp__urg: int = 0,
             tcp__payload: bytes = bytes(),
@@ -136,6 +137,7 @@ class PacketHandlerTcpRx(ABC):
             tcp__tsecr=(
                 packet_rx.tcp._options.timestamps.tsecr if packet_rx.tcp._options.timestamps is not None else None
             ),
+            tcp__fastopen_cookie=packet_rx.tcp._options.fastopen,
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,
         )

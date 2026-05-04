@@ -202,6 +202,20 @@ def fsm__listen(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
+            # RFC 7413 §3.1 Fast Open server-side cookie
+            # issuance: when peer's SYN carries the TFO option,
+            # generate an HMAC-bound cookie and stash it for
+            # the SYN+ACK that fires on the next tick. The
+            # cookie itself is opaque to peer (it just caches
+            # and replays); the only invariant is that 'we'
+            # can validate it later.
+            if packet_rx_md.tcp__fastopen_cookie is not None:
+                from pytcp.protocols.tcp.tcp__fastopen import generate_cookie
+
+                session._fastopen_cookie_to_emit = generate_cookie(
+                    peer_address=packet_rx_md.ip__remote_address,
+                    secret=stack.TCP__FASTOPEN_SECRET,
+                )
             session._rcv_ini = packet_rx_md.tcp__seq
             session._cwnd = session._snd_mss
             session._snd_ewn = min(session._cwnd, session._snd_wnd)

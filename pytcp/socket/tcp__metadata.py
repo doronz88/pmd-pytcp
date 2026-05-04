@@ -69,6 +69,7 @@ class TcpMetadata:
     tcp__sack_blocks: tuple[tuple[Seq32, Seq32], ...]
     tcp__tsval: int | None = None
     tcp__tsecr: int | None = None
+    tcp__fastopen_cookie: bytes | None = None
     tcp__data: memoryview
 
     tracker: Tracker | None = None

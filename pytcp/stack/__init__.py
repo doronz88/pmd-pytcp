@@ -81,6 +81,15 @@ GITHUB_REPO = "https://github.com/ccie18643/PyTCP"
 # stack-process lifetime.
 TCP__ISS_SECRET: bytes = secrets.token_bytes(16)
 
+# RFC 7413 TCP Fast Open server-side cookie generation
+# secret. Same allocation pattern as 'TCP__ISS_SECRET':
+# generated at module import time via 'secrets.token_bytes(16)'
+# so each PyTCP stack process has a fresh 128-bit keying
+# value for the TFO cookie HMAC. Implementations MAY rotate
+# the secret to invalidate outstanding cookies; PyTCP keeps
+# it stable for the process lifetime.
+TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
+
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500
 INTERFACE__TUN__MTU = 1500
