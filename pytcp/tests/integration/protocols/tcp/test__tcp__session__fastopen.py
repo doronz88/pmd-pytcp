@@ -924,3 +924,67 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"fastopen_cookie={syn_ack.fastopen_cookie!r}."
             ),
         )
+
+    def test__fastopen__cookie_cache_evicts_oldest_at_cap(self) -> None:
+        """
+        Ensure that when an insert into the client-side
+        TFO cookie cache would exceed the configured size
+        cap, the oldest entry is evicted in FIFO order.
+        Bounds per-process memory for long-running clients
+        that connect to many distinct servers.
+
+        Reference: RFC 7413 §3.1 (cookie cache size limit).
+        Reference: RFC 7413 §4.1.3 (cache management).
+        """
+
+        from pytcp.protocols.tcp.tcp__fastopen import cache_cookie
+
+        # Patch the cap to a small value so the test can
+        # observe the eviction without inserting 1024
+        # entries.
+        self._start_patch("pytcp.stack.TCP__FASTOPEN_CACHE_MAX_SIZE", 3)
+        stack.tcp__fastopen_cookies.clear()
+
+        peers = [
+            Ip4Address("10.1.1.1"),
+            Ip4Address("10.1.1.2"),
+            Ip4Address("10.1.1.3"),
+            Ip4Address("10.1.1.4"),
+        ]
+        cookies = [bytes([i]) * 8 for i in range(len(peers))]
+        for peer, cookie in zip(peers, cookies):
+            cache_cookie(peer_address=peer, cookie=cookie)
+
+        # The spec encoding: cap honoured.
+        self.assertEqual(
+            len(stack.tcp__fastopen_cookies),
+            3,
+            msg=(
+                "RFC 7413 §3.1: cache MUST NOT exceed "
+                "'TCP__FASTOPEN_CACHE_MAX_SIZE = 3' "
+                "entries. Got "
+                f"{len(stack.tcp__fastopen_cookies)} entries; "
+                "the eviction logic in 'cache_cookie' did not "
+                "fire."
+            ),
+        )
+        # Oldest entry MUST be evicted.
+        self.assertNotIn(
+            peers[0],
+            stack.tcp__fastopen_cookies,
+            msg=(
+                "FIFO eviction: the oldest peer "
+                f"({peers[0]}) MUST be the first evicted "
+                "entry when an insert exceeds the cap."
+            ),
+        )
+        # Newest entry MUST be present.
+        self.assertEqual(
+            stack.tcp__fastopen_cookies.get(peers[-1]),
+            cookies[-1],
+            msg=(
+                f"Newest cookie (peer={peers[-1]}) MUST be "
+                f"present and equal to {cookies[-1]!r}. Got "
+                f"{stack.tcp__fastopen_cookies.get(peers[-1])!r}."
+            ),
+        )

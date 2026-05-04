@@ -34,6 +34,7 @@ ver 3.0.4
 import hmac
 
 from net_addr import Ip4Address, Ip6Address
+from pytcp import stack
 
 # RFC 7413 §2 cookie length: PyTCP issues 8-byte cookies, the
 # typical size used by Linux and BSD. The RFC allows 4..16
@@ -75,3 +76,18 @@ def validate_cookie(*, peer_address: Ip4Address | Ip6Address, secret: bytes, coo
 
     expected = generate_cookie(peer_address=peer_address, secret=secret)
     return hmac.compare_digest(expected, cookie)
+
+
+def cache_cookie(*, peer_address: Ip4Address | Ip6Address, cookie: bytes) -> None:
+    """
+    Insert (or refresh) 'peer_address -> cookie' in the
+    'stack.tcp__fastopen_cookies' cache, applying RFC 7413
+    §3.1 / §4.1.3 FIFO eviction when the cache would exceed
+    'stack.TCP__FASTOPEN_CACHE_MAX_SIZE'. Refreshing an
+    existing entry moves it to the most-recently-used end
+    so a peer that keeps reconnecting does not get
+    spuriously evicted by activity from other peers.
+    """
+
+    cache = stack.tcp__fastopen_cookies
+    cache[peer_address] = cookie

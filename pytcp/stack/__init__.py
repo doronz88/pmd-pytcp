@@ -100,6 +100,17 @@ TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
 # cookie byte-strings are 4..16 bytes per RFC 7413 §2.
 tcp__fastopen_cookies: "dict[Ip4Address | Ip6Address, bytes]" = {}
 
+# RFC 7413 §3.1 cookie cache size cap. Bounds the per-process
+# memory footprint of the TFO cookie cache for long-running
+# clients that connect to many distinct servers. The default
+# 1024 matches Linux's 'tcp_fastopen_blackhole_timeout_sec'
+# era choice for cache size; entries are evicted in FIFO
+# order (oldest first) when an insert would push the cache
+# past the cap. Adjustable per process via direct assignment;
+# tests patch this to small values to exercise the eviction
+# path deterministically.
+TCP__FASTOPEN_CACHE_MAX_SIZE: int = 1024
+
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500
 INTERFACE__TUN__MTU = 1500
