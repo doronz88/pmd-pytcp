@@ -1,0 +1,293 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false
+
+
+"""
+This module contains integration tests for RFC 9341 Accurate
+ECN (AccECN) in 'TcpSession'. AccECN replaces RFC 3168's
+binary CE/ECE feedback channel with byte-counter-based
+feedback that is granular enough for L4S-style scalable
+congestion control. The negotiation handshake (RFC 9341
+§3.1.1) uses different SYN flag combinations from RFC 3168;
+when both peers are AccECN-capable, '_accecn_enabled' is
+True post-handshake and the data path uses the AccECN
+option (kind 172/173) to carry per-segment byte counters.
+
+The negotiation handshake (RFC 9341 §3.1.1):
+
+  Active-open SYN:    AE=1, CWR=1, ECE=1 (the canonical
+                      AccECN-setup SYN; AE=0 is RFC 3168).
+  Server SYN+ACK:     One of four AccECN-capable codepoints
+                      that encodes the IP-ECN of the SYN
+                      received; AccECN-incapable servers
+                      respond with classic RFC 3168 ECE
+                      alone (AE=0, CWR=0, ECE=1).
+
+When AccECN negotiation succeeds, '_accecn_enabled' is True.
+When the peer falls back to RFC 3168 (AE=0, CWR=0, ECE=1
+SYN+ACK), '_ecn_enabled' is True instead. When neither
+applies (no ECN flags on the SYN+ACK), neither flag is set.
+
+pytcp/tests/integration/protocols/tcp/test__tcp__session__accecn.py
+
+ver 3.0.4
+"""
+
+from net_addr import Ip4Address  # noqa: F401
+from pytcp import stack
+from pytcp.protocols.tcp.tcp__session import (
+    FsmState,
+    SysCall,
+    TcpSession,
+)
+from pytcp.socket import AddressFamily
+from pytcp.socket.tcp__socket import TcpSocket
+from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    STACK__IP4_HOST,
+)
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+
+# Deterministic addressing.
+STACK__IP: Ip4Address = STACK__IP4_HOST.address
+STACK__PORT: int = 12345
+PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
+PEER__PORT: int = 80
+
+# Initial sequence numbers, well clear of the 32-bit wrap.
+LOCAL__ISS: int = 0x0000_1000
+PEER__ISS: int = 0x0000_2000
+
+# Peer's advertised window + MSS on its SYN+ACK reply.
+PEER__WIN: int = 64240
+PEER__MSS: int = 1460
+
+
+class TestTcpSession__Accecn(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 9341 AccECN negotiation,
+    counter encoding, byte-count emission, and proportional
+    cwnd response paths.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def test__accecn__active_open_syn_advertises_ae_cwr_ece(self) -> None:
+        """
+        Ensure the active-open SYN sets all three of AE, CWR,
+        and ECE - the canonical RFC 9341 §3.1.1 client-side
+        AccECN-setup signal. The AE bit (the legacy NS bit
+        position) is what distinguishes an AccECN-capable
+        SYN from a classic RFC 3168 SYN, which sets only
+        CWR+ECE. Servers that recognise AccECN respond with
+        one of four AE/CWR/ECE codepoints encoding the IP-
+        ECN of the received SYN; servers that do not
+        recognise AccECN respond with classic RFC 3168 ECE
+        alone, and the session falls back gracefully.
+
+        Reference: RFC 9341 §3.1.1 (AccECN-setup SYN: AE+CWR+ECE).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: outbound SYN MUST fire on the first tick.",
+        )
+        syn = self._parse_tx(syn_tx[0])
+
+        self.assertIn(
+            "SYN",
+            syn.flags,
+            msg="Setup precondition: outbound segment must be a SYN.",
+        )
+        self.assertIn(
+            "ECE",
+            syn.flags,
+            msg=("RFC 9341 §3.1.1: AccECN-setup SYN MUST carry " f"the ECE flag. Got flags={syn.flags!r}."),
+        )
+        self.assertIn(
+            "CWR",
+            syn.flags,
+            msg=("RFC 9341 §3.1.1: AccECN-setup SYN MUST carry " f"the CWR flag. Got flags={syn.flags!r}."),
+        )
+        self.assertIn(
+            "NS",
+            syn.flags,
+            msg=(
+                "RFC 9341 §3.1.1: AccECN-setup SYN MUST carry "
+                "the AE flag (the legacy NS bit position). The "
+                "AE bit is what distinguishes an AccECN SYN from "
+                "a classic RFC 3168 SYN; without it a peer that "
+                "recognises AccECN cannot tell our intent. Got "
+                f"flags={syn.flags!r}."
+            ),
+        )
+
+    def test__accecn__bilateral_negotiation_via_accecn_capable_synack(self) -> None:
+        """
+        Ensure that when our active-open SYN advertised
+        AccECN (AE+CWR+ECE) and the peer's SYN+ACK responds
+        with one of the four AccECN-capable codepoints, the
+        session sets '_accecn_enabled = True' post-handshake.
+        The four codepoints encode which IP-ECN codepoint
+        the peer received on our SYN; in this test we use
+        the (AE=0, CWR=1, ECE=0) codepoint that signals
+        "saw Not-ECT". Once '_accecn_enabled' is True the
+        data-path uses the AccECN option (kind 172/173) to
+        carry per-segment byte counters.
+
+        Reference: RFC 9341 §3.1.1 (server AccECN-capable SYN+ACK).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # AccECN-capable peer responds with the (AE=0, CWR=1,
+        # ECE=0) codepoint - "I am AccECN-capable; I saw Not-
+        # ECT on your SYN". The presence of CWR (without ECE)
+        # is the wire signal an AccECN-capable client uses to
+        # disambiguate from RFC 3168's (CWR=0, ECE=1) form.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "CWR"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "Setup precondition: handshake MUST reach ESTABLISHED "
+                f"on the AccECN-capable SYN+ACK. Got state={session.state!r}."
+            ),
+        )
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9341 §3.1.1: when our SYN advertised AccECN "
+                "and the peer's SYN+ACK carries one of the four "
+                "AccECN-capable codepoints (here: AE=0, CWR=1, "
+                "ECE=0 = saw Not-ECT), '_accecn_enabled' MUST "
+                f"become True. Got _accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+        self.assertFalse(
+            session._ecn_enabled,
+            msg=(
+                "When AccECN negotiation succeeds, the session "
+                "uses AccECN (not RFC 3168 ECN). "
+                "'_ecn_enabled' MUST remain False so the two "
+                "paths cannot both fire. Got "
+                f"_ecn_enabled={session._ecn_enabled}."
+            ),
+        )
+
+    def test__accecn__active_open_rfc3168_only_synack_falls_back_to_classic_ecn(self) -> None:
+        """
+        Ensure that when our active-open SYN advertised
+        AccECN (AE+CWR+ECE) and the peer's SYN+ACK responds
+        with the classic RFC 3168 (AE=0, CWR=0, ECE=1) form
+        - i.e. the peer recognised our SYN as ECN-setup but
+        does not understand AccECN - the session falls back
+        gracefully to RFC 3168 ECN: '_ecn_enabled' becomes
+        True and '_accecn_enabled' stays False. This is the
+        backward-compatibility guarantee that lets AccECN
+        deploy incrementally on the internet.
+
+        Reference: RFC 9341 §3.1.2 (active-open RFC 3168 fallback).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # RFC-3168-only server: SYN+ACK with ECE alone, no
+        # AE, no CWR. This is the codepoint a classic-ECN-
+        # only server uses to confirm ECN; an AccECN-capable
+        # server would set CWR or AE alongside.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "ECE"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: handshake MUST reach ESTABLISHED.",
+        )
+        self.assertTrue(
+            session._ecn_enabled,
+            msg=(
+                "RFC 9341 §3.1.2: when the peer's SYN+ACK is "
+                "the RFC 3168 form (AE=0, CWR=0, ECE=1), the "
+                "session MUST fall back to classic ECN. "
+                f"Got _ecn_enabled={session._ecn_enabled}."
+            ),
+        )
+        self.assertFalse(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9341 §3.1.2: classic RFC 3168 fallback "
+                "MUST leave '_accecn_enabled' False. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
