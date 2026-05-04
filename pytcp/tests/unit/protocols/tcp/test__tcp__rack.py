@@ -51,6 +51,7 @@ from unittest import TestCase
 from pytcp.protocols.tcp.tcp__rack import (
     INFINITE_TS,
     RackSegment,
+    rack_compute_reo_wnd,
     rack_detect_loss,
     rack_sent_after,
     rack_update,
@@ -566,3 +567,72 @@ class TestRackDetectLoss(TestCase):
             msg="An already-lost segment MUST be returned unchanged.",
         )
         self.assertEqual(timeout, 0, msg="Already-lost segments do not contribute to the timer.")
+
+
+class TestRackComputeReoWnd(TestCase):
+    """
+    The 'rack_compute_reo_wnd' RFC 8985 §6.2 step 4 tests.
+    """
+
+    def test__rack__compute_reo_wnd__no_reordering_returns_zero(self) -> None:
+        """
+        Ensure that when no reordering has been observed, the
+        helper returns 0 so the caller falls back to the
+        dup-ACK trigger.
+
+        Reference: RFC 8985 §6.2 step 4 (reo_wnd = 0 when no reordering).
+        """
+
+        self.assertEqual(
+            rack_compute_reo_wnd(reordering_seen=False, reo_wnd_mult=1, min_rtt_ms=100),
+            0,
+            msg="No-reordering case MUST return 0.",
+        )
+
+    def test__rack__compute_reo_wnd__base_quarter_min_rtt(self) -> None:
+        """
+        Ensure that with 'reordering_seen=True' and
+        'reo_wnd_mult=1', the helper returns 'min_RTT / 4'.
+
+        Reference: RFC 8985 §6.2 step 4 (min_RTT / 4 base).
+        """
+
+        self.assertEqual(
+            rack_compute_reo_wnd(reordering_seen=True, reo_wnd_mult=1, min_rtt_ms=100),
+            25,
+            msg="Base reo_wnd MUST equal min_RTT / 4.",
+        )
+
+    def test__rack__compute_reo_wnd__multiplier_scales_linearly(self) -> None:
+        """
+        Ensure that 'reo_wnd_mult' scales the base reo_wnd
+        linearly (DSACK-driven adaptation).
+
+        Reference: RFC 8985 §6.2 step 4 (reo_wnd_mult scaling).
+        """
+
+        self.assertEqual(
+            rack_compute_reo_wnd(reordering_seen=True, reo_wnd_mult=2, min_rtt_ms=100),
+            50,
+            msg="reo_wnd_mult=2 MUST double the reo_wnd.",
+        )
+        self.assertEqual(
+            rack_compute_reo_wnd(reordering_seen=True, reo_wnd_mult=4, min_rtt_ms=100),
+            100,
+            msg="reo_wnd_mult=4 MUST quadruple the reo_wnd.",
+        )
+
+    def test__rack__compute_reo_wnd__zero_min_rtt_returns_zero(self) -> None:
+        """
+        Ensure that an uninitialized min_RTT (=0) yields 0
+        regardless of 'reordering_seen' so the algorithm does
+        not rely on a stale RTT.
+
+        Reference: RFC 8985 §6.2 step 4 (gate on min_RTT availability).
+        """
+
+        self.assertEqual(
+            rack_compute_reo_wnd(reordering_seen=True, reo_wnd_mult=4, min_rtt_ms=0),
+            0,
+            msg="Uninitialized min_RTT MUST yield reo_wnd=0.",
+        )

@@ -311,3 +311,59 @@ def rack_detect_loss(
             new_segments[seq] = seg
 
     return new_segments, timeout_ms
+
+
+def rack_compute_reo_wnd(
+    *,
+    reordering_seen: bool,
+    reo_wnd_mult: int,
+    min_rtt_ms: int,
+) -> int:
+    """
+    Compute the current reordering window per RFC 8985 §6.2
+    step 4.
+
+    Algorithm (simplified):
+        If RACK.reordering_seen is FALSE:
+            return 0     # no reordering observed; use the
+                         # dup-ACK trigger via reo_wnd=0
+        Else:
+            return min_RTT * reo_wnd_mult / 4
+
+    The 'reo_wnd_mult' factor is increased by the caller when
+    DSACK indicates a spurious retransmit (the peer received
+    something we thought we lost), and decayed back to 1 after
+    16 consecutive recovery-exits without DSACK (the
+    'reo_wnd_persist' counter on TcpSession). Both adjustments
+    are session-level state mutations, not the helper's job.
+
+    The 'min_RTT / 4' base reflects RFC 8985's guidance that
+    one quarter-RTT of network reordering is a reasonable
+    tolerance before declaring a loss; a 'reo_wnd_mult' of 2
+    doubles the tolerance to half-RTT, etc.
+
+    Parameters:
+        reordering_seen: True iff at least one inbound ACK has
+                         delivered a segment whose end_seq is
+                         strictly below 'RACK.fack'
+                         (out-of-order delivery observed).
+        reo_wnd_mult:    multiplier on the 'min_RTT / 4' base.
+                         Starts at 1; increments on DSACK
+                         rounds; resets to 1 after 16
+                         recoveries without DSACK.
+        min_rtt_ms:      RACK.min_RTT, the minimum observed
+                         RTT (ms). 0 means no observation
+                         yet, so the function returns 0
+                         regardless of 'reordering_seen'.
+
+    Returns: reordering window in milliseconds.
+    """
+
+    assert reo_wnd_mult >= 1, f"'reo_wnd_mult' must be >= 1; got {reo_wnd_mult!r}"
+    assert min_rtt_ms >= 0, f"'min_rtt_ms' must be >= 0; got {min_rtt_ms!r}"
+
+    if not reordering_seen:
+        return 0
+    if min_rtt_ms == 0:
+        return 0
+    return min_rtt_ms * reo_wnd_mult // 4

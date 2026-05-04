@@ -671,3 +671,218 @@ class TestTcpRackPhase3(TcpSessionTestCase):
                 f"Got first_seg={first_seg!r}."
             ),
         )
+
+
+class TestTcpRackPhase4(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §6.2 step 3-4 reordering
+    detection and reo_wnd adaptation.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rack__reordering_detected_when_below_fack_segment_acked(self) -> None:
+        """
+        Ensure that when peer SACKs a higher-seq segment then
+        cumulatively ACKs a lower-seq segment, reordering is
+        detected and '_rack_reordering_seen' becomes True.
+
+        Reference: RFC 8985 §6.2 step 3 (reordering detection).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send 3 * MSS so three distinct segments fire.
+        session.send(data=b"x" * (3 * PEER__MSS))
+        self._advance(ms=3)
+        self.assertEqual(
+            len(session._rack_segments),
+            3,
+            msg=f"Setup invariant: three segments in flight. Got: {sorted(session._rack_segments)}.",
+        )
+
+        seg2_seq = LOCAL__ISS + 1 + PEER__MSS
+        seg3_seq = LOCAL__ISS + 1 + 2 * PEER__MSS
+        seg3_end = seg3_seq + PEER__MSS
+
+        # Step 1: peer SACKs seg3 only. fack advances to seg3_end.
+        peer_ack_1 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(seg3_seq, seg3_end)],
+        )
+        self._drive_rx(frame=peer_ack_1)
+
+        self.assertGreaterEqual(
+            session._rack_fack,
+            seg3_end,
+            msg=(
+                "After SACK delivery of seg3, '_rack_fack' MUST advance "
+                f"to at least {seg3_end}. Got {session._rack_fack}."
+            ),
+        )
+        self.assertFalse(
+            session._rack_reordering_seen,
+            msg="Reordering not yet observed (only one segment delivered).",
+        )
+
+        # Step 2: peer cum-ACKs seg2 (which is below fack already
+        # advanced to seg3_end). seg2's end_seq < fack -> reordering.
+        peer_ack_2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=seg2_seq + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack_2)
+
+        self.assertTrue(
+            session._rack_reordering_seen,
+            msg=(
+                "When a segment whose end_seq is strictly below "
+                "'_rack_fack' is delivered, '_rack_reordering_seen' "
+                "MUST be set True per RFC 8985 §6.2 step 3."
+            ),
+        )
+
+    def test__rack__reo_wnd_grows_on_dsack_round(self) -> None:
+        """
+        Ensure that observing a DSACK while not in recovery
+        increments '_rack_reo_wnd_mult' so subsequent loss
+        detection is more tolerant of reordering.
+
+        Reference: RFC 8985 §6.2 step 4 (reo_wnd_mult++ on DSACK round).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        prior_mult = session._rack_reo_wnd_mult
+
+        # Send a segment + simulate a DSACK observation by
+        # incrementing the existing '_dsack_received' counter
+        # through the receive-and-process path: peer first
+        # delivers a segment, we ACK; peer retransmits the
+        # same data; our session detects the duplicate and
+        # marks 'pending_dsack'. The next outbound ACK
+        # carries the DSACK option, but for the sender side
+        # we need an INBOUND DSACK to drive reo_wnd_mult.
+        # Here we drive it directly via the DSACK ingest path.
+        session.send(data=b"abcde")
+        self._advance(ms=1)
+
+        # Cum-ACK the original; peer carries a DSACK in the
+        # SACK options indicating the old (now-redundant)
+        # range. _ingest_sack_info detects 'first block right
+        # edge below SND.UNA' as DSACK, increments
+        # '_dsack_received'. The Phase 4 hook then increments
+        # '_rack_reo_wnd_mult'.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 5,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(LOCAL__ISS + 1, LOCAL__ISS + 1 + 5)],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertGreater(
+            session._rack_reo_wnd_mult,
+            prior_mult,
+            msg=(
+                "Inbound DSACK MUST increment '_rack_reo_wnd_mult' so "
+                "subsequent loss detection tolerates more reordering. "
+                f"Was {prior_mult}, got {session._rack_reo_wnd_mult}."
+            ),
+        )
+
+    def test__rack__reo_wnd_persist_decay(self) -> None:
+        """
+        Ensure that '_rack_reo_wnd_persist' is decremented
+        on each recovery exit and the multiplier resets back
+        to 1 once it drops to zero. Test by direct mutation
+        of the persist counter so the mechanism can be pinned
+        without simulating 16 actual recovery cycles.
+
+        Reference: RFC 8985 §6.2 step 4 (reo_wnd_persist decay).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Inject a non-default state: reo_wnd_mult=4 (from prior
+        # DSACK rounds), persist=1 (one recovery away from reset).
+        session._rack_reo_wnd_mult = 4
+        session._rack_reo_wnd_persist = 1
+        # Fake an in-progress recovery so the exit path fires.
+        session._recovery_point = LOCAL__ISS + 1 + 5
+
+        # Send 5 bytes; peer cum-ACKs them, advancing SND.UNA
+        # past _recovery_point and triggering recovery exit.
+        session.send(data=b"abcde")
+        self._advance(ms=1)
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 5,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertEqual(
+            session._rack_reo_wnd_mult,
+            1,
+            msg=(
+                "Recovery exit with persist=1 MUST decay persist to 0 "
+                "and reset reo_wnd_mult to 1 per RFC 8985 §6.2 step 4."
+            ),
+        )
+        self.assertEqual(
+            session._rack_reo_wnd_persist,
+            16,
+            msg="reo_wnd_persist MUST reset to 16 after the decay fires.",
+        )

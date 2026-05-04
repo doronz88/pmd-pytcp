@@ -491,6 +491,36 @@ class TcpSession:
         # by SND.UNA) are tracked here even while their dict
         # entry stays alive.
         self._rack_acked_seqs: set[Seq32] = set()
+        # RFC 8985 §6.2 step 3 reordering detection state.
+        # 'reordering_seen' becomes True the first time an ACK
+        # delivers a segment whose 'end_seq' is strictly below
+        # 'fack' (the highest end_seq cumulatively or
+        # selectively acked so far) - that out-of-order
+        # delivery is the signal that the network has
+        # reordered. Once seen, it stays True for the lifetime
+        # of the connection: the §6.2 step 4 reo_wnd
+        # computation switches from 0 (use dup-ACK trigger)
+        # to 'min_RTT / 4 * reo_wnd_mult' (use time-based
+        # trigger with reordering tolerance).
+        self._rack_reordering_seen: bool = False
+        self._rack_fack: Seq32 = 0
+        # RFC 8985 §6.2 step 4 reo_wnd_mult / persist counter.
+        # The multiplier scales the 'min_RTT / 4' base when
+        # DSACK indicates spurious retransmits (the peer
+        # received a segment we thought was lost). The
+        # persist counter decrements on each recovery exit
+        # and resets the multiplier to 1 after 16 consecutive
+        # recoveries without DSACK, so the connection
+        # eventually decays back to the canonical reordering
+        # tolerance.
+        self._rack_reo_wnd_mult: int = 1
+        self._rack_reo_wnd_persist: int = 16
+        # RFC 8985 §6.2 step 4 DSACK-round marker. Holds the
+        # SND.MAX value at the moment a DSACK was observed; the
+        # next ACK that advances SND.UNA past this marker
+        # closes the round and increments 'reo_wnd_mult'.
+        # 'None' means no DSACK round is in progress.
+        self._rack_dsack_round: Seq32 | None = None
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
