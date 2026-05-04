@@ -42,7 +42,11 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__cubic import cubic_grow_per_ack
+from pytcp.protocols.tcp.tcp__cubic import (
+    cubic_compute_K,
+    cubic_grow_per_ack,
+    cubic_loss_event_ssthresh,
+)
 from pytcp.protocols.tcp.tcp__cwnd import (
     compute_ecn_event_ssthresh,
     compute_loss_event_ssthresh,
@@ -2615,7 +2619,31 @@ class TcpSession:
         # loss detection. Modular subtraction per RFC 9293 §3.4
         # so the value is correct across the 32-bit wrap.
         flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-        self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+        # RFC 9438 §4.6 + §4.7: in CUBIC mode, replace the RFC
+        # 5681 §3.1 0.5 halving with beta_cubic = 0.7 and
+        # update '_cubic_w_max' / '_cubic_K_ms' /
+        # '_cubic_epoch_start_ms' so the post-RTO CA growth
+        # curve has a fresh anchor. Phase 5 will pass
+        # 'fast_conv_active=True' once W_last_max tracking
+        # lands; for now fast convergence is gated off here.
+        if self._cc_mode is CcMode.CUBIC:
+            self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+                cwnd=max(self._cwnd, self._snd_mss),
+                smss=self._snd_mss,
+                fast_conv_active=False,
+                prior_w_max=self._cubic_w_last_max,
+            )
+            # Curve epoch reset: post-RTO cwnd = 1 SMSS, so
+            # cwnd_epoch = SMSS for the cube-root computation.
+            self._cubic_K_ms = cubic_compute_K(
+                w_max=self._cubic_w_max,
+                cwnd_epoch=self._snd_mss,
+                smss=self._snd_mss,
+            )
+            self._cubic_epoch_start_ms = stack.timer.now_ms
+            self._cubic_in_ca = False
+        else:
+            self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
         # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
         # §4.2.2.16 still require respecting peer's advertised
@@ -2745,7 +2773,27 @@ class TcpSession:
         # 2*SMSS). Captures the just-observed loss point so
         # the post-recovery slow-start exits at this boundary.
         flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-        self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+        # RFC 9438 §4.6 + §4.7: in CUBIC mode, ssthresh halves
+        # by beta_cubic = 0.7 (vs RFC 5681's 0.5). Records
+        # '_cubic_w_max' = cwnd-at-loss for the post-recovery
+        # cubic curve. Phase 5 will pass 'fast_conv_active=True'
+        # once '_cubic_w_last_max' tracking lands.
+        if self._cc_mode is CcMode.CUBIC:
+            self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+                cwnd=self._cwnd,
+                smss=self._snd_mss,
+                fast_conv_active=False,
+                prior_w_max=self._cubic_w_last_max,
+            )
+            self._cubic_K_ms = cubic_compute_K(
+                w_max=self._cubic_w_max,
+                cwnd_epoch=self._ssthresh,
+                smss=self._snd_mss,
+            )
+            self._cubic_epoch_start_ms = stack.timer.now_ms
+            self._cubic_in_ca = True
+        else:
+            self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
 
         # RFC 6937 §3.1 PRR per-recovery state initialisation:
         # snapshot pipe at entry as 'RecoverFS' so the per-ACK

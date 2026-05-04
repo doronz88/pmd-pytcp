@@ -265,6 +265,121 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
             msg="'_cubic_in_ca' must remain False during slow-start.",
         )
 
+    def _drive_fast_retransmit_in_cubic_mode(self, *, cwnd: int) -> TcpSession:
+        """
+        Set up an ESTABLISHED CUBIC session with a controlled
+        'cwnd' and trigger the fast-retransmit code path via
+        three duplicate ACKs.
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cc_mode = CcMode.CUBIC
+        session._cwnd = cwnd
+        session._ssthresh = cwnd  # CA regime; ssthresh tracks cwnd.
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Transmit one segment so dup-ACKs ack a real seq.
+        payload = b"x" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Three dup-ACKs trigger fast retransmit.
+        for _ in range(3):
+            dup = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=LOCAL__ISS + 1,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup)
+
+        return session
+
+    def test__cubic__fast_retransmit_uses_beta_cubic(self) -> None:
+        """
+        Ensure that fast retransmit in CUBIC mode sets ssthresh
+        to approximately cwnd * 7/10 (vs Reno's 1/2).
+
+        Reference: RFC 9438 §4.6 (beta_cubic = 0.7).
+        """
+
+        cwnd = 100 * PEER__MSS
+        session = self._drive_fast_retransmit_in_cubic_mode(cwnd=cwnd)
+
+        # ssthresh should be cwnd * 7/10, not cwnd * 1/2.
+        expected = cwnd * 7 // 10
+        self.assertEqual(
+            session._ssthresh,
+            expected,
+            msg=(
+                f"CUBIC fast retransmit must set ssthresh to "
+                f"cwnd * beta_cubic ({expected}); got {session._ssthresh}."
+            ),
+        )
+
+    def test__cubic__fast_retransmit_records_w_max_at_cwnd_at_loss(self) -> None:
+        """
+        Ensure '_cubic_w_max' captures the pre-loss cwnd as
+        the curve anchor, and '_cubic_K_ms' is computed and
+        '_cubic_epoch_start_ms' is set to now_ms.
+
+        Reference: RFC 9438 §4.6 (W_max recording).
+        """
+
+        cwnd = 100 * PEER__MSS
+        session = self._drive_fast_retransmit_in_cubic_mode(cwnd=cwnd)
+
+        self.assertEqual(
+            session._cubic_w_max,
+            cwnd,
+            msg="W_max must capture pre-loss cwnd.",
+        )
+        self.assertGreater(
+            session._cubic_K_ms,
+            0,
+            msg="K must be positive after a loss event with non-zero W_max.",
+        )
+        self.assertEqual(
+            session._cubic_epoch_start_ms,
+            stack.timer.now_ms,
+            msg="epoch_start must be reset to now_ms on loss event.",
+        )
+
+    def test__cubic__rto_uses_beta_cubic(self) -> None:
+        """
+        Ensure that an RTO in CUBIC mode sets ssthresh to
+        approximately max(cwnd * 7/10, 2*SMSS) (using cwnd
+        rather than flight_size per RFC 9438 §4.6 commentary).
+
+        Reference: RFC 9438 §4.6 (beta_cubic on RTO).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cc_mode = CcMode.CUBIC
+        session._cwnd = 100 * PEER__MSS
+        session._ssthresh = 200 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Send some data so flight_size > 0; advance past the
+        # RTO timer (clamped to 1000 ms by MIN_RTO_MS) to fire
+        # '_retransmit_packet_timeout'.
+        session.send(data=b"x" * PEER__MSS)
+        self._advance(ms=1)
+        self._advance(ms=1000)
+
+        expected = max((100 * PEER__MSS) * 7 // 10, 2 * PEER__MSS)
+        self.assertEqual(
+            session._ssthresh,
+            expected,
+            msg=(
+                f"CUBIC RTO must set ssthresh to "
+                f"cwnd * beta_cubic floor 2*SMSS ({expected}); "
+                f"got {session._ssthresh}."
+            ),
+        )
+
     def test__cubic__reno_mode_unaffected_by_cubic_state_fields(self) -> None:
         """
         Ensure that with '_cc_mode == CcMode.RENO' (default),
