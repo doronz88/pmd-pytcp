@@ -181,6 +181,7 @@ def build_tcp4(
     dst_mac: MacAddress = STACK__MAC_ADDRESS,
     src_ip: Ip4Address = HOST_A__IP4_ADDRESS,
     dst_ip: Ip4Address = STACK__IP4_HOST.address,
+    ip_ecn: int = 0,
     sport: int,
     dport: int,
     seq: int = 0,
@@ -222,6 +223,7 @@ def build_tcp4(
     ip4 = Ip4Assembler(
         ip4__src=src_ip,
         ip4__dst=dst_ip,
+        ip4__ecn=ip_ecn,
         ip4__payload=tcp,
     )
 

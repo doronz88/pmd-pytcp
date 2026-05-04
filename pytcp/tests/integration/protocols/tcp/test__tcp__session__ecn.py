@@ -361,3 +361,71 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
                 "3=CE)."
             ),
         )
+
+    def test__ecn__inbound_ce_marked_segment_elicits_ece_in_outbound_ack(self) -> None:
+        """
+        Ensure that when a router along the path marks an
+        inbound data segment with the IP CE codepoint
+        ('11' = 3) - the wire signal that the network has
+        experienced congestion - the receiver echoes the
+        mark back to the sender by setting the ECE flag on
+        every outbound TCP segment until the sender confirms
+        cwnd reduction via CWR. CE -> ECE is the substrate
+        congestion signal that ECN was designed around;
+        without it the sender never learns the network is
+        congested and never reduces cwnd, defeating the
+        whole point of ECN.
+
+        Reference: RFC 3168 §6.1.2 (CE -> ECE echo on next ACK).
+        """
+
+        self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Peer sends a single data segment with the IP CE
+        # codepoint set ('11' = 3). The session is now
+        # ESTABLISHED with bilateral ECN, so this is a
+        # well-formed congestion-experienced indication
+        # from a router along the forward path.
+        ce_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=3,
+            payload=b"congested!",
+        )
+        self._drive_rx(frame=ce_data)
+        # Drain the delayed-ACK timer so the cumulative ACK
+        # for the inbound data segment is emitted (post-fix
+        # #11 the first segment is held back until the
+        # delayed-ACK timer fires; see fix #11 in
+        # tcp_session_integration_tests.md §4).
+        ack_tx = self._advance(ms=200)
+        self.assertEqual(
+            len(ack_tx),
+            1,
+            msg=(
+                "Setup precondition: cumulative ACK MUST fire after the "
+                "delayed-ACK timer expires. Got "
+                f"{len(ack_tx)} TX frames."
+            ),
+        )
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertIn(
+            "ACK",
+            ack.flags,
+            msg="Setup precondition: outbound segment must be an ACK.",
+        )
+        self.assertIn(
+            "ECE",
+            ack.flags,
+            msg=(
+                "RFC 3168 §6.1.2: receiver MUST echo the CE codepoint "
+                "back to the sender via the ECE flag on the next "
+                "outbound TCP segment. Got "
+                f"flags={ack.flags!r}."
+            ),
+        )

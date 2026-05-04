@@ -53,6 +53,7 @@ class TcpMetadata:
     ip__ver: IpVersion
     ip__local_address: Ip6Address | Ip4Address
     ip__remote_address: Ip6Address | Ip4Address
+    ip__ecn: int = 0
 
     tcp__local_port: int
     tcp__remote_port: int
