@@ -161,11 +161,12 @@ class TestTcpSession__Frto(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Send 3 segments worth of data; record cwnd/ssthresh
-        # before the RTO fires so we can assert restoration.
+        # Send 3 segments worth of data. PyTCP's transmit
+        # loop fires one segment per ms tick, so advance
+        # several ms to drain the send buffer before snapshot.
         payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
         session.send(data=payload)
-        self._advance(ms=1)
+        self._advance(ms=10)
 
         cwnd_before_rto = session._cwnd
         ssthresh_before_rto = session._ssthresh
@@ -244,7 +245,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         # spurious test for symmetry.
         payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
         session.send(data=payload)
-        self._advance(ms=1)
+        self._advance(ms=10)
 
         cwnd_before_rto = session._cwnd
         ssthresh_before_rto = session._ssthresh

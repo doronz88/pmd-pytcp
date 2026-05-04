@@ -365,6 +365,22 @@ class TcpSession:
         # same cumulative count are idempotent.
         self._accecn_s_ce_b: int = 0
 
+        # RFC 5682 F-RTO (Forward RTO-Recovery) state. When an
+        # RTO fires, '_frto_active' is set True and the
+        # pre-RTO cwnd/ssthresh/SND.MAX are snapshotted before
+        # the conventional RFC 5681 §3.1 halving. When the
+        # first post-RTO ACK advances SND.UNA to cover the
+        # snapshotted SND.MAX (the spurious-RTO signature -
+        # all pre-RTO data was delivered), the snapshot is
+        # restored and '_frto_active' clears. When the first
+        # post-RTO ACK does not cover the snapshotted SND.MAX
+        # (genuine RTO - data really was lost),
+        # '_frto_active' clears without restoration.
+        self._frto_active: bool = False
+        self._frto_pre_cwnd: int = 0
+        self._frto_pre_ssthresh: int = 0
+        self._frto_pre_snd_max: int = 0
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -2316,6 +2332,20 @@ class TcpSession:
             f"#{self._retransmit_count})",
         )
 
+        # RFC 5682 F-RTO: snapshot pre-RTO cwnd / ssthresh /
+        # SND.MAX so the spurious-RTO detection in
+        # '_process_ack_packet' can restore them if the first
+        # post-RTO ACK proves the originals were delivered.
+        # The snapshot fires every RTO (no opt-out) since
+        # F-RTO has no false-positive risk: the restoration
+        # gate ('first post-RTO ACK covers pre-RTO SND.MAX')
+        # only fires when peer's behaviour is consistent with
+        # delivery of all pre-RTO data.
+        self._frto_active = True
+        self._frto_pre_cwnd = self._cwnd
+        self._frto_pre_ssthresh = self._ssthresh
+        self._frto_pre_snd_max = self._snd_max
+
         # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
         # post-RTO slow-start exits at the previously-observed
         # loss point. The 'max(FlightSize/2, 2*SMSS)' floor
@@ -2613,6 +2643,30 @@ class TcpSession:
                     name=f"{self}-retransmit",
                     timeout=self._rto_state.rto_ms,
                 )
+            # RFC 5682 F-RTO simplified spurious-RTO detection.
+            # When '_frto_active' is set (an RTO recently fired),
+            # check whether the new SND.UNA covers the pre-RTO
+            # SND.MAX. If yes, all pre-RTO data has been
+            # acknowledged - the originals were delivered and
+            # the RTO was spurious. Restore the snapshotted
+            # cwnd / ssthresh so the connection does not pay
+            # the cost of a fictitious congestion event. If no
+            # (partial cum-ACK), data really was lost, the RTO
+            # was genuine, and the conventional halving stays
+            # in effect; in either case clear '_frto_active'
+            # so subsequent ACKs do not re-trigger the check.
+            if self._frto_active:
+                if not lt32(self._snd_una, self._frto_pre_snd_max):
+                    self._cwnd = self._frto_pre_cwnd
+                    self._ssthresh = self._frto_pre_ssthresh
+                    self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - RFC 5682 F-RTO: spurious RTO "
+                        f"detected, restored cwnd={self._cwnd} "
+                        f"ssthresh={self._ssthresh}",
+                    )
+                self._frto_active = False
         # RFC 7323 §4 TSecr-driven RTTM: peer's TSecr identifies
         # the specific transmission it acknowledges, so the RTT
         # measurement is unambiguous even on retransmitted
