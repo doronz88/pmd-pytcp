@@ -308,6 +308,18 @@ class TcpSession:
         # segment with the CWR flag set"-style behaviour).
         self._send_ece: bool = False
 
+        # RFC 3168 §6.1.2 sender-side state. '_ecn_send_cwr'
+        # is set after responding to an inbound ECE (cwnd /
+        # ssthresh halved); the next outbound data segment
+        # carries the CWR flag as the wire confirmation,
+        # then the flag clears. '_ecn_recovery_point' is the
+        # one-shot guard: SND.NXT at the moment of the ECE
+        # response; subsequent ECEs are ignored until SND.UNA
+        # crosses this point so a single congestion episode
+        # halves cwnd at most once per RTT.
+        self._ecn_send_cwr: bool = False
+        self._ecn_recovery_point: int = 0
+
         # RFC 6937 PRR per-recovery state. Declared with
         # canonical defaults so the [FLAGS BUG] tests-first
         # suite can exercise the attribute access; the actual
@@ -1144,6 +1156,15 @@ class TcpSession:
         # segment.
         elif self._ecn_enabled and self._send_ece and not flag_rst:
             flag_ece = True
+        # RFC 3168 §6.1.2 sender-side CWR confirmation. After
+        # responding to an inbound ECE with cwnd reduction,
+        # the first outbound data segment carries CWR as the
+        # wire confirmation. The flag clears on emission so
+        # subsequent segments stay unmarked unless a new ECN
+        # response is triggered.
+        if self._ecn_enabled and self._ecn_send_cwr and data:
+            flag_cwr = True
+            self._ecn_send_cwr = False
 
         tcp__fastopen_cookie: bytes | None = None
         if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
@@ -2704,6 +2725,26 @@ class TcpSession:
                     self._send_ece = False
                 if packet_rx_md.ip__ecn == 3:
                     self._send_ece = True
+            # RFC 3168 §6.1.2 sender-side response to inbound
+            # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
+            # cwnd to ssthresh, and arm '_ecn_send_cwr' so the
+            # next outbound data segment confirms the response
+            # via CWR. One-shot per RTT: '_ecn_recovery_point'
+            # = SND.NXT at the moment of response; subsequent
+            # ECEs within the same window of data are ignored
+            # until SND.UNA crosses the recovery point.
+            if (
+                self._ecn_enabled
+                and packet_rx_md is not None
+                and packet_rx_md.tcp__flag_ece
+                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
+            ):
+                flight_size = sub32(self._snd_max, self._snd_una)
+                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                self._cwnd = self._ssthresh
+                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                self._ecn_send_cwr = True
+                self._ecn_recovery_point = self._snd_nxt
             tcp_fsm_dispatch(
                 self,
                 packet_rx_md=packet_rx_md,
