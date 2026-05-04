@@ -775,3 +775,82 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"retransmit cookie={retransmit_syn_ack.fastopen_cookie!r}."
             ),
         )
+
+    def test__fastopen__client_resends_tfo_data_when_server_rejects(self) -> None:
+        """
+        Ensure that when the server's SYN+ACK acknowledges
+        only the SYN (the server discarded the TFO data,
+        e.g., because the cookie failed validation or TFO
+        is disabled), the client retransmits the data
+        promptly post-handshake instead of waiting for the
+        RTO timer to fire. The client side rewinds SND.NXT
+        to SND.UNA after the partial-ack handshake so the
+        data still in the TX buffer is re-emitted on the
+        next tick alongside the third-leg ACK.
+
+        Reference: RFC 7413 §4.2 (client resends data when server only acks SYN).
+        """
+
+        cached_cookie = b"\x10\x20\x30\x40\x50\x60\x70\x80"
+        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        early_data = b"reject-me"
+        session._tx_buffer.extend(early_data)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        # Tick so the SYN-with-data fires.
+        self._advance(ms=1)
+
+        # Server's SYN+ACK acks ONLY the SYN (rejected the
+        # TFO data); 'ack = peer_iss + 1', not
+        # 'peer_iss + 1 + len(data)'.
+        peer_syn_ack = build_tcp4(
+            src_ip=PEER__IP,
+            dst_ip=STACK__IP,
+            sport=LISTEN__PORT,
+            dport=PEER__PORT_FOR_FASTOPEN,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        post_syn_ack_tx = self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=(
+                "Setup precondition: handshake MUST reach " "ESTABLISHED even when the server rejects the " "TFO data."
+            ),
+        )
+
+        # Find a post-handshake segment carrying the
+        # rejected data. The third-leg ACK fires inline on
+        # SYN+ACK reception; PyTCP's
+        # 'tcp_fsm__syn_sent.fsm__syn_sent' calls
+        # '_transmit_packet(flag_ack=True)' before the
+        # ESTABLISHED transition, but a retransmit of the
+        # unacked data needs to fire on the next tick.
+        post_tick_tx = self._advance(ms=1)
+        all_post_handshake_tx = list(post_syn_ack_tx) + list(post_tick_tx)
+        data_segment = None
+        for frame in all_post_handshake_tx:
+            probe = self._parse_tx(frame)
+            if probe.payload == early_data:
+                data_segment = probe
+                break
+
+        self.assertIsNotNone(
+            data_segment,
+            msg=(
+                "RFC 7413 §4.2: a TFO client whose SYN-data was "
+                "rejected (SYN+ACK acked only the SYN) MUST "
+                "retransmit the data promptly after handshake "
+                "completion (not wait for the RTO retransmit "
+                f"timer). Got {len(all_post_handshake_tx)} TX "
+                "frames in the post-handshake window, none "
+                "carrying the rejected data "
+                f"({early_data!r})."
+            ),
+        )
