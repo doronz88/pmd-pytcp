@@ -429,3 +429,114 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
                 f"flags={ack.flags!r}."
             ),
         )
+
+    def test__ecn__inbound_ece_halves_ssthresh_and_cwnd(self) -> None:
+        """
+        Ensure that when an ECN-capable sender receives an
+        inbound ACK carrying the ECE flag - the wire signal
+        that the receiver observed a CE-marked segment along
+        the forward path - the sender treats it as a single-
+        packet loss event per RFC 3168 §6.1.2: ssthresh is
+        halved (clamped at 2*SMSS) and cwnd is collapsed to
+        ssthresh. This is the substrate response that lets
+        ECN drive cwnd reduction without the latency penalty
+        of detecting loss via timeout or three dup-ACKs.
+
+        Reference: RFC 3168 §6.1.2 (sender-side cwnd reduction on ECE).
+        """
+
+        session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Send some data so flight_size > 0; the ssthresh
+        # halving formula is max(flight_size/2, 2*SMSS) and
+        # we want a deterministic non-floor value to assert
+        # against.
+        payload = b"x" * 4000  # spans multiple MSS-sized segments
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        snd_mss = session._snd_mss
+        flight_size_before = (session._snd_max - session._snd_una) & 0xFFFF_FFFF
+        expected_ssthresh = max(flight_size_before // 2, 2 * snd_mss)
+
+        # Peer sends an ACK with ECE - the sender's wire
+        # signal that a CE-marked segment was observed.
+        ece_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "ECE"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=ece_ack)
+
+        self.assertEqual(
+            session._ssthresh,
+            expected_ssthresh,
+            msg=(
+                "RFC 3168 §6.1.2 / RFC 5681 §3.1: on inbound ECE the "
+                "sender MUST halve ssthresh to 'max(flight_size/2, "
+                "2*SMSS)'. Pre-ECE flight_size was "
+                f"{flight_size_before}, expected ssthresh "
+                f"{expected_ssthresh}, got {session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            expected_ssthresh,
+            msg=(
+                "RFC 3168 §6.1.2: on inbound ECE the sender MUST "
+                "collapse cwnd to ssthresh. Got "
+                f"cwnd={session._cwnd}, ssthresh={session._ssthresh}."
+            ),
+        )
+
+    def test__ecn__cwr_set_on_next_data_segment_after_inbound_ece(self) -> None:
+        """
+        Ensure that after the sender has reduced cwnd in
+        response to an inbound ECE, the CWR flag is set on
+        the first new outbound data segment. CWR is the
+        sender's wire confirmation to the receiver that the
+        ECN response has been applied; the receiver uses CWR
+        to stop echoing ECE on subsequent ACKs (RFC 3168
+        §6.1.3).
+
+        Reference: RFC 3168 §6.1.2 (sender-side CWR confirmation).
+        """
+
+        session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Peer sends an ACK with ECE, before we send any data
+        # so the cwnd-halve doesn't strangle the test.
+        ece_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "ECE"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=ece_ack)
+
+        # Send some data; the next outbound segment must
+        # carry CWR.
+        session.send(data=b"hello, cwr!")
+        data_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(data_tx),
+            1,
+            msg=("Setup precondition: the post-ECE data send MUST emit " "a single outbound segment on the next tick."),
+        )
+        data = self._parse_tx(data_tx[0])
+
+        self.assertIn(
+            "CWR",
+            data.flags,
+            msg=(
+                "RFC 3168 §6.1.2: after responding to an inbound ECE "
+                "with cwnd reduction, the sender MUST set the CWR flag "
+                "on the first new outbound data segment as the wire "
+                "confirmation to the receiver. Got "
+                f"flags={data.flags!r}."
+            ),
+        )
