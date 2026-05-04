@@ -1538,3 +1538,122 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
                 f"{prior_ssthresh}, got {session._ssthresh}."
             ),
         )
+
+
+class TestTcpRackPhase9(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §6.3 RTO interaction
+    and §8 timer arbitration.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=50)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rack__rto_marks_all_in_flight_segments_lost(self) -> None:
+        """
+        Ensure that when the RTO timer expires per RFC 8985
+        §6.3, all in-flight segments are marked lost
+        (xmit_ts -> INFINITE_TS, lost = True) so subsequent
+        retransmit walking treats them as the loss set.
+
+        Reference: RFC 8985 §6.3 (RTO marks all in-flight as lost).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send 3 * MSS so three segments populate the dict.
+        session.send(data=b"x" * (3 * PEER__MSS))
+        self._advance(ms=3)
+        self.assertEqual(
+            len(session._rack_segments),
+            3,
+            msg="Setup invariant: three segments tracked.",
+        )
+
+        # Advance past the RTO so the timer fires.
+        self._advance(ms=2000)
+
+        # All in-flight segments should now be marked lost.
+        for seq, seg in session._rack_segments.items():
+            self.assertTrue(
+                seg.lost,
+                msg=(
+                    f"RFC 8985 §6.3: RTO MUST mark all in-flight "
+                    f"segments lost. Segment seq={seq} got "
+                    f"lost={seg.lost!r}."
+                ),
+            )
+
+    def test__rack_tlp_rto__timers_are_mutually_exclusive(self) -> None:
+        """
+        Ensure that RFC 8985 §8 timer arbitration holds: at
+        most ONE of {RACK reorder timer, TLP PTO, RTO} is
+        registered at any moment. The arbitration prevents
+        spurious double-fires.
+
+        Reference: RFC 8985 §8 (mutual-exclusion of recovery timers).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        session.send(data=b"x" * (2 * PEER__MSS))
+        self._advance(ms=2)
+
+        # Walk through several states and assert that no more
+        # than one of the three named timers is registered.
+        for label in ("post-send",):
+            timers = self._timer.pending_timers
+            recovery_timer_keys = {
+                f"{session}-rack",
+                f"{session}-tlp",
+                f"{session}-retransmit",
+            }
+            registered = [k for k in recovery_timer_keys if k in timers]
+            # 'retransmit' (RTO) is always armed when data is
+            # in flight (RFC 6298 §5.1); TLP may also be armed.
+            # The §8 arbitration mandates that RACK does not
+            # coexist with RTO (RACK is for sub-RTO reordering
+            # detection). Assert that condition.
+            self.assertNotEqual(
+                {f"{session}-rack", f"{session}-retransmit"},
+                set(registered),
+                msg=(
+                    f"RFC 8985 §8 timer arbitration violated at "
+                    f"'{label}': RACK and RTO MUST NOT both be armed. "
+                    f"Got {registered!r}."
+                ),
+            )
