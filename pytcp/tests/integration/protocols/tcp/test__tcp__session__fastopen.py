@@ -64,7 +64,7 @@ pytcp/tests/integration/protocols/tcp/test__tcp__session__fastopen.py
 ver 3.0.4
 """
 
-from net_addr import Ip4Address
+from net_addr import Ip4Address, Ip6Address
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
@@ -75,15 +75,21 @@ from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
+    HOST_A__IP6_ADDRESS,
     STACK__IP4_HOST,
+    STACK__IP6_HOST,
 )
-from pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4, build_tcp6
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 LISTEN__PORT: int = 80
 PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
+
+# IPv6 addressing for the IPv6 regression-guard scenario.
+STACK__IP6: Ip6Address = STACK__IP6_HOST.address
+PEER__IP6: Ip6Address = HOST_A__IP6_ADDRESS
 
 # Listen-side ISS pinned for deterministic SYN+ACK seq numbers.
 LOCAL__ISS: int = 0x0000_3000
@@ -986,5 +992,99 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"Newest cookie (peer={peers[-1]}) MUST be "
                 f"present and equal to {cookies[-1]!r}. Got "
                 f"{stack.tcp__fastopen_cookies.get(peers[-1])!r}."
+            ),
+        )
+
+    def test__fastopen__server_issues_cookie_on_tfo_request_syn_over_ipv6(self) -> None:
+        """
+        Ensure that the server-side TFO cookie issuance
+        path works for IPv6 peers identically to IPv4.
+        Regression guard for the IP-version-agnostic
+        contract: 'TcpOptionFastOpen' is wire-format only,
+        'generate_cookie' accepts 'Ip4Address | Ip6Address'
+        and uses 'bytes(peer_address)' as HMAC input
+        (4 bytes for IPv4, 16 bytes for IPv6 - both stable
+        keys), and the LISTEN handler reads
+        'packet_rx_md.ip__remote_address' polymorphically.
+        Without this guard, a future change that
+        accidentally hard-coded IPv4-only behaviour (e.g.
+        truncating the address bytes to 4) would not be
+        caught by the existing IPv4-only TFO test surface.
+
+        Reference: RFC 7413 §3.1 (server-side cookie issuance, IP-version-agnostic).
+        """
+
+        self._force_iss(LOCAL__ISS)
+        sock = TcpSocket(family=AddressFamily.INET6)
+        sock._local_ip_address = STACK__IP6
+        sock._local_port = LISTEN__PORT
+        sock._remote_ip_address = Ip6Address()
+        sock._remote_port = 0
+        sock._tcp_fastopen_qlen = 16  # opt in to TFO
+        session = TcpSession(
+            local_ip_address=STACK__IP6,
+            local_port=LISTEN__PORT,
+            remote_ip_address=Ip6Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=SysCall.LISTEN)
+
+        peer_syn_tfo_request = build_tcp6(
+            src_ip=PEER__IP6,
+            dst_ip=STACK__IP6,
+            sport=PEER__PORT_FOR_FASTOPEN,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=b"",
+        )
+        self._drive_rx(frame=peer_syn_tfo_request)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        self.assertIsInstance(
+            syn_ack.ip_src,
+            Ip6Address,
+            msg="Setup precondition: outbound SYN+ACK MUST be carried over IPv6.",
+        )
+        self.assertIsNotNone(
+            syn_ack.fastopen_cookie,
+            msg=(
+                "RFC 7413 §3.1: SYN+ACK to an IPv6 TFO-request "
+                "SYN MUST carry a non-empty cookie identical "
+                "to the IPv4 path. Got "
+                f"fastopen_cookie={syn_ack.fastopen_cookie!r}."
+            ),
+        )
+        assert syn_ack.fastopen_cookie is not None  # mypy
+        cookie_len = len(syn_ack.fastopen_cookie)
+        self.assertGreaterEqual(
+            cookie_len,
+            4,
+            msg=(
+                "RFC 7413 §2: TFO cookie length MUST be at "
+                f"least 4 bytes for IPv6 peers as well. Got "
+                f"{cookie_len} bytes."
+            ),
+        )
+        self.assertLessEqual(
+            cookie_len,
+            16,
+            msg=(
+                "RFC 7413 §2: TFO cookie length MUST be at "
+                f"most 16 bytes for IPv6 peers as well. Got "
+                f"{cookie_len} bytes."
             ),
         )
