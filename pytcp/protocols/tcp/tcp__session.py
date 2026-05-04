@@ -62,6 +62,7 @@ from pytcp.protocols.tcp.tcp__rack import (
     rack_detect_loss,
     rack_update,
     tlp_calc_pto,
+    tlp_process_ack,
 )
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
@@ -3054,15 +3055,45 @@ class TcpSession:
             # 'f"{self}-retransmit_seq-X"' keys too, though
             # Phase 3 no longer creates those.
             self._retransmit_count = 0
+            # RFC 8985 §7.4 TLP loss-detection on inbound ACK.
+            # Apply BEFORE the cum-ACK drain hook so a Case-3
+            # ('ack > tlp_end_seq') ACK that also drains the
+            # tail can invoke the §7.4.2 CC response. Returns
+            # the new '_tlp_end_seq' (None on outcome
+            # determined; preserved otherwise) and a flag
+            # indicating whether to halve cwnd / ssthresh.
+            new_tlp_end_seq, invoke_cc = tlp_process_ack(
+                tlp_end_seq=self._tlp_end_seq,
+                tlp_is_retrans=self._tlp_is_retrans,
+                ack_seq=packet_rx_md.tcp__ack,
+                has_dsack_for_probe=(self._dsack_received > 0),
+                has_sack_blocks=bool(self._sack_scoreboard.blocks()),
+            )
+            self._tlp_end_seq = new_tlp_end_seq
+            if invoke_cc:
+                # RFC 8985 §7.4.2: probe repaired a single
+                # tail loss; the network signalled a real
+                # loss event so apply the conventional
+                # cwnd halving (ssthresh = max(flight/2,
+                # 2*SMSS); cwnd = ssthresh).
+                from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
+
+                flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                self._cwnd = self._ssthresh
+                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair " f"CC: ssthresh={self._ssthresh} cwnd={self._cwnd}",
+                )
             if self._snd_una == self._snd_max:
                 stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
                 # RFC 8985 §7.2 TLP cancellation: when a
                 # cum-ACK drains all in-flight bytes, there is
                 # no tail to probe. Cancel the TLP timer so a
                 # late expiry does not fire a stale probe.
-                # Also clear the once-per-tail '_tlp_end_seq'
-                # marker so the next tail can fire its own
-                # probe.
+                # Also clear the once-per-tail state so the
+                # next tail can fire its own probe.
                 stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
                 self._tlp_end_seq = None
                 self._tlp_is_retrans = False
