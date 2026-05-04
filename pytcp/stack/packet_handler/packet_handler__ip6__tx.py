@@ -89,6 +89,7 @@ class PacketHandlerIp6Tx(ABC):
         ip6__dst: Ip6Address,
         ip6__src: Ip6Address,
         ip6__hop: int = IP6__DEFAULT_HOP_LIMIT,
+        ip6__ecn: int = 0,
         ip6__payload: Ip6Payload = RawAssembler(),
     ) -> TxStatus:
         """
@@ -129,6 +130,7 @@ class PacketHandlerIp6Tx(ABC):
             ip6__src=ip6__src,
             ip6__dst=ip6__dst,
             ip6__hop=ip6__hop,
+            ip6__ecn=ip6__ecn,
             ip6__payload=ip6__payload,
         )
 

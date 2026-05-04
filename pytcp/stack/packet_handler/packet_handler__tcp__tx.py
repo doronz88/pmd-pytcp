@@ -83,6 +83,7 @@ class PacketHandlerTcpTx(ABC):
             ip6__dst: Ip6Address,
             ip6__src: Ip6Address,
             ip6__hop: int = IP6__DEFAULT_HOP_LIMIT,
+            ip6__ecn: int = 0,
             ip6__payload: Ip6Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -92,6 +93,7 @@ class PacketHandlerTcpTx(ABC):
             ip4__dst: Ip4Address,
             ip4__src: Ip4Address,
             ip4__ttl: int = IP4__DEFAULT_TTL,
+            ip4__ecn: int = 0,
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -100,6 +102,7 @@ class PacketHandlerTcpTx(ABC):
         *,
         ip__src: Ip6Address | Ip4Address,
         ip__dst: Ip6Address | Ip4Address,
+        ip__ecn: int = 0,
         tcp__sport: int,
         tcp__dport: int,
         tcp__seq: int = 0,
@@ -228,6 +231,7 @@ class PacketHandlerTcpTx(ABC):
                 return self._phtx_ip6(
                     ip6__src=cast(Ip6Address, ip__src),
                     ip6__dst=cast(Ip6Address, ip__dst),
+                    ip6__ecn=ip__ecn,
                     ip6__payload=tcp_packet_tx,
                 )
             case False, False, True, True:
@@ -235,6 +239,7 @@ class PacketHandlerTcpTx(ABC):
                 return self._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
+                    ip4__ecn=ip__ecn,
                     ip4__payload=tcp_packet_tx,
                 )
             case _:
@@ -245,6 +250,7 @@ class PacketHandlerTcpTx(ABC):
         *,
         ip__local_address: Ip6Address | Ip4Address,
         ip__remote_address: Ip6Address | Ip4Address,
+        ip__ecn: int = 0,
         tcp__local_port: int,
         tcp__remote_port: int,
         tcp__flag_syn: bool = False,
@@ -272,6 +278,7 @@ class PacketHandlerTcpTx(ABC):
 
         return self._phtx_tcp(
             ip__src=ip__local_address,
+            ip__ecn=ip__ecn,
             ip__dst=ip__remote_address,
             tcp__sport=tcp__local_port,
             tcp__dport=tcp__remote_port,

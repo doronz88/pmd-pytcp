@@ -1136,9 +1136,19 @@ class TcpSession:
             # SYN+ACK carries a TFO cookie.
             tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
 
+        # RFC 3168 §6.1.5: when bilateral ECN has been
+        # negotiated, every outbound data segment MUST set
+        # the IP ECN field to ECT(0) ('10' = 2) so routers
+        # along the path can mark it on congestion via the
+        # CE codepoint. §6.1.1 forbids ECT on SYNs and §6.1.6
+        # advises against ECT on pure ACKs / FIN-only / RST,
+        # so the marking is gated on the segment carrying a
+        # TCP payload.
+        ip__ecn = 2 if (self._ecn_enabled and data) else 0
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
+            ip__ecn=ip__ecn,
             tcp__local_port=self._local_port,
             tcp__remote_port=self._remote_port,
             tcp__flag_syn=flag_syn,

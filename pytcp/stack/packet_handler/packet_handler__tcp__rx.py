@@ -60,6 +60,7 @@ class PacketHandlerTcpRx(ABC):
             *,
             ip__src: IpAddress,
             ip__dst: IpAddress,
+            ip__ecn: int = 0,
             tcp__sport: int,
             tcp__dport: int,
             tcp__seq: int = 0,
