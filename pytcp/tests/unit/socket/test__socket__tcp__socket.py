@@ -43,6 +43,7 @@ from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
+    TCP_FASTOPEN,
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
@@ -1012,4 +1013,68 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             self._session_cls.return_value._keepalive_max_count_override,
             5,
             msg="connect() must propagate TCP_KEEPCNT override to session.",
+        )
+
+    def test__tcp_socket__getsockopt__tcp_fastopen_default_zero(self) -> None:
+        """
+        Ensure a freshly-constructed 'TcpSocket' reports
+        'TCP_FASTOPEN = 0' from 'getsockopt'. The Linux
+        convention treats the value as the TFO accept queue
+        depth, with 0 meaning "TFO disabled" - the default
+        for a socket that has not opted in via
+        'setsockopt'.
+
+        Reference: RFC 7413 §3.1 (server opts in to TFO via setsockopt).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_FASTOPEN),
+            0,
+            msg=(
+                "TCP_FASTOPEN MUST default to 0 (TFO disabled) "
+                "on a freshly-constructed socket; the application "
+                "explicitly opts in by calling 'setsockopt"
+                "(IPPROTO_TCP, TCP_FASTOPEN, qlen)' with a "
+                "positive queue depth."
+            ),
+        )
+
+    def test__tcp_socket__setsockopt__tcp_fastopen_round_trips(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_FASTOPEN, qlen)'
+        stores the queue depth and a subsequent 'getsockopt'
+        returns the same value.
+
+        Reference: RFC 7413 §3.1 (server-side TFO enable via setsockopt).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 16)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_FASTOPEN),
+            16,
+            msg=("setsockopt(TCP_FASTOPEN, 16) followed by " "getsockopt must round-trip as 16."),
+        )
+
+    def test__tcp_socket__setsockopt__tcp_fastopen_zero_disables(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 0)'
+        after a previous '..., qlen)' clears the option. The
+        application MUST be able to disable TFO on a
+        previously-enabled socket.
+
+        Reference: RFC 7413 §3.1 (server opt-out via setsockopt qlen=0).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 16)
+        s.setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_FASTOPEN),
+            0,
+            msg=("setsockopt(TCP_FASTOPEN, 0) after a prior " "enable must clear the option."),
         )
