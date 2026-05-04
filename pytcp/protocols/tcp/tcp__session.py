@@ -56,6 +56,7 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
+from pytcp.protocols.tcp.tcp__rack import RackSegment
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -442,6 +443,18 @@ class TcpSession:
         # Useful for spurious-retransmit observability; phase 7
         # does not yet wire it into RTO / cwnd.
         self._dsack_received: int = 0
+
+        # RFC 8985 §5.2 RACK per-segment xmit_ts dict, keyed by
+        # the segment's starting seq. Populated by
+        # '_transmit_packet' for every outbound segment that
+        # consumes sequence space (data / SYN / FIN); pruned by
+        # '_process_ack_packet' on cum-ACK that covers the
+        # entry's 'end_seq'. Phase 1 of the RACK-TLP project
+        # ships only the storage substrate; subsequent phases
+        # consume it for time-based loss detection (§6.2 step
+        # 5), reorder-window adaptation (§6.2 steps 3-4), and
+        # TLP probe-segment selection (§7.3).
+        self._rack_segments: dict[Seq32, RackSegment] = {}
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
