@@ -81,6 +81,8 @@ class TcpProbe:
 
     ip_src: Ip6Address | Ip4Address
     ip_dst: Ip6Address | Ip4Address
+    # RFC 3168 §5: IP ECN field - 0=Not-ECT, 1=ECT(1), 2=ECT(0), 3=CE.
+    ip_ecn: int
     sport: int
     dport: int
     seq: int
@@ -253,6 +255,7 @@ class TcpSessionTestCase(NetworkTestCase):
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
+            ip_ecn=packet_rx.ip.ecn,
             sport=packet_rx.tcp.sport,
             dport=packet_rx.tcp.dport,
             seq=packet_rx.tcp.seq,

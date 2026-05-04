@@ -53,6 +53,7 @@ ver 3.0.4
 from net_addr import Ip4Address  # noqa: F401
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
+    FsmState,
     SysCall,
     TcpSession,
 )
@@ -227,5 +228,136 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
                 "session after the passive-open SYN+ACK "
                 "fires. Got "
                 f"_ecn_enabled={session._ecn_enabled}."
+            ),
+        )
+
+    def test__ecn__active_open_peer_syn_ack_with_ece_sets_ecn_enabled(self) -> None:
+        """
+        Ensure that on the active-open side, when our SYN
+        carried ECE+CWR and the peer's SYN+ACK confirms with
+        ECE, the session sets '_ecn_enabled = True'. This is
+        the second half of the bilateral ECN negotiation
+        (the first half is the passive-open confirmation in
+        the previous test) - the client side must read the
+        peer's SYN+ACK echo and lock in ECN for the data
+        path.
+
+        Reference: RFC 3168 §6.1.1 (active-open bilateral ECN confirmation).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "ECE"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=("Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."),
+        )
+        self.assertTrue(
+            session._ecn_enabled,
+            msg=(
+                "RFC 3168 §6.1.1: when our active-open SYN carried "
+                "ECE+CWR and the peer's SYN+ACK echoes ECE, "
+                "'_ecn_enabled' MUST become True on the session. "
+                f"Got _ecn_enabled={session._ecn_enabled}."
+            ),
+        )
+
+    def _drive_handshake_to_established_with_ecn(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Drive an active-open three-way handshake to ESTABLISHED
+        with bilateral ECN successfully negotiated. The peer's
+        SYN+ACK carries ECE only (the canonical RFC 3168 §6.1.1
+        passive-side confirmation). After this returns, the
+        session has '_ecn_enabled = True'.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+
+        # SYN fires on the first tick.
+        self._advance(ms=1)
+
+        # Peer's SYN+ACK confirms ECN with ECE alone.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK", "ECE"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED, (
+            "Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."
+        )
+        assert session._ecn_enabled, (
+            "Setup precondition: bilateral ECN negotiation must succeed "
+            "(client SYN ECE+CWR, peer SYN+ACK ECE). Got "
+            f"_ecn_enabled={session._ecn_enabled}."
+        )
+        return session
+
+    def test__ecn__data_segment_carries_ect_zero_in_ip_header(self) -> None:
+        """
+        Ensure that once bilateral ECN negotiation has succeeded
+        ('_ecn_enabled = True'), every outbound data segment
+        carries the ECT(0) codepoint (binary '10' = 2) in the
+        IP header's 2-bit ECN field. Routers along the path use
+        this codepoint as the signal "this flow is ECN-capable;
+        instead of dropping me on congestion, mark me with the
+        CE codepoint and let the receiver echo the mark via
+        ECE." A receiver that sees a non-ECT segment knows the
+        flow is not ECN-capable and falls back to drop-driven
+        congestion signaling.
+
+        Reference: RFC 3168 §6.1.5 (ECT codepoint on data packets of an ECN-capable connection).
+        """
+
+        session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        bytes_sent = session.send(data=b"hello, ecn!")
+        self.assertEqual(
+            bytes_sent,
+            len(b"hello, ecn!"),
+            msg=("Setup precondition: 'session.send' must return the " f"full payload length. Got {bytes_sent}."),
+        )
+
+        data_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(data_tx),
+            1,
+            msg=("Setup precondition: outbound data segment MUST fire " "on the next tick after 'send'."),
+        )
+        data = self._parse_tx(data_tx[0])
+
+        self.assertEqual(
+            data.payload,
+            b"hello, ecn!",
+            msg="Setup precondition: outbound segment must carry the application's payload.",
+        )
+        self.assertEqual(
+            data.ip_ecn,
+            2,
+            msg=(
+                "RFC 3168 §6.1.5: every outbound data segment of an "
+                "ECN-capable TCP connection MUST set the IP ECN field "
+                "to ECT(0) (binary '10' = 2). Got "
+                f"ip_ecn={data.ip_ecn} (0=Not-ECT, 1=ECT(1), 2=ECT(0), "
+                "3=CE)."
             ),
         )
