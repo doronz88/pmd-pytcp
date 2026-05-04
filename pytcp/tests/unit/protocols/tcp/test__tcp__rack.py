@@ -51,6 +51,7 @@ from unittest import TestCase
 from pytcp.protocols.tcp.tcp__rack import (
     INFINITE_TS,
     RackSegment,
+    rack_detect_loss,
     rack_sent_after,
     rack_update,
 )
@@ -439,3 +440,129 @@ class TestRackUpdate(TestCase):
 
         self.assertEqual(rack_xmit_ts, 300, msg="RACK.xmit_ts must equal max xmit_ts.")
         self.assertEqual(rack_end_seq, 2000, msg="RACK.end_seq must pair with RACK.xmit_ts.")
+
+
+class TestRackDetectLoss(TestCase):
+    """
+    The 'rack_detect_loss' RFC 8985 §6.2 step 5 tests.
+    """
+
+    def test__rack__detect_loss__sent_before_segment_marked_lost_with_zero_reo_wnd(self) -> None:
+        """
+        Ensure a segment that RACK was 'sent after' AND whose
+        reordering window has elapsed (zero in this case) is
+        marked lost, with xmit_ts overwritten to INFINITE_TS.
+
+        Reference: RFC 8985 §6.2 step 5 (mark segment lost).
+        """
+
+        # seg1 sent at t=100; seg2 sent at t=200 and delivered.
+        # RACK.xmit_ts = 200, RACK.end_seq = 2000.
+        segments = {
+            1000: RackSegment(end_seq=2000, xmit_ts=100, retransmitted=False, lost=False),
+        }
+        new_segments, timeout = rack_detect_loss(
+            segments=segments,
+            rack_xmit_ts=200,
+            rack_end_seq=3000,
+            reo_wnd_ms=0,
+            now_ms=300,
+        )
+
+        self.assertTrue(
+            new_segments[1000].lost,
+            msg="A 'sent before' segment past reo_wnd MUST be marked lost.",
+        )
+        self.assertEqual(
+            new_segments[1000].xmit_ts,
+            INFINITE_TS,
+            msg="A lost segment's xmit_ts MUST be set to INFINITE_TS.",
+        )
+        self.assertEqual(timeout, 0, msg="No timer needed when all candidates marked lost.")
+
+    def test__rack__detect_loss__within_reo_wnd_arms_timer(self) -> None:
+        """
+        Ensure that a 'sent before' segment whose reo_wnd has
+        not yet elapsed is NOT marked lost; the helper instead
+        returns the timeout to arm a reordering timer.
+
+        Reference: RFC 8985 §6.2 step 5 (timer arming on pending candidate).
+        """
+
+        # seg1 sent at t=200; reo_wnd=100; now=250.
+        # 250 - 200 = 50 < 100 -> within reo_wnd.
+        # Timeout = 200 + 100 - 250 = 50.
+        segments = {
+            1000: RackSegment(end_seq=2000, xmit_ts=200, retransmitted=False, lost=False),
+        }
+        new_segments, timeout = rack_detect_loss(
+            segments=segments,
+            rack_xmit_ts=240,
+            rack_end_seq=3000,
+            reo_wnd_ms=100,
+            now_ms=250,
+        )
+
+        self.assertFalse(
+            new_segments[1000].lost,
+            msg="A 'sent before' segment within reo_wnd MUST NOT be marked lost.",
+        )
+        self.assertEqual(
+            timeout,
+            50,
+            msg="The returned timer MUST equal the earliest pending xmit_ts + reo_wnd - now.",
+        )
+
+    def test__rack__detect_loss__sent_after_segment_unaffected(self) -> None:
+        """
+        Ensure a segment that was sent AFTER RACK is not a
+        loss candidate and remains unchanged.
+
+        Reference: RFC 8985 §6.2 step 5 (rack_sent_after gate).
+        """
+
+        # seg sent at t=300 > RACK.xmit_ts=200; RACK was sent
+        # before this segment, so it's not a candidate.
+        segments = {
+            1000: RackSegment(end_seq=2000, xmit_ts=300, retransmitted=False, lost=False),
+        }
+        new_segments, timeout = rack_detect_loss(
+            segments=segments,
+            rack_xmit_ts=200,
+            rack_end_seq=1500,
+            reo_wnd_ms=0,
+            now_ms=400,
+        )
+
+        self.assertFalse(
+            new_segments[1000].lost,
+            msg="A 'sent after' segment MUST NOT be marked lost.",
+        )
+        self.assertEqual(timeout, 0, msg="No timer needed when no candidates exist.")
+
+    def test__rack__detect_loss__already_lost_segment_unchanged(self) -> None:
+        """
+        Ensure an already-lost segment ('seg.lost is True') is
+        skipped: the algorithm only acts on first-time loss
+        detection.
+
+        Reference: RFC 8985 §6.2 step 5 (already-lost skip).
+        """
+
+        segments = {
+            1000: RackSegment(end_seq=2000, xmit_ts=INFINITE_TS, retransmitted=True, lost=True),
+        }
+        new_segments, timeout = rack_detect_loss(
+            segments=segments,
+            rack_xmit_ts=300,
+            rack_end_seq=4000,
+            reo_wnd_ms=0,
+            now_ms=400,
+        )
+
+        self.assertEqual(
+            new_segments,
+            segments,
+            msg="An already-lost segment MUST be returned unchanged.",
+        )
+        self.assertEqual(timeout, 0, msg="Already-lost segments do not contribute to the timer.")

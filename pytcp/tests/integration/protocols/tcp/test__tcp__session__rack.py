@@ -541,3 +541,105 @@ class TestTcpRackPhase2(TcpSessionTestCase):
                 f"smaller; got {session._rack_min_rtt_ms}."
             ),
         )
+
+
+class TestTcpRackPhase3(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §6.2 step 5 time-based
+    loss detection: a segment marked lost when a later-sent
+    segment was delivered (cum-ACKed or SACKed) and reo_wnd
+    has elapsed.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rack__time_based_loss_detection_marks_old_segment_lost(self) -> None:
+        """
+        Ensure that when peer SACKs a later-sent segment but
+        the earlier segment is the gap, RACK time-based loss
+        detection marks the earlier segment lost (its
+        'xmit_ts' replaced with INFINITE_TS, 'lost = True').
+
+        Reference: RFC 8985 §6.2 step 5 (time-based loss detection).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send 2 * MSS so two distinct segments fire on
+        # consecutive ticks. The first segment lives at seq
+        # LOCAL__ISS + 1; the second at LOCAL__ISS + 1 + MSS.
+        session.send(data=b"x" * (2 * PEER__MSS))
+        self._advance(ms=2)
+        self.assertEqual(
+            len(session._rack_segments),
+            2,
+            msg=f"Setup invariant: two segments in flight. Got: {sorted(session._rack_segments)}.",
+        )
+
+        first_seg_seq = LOCAL__ISS + 1
+        second_seg_seq = LOCAL__ISS + 1 + PEER__MSS
+        # Allow elapsed time so the SACKed segment will give RACK.xmit_ts > first_seg.xmit_ts.
+        self._advance(ms=10)
+
+        # Peer SACKs only the SECOND segment (range [second_seg_seq, second_seg_seq + MSS]).
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,  # cum-ACK does not advance
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(second_seg_seq, second_seg_seq + PEER__MSS)],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        first_seg = session._rack_segments.get(first_seg_seq)
+        self.assertIsNotNone(
+            first_seg,
+            msg="Setup invariant: first segment must remain in dict (not cum-ACKed).",
+        )
+        assert first_seg is not None
+        self.assertTrue(
+            first_seg.lost,
+            msg=(
+                "RFC 8985 §6.2 step 5: a segment whose later sibling has "
+                "been SACK-acked AND reo_wnd elapsed MUST be marked lost. "
+                f"Got first_seg={first_seg!r}."
+            ),
+        )

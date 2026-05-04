@@ -231,3 +231,83 @@ def rack_update(
             rack_end_seq = seg.end_seq
 
     return min_rtt_ms, rack_rtt_ms, rack_xmit_ts, rack_end_seq
+
+
+def rack_detect_loss(
+    *,
+    segments: dict[int, RackSegment],
+    rack_xmit_ts: int,
+    rack_end_seq: int,
+    reo_wnd_ms: int,
+    now_ms: int,
+) -> tuple[dict[int, RackSegment], int]:
+    """
+    Apply the RFC 8985 §6.2 step 5 time-based loss detection.
+    Iterates 'segments' and marks a segment lost iff:
+
+      1. It is not already lost ('seg.lost is False'), AND
+      2. RACK was 'sent after' it lexicographically
+         (rack_xmit_ts, rack_end_seq) > (seg.xmit_ts, seg.end_seq), AND
+      3. 'now_ms - seg.xmit_ts > reo_wnd_ms' (the reordering
+         tolerance has elapsed since the segment was sent).
+
+    A segment in flight that satisfies (1) + (2) but not (3) is
+    a 'reorder-window pending' candidate; the helper computes
+    the earliest 'seg.xmit_ts + reo_wnd_ms - now_ms' across
+    those candidates so the caller can arm a reordering timer.
+
+    Marking a segment lost replaces it in the returned dict
+    with a fresh 'RackSegment' having 'lost=True' and
+    'xmit_ts=INFINITE_TS' per RFC 8985 §5.2: the lost segment
+    is no longer in flight, and subsequent invocations of this
+    function will skip it via condition (1).
+
+    Parameters:
+        segments:        the per-segment dict (typically
+                         'TcpSession._rack_segments').
+        rack_xmit_ts:    'RACK.xmit_ts' from the most recent
+                         rack_update.
+        rack_end_seq:    'RACK.end_seq' from the most recent
+                         rack_update.
+        reo_wnd_ms:      reordering window in milliseconds.
+                         Phase 3 uses 0 (no reordering
+                         tolerance); Phase 4 computes it via
+                         rack_compute_reo_wnd.
+        now_ms:          virtual clock at the moment of the
+                         loss-detection check.
+
+    Returns:
+        (new_segments_dict, timeout_ms)
+        'timeout_ms == 0' means no reordering-window timer is
+        needed (no candidate satisfied (1)+(2) but not (3)).
+        'timeout_ms > 0' is the earliest 'seg.xmit_ts +
+        reo_wnd_ms - now_ms' across the pending candidates;
+        the caller arms a single timer with that timeout.
+    """
+
+    new_segments: dict[int, RackSegment] = {}
+    timeout_ms = 0
+
+    for seq, seg in segments.items():
+        if seg.lost:
+            new_segments[seq] = seg
+            continue
+        if not rack_sent_after(rack_xmit_ts, rack_end_seq, seg.xmit_ts, seg.end_seq):
+            new_segments[seq] = seg
+            continue
+        # RACK is 'sent after' this segment - it is a loss
+        # candidate. Apply the reordering-window check.
+        if now_ms - seg.xmit_ts > reo_wnd_ms:
+            new_segments[seq] = RackSegment(
+                end_seq=seg.end_seq,
+                xmit_ts=INFINITE_TS,
+                retransmitted=seg.retransmitted,
+                lost=True,
+            )
+        else:
+            seg_timeout = seg.xmit_ts + reo_wnd_ms - now_ms
+            if timeout_ms == 0 or seg_timeout < timeout_ms:
+                timeout_ms = seg_timeout
+            new_segments[seq] = seg
+
+    return new_segments, timeout_ms
