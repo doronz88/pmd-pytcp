@@ -559,3 +559,64 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"got {second_syn.fastopen_cookie!r}."
             ),
         )
+
+    def test__fastopen__active_open_syn_carries_data_when_cookie_cached(self) -> None:
+        """
+        Ensure that on an active-open with a cached TFO
+        cookie for the peer AND pre-loaded send-buffer
+        data, the outbound SYN carries the data payload
+        alongside the cookie. This is the round-trip
+        saving that gives TCP Fast Open its name: the
+        client sends application data piggybacked on the
+        SYN itself, and a cooperating server accepts the
+        data immediately on cookie validation rather than
+        waiting for the third-leg ACK to start data
+        transfer.
+
+        Reference: RFC 7413 §3.1 (client subsequent connect: SYN-with-data).
+        """
+
+        cached_cookie = b"\x12\x34\x56\x78\x9a\xbc\xde\xf0"
+        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        # Pre-load the TX buffer with application data the
+        # caller wants to attach to the SYN. Mirrors the
+        # BSD-style 'sendto(MSG_FASTOPEN, data, server)'
+        # entry path: the data is queued before 'connect()'
+        # so the TFO-aware SYN emit can slice it onto the
+        # wire.
+        early_data = b"GET / HTTP/1.1\r\n"
+        session._tx_buffer.extend(early_data)
+
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        syn_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_tx),
+            1,
+            msg="Setup precondition: SYN MUST fire on the next tick.",
+        )
+        syn = self._parse_tx(syn_tx[0])
+
+        # The spec encoding: SYN carries cached cookie.
+        self.assertEqual(
+            syn.fastopen_cookie,
+            cached_cookie,
+            msg=(
+                "RFC 7413 §3.1: active-open SYN with a "
+                "cached cookie MUST replay it on the wire. "
+                f"Expected {cached_cookie!r}, got "
+                f"{syn.fastopen_cookie!r}."
+            ),
+        )
+        # The spec encoding: SYN carries the pre-loaded data.
+        self.assertEqual(
+            syn.payload,
+            early_data,
+            msg=(
+                "RFC 7413 §3.1: active-open SYN with a "
+                "cached cookie MUST carry the pre-loaded "
+                f"send-buffer data. Expected {early_data!r}, "
+                f"got {syn.payload!r}."
+            ),
+        )
