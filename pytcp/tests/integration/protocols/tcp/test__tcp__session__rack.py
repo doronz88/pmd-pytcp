@@ -886,3 +886,159 @@ class TestTcpRackPhase4(TcpSessionTestCase):
             16,
             msg="reo_wnd_persist MUST reset to 16 after the decay fires.",
         )
+
+
+class TestTcpRackPhase5(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §6.2 step 5 + §8 RACK
+    reordering timer: when 'rack_detect_loss' returns a
+    positive 'timeout_ms', the session arms a single
+    f'{session}-rack' timer that, on expiry, re-runs the
+    loss-detection check.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rack__reorder_timer_arms_when_segment_below_threshold(self) -> None:
+        """
+        Ensure that when 'rack_detect_loss' has a 'sent before'
+        candidate within the reordering window (reo_wnd > 0
+        and 'now - xmit_ts' below it), the session arms the
+        'f"{session}-rack"' reordering timer with the
+        appropriate timeout.
+
+        Reference: RFC 8985 §6.2 step 5 (reordering timer arming).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Pre-seed reordering state so reo_wnd is > 0.
+        session._rack_reordering_seen = True
+        session._rack_min_rtt_ms = 100  # reo_wnd = 100 / 4 = 25 ms.
+
+        # Send 2 * MSS so two segments fire on consecutive ticks.
+        session.send(data=b"x" * (2 * PEER__MSS))
+        self._advance(ms=2)
+        seg2_seq = LOCAL__ISS + 1 + PEER__MSS
+        seg2_end = seg2_seq + PEER__MSS
+
+        # Advance just enough that seg1's 'now - xmit_ts' is
+        # 10 ms (well within reo_wnd=25), so RACK identifies
+        # seg1 as a pending candidate.
+        self._advance(ms=10)
+
+        # Peer SACKs only seg2; cum-ACK does not advance.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(seg2_seq, seg2_end)],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        rack_timer = f"{session}-rack"
+        self.assertIn(
+            rack_timer,
+            self._timer.pending_timers,
+            msg=(
+                "RACK reorder timer MUST be armed when a 'sent before' "
+                "segment is within the reordering window. Got pending: "
+                f"{sorted(self._timer.pending_timers)!r}."
+            ),
+        )
+
+    def test__rack__reorder_timer_fires_and_marks_segment_lost(self) -> None:
+        """
+        Ensure that when the RACK reorder timer expires, the
+        in-flight segment is marked lost (xmit_ts ->
+        INFINITE_TS, lost = True).
+
+        Reference: RFC 8985 §6.2 step 5 (timer-driven loss marking).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Pre-seed reordering state with a longer reo_wnd so
+        # the test cleanly drives a timer expiry rather than
+        # immediate marking.
+        session._rack_reordering_seen = True
+        session._rack_min_rtt_ms = 200  # reo_wnd = 50 ms.
+
+        session.send(data=b"x" * (2 * PEER__MSS))
+        self._advance(ms=2)
+        seg1_seq = LOCAL__ISS + 1
+        seg2_seq = LOCAL__ISS + 1 + PEER__MSS
+        seg2_end = seg2_seq + PEER__MSS
+
+        # 10 ms before SACK -> seg1 is 10 ms old when SACK arrives.
+        self._advance(ms=10)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            sack_blocks=[(seg2_seq, seg2_end)],
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # Timer should be armed; advance past it.
+        self.assertIn(
+            f"{session}-rack",
+            self._timer.pending_timers,
+            msg="Setup invariant: RACK reorder timer must be armed.",
+        )
+        # reo_wnd=50, seg1 was at xmit_ts=2, now=12 -> timeout=2+50-12=40 ms.
+        self._advance(ms=50)
+
+        first_seg = session._rack_segments.get(seg1_seq)
+        if first_seg is not None:
+            self.assertTrue(
+                first_seg.lost,
+                msg=(
+                    "After the RACK reorder timer expires, the 'sent before' "
+                    f"segment MUST be marked lost. Got: {first_seg!r}."
+                ),
+            )
