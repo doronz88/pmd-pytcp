@@ -245,13 +245,18 @@ def fsm__syn_sent(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
-            # RFC 3168 §6.1.1 active-side bilateral ECN
-            # confirmation: our SYN carried ECE+CWR; the
-            # peer's SYN+ACK confirms support by setting
-            # ECE alone (without CWR). Lock in '_ecn_enabled'
-            # so the data-path emits IP ECT(0) on outbound
-            # segments and echoes inbound CE marks via ECE.
-            if session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
+            # RFC 9341 §3.1.1 / §3.1.2 active-side bilateral
+            # ECN/AccECN confirmation. The peer's SYN+ACK
+            # codepoint disambiguates which protocol it
+            # supports. AccECN-capable (AE=1 OR CWR=1) takes
+            # precedence; RFC 3168-only (AE=0, CWR=0, ECE=1)
+            # is the graceful fallback. Mutual exclusivity is
+            # enforced by the order of these branches: at
+            # most one of '_accecn_enabled' / '_ecn_enabled'
+            # is set.
+            if session._advertise_accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
+                session._accecn_enabled = True
+            elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 client-side cookie cache update:
             # when peer's SYN+ACK carries a non-empty TFO

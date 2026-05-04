@@ -63,6 +63,7 @@ class TcpMetadata:
     tcp__flag_rst: bool
     tcp__flag_ece: bool
     tcp__flag_cwr: bool
+    tcp__flag_ns: bool = False
     tcp__seq: Seq32
     tcp__ack: Seq32
     tcp__win: int

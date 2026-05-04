@@ -289,6 +289,21 @@ class TcpSession:
         # 'LISTEN'.
         self._advertise_ecn: bool = True
 
+        # RFC 9341 §3.1.1 AccECN advertise opt-out flag. When
+        # True (default), the active-open SYN carries AE+CWR+ECE
+        # (the canonical AccECN-setup signal); when False, the
+        # SYN falls back to the RFC 3168 CWR+ECE form if
+        # '_advertise_ecn' is also True. AccECN takes precedence
+        # over RFC 3168 in negotiation: an AccECN-capable peer
+        # responds with one of four AE/CWR/ECE codepoints
+        # encoding the IP-ECN it received on our SYN, and the
+        # session locks in '_accecn_enabled = True'. A peer that
+        # does not understand AccECN responds with the RFC 3168
+        # ECE-only form, and the session falls back to classic
+        # ECN ('_ecn_enabled = True'). The two flags are
+        # mutually exclusive post-handshake.
+        self._advertise_accecn: bool = True
+
         # RFC 3168 §6.1.1 ECN bilateral-success flag.
         # Set True post-handshake when both sides advertised
         # ECN support. While True, outbound data carries IP
@@ -296,6 +311,14 @@ class TcpSession:
         # next outbound segment, and inbound ECE triggers
         # cwnd reduction per §6.1.2.
         self._ecn_enabled: bool = False
+
+        # RFC 9341 §3.1.1 AccECN bilateral-success flag. Set
+        # True post-handshake when the peer's SYN+ACK carried
+        # one of the four AccECN-capable codepoints (AE=1 OR
+        # CWR=1, with ECE varying per the IP-ECN of the
+        # received SYN). Mutually exclusive with
+        # '_ecn_enabled'.
+        self._accecn_enabled: bool = False
 
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
@@ -1142,7 +1165,20 @@ class TcpSession:
         # subsequent phase.
         flag_ece = False
         flag_cwr = False
-        if flag_syn and not flag_ack and self._advertise_ecn:
+        flag_ns = False
+        # RFC 9341 §3.1.1 active-open AccECN-setup SYN. When
+        # we advertise AccECN, the SYN carries AE+CWR+ECE -
+        # the AE bit (NS position) is the wire signal that
+        # distinguishes us from an RFC-3168-only client. A
+        # peer that recognises AccECN responds with one of
+        # four AE/CWR/ECE codepoints; one that does not
+        # responds with the RFC 3168 ECE-only form, and we
+        # fall back gracefully in the SYN_SENT handler.
+        if flag_syn and not flag_ack and self._advertise_accecn:
+            flag_ns = True
+            flag_cwr = True
+            flag_ece = True
+        elif flag_syn and not flag_ack and self._advertise_ecn:
             flag_ece = True
             flag_cwr = True
         elif flag_syn and flag_ack and self._ecn_enabled:
@@ -1199,6 +1235,7 @@ class TcpSession:
             tcp__flag_psh=flag_psh,
             tcp__flag_ece=flag_ece,
             tcp__flag_cwr=flag_cwr,
+            tcp__flag_ns=flag_ns,
             tcp__seq=seq,
             tcp__ack=ack,
             tcp__win=tcp__win,

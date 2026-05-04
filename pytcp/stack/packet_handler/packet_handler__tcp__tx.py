@@ -260,6 +260,7 @@ class PacketHandlerTcpTx(ABC):
         tcp__flag_psh: bool = False,
         tcp__flag_ece: bool = False,
         tcp__flag_cwr: bool = False,
+        tcp__flag_ns: bool = False,
         tcp__seq: int = 0,
         tcp__ack: int = 0,
         tcp__win: int = 0,
@@ -279,6 +280,7 @@ class PacketHandlerTcpTx(ABC):
         return self._phtx_tcp(
             ip__src=ip__local_address,
             ip__ecn=ip__ecn,
+            tcp__flag_ns=tcp__flag_ns,
             ip__dst=ip__remote_address,
             tcp__sport=tcp__local_port,
             tcp__dport=tcp__remote_port,
