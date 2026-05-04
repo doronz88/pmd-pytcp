@@ -589,6 +589,34 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         session._snd_ewn = PEER__WIN
         return session
 
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """
+        Active-open handshake with bilateral SACK negotiated.
+        Peer's SYN+ACK carries SACK-Permitted so '_send_sack'
+        becomes True post-handshake.
+        """
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        assert session._send_sack, "Setup invariant: bilateral SACK must be negotiated."
+        session._snd_ewn = PEER__WIN
+        return session
+
     def test__rack__time_based_loss_detection_marks_old_segment_lost(self) -> None:
         """
         Ensure that when peer SACKs a later-sent segment but
@@ -599,7 +627,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         Reference: RFC 8985 §6.2 step 5 (time-based loss detection).
         """
 
-        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         # Send 2 * MSS so two distinct segments fire on
         # consecutive ticks. The first segment lives at seq

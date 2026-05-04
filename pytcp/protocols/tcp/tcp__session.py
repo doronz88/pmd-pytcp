@@ -56,7 +56,7 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
-from pytcp.protocols.tcp.tcp__rack import RackSegment, rack_update
+from pytcp.protocols.tcp.tcp__rack import RackSegment, rack_detect_loss, rack_update
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -480,6 +480,17 @@ class TcpSession:
         self._rack_rtt_ms: int = 0
         self._rack_xmit_ts: int = 0
         self._rack_end_seq: Seq32 = 0
+        # RFC 8985 §6.2 step 1-2 'newly acknowledged' guard.
+        # rack_update only takes RTT samples from segments that
+        # have not been folded yet on a prior ACK; an entry is
+        # added to '_rack_acked_seqs' once it has contributed
+        # to the rack_update scalars and removed when the
+        # entry is pruned from '_rack_segments' on cum-ACK.
+        # Distinct from cumulative-ACK pruning so SACK-acked
+        # segments (covered by the SACK scoreboard but not yet
+        # by SND.UNA) are tracked here even while their dict
+        # entry stays alive.
+        self._rack_acked_seqs: set[Seq32] = set()
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
@@ -2474,6 +2485,13 @@ class TcpSession:
         # on a dup-ACK so no prune is needed here.
         self._ingest_sack_info(packet_rx_md)
 
+        # RFC 8985 §6.2 step 1-2 RACK fold + step 5 loss
+        # detection on the dup-ACK path. SACK-acked segments
+        # advance RACK.xmit_ts even when the cum-ACK does not
+        # advance, so a SACK-only dup-ACK can still drive
+        # time-based loss detection per RFC 8985 §6.2.
+        self._rack_process_ack(packet_rx_md)
+
         self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
             self._tx_retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
         )
@@ -2598,6 +2616,61 @@ class TcpSession:
             f"{self._snd_nxt}, keeping snd_ewn at {self._snd_ewn}, "
             f"recovery_point {self._recovery_point}",
         )
+
+    def _rack_process_ack(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Apply RFC 8985 §6.2 step 1-2 (rack_update) + step 5
+        (rack_detect_loss) on every accepted ACK. Called from
+        both '_process_ack_packet' (cum-ACK path) and
+        '_retransmit_packet_request' (SACK-only / dup-ACK
+        path) after SACK ingest so the scoreboard reflects
+        the latest peer-reported state.
+
+        The 'newly acknowledged' set per §6.2 includes BOTH
+        cum-ACKed AND SACK-acked segments delivered for the
+        first time on this ACK. The '_rack_acked_seqs' guard
+        ensures each segment contributes to the rack_update
+        scalars exactly once across multiple ACKs.
+
+        For Phase 3 the loss-detection helper is called with
+        'reo_wnd_ms=0' (no reordering tolerance); Phase 4
+        will compute reo_wnd dynamically via
+        'rack_compute_reo_wnd'.
+        """
+
+        newly_acked = []
+        for seq, seg in self._rack_segments.items():
+            if seq in self._rack_acked_seqs:
+                continue
+            cum_acked = le32(seg.end_seq, self._snd_una)
+            sack_acked = self._send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
+            if cum_acked or sack_acked:
+                newly_acked.append(seg)
+                self._rack_acked_seqs.add(seq)
+        if newly_acked:
+            (
+                self._rack_min_rtt_ms,
+                self._rack_rtt_ms,
+                self._rack_xmit_ts,
+                self._rack_end_seq,
+            ) = rack_update(
+                newly_acked_segments=newly_acked,
+                now_ms=stack.timer.now_ms,
+                ts_recent_echo_ms=(packet_rx_md.tcp__tsecr if packet_rx_md.tcp__tsecr else None),
+                prior_min_rtt_ms=self._rack_min_rtt_ms,
+                prior_rack_rtt_ms=self._rack_rtt_ms,
+                prior_rack_xmit_ts=self._rack_xmit_ts,
+                prior_rack_end_seq=self._rack_end_seq,
+            )
+
+        if self._rack_xmit_ts > 0:
+            self._rack_segments, _ = rack_detect_loss(
+                segments=self._rack_segments,
+                rack_xmit_ts=self._rack_xmit_ts,
+                rack_end_seq=self._rack_end_seq,
+                reo_wnd_ms=0,
+                now_ms=stack.timer.now_ms,
+            )
 
     def _process_ack_packet(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -2783,31 +2856,12 @@ class TcpSession:
         # segment. Both are no-ops when '_send_sack' is False.
         self._prune_sack_scoreboard()
         self._ingest_sack_info(packet_rx_md)
-        # RFC 8985 §6.2 step 1-2 RACK per-connection-scalar
-        # update. The 'newly-acked' set is the subset of
-        # '_rack_segments' whose 'end_seq' is now covered by
-        # SND.UNA; we capture it here BEFORE pruning so the
-        # rack_update helper sees the full per-segment state.
-        # The four scalars '_rack_min_rtt_ms', '_rack_rtt_ms',
-        # '_rack_xmit_ts', '_rack_end_seq' fold the result.
-        # Phase 3 onward consumes the scalars for time-based
-        # loss detection (§6.2 step 5).
-        newly_acked = [seg for seg in self._rack_segments.values() if le32(seg.end_seq, self._snd_una)]
-        if newly_acked:
-            (
-                self._rack_min_rtt_ms,
-                self._rack_rtt_ms,
-                self._rack_xmit_ts,
-                self._rack_end_seq,
-            ) = rack_update(
-                newly_acked_segments=newly_acked,
-                now_ms=stack.timer.now_ms,
-                ts_recent_echo_ms=(packet_rx_md.tcp__tsecr if packet_rx_md.tcp__tsecr else None),
-                prior_min_rtt_ms=self._rack_min_rtt_ms,
-                prior_rack_rtt_ms=self._rack_rtt_ms,
-                prior_rack_xmit_ts=self._rack_xmit_ts,
-                prior_rack_end_seq=self._rack_end_seq,
-            )
+        # RFC 8985 §6.2 step 1-2 RACK fold + step 5 loss
+        # detection. Run AFTER SACK ingest so the scoreboard
+        # reflects the latest peer-reported state. Identical
+        # invocation in '_retransmit_packet_request' for the
+        # dup-ACK path.
+        self._rack_process_ack(packet_rx_md)
 
         # RFC 8985 §5.2 RACK per-segment dict pruning. An entry's
         # 'end_seq' at or below SND.UNA is wholly covered by the
@@ -2816,9 +2870,13 @@ class TcpSession:
         # correctly when both 'end_seq' and SND.UNA straddle the
         # 32-bit wrap. Phase 1 only ships the storage substrate;
         # Phase 2 onward consumes the dict for time-based loss
-        # detection / RACK_sent_after / TLP probe selection.
+        # detection / RACK_sent_after / TLP probe selection. The
+        # parallel '_rack_acked_seqs' set is pruned alongside so
+        # a future segment that lands at the same seq (post-
+        # wrap) is not falsely treated as already-acked.
         for entry_seq in [s for s, e in self._rack_segments.items() if le32(e.end_seq, self._snd_una)]:
             del self._rack_segments[entry_seq]
+            self._rack_acked_seqs.discard(entry_seq)
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
