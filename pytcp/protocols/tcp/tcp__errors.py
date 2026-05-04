@@ -23,53 +23,15 @@
 
 
 """
-This module contains the TCP session enums.
+This module contains the TCP session runtime exception classes.
 
-pytcp/protocols/tcp/tcp__enums.py
+pytcp/protocols/tcp/tcp__errors.py
 
 ver 3.0.4
 """
 
-from enum import auto
 
-from pytcp.lib.name_enum import NameEnum
-
-
-class SysCall(NameEnum):
+class TcpSessionError(Exception):
     """
-    System call identifier.
+    Critical errors.
     """
-
-    LISTEN = auto()
-    CONNECT = auto()
-    CLOSE = auto()
-    ABORT = auto()
-
-
-class FsmState(NameEnum):
-    """
-    TCP Finite State Machine state identifier.
-    """
-
-    CLOSED = auto()
-    LISTEN = auto()
-    SYN_SENT = auto()
-    SYN_RCVD = auto()
-    ESTABLISHED = auto()
-    FIN_WAIT_1 = auto()
-    FIN_WAIT_2 = auto()
-    CLOSING = auto()
-    CLOSE_WAIT = auto()
-    LAST_ACK = auto()
-    TIME_WAIT = auto()
-
-
-class ConnError(NameEnum):
-    """
-    Connection fail reasons.
-    """
-
-    NONE = auto()
-    REFUSED = auto()
-    TIMEOUT = auto()
-    CANCELED = auto()

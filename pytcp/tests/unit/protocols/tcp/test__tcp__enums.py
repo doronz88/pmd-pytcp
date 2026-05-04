@@ -24,9 +24,10 @@
 
 """
 This module contains tests for the 'FsmState', 'SysCall', and
-'ConnError' enums plus the 'TcpSessionError' exception class
-defined in 'pytcp/protocols/tcp/tcp__enums.py' and the module-
-level constants in 'pytcp/protocols/tcp/tcp__constants.py'.
+'ConnError' enums in 'pytcp/protocols/tcp/tcp__enums.py', the
+'TcpSessionError' exception class in
+'pytcp/protocols/tcp/tcp__errors.py', and the module-level
+constants in 'pytcp/protocols/tcp/tcp__constants.py'.
 
 pytcp/tests/unit/protocols/tcp/test__tcp__enums.py
 
@@ -45,8 +46,8 @@ from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,
     SysCall,
-    TcpSessionError,
 )
+from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 
 
 class TestTcpSessionModuleConstants(TestCase):

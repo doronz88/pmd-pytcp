@@ -47,8 +47,8 @@ from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,
     SysCall,
-    TcpSessionError,
 )
+from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
