@@ -411,9 +411,17 @@ class TcpSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Bound socket")
 
     @override
-    def connect(self, address: tuple[str, int]) -> None:
+    def connect(self, address: tuple[str, int], *, data: bytes = b"") -> None:
         """
         Connect local socket to remote socket.
+
+        'data' optionally pre-loads the session's TX buffer
+        before the FSM is driven into SYN_SENT. When a TFO
+        cookie is cached for the peer
+        ('stack.tcp__fastopen_cookies'), the
+        connect-with-data path emits SYN-with-data on the
+        wire, eliminating the data RTT for short-lived
+        connections (RFC 7413 §3.1).
         """
 
         # The 'connect' call will bind socket to specific local ip address

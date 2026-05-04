@@ -1015,6 +1015,35 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="connect() must propagate TCP_KEEPCNT override to session.",
         )
 
+    def test__tcp_socket__connect_with_data_pre_loads_session_tx_buffer(self) -> None:
+        """
+        Ensure 'TcpSocket.connect(remote, data=b"...")'
+        accepts a 'data' kwarg and pre-loads the freshly-
+        constructed 'TcpSession' TX buffer with that data
+        before driving the FSM into SYN_SENT. This is the
+        ergonomic entry path for client-side TCP Fast Open:
+        the application supplies data alongside the connect
+        call, and (when a TFO cookie is cached for the
+        peer) the SYN itself carries the data on the wire,
+        eliminating the data RTT of a vanilla 3WHS-then-
+        send sequence.
+
+        Reference: RFC 7413 §3.1 (client connect-with-data API).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        early_data = b"GET / HTTP/1.1\r\n"
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80), data=early_data)
+
+        self._session_cls.return_value._tx_buffer.extend.assert_called_with(early_data)
+
     def test__tcp_socket__getsockopt__tcp_fastopen_default_zero(self) -> None:
         """
         Ensure a freshly-constructed 'TcpSocket' reports
