@@ -56,7 +56,7 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
-from pytcp.protocols.tcp.tcp__rack import RackSegment
+from pytcp.protocols.tcp.tcp__rack import RackSegment, rack_update
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -2783,6 +2783,32 @@ class TcpSession:
         # segment. Both are no-ops when '_send_sack' is False.
         self._prune_sack_scoreboard()
         self._ingest_sack_info(packet_rx_md)
+        # RFC 8985 §6.2 step 1-2 RACK per-connection-scalar
+        # update. The 'newly-acked' set is the subset of
+        # '_rack_segments' whose 'end_seq' is now covered by
+        # SND.UNA; we capture it here BEFORE pruning so the
+        # rack_update helper sees the full per-segment state.
+        # The four scalars '_rack_min_rtt_ms', '_rack_rtt_ms',
+        # '_rack_xmit_ts', '_rack_end_seq' fold the result.
+        # Phase 3 onward consumes the scalars for time-based
+        # loss detection (§6.2 step 5).
+        newly_acked = [seg for seg in self._rack_segments.values() if le32(seg.end_seq, self._snd_una)]
+        if newly_acked:
+            (
+                self._rack_min_rtt_ms,
+                self._rack_rtt_ms,
+                self._rack_xmit_ts,
+                self._rack_end_seq,
+            ) = rack_update(
+                newly_acked_segments=newly_acked,
+                now_ms=stack.timer.now_ms,
+                ts_recent_echo_ms=(packet_rx_md.tcp__tsecr if packet_rx_md.tcp__tsecr else None),
+                prior_min_rtt_ms=self._rack_min_rtt_ms,
+                prior_rack_rtt_ms=self._rack_rtt_ms,
+                prior_rack_xmit_ts=self._rack_xmit_ts,
+                prior_rack_end_seq=self._rack_end_seq,
+            )
+
         # RFC 8985 §5.2 RACK per-segment dict pruning. An entry's
         # 'end_seq' at or below SND.UNA is wholly covered by the
         # cumulative ACK - the segment has been delivered and is
