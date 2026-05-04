@@ -726,3 +726,80 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "ESTABLISHED handlers' transitions out."
             ),
         )
+
+    def test__dupack__limited_transmit_sends_new_segment_on_first_dup_ack(self) -> None:
+        """
+        Ensure the RFC 3042 Limited Transmit behaviour: on
+        the FIRST duplicate ACK (before fast-retransmit
+        fires at the third), the sender MUST emit one
+        previously-unsent segment from the TX buffer if the
+        receiver window allows. Limited Transmit injects
+        new segments into the pipe so a small-window flow
+        (where there might not be three in-flight segments
+        to generate three dup-ACKs) can still trigger fast
+        retransmit on real loss.
+
+        The Limited Transmit budget is 'cwnd + 2*SMSS' -
+        two extra segments beyond cwnd, one per each of
+        the first two dup-ACKs. After fast-retransmit
+        fires (third dup-ACK), the regular RFC 5681 §3.2
+        path takes over.
+
+        Reference: RFC 3042 §3 (Limited Transmit on first two dup-ACKs).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Pin cwnd to a small value so the queued data
+        # exceeds it. With cwnd=4*SMSS we'll send 4
+        # segments and have 4 more queued in '_tx_buffer'
+        # for Limited Transmit to inject.
+        session._cwnd = 4 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        # Queue 8 segments worth of data; only 4 will fit
+        # in cwnd.
+        session.send(data=b"x" * (8 * PEER__MSS))
+        for _ in range(4):
+            self._advance(ms=1)
+        snd_max_pre_dup = session._snd_max
+        self.assertEqual(
+            (snd_max_pre_dup - LOCAL__ISS - 1) & 0xFFFF_FFFF,
+            4 * PEER__MSS,
+            msg="Setup precondition: 4 segments must be in flight before any dup-ACK.",
+        )
+
+        # First dup-ACK at SND.UNA. Limited Transmit should
+        # fire one new segment from the queued tail of the
+        # TX buffer.
+        first_dup_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        first_lt_tx = self._drive_rx(frame=first_dup_ack)
+
+        # Find a NEW segment whose seq starts at the
+        # previous SND.MAX (the next-unsent byte before the
+        # dup-ACK).
+        new_segment = None
+        for frame in first_lt_tx:
+            probe = self._parse_tx(frame)
+            if probe.seq == snd_max_pre_dup and len(probe.payload) > 0:
+                new_segment = probe
+                break
+
+        self.assertIsNotNone(
+            new_segment,
+            msg=(
+                "RFC 3042 §3: the first duplicate ACK MUST "
+                "trigger a new segment transmission from the "
+                "TX buffer (Limited Transmit). Today PyTCP's "
+                "'_retransmit_packet_request' increments the "
+                "dup-ACK counter and returns without sending "
+                f"any new data. Got {len(first_lt_tx)} TX "
+                "frames; none carrying a new segment at "
+                f"seq={snd_max_pre_dup}."
+            ),
+        )
