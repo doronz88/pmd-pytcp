@@ -144,6 +144,9 @@ class PacketHandlerTcpRx(ABC):
                 packet_rx.tcp._options.timestamps.tsecr if packet_rx.tcp._options.timestamps is not None else None
             ),
             tcp__fastopen_cookie=packet_rx.tcp._options.fastopen,
+            tcp__accecn0_counters=(
+                None if (accecn := packet_rx.tcp._options.accecn) is None else (accecn.ee0b, accecn.eceb, accecn.ee1b)
+            ),
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,
         )

@@ -74,6 +74,12 @@ class TcpMetadata:
     tcp__tsval: int | None = None
     tcp__tsecr: int | None = None
     tcp__fastopen_cookie: bytes | None = None
+    # RFC 9341 §3.2.3 AccECN option counters: tuple of
+    # three 24-bit byte counters (ee0b, eceb, ee1b) when
+    # the option is on the wire, None when absent. The
+    # ordering is the AccECN0 convention regardless of
+    # which kind appeared on the wire.
+    tcp__accecn0_counters: tuple[int, int, int] | None = None
     tcp__data: memoryview
 
     tracker: Tracker | None = None

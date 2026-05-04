@@ -354,6 +354,17 @@ class TcpSession:
         self._accecn_r_ce_b: int = 0
         self._accecn_r_ect1_b: int = 0
 
+        # RFC 9341 §3.4 sender-side r.CE tracker. Holds the
+        # last peer-reported r.CE byte counter seen in an
+        # inbound AccECN option. The 'tcp_fsm' wrapper compares
+        # the newly-arrived value against this tracker; a
+        # positive delta is the wire signal for a congestion
+        # event and triggers the standard RFC 5681 §3.1
+        # cwnd-halving response. Updated to the new value
+        # after the response so subsequent ACKs reporting the
+        # same cumulative count are idempotent.
+        self._accecn_s_ce_b: int = 0
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -2879,6 +2890,39 @@ class TcpSession:
                 self._snd_ewn = min(self._cwnd, self._snd_wnd)
                 self._ecn_send_cwr = True
                 self._ecn_recovery_point = self._snd_nxt
+            # RFC 9341 §3.4 sender-side response to AccECN
+            # feedback. When the peer's inbound AccECN option
+            # reports an r.CE byte counter higher than our
+            # tracked value, treat the delta as a single
+            # congestion event: halve ssthresh per RFC 5681
+            # §3.1, collapse cwnd to ssthresh, and update the
+            # tracker so subsequent ACKs reporting the same
+            # cumulative count are idempotent. The same
+            # one-shot recovery-point guard the RFC 3168
+            # path uses prevents multiple AccECN events
+            # within a single RTT from compounding the
+            # reduction.
+            if (
+                self._accecn_enabled
+                and packet_rx_md is not None
+                and packet_rx_md.tcp__accecn0_counters is not None
+                and packet_rx_md.tcp__accecn0_counters[1] > self._accecn_s_ce_b
+                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
+            ):
+                flight_size = sub32(self._snd_max, self._snd_una)
+                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                self._cwnd = self._ssthresh
+                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                self._ecn_recovery_point = self._snd_nxt
+            # Always update '_accecn_s_ce_b' to the latest
+            # peer-reported value so subsequent ACKs reporting
+            # the same cumulative count do not fire the
+            # response branch redundantly. Done outside the
+            # 'if' so the tracker advances even when the
+            # recovery-point guard suppresses the response
+            # itself.
+            if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
+                self._accecn_s_ce_b = packet_rx_md.tcp__accecn0_counters[1]
             tcp_fsm_dispatch(
                 self,
                 packet_rx_md=packet_rx_md,
