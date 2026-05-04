@@ -53,6 +53,7 @@ from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
+    TCP_FASTOPEN,
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
@@ -137,6 +138,16 @@ class TcpSocket(socket):
         self._tcp_keepidle: int | None = None
         self._tcp_keepintvl: int | None = None
         self._tcp_keepcnt: int | None = None
+
+        # RFC 7413 §3.1 server-side TFO accept-queue depth.
+        # 0 means "TFO disabled"; the application opts the
+        # listening socket in via 'setsockopt(IPPROTO_TCP,
+        # TCP_FASTOPEN, qlen)' with a positive depth before
+        # 'listen()'. Today this is observable via
+        # 'getsockopt'; the protocol-level gating (server only
+        # issues cookies and accepts SYN-data when this is
+        # > 0) is a subsequent phase.
+        self._tcp_fastopen_qlen: int = 0
 
         # Create established socket based on established TCP session, called by
         # listening sockets only.
@@ -271,6 +282,9 @@ class TcpSocket(socket):
         if level == IPPROTO_TCP and optname == TCP_KEEPCNT:
             self._tcp_keepcnt = int(value)
             return
+        if level == IPPROTO_TCP and optname == TCP_FASTOPEN:
+            self._tcp_fastopen_qlen = int(value)
+            return
         raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
@@ -293,6 +307,8 @@ class TcpSocket(socket):
             return self._tcp_keepintvl if self._tcp_keepintvl is not None else 0
         if level == IPPROTO_TCP and optname == TCP_KEEPCNT:
             return self._tcp_keepcnt if self._tcp_keepcnt is not None else 0
+        if level == IPPROTO_TCP and optname == TCP_FASTOPEN:
+            return self._tcp_fastopen_qlen
         raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def _get_ip_addresses(
