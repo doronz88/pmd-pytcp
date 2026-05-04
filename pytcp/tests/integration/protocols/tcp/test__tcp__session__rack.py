@@ -949,22 +949,27 @@ class TestTcpRackPhase5(TcpSessionTestCase):
 
         session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Pre-seed reordering state so reo_wnd is > 0.
-        session._rack_reordering_seen = True
-        session._rack_min_rtt_ms = 100  # reo_wnd = 100 / 4 = 25 ms.
-
-        # Send 2 * MSS so two segments fire on consecutive ticks.
+        # Send 2 * MSS so two segments fire.
         session.send(data=b"x" * (2 * PEER__MSS))
         self._advance(ms=2)
+        seg1_seq = LOCAL__ISS + 1
         seg2_seq = LOCAL__ISS + 1 + PEER__MSS
         seg2_end = seg2_seq + PEER__MSS
 
-        # Advance just enough that seg1's 'now - xmit_ts' is
-        # 10 ms (well within reo_wnd=25), so RACK identifies
-        # seg1 as a pending candidate.
+        # Pre-seed RACK state to bypass the rack_update fold of
+        # the SACK delivery (which would clobber min_rtt with
+        # the small observed RTT). seg2's xmit_ts seeds the
+        # 'sent_after' lexicographic key; the large min_rtt is
+        # held externally so reo_wnd stays > 10 ms.
+        session._rack_reordering_seen = True
+        session._rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
+        session._rack_acked_seqs.add(seg2_seq)
+        session._rack_xmit_ts = session._rack_segments[seg2_seq].xmit_ts
+        session._rack_end_seq = seg2_end
+
+        # 10 ms before SACK -> seg1 is 10 ms old, well within reo_wnd=250.
         self._advance(ms=10)
 
-        # Peer SACKs only seg2; cum-ACK does not advance.
         peer_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -976,9 +981,17 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_ack)
 
-        rack_timer = f"{session}-rack"
+        # seg1 must remain in flight (not marked lost) and the
+        # reorder timer must be armed.
+        seg1 = session._rack_segments.get(seg1_seq)
+        self.assertIsNotNone(seg1, msg="Setup invariant: seg1 must remain in dict.")
+        assert seg1 is not None
+        self.assertFalse(
+            seg1.lost,
+            msg="seg1 MUST NOT be marked lost while still within reo_wnd.",
+        )
         self.assertIn(
-            rack_timer,
+            f"{session}-rack",
             self._timer.pending_timers,
             msg=(
                 "RACK reorder timer MUST be armed when a 'sent before' "
@@ -998,19 +1011,20 @@ class TestTcpRackPhase5(TcpSessionTestCase):
 
         session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Pre-seed reordering state with a longer reo_wnd so
-        # the test cleanly drives a timer expiry rather than
-        # immediate marking.
-        session._rack_reordering_seen = True
-        session._rack_min_rtt_ms = 200  # reo_wnd = 50 ms.
-
         session.send(data=b"x" * (2 * PEER__MSS))
         self._advance(ms=2)
         seg1_seq = LOCAL__ISS + 1
         seg2_seq = LOCAL__ISS + 1 + PEER__MSS
         seg2_end = seg2_seq + PEER__MSS
 
-        # 10 ms before SACK -> seg1 is 10 ms old when SACK arrives.
+        # Pre-seed RACK state as in the prior test so a timer
+        # arms rather than firing inline.
+        session._rack_reordering_seen = True
+        session._rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
+        session._rack_acked_seqs.add(seg2_seq)
+        session._rack_xmit_ts = session._rack_segments[seg2_seq].xmit_ts
+        session._rack_end_seq = seg2_end
+
         self._advance(ms=10)
 
         peer_ack = build_tcp4(
@@ -1024,21 +1038,25 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_ack)
 
-        # Timer should be armed; advance past it.
         self.assertIn(
             f"{session}-rack",
             self._timer.pending_timers,
             msg="Setup invariant: RACK reorder timer must be armed.",
         )
-        # reo_wnd=50, seg1 was at xmit_ts=2, now=12 -> timeout=2+50-12=40 ms.
-        self._advance(ms=50)
+
+        # Advance past the reo_wnd. seg1.xmit_ts ≈ 2 ms,
+        # now_ms ≈ 12 ms post-advance(10), reo_wnd = 250 ms.
+        # Earliest expiry in 240 ms; advance further so the
+        # FSM tick fires past expiry.
+        self._advance(ms=300)
 
         first_seg = session._rack_segments.get(seg1_seq)
-        if first_seg is not None:
-            self.assertTrue(
-                first_seg.lost,
-                msg=(
-                    "After the RACK reorder timer expires, the 'sent before' "
-                    f"segment MUST be marked lost. Got: {first_seg!r}."
-                ),
-            )
+        self.assertIsNotNone(first_seg, msg="Setup invariant: seg1 still in dict pre-mark.")
+        assert first_seg is not None
+        self.assertTrue(
+            first_seg.lost,
+            msg=(
+                "After the RACK reorder timer expires, the 'sent before' "
+                f"segment MUST be marked lost. Got: {first_seg!r}."
+            ),
+        )

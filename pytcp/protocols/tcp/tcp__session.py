@@ -2669,6 +2669,38 @@ class TcpSession:
             f"recovery_point {self._recovery_point}",
         )
 
+    def _rack_reorder_tick(self) -> None:
+        """
+        Per-tick service for the RFC 8985 §6.2 step 5
+        reordering timer. When the f'{session}-rack' timer
+        has expired, re-run rack_detect_loss with the current
+        scalars and reo_wnd to mark any pending 'sent before'
+        segments lost. Subsequent ticks may re-arm the timer
+        if more candidates exist.
+        """
+
+        if not stack.timer.is_expired(f"{self}-rack"):
+            return
+        if self._rack_xmit_ts == 0:
+            return
+        reo_wnd_ms = rack_compute_reo_wnd(
+            reordering_seen=self._rack_reordering_seen,
+            reo_wnd_mult=self._rack_reo_wnd_mult,
+            min_rtt_ms=self._rack_min_rtt_ms,
+        )
+        self._rack_segments, rack_timeout_ms = rack_detect_loss(
+            segments=self._rack_segments,
+            rack_xmit_ts=self._rack_xmit_ts,
+            rack_end_seq=self._rack_end_seq,
+            reo_wnd_ms=reo_wnd_ms,
+            now_ms=stack.timer.now_ms,
+        )
+        if rack_timeout_ms > 0:
+            stack.timer.register_timer(
+                name=f"{self}-rack",
+                timeout=rack_timeout_ms,
+            )
+
     def _rack_process_ack(self, packet_rx_md: TcpMetadata) -> None:
         """
         Apply RFC 8985 §6.2 step 1-2 (rack_update) + step 5
@@ -2741,13 +2773,25 @@ class TcpSession:
                 reo_wnd_mult=self._rack_reo_wnd_mult,
                 min_rtt_ms=self._rack_min_rtt_ms,
             )
-            self._rack_segments, _ = rack_detect_loss(
+            self._rack_segments, rack_timeout_ms = rack_detect_loss(
                 segments=self._rack_segments,
                 rack_xmit_ts=self._rack_xmit_ts,
                 rack_end_seq=self._rack_end_seq,
                 reo_wnd_ms=reo_wnd_ms,
                 now_ms=stack.timer.now_ms,
             )
+            # RFC 8985 §6.2 step 5 reordering-timer arming.
+            # When rack_detect_loss leaves any 'sent before'
+            # segment within its reo_wnd (timeout_ms > 0),
+            # arm a single session-level timer at the earliest
+            # 'xmit_ts + reo_wnd - now_ms' so the FSM tick can
+            # re-run the loss-detection check and mark the
+            # segment lost once the window has elapsed.
+            if rack_timeout_ms > 0:
+                stack.timer.register_timer(
+                    name=f"{self}-rack",
+                    timeout=rack_timeout_ms,
+                )
 
     def _process_ack_packet(self, packet_rx_md: TcpMetadata) -> None:
         """

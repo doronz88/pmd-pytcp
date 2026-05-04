@@ -63,6 +63,11 @@ def fsm__established(
         session._transmit_data()
         session._delayed_ack()
         session._keepalive_tick()
+        # RFC 8985 §6.2 step 5 reordering-timer service.
+        # When the 'f"{session}-rack"' timer has expired,
+        # re-run rack_detect_loss + arm a fresh timer if
+        # more pending candidates exist.
+        session._rack_reorder_tick()
         if session._closing and not session._tx_buffer:
             session._change_state(FsmState.FIN_WAIT_1)
         return
