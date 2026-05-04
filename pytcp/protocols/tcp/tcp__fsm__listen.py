@@ -203,19 +203,40 @@ def fsm__listen(
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
             # RFC 7413 §3.1 Fast Open server-side cookie
-            # issuance: when peer's SYN carries the TFO option,
-            # generate an HMAC-bound cookie and stash it for
-            # the SYN+ACK that fires on the next tick. The
-            # cookie itself is opaque to peer (it just caches
-            # and replays); the only invariant is that 'we'
-            # can validate it later.
+            # issuance + validation. Two outcomes when peer's
+            # SYN carries the TFO option:
+            #   - Always issue a fresh cookie back in the
+            #     SYN+ACK so peer can cache and replay it on
+            #     a subsequent connection.
+            #   - Validate the inbound cookie; if it matches
+            #     the HMAC we would issue for this peer's IP,
+            #     accept any SYN-piggybacked data; otherwise
+            #     discard it (the §4.1.2 amplification-attack
+            #     defence). When TFO option is absent, the
+            #     RFC 9293 §3.10.7.2 step 3 default applies:
+            #     SYN-data is processed normally.
+            tfo_cookie_valid = False
             if packet_rx_md.tcp__fastopen_cookie is not None:
-                from pytcp.protocols.tcp.tcp__fastopen import generate_cookie
+                from pytcp.protocols.tcp.tcp__fastopen import generate_cookie, validate_cookie
 
+                if packet_rx_md.tcp__fastopen_cookie:
+                    tfo_cookie_valid = validate_cookie(
+                        peer_address=packet_rx_md.ip__remote_address,
+                        secret=stack.TCP__FASTOPEN_SECRET,
+                        cookie=bytes(packet_rx_md.tcp__fastopen_cookie),
+                    )
                 session._fastopen_cookie_to_emit = generate_cookie(
                     peer_address=packet_rx_md.ip__remote_address,
                     secret=stack.TCP__FASTOPEN_SECRET,
                 )
+            # SYN-data acceptance gate: per RFC 7413 §3.1, if
+            # the TFO option is present-but-invalid (or empty
+            # cookie-request form) the data MUST be discarded;
+            # the receiver falls back to standard 3WHS. When
+            # the option is absent altogether, the RFC 9293
+            # §3.10.7.2 default applies (data is processed).
+            accept_syn_data = packet_rx_md.tcp__fastopen_cookie is None or tfo_cookie_valid
+            syn_data = packet_rx_md.tcp__data if accept_syn_data else memoryview(b"")
             session._rcv_ini = packet_rx_md.tcp__seq
             session._cwnd = session._snd_mss
             session._snd_ewn = min(session._cwnd, session._snd_wnd)
@@ -227,18 +248,18 @@ def fsm__listen(
             session._rcv_nxt = add32(
                 packet_rx_md.tcp__seq,
                 packet_rx_md.tcp__flag_syn,
-                len(packet_rx_md.tcp__data),
+                len(syn_data),
             )
             # Mark peer as contacted so the R2-abort RST
             # gate in '_retransmit_packet_timeout' fires
             # the RST even when 'RCV.NXT' happens to equal
             # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
             session._peer_contacted = True
-            if packet_rx_md.tcp__data:
-                session._enqueue_rx_buffer(packet_rx_md.tcp__data)
+            if syn_data:
+                session._enqueue_rx_buffer(syn_data)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{session}] - Queued {len(packet_rx_md.tcp__data)} bytes "
+                    f"[{session}] - Queued {len(syn_data)} bytes "
                     "of SYN-piggybacked data for delivery after ESTABLISHED",
                 )
             # Change state to SYN_RCVD; the actual SYN+ACK packet
