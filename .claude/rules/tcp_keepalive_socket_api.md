@@ -1,29 +1,42 @@
-# PyTCP — TCP Keep-Alive Socket-API Plan
+# PyTCP — TCP Keep-Alive Socket-API Record
 
-Self-contained handoff plan for binding the `setsockopt` /
-`getsockopt` BSD-socket API to the keep-alive feature shipped in
-commit `bb34a81`. After this work, applications can enable and
-tune per-connection keep-alive through the standard POSIX shape
-instead of poking `session._keepalive_enabled` directly.
+**Status: SHIPPED** (all 5 phases delivered). This document
+was originally a phased plan; it has been rewritten as a
+completion record. Future sessions wanting to extend the
+BSD socket-API surface (e.g. add `TCP_NODELAY`,
+`SO_RCVBUF`) can use this record as the canonical pattern
+to mirror.
 
-A future session should read this plan plus the existing
-`tcp_session_split.md` and `tcp_sack_implementation.md` plans for
-shape conventions, then execute the phases below.
+Phase-by-phase commit map:
+
+| Phase | Description                                          | Commit       |
+|-------|------------------------------------------------------|--------------|
+| 0     | `SocketOption` enum + `SOL_SOCKET` constant          | `f356ad9c`   |
+| 1     | `TcpSocket.setsockopt` / `getsockopt` for SO_KEEPALIVE | `1cf10cdd` |
+| 2     | Propagate SO_KEEPALIVE through TcpSocket → TcpSession | `21047340`  |
+| 3     | Update keep-alive flag comment to socket-API path    | `3f2d6660`   |
+| 4     | Per-connection overrides via TCP_KEEPIDLE/INTVL/CNT  | `0647485a`   |
+
+Tests delivered: 15 setsockopt/getsockopt unit tests in
+`pytcp/tests/unit/socket/test__socket__tcp__socket.py` + 9
+keep-alive integration tests in
+`pytcp/tests/integration/protocols/tcp/test__tcp__session__keepalive.py`.
+
+The original plan body is preserved below as a historical
+reference.
 
 ---
 
-## 1. Mission
+## 1. Mission (delivered)
 
 The keep-alive mechanism (`tcp__session.py`,
 `tcp__fsm__established.py`, six-scenario integration test in
 `pytcp/tests/integration/protocols/tcp/test__tcp__session__keepalive.py`)
 is internally complete: idle-timer arming, probe emission with
 `seq=SND.NXT-1`, probe-ack reset, tear-down on
-`KEEPALIVE_PROBE_MAX_COUNT` unanswered probes. **What's missing is
-the application-facing API** — RFC 1122 §4.2.3.6 mandates that
-keep-alive be application-controllable per connection, but
-`TcpSocket` has no `setsockopt` method today (`grep setsockopt
-pytcp/socket/` returns empty).
+`KEEPALIVE_PROBE_MAX_COUNT` unanswered probes. The
+application-facing API is now wired — RFC 1122 §4.2.3.6
+mandate fulfilled.
 
 The work in this plan delivers four BSD socket options:
 
