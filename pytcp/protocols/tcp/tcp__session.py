@@ -2623,16 +2623,19 @@ class TcpSession:
         # 5681 §3.1 0.5 halving with beta_cubic = 0.7 and
         # update '_cubic_w_max' / '_cubic_K_ms' /
         # '_cubic_epoch_start_ms' so the post-RTO CA growth
-        # curve has a fresh anchor. Phase 5 will pass
-        # 'fast_conv_active=True' once W_last_max tracking
-        # lands; for now fast convergence is gated off here.
+        # curve has a fresh anchor. Fast convergence (§4.7) is
+        # active by default: when the new cwnd is smaller than
+        # the W_max from the prior loss event, W_max is reduced
+        # further to release bandwidth to new flows.
         if self._cc_mode is CcMode.CUBIC:
+            prior_w_max = self._cubic_w_max
             self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=max(self._cwnd, self._snd_mss),
                 smss=self._snd_mss,
-                fast_conv_active=False,
-                prior_w_max=self._cubic_w_last_max,
+                fast_conv_active=True,
+                prior_w_max=prior_w_max,
             )
+            self._cubic_w_last_max = prior_w_max
             # Curve epoch reset: post-RTO cwnd = 1 SMSS, so
             # cwnd_epoch = SMSS for the cube-root computation.
             self._cubic_K_ms = cubic_compute_K(
@@ -2776,15 +2779,18 @@ class TcpSession:
         # RFC 9438 §4.6 + §4.7: in CUBIC mode, ssthresh halves
         # by beta_cubic = 0.7 (vs RFC 5681's 0.5). Records
         # '_cubic_w_max' = cwnd-at-loss for the post-recovery
-        # cubic curve. Phase 5 will pass 'fast_conv_active=True'
-        # once '_cubic_w_last_max' tracking lands.
+        # cubic curve. Fast convergence (§4.7) reduces W_max
+        # further when the new cwnd is smaller than the prior
+        # W_max anchor.
         if self._cc_mode is CcMode.CUBIC:
+            prior_w_max = self._cubic_w_max
             self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=self._cwnd,
                 smss=self._snd_mss,
-                fast_conv_active=False,
-                prior_w_max=self._cubic_w_last_max,
+                fast_conv_active=True,
+                prior_w_max=prior_w_max,
             )
+            self._cubic_w_last_max = prior_w_max
             self._cubic_K_ms = cubic_compute_K(
                 w_max=self._cubic_w_max,
                 cwnd_epoch=self._ssthresh,

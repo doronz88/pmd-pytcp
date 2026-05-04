@@ -380,6 +380,113 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
             ),
         )
 
+    def test__cubic__fast_convergence_reduces_w_max_on_decline(self) -> None:
+        """
+        Ensure that on two consecutive loss events with the
+        second cwnd lower than the first, the second loss
+        event's '_cubic_w_max' is further reduced per §4.7
+        (cwnd * (1 + beta_cubic) / 2 = cwnd * 17/20).
+
+        Reference: RFC 9438 §4.7 (fast convergence).
+        """
+
+        cwnd_1 = 100 * PEER__MSS
+        cwnd_2 = 60 * PEER__MSS  # smaller than cwnd_1
+
+        # First loss event: prior_W_max = 0 → fast convergence
+        # inactive; W_max = cwnd_1.
+        session = self._drive_fast_retransmit_in_cubic_mode(cwnd=cwnd_1)
+        self.assertEqual(
+            session._cubic_w_max,
+            cwnd_1,
+            msg="First loss: W_max should equal cwnd_1.",
+        )
+
+        # Reset recovery state and dup-ACK counters so a fresh
+        # fast-retransmit trigger fires on the next batch of
+        # dup-ACKs. Set cwnd to cwnd_2 (< prior W_max) so fast
+        # convergence kicks in.
+        session._recovery_point = 0
+        session._tx_retransmit_request_counter = {}
+        session._cwnd = cwnd_2
+        session._ssthresh = cwnd_2
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Send a fresh segment then drive 3 dup-ACKs with the
+        # current snd_una as the ack value (canonical dup-ACK).
+        session.send(data=b"y" * PEER__MSS)
+        self._advance(ms=1)
+
+        ack_value = session._snd_una
+        for _ in range(3):
+            dup = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=ack_value,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup)
+
+        # Second loss: prior_W_max = cwnd_1, new cwnd = cwnd_2
+        # < cwnd_1 → fast convergence reduces W_max to
+        # cwnd_2 * 17/20.
+        expected_w_max = cwnd_2 * 17 // 20
+        self.assertEqual(
+            session._cubic_w_max,
+            expected_w_max,
+            msg=(
+                f"Fast convergence must reduce W_max to "
+                f"cwnd_2 * 17/20 ({expected_w_max}); got "
+                f"{session._cubic_w_max}."
+            ),
+        )
+
+    def test__cubic__fast_convergence_inactive_on_increase(self) -> None:
+        """
+        Ensure that when cwnd_at_loss >= prior W_max, fast
+        convergence does NOT further reduce W_max - the new
+        W_max simply equals cwnd at loss time.
+
+        Reference: RFC 9438 §4.7 (fast convergence gating).
+        """
+
+        cwnd_1 = 60 * PEER__MSS
+        cwnd_2 = 100 * PEER__MSS  # larger than cwnd_1
+
+        session = self._drive_fast_retransmit_in_cubic_mode(cwnd=cwnd_1)
+
+        # Reset state for second loss event.
+        session._recovery_point = 0
+        session._tx_retransmit_request_counter = {}
+        session._cwnd = cwnd_2
+        session._ssthresh = cwnd_2
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        session.send(data=b"y" * PEER__MSS)
+        self._advance(ms=1)
+
+        ack_value = session._snd_una
+        for _ in range(3):
+            dup = build_tcp4(
+                sport=PEER__PORT,
+                dport=STACK__PORT,
+                seq=PEER__ISS + 1,
+                ack=ack_value,
+                flags=("ACK",),
+                win=PEER__WIN,
+            )
+            self._drive_rx(frame=dup)
+
+        # Second loss: cwnd_2 >= prior W_max=cwnd_1, so W_max =
+        # cwnd_2 (no fast-convergence reduction).
+        self.assertEqual(
+            session._cubic_w_max,
+            cwnd_2,
+            msg=("Fast convergence must NOT fire when cwnd >= " "prior W_max; new W_max = cwnd."),
+        )
+
     def test__cubic__reno_mode_unaffected_by_cubic_state_fields(self) -> None:
         """
         Ensure that with '_cc_mode == CcMode.RENO' (default),
