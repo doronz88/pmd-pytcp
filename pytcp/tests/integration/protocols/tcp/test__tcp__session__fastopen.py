@@ -620,3 +620,158 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 f"got {syn.payload!r}."
             ),
         )
+
+    def test__fastopen__client_tfo_data_acked_in_syn_ack_drains_tx_buffer(self) -> None:
+        """
+        Ensure that when client's TFO SYN-with-data is
+        accepted by the server (the SYN+ACK 'ack' field
+        covers SYN + data), the post-handshake state is
+        consistent: the session reaches ESTABLISHED,
+        SND.UNA advances past the data, and the TX
+        buffer is drained of the bytes the server has
+        confirmed receipt of. This is the canonical
+        successful-fast-open completion path; any
+        residue in the TX buffer would cause the
+        post-handshake transmit to spuriously re-send
+        the already-acked bytes.
+
+        Reference: RFC 7413 §3.1 (successful TFO completion: data ack'd in SYN+ACK).
+        """
+
+        cached_cookie = b"\xab\xcd\xef\x01\x23\x45\x67\x89"
+        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        early_data = b"hello-tfo"
+        session._tx_buffer.extend(early_data)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        # Tick so the SYN-with-data fires.
+        self._advance(ms=1)
+
+        # Server's SYN+ACK accepts the TFO data: 'ack'
+        # covers SYN + data ('peer_iss + 0' on peer side,
+        # ack on our side = LOCAL__ISS + 1 + len(data)).
+        peer_syn_ack = build_tcp4(
+            src_ip=PEER__IP,
+            dst_ip=STACK__IP,
+            sport=LISTEN__PORT,
+            dport=PEER__PORT_FOR_FASTOPEN,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1 + len(early_data),
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=("Successful TFO completion MUST land in " f"ESTABLISHED. Got state={session.state!r}."),
+        )
+        self.assertEqual(
+            session._snd_una,
+            LOCAL__ISS + 1 + len(early_data),
+            msg=(
+                "RFC 7413 §3.1: SND.UNA MUST advance past "
+                f"SYN + data = {LOCAL__ISS + 1 + len(early_data)} "
+                "after the server's SYN+ACK ack covers the "
+                f"data. Got {session._snd_una}."
+            ),
+        )
+        self.assertEqual(
+            bytes(session._tx_buffer),
+            b"",
+            msg=(
+                "RFC 7413 §3.1: server-acked TFO data MUST "
+                "be drained from the client's TX buffer; a "
+                "residue would cause the post-handshake "
+                "transmit to spuriously re-send the bytes. "
+                f"Got {bytes(session._tx_buffer)!r}."
+            ),
+        )
+
+    def test__fastopen__server_syn_ack_retransmit_still_carries_tfo_cookie(self) -> None:
+        """
+        Ensure that when the server retransmits a SYN+ACK
+        (because the third-leg ACK has not arrived within
+        the RTO), the retransmit MUST still carry the Fast
+        Open option with the same cookie. SYN+ACK
+        retransmits are required to be option-equivalent
+        to the original so a peer that lost the original
+        SYN+ACK still receives the cookie on the
+        retransmit and can cache it for subsequent
+        connections.
+
+        Reference: RFC 7413 §3.1 (SYN+ACK retransmits carry the same cookie).
+        """
+
+        _listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS)
+
+        # Peer SYN with TFO cookie request.
+        peer_syn = build_tcp4(
+            sport=PEER__PORT_FOR_FASTOPEN,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=b"",
+        )
+        self._drive_rx(frame=peer_syn)
+
+        # First SYN+ACK fires on the next tick; capture the
+        # cookie it issued so the retransmit can be compared.
+        first_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(first_tx),
+            1,
+            msg="Setup precondition: first SYN+ACK MUST fire on the first tick.",
+        )
+        first_syn_ack = self._parse_tx(first_tx[0])
+        self.assertIsNotNone(
+            first_syn_ack.fastopen_cookie,
+            msg="Setup precondition: first SYN+ACK MUST carry a TFO cookie.",
+        )
+        original_cookie = first_syn_ack.fastopen_cookie
+
+        # Drive past the RTO so the retransmit timer fires.
+        # PyTCP's INITIAL_RTO_MS = 1000; advance well past
+        # so the retransmit handler runs and re-emits the
+        # SYN+ACK from SYN_RCVD.
+        retransmit_tx = self._advance(ms=1100)
+
+        # Find the re-emitted SYN+ACK in the retransmit
+        # window.
+        retransmit_syn_ack = None
+        for frame in retransmit_tx:
+            probe = self._parse_tx(frame)
+            if probe.flags == frozenset({"SYN", "ACK"}):
+                retransmit_syn_ack = probe
+                break
+
+        self.assertIsNotNone(
+            retransmit_syn_ack,
+            msg=(
+                "Setup precondition: a SYN+ACK retransmit MUST "
+                "fire after the RTO when the third-leg ACK has "
+                f"not arrived. Got {len(retransmit_tx)} frames "
+                f"in the post-RTO window."
+            ),
+        )
+        assert retransmit_syn_ack is not None  # mypy
+        # The spec encoding: retransmit SYN+ACK carries the
+        # SAME cookie as the original.
+        self.assertEqual(
+            retransmit_syn_ack.fastopen_cookie,
+            original_cookie,
+            msg=(
+                "RFC 7413 §3.1: the retransmitted SYN+ACK "
+                "MUST carry the same TFO cookie as the "
+                "original. Today PyTCP consumes the cookie on "
+                "first emit so the retransmit carries no TFO "
+                f"option. Original cookie={original_cookie!r}, "
+                f"retransmit cookie={retransmit_syn_ack.fastopen_cookie!r}."
+            ),
+        )
