@@ -93,6 +93,10 @@ class TcpProbe:
     sack_blocks: tuple[tuple[int, int], ...]
     tsval: int | None
     tsecr: int | None
+    # RFC 7413 §2 TFO option: None = absent on the wire,
+    # b"" = empty-cookie request form, b"..." = cookie
+    # response/use form.
+    fastopen_cookie: bytes | None
     payload: bytes
 
 
@@ -240,6 +244,16 @@ class TcpSessionTestCase(NetworkTestCase):
         timestamps_raw = packet_rx.tcp._options.timestamps
         tsval = timestamps_raw.tsval if timestamps_raw is not None else None
         tsecr = timestamps_raw.tsecr if timestamps_raw is not None else None
+        # RFC 7413 §2 TFO option detection: walk the option
+        # list looking for Kind = 34. Today TFO is decoded as
+        # 'TcpOptionUnknown' (no dedicated class registered);
+        # once 'TcpOptionFastOpen' lands the probe will switch
+        # to the registered isinstance() check.
+        fastopen_cookie: bytes | None = None
+        for option in packet_rx.tcp._options:
+            if int(option.type) == 34:
+                fastopen_cookie = bytes(getattr(option, "data", b""))
+                break
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -255,6 +269,7 @@ class TcpSessionTestCase(NetworkTestCase):
             sack_blocks=sack_blocks,
             tsval=tsval,
             tsecr=tsecr,
+            fastopen_cookie=fastopen_cookie,
             payload=bytes(packet_rx.tcp.payload),
         )
 

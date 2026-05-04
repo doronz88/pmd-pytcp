@@ -38,6 +38,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
+from net_proto.protocols.tcp.options.tcp__option import TcpOptionType
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
 from net_proto.protocols.tcp.options.tcp__option__nop import TcpOptionNop
 from net_proto.protocols.tcp.options.tcp__option__sack import (
@@ -46,6 +47,7 @@ from net_proto.protocols.tcp.options.tcp__option__sack import (
 )
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTimestamps
+from net_proto.protocols.tcp.options.tcp__option__unknown import TcpOptionUnknown
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from net_proto.protocols.tcp.options.tcp__options import TcpOption, TcpOptions
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
@@ -75,6 +77,7 @@ def _build_tcp_assembler(
     sack_blocks: Iterable[tuple[int, int]] | None,
     tsval: int | None,
     tsecr: int | None,
+    fastopen_cookie: bytes | None,
     payload: Buffer,
 ) -> TcpAssembler:
     """
@@ -94,6 +97,7 @@ def _build_tcp_assembler(
         sack_blocks=sack_blocks,
         tsval=tsval,
         tsecr=tsecr,
+        fastopen_cookie=fastopen_cookie,
     )
 
     return TcpAssembler(
@@ -124,14 +128,24 @@ def _build_options(
     sack_blocks: Iterable[tuple[int, int]] | None,
     tsval: int | None,
     tsecr: int | None,
+    fastopen_cookie: bytes | None,
 ) -> TcpOptions:
     """
     Build a 'TcpOptions' container holding the requested MSS,
-    WSCALE, SACK-permitted, SACK, and Timestamps options, padding
-    with NOPs so the total option block length is a multiple of 4
-    bytes (TCP requires 4-byte alignment of the data offset).
-    Timestamps requires both 'tsval' and 'tsecr' to be supplied
-    together (the wire option carries both fields).
+    WSCALE, SACK-permitted, SACK, Timestamps, and Fast Open
+    options, padding with NOPs so the total option block length
+    is a multiple of 4 bytes (TCP requires 4-byte alignment of
+    the data offset). Timestamps requires both 'tsval' and
+    'tsecr' to be supplied together (the wire option carries
+    both fields).
+
+    'fastopen_cookie' supplies the RFC 7413 §2 TFO option
+    payload: 'None' omits the option, 'b""' emits the empty-
+    cookie request form (Length=2), and a 4-16 byte value
+    emits the cookie use/response form (Length=2+N). The
+    factory currently encodes TFO via 'TcpOptionUnknown' with
+    Kind=34; once 'TcpOptionFastOpen' lands the factory will
+    switch to that class.
     """
 
     options: list[TcpOption] = []
@@ -155,6 +169,9 @@ def _build_options(
             "both fields."
         )
         options.append(TcpOptionTimestamps(tsval=tsval, tsecr=tsecr))
+
+    if fastopen_cookie is not None:
+        options.append(TcpOptionUnknown(type=TcpOptionType.from_int(34), data=fastopen_cookie))
 
     pad_count = (-sum(len(opt) for opt in options)) % 4
     options.extend(TcpOptionNop() for _ in range(pad_count))
@@ -180,6 +197,7 @@ def build_tcp4(
     sack_blocks: Iterable[tuple[int, int]] | None = None,
     tsval: int | None = None,
     tsecr: int | None = None,
+    fastopen_cookie: bytes | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """
@@ -201,6 +219,7 @@ def build_tcp4(
         sack_blocks=sack_blocks,
         tsval=tsval,
         tsecr=tsecr,
+        fastopen_cookie=fastopen_cookie,
         payload=payload,
     )
 
@@ -239,6 +258,7 @@ def build_tcp6(
     sack_blocks: Iterable[tuple[int, int]] | None = None,
     tsval: int | None = None,
     tsecr: int | None = None,
+    fastopen_cookie: bytes | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """
@@ -260,6 +280,7 @@ def build_tcp6(
         sack_blocks=sack_blocks,
         tsval=tsval,
         tsecr=tsecr,
+        fastopen_cookie=fastopen_cookie,
         payload=payload,
     )
 
