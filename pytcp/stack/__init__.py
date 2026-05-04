@@ -51,7 +51,7 @@ from pytcp.stack.timer import Timer
 from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address
+    from net_addr import Ip4Address, Ip6Address
     from pytcp.socket import socket
 
 
@@ -89,6 +89,16 @@ TCP__ISS_SECRET: bytes = secrets.token_bytes(16)
 # the secret to invalidate outstanding cookies; PyTCP keeps
 # it stable for the process lifetime.
 TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
+
+# RFC 7413 §3.1 / §4.1.3 Fast Open client-side cookie cache.
+# Maps peer IP address to the most-recently-seen cookie issued
+# by that peer in a SYN+ACK. A subsequent active-open SYN to
+# the same peer replays the cached cookie + (optionally) data
+# to skip the data RTT. The cache is per-process and stable
+# for the process lifetime; restarts purge it (matching the
+# secret rotation behaviour). Wire-format compatibility: the
+# cookie byte-strings are 4..16 bytes per RFC 7413 §2.
+tcp__fastopen_cookies: "dict[Ip4Address | Ip6Address, bytes]" = {}
 
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500

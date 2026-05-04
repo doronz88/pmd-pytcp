@@ -67,6 +67,7 @@ ver 3.0.4
 from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
+    FsmState,
     SysCall,
     TcpSession,
 )
@@ -405,19 +406,23 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
     def test__fastopen__active_open_syn_advertises_tfo_cookie_request(self) -> None:
         """
-        Ensure that on an active-open connection the
-        outbound SYN carries the Fast Open option in the
+        Ensure that on a first connection the active-open
+        SYN carries the Fast Open option in the
         cookie-request form (Length = 2, empty cookie).
-        This is the canonical client-side first-connect
-        behaviour: the client has no cached cookie for
-        this server yet, so it advertises an empty cookie
-        request to elicit the server's cookie issuance in
-        the SYN+ACK reply. On a subsequent connection the
-        client would replay the cached cookie + data
-        payload to skip the data RTT.
+        The client has no cached cookie for this server
+        yet, so it advertises an empty cookie request to
+        elicit the server's cookie issuance in the SYN+ACK
+        reply. On a subsequent connection the client
+        replays the cached cookie + data payload to skip
+        the data RTT.
 
         Reference: RFC 7413 §3.1 (client first connect emits TFO cookie request).
         """
+
+        # Ensure the cache is empty for this test scenario;
+        # a previous test (or test order) may have populated
+        # it via the cache scenario below.
+        stack.tcp__fastopen_cookies.pop(PEER__IP, None)
 
         session = self._make_active_session(iss=LOCAL__ISS)
         session.tcp_fsm(syscall=SysCall.CONNECT)
@@ -444,9 +449,113 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
                 "RFC 7413 §3.1: client's active-open SYN MUST "
                 "carry the Fast Open option in the cookie-request "
                 "form (empty cookie). Got "
-                f"fastopen_cookie={syn.fastopen_cookie!r}; "
-                "the option appears absent from the wire (None) "
-                "today because PyTCP does not yet emit TFO on "
-                "outbound active-open SYNs."
+                f"fastopen_cookie={syn.fastopen_cookie!r}."
+            ),
+        )
+
+    def test__fastopen__client_caches_server_cookie_and_replays_on_next_connect(self) -> None:
+        """
+        Ensure that after a client active-open handshake
+        whose SYN+ACK carried a Fast Open cookie, the
+        cookie is cached against the peer's IP and replayed
+        on a subsequent active-open SYN to the same peer.
+        This is the round-trip that earns the
+        Fast-Open-named latency saving: the first connect
+        round-trip seeds the cache, and every connect
+        thereafter to the same server can preemptively
+        carry data on the SYN.
+
+        Reference: RFC 7413 §3.1 (client cookie cache + replay).
+        Reference: RFC 7413 §4.1.3 (cookie cache keyed by server IP).
+        """
+
+        cached_cookie = b"\xde\xad\xbe\xef\xca\xfe\xba\xbe"
+        stack.tcp__fastopen_cookies.pop(PEER__IP, None)
+
+        # First connection: empty cookie request. Drive the
+        # SYN+ACK with the server-supplied cookie.
+        first_session = self._make_active_session(iss=LOCAL__ISS)
+        first_session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            src_ip=PEER__IP,
+            dst_ip=STACK__IP,
+            sport=LISTEN__PORT,
+            dport=PEER__PORT_FOR_FASTOPEN,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            fastopen_cookie=cached_cookie,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        self.assertIs(
+            first_session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: first connection MUST reach ESTABLISHED.",
+        )
+
+        # The spec encoding: cache is populated.
+        self.assertEqual(
+            stack.tcp__fastopen_cookies.get(PEER__IP),
+            cached_cookie,
+            msg=(
+                "RFC 7413 §3.1: a peer-supplied TFO cookie "
+                "MUST be cached against the peer IP. Cache "
+                f"lookup: {stack.tcp__fastopen_cookies.get(PEER__IP)!r}, "
+                f"expected {cached_cookie!r}."
+            ),
+        )
+
+        # Second connection to the same peer: outbound SYN
+        # MUST carry the cached cookie, not the empty
+        # cookie-request form.
+        # Use a different source port so the second session
+        # has a distinct 4-tuple from the first.
+        second_local_iss = LOCAL__ISS + 0x1000
+        self._force_iss(second_local_iss)
+        second_sock = TcpSocket(family=AddressFamily.INET4)
+        second_sock._local_ip_address = STACK__IP
+        second_sock._local_port = PEER__PORT_FOR_FASTOPEN + 1
+        second_sock._remote_ip_address = PEER__IP
+        second_sock._remote_port = LISTEN__PORT
+        second_session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=PEER__PORT_FOR_FASTOPEN + 1,
+            remote_ip_address=PEER__IP,
+            remote_port=LISTEN__PORT,
+            socket=second_sock,
+        )
+        second_sock._tcp_session = second_session
+        stack.sockets[second_sock.socket_id] = second_sock
+
+        second_session.tcp_fsm(syscall=SysCall.CONNECT)
+        second_syn_tx = self._advance(ms=1)
+        # Capture the second session's outbound SYN. There
+        # may be other TX (first session retransmits, etc.);
+        # filter to the one whose source port matches the
+        # second session.
+        second_syn = None
+        for frame in second_syn_tx:
+            probe = self._parse_tx(frame)
+            if probe.sport == PEER__PORT_FOR_FASTOPEN + 1:
+                second_syn = probe
+                break
+
+        self.assertIsNotNone(
+            second_syn,
+            msg=("Setup precondition: second active-open SYN MUST fire on the next tick."),
+        )
+        assert second_syn is not None  # mypy
+        self.assertEqual(
+            second_syn.fastopen_cookie,
+            cached_cookie,
+            msg=(
+                "RFC 7413 §3.1: a subsequent active-open SYN "
+                "to the same peer MUST replay the cached "
+                f"cookie. Expected cookie={cached_cookie!r}, "
+                f"got {second_syn.fastopen_cookie!r}."
             ),
         )
