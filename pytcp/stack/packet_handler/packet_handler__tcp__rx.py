@@ -122,6 +122,8 @@ class PacketHandlerTcpRx(ABC):
             tcp__flag_ack=packet_rx.tcp.flag_ack,
             tcp__flag_fin=packet_rx.tcp.flag_fin,
             tcp__flag_rst=packet_rx.tcp.flag_rst,
+            tcp__flag_ece=packet_rx.tcp.flag_ece,
+            tcp__flag_cwr=packet_rx.tcp.flag_cwr,
             tcp__seq=packet_rx.tcp.seq,
             tcp__ack=packet_rx.tcp.ack,
             tcp__win=packet_rx.tcp.win,

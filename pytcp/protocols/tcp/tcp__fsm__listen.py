@@ -202,6 +202,15 @@ def fsm__listen(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
+            # RFC 3168 §6.1.1 ECN bilateral negotiation:
+            # peer's active-open SYN with ECE+CWR signals
+            # ECN support; we confirm by setting
+            # '_ecn_enabled' so '_transmit_packet' emits
+            # ECE on the SYN+ACK we send next. Gated on
+            # '_advertise_ecn' so an opted-out listener
+            # silently ignores peer's request.
+            if session._advertise_ecn and packet_rx_md.tcp__flag_ece and packet_rx_md.tcp__flag_cwr:
+                session._ecn_enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie
             # issuance + validation, gated on the listening
             # socket's '_tcp_fastopen_qlen > 0' (the

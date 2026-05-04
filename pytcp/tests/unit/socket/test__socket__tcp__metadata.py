@@ -56,6 +56,8 @@ def _make_ip4_metadata(**overrides: object) -> TcpMetadata:
         "tcp__flag_ack": False,
         "tcp__flag_fin": False,
         "tcp__flag_rst": False,
+        "tcp__flag_ece": False,
+        "tcp__flag_cwr": False,
         "tcp__seq": 1000,
         "tcp__ack": 0,
         "tcp__win": 65535,

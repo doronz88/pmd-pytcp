@@ -286,6 +286,8 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
             tcp__flag_ack=False,
             tcp__flag_fin=False,
             tcp__flag_rst=False,
+            tcp__flag_ece=False,
+            tcp__flag_cwr=False,
             tcp__seq=12345,
             tcp__ack=0,
             tcp__win=65535,
