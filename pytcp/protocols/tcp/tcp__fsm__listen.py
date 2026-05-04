@@ -202,14 +202,25 @@ def fsm__listen(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
-            # RFC 3168 §6.1.1 ECN bilateral negotiation:
-            # peer's active-open SYN with ECE+CWR signals
-            # ECN support; we confirm by setting
-            # '_ecn_enabled' so '_transmit_packet' emits
-            # ECE on the SYN+ACK we send next. Gated on
-            # '_advertise_ecn' so an opted-out listener
-            # silently ignores peer's request.
-            if session._advertise_ecn and packet_rx_md.tcp__flag_ece and packet_rx_md.tcp__flag_cwr:
+            # RFC 9341 §3.1.1 / RFC 3168 §6.1.1 bilateral
+            # ECN/AccECN negotiation. The AccECN-setup SYN
+            # carries AE+CWR+ECE; classic RFC 3168 SYN
+            # carries CWR+ECE only. Detect AccECN first
+            # (AE bit present) so the SYN+ACK we emit next
+            # uses one of the four AccECN codepoints
+            # encoding the IP-ECN of this SYN. Fall back
+            # to RFC 3168 when the AE bit is absent.
+            # Mutually exclusive: at most one of
+            # '_accecn_enabled' / '_ecn_enabled' is set.
+            if (
+                session._advertise_accecn
+                and packet_rx_md.tcp__flag_ns
+                and packet_rx_md.tcp__flag_cwr
+                and packet_rx_md.tcp__flag_ece
+            ):
+                session._accecn_enabled = True
+                session._accecn_synack_codepoint = packet_rx_md.ip__ecn
+            elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and packet_rx_md.tcp__flag_cwr:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie
             # issuance + validation, gated on the listening

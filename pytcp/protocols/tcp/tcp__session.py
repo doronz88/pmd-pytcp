@@ -320,6 +320,15 @@ class TcpSession:
         # '_ecn_enabled'.
         self._accecn_enabled: bool = False
 
+        # RFC 9341 §3.1.1 passive-side codepoint capture. When
+        # an AccECN-setup SYN arrives at LISTEN, the listener
+        # captures the IP-ECN codepoint of the received SYN
+        # here so '_transmit_packet' can encode it as the
+        # corresponding AE/CWR/ECE codepoint on the outbound
+        # SYN+ACK. Values: 0=Not-ECT, 1=ECT(1), 2=ECT(0),
+        # 3=CE. Unused on the active-open side.
+        self._accecn_synack_codepoint: int = 0
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -1181,6 +1190,23 @@ class TcpSession:
         elif flag_syn and not flag_ack and self._advertise_ecn:
             flag_ece = True
             flag_cwr = True
+        # RFC 9341 §3.1.1 passive-side AccECN SYN+ACK. When
+        # the listener has accepted an AccECN-setup SYN, the
+        # SYN+ACK carries one of four codepoints encoding the
+        # IP-ECN of the received SYN:
+        #   Not-ECT (00) -> AE=0, CWR=1, ECE=0
+        #   ECT(1)  (01) -> AE=0, CWR=1, ECE=1
+        #   ECT(0)  (10) -> AE=1, CWR=0, ECE=0
+        #   CE      (11) -> AE=1, CWR=1, ECE=1
+        # The encoding has AE = bit1 of the IP-ECN codepoint;
+        # CWR = (NOT bit1) OR bit0 (i.e. set unless ECT(0));
+        # ECE = bit0 of the codepoint XOR'd with bit1 (i.e.
+        # set when codepoint is ECT(1) or CE).
+        elif flag_syn and flag_ack and self._accecn_enabled:
+            cp = self._accecn_synack_codepoint
+            flag_ns = bool(cp & 0b10)
+            flag_cwr = (cp & 0b10) == 0 or (cp & 0b01) != 0
+            flag_ece = bool(cp & 0b01)
         elif flag_syn and flag_ack and self._ecn_enabled:
             flag_ece = True
         # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo. On
