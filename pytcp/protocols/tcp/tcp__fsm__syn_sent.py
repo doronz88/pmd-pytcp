@@ -222,6 +222,13 @@ def fsm__syn_sent(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
+            # RFC 7413 §3.1 client-side cookie cache update:
+            # when peer's SYN+ACK carries a non-empty TFO
+            # cookie, cache it against the peer IP so a
+            # subsequent active-open to the same server can
+            # replay it (and preemptively carry data).
+            if packet_rx_md.tcp__fastopen_cookie:
+                stack.tcp__fastopen_cookies[session._remote_ip_address] = bytes(packet_rx_md.tcp__fastopen_cookie)
             # Send initial ACK packet.
             session._transmit_packet(flag_ack=True)
             __debug__ and log(

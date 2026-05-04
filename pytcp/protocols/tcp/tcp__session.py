@@ -1079,7 +1079,12 @@ class TcpSession:
             tcp__fastopen_cookie = self._fastopen_cookie_to_emit
             self._fastopen_cookie_to_emit = None
         elif flag_syn and not flag_ack and self._advertise_fastopen:
-            tcp__fastopen_cookie = b""
+            # Active-open SYN: emit TFO with the cached
+            # cookie for this peer if present, else the
+            # empty cookie-request form. Cookie cache is
+            # populated by the SYN_SENT handler when peer's
+            # SYN+ACK carries a TFO cookie.
+            tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
 
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
