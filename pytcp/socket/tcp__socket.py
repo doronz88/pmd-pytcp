@@ -59,6 +59,7 @@ from pytcp.socket import (
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
+    TCP_NODELAY,
     AddressFamily,
     IpProto,
     SocketType,
@@ -159,6 +160,15 @@ class TcpSocket(socket):
         # Propagated to the freshly-constructed 'TcpSession'
         # by 'connect()' / 'listen()' before the FSM starts.
         self._cc_mode: CcMode = CcMode.CUBIC
+
+        # RFC 1122 §4.2.3.4 Nagle disable, settable via
+        # 'setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)'. Default is
+        # False (Nagle enabled per RFC 1122 SHOULD). Latency-
+        # sensitive applications opt out so partial segments
+        # fire immediately instead of being deferred while a
+        # previous partial is unacked. Propagated to the
+        # session at 'connect()' / 'listen()' time.
+        self._tcp_nodelay: bool = False
 
         # Create established socket based on established TCP session, called by
         # listening sockets only.
@@ -307,6 +317,15 @@ class TcpSocket(socket):
             if self._tcp_session is not None:
                 self._tcp_session._cc_mode = mode
             return
+        if level == IPPROTO_TCP and optname == TCP_NODELAY:
+            flag = bool(value)
+            self._tcp_nodelay = flag
+            # Mid-connection toggle is honoured: the next
+            # '_transmit_data' tick reads the new flag and
+            # either gates Nagle on (False) or off (True).
+            if self._tcp_session is not None:
+                self._tcp_session._tcp_nodelay = flag
+            return
         raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
@@ -333,6 +352,8 @@ class TcpSocket(socket):
             return self._tcp_fastopen_qlen
         if level == IPPROTO_TCP and optname == TCP_CONGESTION:
             return int(self._cc_mode.value)
+        if level == IPPROTO_TCP and optname == TCP_NODELAY:
+            return int(self._tcp_nodelay)
         raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def _get_ip_addresses(
@@ -503,6 +524,12 @@ class TcpSocket(socket):
         # CcMode.RENO.value)' before 'connect()'.
         self._tcp_session._cc_mode = self._cc_mode
 
+        # RFC 1122 §4.2.3.4: propagate the TCP_NODELAY flag.
+        # Default False (Nagle enabled); opt-out for latency-
+        # sensitive applications via 'setsockopt(IPPROTO_TCP,
+        # TCP_NODELAY, 1)'.
+        self._tcp_session._tcp_nodelay = self._tcp_nodelay
+
         # RFC 7413 §3.1 connect-with-data: pre-load the
         # session's TX buffer with caller-supplied bytes
         # before driving the FSM into SYN_SENT. The session-
@@ -573,6 +600,11 @@ class TcpSocket(socket):
         # accepted children inherit through the listener-fork
         # pivot.
         self._tcp_session._cc_mode = self._cc_mode
+
+        # RFC 1122 §4.2.3.4: propagate Nagle disable so
+        # accepted children inherit through the listener-fork
+        # pivot.
+        self._tcp_session._tcp_nodelay = self._tcp_nodelay
 
         __debug__ and log(
             "socket",

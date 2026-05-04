@@ -601,6 +601,63 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Nagle suppression must not transition the session out of ESTABLISHED.",
         )
 
+    def test__data_transfer_send__tcp_nodelay_disables_nagle_partial_fires_immediately(self) -> None:
+        """
+        Ensure that with '_tcp_nodelay = True', a sub-MSS
+        send() with outstanding unacked data fires the partial
+        segment immediately on the next tick instead of being
+        deferred by Nagle.
+
+        Reference: RFC 1122 §4.2.3.4 (TCP_NODELAY disable).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._tcp_nodelay = True
+
+        # First send: 1 byte. Fires immediately as in the Nagle
+        # test (no outstanding data yet).
+        session.send(data=b"a")
+        first_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(first_tx),
+            1,
+            msg="Setup precondition: first 1-byte send fires on next tick.",
+        )
+
+        snd_nxt_after_first = session._snd_nxt
+        self.assertGreater(
+            snd_nxt_after_first,
+            session._snd_una,
+            msg=("Setup precondition: SND.NXT > SND.UNA - " "outstanding data must be in flight for Nagle to apply."),
+        )
+
+        # Second send: 1 byte. With TCP_NODELAY set, the
+        # sub-MSS partial MUST fire immediately on the next
+        # tick - Nagle is disabled.
+        session.send(data=b"b")
+        second_tx = self._advance(ms=1)
+
+        self.assertEqual(
+            len(second_tx),
+            1,
+            msg=(
+                "TCP_NODELAY: sub-MSS partial MUST fire "
+                "immediately even with outstanding data; got "
+                f"{len(second_tx)} TX frames."
+            ),
+        )
+        second_seg = self._parse_tx(second_tx[0])
+        self.assertEqual(
+            second_seg.payload,
+            b"b",
+            msg="Second segment must carry the b'b' byte.",
+        )
+        self.assertEqual(
+            session._snd_nxt,
+            snd_nxt_after_first + 1,
+            msg="SND.NXT must advance by 1 byte after the partial fires.",
+        )
+
     def test__data_transfer_send__send_in_close_wait_is_allowed_and_transmits_data(self) -> None:
         """
         Ensure that an application can still send() data

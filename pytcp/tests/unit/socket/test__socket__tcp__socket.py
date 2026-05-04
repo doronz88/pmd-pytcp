@@ -47,6 +47,7 @@ from pytcp.socket import (
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
+    TCP_NODELAY,
     AddressFamily,
     SocketType,
     gaierror,
@@ -1106,4 +1107,100 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             s.getsockopt(IPPROTO_TCP, TCP_FASTOPEN),
             0,
             msg=("setsockopt(TCP_FASTOPEN, 0) after a prior " "enable must clear the option."),
+        )
+
+    def test__tcp_socket__getsockopt__tcp_nodelay_default_zero(self) -> None:
+        """
+        Ensure a freshly-constructed TcpSocket reports
+        TCP_NODELAY = 0 (Nagle enabled by default).
+
+        Reference: RFC 1122 §4.2.3.4 (Nagle SHOULD be implemented).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_NODELAY),
+            0,
+            msg="TCP_NODELAY must default to 0 (Nagle enabled).",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_nodelay_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        followed by getsockopt round-trips as 1.
+
+        Reference: RFC 1122 §4.2.3.4 (application disable of Nagle).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_NODELAY),
+            1,
+            msg="setsockopt(TCP_NODELAY, 1) must round-trip via getsockopt.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_nodelay_zero_re_enables_nagle(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_TCP, TCP_NODELAY, 0) after
+        a prior enable re-enables Nagle. The application MUST
+        be able to toggle the flag in either direction.
+
+        Reference: RFC 1122 §4.2.3.4 (application toggle).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        s.setsockopt(IPPROTO_TCP, TCP_NODELAY, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_NODELAY),
+            0,
+            msg="setsockopt(TCP_NODELAY, 0) after a prior enable must clear.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_nodelay_normalises_nonzero_to_one(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_TCP, TCP_NODELAY, 42)
+        normalises any non-zero integer to 1 on round-trip,
+        matching boolean-option semantics.
+
+        Reference: RFC 1122 §4.2.3.4 (boolean toggle).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_NODELAY, 42)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_NODELAY),
+            1,
+            msg="Non-zero TCP_NODELAY value must normalise to 1.",
+        )
+
+    def test__tcp_socket__connect_propagates_tcp_nodelay_to_session(self) -> None:
+        """
+        Ensure setsockopt(TCP_NODELAY, 1) followed by connect()
+        propagates the flag to the freshly-constructed
+        TcpSession's '_tcp_nodelay' attribute.
+
+        Reference: RFC 1122 §4.2.3.4 (TCP_NODELAY socket-API path).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertIs(
+            self._session_cls.return_value._tcp_nodelay,
+            True,
+            msg=("connect() must propagate '_tcp_nodelay' to the new " "TcpSession so the Nagle gate can read it."),
         )

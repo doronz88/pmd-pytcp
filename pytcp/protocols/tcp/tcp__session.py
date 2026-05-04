@@ -763,6 +763,14 @@ class TcpSession:
         # completes, which means "no partial in flight yet".
         self._snd_sml: Seq32 = self._snd_ini
 
+        # RFC 1122 §4.2.3.4 Nagle disable. When True, the
+        # Nagle defer in '_transmit_data' is skipped and
+        # partial segments fire immediately. Settable via the
+        # BSD socket API:
+        # 'setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)'. Default
+        # False (Nagle enabled per RFC 1122 SHOULD).
+        self._tcp_nodelay: bool = False
+
         # Zero-window persist timer state per RFC 9293 §3.8.6.1.
         # '_persist_active' is the sentinel that tells the timer
         # branch in '_tcp_fsm_established' whether a persist probe
@@ -2381,7 +2389,11 @@ class TcpSession:
                     is_retransmit = lt32(self._snd_nxt, self._snd_max)
                     is_partial = transmit_data_len < self._snd_mss
                     prev_partial_in_flight = gt32(self._snd_sml, self._snd_una)
-                    if is_partial and prev_partial_in_flight and not is_retransmit:
+                    # RFC 1122 §4.2.3.4: TCP_NODELAY disables
+                    # Nagle for latency-sensitive applications;
+                    # when set, partial segments fire even with
+                    # a previous partial still unacked.
+                    if is_partial and prev_partial_in_flight and not is_retransmit and not self._tcp_nodelay:
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - Nagle: deferring {transmit_data_len}-byte "

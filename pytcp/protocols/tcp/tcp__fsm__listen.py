@@ -141,6 +141,9 @@ def fsm__listen(
             # RFC 9438 §1: inherit the CC algorithm selector
             # from the listening socket.
             tcp_session._cc_mode = listen_socket._cc_mode
+            # RFC 1122 §4.2.3.4: inherit the Nagle disable
+            # flag.
+            tcp_session._tcp_nodelay = listen_socket._tcp_nodelay
             session._socket._tcp_session = tcp_session  # pylint: disable=protected-access
             # Re-bind 'session' to the peer's 4-tuple and create a
             # new TcpSocket that exposes this child session to
@@ -169,6 +172,10 @@ def fsm__listen(
             # the CC mode from the listening parent.
             session._socket._cc_mode = listen_socket._cc_mode
             session._cc_mode = listen_socket._cc_mode
+            # RFC 1122 §4.2.3.4: child socket / session inherit
+            # the Nagle disable flag.
+            session._socket._tcp_nodelay = listen_socket._tcp_nodelay
+            session._tcp_nodelay = listen_socket._tcp_nodelay
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the
