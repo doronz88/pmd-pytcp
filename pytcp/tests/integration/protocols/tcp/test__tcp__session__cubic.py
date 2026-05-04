@@ -232,8 +232,8 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
     def test__cubic__slow_start_phase_unchanged_in_cubic_mode(self) -> None:
         """
         Ensure that with '_cc_mode == CUBIC' AND cwnd <
-        ssthresh, growth follows the unchanged RFC 5681 §3.1
-        slow-start formula (cwnd += min(bytes_acked, SMSS)).
+        ssthresh, growth follows the unchanged Reno slow-
+        start formula (cwnd += min(bytes_acked, SMSS)).
 
         Reference: RFC 5681 §3.1 (slow-start).
         Reference: RFC 9438 §4.6 (CUBIC CA-only).
@@ -354,8 +354,8 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
     def test__cubic__rto_uses_beta_cubic(self) -> None:
         """
         Ensure that an RTO in CUBIC mode sets ssthresh to
-        approximately max(cwnd * 7/10, 2*SMSS) (using cwnd
-        rather than flight_size per RFC 9438 §4.6 commentary).
+        approximately max(cwnd * 7/10, 2*SMSS), using cwnd
+        in place of flight_size as the spec permits.
 
         Reference: RFC 9438 §4.6 (beta_cubic on RTO).
         """
@@ -494,8 +494,8 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
     def test__cubic__reno_friendly_w_est_tracks_cwnd_on_ca_growth(self) -> None:
         """
         Ensure that on every cum-ACK in CUBIC CA mode,
-        '_cubic_w_est' advances per RFC 9438 §4.3 figure 4
-        (alpha_cubic * bytes_acked * smss / cwnd).
+        '_cubic_w_est' advances by
+        alpha_cubic * bytes_acked * smss / cwnd.
 
         Reference: RFC 9438 §4.3 (W_est tracker).
         """
