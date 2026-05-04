@@ -52,6 +52,9 @@ UINT_16__MAX = 0xFFFF
 UINT_20__MIN = 0x00000
 UINT_20__MAX = 0xFFFFF
 
+UINT_24__MIN = 0x000000
+UINT_24__MAX = 0xFFFFFF
+
 UINT_32__MIN = 0x00000000
 UINT_32__MAX = 0xFFFFFFFF
 
@@ -110,6 +113,14 @@ def is_uint20(x: int, /) -> bool:
     """
 
     return UINT_20__MIN <= x <= UINT_20__MAX
+
+
+def is_uint24(x: int, /) -> bool:
+    """
+    Check if the provided value is a valid 24-bit unsigned integer.
+    """
+
+    return UINT_24__MIN <= x <= UINT_24__MAX
 
 
 def is_uint32(x: int, /) -> bool:

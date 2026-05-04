@@ -36,6 +36,12 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.tcp.options.tcp__option import TcpOption, TcpOptionType
+from net_proto.protocols.tcp.options.tcp__option__accecn0 import (
+    TcpOptionAccecn0,
+)
+from net_proto.protocols.tcp.options.tcp__option__accecn1 import (
+    TcpOptionAccecn1,
+)
 from net_proto.protocols.tcp.options.tcp__option__eol import TcpOptionEol
 from net_proto.protocols.tcp.options.tcp__option__fastopen import TcpOptionFastOpen
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
@@ -144,6 +150,20 @@ class TcpOptions(ProtoOptions):
 
         return None
 
+    @property
+    def accecn(self) -> TcpOptionAccecn0 | TcpOptionAccecn1 | None:
+        """
+        Get the TCP AccECN option if present (RFC 9341 §3.2.3).
+        Returns either the kind=172 (AccECN0) or kind=173 (AccECN1)
+        wire-form variant, whichever the peer chose to emit.
+        """
+
+        for option in self._options:
+            if isinstance(option, (TcpOptionAccecn0, TcpOptionAccecn1)):
+                return option
+
+        return None
+
     @staticmethod
     def validate_integrity(
         *,
@@ -204,6 +224,10 @@ class TcpOptions(ProtoOptions):
                     options.append(TcpOptionTimestamps.from_buffer(buffer[offset:]))
                 case TcpOptionType.FASTOPEN:
                     options.append(TcpOptionFastOpen.from_buffer(buffer[offset:]))
+                case TcpOptionType.ACCECN0:
+                    options.append(TcpOptionAccecn0.from_buffer(buffer[offset:]))
+                case TcpOptionType.ACCECN1:
+                    options.append(TcpOptionAccecn1.from_buffer(buffer[offset:]))
                 case _:
                     options.append(TcpOptionUnknown.from_buffer(buffer[offset:]))
 

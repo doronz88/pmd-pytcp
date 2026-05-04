@@ -51,6 +51,8 @@ class TcpOptionType(ProtoOptionType):
     SACK = 5
     TIMESTAMPS = 8
     FASTOPEN = 34
+    ACCECN0 = 172
+    ACCECN1 = 173
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
