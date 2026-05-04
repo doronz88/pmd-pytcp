@@ -278,6 +278,25 @@ class TcpSession:
         # 'CONNECT'.
         self._advertise_fastopen: bool = True
 
+        # RFC 3168 §6.1.1 Explicit Congestion Notification
+        # opt-out flag. Defaults to True so the active-open
+        # SYN carries ECE+CWR (the canonical ECN-setup
+        # signal) and the passive-open SYN+ACK echoes ECE
+        # only (ECN-Echo confirmation). Applications that
+        # need to suppress ECN on outbound SYNs (interop
+        # with broken middleboxes that drop ECT-marked
+        # packets) flip this to False before 'CONNECT' /
+        # 'LISTEN'.
+        self._advertise_ecn: bool = True
+
+        # RFC 3168 §6.1.1 ECN bilateral-success flag.
+        # Set True post-handshake when both sides advertised
+        # ECN support. While True, outbound data carries IP
+        # ECT(0), inbound CE marks are echoed via ECE on the
+        # next outbound segment, and inbound ECE triggers
+        # cwnd reduction per §6.1.2.
+        self._ecn_enabled: bool = False
+
         # RFC 6937 PRR per-recovery state. Declared with
         # canonical defaults so the [FLAGS BUG] tests-first
         # suite can exercise the attribute access; the actual
@@ -1089,6 +1108,23 @@ class TcpSession:
         #     fast-open. The 'b""' placeholder will be
         #     replaced with a cached cookie value when the
         #     client-side cookie cache lands.
+        # RFC 3168 §6.1.1 ECN flag emission on SYN segments.
+        # Active-open SYN: ECE+CWR (the canonical ECN-setup
+        # signal, gated on '_advertise_ecn'). Passive-open
+        # SYN+ACK: ECE only (ECN-Echo confirmation, gated
+        # on bilateral '_ecn_enabled' set when peer's
+        # active-open SYN was seen with ECE+CWR). Non-SYN
+        # segments handle ECE / CWR via the data-path
+        # echo / reduce mechanism (§6.1.2), wired in a
+        # subsequent phase.
+        flag_ece = False
+        flag_cwr = False
+        if flag_syn and not flag_ack and self._advertise_ecn:
+            flag_ece = True
+            flag_cwr = True
+        elif flag_syn and flag_ack and self._ecn_enabled:
+            flag_ece = True
+
         tcp__fastopen_cookie: bytes | None = None
         if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
             tcp__fastopen_cookie = self._fastopen_cookie_to_emit
@@ -1110,6 +1146,8 @@ class TcpSession:
             tcp__flag_fin=flag_fin,
             tcp__flag_rst=flag_rst,
             tcp__flag_psh=flag_psh,
+            tcp__flag_ece=flag_ece,
+            tcp__flag_cwr=flag_cwr,
             tcp__seq=seq,
             tcp__ack=ack,
             tcp__win=tcp__win,

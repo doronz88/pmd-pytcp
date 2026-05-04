@@ -454,7 +454,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         syn = self._parse_tx(syn_tx[0])
 
         self.assertEqual(
-            syn.flags,
+            syn.flags & frozenset({"SYN", "ACK", "RST", "FIN"}),
             frozenset({"SYN"}),
             msg=("Setup precondition: outbound segment MUST be " f"a pure SYN (active open). Got flags={syn.flags!r}."),
         )

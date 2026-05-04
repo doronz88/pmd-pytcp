@@ -599,7 +599,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
         probes = [self._parse_tx(frame) for frame in tx_frames]
         for index, probe in enumerate(probes):
             self.assertEqual(
-                probe.flags,
+                probe.flags & frozenset({"SYN", "ACK", "FIN", "RST"}),
                 frozenset({"SYN"}),
                 msg=(
                     f"Retransmit #{index} must carry only the SYN flag "

@@ -138,7 +138,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
         # Sanity: this is the SYN.
         self.assertEqual(
-            syn_probe.flags,
+            syn_probe.flags & frozenset({"SYN", "ACK", "FIN", "RST"}),
             frozenset({"SYN"}),
             msg="Setup precondition: outbound segment must be a pure SYN.",
         )

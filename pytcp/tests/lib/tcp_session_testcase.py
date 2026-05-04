@@ -294,9 +294,18 @@ class TcpSessionTestCase(NetworkTestCase):
 
         if flags is not _UNSET:
             assert flags is not None, "'flags' must be an iterable of flag names, not None."
+            # Connection-control flags only; ECN-related
+            # flags (ECE, CWR, NS) are orthogonal and are
+            # asserted directly via 'probe.flags' in the
+            # ECN-specific tests. This lets non-ECN tests
+            # specify expected flags as
+            # 'frozenset({"SYN"})' without having to
+            # enumerate the ECN advertisement state of
+            # every active-open SYN.
+            connection_control = frozenset({"SYN", "ACK", "FIN", "RST", "PSH", "URG"})
             self.assertEqual(
-                probe.flags,
-                frozenset(cast(Iterable[str], flags)),
+                probe.flags & connection_control,
+                frozenset(cast(Iterable[str], flags)) & connection_control,
                 msg=f"Unexpected TCP flag set on outbound segment: {probe!r}",
             )
         if seq is not _UNSET:
