@@ -868,6 +868,16 @@ class TcpSession:
             self._prr_delivered = 0
             self._prr_out = 0
 
+        # RFC 7413 §3.1 Fast Open server-side cookie state is
+        # only meaningful while the session is in SYN_RCVD
+        # awaiting the third-leg ACK. Once the handshake
+        # completes (ESTABLISHED) or the session aborts (any
+        # other terminal state), no further SYN+ACK will
+        # fire so the cookie is no longer needed. Clear on
+        # any transition out of SYN_RCVD.
+        if old_state is FsmState.SYN_RCVD and state is not FsmState.SYN_RCVD:
+            self._fastopen_cookie_to_emit = None
+
         # Unregister session.
         if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
@@ -1066,8 +1076,13 @@ class TcpSession:
         #   - Passive-open SYN+ACK: when peer's SYN carried
         #     the TFO option the LISTEN handler stashed a
         #     cookie in '_fastopen_cookie_to_emit' that we
-        #     return here. Consumed on emission so a SYN+ACK
-        #     retransmit does not re-issue a stale cookie.
+        #     return here. The field is NOT cleared on emit
+        #     so SYN+ACK retransmits (RFC 7413 §3.1: peer
+        #     that lost the original SYN+ACK still expects
+        #     the cookie on the retransmit) carry the same
+        #     cookie. The field is cleared on transition to
+        #     ESTABLISHED via '_change_state' since no
+        #     subsequent SYN+ACK will fire from that state.
         #   - Active-open SYN: by default advertise TFO with
         #     the empty-cookie request form so the server
         #     issues a cookie we can cache for a subsequent
@@ -1077,7 +1092,6 @@ class TcpSession:
         tcp__fastopen_cookie: bytes | None = None
         if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
             tcp__fastopen_cookie = self._fastopen_cookie_to_emit
-            self._fastopen_cookie_to_emit = None
         elif flag_syn and not flag_ack and self._advertise_fastopen:
             # Active-open SYN: emit TFO with the cached
             # cookie for this peer if present, else the
