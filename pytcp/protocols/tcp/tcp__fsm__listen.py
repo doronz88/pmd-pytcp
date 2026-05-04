@@ -203,8 +203,20 @@ def fsm__listen(
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
             # RFC 7413 §3.1 Fast Open server-side cookie
-            # issuance + validation. Two outcomes when peer's
-            # SYN carries the TFO option:
+            # issuance + validation, gated on the listening
+            # socket's '_tcp_fastopen_qlen > 0' (the
+            # application opt-in via 'setsockopt(IPPROTO_TCP,
+            # TCP_FASTOPEN, qlen)'). When the listening
+            # socket has not opted in, the inbound TFO option
+            # is silently ignored - cookie is not issued,
+            # cookie validation does not run, SYN-data is
+            # subject to the RFC 9293 §3.10.7.2 default. This
+            # matches Linux's TFO-disabled-by-default
+            # semantics and gives the application a clear
+            # opt-in switch.
+            #
+            # Two outcomes when peer's SYN carries the TFO
+            # option AND the listener has opted in:
             #   - Always issue a fresh cookie back in the
             #     SYN+ACK so peer can cache and replay it on
             #     a subsequent connection.
@@ -212,11 +224,10 @@ def fsm__listen(
             #     the HMAC we would issue for this peer's IP,
             #     accept any SYN-piggybacked data; otherwise
             #     discard it (the §4.1.2 amplification-attack
-            #     defence). When TFO option is absent, the
-            #     RFC 9293 §3.10.7.2 step 3 default applies:
-            #     SYN-data is processed normally.
+            #     defence).
+            tfo_enabled = listen_socket._tcp_fastopen_qlen > 0
             tfo_cookie_valid = False
-            if packet_rx_md.tcp__fastopen_cookie is not None:
+            if tfo_enabled and packet_rx_md.tcp__fastopen_cookie is not None:
                 from pytcp.protocols.tcp.tcp__fastopen import generate_cookie, validate_cookie
 
                 if packet_rx_md.tcp__fastopen_cookie:
@@ -235,7 +246,11 @@ def fsm__listen(
             # the receiver falls back to standard 3WHS. When
             # the option is absent altogether, the RFC 9293
             # §3.10.7.2 default applies (data is processed).
-            accept_syn_data = packet_rx_md.tcp__fastopen_cookie is None or tfo_cookie_valid
+            # When TFO is disabled at the listener, the
+            # 'tfo_enabled' check below treats the option as
+            # absent and falls back to the RFC 9293 default.
+            tfo_option_relevant = tfo_enabled and packet_rx_md.tcp__fastopen_cookie is not None
+            accept_syn_data = (not tfo_option_relevant) or tfo_cookie_valid
             syn_data = packet_rx_md.tcp__data if accept_syn_data else memoryview(b"")
             session._rcv_ini = packet_rx_md.tcp__seq
             session._cwnd = session._snd_mss

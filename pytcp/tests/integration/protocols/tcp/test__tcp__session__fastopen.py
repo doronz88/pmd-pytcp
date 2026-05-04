@@ -111,10 +111,20 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
     a SYN+ACK that carries a non-empty cookie via the TFO option.
     """
 
-    def _make_listen_session(self, *, iss: int) -> tuple[TcpSocket, TcpSession]:
+    def _make_listen_session(
+        self,
+        *,
+        iss: int,
+        enable_tfo: bool = False,
+    ) -> tuple[TcpSocket, TcpSession]:
         """
         Build a 'TcpSocket' / 'TcpSession' pair wired up the way
-        'TcpSocket.listen()' would wire them.
+        'TcpSocket.listen()' would wire them. When 'enable_tfo'
+        is True, opts the listening socket in to TFO via
+        'setsockopt(IPPROTO_TCP, TCP_FASTOPEN, 16)' before the
+        FSM is driven into LISTEN; the LISTEN handler reads the
+        opt-in flag to decide whether to issue cookies and
+        accept TFO SYN-data.
         """
 
         self._force_iss(iss)
@@ -123,6 +133,8 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         sock._local_port = LISTEN__PORT
         sock._remote_ip_address = Ip4Address()
         sock._remote_port = 0
+        if enable_tfo:
+            sock._tcp_fastopen_qlen = 16
         session = TcpSession(
             local_ip_address=STACK__IP,
             local_port=LISTEN__PORT,
@@ -149,7 +161,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         Reference: RFC 7413 §3.1 (server-side cookie issuance on TFO request).
         """
 
-        _listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS)
+        _listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS, enable_tfo=True)
 
         # Peer SYN with TFO option carrying an empty cookie
         # (the 'cookie request' form).
@@ -232,7 +244,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         Reference: RFC 7413 §4.1.2 (cookie validation gate before data acceptance).
         """
 
-        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS)
+        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS, enable_tfo=True)
 
         # Peer SYN with the empty-cookie request form
         # (invalid for data acceptance per §4.1.2) plus a
@@ -330,7 +342,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
             secret=stack.TCP__FASTOPEN_SECRET,
         )
 
-        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS)
+        _listen_sock, listen_session = self._make_listen_session(iss=LOCAL__ISS, enable_tfo=True)
 
         syn_data = b"valid-tfo-data"
         peer_syn_with_cookie_and_data = build_tcp4(
@@ -706,7 +718,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         Reference: RFC 7413 §3.1 (SYN+ACK retransmits carry the same cookie).
         """
 
-        _listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS)
+        _listen_sock, _listen_session = self._make_listen_session(iss=LOCAL__ISS, enable_tfo=True)
 
         # Peer SYN with TFO cookie request.
         peer_syn = build_tcp4(
