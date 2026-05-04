@@ -38,6 +38,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
+from net_proto.protocols.tcp.options.tcp__option__accecn0 import TcpOptionAccecn0
 from net_proto.protocols.tcp.options.tcp__option__fastopen import TcpOptionFastOpen
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
 from net_proto.protocols.tcp.options.tcp__option__nop import TcpOptionNop
@@ -77,6 +78,7 @@ def _build_tcp_assembler(
     tsval: int | None,
     tsecr: int | None,
     fastopen_cookie: bytes | None,
+    accecn0_counters: tuple[int, int, int] | None,
     payload: Buffer,
 ) -> TcpAssembler:
     """
@@ -97,6 +99,7 @@ def _build_tcp_assembler(
         tsval=tsval,
         tsecr=tsecr,
         fastopen_cookie=fastopen_cookie,
+        accecn0_counters=accecn0_counters,
     )
 
     return TcpAssembler(
@@ -128,6 +131,7 @@ def _build_options(
     tsval: int | None,
     tsecr: int | None,
     fastopen_cookie: bytes | None,
+    accecn0_counters: tuple[int, int, int] | None,
 ) -> TcpOptions:
     """
     Build a 'TcpOptions' container holding the requested MSS,
@@ -169,6 +173,15 @@ def _build_options(
     if fastopen_cookie is not None:
         options.append(TcpOptionFastOpen(cookie=fastopen_cookie))
 
+    if accecn0_counters is not None:
+        options.append(
+            TcpOptionAccecn0(
+                ee0b=accecn0_counters[0],
+                eceb=accecn0_counters[1],
+                ee1b=accecn0_counters[2],
+            )
+        )
+
     pad_count = (-sum(len(opt) for opt in options)) % 4
     options.extend(TcpOptionNop() for _ in range(pad_count))
 
@@ -195,6 +208,7 @@ def build_tcp4(
     tsval: int | None = None,
     tsecr: int | None = None,
     fastopen_cookie: bytes | None = None,
+    accecn0_counters: tuple[int, int, int] | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """
@@ -217,6 +231,7 @@ def build_tcp4(
         tsval=tsval,
         tsecr=tsecr,
         fastopen_cookie=fastopen_cookie,
+        accecn0_counters=accecn0_counters,
         payload=payload,
     )
 
@@ -257,6 +272,7 @@ def build_tcp6(
     tsval: int | None = None,
     tsecr: int | None = None,
     fastopen_cookie: bytes | None = None,
+    accecn0_counters: tuple[int, int, int] | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """
@@ -279,6 +295,7 @@ def build_tcp6(
         tsval=tsval,
         tsecr=tsecr,
         fastopen_cookie=fastopen_cookie,
+        accecn0_counters=accecn0_counters,
         payload=payload,
     )
 

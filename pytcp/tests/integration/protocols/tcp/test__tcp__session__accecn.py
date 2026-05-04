@@ -758,3 +758,133 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"r.ECT(0) and r.ECT(1) stay at 0. Got accecn={ack.accecn!r}."
             ),
         )
+
+    def test__accecn__inbound_option_with_increased_r_ce_triggers_cwnd_reduction(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when a
+        peer's inbound ACK carries an AccECN option whose r.CE
+        byte counter has increased since the last received
+        option, the sender treats it as a congestion event:
+        ssthresh is halved per RFC 5681 §3.1 and cwnd is
+        collapsed to ssthresh. This is the substrate
+        proportional-response that AccECN provides; for a
+        full L4S-style scalable response a CC-mode-aware
+        formula would weight the reduction by the marked-byte
+        fraction, but the per-RTT halving is the canonical
+        backwards-compatible fallback.
+
+        Reference: RFC 9341 §3.4 (sender response to AccECN feedback).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        # Send some data so flight_size is non-trivial and the
+        # ssthresh-halving formula yields a deterministic
+        # non-floor value.
+        payload = b"x" * 4000
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        snd_mss = session._snd_mss
+        flight_size_before = (session._snd_max - session._snd_una) & 0xFFFF_FFFF
+        expected_ssthresh = max(flight_size_before // 2, 2 * snd_mss)
+
+        # Peer's ACK reporting a non-zero r.CE byte count
+        # (1500 bytes marked CE - one MSS-sized packet).
+        ack_with_ce = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            accecn0_counters=(0, 1500, 0),
+        )
+        self._drive_rx(frame=ack_with_ce)
+
+        self.assertEqual(
+            session._ssthresh,
+            expected_ssthresh,
+            msg=(
+                "RFC 9341 §3.4 / RFC 5681 §3.1: on AccECN feedback "
+                "with positive r.CE delta the sender MUST halve "
+                "ssthresh to 'max(flight_size/2, 2*SMSS)'. "
+                f"Pre-event flight_size was {flight_size_before}; "
+                f"expected ssthresh {expected_ssthresh}, got "
+                f"{session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            expected_ssthresh,
+            msg=(
+                "RFC 9341 §3.4: on AccECN feedback with positive "
+                "r.CE delta the sender MUST collapse cwnd to "
+                f"ssthresh. Got cwnd={session._cwnd}, "
+                f"ssthresh={session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._accecn_s_ce_b,
+            1500,
+            msg=(
+                "RFC 9341 §3.4: the sender-side r.CE tracker "
+                "MUST advance to the latest value reported by "
+                "the peer (1500). Got "
+                f"_accecn_s_ce_b={session._accecn_s_ce_b}."
+            ),
+        )
+
+    def test__accecn__inbound_option_with_unchanged_r_ce_does_not_reduce_cwnd(self) -> None:
+        """
+        Ensure that an inbound AccECN option carrying the
+        same r.CE byte counter as the previously-tracked
+        value does not trigger a spurious cwnd reduction.
+        Without this idempotency guard, a sender that
+        receives multiple ACKs all reporting the same
+        cumulative r.CE byte count would reduce cwnd on
+        every ACK, defeating the per-RTT-event semantics.
+
+        Reference: RFC 9341 §3.4 (no reduction without delta).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        session.send(data=b"x" * 4000)
+        self._advance(ms=1)
+
+        cwnd_before = session._cwnd
+        ssthresh_before = session._ssthresh
+
+        # Peer's ACK with r.CE=0 (no congestion observed).
+        clean_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            accecn0_counters=(0, 0, 0),
+        )
+        self._drive_rx(frame=clean_ack)
+
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_before,
+            msg=(
+                "RFC 9341 §3.4: a peer's AccECN option with "
+                "r.CE unchanged from the prior tracker value "
+                "MUST NOT trigger ssthresh reduction. Got "
+                f"ssthresh_before={ssthresh_before}, "
+                f"ssthresh={session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            cwnd_before,
+            msg=(
+                "RFC 9341 §3.4: a peer's AccECN option with "
+                "r.CE unchanged from the prior tracker value "
+                "MUST NOT trigger cwnd reduction. Got "
+                f"cwnd_before={cwnd_before}, "
+                f"cwnd={session._cwnd}."
+            ),
+        )
