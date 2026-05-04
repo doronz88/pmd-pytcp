@@ -329,6 +329,18 @@ class TcpSession:
         # 3=CE. Unused on the active-open side.
         self._accecn_synack_codepoint: int = 0
 
+        # RFC 9341 §3.2.2 receiver-side r.cep counter. Tracks
+        # the cumulative count of CE-marked inbound segments
+        # (modulo 2^24 per the option counter width). The low
+        # 3 bits encode the ACE field on every outbound non-
+        # SYN segment as: bit2 -> AE, bit1 -> CWR, bit0 -> ECE.
+        # Initial value is 5 (binary 101) per §3.2.2.1, which
+        # distinguishes a freshly-negotiated AccECN session
+        # from value 0 (which has special meaning in some
+        # corner cases). Increments by 1 on each inbound
+        # segment with IP-ECN codepoint CE (3).
+        self._accecn_r_cep: int = 5
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -1209,6 +1221,17 @@ class TcpSession:
             flag_ece = bool(cp & 0b01)
         elif flag_syn and flag_ack and self._ecn_enabled:
             flag_ece = True
+        # RFC 9341 §3.2.2.1 ACE field encoding on non-SYN
+        # segments of an AccECN-capable connection. The 3-bit
+        # 'r.cep modulo 8' counter is encoded into the
+        # AE+CWR+ECE flags as: bit2 -> AE (NS bit position),
+        # bit1 -> CWR, bit0 -> ECE. RST segments stay
+        # unmarked per the §3.2 advisory.
+        elif self._accecn_enabled and not flag_rst:
+            ace = self._accecn_r_cep & 0b111
+            flag_ns = bool(ace & 0b100)
+            flag_cwr = bool(ace & 0b010)
+            flag_ece = bool(ace & 0b001)
         # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo. On
         # non-SYN segments of an ECN-capable connection, set
         # ECE while the receiver's CE-echo flag is True. The
@@ -2788,6 +2811,14 @@ class TcpSession:
                     self._send_ece = False
                 if packet_rx_md.ip__ecn == 3:
                     self._send_ece = True
+            # RFC 9341 §3.2.2 receiver-side r.cep counter
+            # increment. On AccECN-enabled connections, count
+            # inbound CE-marked segments and let the ACE field
+            # encoding in '_transmit_packet' echo the cumulative
+            # count back to the sender. The counter wraps at
+            # 2^24 per the AccECN option's counter width.
+            if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.ip__ecn == 3:
+                self._accecn_r_cep = (self._accecn_r_cep + 1) & 0xFF_FFFF
             # RFC 3168 §6.1.2 sender-side response to inbound
             # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
             # cwnd to ssthresh, and arm '_ecn_send_cwr' so the
