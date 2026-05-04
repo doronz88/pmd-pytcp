@@ -487,6 +487,93 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
             msg=("Fast convergence must NOT fire when cwnd >= " "prior W_max; new W_max = cwnd."),
         )
 
+    def test__cubic__reno_friendly_w_est_tracks_cwnd_on_ca_growth(self) -> None:
+        """
+        Ensure that on every cum-ACK in CUBIC CA mode,
+        '_cubic_w_est' advances per RFC 9438 §4.3 figure 4
+        (alpha_cubic * bytes_acked * smss / cwnd).
+
+        Reference: RFC 9438 §4.3 (W_est tracker).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        session._cc_mode = CcMode.CUBIC
+        session._cwnd = 100 * PEER__MSS
+        session._ssthresh = 50 * PEER__MSS
+        session._cubic_w_max = 100 * PEER__MSS
+        session._cubic_K_ms = 0
+        session._cubic_epoch_start_ms = 0
+        session._cubic_w_est = 0  # Lazy-init on first CA cum-ACK
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        session.send(data=b"x" * PEER__MSS)
+        self._advance(ms=1000)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # W_est should be > 0 (lazy-initialised + advanced per
+        # alpha_cubic). Initial value = cwnd_epoch (100 * MSS),
+        # advance ≈ alpha_cubic * MSS * MSS / cwnd
+        # = 9 * 1460 * 1460 / (17 * 146000) ≈ 7-8 bytes.
+        self.assertGreater(
+            session._cubic_w_est,
+            100 * PEER__MSS,
+            msg="W_est must advance per alpha_cubic on CA cum-ACK.",
+        )
+
+    def test__cubic__reno_friendly_mode_picks_w_est_when_curve_is_below(self) -> None:
+        """
+        Ensure that when W_est > cubic-target, cwnd is set to
+        W_est (Reno-friendly region picks Reno over CUBIC).
+
+        Reference: RFC 9438 §4.3 (Reno-friendly region).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        session._cc_mode = CcMode.CUBIC
+        # Set up a scenario where W_cubic(t=0) is at cwnd_epoch
+        # (small) and W_est is large - the max() should pick
+        # W_est.
+        session._cwnd = 50 * PEER__MSS
+        session._ssthresh = 10 * PEER__MSS
+        session._cubic_w_max = 100 * PEER__MSS
+        session._cubic_K_ms = 4217  # canonical
+        session._cubic_epoch_start_ms = 0
+        # Pre-set W_est above the cubic-target band ceiling
+        # (1.5 * cwnd = 75 * MSS) to force Reno-friendly pick.
+        session._cubic_w_est = 200 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        session.send(data=b"x" * PEER__MSS)
+        self._advance(ms=1)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # cwnd should track W_est, not the cubic curve.
+        self.assertGreaterEqual(
+            session._cwnd,
+            200 * PEER__MSS,
+            msg="cwnd must follow W_est when in Reno-friendly region.",
+        )
+
     def test__cubic__reno_mode_unaffected_by_cubic_state_fields(self) -> None:
         """
         Ensure that with '_cc_mode == CcMode.RENO' (default),

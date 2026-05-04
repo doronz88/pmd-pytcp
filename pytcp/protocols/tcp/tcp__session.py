@@ -46,6 +46,7 @@ from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
     cubic_loss_event_ssthresh,
+    cubic_w_est,
 )
 from pytcp.protocols.tcp.tcp__cwnd import (
     compute_ecn_event_ssthresh,
@@ -2645,6 +2646,10 @@ class TcpSession:
             )
             self._cubic_epoch_start_ms = stack.timer.now_ms
             self._cubic_in_ca = False
+            # RFC 9438 §4.3: reset W_est so the next CA stage
+            # bootstraps from cwnd_epoch (re-init on first CA
+            # cum-ACK in '_process_ack_packet').
+            self._cubic_w_est = 0
         else:
             self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
@@ -2798,6 +2803,9 @@ class TcpSession:
             )
             self._cubic_epoch_start_ms = stack.timer.now_ms
             self._cubic_in_ca = True
+            # RFC 9438 §4.3: reset W_est so the next CA stage
+            # bootstraps from the post-recovery cwnd anchor.
+            self._cubic_w_est = 0
         else:
             self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
 
@@ -3157,7 +3165,7 @@ class TcpSession:
                 if self._cc_mode is CcMode.CUBIC and self._cwnd >= self._ssthresh:
                     self._cubic_in_ca = True
                     now_ms = stack.timer.now_ms
-                    self._cwnd = cubic_grow_per_ack(
+                    cubic_cwnd = cubic_grow_per_ack(
                         cwnd=self._cwnd,
                         ssthresh=self._ssthresh,
                         w_max=self._cubic_w_max,
@@ -3167,6 +3175,22 @@ class TcpSession:
                         bytes_acked=bytes_acked,
                         smss=self._snd_mss,
                     )
+                    # RFC 9438 §4.3: track the Reno-equivalent
+                    # cwnd ('W_est') in parallel; if the cubic
+                    # formula yields a smaller cwnd than Reno
+                    # would, fall back to W_est so CUBIC never
+                    # under-performs Reno on small-BDP / short-
+                    # RTT paths. Lazy-initialise on first CA
+                    # entry from cwnd_epoch.
+                    if self._cubic_w_est == 0:
+                        self._cubic_w_est = self._cwnd
+                    self._cubic_w_est = cubic_w_est(
+                        w_est_prev=self._cubic_w_est,
+                        cwnd=self._cwnd,
+                        smss=self._snd_mss,
+                        bytes_acked=bytes_acked,
+                    )
+                    self._cwnd = max(cubic_cwnd, self._cubic_w_est)
                 else:
                     self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
