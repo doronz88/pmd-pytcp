@@ -56,7 +56,12 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
-from pytcp.protocols.tcp.tcp__rack import RackSegment, rack_detect_loss, rack_update
+from pytcp.protocols.tcp.tcp__rack import (
+    RackSegment,
+    rack_compute_reo_wnd,
+    rack_detect_loss,
+    rack_update,
+)
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
@@ -2027,6 +2032,23 @@ class TcpSession:
                     break
         if is_dsack:
             self._dsack_received += 1
+            # RFC 8985 §6.2 step 4 DSACK-round handling. A
+            # DSACK observed outside recovery indicates a
+            # spurious retransmit (the peer received what we
+            # thought was lost), so the reo_wnd_mult is
+            # incremented to reduce future spurious losses by
+            # using a larger reordering tolerance. Only fires
+            # ONCE per round - the '_rack_dsack_round' marker
+            # holds SND.MAX at the moment of observation; we
+            # wait until SND.UNA crosses it before allowing
+            # the next increment, so a burst of DSACKs at the
+            # same round boundary doesn't multiply the
+            # multiplier away.
+            if self._recovery_point == 0 and (
+                self._rack_dsack_round is None or not lt32(self._snd_una, self._rack_dsack_round)
+            ):
+                self._rack_reo_wnd_mult += 1
+                self._rack_dsack_round = self._snd_max
             blocks = blocks[1:]
 
         # RFC 6937 §3.1 SACK delta tracking: when in recovery,
@@ -2678,6 +2700,22 @@ class TcpSession:
                 newly_acked.append(seg)
                 self._rack_acked_seqs.add(seq)
         if newly_acked:
+            # RFC 8985 §6.2 step 3 reordering detection. For
+            # each newly-acked segment, compare its 'end_seq'
+            # to '_rack_fack' (the highest end_seq we have
+            # seen acked so far). A delivered segment whose
+            # end_seq is strictly below fack means the network
+            # has reordered: a later-sent segment was already
+            # acked before this one. Once 'reordering_seen' is
+            # True it stays True; the §6.2 step 4 reo_wnd
+            # computation uses it to switch from the dup-ACK
+            # trigger (reo_wnd=0) to the time-based trigger
+            # (reo_wnd = min_RTT / 4 * reo_wnd_mult).
+            for seg in newly_acked:
+                if self._rack_fack != 0 and lt32(seg.end_seq, self._rack_fack):
+                    self._rack_reordering_seen = True
+                if gt32(seg.end_seq, self._rack_fack):
+                    self._rack_fack = seg.end_seq
             (
                 self._rack_min_rtt_ms,
                 self._rack_rtt_ms,
@@ -2694,11 +2732,20 @@ class TcpSession:
             )
 
         if self._rack_xmit_ts > 0:
+            # RFC 8985 §6.2 step 4 dynamic reo_wnd via
+            # rack_compute_reo_wnd. Phase 3 used 0; Phase 4
+            # adapts based on observed reordering and DSACK
+            # rounds.
+            reo_wnd_ms = rack_compute_reo_wnd(
+                reordering_seen=self._rack_reordering_seen,
+                reo_wnd_mult=self._rack_reo_wnd_mult,
+                min_rtt_ms=self._rack_min_rtt_ms,
+            )
             self._rack_segments, _ = rack_detect_loss(
                 segments=self._rack_segments,
                 rack_xmit_ts=self._rack_xmit_ts,
                 rack_end_seq=self._rack_end_seq,
-                reo_wnd_ms=0,
+                reo_wnd_ms=reo_wnd_ms,
                 now_ms=stack.timer.now_ms,
             )
 
@@ -2931,6 +2978,17 @@ class TcpSession:
             self._recover_fs = 0
             self._prr_delivered = 0
             self._prr_out = 0
+            # RFC 8985 §6.2 step 4 reo_wnd_persist decay. Each
+            # recovery exit decrements the persist counter; on
+            # reaching zero, reset 'reo_wnd_mult' back to 1
+            # and refresh persist back to 16 so the connection
+            # eventually decays back to the canonical
+            # reordering tolerance after a long stretch of
+            # recoveries without DSACK.
+            self._rack_reo_wnd_persist -= 1
+            if self._rack_reo_wnd_persist == 0:
+                self._rack_reo_wnd_mult = 1
+                self._rack_reo_wnd_persist = 16
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
         if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):

@@ -203,6 +203,12 @@ def rack_update(
     # Sort by (xmit_ts, end_seq) so segments transmitted in the
     # same millisecond remain in seq order.
     for seg in sorted(newly_acked_segments, key=lambda s: (s.xmit_ts, s.end_seq)):
+        # RFC 8985 §5.2 lost segments carry xmit_ts = INFINITE_TS;
+        # their RTT computation would be nonsensical (and
+        # negative) so skip them entirely. The cum-ACK pruning
+        # in the caller will drop the dict entry afterwards.
+        if seg.xmit_ts == INFINITE_TS:
+            continue
         rtt_ms = now_ms - seg.xmit_ts
 
         if seg.retransmitted:
