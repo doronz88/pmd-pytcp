@@ -2209,6 +2209,24 @@ class TcpSession:
             snd_una=self._snd_una,
             mss=self._snd_mss,
         )
+        # RFC 3042 Limited Transmit: on the first two
+        # duplicate ACKs, send one new segment from the TX
+        # buffer if budget permits. The budget is
+        # 'cwnd + 2*SMSS' total - one extra segment per
+        # dup-ACK (1st and 2nd). Limited Transmit injects
+        # new segments into the pipe so a small-window
+        # flow can still generate three dup-ACKs at the
+        # peer and trigger fast retransmit on real loss
+        # rather than waiting for an RTO. The third dup-ACK
+        # falls through to the count_trigger path below
+        # and runs RFC 5681 §3.2 fast retransmit instead.
+        count = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack]
+        if count in (1, 2) and len(self._tx_buffer) > 0:
+            saved_ewn = self._snd_ewn
+            self._snd_ewn = min(self._cwnd + count * self._snd_mss, self._snd_wnd)
+            self._transmit_data()
+            self._snd_ewn = saved_ewn
+
         if not (count_trigger or sack_trigger):
             return
 
