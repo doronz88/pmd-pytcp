@@ -239,12 +239,14 @@ class TestTcpRackPhase1(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Send three back-to-back payloads. Each tick fires one
-        # segment, so three advances drive three segments out.
-        payloads = [b"alpha", b"beta!", b"gamma"]
-        for payload in payloads:
-            session.send(data=payload)
-            self._advance(ms=1)
+        # Push 3 * PEER__MSS bytes so the TX path emits three
+        # full MSS segments on three consecutive ticks (one
+        # segment per ms tick is the FSM cadence post-handshake
+        # with the wide '_snd_ewn'). Distinct seqs keep
+        # 'session._rack_segments' populated with three entries.
+        total_payload_len = 3 * PEER__MSS
+        session.send(data=b"x" * total_payload_len)
+        self._advance(ms=3)
 
         # Setup invariant: three segments in the dict.
         self.assertEqual(
@@ -259,7 +261,6 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         )
 
         # Peer cum-ACKs everything in one shot.
-        total_payload_len = sum(len(p) for p in payloads)
         peer_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,

@@ -1377,6 +1377,24 @@ class TcpSession:
             tcp__accecn0_counters=tcp__accecn0_counters,
             tcp__payload=data,
         )
+        # RFC 8985 §5.2 / §6.1 RACK per-segment record: insert a
+        # 'RackSegment' for every outbound segment that consumes
+        # sequence space (data / SYN / FIN). Keyed by the
+        # segment's starting seq. If the seq is already in the
+        # dict the segment is a retransmit (re-entered
+        # '_transmit_packet' with the same '_snd_nxt' after a
+        # walkback) - record xmit_ts of the latest transmission
+        # AND set 'retransmitted' so RACK §6.2 step 2 can
+        # disambiguate samples per Karn's algorithm. Phase 1
+        # only ships the storage; Phase 2 onward consumes it.
+        if data or flag_syn or flag_fin:
+            seg_end_seq = add32(seq, len(data), flag_syn, flag_fin)
+            self._rack_segments[seq] = RackSegment(
+                end_seq=seg_end_seq,
+                xmit_ts=stack.timer.now_ms,
+                retransmitted=seq in self._rack_segments,
+                lost=False,
+            )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted
         # acknowledged everything up to RCV.NXT (via the piggybacked
         # 'ack' field if 'flag_ack' is set, or trivially otherwise),
@@ -2740,6 +2758,16 @@ class TcpSession:
         # segment. Both are no-ops when '_send_sack' is False.
         self._prune_sack_scoreboard()
         self._ingest_sack_info(packet_rx_md)
+        # RFC 8985 §5.2 RACK per-segment dict pruning. An entry's
+        # 'end_seq' at or below SND.UNA is wholly covered by the
+        # cumulative ACK - the segment has been delivered and is
+        # no longer in flight. Modular 'le32' so the prune fires
+        # correctly when both 'end_seq' and SND.UNA straddle the
+        # 32-bit wrap. Phase 1 only ships the storage substrate;
+        # Phase 2 onward consumes the dict for time-based loss
+        # detection / RACK_sent_after / TLP probe selection.
+        for entry_seq in [s for s, e in self._rack_segments.items() if le32(e.end_seq, self._snd_una)]:
+            del self._rack_segments[entry_seq]
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
