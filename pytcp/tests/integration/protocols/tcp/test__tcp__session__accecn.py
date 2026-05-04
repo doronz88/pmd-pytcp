@@ -291,3 +291,160 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"_accecn_enabled={session._accecn_enabled}."
             ),
         )
+
+    def _make_listen_session(self) -> TcpSession:
+        """Build a wildcard-LISTEN 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(LOCAL__ISS)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = Ip4Address()
+        sock._remote_port = 0
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=Ip4Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=SysCall.LISTEN)
+        return session
+
+    def test__accecn__passive_open_syn_with_not_ect_emits_codepoint_a_synack(self) -> None:
+        """
+        Ensure that when a peer's AccECN-setup SYN
+        (AE+CWR+ECE) arrives with the IP-ECN codepoint
+        Not-ECT (00), the outbound SYN+ACK carries the
+        canonical (AE=0, CWR=1, ECE=0) codepoint - the
+        wire signal "AccECN-capable, saw Not-ECT on your
+        SYN". The CWR-without-ECE encoding is what
+        distinguishes the AccECN-capable response from a
+        classic RFC 3168 (CWR=0, ECE=1) reply.
+
+        Reference: RFC 9341 §3.1.1 (server SYN+ACK codepoint for received Not-ECT).
+        """
+
+        self._make_listen_session()
+
+        # AccECN-setup SYN with IP-ECN = Not-ECT (00).
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN", "ECE", "CWR", "NS"),
+            ip_ecn=0,
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        self.assertNotIn(
+            "NS",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "Not-ECT AccECN SYN MUST clear the AE flag "
+                "(the canonical codepoint is AE=0, CWR=1, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertIn(
+            "CWR",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "Not-ECT AccECN SYN MUST set the CWR flag "
+                "(the canonical codepoint is AE=0, CWR=1, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "ECE",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "Not-ECT AccECN SYN MUST clear the ECE flag "
+                "(the canonical codepoint is AE=0, CWR=1, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
+
+    def test__accecn__passive_open_syn_with_ect_zero_emits_codepoint_c_synack(self) -> None:
+        """
+        Ensure that when a peer's AccECN-setup SYN
+        (AE+CWR+ECE) arrives with the IP-ECN codepoint
+        ECT(0) (10 - the canonical ECN-Capable codepoint),
+        the outbound SYN+ACK carries the (AE=1, CWR=0,
+        ECE=0) codepoint. This is one of the two codepoints
+        with AE=1 set, the wire signal that the received
+        SYN was a marked packet (ECT(0) or CE) rather than
+        an unmarked one.
+
+        Reference: RFC 9341 §3.1.1 (server SYN+ACK codepoint for received ECT(0)).
+        """
+
+        self._make_listen_session()
+
+        # AccECN-setup SYN with IP-ECN = ECT(0) (10).
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN", "ECE", "CWR", "NS"),
+            ip_ecn=2,
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        self.assertIn(
+            "NS",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "ECT(0) AccECN SYN MUST set the AE flag "
+                "(the canonical codepoint is AE=1, CWR=0, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "CWR",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "ECT(0) AccECN SYN MUST clear the CWR flag "
+                "(the canonical codepoint is AE=1, CWR=0, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "ECE",
+            syn_ack.flags,
+            msg=(
+                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "ECT(0) AccECN SYN MUST clear the ECE flag "
+                "(the canonical codepoint is AE=1, CWR=0, "
+                f"ECE=0). Got flags={syn_ack.flags!r}."
+            ),
+        )
