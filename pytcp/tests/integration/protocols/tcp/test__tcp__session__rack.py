@@ -1604,10 +1604,18 @@ class TestTcpRackPhase9(TcpSessionTestCase):
             msg="Setup invariant: three segments tracked.",
         )
 
-        # Advance past the RTO so the timer fires.
-        self._advance(ms=2000)
+        # Force the RTO timer to be expired AND directly call
+        # the timeout handler so we observe the §6.3 marking
+        # before the subsequent FSM-tick _transmit_data
+        # overwrites the first-segment entry on retransmit.
+        stack.timer._timers.pop(f"{session}-retransmit", None)
+        session._retransmit_packet_timeout()
 
         # All in-flight segments should now be marked lost.
+        self.assertTrue(
+            session._rack_segments,
+            msg="Setup invariant: dict still tracks segments after RTO.",
+        )
         for seq, seg in session._rack_segments.items():
             self.assertTrue(
                 seg.lost,

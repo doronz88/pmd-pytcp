@@ -2507,6 +2507,25 @@ class TcpSession:
         if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_una:
             self._rtt_sample_retransmitted = True
 
+        # RFC 8985 §6.3: on RTO, mark all in-flight segments
+        # lost. Subsequent retransmit walking treats them as
+        # the loss set; the existing _transmit_data
+        # machinery (with snd_nxt rewound to snd_una below)
+        # will re-fire them. Replace each entry with the
+        # 'lost=True / xmit_ts=INFINITE_TS' form per
+        # RFC 8985 §5.2.
+        from pytcp.protocols.tcp.tcp__rack import INFINITE_TS
+
+        self._rack_segments = {
+            seq: RackSegment(
+                end_seq=seg.end_seq,
+                xmit_ts=INFINITE_TS,
+                retransmitted=seg.retransmitted,
+                lost=True,
+            )
+            for seq, seg in self._rack_segments.items()
+        }
+
         # RFC 6298 §5.5 binary backoff and §5.6 re-arm with the
         # new RTO. 'back_off' caps at 'MAX_RTO_MS' so a long-
         # silent peer cannot drive 'rto_ms' to overflow.
