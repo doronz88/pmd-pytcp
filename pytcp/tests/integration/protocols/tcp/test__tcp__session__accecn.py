@@ -777,16 +777,21 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established_with_accecn()
-        # Send some data so flight_size is non-trivial and the
-        # ssthresh-halving formula yields a deterministic
-        # non-floor value.
-        payload = b"x" * 4000
+        # Send enough data for flight_size to exceed the
+        # 2*SMSS ABE floor; PyTCP fires one segment per ms
+        # tick so advance ms=10 to drain the send buffer
+        # before we capture flight_size_before.
+        payload = b"x" * 6000
         session.send(data=payload)
-        self._advance(ms=1)
+        self._advance(ms=10)
 
         snd_mss = session._snd_mss
         flight_size_before = (session._snd_max - session._snd_una) & 0xFFFF_FFFF
-        expected_ssthresh = max(flight_size_before // 2, 2 * snd_mss)
+        # RFC 8511 ABE: on ECN-class events the sender uses a
+        # less aggressive multiplier (0.85) than the RFC 5681
+        # §3.1 0.5 used for loss events. The 17/20 integer
+        # ratio yields the canonical ABE value 0.85.
+        expected_ssthresh = max(flight_size_before * 17 // 20, 2 * snd_mss)
 
         # Peer's ACK reporting a non-zero r.CE byte count
         # (1500 bytes marked CE - one MSS-sized packet).
@@ -805,12 +810,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._ssthresh,
             expected_ssthresh,
             msg=(
-                "RFC 9341 §3.4 / RFC 5681 §3.1: on AccECN feedback "
-                "with positive r.CE delta the sender MUST halve "
-                "ssthresh to 'max(flight_size/2, 2*SMSS)'. "
-                f"Pre-event flight_size was {flight_size_before}; "
-                f"expected ssthresh {expected_ssthresh}, got "
-                f"{session._ssthresh}."
+                "RFC 8511 §3 ABE: on AccECN feedback with positive "
+                "r.CE delta the sender uses the less-aggressive "
+                "ABE backoff multiplier (0.85) instead of RFC 5681 "
+                "§3.1's 0.5 used for loss events. Expected "
+                "'max(flight_size * 17 // 20, 2*SMSS)' = "
+                f"{expected_ssthresh}, got {session._ssthresh}. "
+                f"Pre-event flight_size was {flight_size_before}."
             ),
         )
         self.assertEqual(

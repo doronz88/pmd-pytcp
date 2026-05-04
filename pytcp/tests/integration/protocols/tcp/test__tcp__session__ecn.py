@@ -446,17 +446,21 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        # Send some data so flight_size > 0; the ssthresh
-        # halving formula is max(flight_size/2, 2*SMSS) and
-        # we want a deterministic non-floor value to assert
-        # against.
-        payload = b"x" * 4000  # spans multiple MSS-sized segments
+        # Send enough data for flight_size to exceed the
+        # 2*SMSS ABE floor; PyTCP fires one segment per ms
+        # tick so advance ms=10 to drain the send buffer
+        # before we capture flight_size_before.
+        payload = b"x" * 6000
         session.send(data=payload)
-        self._advance(ms=1)
+        self._advance(ms=10)
 
         snd_mss = session._snd_mss
         flight_size_before = (session._snd_max - session._snd_una) & 0xFFFF_FFFF
-        expected_ssthresh = max(flight_size_before // 2, 2 * snd_mss)
+        # RFC 8511 ABE: on ECN events the sender uses a less
+        # aggressive multiplier (0.85) instead of the canonical
+        # RFC 5681 §3.1 0.5. The 17/20 integer ratio yields the
+        # canonical ABE recommended value 0.85.
+        expected_ssthresh = max(flight_size_before * 17 // 20, 2 * snd_mss)
 
         # Peer sends an ACK with ECE - the sender's wire
         # signal that a CE-marked segment was observed.
@@ -474,11 +478,13 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
             session._ssthresh,
             expected_ssthresh,
             msg=(
-                "RFC 3168 §6.1.2 / RFC 5681 §3.1: on inbound ECE the "
-                "sender MUST halve ssthresh to 'max(flight_size/2, "
-                "2*SMSS)'. Pre-ECE flight_size was "
-                f"{flight_size_before}, expected ssthresh "
-                f"{expected_ssthresh}, got {session._ssthresh}."
+                "RFC 8511 §3 ABE: on inbound ECE the sender uses "
+                "the less-aggressive backoff multiplier (0.85) "
+                "instead of the RFC 5681 §3.1 0.5 used for loss "
+                "events. Expected 'max(flight_size * 17 // 20, "
+                f"2*SMSS)' = {expected_ssthresh}, got "
+                f"{session._ssthresh}. Pre-ECE flight_size was "
+                f"{flight_size_before}."
             ),
         )
         self.assertEqual(
