@@ -1794,11 +1794,31 @@ class TcpSession:
 
         # Check if we need to (re)transmit initial SYN packet.
         if self._state is FsmState.SYN_SENT and self._snd_nxt == self._snd_ini:
+            # RFC 7413 §3.1 SYN-with-data: when the active-open
+            # SYN is the first transmit AND we have a cached
+            # cookie for the peer AND the application has
+            # pre-loaded data into '_tx_buffer', slice up to
+            # one SMSS of pending bytes onto the SYN itself.
+            # Server-side cookie validation (Phase 3) gates
+            # whether the bytes are accepted; on rejection
+            # the data is replayed via normal retransmit after
+            # the third-leg ACK. The slice is gated on cached-
+            # cookie presence so a cookie-request SYN (no
+            # cached cookie) never carries data - the empty-
+            # cookie request form is invalid for data
+            # acceptance per §4.1.2.
+            tfo_data: bytes = b""
+            cached = stack.tcp__fastopen_cookies.get(self._remote_ip_address)
+            if cached and self._advertise_fastopen and self._tx_buffer:
+                with self._lock__tx_buffer:
+                    slice_len = min(self._snd_mss, len(self._tx_buffer))
+                    tfo_data = bytes(self._tx_buffer[:slice_len])
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_nxt}",
+                f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_nxt}"
+                + (f", carrying {len(tfo_data)} bytes of TFO SYN-data" if tfo_data else ""),
             )
-            self._transmit_packet(flag_syn=True)
+            self._transmit_packet(flag_syn=True, data=tfo_data)
             return
 
         # Check if we need to (re)transmit initial SYN + ACK packet.
