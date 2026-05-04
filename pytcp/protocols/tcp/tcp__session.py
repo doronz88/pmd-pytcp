@@ -263,11 +263,20 @@ class TcpSession:
         # SYN+ACK we emit on the next tick carries it back. The
         # field is consumed (cleared back to None) by
         # '_transmit_packet' once the SYN+ACK fires so a SYN+ACK
-        # retransmit does not re-issue a stale cookie. This is
-        # purely the server-side cookie-issuance path; client-
-        # side TFO (cookie cache + connect-with-data) is a
-        # subsequent project.
+        # retransmit does not re-issue a stale cookie.
         self._fastopen_cookie_to_emit: bytes | None = None
+
+        # RFC 7413 §3.1 Fast Open client-side opt-out flag.
+        # Defaults to True so active-open SYNs carry the TFO
+        # option in the cookie-request form (empty cookie),
+        # eliciting cookie issuance from the server. Mirrors
+        # the '_advertise_sack' / '_advertise_ts' /
+        # '_advertise_wscale' bilateral-negotiation pattern.
+        # Applications that need to suppress TFO on outbound
+        # SYNs (interop with broken middleboxes, restricted
+        # buffer profiles, etc.) flip this to False before
+        # 'CONNECT'.
+        self._advertise_fastopen: bool = True
 
         # RFC 6937 PRR per-recovery state. Declared with
         # canonical defaults so the [FLAGS BUG] tests-first
@@ -1053,22 +1062,24 @@ class TcpSession:
                 tcp__tsval = None
                 tcp__tsecr = None
 
-        # RFC 7413 §3.1 Fast Open option emission. Only the
-        # passive-open SYN+ACK carries a TFO option today
-        # (server-side cookie issuance); when
-        # '_fastopen_cookie_to_emit' is set the next SYN+ACK
-        # we send carries it. The field is consumed (cleared)
-        # after the SYN+ACK fires so a retransmit doesn't
-        # spuriously re-issue a stale cookie.
+        # RFC 7413 §3.1 Fast Open option emission, two paths:
+        #   - Passive-open SYN+ACK: when peer's SYN carried
+        #     the TFO option the LISTEN handler stashed a
+        #     cookie in '_fastopen_cookie_to_emit' that we
+        #     return here. Consumed on emission so a SYN+ACK
+        #     retransmit does not re-issue a stale cookie.
+        #   - Active-open SYN: by default advertise TFO with
+        #     the empty-cookie request form so the server
+        #     issues a cookie we can cache for a subsequent
+        #     fast-open. The 'b""' placeholder will be
+        #     replaced with a cached cookie value when the
+        #     client-side cookie cache lands.
         tcp__fastopen_cookie: bytes | None = None
         if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
             tcp__fastopen_cookie = self._fastopen_cookie_to_emit
-            # Consume the cookie so a SYN+ACK retransmit does
-            # not spuriously re-issue it. RFC 7413 §3.1 has
-            # peer cache the cookie on first receipt and replay
-            # it on subsequent connections, so re-issuing on
-            # retransmit gains nothing.
             self._fastopen_cookie_to_emit = None
+        elif flag_syn and not flag_ack and self._advertise_fastopen:
+            tcp__fastopen_cookie = b""
 
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
