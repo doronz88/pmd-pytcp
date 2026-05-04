@@ -50,7 +50,7 @@ pytcp/tests/integration/protocols/tcp/test__tcp__session__ecn.py
 ver 3.0.4
 """
 
-from net_addr import Ip4Address
+from net_addr import Ip4Address  # noqa: F401
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     SysCall,
@@ -62,6 +62,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
 )
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
 # Deterministic addressing.
@@ -143,4 +144,88 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
             "CWR",
             syn.flags,
             msg=("RFC 3168 §6.1.1: client-side ECN-setup SYN " "MUST carry the CWR flag. Got " f"flags={syn.flags!r}."),
+        )
+
+    def test__ecn__passive_open_syn_ack_echoes_ece_only(self) -> None:
+        """
+        Ensure that when a peer's active-open SYN carries
+        ECE+CWR (the canonical RFC 3168 §6.1.1 ECN-setup
+        signal), the server's SYN+ACK reply sets ECE (only)
+        - NOT CWR. The asymmetry is the wire signal that
+        confirms bilateral ECN support: the active opener
+        advertises with ECE+CWR, the passive responder
+        confirms with ECE alone. Once both sides have
+        signalled, '_ecn_enabled' is True on the session
+        and subsequent data-path ECN behaviour (ECT
+        marking on outbound, CE echo on inbound, ECE ->
+        cwnd reduce) kicks in.
+
+        Reference: RFC 3168 §6.1.1 (passive-side ECN-Echo confirmation: ECE only).
+        """
+
+        self._force_iss(LOCAL__ISS)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = Ip4Address()
+        sock._remote_port = 0
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=Ip4Address(),
+            remote_port=0,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        session.tcp_fsm(syscall=SysCall.LISTEN)
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN", "ECE", "CWR"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+
+        syn_ack_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(syn_ack_tx),
+            1,
+            msg="Setup precondition: SYN+ACK MUST fire on the next tick.",
+        )
+        syn_ack = self._parse_tx(syn_ack_tx[0])
+
+        self.assertIn(
+            "ECE",
+            syn_ack.flags,
+            msg=(
+                "RFC 3168 §6.1.1: SYN+ACK responding to an "
+                "ECN-setup SYN MUST carry ECE. Got "
+                f"flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "CWR",
+            syn_ack.flags,
+            msg=(
+                "RFC 3168 §6.1.1: SYN+ACK responding to an "
+                "ECN-setup SYN MUST NOT carry CWR (ECE alone "
+                "is the ECN-Echo confirmation; ECE+CWR is "
+                "the active-open SYN signal). Got "
+                f"flags={syn_ack.flags!r}."
+            ),
+        )
+        self.assertTrue(
+            session._ecn_enabled,
+            msg=(
+                "RFC 3168 §6.1.1: bilateral ECN negotiation "
+                "MUST set '_ecn_enabled = True' on the "
+                "session after the passive-open SYN+ACK "
+                "fires. Got "
+                f"_ecn_enabled={session._ecn_enabled}."
+            ),
         )
