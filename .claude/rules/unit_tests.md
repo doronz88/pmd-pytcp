@@ -282,6 +282,13 @@ Prefer `!r` inside f-string assertion messages for values (`Got: {value!r}`).
 
 ## 7. Test-method docstrings
 
+> **MANDATORY — before committing any test file (new or
+> modified), run the §7.2 self-audit grep below and fix every
+> reported violation.** A test docstring that violates §7 is a
+> blocker for the commit, not a polish task. This rule was
+> repeatedly ignored historically; the audit step is now
+> non-negotiable.
+
 Every test method has a docstring with a **canonical three-part shape**:
 
 1. A description that starts with the word **"Ensure"** and states
@@ -300,15 +307,22 @@ def test__udp__parser__integrity__zero_cksum_skips_validation(self) -> None:
     """
 ```
 
-Rules:
+Rules (each is **MUST** / **MUST NOT**, not SHOULD):
 
 - The description describes *what* is guaranteed, never *how* the
   code is tested.
-- **Do not put RFC citations inline in the description.** Strings
-  like `"Per RFC X §Y ..."` or `"RFC X §Y: <fact>"` inside the
-  description are forbidden — the trailing `Reference:` line is the
-  canonical citation. Duplicating it in prose is the exact failure
-  mode that motivated this rule.
+- **MUST NOT put RFC citations inline in the description.** Strings
+  like `"Per RFC X §Y ..."`, `"per RFC X §Y ..."`, `"RFC X §Y: <fact>"`,
+  or `"RFC X §Y figure N"` inside the description are forbidden —
+  the trailing `Reference:` line is the canonical citation.
+  Duplicating it in prose is the exact failure mode that motivated
+  this rule. If you need to state the formula, write the formula
+  itself (`"alpha_cubic * bytes_acked / cwnd"`), not the citation.
+- **MUST** include a `Reference:` line. Pure plumbing tests with no
+  RFC clause use one of the two acceptable fallback citations:
+  - `Reference: PyTCP test infrastructure (no RFC clause).`
+  - `Reference: RFC 9293 §3.9 (User/TCP interface).` (for socket-API
+    plumbing).
 - A test that pins behaviour from multiple RFCs uses one
   `Reference:` line per clause, in citation-precedence order:
 
@@ -317,21 +331,22 @@ Rules:
   Reference: RFC 1122 §4.2.3.5 (R2 ≥ 100 s retransmit abort).
   ```
 
-- For pure plumbing tests with no RFC clause, use one of the two
-  acceptable fallback citations:
-  - `Reference: PyTCP test infrastructure (no RFC clause).`
-  - `Reference: RFC 9293 §3.9 (User/TCP interface).` (for socket-API
-    plumbing).
+  **MUST NOT** bundle multiple citations into a single
+  `Reference:` line — each clause gets its own line so the citation
+  is greppable.
 
-- **No `[FLAGS BUG]` markers in docstrings.** Tests-first development
-  may temporarily mark expected failures, but the marker MUST be
-  stripped before the test is considered complete (i.e. the moment
-  the corresponding fix lands and the test passes). A docstring
-  containing `[FLAGS BUG]` is a cleanup-debt indicator, not a
-  long-lived annotation.
+- **MUST NOT** leave `[FLAGS BUG]` markers in docstrings. Tests-
+  first development may temporarily mark expected failures, but the
+  marker MUST be stripped before the corresponding fix commit
+  lands. A docstring containing `[FLAGS BUG]` is a cleanup-debt
+  indicator, not a long-lived annotation.
 
 Class docstrings are one noun phrase
-(`"The UDP packet parser sanity checks tests."`).
+(`"The UDP packet parser sanity checks tests."`). Class-level
+docstrings MAY contain RFC references (existing canonical files
+like `test__tcp__cwnd.py` use `"RFC 5681 §3.1 slow-start branch:
+..."` as the noun phrase); this rule applies only to test-method
+docstrings.
 
 ### 7.1 RFC clause picker (TCP)
 
@@ -394,6 +409,74 @@ when 9293 incorporates them; cite 1122 / 5681 / 5961 / 6298 / 7323
 separately when the clause is not folded into 9293 or you want the
 historical reference. UDP / IP / ARP / ICMP tests cite their own
 canonical RFCs (768, 791, 826, 792, 4443, etc.).
+
+### 7.2 Pre-commit self-audit (MANDATORY)
+
+> Run this audit immediately after writing or modifying any test
+> file, AND again before `git commit`. It takes <1 second and
+> catches every common violation. Treat any non-empty output as a
+> blocker for the commit.
+
+The canonical audit script (paste verbatim, edit `FILES`):
+
+```bash
+python3 << 'EOF'
+import re, sys
+from pathlib import Path
+
+FILES = [
+    "pytcp/tests/unit/protocols/<proto>/test__<...>.py",
+    "pytcp/tests/integration/protocols/<proto>/test__<...>.py",
+    # ... list every test file you wrote or modified.
+]
+
+violations = []
+for path in FILES:
+    text = Path(path).read_text()
+    for m in re.finditer(
+        r'def (test__\w+)\(self\) -> None:\s*\n\s*"""(.*?)"""',
+        text, re.DOTALL,
+    ):
+        name, body = m.group(1), m.group(2)
+        if "Reference:" not in body:
+            violations.append(f"{path}::{name} — missing 'Reference:' line")
+        if not re.search(r'^\s+Ensure ', body):
+            violations.append(f"{path}::{name} — must start with 'Ensure '")
+        if "[FLAGS BUG]" in body:
+            violations.append(f"{path}::{name} — contains '[FLAGS BUG]' marker")
+        # Strip trailing Reference: lines, then scan description.
+        desc = re.sub(r'\n\s*Reference:.*', '', body, flags=re.DOTALL)
+        for pat in (r'[Pp]er RFC \d', r'RFC \d+\s*§', r'RFC \d+\s+figure'):
+            if re.search(pat, desc):
+                violations.append(
+                    f"{path}::{name} — inline RFC citation in description "
+                    f"(see §7 'no inline citation'); pattern={pat!r}"
+                )
+
+for v in violations:
+    print(v)
+sys.exit(1 if violations else 0)
+EOF
+```
+
+What it checks (mirroring §7's MUST / MUST NOT rules):
+
+1. Every test method has a `Reference:` line.
+2. Every test method's description starts with `Ensure `.
+3. No `[FLAGS BUG]` markers remain.
+4. No inline `Per RFC X §Y`, `RFC X §Y`, or `RFC X figure N`
+   citation in the description text (the trailing `Reference:`
+   line is the canonical home for the citation).
+
+If the script prints any line, fix that docstring before
+committing. Do not bundle docstring fixes into "follow-up"
+commits — fix them in the same commit that introduces the test.
+
+The CUBIC project's docstring fixes (commit `d4a53b3b`) are the
+canonical example of what NOT to ship: three test method
+docstrings had inline `RFC X §Y` text that duplicated the
+trailing `Reference:` line, surviving review until a separate
+audit caught them.
 
 ## 8. Required test matrix per protocol
 

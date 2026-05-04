@@ -267,6 +267,7 @@ class TcpIntegrityError(PacketIntegrityError):
 - Declare the parametrized attributes as class-level annotations so mypy strict accepts them
 - Every assertion carries a descriptive `msg=`; every raw-byte frame carries a field-by-field annotation comment
 - Test method docstrings start with `"Ensure ..."` and describe the behavioral guarantee
+- **MANDATORY**: after writing or modifying any test file, run the §7.2 self-audit script in `.claude/rules/unit_tests.md` BEFORE committing. It catches missing `Reference:` lines, inline RFC citations (forbidden in test method descriptions), `[FLAGS BUG]` leftovers, and missing `Ensure ` prefix. Any violation is a blocker for the commit.
 
 ### Inline Comments
 
