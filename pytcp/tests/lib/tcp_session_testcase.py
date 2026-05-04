@@ -99,6 +99,12 @@ class TcpProbe:
     # b"" = empty-cookie request form, b"..." = cookie
     # response/use form.
     fastopen_cookie: bytes | None
+    # RFC 9341 §3.2.3 AccECN option: tuple of three 24-bit
+    # byte counters (ee0b, eceb, ee1b) when present, None
+    # when absent on the wire. The ordering is the AccECN0
+    # convention (ECT(0), CE, ECT(1)) regardless of which
+    # kind appeared on the wire.
+    accecn: tuple[int, int, int] | None
     payload: bytes
 
 
@@ -252,6 +258,8 @@ class TcpSessionTestCase(NetworkTestCase):
         # the cookie-request form, and the cookie bytes for
         # the cookie-response/use form.
         fastopen_cookie = packet_rx.tcp._options.fastopen
+        accecn_raw = packet_rx.tcp._options.accecn
+        accecn = None if accecn_raw is None else (accecn_raw.ee0b, accecn_raw.eceb, accecn_raw.ee1b)
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -269,6 +277,7 @@ class TcpSessionTestCase(NetworkTestCase):
             tsval=tsval,
             tsecr=tsecr,
             fastopen_cookie=fastopen_cookie,
+            accecn=accecn,
             payload=bytes(packet_rx.tcp.payload),
         )
 

@@ -639,3 +639,122 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"Got flags={ack.flags!r}."
             ),
         )
+
+    def test__accecn__post_handshake_first_segment_carries_accecn_option_with_zero_counters(self) -> None:
+        """
+        Ensure that the first outbound non-SYN segment after
+        an AccECN handshake carries the AccECN option (kind
+        172, AccECN0 form) with all three byte counters set
+        to zero. The option provides the full 24-bit byte
+        counts that complement the 3-bit ACE field; the
+        sender uses the option to validate that no counter
+        wrap was missed and to compute precise CE-byte
+        deltas across ACKs.
+
+        Reference: RFC 9341 §3.2.3 (AccECN option emission post-handshake).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "CWR"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        third_leg_tx = self._drive_rx(frame=peer_syn_ack)
+
+        self.assertEqual(
+            len(third_leg_tx),
+            1,
+            msg="Setup precondition: third-leg ACK MUST fire inline.",
+        )
+        ack = self._parse_tx(third_leg_tx[0])
+
+        self.assertIsNotNone(
+            ack.accecn,
+            msg=(
+                "RFC 9341 §3.2.3: the first outbound non-SYN "
+                "segment of an AccECN-enabled connection MUST "
+                "carry the AccECN option (kind 172). Got "
+                f"accecn={ack.accecn!r}."
+            ),
+        )
+        self.assertEqual(
+            ack.accecn,
+            (0, 0, 0),
+            msg=(
+                "RFC 9341 §3.2.3: the AccECN option's three "
+                "byte counters (r.ECT(0), r.CE, r.ECT(1)) MUST "
+                "all be zero immediately after the handshake "
+                f"(no inbound data yet). Got accecn={ack.accecn!r}."
+            ),
+        )
+
+    def test__accecn__inbound_ce_data_segment_increments_r_ce_byte_counter(self) -> None:
+        """
+        Ensure that when an inbound data segment arrives with
+        the IP-ECN codepoint CE (11) on an AccECN-enabled
+        connection, the r.CE byte counter increments by the
+        TCP-payload byte length (not by 1) and the next
+        outbound segment's AccECN option carries the new
+        value in its second slot. The byte-precision counter
+        is what gives AccECN its granularity over RFC 3168's
+        binary signal: a sender can read the delta in
+        r.CE-bytes across two ACKs to compute exactly how
+        many bytes the network marked.
+
+        Reference: RFC 9341 §3.2.3 (r.CE byte counter increment by payload length).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        payload = b"congested-data"
+        ce_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=3,
+            payload=payload,
+        )
+        self._drive_rx(frame=ce_data)
+
+        ack_tx = self._advance(ms=200)
+        self.assertEqual(
+            len(ack_tx),
+            1,
+            msg="Setup precondition: cumulative ACK MUST fire after delayed-ACK timer.",
+        )
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertEqual(
+            session._accecn_r_ce_b,
+            len(payload),
+            msg=(
+                "RFC 9341 §3.2.3: r.CEB MUST advance by the "
+                f"TCP-payload byte length ({len(payload)}). Got "
+                f"_accecn_r_ce_b={session._accecn_r_ce_b}."
+            ),
+        )
+        self.assertIsNotNone(
+            ack.accecn,
+            msg="RFC 9341 §3.2.3: outbound ACK MUST carry the AccECN option.",
+        )
+        self.assertEqual(
+            ack.accecn,
+            (0, len(payload), 0),
+            msg=(
+                "RFC 9341 §3.2.3: the AccECN option's r.CE "
+                "byte counter (second slot) MUST equal the "
+                f"cumulative CE-marked payload bytes ({len(payload)}). "
+                f"r.ECT(0) and r.ECT(1) stay at 0. Got accecn={ack.accecn!r}."
+            ),
+        )
