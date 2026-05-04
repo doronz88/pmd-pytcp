@@ -456,3 +456,79 @@ def tlp_calc_pto(
             pto = rto_remaining - 1
 
     return pto
+
+
+def tlp_process_ack(
+    *,
+    tlp_end_seq: int | None,
+    tlp_is_retrans: bool,
+    ack_seq: int,
+    has_dsack_for_probe: bool,
+    has_sack_blocks: bool,
+) -> tuple[int | None, bool]:
+    """
+    Apply RFC 8985 §7.4 Tail Loss Probe loss-detection logic
+    on an inbound ACK. Returns:
+
+        (new_tlp_end_seq, should_invoke_cc_response)
+
+    The helper clears 'tlp_end_seq' when the probe outcome is
+    determined; only Case 3 (probe-repaired-single-loss)
+    additionally signals the caller to invoke the §7.4.2
+    congestion control response (cwnd halving).
+
+    Algorithm (§7.4.2 pseudocode):
+
+        If tlp_end_seq is None:
+            return (None, False)         # no probe outstanding
+        If NOT tlp_is_retrans AND ack >= tlp_end_seq:
+            return (None, False)         # new-data probe delivered
+        Elif has_dsack_for_probe:
+            return (None, False)         # spurious retransmit (Case 1)
+        Elif ack > tlp_end_seq (modular):
+            return (None, True)          # single-loss repaired (Case 3)
+        Elif ack == tlp_end_seq AND NOT has_sack_blocks:
+            return (None, False)         # bare dup-ACK (Case 2)
+        Otherwise: leave tlp_end_seq alone (probe outcome
+        not yet determined; subsequent ACKs clarify).
+
+    Parameters:
+        tlp_end_seq:         current probe's end_seq marker;
+                             None if no probe is outstanding.
+        tlp_is_retrans:      True iff the probe was a
+                             retransmit (vs new data).
+        ack_seq:             peer's TCP ACK field on this
+                             segment.
+        has_dsack_for_probe: True iff peer's SACK option
+                             carried a DSACK block matching
+                             the probe.
+        has_sack_blocks:     True iff peer's SACK option
+                             carried any non-DSACK blocks.
+
+    Returns: (new_tlp_end_seq, should_invoke_cc_response).
+    """
+
+    from pytcp.protocols.tcp.tcp__seq import le32, lt32
+
+    if tlp_end_seq is None:
+        return None, False
+
+    # New-data probe delivered: ack covers the probe's end_seq.
+    if not tlp_is_retrans and le32(tlp_end_seq, ack_seq):
+        return None, False
+    # Case 1: DSACK indicates the probe's bytes were a
+    # spurious retransmit. The original was received earlier;
+    # the connection is fine.
+    if has_dsack_for_probe:
+        return None, False
+    # Case 3: ACK advances strictly past the probe's end_seq.
+    # The probe repaired a single tail loss; invoke CC.
+    if lt32(tlp_end_seq, ack_seq):
+        return None, True
+    # Case 2: bare duplicate ACK at probe's end_seq with no
+    # SACK blocks. Probe of retransmit was useless; the
+    # original had already been received.
+    if ack_seq == tlp_end_seq and not has_sack_blocks:
+        return None, False
+    # Outcome not yet determined; preserve state.
+    return tlp_end_seq, False

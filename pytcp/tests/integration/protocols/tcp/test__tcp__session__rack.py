@@ -1405,3 +1405,136 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
                 f"timer. Got pending: {sorted(self._timer.pending_timers)!r}."
             ),
         )
+
+
+class TestTcpTlpPhase8(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §7.4 Tail Loss Probe
+    loss-detection logic on inbound ACK.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=50)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__tlp__cum_ack_clears_tlp_end_seq_no_cc_response(self) -> None:
+        """
+        Ensure that a cumulative ACK that covers an
+        outstanding TLP probe's end_seq clears the
+        '_tlp_end_seq' marker and does not invoke the CC
+        response (probe of new data delivered, no loss).
+
+        Reference: RFC 8985 §7.4 (new-data probe delivered).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Inject a TLP-outstanding state.
+        session._tlp_end_seq = LOCAL__ISS + 100
+        session._tlp_is_retrans = False
+        prior_ssthresh = session._ssthresh
+
+        # Simulate a sub-segment that the cum-ACK covers.
+        session.send(data=b"x" * 100)
+        self._advance(ms=1)
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 100,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertIsNone(
+            session._tlp_end_seq,
+            msg="cum-ACK covering probe MUST clear '_tlp_end_seq'.",
+        )
+        # CC response: ssthresh halved means new-data probe
+        # delivered (case 'no CC response') -> ssthresh stays.
+        self.assertEqual(
+            session._ssthresh,
+            prior_ssthresh,
+            msg="New-data probe delivery MUST NOT invoke CC response (ssthresh unchanged).",
+        )
+
+    def test__tlp__case_3_probe_repaired_loss_invokes_cc(self) -> None:
+        """
+        Ensure that an inbound ACK advancing strictly past
+        the probe's end_seq with the probe marked as a
+        retransmit triggers the §7.4.2 CC response (cwnd
+        halving).
+
+        Reference: RFC 8985 §7.4.2 (Case 3: single-loss probe repair).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send some data so SND.MAX advances above SND.UNA;
+        # peer can ACK strictly past tlp_end_seq.
+        session.send(data=b"x" * 200)
+        self._advance(ms=2)
+
+        # Inject a TLP-outstanding retransmit state at a
+        # midpoint so the cum-ACK can advance past it.
+        session._tlp_end_seq = LOCAL__ISS + 1 + 100
+        session._tlp_is_retrans = True
+        prior_ssthresh = session._ssthresh
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1 + 200,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        self.assertIsNone(
+            session._tlp_end_seq,
+            msg="Probe-repair Case 3 MUST clear '_tlp_end_seq'.",
+        )
+        self.assertLess(
+            session._ssthresh,
+            prior_ssthresh,
+            msg=(
+                "Case 3 probe repair MUST invoke CC response "
+                "(ssthresh halved). Was "
+                f"{prior_ssthresh}, got {session._ssthresh}."
+            ),
+        )

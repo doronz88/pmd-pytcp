@@ -56,6 +56,7 @@ from pytcp.protocols.tcp.tcp__rack import (
     rack_sent_after,
     rack_update,
     tlp_calc_pto,
+    tlp_process_ack,
 )
 
 
@@ -731,3 +732,125 @@ class TestTlpCalcPto(TestCase):
             49,
             msg="PTO MUST clamp strictly below RTO remaining when smaller.",
         )
+
+
+class TestTlpProcessAck(TestCase):
+    """
+    The 'tlp_process_ack' RFC 8985 §7.4 tests.
+    """
+
+    def test__tlp__process_ack__no_probe_outstanding_returns_none(self) -> None:
+        """
+        Ensure that when no probe is outstanding (tlp_end_seq
+        is None), the helper returns (None, False) without
+        triggering CC response.
+
+        Reference: RFC 8985 §7.4 (no outcome to determine).
+        """
+
+        result = tlp_process_ack(
+            tlp_end_seq=None,
+            tlp_is_retrans=False,
+            ack_seq=1000,
+            has_dsack_for_probe=False,
+            has_sack_blocks=False,
+        )
+        self.assertEqual(result, (None, False), msg="No probe -> no state change.")
+
+    def test__tlp__process_ack__new_data_probe_delivered_clears_state(self) -> None:
+        """
+        Ensure that when the probe sent new data and an ACK
+        covers it (ack >= tlp_end_seq), state is cleared
+        with no CC response (no tail loss occurred).
+
+        Reference: RFC 8985 §7.4 (new-data probe delivered).
+        """
+
+        new_tlp_end, cc = tlp_process_ack(
+            tlp_end_seq=1000,
+            tlp_is_retrans=False,
+            ack_seq=1000,
+            has_dsack_for_probe=False,
+            has_sack_blocks=False,
+        )
+        self.assertIsNone(new_tlp_end, msg="State MUST clear on new-data probe delivery.")
+        self.assertFalse(cc, msg="No CC response on new-data probe.")
+
+    def test__tlp__process_ack__dsack_match_clears_no_cc(self) -> None:
+        """
+        Ensure that a DSACK matching the probe clears state
+        without invoking CC response (Case 1: spurious
+        retransmit; the original was already received).
+
+        Reference: RFC 8985 §7.4 (Case 1: DSACK match).
+        """
+
+        new_tlp_end, cc = tlp_process_ack(
+            tlp_end_seq=1000,
+            tlp_is_retrans=True,
+            ack_seq=900,
+            has_dsack_for_probe=True,
+            has_sack_blocks=False,
+        )
+        self.assertIsNone(new_tlp_end, msg="State MUST clear on DSACK match.")
+        self.assertFalse(cc, msg="DSACK match MUST NOT invoke CC.")
+
+    def test__tlp__process_ack__case_3_single_loss_repair_invokes_cc(self) -> None:
+        """
+        Ensure that an ACK advancing strictly past the probe's
+        end_seq invokes the CC response (Case 3: single tail
+        loss repaired by the probe).
+
+        Reference: RFC 8985 §7.4 (Case 3: probe repaired single loss).
+        """
+
+        new_tlp_end, cc = tlp_process_ack(
+            tlp_end_seq=1000,
+            tlp_is_retrans=True,
+            ack_seq=1100,
+            has_dsack_for_probe=False,
+            has_sack_blocks=False,
+        )
+        self.assertIsNone(new_tlp_end, msg="State MUST clear after probe-repair.")
+        self.assertTrue(cc, msg="Probe-repair MUST invoke CC response (cwnd halving).")
+
+    def test__tlp__process_ack__case_2_bare_dup_ack_clears_no_cc(self) -> None:
+        """
+        Ensure that a bare duplicate ACK at probe's end_seq
+        with no SACK blocks clears state without CC (Case 2:
+        the probe's retransmit was useless, the original was
+        already received).
+
+        Reference: RFC 8985 §7.4 (Case 2: bare dup-ACK).
+        """
+
+        new_tlp_end, cc = tlp_process_ack(
+            tlp_end_seq=1000,
+            tlp_is_retrans=True,
+            ack_seq=1000,
+            has_dsack_for_probe=False,
+            has_sack_blocks=False,
+        )
+        self.assertIsNone(new_tlp_end, msg="Bare dup-ACK MUST clear state.")
+        self.assertFalse(cc, msg="Bare dup-ACK MUST NOT invoke CC.")
+
+    def test__tlp__process_ack__indeterminate_preserves_state(self) -> None:
+        """
+        Ensure that an inbound ACK whose state does not match
+        any of the four canonical cases preserves
+        'tlp_end_seq' so subsequent ACKs can clarify.
+
+        Reference: RFC 8985 §7.4 (indeterminate -> preserve).
+        """
+
+        # ACK below probe's end_seq, retransmit probe, no DSACK,
+        # SACK blocks present -> doesn't match any case.
+        new_tlp_end, cc = tlp_process_ack(
+            tlp_end_seq=1000,
+            tlp_is_retrans=True,
+            ack_seq=900,
+            has_dsack_for_probe=False,
+            has_sack_blocks=True,
+        )
+        self.assertEqual(new_tlp_end, 1000, msg="Indeterminate ACK MUST preserve state.")
+        self.assertFalse(cc, msg="Indeterminate ACK MUST NOT invoke CC.")
