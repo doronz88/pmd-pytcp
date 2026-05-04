@@ -1,0 +1,634 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains unit tests for the RFC 9438 CUBIC
+congestion-control helpers in
+'pytcp/protocols/tcp/tcp__cubic.py'.
+
+The tests cover:
+
+  - cubic_compute_K boundary values and monotonicity in W_max.
+  - cubic_w canonical (t, W_max, K) triples with hand-verified
+    expected outputs and the post-K growth direction.
+  - cubic_grow_per_ack slow-start branch unchanged from Reno;
+    CA branch picks the cubic target; target-floor and
+    target-ceiling clamps fire.
+  - cubic_loss_event_ssthresh main path, 2*SMSS floor, fast-
+    convergence active vs inactive.
+  - cubic_w_est linear growth at alpha_cubic ≈ 0.529.
+
+pytcp/tests/unit/protocols/tcp/test__tcp__cubic.py
+
+ver 3.0.4
+"""
+
+from unittest import TestCase
+
+from pytcp.protocols.tcp.tcp__cubic import (
+    ALPHA_CUBIC_DEN,
+    ALPHA_CUBIC_NUM,
+    BETA_CUBIC_DEN,
+    BETA_CUBIC_NUM,
+    C_DEN,
+    C_NUM,
+    FAST_CONV_DEN,
+    FAST_CONV_NUM,
+    cubic_compute_K,
+    cubic_grow_per_ack,
+    cubic_loss_event_ssthresh,
+    cubic_target,
+    cubic_w,
+    cubic_w_est,
+)
+
+
+class TestCubicConstants(TestCase):
+    """
+    RFC 9438 §4.1.1 constants (encoded as integer ratios).
+    """
+
+    def test__cubic__c_constant_value(self) -> None:
+        """
+        Ensure C = 0.4 encoded exactly as 2/5.
+
+        Reference: RFC 9438 §4.1.1 (constant C).
+        """
+
+        self.assertEqual(
+            (C_NUM, C_DEN),
+            (2, 5),
+            msg="RFC 9438 §4.1.1 C must be encoded as 2/5.",
+        )
+
+    def test__cubic__beta_constant_value(self) -> None:
+        """
+        Ensure beta_cubic = 0.7 encoded exactly as 7/10.
+
+        Reference: RFC 9438 §4.6 (beta_cubic SHOULD be 0.7).
+        """
+
+        self.assertEqual(
+            (BETA_CUBIC_NUM, BETA_CUBIC_DEN),
+            (7, 10),
+            msg="RFC 9438 §4.6 beta_cubic must be encoded as 7/10.",
+        )
+
+    def test__cubic__alpha_constant_value(self) -> None:
+        """
+        Ensure alpha_cubic = 9/17 ≈ 0.529.
+
+        Reference: RFC 9438 §4.3 (alpha_cubic = 3 * (1 - beta) / (1 + beta)).
+        """
+
+        self.assertEqual(
+            (ALPHA_CUBIC_NUM, ALPHA_CUBIC_DEN),
+            (9, 17),
+            msg="RFC 9438 §4.3 alpha_cubic must be encoded as 9/17.",
+        )
+
+    def test__cubic__fast_conv_constant_value(self) -> None:
+        """
+        Ensure (1 + beta_cubic) / 2 = 17/20 (the fast-
+        convergence W_max reduction factor).
+
+        Reference: RFC 9438 §4.7 (fast convergence factor).
+        """
+
+        self.assertEqual(
+            (FAST_CONV_NUM, FAST_CONV_DEN),
+            (17, 20),
+            msg="RFC 9438 §4.7 fast-convergence factor must be encoded as 17/20.",
+        )
+
+
+class TestCubicComputeK(TestCase):
+    """
+    RFC 9438 §4.2 figure 2: K = cubicroot(
+        (W_max - cwnd_epoch) / C
+    ) in seconds, returned in milliseconds.
+    """
+
+    def test__cubic__K_zero_when_w_max_equals_cwnd_epoch(self) -> None:
+        """
+        Ensure K = 0 when W_max == cwnd_epoch (no curve).
+
+        Reference: RFC 9438 §4.2 figure 2.
+        """
+
+        self.assertEqual(
+            cubic_compute_K(w_max=14600, cwnd_epoch=14600, smss=1460),
+            0,
+            msg="K must be 0 when W_max == cwnd_epoch.",
+        )
+
+    def test__cubic__K_zero_when_w_max_below_cwnd_epoch(self) -> None:
+        """
+        Ensure K = 0 when W_max < cwnd_epoch (defensive
+        bound; the cubic root would be undefined).
+
+        Reference: RFC 9438 §4.2 figure 2 (defensive).
+        """
+
+        self.assertEqual(
+            cubic_compute_K(w_max=10000, cwnd_epoch=14600, smss=1460),
+            0,
+            msg="K must be 0 when W_max < cwnd_epoch (defensive).",
+        )
+
+    def test__cubic__K_canonical_value(self) -> None:
+        """
+        Ensure K matches the spec for a canonical operating
+        point. With W_max = 100 SMSS = 146000 bytes,
+        cwnd_epoch = 70 SMSS = 102200 bytes (post-loss
+        70% reduction), smss = 1460:
+
+        diff_seg = 30
+        K_seconds = cubicroot(30 / 0.4) = cubicroot(75)
+                  ≈ 4.217 seconds
+        K_ms ≈ 4217
+
+        Reference: RFC 9438 §4.2 figure 2.
+        """
+
+        K_ms = cubic_compute_K(w_max=146000, cwnd_epoch=102200, smss=1460)
+        self.assertGreaterEqual(K_ms, 4150, msg="K must be ≈ 4217 ms (lower bound).")
+        self.assertLessEqual(K_ms, 4280, msg="K must be ≈ 4217 ms (upper bound).")
+
+    def test__cubic__K_monotone_in_w_max(self) -> None:
+        """
+        Ensure K grows monotonically with W_max (larger
+        W_max → curve takes longer to climb back to it).
+
+        Reference: RFC 9438 §4.2 figure 2.
+        """
+
+        K_small = cubic_compute_K(w_max=14600, cwnd_epoch=10220, smss=1460)
+        K_large = cubic_compute_K(w_max=146000, cwnd_epoch=102200, smss=1460)
+        self.assertLess(
+            K_small,
+            K_large,
+            msg="K must grow monotonically with W_max.",
+        )
+
+
+class TestCubicW(TestCase):
+    """
+    RFC 9438 §4.2 figure 1: W(t) = C * (t - K)^3 + W_max.
+    """
+
+    def test__cubic__w_equals_w_max_at_t_equals_K(self) -> None:
+        """
+        Ensure W(K) == W_max (the curve passes through W_max
+        at the inflection time).
+
+        Reference: RFC 9438 §4.2 figure 1.
+        """
+
+        self.assertEqual(
+            cubic_w(t_ms=4217, w_max=146000, K_ms=4217, smss=1460),
+            146000,
+            msg="W(K) must equal W_max.",
+        )
+
+    def test__cubic__w_below_w_max_before_K(self) -> None:
+        """
+        Ensure W(t) < W_max for t < K (concave region; the
+        curve approaches W_max from below).
+
+        Reference: RFC 9438 §4.2 figure 1.
+        """
+
+        result = cubic_w(t_ms=2000, w_max=146000, K_ms=4217, smss=1460)
+        self.assertLess(result, 146000, msg="W(t) must be < W_max for t < K.")
+
+    def test__cubic__w_above_w_max_after_K(self) -> None:
+        """
+        Ensure W(t) > W_max for t > K (convex region; the
+        curve probes new bandwidth past W_max).
+
+        Reference: RFC 9438 §4.2 figure 1.
+        """
+
+        result = cubic_w(t_ms=6000, w_max=146000, K_ms=4217, smss=1460)
+        self.assertGreater(result, 146000, msg="W(t) must be > W_max for t > K.")
+
+    def test__cubic__w_clamps_at_zero_for_extreme_negative(self) -> None:
+        """
+        Ensure W(t) is clamped at 0 when the cubic delta
+        would underflow past W_max (extreme negative t-K).
+
+        Reference: RFC 9438 §4.2 (defensive non-negative).
+        """
+
+        # W_max = 1460, K = 100000, t = 0 → cube = -1e15 → very large
+        # negative delta; clamp at 0.
+        result = cubic_w(t_ms=0, w_max=1460, K_ms=100000, smss=1460)
+        self.assertEqual(result, 0, msg="W(t) must clamp at 0.")
+
+
+class TestCubicTarget(TestCase):
+    """
+    RFC 9438 §4.2: target = clamp(W_cubic(t), [cwnd, 1.5*cwnd]).
+    """
+
+    def test__cubic__target_floor_at_cwnd_when_curve_below(self) -> None:
+        """
+        Ensure target == cwnd when W_cubic(t) < cwnd.
+
+        Reference: RFC 9438 §4.2 (target floor).
+        """
+
+        # t = 0, K = 4217, W_max = 146000 → W(0) = cwnd_epoch
+        # ≈ 102200. Set cwnd = 110000 above the curve so the
+        # target floor fires.
+        result = cubic_target(cwnd=110000, w_max=146000, K_ms=4217, t_ms=0, smss=1460)
+        self.assertEqual(result, 110000, msg="target must clamp to cwnd when curve is below.")
+
+    def test__cubic__target_ceiling_at_1_5_cwnd_when_curve_above(self) -> None:
+        """
+        Ensure target == 1.5 * cwnd when W_cubic(t) >
+        1.5 * cwnd.
+
+        Reference: RFC 9438 §4.2 (target ceiling).
+        """
+
+        # Far past K with very large W_max → W_cubic huge.
+        result = cubic_target(cwnd=10000, w_max=146000, K_ms=0, t_ms=100000, smss=1460)
+        self.assertEqual(result, 15000, msg="target must clamp to 1.5*cwnd when curve far above.")
+
+    def test__cubic__target_uses_curve_value_in_band(self) -> None:
+        """
+        Ensure target equals W_cubic(t) when in the
+        [cwnd, 1.5*cwnd] band.
+
+        Reference: RFC 9438 §4.2.
+        """
+
+        # At t=K, W = W_max. Set cwnd = W_max - small offset,
+        # W_max in band.
+        target = cubic_target(cwnd=140000, w_max=146000, K_ms=4217, t_ms=4217, smss=1460)
+        self.assertEqual(target, 146000, msg="target must equal W(t) when in band.")
+
+
+class TestCubicGrowPerAck(TestCase):
+    """
+    RFC 9438 §4.2 / §4.4 / §4.5: per-ACK CA growth using
+    the cubic curve.
+    """
+
+    def test__cubic__slow_start_branch_unchanged_from_reno(self) -> None:
+        """
+        Ensure that with cwnd < ssthresh, growth is the
+        unchanged Reno slow-start formula.
+
+        Reference: RFC 5681 §3.1 (slow-start).
+        Reference: RFC 9438 §4.6 (CA-only formula).
+        """
+
+        result = cubic_grow_per_ack(
+            cwnd=1460,
+            ssthresh=14600,
+            w_max=0,
+            K_ms=0,
+            epoch_start_ms=0,
+            now_ms=10,
+            bytes_acked=1460,
+            smss=1460,
+        )
+        self.assertEqual(
+            result,
+            2920,
+            msg="Slow-start branch must add SMSS regardless of CUBIC state.",
+        )
+
+    def test__cubic__ca_branch_grows_when_curve_above_cwnd(self) -> None:
+        """
+        Ensure CA growth fires when the cubic curve is
+        above cwnd (concave or convex region).
+
+        Reference: RFC 9438 §4.4 / §4.5.
+        """
+
+        # cwnd = 100*SMSS = 146000; ssthresh below cwnd → CA.
+        # W_max = 146000 (current cwnd), K_ms = 0 (post-loss
+        # epoch reset), t_ms = 1000 → W(t) > W_max → growth.
+        result = cubic_grow_per_ack(
+            cwnd=146000,
+            ssthresh=100000,
+            w_max=146000,
+            K_ms=0,
+            epoch_start_ms=0,
+            now_ms=1000,
+            bytes_acked=1460,
+            smss=1460,
+        )
+        self.assertGreater(
+            result,
+            146000,
+            msg="CA branch must grow cwnd when target is above current.",
+        )
+
+    def test__cubic__ca_no_growth_when_curve_below_cwnd(self) -> None:
+        """
+        Ensure cwnd is unchanged when target <= cwnd (the
+        cubic curve hasn't caught up yet).
+
+        Reference: RFC 9438 §4.2 (target floor at cwnd).
+        """
+
+        # t = 0, K = 4217, W_max = 146000 → W(0) ≈ 102200.
+        # cwnd = 110000 > W(0); target is floored at cwnd.
+        result = cubic_grow_per_ack(
+            cwnd=110000,
+            ssthresh=10000,
+            w_max=146000,
+            K_ms=4217,
+            epoch_start_ms=0,
+            now_ms=0,
+            bytes_acked=1460,
+            smss=1460,
+        )
+        self.assertEqual(
+            result,
+            110000,
+            msg="CA branch must leave cwnd unchanged when target <= cwnd.",
+        )
+
+
+class TestCubicLossEventSsthresh(TestCase):
+    """
+    RFC 9438 §4.6 + §4.7: ssthresh and W_max update on
+    a loss event.
+    """
+
+    def test__cubic__ssthresh_halves_at_beta_cubic(self) -> None:
+        """
+        Ensure ssthresh = cwnd * 7/10 in the main path.
+
+        Reference: RFC 9438 §4.6 (multiplicative decrease).
+        """
+
+        ssthresh, w_max = cubic_loss_event_ssthresh(
+            cwnd=146000,
+            smss=1460,
+            fast_conv_active=False,
+            prior_w_max=0,
+        )
+        self.assertEqual(
+            ssthresh,
+            146000 * 7 // 10,
+            msg="ssthresh must equal cwnd * beta_cubic in the main path.",
+        )
+        self.assertEqual(
+            w_max,
+            146000,
+            msg="W_max must equal cwnd when fast convergence is disabled.",
+        )
+
+    def test__cubic__ssthresh_floor_at_2_smss(self) -> None:
+        """
+        Ensure ssthresh floor at 2*SMSS for very small cwnd.
+
+        Reference: RFC 9438 §4.6 (floor protection).
+        """
+
+        ssthresh, _ = cubic_loss_event_ssthresh(
+            cwnd=1460,  # 1 SMSS
+            smss=1460,
+            fast_conv_active=False,
+            prior_w_max=0,
+        )
+        self.assertEqual(
+            ssthresh,
+            2 * 1460,
+            msg="ssthresh must floor at 2*SMSS.",
+        )
+
+    def test__cubic__fast_convergence_reduces_w_max_when_cwnd_below_prior(self) -> None:
+        """
+        Ensure fast convergence reduces W_max to
+        cwnd * 17/20 when cwnd < prior W_max.
+
+        Reference: RFC 9438 §4.7 (fast convergence).
+        """
+
+        _, w_max = cubic_loss_event_ssthresh(
+            cwnd=100000,
+            smss=1460,
+            fast_conv_active=True,
+            prior_w_max=146000,
+        )
+        self.assertEqual(
+            w_max,
+            100000 * 17 // 20,
+            msg="W_max must be reduced to cwnd * 17/20 when cwnd < prior W_max.",
+        )
+
+    def test__cubic__fast_convergence_inactive_when_cwnd_at_or_above_prior(self) -> None:
+        """
+        Ensure fast convergence does NOT reduce W_max when
+        cwnd >= prior W_max (the flow's saturation point
+        has not declined).
+
+        Reference: RFC 9438 §4.7 (gating).
+        """
+
+        _, w_max = cubic_loss_event_ssthresh(
+            cwnd=146000,
+            smss=1460,
+            fast_conv_active=True,
+            prior_w_max=100000,
+        )
+        self.assertEqual(
+            w_max,
+            146000,
+            msg="W_max must equal cwnd when cwnd >= prior W_max.",
+        )
+
+    def test__cubic__fast_convergence_disabled_keeps_w_max_at_cwnd(self) -> None:
+        """
+        Ensure fast_conv_active=False keeps W_max = cwnd
+        even when cwnd < prior W_max.
+
+        Reference: RFC 9438 §4.7 (disabled mode).
+        """
+
+        _, w_max = cubic_loss_event_ssthresh(
+            cwnd=100000,
+            smss=1460,
+            fast_conv_active=False,
+            prior_w_max=146000,
+        )
+        self.assertEqual(
+            w_max,
+            100000,
+            msg="W_max must equal cwnd when fast convergence disabled.",
+        )
+
+
+class TestCubicWEst(TestCase):
+    """
+    RFC 9438 §4.3 figure 4: W_est = W_est + alpha_cubic *
+    segments_acked / cwnd.
+    """
+
+    def test__cubic__w_est_grows_at_alpha_cubic_per_full_window_acked(self) -> None:
+        """
+        Ensure W_est grows by alpha_cubic * SMSS bytes when
+        a full cwnd worth of bytes is acked (the canonical
+        per-RTT reference).
+
+        Reference: RFC 9438 §4.3 figure 4.
+        """
+
+        # cwnd = 14600 (10 SMSS); bytes_acked = 14600 (full
+        # window). delta = alpha_cubic * 14600 * 1460 /
+        # 14600 = alpha_cubic * 1460 = 9 * 1460 / 17 ≈ 773.
+        result = cubic_w_est(
+            w_est_prev=14600,
+            cwnd=14600,
+            smss=1460,
+            bytes_acked=14600,
+        )
+        delta = result - 14600
+        self.assertEqual(
+            delta,
+            9 * 1460 // 17,
+            msg="W_est must grow by alpha_cubic * SMSS per full-window ack.",
+        )
+
+    def test__cubic__w_est_zero_growth_on_zero_bytes_acked(self) -> None:
+        """
+        Ensure W_est is unchanged when bytes_acked = 0
+        (degenerate dup-ACK that shouldn't enter this path).
+
+        Reference: RFC 9438 §4.3 figure 4 (zero numerator).
+        """
+
+        result = cubic_w_est(
+            w_est_prev=14600,
+            cwnd=14600,
+            smss=1460,
+            bytes_acked=0,
+        )
+        self.assertEqual(
+            result,
+            14600,
+            msg="W_est must be unchanged on zero bytes acked.",
+        )
+
+    def test__cubic__w_est_grows_proportional_to_bytes_acked(self) -> None:
+        """
+        Ensure W_est advance is approximately linear in
+        bytes_acked (within integer-floor rounding error).
+
+        Reference: RFC 9438 §4.3 figure 4 (linear proportionality).
+        """
+
+        small = cubic_w_est(w_est_prev=14600, cwnd=14600, smss=1460, bytes_acked=1460)
+        large = cubic_w_est(w_est_prev=14600, cwnd=14600, smss=1460, bytes_acked=14600)
+        # Integer floor-div introduces small rounding, so allow
+        # up to 10 bytes of slack across the 10x scaling.
+        self.assertAlmostEqual(
+            large - 14600,
+            (small - 14600) * 10,
+            delta=10,
+            msg="W_est advance must scale approximately linearly with bytes_acked.",
+        )
+
+
+class TestCubicHelperAsserts(TestCase):
+    """
+    Defensive asserts on each helper.
+    """
+
+    def test__cubic__compute_K_rejects_negative_w_max(self) -> None:
+        """
+        Ensure cubic_compute_K rejects negative w_max.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            cubic_compute_K(w_max=-1, cwnd_epoch=0, smss=1460)
+
+    def test__cubic__compute_K_rejects_zero_smss(self) -> None:
+        """
+        Ensure cubic_compute_K rejects smss <= 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            cubic_compute_K(w_max=14600, cwnd_epoch=0, smss=0)
+
+    def test__cubic__grow_per_ack_rejects_zero_cwnd(self) -> None:
+        """
+        Ensure cubic_grow_per_ack rejects cwnd <= 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            cubic_grow_per_ack(
+                cwnd=0,
+                ssthresh=14600,
+                w_max=0,
+                K_ms=0,
+                epoch_start_ms=0,
+                now_ms=0,
+                bytes_acked=1460,
+                smss=1460,
+            )
+
+    def test__cubic__loss_event_rejects_zero_cwnd(self) -> None:
+        """
+        Ensure cubic_loss_event_ssthresh rejects cwnd <= 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            cubic_loss_event_ssthresh(
+                cwnd=0,
+                smss=1460,
+                fast_conv_active=False,
+                prior_w_max=0,
+            )
+
+    def test__cubic__w_est_rejects_zero_cwnd(self) -> None:
+        """
+        Ensure cubic_w_est rejects cwnd <= 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            cubic_w_est(
+                w_est_prev=0,
+                cwnd=0,
+                smss=1460,
+                bytes_acked=1460,
+            )
