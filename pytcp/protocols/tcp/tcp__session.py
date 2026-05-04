@@ -42,7 +42,11 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh, cwnd_grow_per_ack
+from pytcp.protocols.tcp.tcp__cwnd import (
+    compute_ecn_event_ssthresh,
+    compute_loss_event_ssthresh,
+    cwnd_grow_per_ack,
+)
 from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
     FsmState,
@@ -2939,7 +2943,12 @@ class TcpSession:
                 and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
             ):
                 flight_size = sub32(self._snd_max, self._snd_una)
-                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                # RFC 8511 ABE: ECN signals early-warning
+                # congestion (no actual loss yet); reduce
+                # ssthresh by the less-aggressive 0.85
+                # multiplier instead of the 0.5 used for
+                # genuine packet-loss events.
+                self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                 self._cwnd = self._ssthresh
                 self._snd_ewn = min(self._cwnd, self._snd_wnd)
                 self._ecn_send_cwr = True
@@ -2964,7 +2973,12 @@ class TcpSession:
                 and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
             ):
                 flight_size = sub32(self._snd_max, self._snd_una)
-                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                # RFC 8511 ABE: same as the RFC 3168 ECN path
+                # above - on ECN-class events the sender uses
+                # the less-aggressive 0.85 multiplier rather
+                # than the 0.5 reserved for genuine packet
+                # loss events.
+                self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                 self._cwnd = self._ssthresh
                 self._snd_ewn = min(self._cwnd, self._snd_wnd)
                 self._ecn_recovery_point = self._snd_nxt

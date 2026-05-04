@@ -57,6 +57,7 @@ from unittest import TestCase
 from pytcp.protocols.tcp.tcp__cwnd import (
     INITIAL_WINDOW_BYTES,
     INITIAL_WINDOW_FACTOR,
+    compute_ecn_event_ssthresh,
     compute_loss_event_ssthresh,
     cwnd_grow_per_ack,
     initial_window,
@@ -371,6 +372,125 @@ class TestComputeLossEventSsthresh(TestCase):
 
         with self.assertRaises(AssertionError):
             compute_loss_event_ssthresh(flight_size=1460, smss=0)
+
+
+class TestComputeEcnEventSsthresh(TestCase):
+    """
+    RFC 8511 §3 ABE (Alternative Backoff with ECN):
+    ssthresh = max(flight_size * 17 // 20, 2 * smss).
+    """
+
+    def test__ssthresh__zero_flight_size_clamps_to_two_smss_floor(self) -> None:
+        """
+        Ensure flight_size = 0 yields max(0, 2*SMSS) = 2*SMSS.
+        Same floor as the loss-event helper.
+
+        Reference: RFC 8511 §3 (ABE preserves the 2*SMSS floor).
+        """
+
+        result = compute_ecn_event_ssthresh(flight_size=0, smss=1460)
+
+        self.assertEqual(
+            result,
+            2 * 1460,
+            msg="flight_size=0 must clamp ssthresh to 2*SMSS.",
+        )
+
+    def test__ssthresh__small_flight_size_clamps_to_two_smss_floor(self) -> None:
+        """
+        Ensure flight_size = SMSS: max(1241, 2920) = 2920. Still
+        below the floor since 17/20 of SMSS < 2*SMSS.
+
+        Reference: RFC 8511 §3 (floor at 2*SMSS).
+        """
+
+        result = compute_ecn_event_ssthresh(flight_size=1460, smss=1460)
+
+        self.assertEqual(
+            result,
+            2 * 1460,
+            msg="flight_size=SMSS must clamp ssthresh to 2*SMSS.",
+        )
+
+    def test__ssthresh__floor_boundary(self) -> None:
+        """
+        Ensure flight_size at the floor boundary: 2*SMSS / 0.85
+        rounds to 3*SMSS at SMSS=1460. flight_size=3*1460=4380:
+        max(4380*17//20, 2920) = max(3723, 2920) = 3723. Just
+        above the floor.
+
+        Reference: RFC 8511 §3 (boundary case).
+        """
+
+        result = compute_ecn_event_ssthresh(flight_size=3 * 1460, smss=1460)
+
+        self.assertEqual(
+            result,
+            3 * 1460 * 17 // 20,
+            msg="flight_size=3*SMSS must yield FlightSize*17/20.",
+        )
+
+    def test__ssthresh__large_flight_size_uses_abe_multiplier(self) -> None:
+        """
+        Ensure flight_size = 100*SMSS: max(85*SMSS, 2*SMSS) =
+        85*SMSS. The 17/20 multiplier dominates.
+
+        Reference: RFC 8511 §3 (ABE multiplier 0.85).
+        """
+
+        result = compute_ecn_event_ssthresh(flight_size=100 * 1460, smss=1460)
+
+        self.assertEqual(
+            result,
+            85 * 1460,
+            msg="flight_size >> SMSS must use FlightSize*17/20.",
+        )
+
+    def test__ssthresh__abe_is_less_aggressive_than_loss(self) -> None:
+        """
+        Ensure ABE's reduction is strictly less aggressive than
+        the RFC 5681 loss-event reduction for any flight_size
+        large enough to escape the floor. ABE preserves 0.85 of
+        flight; loss-event preserves 0.5.
+
+        Reference: RFC 8511 §3 (ABE preserves more cwnd than loss).
+        """
+
+        flight_size = 100 * 1460
+        smss = 1460
+
+        loss_value = compute_loss_event_ssthresh(flight_size, smss)
+        ecn_value = compute_ecn_event_ssthresh(flight_size, smss)
+
+        self.assertGreater(
+            ecn_value,
+            loss_value,
+            msg=(
+                "RFC 8511 §3: ECN-event ssthresh must exceed "
+                "loss-event ssthresh for non-floor flight sizes. "
+                f"Got ecn={ecn_value} loss={loss_value}."
+            ),
+        )
+
+    def test__ssthresh__negative_flight_size_raises(self) -> None:
+        """
+        Ensure flight_size must be non-negative.
+
+        Reference: RFC 8511 §3 (FlightSize is non-negative byte count).
+        """
+
+        with self.assertRaises(AssertionError):
+            compute_ecn_event_ssthresh(flight_size=-1, smss=1460)
+
+    def test__ssthresh__zero_smss_raises(self) -> None:
+        """
+        Ensure smss must be positive (it determines the floor).
+
+        Reference: RFC 8511 §3 (SMSS is positive).
+        """
+
+        with self.assertRaises(AssertionError):
+            compute_ecn_event_ssthresh(flight_size=1460, smss=0)
 
 
 class TestInitialWindow(TestCase):

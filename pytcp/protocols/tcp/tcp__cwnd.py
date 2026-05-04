@@ -42,6 +42,12 @@ Three operations the caller invokes from
         and fast-retransmit entry.
         ssthresh = max(flight_size // 2, 2 * smss)
 
+    compute_ecn_event_ssthresh(flight_size, smss) -> int
+        RFC 8511 §3 ABE: less aggressive ssthresh reduction on
+        ECN-class congestion events (RFC 3168 ECE / RFC 9341
+        r.CE delta).
+        ssthresh = max(flight_size * 17 // 20, 2 * smss)
+
     initial_window(smss) -> int
         RFC 6928 §2: post-handshake cwnd.
         IW = min(10 * smss, max(2 * smss, 14600))
@@ -133,6 +139,38 @@ def compute_loss_event_ssthresh(flight_size: int, smss: int) -> int:
     assert smss > 0, f"'smss' must be positive; got {smss!r}"
 
     return max(flight_size // 2, 2 * smss)
+
+
+def compute_ecn_event_ssthresh(flight_size: int, smss: int) -> int:
+    """
+    Compute the new ssthresh value for an ECN-class congestion
+    event per RFC 8511 §3 (Alternative Backoff with ECN).
+
+    Algorithm:
+        ssthresh = max(flight_size * 17 // 20, 2 * smss)
+
+    The 17/20 integer ratio is the canonical RFC 8511 0.85
+    multiplier - less aggressive than the 0.5 used for loss
+    events. ECN provides early-warning congestion notification
+    before drops occur, so ABE preserves more in-flight data
+    while still backing off when the network signals.
+
+    The 'max(..., 2*SMSS)' floor matches the loss-event helper's
+    behaviour and prevents a small in-flight burst at event time
+    from setting ssthresh below the canonical RFC 5681 minimum.
+
+    Parameters:
+        flight_size: bytes in flight at the moment of the ECN
+                     event
+        smss:        sender's MSS
+
+    Returns: new ssthresh value (bytes).
+    """
+
+    assert flight_size >= 0, f"'flight_size' must be non-negative; got {flight_size!r}"
+    assert smss > 0, f"'smss' must be positive; got {smss!r}"
+
+    return max(flight_size * 17 // 20, 2 * smss)
 
 
 def initial_window(smss: int) -> int:
