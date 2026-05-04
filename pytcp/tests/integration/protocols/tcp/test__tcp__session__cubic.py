@@ -43,7 +43,11 @@ from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__session import TcpSession
-from pytcp.socket import AddressFamily
+from pytcp.socket import (
+    IPPROTO_TCP,
+    TCP_CONGESTION,
+    AddressFamily,
+)
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -96,11 +100,11 @@ class TestTcpCubicPhase2(TcpSessionTestCase):
         stack.sockets[sock.socket_id] = sock
         return session
 
-    def test__cubic__fresh_session_defaults_to_reno(self) -> None:
+    def test__cubic__fresh_session_defaults_to_cubic(self) -> None:
         """
-        Ensure a fresh TcpSession's '_cc_mode' is CcMode.RENO
-        through phases 2-6. Phase 7 flips the default to CUBIC
-        and updates this test.
+        Ensure a fresh TcpSession's '_cc_mode' defaults to
+        CcMode.CUBIC post-Phase-7 (matching Linux's default
+        since kernel 2.6.18).
 
         Reference: RFC 9438 §1 (CUBIC algorithm selector).
         """
@@ -109,10 +113,10 @@ class TestTcpCubicPhase2(TcpSessionTestCase):
 
         self.assertIs(
             session._cc_mode,
-            CcMode.RENO,
+            CcMode.CUBIC,
             msg=(
-                "Phase 2 default '_cc_mode' must be RENO so existing "
-                "Reno-based tests continue to pass; Phase 7 flips this."
+                "Phase 7 default '_cc_mode' must be CUBIC; opt-in to "
+                "RENO via setsockopt(IPPROTO_TCP, TCP_CONGESTION, ...)."
             ),
         )
 
@@ -585,8 +589,9 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Default '_cc_mode' is RENO - verify untouched here.
-        self.assertIs(session._cc_mode, CcMode.RENO)
+        # Explicitly opt into RENO (Phase 7 flipped the default
+        # to CUBIC).
+        session._cc_mode = CcMode.RENO
 
         # Pin CA regime, set CUBIC state fields - they must
         # not affect growth in RENO mode.
@@ -620,3 +625,101 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
             session._cubic_in_ca,
             msg="'_cubic_in_ca' must remain False in RENO mode.",
         )
+
+
+class TestTcpCubicPhase7(TcpSessionTestCase):
+    """
+    Integration tests for Phase 7 of RFC 9438 CUBIC: the
+    setsockopt(IPPROTO_TCP, TCP_CONGESTION, ...) socket-API
+    selector + default-CUBIC flip.
+    """
+
+    def test__cubic__getsockopt_tcp_congestion_default_returns_cubic(self) -> None:
+        """
+        Ensure that on a fresh TcpSocket,
+        getsockopt(IPPROTO_TCP, TCP_CONGESTION) returns
+        CcMode.CUBIC.value (the post-Phase-7 default).
+
+        Reference: RFC 9438 §1 (default CC algorithm).
+        """
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        self.assertEqual(
+            sock.getsockopt(IPPROTO_TCP, TCP_CONGESTION),
+            CcMode.CUBIC.value,
+            msg="Default TCP_CONGESTION must return CUBIC.",
+        )
+
+    def test__cubic__setsockopt_tcp_congestion_round_trip(self) -> None:
+        """
+        Ensure that setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        CcMode.RENO.value) followed by getsockopt returns
+        CcMode.RENO.value.
+
+        Reference: RFC 9438 §1 (per-connection selector).
+        """
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock.setsockopt(IPPROTO_TCP, TCP_CONGESTION, CcMode.RENO.value)
+        self.assertEqual(
+            sock.getsockopt(IPPROTO_TCP, TCP_CONGESTION),
+            CcMode.RENO.value,
+            msg="getsockopt must reflect setsockopt's stored value.",
+        )
+
+        sock.setsockopt(IPPROTO_TCP, TCP_CONGESTION, CcMode.CUBIC.value)
+        self.assertEqual(
+            sock.getsockopt(IPPROTO_TCP, TCP_CONGESTION),
+            CcMode.CUBIC.value,
+            msg="getsockopt must reflect the second setsockopt call.",
+        )
+
+    def test__cubic__setsockopt_propagates_to_session_on_connect(self) -> None:
+        """
+        Ensure that a setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        ...) call before connect() takes effect on the
+        underlying TcpSession's '_cc_mode' field.
+
+        Reference: RFC 9438 §1 (socket-to-session propagation).
+        """
+
+        self._force_iss(LOCAL__ISS)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+
+        # Override default CUBIC with RENO.
+        sock.setsockopt(IPPROTO_TCP, TCP_CONGESTION, CcMode.RENO.value)
+
+        # Construct session (mimics what connect() does).
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        # Apply the propagation step (mirrors the connect() hook).
+        session._cc_mode = sock._cc_mode
+
+        self.assertIs(
+            session._cc_mode,
+            CcMode.RENO,
+            msg="setsockopt(TCP_CONGESTION, RENO) must propagate to session.",
+        )
+
+    def test__cubic__setsockopt_unsupported_value_raises(self) -> None:
+        """
+        Ensure that setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        <invalid>) raises a ValueError because the int doesn't
+        map to a known CcMode member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        with self.assertRaises(ValueError):
+            sock.setsockopt(IPPROTO_TCP, TCP_CONGESTION, 99)

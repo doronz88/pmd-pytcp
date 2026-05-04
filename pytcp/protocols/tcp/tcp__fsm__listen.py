@@ -138,6 +138,9 @@ def fsm__listen(
             tcp_session._keepalive_idle_override = listen_socket._tcp_keepidle
             tcp_session._keepalive_interval_override = listen_socket._tcp_keepintvl
             tcp_session._keepalive_max_count_override = listen_socket._tcp_keepcnt
+            # RFC 9438 §1: inherit the CC algorithm selector
+            # from the listening socket.
+            tcp_session._cc_mode = listen_socket._cc_mode
             session._socket._tcp_session = tcp_session  # pylint: disable=protected-access
             # Re-bind 'session' to the peer's 4-tuple and create a
             # new TcpSocket that exposes this child session to
@@ -162,6 +165,10 @@ def fsm__listen(
             session._socket._tcp_keepidle = listen_socket._tcp_keepidle
             session._socket._tcp_keepintvl = listen_socket._tcp_keepintvl
             session._socket._tcp_keepcnt = listen_socket._tcp_keepcnt
+            # RFC 9438 §1: child socket and its session inherit
+            # the CC mode from the listening parent.
+            session._socket._cc_mode = listen_socket._cc_mode
+            session._cc_mode = listen_socket._cc_mode
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the

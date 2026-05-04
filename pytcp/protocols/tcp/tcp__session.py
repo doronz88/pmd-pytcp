@@ -718,10 +718,10 @@ class TcpSession:
         # RFC 9438 CUBIC state (active when '_cc_mode == CUBIC';
         # in 'RENO' mode all fields stay at their initial values
         # and the existing RFC 5681 cwnd helpers run unchanged).
-        # Phase 7 of '.claude/rules/tcp_rfc9438_cubic.md' will
-        # flip the default to 'CUBIC' and add a setsockopt hook
-        # to override per-connection.
-        self._cc_mode: CcMode = CcMode.RENO
+        # Default is CcMode.CUBIC, mirroring Linux's default
+        # since kernel 2.6.18. Override per-connection via
+        # 'setsockopt(IPPROTO_TCP, TCP_CONGESTION, CcMode.RENO.value)'.
+        self._cc_mode: CcMode = CcMode.CUBIC
         # 'W_max' anchor for the cubic curve (bytes). Updated on
         # every loss event (RFC 9438 §4.6); the cubic growth
         # formula uses '_cubic_w_max' as the inflection point.

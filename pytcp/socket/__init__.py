@@ -71,6 +71,7 @@ class SocketOption(IntEnum):
     TCP_KEEPIDLE = 4  # level=IPPROTO_TCP; int seconds: per-conn idle override
     TCP_KEEPINTVL = 5  # level=IPPROTO_TCP; int seconds: per-conn probe interval override
     TCP_KEEPCNT = 6  # level=IPPROTO_TCP; int count: per-conn max probes override
+    TCP_CONGESTION = 13  # level=IPPROTO_TCP; str: per-conn CC algorithm name (RFC 9438)
     TCP_FASTOPEN = 23  # level=IPPROTO_TCP; int qlen: TFO accept-queue depth (RFC 7413)
 
 
@@ -78,6 +79,7 @@ SO_KEEPALIVE = SocketOption.SO_KEEPALIVE
 TCP_KEEPIDLE = SocketOption.TCP_KEEPIDLE
 TCP_KEEPINTVL = SocketOption.TCP_KEEPINTVL
 TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
+TCP_CONGESTION = SocketOption.TCP_CONGESTION
 TCP_FASTOPEN = SocketOption.TCP_FASTOPEN
 
 

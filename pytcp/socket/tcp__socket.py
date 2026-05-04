@@ -48,11 +48,13 @@ from pytcp.lib.ip_helper import (
     pick_local_port,
 )
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
 from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
+    TCP_CONGESTION,
     TCP_FASTOPEN,
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
@@ -148,6 +150,15 @@ class TcpSocket(socket):
         # issues cookies and accepts SYN-data when this is
         # > 0) is a subsequent phase.
         self._tcp_fastopen_qlen: int = 0
+
+        # RFC 9438 congestion-control algorithm selector,
+        # settable via 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        # ...)' with values: CcMode.RENO.value (=1) or
+        # CcMode.CUBIC.value (=2). Default is CcMode.CUBIC,
+        # mirroring Linux's default since kernel 2.6.18.
+        # Propagated to the freshly-constructed 'TcpSession'
+        # by 'connect()' / 'listen()' before the FSM starts.
+        self._cc_mode: CcMode = CcMode.CUBIC
 
         # Create established socket based on established TCP session, called by
         # listening sockets only.
@@ -285,6 +296,17 @@ class TcpSocket(socket):
         if level == IPPROTO_TCP and optname == TCP_FASTOPEN:
             self._tcp_fastopen_qlen = int(value)
             return
+        if level == IPPROTO_TCP and optname == TCP_CONGESTION:
+            mode = CcMode(int(value))
+            self._cc_mode = mode
+            # If the session already exists (post-connect()),
+            # propagate immediately so an in-flight connection
+            # picks up the mode change. Pre-connect calls only
+            # touch the socket field; 'connect()' / 'listen()'
+            # propagate at session-construction time.
+            if self._tcp_session is not None:
+                self._tcp_session._cc_mode = mode
+            return
         raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
@@ -309,6 +331,8 @@ class TcpSocket(socket):
             return self._tcp_keepcnt if self._tcp_keepcnt is not None else 0
         if level == IPPROTO_TCP and optname == TCP_FASTOPEN:
             return self._tcp_fastopen_qlen
+        if level == IPPROTO_TCP and optname == TCP_CONGESTION:
+            return int(self._cc_mode.value)
         raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
 
     def _get_ip_addresses(
@@ -472,6 +496,13 @@ class TcpSocket(socket):
         self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
         self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
 
+        # RFC 9438 §1: propagate the CC algorithm selector to
+        # the freshly-constructed TcpSession. Default is
+        # CcMode.CUBIC; opt-in to RENO via
+        # 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        # CcMode.RENO.value)' before 'connect()'.
+        self._tcp_session._cc_mode = self._cc_mode
+
         # RFC 7413 §3.1 connect-with-data: pre-load the
         # session's TX buffer with caller-supplied bytes
         # before driving the FSM into SYN_SENT. The session-
@@ -537,6 +568,11 @@ class TcpSocket(socket):
         self._tcp_session._keepalive_idle_override = self._tcp_keepidle
         self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
         self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
+
+        # RFC 9438 §1: propagate the CC algorithm selector so
+        # accepted children inherit through the listener-fork
+        # pivot.
+        self._tcp_session._cc_mode = self._cc_mode
 
         __debug__ and log(
             "socket",
