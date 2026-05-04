@@ -61,6 +61,7 @@ from pytcp.protocols.tcp.tcp__rack import (
     rack_compute_reo_wnd,
     rack_detect_loss,
     rack_update,
+    tlp_calc_pto,
 )
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
@@ -1567,6 +1568,33 @@ class TcpSession:
                 timeout=self._rto_state.rto_ms,
             )
 
+        # RFC 8985 §7.2 Tail Loss Probe scheduling. Arm the
+        # 'f"{self}-tlp"' timer on every outbound data segment
+        # so the §7.3 probe-emission path can elicit an ACK if
+        # the segment was the last byte of the application's
+        # write and peer's ACK is delayed. Skipped while in
+        # any recovery (recovery_point != 0 OR _frto_active)
+        # because a probe during recovery would race the
+        # ongoing retransmit machinery. Only fires for data
+        # segments, not SYN / FIN / pure-ACK probes.
+        if data and self._recovery_point == 0 and not self._frto_active:
+            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            # Use the in-flight RTO to upper-bound the PTO via
+            # the §7.2 'do not outlast RTO' clamp. The session
+            # tracks rto_ms (the per-event timeout); add to
+            # 'now_ms' to recover the absolute expiration.
+            rto_expiration_ms = stack.timer.now_ms + self._rto_state.rto_ms
+            pto_ms = tlp_calc_pto(
+                srtt_ms=self._rto_state.srtt_ms,
+                flight_size=flight_size,
+                smss=self._snd_mss,
+                max_ack_delay_ms=self._tlp_max_ack_delay_ms,
+                rto_expiration_ms=rto_expiration_ms,
+                now_ms=stack.timer.now_ms,
+            )
+            if pto_ms > 0:
+                stack.timer.register_timer(name=f"{self}-tlp", timeout=pto_ms)
+
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
@@ -2915,6 +2943,11 @@ class TcpSession:
             self._retransmit_count = 0
             if self._snd_una == self._snd_max:
                 stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
+                # RFC 8985 §7.2 TLP cancellation: when a
+                # cum-ACK drains all in-flight bytes, there is
+                # no tail to probe. Cancel the TLP timer so a
+                # late expiry does not fire a stale probe.
+                stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
             else:
                 stack.timer.register_timer(
                     name=f"{self}-retransmit",
