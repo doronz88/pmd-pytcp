@@ -121,7 +121,18 @@ def fsm__syn_sent(
         # 3.10.7.4 ...") explicitly permits piggybacked data on
         # the SYN+ACK; the data is NOT gated here, it is
         # enqueued into '_rx_buffer' below.
-        if packet_rx_md.tcp__ack == session._snd_nxt:
+        #
+        # ACK acceptability per RFC 9293 §3.10.7.3 step 1 is
+        # modular '(SND.UNA, SND.MAX]': any ack that advances
+        # SND.UNA past at least the SYN (peer_iss + 1) is
+        # acceptable. The '== SND.NXT' strict-equality check
+        # this replaces was correct for non-TFO sessions where
+        # SND.NXT only ever advances on the SYN's one byte,
+        # but for RFC 7413 §4.2 TFO partial-acks (server
+        # rejects SYN-data; SYN+ACK acks only the SYN, ack <
+        # SND.NXT) the equality check would refuse the
+        # SYN+ACK and the handshake would stall.
+        if lt32(session._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_nxt):
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the
@@ -172,6 +183,18 @@ def fsm__syn_sent(
             # Process ACK packet (uses '_snd_wsc=0' still, so
             # the SYN+ACK's win is preserved unshifted).
             session._process_ack_packet(packet_rx_md)
+            # RFC 7413 §4.2 TFO partial-ack handling: when
+            # the server rejected our SYN-data
+            # (ack < SND.NXT after _process_ack_packet
+            # advanced SND.UNA only past the SYN), rewind
+            # SND.NXT to SND.UNA so the data still in
+            # '_tx_buffer' is re-emitted by '_transmit_data'
+            # on the next tick (post-ESTABLISHED). Without
+            # the rewind the data would sit unacked until
+            # the RTO retransmit timer fires - a one-RTO
+            # latency penalty for every TFO failure.
+            if lt32(session._snd_una, session._snd_nxt):
+                session._snd_nxt = session._snd_una
             # RFC 6928 §2 Initial Window: post-handshake cwnd
             # = min(10*MSS, max(2*MSS, 14600)). Set after
             # '_process_ack_packet' has fired §3.1 growth on
