@@ -1205,3 +1205,194 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
                 f"all in-flight. Got pending: {sorted(self._timer.pending_timers)!r}."
             ),
         )
+
+
+class TestTcpTlpPhase7(TcpSessionTestCase):
+    """
+    Integration tests for the RFC 8985 §7.3 Tail Loss Probe
+    emission: probe sends new data when available, retransmits
+    the highest-seq segment otherwise, and re-arms the RTO
+    timer after the probe.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__tlp__probe_retransmits_highest_seq_when_no_new_data(self) -> None:
+        """
+        Ensure that when the TLP PTO fires and there is no
+        new data to send (TX buffer empty), the probe
+        retransmits the highest-seq in-flight segment and
+        marks 'TLP.is_retrans = True'.
+
+        Reference: RFC 8985 §7.3 (probe retransmits highest-seq).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        payload = b"single tail segment"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        # Frames sent so far: handshake SYN + 1 data segment.
+        pre_probe_tx_count = len(self._frames_tx)
+        snd_max_pre_probe = session._snd_max
+
+        # Advance past TLP PTO. With INITIAL_RTO=1000, no SRTT
+        # sample yet so PTO=1000 ms; clamped by RTO remaining
+        # (also 1000), so PTO fires around 1000 ms.
+        self._advance(ms=1500)
+
+        # Expect at least one extra frame: the TLP probe.
+        self.assertGreater(
+            len(self._frames_tx),
+            pre_probe_tx_count,
+            msg=(
+                "TLP PTO expiry MUST emit a probe frame. Frame "
+                f"count was {pre_probe_tx_count} pre-expiry, "
+                f"is {len(self._frames_tx)} post."
+            ),
+        )
+        self.assertTrue(
+            session._tlp_is_retrans,
+            msg=(
+                "When no new data is available, the TLP probe MUST be "
+                "marked as a retransmit ('_tlp_is_retrans = True'). "
+                f"Got {session._tlp_is_retrans}."
+            ),
+        )
+        self.assertEqual(
+            session._tlp_end_seq,
+            snd_max_pre_probe,
+            msg=(
+                "After a retransmit-style probe, '_tlp_end_seq' MUST "
+                "equal the SND.MAX at the moment of probe emission. "
+                f"Expected {snd_max_pre_probe}, got {session._tlp_end_seq}."
+            ),
+        )
+
+    def test__tlp__probe_sends_new_data_when_available(self) -> None:
+        """
+        Ensure that when new data is available in the TX
+        buffer at TLP PTO expiry, the probe is the new
+        segment starting at SND.NXT, with
+        '_tlp_is_retrans = False'.
+
+        Reference: RFC 8985 §7.3 (probe sends new data when available).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Constrain peer's window to 1 MSS so subsequent data
+        # stays buffered until the probe time. Send 2 * MSS
+        # so 1 segment fires inline + 1 stays buffered.
+        session._snd_ewn = PEER__MSS
+        session._snd_wnd = PEER__MSS
+
+        session.send(data=b"x" * (2 * PEER__MSS))
+        self._advance(ms=1)
+        # The unacked first segment has consumed the window;
+        # the buffered tail is still in 'self._tx_buffer'.
+        self.assertGreater(
+            len(session._tx_buffer),
+            0,
+            msg="Setup invariant: buffered tail must exist for the probe.",
+        )
+
+        # Open the window to allow the probe's new segment to
+        # fly. Without this the probe would be a retransmit.
+        session._snd_ewn = 2 * PEER__MSS
+        session._snd_wnd = 2 * PEER__MSS
+
+        snd_nxt_pre_probe = session._snd_nxt
+        self._advance(ms=1500)
+
+        # TLP path must have set _tlp_end_seq (non-None marker
+        # of probe emission) and chosen new-data over retransmit.
+        self.assertIsNotNone(
+            session._tlp_end_seq,
+            msg="TLP probe MUST set '_tlp_end_seq' on emission.",
+        )
+        self.assertFalse(
+            session._tlp_is_retrans,
+            msg=(
+                "When new data is available, the TLP probe MUST send "
+                "new bytes ('_tlp_is_retrans = False'). Got "
+                f"{session._tlp_is_retrans}."
+            ),
+        )
+        self.assertGreater(
+            session._snd_max,
+            snd_nxt_pre_probe,
+            msg=(
+                "A new-data TLP probe MUST advance SND.MAX past "
+                f"{snd_nxt_pre_probe}. Got SND.MAX={session._snd_max}."
+            ),
+        )
+
+    def test__tlp__probe_re_arms_rto_after_send(self) -> None:
+        """
+        Ensure that after the TLP probe is emitted, the RTO
+        timer is re-armed so the connection still has a
+        timeout-driven recovery path if the probe itself is
+        lost.
+
+        Reference: RFC 8985 §7.3 (re-arm RTO after probe).
+        """
+
+        session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        payload = b"tail segment"
+        session.send(data=payload)
+        self._advance(ms=1)
+
+        self._advance(ms=1500)
+
+        # TLP probe emission must set '_tlp_end_seq' AND re-arm RTO.
+        self.assertIsNotNone(
+            session._tlp_end_seq,
+            msg="TLP probe MUST set '_tlp_end_seq' on emission.",
+        )
+        self.assertIn(
+            f"{session}-retransmit",
+            self._timer.pending_timers,
+            msg=(
+                "TLP probe emission MUST re-arm the f'{session}-retransmit' "
+                f"timer. Got pending: {sorted(self._timer.pending_timers)!r}."
+            ),
+        )
