@@ -448,3 +448,194 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"ECE=0). Got flags={syn_ack.flags!r}."
             ),
         )
+
+    def _drive_handshake_to_established_with_accecn(self) -> TcpSession:
+        """
+        Drive an active-open three-way handshake to ESTABLISHED
+        with bilateral AccECN successfully negotiated. Returns
+        the session AND the third-leg ACK frame so tests can
+        inspect the post-handshake ACE encoding.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # AccECN-capable peer SYN+ACK (AE=0, CWR=1, ECE=0
+        # codepoint: "I am AccECN-capable; saw Not-ECT").
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "CWR"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        assert session.state is FsmState.ESTABLISHED, (
+            "Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."
+        )
+        assert session._accecn_enabled, (
+            "Setup precondition: bilateral AccECN must succeed. " f"Got _accecn_enabled={session._accecn_enabled}."
+        )
+        return session
+
+    def test__accecn__post_handshake_first_segment_encodes_ace_initial_5(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, the first
+        outbound non-SYN segment (the third-leg ACK that
+        completes the handshake, or any subsequent data
+        segment) encodes the initial ACE counter value of 5
+        (binary 101) in the AE+CWR+ECE flags. The mapping is:
+        bit2 (msb of the 3-bit counter) -> AE, bit1 -> CWR,
+        bit0 (lsb) -> ECE. The initial value of 5 is the
+        canonical RFC 9341 §3.2.2.1 starting point that
+        distinguishes a freshly-negotiated AccECN session
+        from value 0 (which has special meaning).
+
+        Reference: RFC 9341 §3.2.2.1 (initial ACE value 5).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "CWR"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        # Capture the third-leg ACK that fires inline.
+        third_leg_tx = self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: handshake reaches ESTABLISHED.",
+        )
+        self.assertEqual(
+            len(third_leg_tx),
+            1,
+            msg=(
+                "Setup precondition: third-leg ACK MUST fire "
+                "inline on receipt of the SYN+ACK. Got "
+                f"{len(third_leg_tx)} TX frames."
+            ),
+        )
+        ack = self._parse_tx(third_leg_tx[0])
+
+        # ACE = 5 = binary 101 -> AE=1, CWR=0, ECE=1.
+        self.assertIn(
+            "NS",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "(binary 101) MUST encode AE (NS bit) = 1 "
+                f"on the first outbound segment. Got flags={ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "CWR",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "(binary 101) MUST encode CWR = 0 on the "
+                f"first outbound segment. Got flags={ack.flags!r}."
+            ),
+        )
+        self.assertIn(
+            "ECE",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "(binary 101) MUST encode ECE = 1 on the "
+                f"first outbound segment. Got flags={ack.flags!r}."
+            ),
+        )
+
+    def test__accecn__inbound_ce_increments_ace_counter(self) -> None:
+        """
+        Ensure that when an inbound segment arrives with the
+        IP-ECN codepoint CE (11) on an AccECN-enabled
+        connection, the receiver-side r.cep counter
+        increments and the next outbound segment encodes the
+        new value (6 = binary 110 = AE=1, CWR=1, ECE=0) in
+        the AE+CWR+ECE flags. This is the substrate granular
+        feedback that AccECN provides over RFC 3168's binary
+        signal: the sender reads counter deltas across ACKs
+        to count CE marks accurately.
+
+        Reference: RFC 9341 §3.2.2 (r.cep counter increment on inbound CE).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        # Peer sends one CE-marked data segment.
+        ce_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=3,
+            payload=b"congested!",
+        )
+        self._drive_rx(frame=ce_data)
+
+        # Drain the delayed-ACK timer; the cumulative ACK
+        # fires after the timer expiry.
+        ack_tx = self._advance(ms=200)
+        self.assertEqual(
+            len(ack_tx),
+            1,
+            msg=(
+                "Setup precondition: cumulative ACK MUST fire after "
+                f"the delayed-ACK timer. Got {len(ack_tx)} TX frames."
+            ),
+        )
+        ack = self._parse_tx(ack_tx[0])
+
+        # ACE = 6 = binary 110 -> AE=1, CWR=1, ECE=0.
+        self.assertEqual(
+            session._accecn_r_cep,
+            6,
+            msg=(
+                "RFC 9341 §3.2.2: r.cep MUST advance from 5 to 6 "
+                "on receipt of one CE-marked inbound segment. Got "
+                f"_accecn_r_cep={session._accecn_r_cep}."
+            ),
+        )
+        self.assertIn(
+            "NS",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "encode AE (NS bit) = 1 on the next outbound "
+                f"segment. Got flags={ack.flags!r}."
+            ),
+        )
+        self.assertIn(
+            "CWR",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "encode CWR = 1 on the next outbound segment. "
+                f"Got flags={ack.flags!r}."
+            ),
+        )
+        self.assertNotIn(
+            "ECE",
+            ack.flags,
+            msg=(
+                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "encode ECE = 0 on the next outbound segment. "
+                f"Got flags={ack.flags!r}."
+            ),
+        )
