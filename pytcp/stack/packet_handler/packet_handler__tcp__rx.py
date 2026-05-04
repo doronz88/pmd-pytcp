@@ -115,6 +115,7 @@ class PacketHandlerTcpRx(ABC):
         # Create TcpMetadata object for further processing by TCP FSM.
         packet_rx_md = TcpMetadata(
             ip__ver=packet_rx.ip.ver,
+            ip__ecn=packet_rx.ip.ecn,
             ip__local_address=packet_rx.ip.dst,
             tcp__local_port=packet_rx.tcp.dport,
             ip__remote_address=packet_rx.ip.src,

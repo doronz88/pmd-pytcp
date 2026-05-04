@@ -297,6 +297,17 @@ class TcpSession:
         # cwnd reduction per §6.1.2.
         self._ecn_enabled: bool = False
 
+        # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
+        # when an inbound segment arrives with the IP CE
+        # codepoint ('11' = 3); every subsequent outbound TCP
+        # segment carries the ECE flag as the wire echo back to
+        # the sender. Cleared when the sender confirms cwnd
+        # reduction by setting CWR on a subsequent segment
+        # (RFC 3168 §6.1.3 - the "ECN-Echo flag is set in the
+        # ACKs of all subsequent segments until receipt of a
+        # segment with the CWR flag set"-style behaviour).
+        self._send_ece: bool = False
+
         # RFC 6937 PRR per-recovery state. Declared with
         # canonical defaults so the [FLAGS BUG] tests-first
         # suite can exercise the attribute access; the actual
@@ -1123,6 +1134,15 @@ class TcpSession:
             flag_ece = True
             flag_cwr = True
         elif flag_syn and flag_ack and self._ecn_enabled:
+            flag_ece = True
+        # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo. On
+        # non-SYN segments of an ECN-capable connection, set
+        # ECE while the receiver's CE-echo flag is True. The
+        # flag was set when an inbound CE-marked segment was
+        # observed and is cleared once the sender confirms
+        # cwnd reduction by setting CWR on a subsequent
+        # segment.
+        elif self._ecn_enabled and self._send_ece and not flag_rst:
             flag_ece = True
 
         tcp__fastopen_cookie: bytes | None = None
@@ -2674,6 +2694,16 @@ class TcpSession:
         """
 
         with self._lock__fsm:
+            # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo
+            # tracking. Run BEFORE the FSM dispatch so the
+            # state-handler-emitted ACK on this segment already
+            # carries ECE, and the sender's CWR confirmation
+            # observed on the same segment clears the flag.
+            if self._ecn_enabled and packet_rx_md is not None:
+                if packet_rx_md.tcp__flag_cwr:
+                    self._send_ece = False
+                if packet_rx_md.ip__ecn == 3:
+                    self._send_ece = True
             tcp_fsm_dispatch(
                 self,
                 packet_rx_md=packet_rx_md,
