@@ -42,6 +42,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.tcp__cubic import cubic_grow_per_ack
 from pytcp.protocols.tcp.tcp__cwnd import (
     compute_ecn_event_ssthresh,
     compute_loss_event_ssthresh,
@@ -3093,7 +3094,27 @@ class TcpSession:
                     sndcnt = min(self._ssthresh - current_pipe, limit)
                 self._cwnd = current_pipe + max(0, sndcnt)
             else:
-                self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
+                # RFC 9438 §4.4 / §4.5: when '_cc_mode == CUBIC'
+                # AND we are in CA (cwnd >= ssthresh), use the
+                # cubic growth formula instead of the linear
+                # Reno CA branch. Slow-start (cwnd < ssthresh)
+                # is handled inside both helpers and yields the
+                # same RFC 5681 §3.1 path either way.
+                if self._cc_mode is CcMode.CUBIC and self._cwnd >= self._ssthresh:
+                    self._cubic_in_ca = True
+                    now_ms = stack.timer.now_ms
+                    self._cwnd = cubic_grow_per_ack(
+                        cwnd=self._cwnd,
+                        ssthresh=self._ssthresh,
+                        w_max=self._cubic_w_max,
+                        K_ms=self._cubic_K_ms,
+                        epoch_start_ms=self._cubic_epoch_start_ms,
+                        now_ms=now_ms,
+                        bytes_acked=bytes_acked,
+                        smss=self._snd_mss,
+                    )
+                else:
+                    self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
             # 'min(cwnd, snd_wnd)'. Recompute now so
             # '_transmit_data' sees the new value on the same
