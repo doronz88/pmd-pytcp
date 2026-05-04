@@ -85,9 +85,25 @@ def cache_cookie(*, peer_address: Ip4Address | Ip6Address, cookie: bytes) -> Non
     §3.1 / §4.1.3 FIFO eviction when the cache would exceed
     'stack.TCP__FASTOPEN_CACHE_MAX_SIZE'. Refreshing an
     existing entry moves it to the most-recently-used end
-    so a peer that keeps reconnecting does not get
-    spuriously evicted by activity from other peers.
+    (Python 'dict' preserves insertion order; pop+reinsert
+    moves the entry to the tail) so a peer that keeps
+    reconnecting does not get spuriously evicted by
+    activity from other peers.
+
+    Eviction is FIFO over insertion order: the oldest
+    entry is removed first. While 'dict' iteration order
+    matches insertion order for this purpose, callers
+    relying on stable eviction semantics across Python
+    versions should treat the order as part of the
+    documented contract.
     """
 
     cache = stack.tcp__fastopen_cookies
+    # Refresh insertion order: pop existing entry (if any)
+    # so the re-insert lands at the tail.
+    cache.pop(peer_address, None)
     cache[peer_address] = cookie
+    # FIFO evict from the head until the cap is satisfied.
+    while len(cache) > stack.TCP__FASTOPEN_CACHE_MAX_SIZE:
+        oldest_peer = next(iter(cache))
+        del cache[oldest_peer]

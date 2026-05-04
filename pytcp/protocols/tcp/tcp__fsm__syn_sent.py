@@ -247,11 +247,19 @@ def fsm__syn_sent(
                 session._ts_recent = packet_rx_md.tcp__tsval
             # RFC 7413 §3.1 client-side cookie cache update:
             # when peer's SYN+ACK carries a non-empty TFO
-            # cookie, cache it against the peer IP so a
-            # subsequent active-open to the same server can
-            # replay it (and preemptively carry data).
+            # cookie, cache it against the peer IP via the
+            # 'cache_cookie' helper so the cache stays
+            # bounded by 'TCP__FASTOPEN_CACHE_MAX_SIZE'
+            # (FIFO eviction). Subsequent active-open to
+            # the same server can replay the cached cookie
+            # until eviction times out the entry.
             if packet_rx_md.tcp__fastopen_cookie:
-                stack.tcp__fastopen_cookies[session._remote_ip_address] = bytes(packet_rx_md.tcp__fastopen_cookie)
+                from pytcp.protocols.tcp.tcp__fastopen import cache_cookie
+
+                cache_cookie(
+                    peer_address=session._remote_ip_address,
+                    cookie=bytes(packet_rx_md.tcp__fastopen_cookie),
+                )
             # Send initial ACK packet.
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
