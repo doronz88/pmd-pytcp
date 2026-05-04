@@ -472,6 +472,18 @@ class TcpSocket(socket):
         self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
         self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
 
+        # RFC 7413 §3.1 connect-with-data: pre-load the
+        # session's TX buffer with caller-supplied bytes
+        # before driving the FSM into SYN_SENT. The session-
+        # internal '_transmit_data' SYN-with-data emission
+        # picks the pre-loaded bytes up when a TFO cookie is
+        # cached for the peer ('stack.tcp__fastopen_cookies'),
+        # eliminating the data RTT of a vanilla 3WHS-then-
+        # send sequence. Empty 'data' (the default) is a
+        # no-op; the standard 3WHS path runs unchanged.
+        if data:
+            self._tcp_session._tx_buffer.extend(data)
+
         __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
         try:
