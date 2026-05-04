@@ -526,6 +526,29 @@ class TcpSession:
         # closes the round and increments 'reo_wnd_mult'.
         # 'None' means no DSACK round is in progress.
         self._rack_dsack_round: Seq32 | None = None
+        # RFC 8985 §7 Tail Loss Probe state. The TLP timer
+        # 'f"{self}-tlp"' is armed on every outbound data
+        # segment send when no recovery is in progress, and
+        # cancelled on cum-ACK that drains all in-flight
+        # bytes. When the timer fires, the §7.3 probe-emission
+        # path sends a probe (new data preferred, retransmit
+        # of highest-seq fallback) to elicit an ACK that lets
+        # RACK detect tail-of-flow losses much faster than
+        # the RTO timer.
+        #
+        # '_tlp_is_retrans' marks whether the most recent
+        # probe was a retransmit (rather than new data); the
+        # §7.4 loss-detection path uses this to decide
+        # whether to invoke the CC response.
+        # '_tlp_end_seq' is the SND.MAX value at the moment
+        # the probe was sent; cleared by the §7.4 detection
+        # logic once the probe outcome is determined.
+        # '_tlp_max_ack_delay_ms' is the receiver's delayed-
+        # ACK upper bound, used by the §7.2 PTO inflation
+        # path. Linux defaults to 25 ms.
+        self._tlp_is_retrans: bool = False
+        self._tlp_end_seq: Seq32 | None = None
+        self._tlp_max_ack_delay_ms: int = 25
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per

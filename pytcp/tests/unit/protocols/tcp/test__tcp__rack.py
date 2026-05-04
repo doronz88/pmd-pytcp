@@ -55,6 +55,7 @@ from pytcp.protocols.tcp.tcp__rack import (
     rack_detect_loss,
     rack_sent_after,
     rack_update,
+    tlp_calc_pto,
 )
 
 
@@ -635,4 +636,96 @@ class TestRackComputeReoWnd(TestCase):
             rack_compute_reo_wnd(reordering_seen=True, reo_wnd_mult=4, min_rtt_ms=0),
             0,
             msg="Uninitialized min_RTT MUST yield reo_wnd=0.",
+        )
+
+
+class TestTlpCalcPto(TestCase):
+    """
+    The 'tlp_calc_pto' RFC 8985 §7.2 tests.
+    """
+
+    def test__tlp__pto__no_srtt_uses_1000_ms(self) -> None:
+        """
+        Ensure that without an SRTT sample, the PTO falls
+        back to the 1000 ms initial RTO.
+
+        Reference: RFC 8985 §7.2 (PTO fallback when SRTT unavailable).
+        """
+
+        self.assertEqual(
+            tlp_calc_pto(
+                srtt_ms=None,
+                flight_size=1460,
+                smss=1460,
+                max_ack_delay_ms=25,
+                rto_expiration_ms=None,
+                now_ms=0,
+            ),
+            1000,
+            msg="No-SRTT case MUST return the 1000 ms fallback.",
+        )
+
+    def test__tlp__pto__multi_segment_flight_uses_2_srtt(self) -> None:
+        """
+        Ensure that with FlightSize > 1 segment, the PTO is
+        2 * SRTT (no max_ack_delay inflation).
+
+        Reference: RFC 8985 §7.2 (PTO = 2 * SRTT base).
+        """
+
+        self.assertEqual(
+            tlp_calc_pto(
+                srtt_ms=100,
+                flight_size=2 * 1460,  # 2 segments
+                smss=1460,
+                max_ack_delay_ms=25,
+                rto_expiration_ms=None,
+                now_ms=0,
+            ),
+            200,
+            msg="Multi-segment FlightSize PTO MUST be 2 * SRTT.",
+        )
+
+    def test__tlp__pto__single_segment_flight_adds_max_ack_delay(self) -> None:
+        """
+        Ensure that with FlightSize == 1 segment, the PTO
+        absorbs the max_ack_delay so the receiver's delayed-
+        ACK timer does not preempt the probe.
+
+        Reference: RFC 8985 §7.2 (PTO += max_ack_delay).
+        """
+
+        self.assertEqual(
+            tlp_calc_pto(
+                srtt_ms=100,
+                flight_size=1460,  # 1 segment
+                smss=1460,
+                max_ack_delay_ms=25,
+                rto_expiration_ms=None,
+                now_ms=0,
+            ),
+            225,
+            msg="Single-segment FlightSize PTO MUST be 2 * SRTT + max_ack_delay.",
+        )
+
+    def test__tlp__pto__capped_by_rto_remaining(self) -> None:
+        """
+        Ensure that the PTO is clamped to 'RTO_expiration -
+        now' so the probe always fires before the RTO timer.
+
+        Reference: RFC 8985 §7.2 (do-not-outlast-RTO clamp).
+        """
+
+        # PTO = 200, RTO remaining = 50 -> clamp to 50.
+        self.assertEqual(
+            tlp_calc_pto(
+                srtt_ms=100,
+                flight_size=2 * 1460,
+                smss=1460,
+                max_ack_delay_ms=25,
+                rto_expiration_ms=50,
+                now_ms=0,
+            ),
+            50,
+            msg="PTO MUST clamp to RTO remaining when smaller.",
         )

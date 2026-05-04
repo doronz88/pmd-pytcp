@@ -373,3 +373,80 @@ def rack_compute_reo_wnd(
     if min_rtt_ms == 0:
         return 0
     return min_rtt_ms * reo_wnd_mult // 4
+
+
+def tlp_calc_pto(
+    *,
+    srtt_ms: int | None,
+    flight_size: int,
+    smss: int,
+    max_ack_delay_ms: int,
+    rto_expiration_ms: int | None,
+    now_ms: int,
+) -> int:
+    """
+    Compute the Tail Loss Probe Timeout per RFC 8985 §7.2.
+
+    Pseudocode:
+        If SRTT is available:
+            PTO = 2 * SRTT
+            If FlightSize == 1 segment:
+                PTO += max_ack_delay
+        Else:
+            PTO = 1000 ms     # initial RTO
+        If now + PTO > RTO_expiration:
+            PTO = RTO_expiration - now    # do not outlast RTO
+
+    The 'max_ack_delay' inflation for the 1-segment FlightSize
+    case absorbs the receiver's RFC 1122 §4.2.3.2 delayed-ACK
+    timer: if a single segment is in flight and the receiver
+    holds the ACK for up to 'max_ack_delay' ms, the sender
+    must give peer a chance to ACK before assuming a tail
+    loss. For 2+ segment FlightSize the receiver per RFC 5681
+    §4.2 sends an immediate ACK-every-other so the
+    'max_ack_delay' inflation is not needed.
+
+    The 'don't outlast RTO' clause ensures the TLP probe
+    fires BEFORE the RTO timer; otherwise an RTO would
+    preempt TLP and the probe would never go out.
+
+    Parameters:
+        srtt_ms:           smoothed RTT estimate. None means
+                           no RTT sample yet (use the 1000 ms
+                           initial RTO as PTO).
+        flight_size:       bytes currently in flight. Used
+                           only to gate the +max_ack_delay
+                           inflation (1 segment vs more).
+        smss:              sender's MSS. Used to test the
+                           '== 1 segment' condition.
+        max_ack_delay_ms:  receiver's delayed-ACK upper
+                           bound. Linux default 25 ms; PyTCP
+                           uses the same default.
+        rto_expiration_ms: time of the next RTO timer expiry
+                           in absolute virtual-clock ms.
+                           None means RTO is not currently
+                           armed (e.g. all data acked, no
+                           RTO running).
+        now_ms:            virtual clock at the moment of the
+                           PTO computation.
+
+    Returns: PTO in milliseconds.
+    """
+
+    assert flight_size >= 0, f"'flight_size' must be >= 0; got {flight_size!r}"
+    assert smss > 0, f"'smss' must be positive; got {smss!r}"
+    assert max_ack_delay_ms >= 0, f"'max_ack_delay_ms' must be >= 0; got {max_ack_delay_ms!r}"
+
+    if srtt_ms is not None and srtt_ms > 0:
+        pto = 2 * srtt_ms
+        if flight_size <= smss:
+            pto += max_ack_delay_ms
+    else:
+        pto = 1000
+
+    if rto_expiration_ms is not None:
+        rto_remaining = rto_expiration_ms - now_ms
+        if rto_remaining > 0 and pto > rto_remaining:
+            pto = rto_remaining
+
+    return pto
