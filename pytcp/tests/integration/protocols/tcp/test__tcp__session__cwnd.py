@@ -28,19 +28,10 @@
 
 """
 This module contains integration tests for the RFC 5681 congestion
-control machinery (Phase 1 of '.claude/rules/tcp_rfc5681_cwnd.md').
+control machinery. See 'docs/rfc/tcp/rfc5681__reno_cwnd/adherence.md'
+for the per-clause spec audit.
 
-PyTCP's pre-Phase-1 congestion-control surface is a single
-'_snd_ewn' field that conflates two distinct concepts: the
-per-RFC-5681 'cwnd' (sender-side flow-control bound on the
-network) and 'snd_wnd' (peer's advertised receive-window bound).
-On every cum-ACK '_snd_ewn' is doubled (capped by 'snd_wnd');
-there is no slow-start vs congestion-avoidance phase
-distinction, no 'ssthresh' tracking, no fast-recovery cwnd
-inflation/deflation per §3.2, and no halving of 'ssthresh' on
-RTO per §3.1.
-
-Phase 1 splits the surface into:
+The session's congestion-control surface is split into:
 
     _cwnd: int          # RFC 5681 congestion window
     _ssthresh: int      # RFC 5681 slow-start threshold
@@ -54,10 +45,6 @@ with the §3.1 growth rule wired into '_process_ack_packet':
     else:
         # Congestion avoidance
         _cwnd += max(1, _snd_mss * _snd_mss // _cwnd)
-
-The tests in this file exercise the Phase 1 invariants and are
-expected to FAIL today against a session that does not yet
-expose '_cwnd' / '_ssthresh' as separate fields.
 
 Reference RFCs:
     RFC 5681 §3.1   Slow Start and Congestion Avoidance

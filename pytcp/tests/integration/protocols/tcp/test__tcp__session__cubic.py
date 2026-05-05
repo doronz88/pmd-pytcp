@@ -28,11 +28,9 @@
 
 """
 This module contains integration tests for the RFC 9438 CUBIC
-congestion control surface (phases 2-7 of
-'.claude/rules/tcp_rfc9438_cubic.md').
-
-The tests progress from Phase 2 (substrate: CcMode default
-RENO) through Phase 7 (default flip + setsockopt).
+congestion control surface. See
+'docs/rfc/tcp/rfc9438__cubic/adherence.md' for the per-clause
+spec audit.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__cubic.py
 

@@ -61,7 +61,8 @@ Five operations the caller invokes from
             W_est = W_est + alpha_cubic * segments_acked / cwnd
 
 The TcpSession integration consumes the helpers at the canonical
-hook points described in '.claude/rules/tcp_rfc9438_cubic.md' §3.
+hook points; see 'docs/rfc/tcp/rfc9438__cubic/adherence.md' for
+the per-clause spec audit.
 
 pytcp/protocols/tcp/tcp__cubic.py
 

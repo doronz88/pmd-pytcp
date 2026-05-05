@@ -149,16 +149,15 @@ on memorized RFC content — paraphrasing from training
 data introduces subtle errors (wrong section numbers,
 slightly off normative wording, deprecated text).
 
-### 2. Do not reuse rule files or memories
+### 2. Do not reuse memories or prior records
 
-If `.claude/rules/tcp_<rfc-topic>.md` exists for this
-RFC, do NOT read it before drafting the adherence
-record. Likewise for any per-RFC memory files. The
-audit must be a code-and-RFC-only exercise so it
-captures the current state of the codebase, not a
+Do NOT read related memory files or any pre-existing
+per-topic rule files before drafting the adherence
+record. The audit must be a code-and-RFC-only exercise
+so it captures the current state of the codebase, not a
 historical record of what was once shipped.
 
-After the draft is complete, the rule file can be
+After the draft is complete, prior records can be
 cross-referenced as a sanity check — but findings come
 from the audit, not from the rule.
 
@@ -352,10 +351,10 @@ Before declaring the audit done, run through:
 
 ## Pitfalls to avoid
 
-- **Reusing rule-file content.** The audit must be a
+- **Reusing prior-record content.** The audit must be a
   fresh code+RFC exercise. If you find yourself
-  repeating phrases from `.claude/rules/tcp_<rfc>.md`,
-  stop and re-derive from the code.
+  repeating phrases from any related memory or prior
+  record, stop and re-derive from the code.
 - **Padding with narrative entries.** Sections without
   normative content are skipped, not stub-listed.
 - **Inferring adherence from a function name.** Always

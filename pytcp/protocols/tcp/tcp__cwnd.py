@@ -53,7 +53,8 @@ Three operations the caller invokes from
         IW = min(10 * smss, max(2 * smss, 14600))
 
 The TcpSession integration consumes the helpers at the canonical
-hook points described in '.claude/rules/tcp_rfc5681_cwnd.md' §3.
+hook points; see 'docs/rfc/tcp/rfc5681__reno_cwnd/adherence.md'
+for the per-clause spec audit.
 
 pytcp/protocols/tcp/tcp__cwnd.py
 

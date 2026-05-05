@@ -33,20 +33,8 @@ detection (§6.2 step 5) and the reordering window adaptation
 (§6.2 steps 3-4); TLP consumes it to identify the highest-seq
 in-flight segment for retransmit-style probes (§7.3).
 
-Phase 1 of the RACK-TLP project (per
-'.claude/rules/tcp_rack_tlp.md' §4) ships only this dataclass
-plus the 'INFINITE_TS' invalid-timestamp marker. Subsequent
-phases consume the substrate:
-
-    Phase 2 (RACK §6.2 step 1-2)  RACK.xmit_ts / RACK.end_seq
-                                  / RACK.rtt / RACK.min_RTT
-                                  per-connection scalars.
-    Phase 3 (RACK §6.2 step 5)    Time-based loss detection
-                                  iterating over the dict.
-    Phase 5 (RACK reorder timer)  Reordering-window timer.
-    Phase 7 (TLP §7.3)            Probe segment selection.
-
-Reference RFCs:
+Reference RFCs (see also 'docs/rfc/tcp/rfc8985__rack_tlp/adherence.md'
+for the per-clause spec audit):
     RFC 8985 §5.2  Per-Segment Variables
     RFC 8985 §6.1  Transmitting a data segment
     RFC 8985 §6.2  Upon receiving an ACK

@@ -28,8 +28,9 @@
 
 """
 This module contains integration tests for the RFC 8985 RACK
-per-segment xmit_ts substrate (Phase 1 of
-'.claude/rules/tcp_rack_tlp.md').
+per-segment xmit_ts substrate. See
+'docs/rfc/tcp/rfc8985__rack_tlp/adherence.md' for the per-clause
+spec audit.
 
 RFC 8985 §5.2 specifies a per-segment 'Segment' tuple holding:
 

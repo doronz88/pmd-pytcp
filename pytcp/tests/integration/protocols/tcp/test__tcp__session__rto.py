@@ -28,7 +28,8 @@
 
 """
 This module contains integration tests for the RFC 6298 RTO sample
-collection (Phase 2 of '.claude/rules/tcp_rto_integration.md').
+collection. See 'docs/rfc/tcp/rfc6298__rto_computation/adherence.md'
+for the per-clause spec audit.
 
 RFC 6298 §4 specifies how the RTT estimator MUST collect samples
 from outbound segments and the corresponding ACKs:
@@ -561,9 +562,10 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
 class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
     """
     Integration tests for the RFC 6298 §5 session-level retransmit
-    timer machinery (Phase 3 of '.claude/rules/tcp_rto_integration.md').
+    timer machinery.
 
-    Phase 3 replaces PyTCP's per-seq retransmit-timer family
+    The session-level timer replaced an earlier per-seq retransmit-
+    timer family
     ('f"{session}-retransmit_seq-{seq}"' keyed by '_tx_retransmit_timeout_counter')
     with a single session-level timer 'f"{session}-retransmit"' driven
     by '_rto_state.rto_ms'. The five RFC 6298 §5 invariants the new
@@ -811,7 +813,7 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
 class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
     """
     Integration tests for the RFC 6298 §5.7 restart-after-idle
-    behaviour (Phase 4 of '.claude/rules/tcp_rto_integration.md').
+    behaviour.
 
     When a session has been silent for longer than the in-flight
     'rto_ms' the smoothed RTT estimator may be stale - the

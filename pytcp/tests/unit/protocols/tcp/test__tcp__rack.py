@@ -26,12 +26,14 @@
 This module contains unit tests for the RFC 8985 RACK per-segment
 state primitives in 'pytcp/protocols/tcp/tcp__rack.py'.
 
-Phase 1 of the RACK-TLP project (per
-'.claude/rules/tcp_rack_tlp.md' §4) ships:
+The module ships:
 
     INFINITE_TS                 0xFFFF_FFFF (RFC 8985 §5.2 marker)
     RackSegment                 frozen dataclass with end_seq,
                                 xmit_ts, retransmitted, lost
+
+See 'docs/rfc/tcp/rfc8985__rack_tlp/adherence.md' for the per-
+clause spec audit.
 
 The dataclass mirrors the RFC 8985 §5.2 'Segment' tuple. The
 'INFINITE_TS' constant marks segments that are not currently in

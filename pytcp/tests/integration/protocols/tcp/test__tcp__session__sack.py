@@ -31,13 +31,9 @@ This module contains integration tests for the TCP Selective
 Acknowledgment (SACK) option support in the 'TcpSession' state
 machine per RFC 2018 / RFC 6675.
 
-The tests in this file follow the phased plan in
-'.claude/rules/tcp_sack_implementation.md'. Phase 1 lands two
-positive-control regression guards: the parser decodes inbound
-SACK options without crashing, and the session has no scoreboard
-state today (so the wire-level behaviour stops short of any
-RFC 6675 loss-recovery side effect). Subsequent phases will turn
-SACK on as an active feature.
+See 'docs/rfc/tcp/rfc2018__sack/adherence.md' and
+'docs/rfc/tcp/rfc6675__sack_loss_recovery/adherence.md' for
+the per-clause spec audits.
 
 Reference RFCs:
     RFC 2018            TCP Selective Acknowledgment Options

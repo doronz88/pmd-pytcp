@@ -201,9 +201,9 @@ class TcpSession:
         # advertised TSopt. '_ts_recent' carries peer's most-
         # recently-seen TSval, echoed back as TSecr on every
         # post-handshake outbound segment so peer can drive
-        # exact-RTT measurements per RFC 7323 §4. Phases 1-4
-        # of '.claude/rules/tcp_rfc7323_timestamps.md' wire
-        # negotiation, emission, RTTM, and PAWS in that order.
+        # exact-RTT measurements per RFC 7323 §4. See
+        # 'docs/rfc/tcp/rfc7323__timestamps_wscale_paws/adherence.md'
+        # for the per-clause spec audit.
         self._advertise_ts: bool = True
         self._send_ts: bool = False
         self._ts_recent: int = 0
@@ -699,18 +699,13 @@ class TcpSession:
         # ceiling.
         self._snd_ewn: int = self._snd_mss
 
-        # RFC 5681 Phase 1 fields (see
-        # '.claude/rules/tcp_rfc5681_cwnd.md'). Declared with
-        # canonical defaults so the [FLAGS BUG] tests-first
-        # suite can exercise the attribute access; the actual
-        # growth / reduction logic is wired by the Phase 1 fix
-        # commit (slow-start vs CA in '_process_ack_packet'),
-        # Phase 2 fix (RTO ssthresh halving), and Phase 3 fix
-        # (fast-recovery inflation/deflation in
-        # '_retransmit_packet_request' and the recovery exit
-        # path). Pre-Phase-1, these fields are observable but
-        # unused by the runtime - '_snd_ewn' is still the
-        # single source of truth.
+        # RFC 5681 cwnd / ssthresh (see
+        # 'docs/rfc/tcp/rfc5681__reno_cwnd/adherence.md' for
+        # the per-clause spec audit). Slow-start vs CA growth
+        # in '_process_ack_packet'; RTO ssthresh halving in
+        # '_retransmit_packet_timeout'; fast-recovery
+        # inflation / deflation in '_retransmit_packet_request'
+        # and the recovery exit path.
         self._cwnd: int = self._snd_mss
         # RFC 5681 §3.1: "ssthresh SHOULD be set arbitrarily high
         # (e.g., to the size of the largest possible advertised

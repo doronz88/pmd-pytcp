@@ -398,10 +398,9 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         )
         self._drive_rx(frame=ce_data)
         # Drain the delayed-ACK timer so the cumulative ACK
-        # for the inbound data segment is emitted (post-fix
-        # #11 the first segment is held back until the
-        # delayed-ACK timer fires; see fix #11 in
-        # tcp_session_integration_tests.md §4).
+        # for the inbound data segment is emitted: per
+        # RFC 1122 §4.2.3.2 the first inbound segment is
+        # held back until the delayed-ACK timer fires.
         ack_tx = self._advance(ms=200)
         self.assertEqual(
             len(ack_tx),
