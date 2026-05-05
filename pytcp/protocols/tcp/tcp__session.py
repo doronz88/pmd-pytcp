@@ -52,6 +52,7 @@ from pytcp.protocols.tcp.tcp__cwnd import (
     compute_ecn_event_ssthresh,
     compute_loss_event_ssthresh,
     cwnd_grow_per_ack,
+    initial_window,
 )
 from pytcp.protocols.tcp.tcp__enums import (
     CcMode,
@@ -1416,6 +1417,25 @@ class TcpSession:
                 f"{self._rto_state.rto_ms}; resetting estimator",
             )
             self._rto_state = initial_state()
+            # RFC 5681 §4.1 Restart Window: same idle trigger,
+            # reduce cwnd to RW = min(IW, cwnd) so a stale
+            # high-cwnd estimate from a prior high-bandwidth
+            # period doesn't blast a line-rate burst into a
+            # network whose live capacity may have decayed.
+            # Skipped on flag_syn (handshake path; cwnd is
+            # already the post-handshake IW) and on FIN-only
+            # (no data to pace).
+            if data:
+                rw = min(initial_window(self._snd_mss), self._cwnd)
+                if rw < self._cwnd:
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - RFC 5681 §4.1 Restart Window: "
+                        f"cwnd {self._cwnd} -> {rw} (IW="
+                        f"{initial_window(self._snd_mss)})",
+                    )
+                    self._cwnd = rw
+                    self._snd_ewn = min(self._cwnd, self._snd_wnd)
 
         # RFC 6298 §4 sample collection: record one in-flight RTT
         # sample at a time. The covering ACK harvest hook in

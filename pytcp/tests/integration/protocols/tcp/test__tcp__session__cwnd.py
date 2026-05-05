@@ -2083,3 +2083,124 @@ class TestTcpCwndPrr(TcpSessionTestCase):
                 f"{expected_cwnd}. Got {session._cwnd}."
             ),
         )
+
+
+class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
+    """
+    RFC 5681 §4.1 Restart Window after idle: when TCP has not
+    sent data in an interval exceeding the retransmission
+    timeout, cwnd SHOULD be reduced to RW = min(IW, cwnd)
+    before transmission begins, so a long-idle connection does
+    not blast a stale-cwnd burst into a network whose capacity
+    estimate has decayed.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake to ESTABLISHED."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__cwnd__rfc5681_restart_window_reduces_cwnd_after_idle(self) -> None:
+        """
+        Ensure that when the connection has been idle longer
+        than one RTO, the next outbound data segment triggers
+        a cwnd reduction to RW = min(IW, cwnd_pre_idle). The
+        check is "TCP has not sent data in an interval
+        exceeding the retransmission timeout", measured by
+        '_last_send_time_ms'. Without this reduction, a stale
+        cwnd from a high-bandwidth historical period would
+        permit a line-rate burst into a network whose live
+        capacity may be substantially lower.
+
+        Reference: RFC 5681 §4.1 (Restart Window after idle).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Inflate cwnd well above IW to make the reduction
+        # observable. The reduction is a no-op if cwnd is
+        # already <= IW; the SHOULD only kicks in when the
+        # session has accumulated history.
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        # Prime '_last_send_time_ms' so the §4.1 'has not sent
+        # data in an interval exceeding RTO' clock has a
+        # reference point. Without a real prior send the §4.1
+        # gate is structurally indeterminate (no last-send
+        # timestamp to compare against).
+        session.send(data=b"prime")
+        self._advance(ms=1)
+        # Drain by ACKing the prime segment so the next
+        # transmit is a fresh send, not a retransmit.
+        prime_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=session._snd_max,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=prime_ack)
+        # Reset cwnd to the inflated value AFTER the prime so
+        # the eventual reduction is observable against the
+        # known target (slow-start growth on the prime ACK
+        # would otherwise add to the cwnd).
+        session._cwnd = 100 * PEER__MSS
+        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+
+        # Now sit idle past one RTO.
+        idle_ms = session._rto_state.rto_ms + 100
+        self._advance(ms=idle_ms)
+
+        # Send fresh data; this is the §4.1 trigger.
+        session.send(data=b"after-idle")
+        self._advance(ms=1)
+
+        # RW = min(IW, cwnd_pre_idle). With PEER__MSS = 1460
+        # and IW = min(10*MSS, max(2*MSS, 14600)) = 14600 =
+        # 10*MSS, RW = min(14600, 100*1460) = 14600.
+        from pytcp.protocols.tcp.tcp__cwnd import initial_window
+        expected_rw = min(initial_window(session._snd_mss), 100 * PEER__MSS)
+        self.assertEqual(
+            session._cwnd,
+            expected_rw,
+            msg=(
+                "RFC 5681 §4.1: after a >RTO idle, cwnd MUST be "
+                f"reduced to RW = min(IW, prior_cwnd) = {expected_rw}. "
+                f"Got cwnd={session._cwnd}."
+            ),
+        )

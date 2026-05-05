@@ -322,25 +322,16 @@ matching RFC 6675 §5(A) recovery-exit semantics.
 > value of the restart window (RW) before
 > transmission begins... RW = min(IW, cwnd)."
 
-**Adherence:** not implemented as a literal "RW
-reduction". PyTCP has an "estimator reset on idle"
-path at `pytcp/protocols/tcp/tcp__session.py:1239-1251`
-that resets `_rto_state = initial_state()` after idle
-> rto_ms, but does NOT reduce `_cwnd` to `RW`.
-
-The §4.1 rule's intent is to avoid line-rate bursts
-after long idle. PyTCP's implementation is partial:
-the RTO estimator is refreshed (so a stale, too-small
-RTO doesn't cause spurious retransmits) but the cwnd
-itself is not reduced. This is a §4.1 SHOULD
-deviation; the RFC's wording "Slow start serves to
-restart..." is a recommendation rather than a strict
-MUST.
-
-The practical impact on realistic workloads is small
-because RFC 6928 IW=10 already caps post-idle bursts
-at 10*SMSS, and most idle scenarios have cwnd already
-at or below IW=10 before going idle.
+**Adherence:** met. The same idle-detection block in
+`_transmit_packet` that resets the RTO estimator (per
+RFC 6298 §5.7) now also reduces cwnd to `RW =
+min(initial_window(smss), self._cwnd)` and clamps
+`_snd_ewn` accordingly. The reduction is gated on
+`data` (so handshake SYN / pure FIN paths do not
+trigger), and a no-op when cwnd is already at or
+below IW. `_last_send_time_ms` is the §4.1 trigger
+clock — refreshed on every outbound seq-consuming
+segment.
 
 ---
 
@@ -441,13 +432,16 @@ has its own test surface).
 
 ### §4.1 Restart Window after idle
 
-The cwnd-reduction-to-RW behaviour is not
-implemented. The estimator-reset-on-idle behaviour
-IS implemented and tested via RFC 6298 audit's
-test surface.
+- **Integration:**
+  `test__tcp__session__cwnd.py::TestTcpCwndRfc5681RestartWindow::test__cwnd__rfc5681_restart_window_reduces_cwnd_after_idle`
+  inflates cwnd to 100*MSS, primes a send so
+  `_last_send_time_ms` is set, ACKs the prime, idles
+  past one RTO, then sends fresh data and asserts
+  cwnd has been reduced to `RW = min(IW, prior_cwnd)`.
+  The estimator-reset-on-idle invariant is covered by
+  the RFC 6298 §5.7 audit's test surface.
 
-**Status:** n/a for §4.1 cwnd reduction (gap not
-closed).
+**Status:** locked in.
 
 ### §4.2 Delayed ACK
 
@@ -482,7 +476,7 @@ closed).
 | §3.2 step 4 cwnd += SMSS per additional dup-ACK | n/a (PRR substitutes)                          |
 | §3.2 step 5 send unsent on cwnd-allow           | locked in                                      |
 | §3.2 step 6 deflate to ssthresh                 | locked in                                      |
-| §4.1 Restart Window after idle                  | n/a (gap)                                      |
+| §4.1 Restart Window after idle                  | locked in (TestTcpCwndRfc5681RestartWindow)    |
 | §4.2 Delayed ACK                                | locked in                                      |
 | §4.2 Immediate ACK on OOO                       | locked in                                      |
 
@@ -505,7 +499,7 @@ closed).
 | §3.2 step 4 cwnd += SMSS per additional           | superseded by PRR                               |
 | §3.2 step 5 send unsent on allow                  | met                                             |
 | §3.2 step 6 deflate to ssthresh                   | met                                             |
-| §4.1 Restart Window after idle (RW reduction)     | not met (estimator reset only)                  |
+| §4.1 Restart Window after idle (RW reduction)     | met (cwnd reduced to min(IW, cwnd))             |
 | §4.2 Delayed ACK                                  | met                                             |
 | §4.2 Immediate ACK on OOO / hole-fill             | met                                             |
 
@@ -520,18 +514,17 @@ ACK-generation rules. Three deviations:
 2. **§3.2 step 3 / step 4 cwnd inflation** —
    superseded by RFC 6937 PRR. PRR provides smoother
    send pacing and is the modern replacement.
-3. **§4.1 Restart Window** — PyTCP refreshes the RTO
-   estimator after idle but does not reduce cwnd to
-   RW. Practical impact bounded by RFC 6928 IW=10
-   capping post-idle bursts at 10 segments.
+3. **§4.1 Restart Window** — closed. The same
+   `_transmit_packet` idle-detection block that
+   resets the RTO estimator now also reduces
+   `_cwnd` to `RW = min(initial_window(smss),
+   self._cwnd)` and clamps `_snd_ewn`. Pinned by
+   `TestTcpCwndRfc5681RestartWindow`.
 
-The deviations are all in the direction of either
-modernisation (RFC 6928, RFC 6937) or omission of
-non-critical edge cases (§3.1 ssthresh-constant,
-§4.1 RW). PyTCP's RFC 5681 conformance is solid
-overall; the substitutions by RFC 6928 / 6937 are
-explicitly permitted by §3.1's framing language ("a
-TCP MUST NOT be more aggressive than the following
-algorithms allow") which is satisfied because RFC
-6937 PRR is more conservative than the §3.2
-inflation rules it replaces.
+The remaining deviations are all in the direction of
+modernisation (RFC 6928, RFC 6937). The substitutions
+by RFC 6928 / 6937 are explicitly permitted by §3.1's
+framing language ("a TCP MUST NOT be more aggressive
+than the following algorithms allow") which is
+satisfied because RFC 6937 PRR is more conservative
+than the §3.2 inflation rules it replaces.
