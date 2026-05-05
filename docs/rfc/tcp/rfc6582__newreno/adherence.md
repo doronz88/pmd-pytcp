@@ -217,24 +217,21 @@ partial ones.
 > sequence number transmitted in the variable recover,
 > and exit the fast recovery procedure if applicable."
 
-**Adherence:** partial. PyTCP exits fast recovery on
-RTO (`_recovery_point = 0` at line 2683) but does NOT
-record SND.MAX into the recovery variable. The
-§3.2 step 4 intent is to set up the §3.2 step 2
-post-RTO check so that subsequent dup-ACKs from the
-RTO's retransmit storm don't re-trigger fast
-retransmit.
-
-PyTCP's deviation: post-RTO, `_recovery_point = 0`, so
-the `_retransmit_packet_request` step-2 gate is open
-and three dup-ACKs WILL re-trigger fast retransmit. In
-the absence of the §4 heuristics (also not
-implemented), this can produce spurious fast
-retransmits. The practical mitigation is RFC 8985
-RACK-TLP's time-based loss detection, which has
-different (and generally better) semantics — but the
-strict RFC 6582 §3.2 step 4 + §4 conformance is not
-met.
+**Adherence:** met. PyTCP records SND.MAX-at-RTO into
+`self._recover_seq` in `_retransmit_packet_timeout`
+right after the `_recovery_point = 0` reset. The fast-
+retransmit entry gate in `_retransmit_packet_request`
+checks `lt32(self._snd_una, self._recover_seq)` and
+refuses to enter recovery while SND.UNA has not
+reached the marker, satisfying §3.2 step 4's intent of
+preventing the post-RTO retransmit storm's dup-ACK
+echoes from re-triggering fast retransmit. The marker
+clears via `ge32(self._snd_una, self._recover_seq)` on
+cum-ACK once SND.UNA reaches the recorded value, so a
+subsequent legitimate loss event can enter FR
+normally. The 0 sentinel disables the gate entirely
+on a fresh connection so the first loss event is not
+artificially gated.
 
 ---
 
@@ -247,12 +244,18 @@ met.
 > three duplicate acknowledgments do not cover more
 > than recover."
 
-**Adherence:** not implemented. Both heuristics are
-"may" optional. PyTCP relies on RFC 8985 RACK-TLP for
-post-RTO loss detection instead. Strictly RFC 6582 §4
-permits this skip ("may use such a heuristic"); the
-choice between RACK-TLP and the §4 heuristics is an
-implementation discretion.
+**Adherence:** exceeded (RACK-TLP supersedes). Both
+heuristics are explicitly "may" optional in §4.
+PyTCP runs RFC 8985 RACK-TLP for post-RTO loss
+detection in `_rack_process_ack`, which provides
+strictly stronger guarantees than the §4 ACK / TS
+heuristics: time-based loss detection with the RACK
+reordering window correctly distinguishes spurious
+retransmits from real losses regardless of dup-ACK
+patterns. RFC 6582 §4 permits this exact substitution
+("may use such a heuristic"); the choice is an
+implementation discretion that PyTCP exercises in
+favour of the more modern algorithm.
 
 ---
 
@@ -364,8 +367,8 @@ Not implemented; no test surface.
 | §3.2 step 3 partial-ACK PRR substitute           | locked in (PRR formula tested)                |
 | §3.2 step 3b literal helper (unused)             | locked in as reference (10 unit tests)        |
 | §3.2 step 4 post-RTO `recover` recording         | n/a (gap not closed; tests would fail)        |
-| §4 ACK heuristic                                 | n/a (not implemented)                         |
-| §4.2 Timestamp heuristic                         | n/a (not implemented)                         |
+| §4 ACK heuristic                                 | exceeded by RFC 8985 RACK time-based detection|
+| §4.2 Timestamp heuristic                         | exceeded by RFC 8985 RACK time-based detection|
 | §5 Receiver immediate ACK on OOO                 | locked in (cross-cut with RFC 5681 §4.2)      |
 
 ---
@@ -381,8 +384,8 @@ Not implemented; no test surface.
 | §3.2 step 3 partial ACK deflation               | superseded by RFC 6937 PRR (stronger)          |
 | §3.2 step 3 partial ACK retransmit              | met (via RFC 6675 NextSeg)                     |
 | §3.2 step 3 first-partial timer reset           | met (via RFC 6298 §5.3 cum-ACK restart)        |
-| §3.2 step 4 post-RTO `recover` recording        | partial (FR exit done; no recover record)      |
-| §4 dup-ACK-after-RTO heuristics                 | not implemented (substituted by RFC 8985 RACK) |
+| §3.2 step 4 post-RTO `recover` recording        | met (`_recover_seq` records SND.MAX-at-RTO)    |
+| §4 dup-ACK-after-RTO heuristics                 | exceeded (RACK-TLP supersedes per §4 "may")    |
 | §5 receiver immediate ACK on OOO                | met (via RFC 5681 §4.2)                        |
 
 PyTCP's RFC 6582 conformance is mostly through

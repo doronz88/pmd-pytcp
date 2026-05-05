@@ -779,3 +779,141 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
                     f"+{(session._tx_buffer_seq_mod - baseline_seq_mod) & 0xFFFFFFFF})."
                 ),
             )
+
+
+class TestTcpRfc6582Recover(TcpSessionTestCase):
+    """
+    RFC 6582 §3.2 step 4 'recover' marker: post-RTO, the highest
+    SND.MAX transmitted is recorded into '_recover_seq' so the
+    subsequent post-RTO retransmit storm's dup-ACK echoes cannot
+    spuriously re-trigger fast retransmit before the cum-ACK
+    advances past the marker.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive active-open handshake."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rfc6582__recover_seq_initialised_zero(self) -> None:
+        """
+        Ensure '_recover_seq' starts at the 0 sentinel so a fresh
+        connection's first dup-ACK-driven loss event can enter
+        fast retransmit without an artificial gate.
+
+        Reference: RFC 6582 §3.2 step 4 (recover variable).
+        """
+
+        session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        self.assertEqual(
+            session._recover_seq,
+            0,
+            msg=(
+                "RFC 6582 §3.2 step 4 sentinel: _recover_seq MUST "
+                "initialise to 0 so the first loss event is not "
+                f"gated. Got _recover_seq={session._recover_seq}."
+            ),
+        )
+
+    def test__rfc6582__rto_records_snd_max_into_recover_seq(self) -> None:
+        """
+        Ensure that the RTO path records the highest SND.MAX
+        transmitted into '_recover_seq' per §3.2 step 4 so the
+        post-RTO fast-retransmit gate has a marker to compare
+        SND.UNA against.
+
+        Reference: RFC 6582 §3.2 step 4 (record SND.MAX on RTO).
+        """
+
+        session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session.send(data=b"X" * 100)
+        self._advance(ms=1)
+        snd_max_at_rto = session._snd_max
+        # Force RTO firing by advancing past current RTO.
+        self._advance(ms=session._rto_state.rto_ms + 10)
+
+        self.assertEqual(
+            session._recover_seq,
+            snd_max_at_rto,
+            msg=(
+                "RFC 6582 §3.2 step 4: post-RTO _recover_seq MUST "
+                f"equal the pre-RTO SND.MAX ({snd_max_at_rto}). "
+                f"Got _recover_seq={session._recover_seq}."
+            ),
+        )
+
+    def test__rfc6582__recover_seq_clears_when_cum_ack_passes_marker(self) -> None:
+        """
+        Ensure that '_recover_seq' decays back to the 0 sentinel
+        once SND.UNA has advanced strictly past the recorded
+        marker, re-enabling normal fast retransmit on subsequent
+        loss events.
+
+        Reference: RFC 6582 §3.2 step 4 (recover marker decay).
+        """
+
+        session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session.send(data=b"X" * 100)
+        self._advance(ms=1)
+        snd_max_at_rto = session._snd_max
+        self._advance(ms=session._rto_state.rto_ms + 10)
+        assert session._recover_seq == snd_max_at_rto
+
+        # Peer ACKs all bytes up to (and including) the marker
+        # (snd_max_at_rto is one past the last data byte sent;
+        # cum-ACK = snd_max_at_rto fully ACKs the burst, and
+        # _recover_seq clears once SND.UNA reaches the marker).
+        peer_full_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=snd_max_at_rto,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_full_ack)
+
+        self.assertEqual(
+            session._recover_seq,
+            0,
+            msg=(
+                "RFC 6582 §3.2 step 4 decay: _recover_seq MUST "
+                "clear once SND.UNA passes the marker. Got "
+                f"_recover_seq={session._recover_seq}."
+            ),
+        )

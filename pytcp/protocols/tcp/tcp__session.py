@@ -75,7 +75,7 @@ from pytcp.protocols.tcp.tcp__rack import (
 )
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
-from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -291,6 +291,19 @@ class TcpSession:
         # 'recovery_point' - the loss event is fully recovered
         # and a new round of dup-ACKs can re-enter recovery.
         self._recovery_point: Seq32 = 0
+
+        # RFC 6582 §3.2 step 4: the highest SND.MAX recorded at
+        # the most recent RTO boundary. The fast-retransmit
+        # entry gate in '_retransmit_packet_request' refuses to
+        # enter recovery while 'SND.UNA <= _recover_seq', so
+        # post-RTO dup-ACKs from the retransmit storm cannot
+        # spuriously re-trigger fast retransmit before the
+        # cum-ACK has progressed past the marker. Cleared (back
+        # to the sentinel 0) once SND.UNA advances past it; the
+        # 0 sentinel disables the gate entirely on a fresh
+        # connection so the very first loss event can enter FR
+        # without an artificial barrier.
+        self._recover_seq: Seq32 = 0
 
         # RFC 7413 §3.1 Fast Open server-side state. When peer's
         # passive-open SYN carries the TFO option, the LISTEN
@@ -2969,6 +2982,16 @@ class TcpSession:
         # next dup-ACK from re-entering recovery via the
         # one-shot guard in '_retransmit_packet_request'.
         self._recovery_point = 0
+        # RFC 6582 §3.2 step 4: record the highest SND.MAX
+        # transmitted before the RTO so a subsequent burst of
+        # dup-ACKs (often produced by the post-RTO retransmit
+        # storm) cannot re-trigger fast retransmit until the
+        # cum-ACK has progressed past the recover marker.
+        # Setting this AFTER '_recovery_point = 0' so the
+        # '_retransmit_packet_request' entry gate keys on the
+        # recover marker rather than the now-cleared
+        # recovery point.
+        self._recover_seq = self._snd_max
         # SYN and FIN consume one byte of sequence space but do
         # not occupy a slot in the TX buffer. After
         # '_transmit_packet' fired the original SYN/FIN it
@@ -3036,6 +3059,19 @@ class TcpSession:
         # cwnd recompute on cum-ACK in '_process_ack_packet'
         # picks them up.
         if self._recovery_point != 0:
+            return
+
+        # RFC 6582 §3.2 step 4 / step 2 post-RTO gate. After an
+        # RTO recorded SND.MAX into '_recover_seq', refuse fast-
+        # retransmit entry until SND.UNA has advanced to or past
+        # the marker. This prevents the post-RTO retransmit
+        # storm's dup-ACK echoes (which carry an old 'ack' value
+        # still below the marker) from spuriously triggering a
+        # second fast retransmit on top of the just-completed
+        # RTO recovery. The 0 sentinel means "no recover marker
+        # set" so a fresh connection's first loss event still
+        # enters FR.
+        if self._recover_seq != 0 and lt32(self._snd_una, self._recover_seq):
             return
 
         # Two independent triggers, either of which enters
@@ -3406,6 +3442,18 @@ class TcpSession:
             # delta when the cum-ACK straddles the 32-bit wrap.
             bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
             self._snd_una = packet_rx_md.tcp__ack
+            # RFC 6582 §3.2 step 4 marker decay: clear the
+            # recover marker once SND.UNA has reached or passed
+            # it. SND.UNA is the next-byte-expected from peer,
+            # so 'SND.UNA == recover' means peer has acked the
+            # last byte recorded into the marker (recover ==
+            # snd_max-at-RTO == one past last data seq); 'ge32'
+            # is the right comparison. Subsequent dup-ACK bursts
+            # can then drive fast retransmit normally without
+            # the post-RTO gate suppressing legitimate loss
+            # recovery.
+            if self._recover_seq != 0 and ge32(self._snd_una, self._recover_seq):
+                self._recover_seq = 0
             # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
             # recovery feed 'prr_delivered'. Out-of-recovery
             # cum-ACKs do not - the accumulator is scoped to a
