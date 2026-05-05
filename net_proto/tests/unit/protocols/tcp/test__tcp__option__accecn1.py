@@ -42,6 +42,7 @@ from net_proto import (
     TcpOptionAccecn1,
     TcpOptionType,
 )
+from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
 
 class TestTcpOptionAccecn1Asserts(TestCase):
@@ -67,6 +68,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards
         the negative tests from silent regressions that would make the
         baseline invalid.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         option = TcpOptionAccecn1(**self._kwargs)
@@ -81,6 +84,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'ee0b' value below
         UINT_24__MIN.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["ee0b"] = value = UINT_24__MIN - 1
@@ -98,6 +103,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'ee0b' value above
         UINT_24__MAX.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["ee0b"] = value = UINT_24__MAX + 1
@@ -115,6 +122,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'eceb' value below
         UINT_24__MIN.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["eceb"] = value = UINT_24__MIN - 1
@@ -132,6 +141,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'eceb' value above
         UINT_24__MAX.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["eceb"] = value = UINT_24__MAX + 1
@@ -149,6 +160,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'ee1b' value below
         UINT_24__MIN.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["ee1b"] = value = UINT_24__MIN - 1
@@ -166,6 +179,8 @@ class TestTcpOptionAccecn1Asserts(TestCase):
         """
         Ensure the constructor rejects a 'ee1b' value above
         UINT_24__MAX.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self._kwargs["ee1b"] = value = UINT_24__MAX + 1
@@ -260,6 +275,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__len(self) -> None:
         """
         Ensure '__len__()' returns TCP__OPTION__ACCECN1__LEN (11 bytes).
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -271,6 +288,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -282,6 +301,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -293,6 +314,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire frame.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -304,6 +327,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.ACCECN1.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -315,6 +340,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__ACCECN1__LEN.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -326,6 +353,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__ee0b(self) -> None:
         """
         Ensure the 'ee0b' field exposes the provided value.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -337,6 +366,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__eceb(self) -> None:
         """
         Ensure the 'eceb' field exposes the provided value.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -348,6 +379,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
     def test__tcp__option__accecn1__ee1b(self) -> None:
         """
         Ensure the 'ee1b' field exposes the provided value.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         self.assertEqual(
@@ -360,6 +393,8 @@ class TestTcpOptionAccecn1Assembler(TestCase):
         """
         Ensure 'from_buffer()' reconstructs an equal option from
         the wire bytes produced by '__bytes__()'.
+
+        Reference: RFC 9768 §3.2.3 (AccECN1 option wire format).
         """
 
         decoded = TcpOptionAccecn1.from_buffer(self._results["__bytes__"])
@@ -369,3 +404,197 @@ class TestTcpOptionAccecn1Assembler(TestCase):
             self._option,
             msg=f"Round-trip decode disagrees with assembled value for case: {self._description}",
         )
+
+
+class TestTcpOptionAccecn1AbbreviatedForms(TestCase):
+    """
+    The TCP AccECN1 abbreviated-form tests (RFC 9768 §3.2.3
+    Length 8/5/2 forms in addition to the canonical Length 11).
+    """
+
+    def test__tcp__option__accecn1__construct_length_11(self) -> None:
+        """
+        Ensure constructing 'TcpOptionAccecn1' with all three
+        byte counters yields the canonical Length=11 wire form.
+
+        Reference: RFC 9768 §3.2.3 (Length 11: full three-counter form).
+        """
+
+        option = TcpOptionAccecn1(ee0b=0x111111, eceb=0x222222, ee1b=0x333333)
+        self.assertEqual(option.len, 11, msg=f"All three counters set MUST yield len=11. Got {option.len}.")
+
+    def test__tcp__option__accecn1__construct_length_8(self) -> None:
+        """
+        Ensure constructing 'TcpOptionAccecn1' with only ee1b
+        and eceb (omitting ee0b) yields the Length=8 wire form
+        per the §3.2.3 abbreviation rule. AccECN1 places ee1b
+        first on the wire so abbreviation drops the trailing
+        ee0b first.
+
+        Reference: RFC 9768 §3.2.3 (Length 8: ee0b omitted from the tail).
+        """
+
+        option = TcpOptionAccecn1(ee1b=0x333333, eceb=0x222222)
+        self.assertEqual(option.len, 8, msg=f"ee1b+eceb set, ee0b None MUST yield len=8. Got {option.len}.")
+        self.assertIsNone(option.ee0b, msg="ee0b MUST be None when omitted.")
+
+    def test__tcp__option__accecn1__construct_length_5(self) -> None:
+        """
+        Ensure constructing 'TcpOptionAccecn1' with only ee1b
+        (omitting eceb and ee0b) yields the Length=5 wire form.
+
+        Reference: RFC 9768 §3.2.3 (Length 5: eceb and ee0b omitted from the tail).
+        """
+
+        option = TcpOptionAccecn1(ee1b=0x333333)
+        self.assertEqual(option.len, 5, msg=f"Only ee1b set MUST yield len=5. Got {option.len}.")
+        self.assertIsNone(option.eceb, msg="eceb MUST be None when omitted.")
+        self.assertIsNone(option.ee0b, msg="ee0b MUST be None when omitted.")
+
+    def test__tcp__option__accecn1__construct_length_2(self) -> None:
+        """
+        Ensure constructing 'TcpOptionAccecn1' with no
+        counters set (all default None) yields the Length=2
+        empty wire form.
+
+        Reference: RFC 9768 §3.2.3 (Length 2: empty form for option-space pressure).
+        """
+
+        option = TcpOptionAccecn1()
+        self.assertEqual(option.len, 2, msg=f"No counters set MUST yield len=2. Got {option.len}.")
+
+    def test__tcp__option__accecn1__bytes_length_8(self) -> None:
+        """
+        Ensure the Length=8 form serialises to exactly 8 bytes:
+        1 byte kind + 1 byte length + 2 24-bit fields (ee1b +
+        eceb in that wire order).
+
+        Reference: RFC 9768 §3.2.3 Table 5 (Length 8 wire layout: EE1B, ECEB).
+        """
+
+        option = TcpOptionAccecn1(ee1b=0x333333, eceb=0x222222)
+        # AccECN1 Length=8 wire frame:
+        #   Byte 0    : 0xae     -> kind=ACCECN1 (174)
+        #   Byte 1    : 0x08     -> len=8
+        #   Bytes 2-4 : 0x333333 -> ee1b
+        #   Bytes 5-7 : 0x222222 -> eceb
+        self.assertEqual(
+            bytes(option),
+            b"\xae\x08\x33\x33\x33\x22\x22\x22",
+            msg=f"AccECN1 Length=8 wire form mismatch. Got {bytes(option)!r}.",
+        )
+
+    def test__tcp__option__accecn1__bytes_length_5(self) -> None:
+        """
+        Ensure the Length=5 form serialises to exactly 5 bytes:
+        1 byte kind + 1 byte length + 1 24-bit field (ee1b
+        only, in the AccECN1 first-slot position).
+
+        Reference: RFC 9768 §3.2.3 Table 5 (Length 5 wire layout: EE1B only).
+        """
+
+        option = TcpOptionAccecn1(ee1b=0x333333)
+        # AccECN1 Length=5 wire frame:
+        #   Byte 0    : 0xae     -> kind=ACCECN1 (174)
+        #   Byte 1    : 0x05     -> len=5
+        #   Bytes 2-4 : 0x333333 -> ee1b
+        self.assertEqual(
+            bytes(option),
+            b"\xae\x05\x33\x33\x33",
+            msg=f"AccECN1 Length=5 wire form mismatch. Got {bytes(option)!r}.",
+        )
+
+    def test__tcp__option__accecn1__bytes_length_2(self) -> None:
+        """
+        Ensure the Length=2 (empty) form serialises to exactly
+        2 bytes.
+
+        Reference: RFC 9768 §3.2.3 Table 5 (Length 2 wire layout: empty).
+        """
+
+        option = TcpOptionAccecn1()
+        self.assertEqual(
+            bytes(option),
+            b"\xae\x02",
+            msg=f"AccECN1 Length=2 wire form mismatch. Got {bytes(option)!r}.",
+        )
+
+    def test__tcp__option__accecn1__from_buffer_length_8(self) -> None:
+        """
+        Ensure 'from_buffer()' parses a Length=8 AccECN1 wire
+        form, decoding ee1b and eceb (in that wire order) and
+        leaving ee0b at None.
+
+        Reference: RFC 9768 §3.2.3 (parser MUST accept abbreviated forms).
+        """
+
+        decoded = TcpOptionAccecn1.from_buffer(b"\xae\x08\xab\xcd\xef\x12\x34\x56")
+
+        self.assertEqual(decoded.len, 8, msg=f"Parsed len MUST be 8. Got {decoded.len}.")
+        self.assertEqual(decoded.ee1b, 0xABCDEF, msg=f"ee1b MUST decode to 0xabcdef. Got {decoded.ee1b!r}.")
+        self.assertEqual(decoded.eceb, 0x123456, msg=f"eceb MUST decode to 0x123456. Got {decoded.eceb!r}.")
+        self.assertIsNone(decoded.ee0b, msg=f"ee0b MUST be None for Length=8. Got {decoded.ee0b!r}.")
+
+    def test__tcp__option__accecn1__from_buffer_length_5(self) -> None:
+        """
+        Ensure 'from_buffer()' parses a Length=5 AccECN1 wire
+        form, decoding only ee1b and leaving eceb and ee0b
+        at None.
+
+        Reference: RFC 9768 §3.2.3 (parser MUST accept Length 5).
+        """
+
+        decoded = TcpOptionAccecn1.from_buffer(b"\xae\x05\xab\xcd\xef")
+
+        self.assertEqual(decoded.len, 5, msg=f"Parsed len MUST be 5. Got {decoded.len}.")
+        self.assertEqual(decoded.ee1b, 0xABCDEF, msg=f"ee1b MUST decode. Got {decoded.ee1b!r}.")
+        self.assertIsNone(decoded.eceb, msg=f"eceb MUST be None. Got {decoded.eceb!r}.")
+        self.assertIsNone(decoded.ee0b, msg=f"ee0b MUST be None. Got {decoded.ee0b!r}.")
+
+    def test__tcp__option__accecn1__from_buffer_length_2(self) -> None:
+        """
+        Ensure 'from_buffer()' parses a Length=2 AccECN1 wire
+        form (empty option), leaving all three counters at None.
+
+        Reference: RFC 9768 §3.2.3 (parser MUST accept Length 2).
+        """
+
+        decoded = TcpOptionAccecn1.from_buffer(b"\xae\x02")
+
+        self.assertEqual(decoded.len, 2, msg=f"Parsed len MUST be 2. Got {decoded.len}.")
+        self.assertIsNone(decoded.ee1b, msg=f"ee1b MUST be None. Got {decoded.ee1b!r}.")
+        self.assertIsNone(decoded.eceb, msg=f"eceb MUST be None. Got {decoded.eceb!r}.")
+        self.assertIsNone(decoded.ee0b, msg=f"ee0b MUST be None. Got {decoded.ee0b!r}.")
+
+    def test__tcp__option__accecn1__from_buffer_invalid_length_raises(self) -> None:
+        """
+        Ensure 'from_buffer()' raises 'TcpIntegrityError' for
+        any AccECN1 wire length not in {2, 5, 8, 11}.
+
+        Reference: RFC 9768 §3.2.3 (Length values are an enumerated set).
+        """
+
+        with self.assertRaises(TcpIntegrityError):
+            TcpOptionAccecn1.from_buffer(b"\xae\x04\x00\x00\x00")
+        with self.assertRaises(TcpIntegrityError):
+            TcpOptionAccecn1.from_buffer(b"\xae\x09" + b"\x00" * 9)
+
+    def test__tcp__option__accecn1__round_trip_all_lengths(self) -> None:
+        """
+        Ensure assemble -> bytes -> from_buffer reconstructs
+        an equal AccECN1 option for each of the four supported
+        wire lengths.
+
+        Reference: RFC 9768 §3.2.3 (round-trip semantic equivalence).
+        """
+
+        for kwargs in (
+            {"ee0b": 0x111, "eceb": 0x222, "ee1b": 0x333},
+            {"ee1b": 0x333, "eceb": 0x222},
+            {"ee1b": 0x333},
+            {},
+        ):
+            with self.subTest(kwargs=kwargs):
+                original = TcpOptionAccecn1(**kwargs)
+                decoded = TcpOptionAccecn1.from_buffer(bytes(original))
+                self.assertEqual(decoded, original, msg=f"Round-trip mismatch for kwargs={kwargs}.")

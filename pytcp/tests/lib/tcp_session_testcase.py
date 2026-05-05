@@ -104,7 +104,7 @@ class TcpProbe:
     # when absent on the wire. The ordering is the AccECN0
     # convention (ECT(0), CE, ECT(1)) regardless of which
     # kind appeared on the wire.
-    accecn: tuple[int, int, int] | None
+    accecn: tuple[int | None, int | None, int | None] | None
     # AccECN option ordering: 172 = AccECN0 (Order 0, ECT(0)
     # in first wire slot); 174 = AccECN1 (Order 1, ECT(1)
     # in first wire slot); None when no AccECN option is

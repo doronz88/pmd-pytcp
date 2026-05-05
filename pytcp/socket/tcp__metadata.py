@@ -78,8 +78,12 @@ class TcpMetadata:
     # three 24-bit byte counters (ee0b, eceb, ee1b) when
     # the option is on the wire, None when absent. The
     # ordering is the AccECN0 convention regardless of
-    # which kind appeared on the wire.
-    tcp__accecn0_counters: tuple[int, int, int] | None = None
+    # which kind appeared on the wire. Each tuple slot
+    # is independently Optional so abbreviated forms
+    # (Length 2/5/8) can carry None for trailing counters
+    # the peer omitted - the consumer treats None as
+    # 'unchanged from the prior emission' per §3.2.3.
+    tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None
     tcp__data: memoryview
 
     tracker: Tracker | None = None

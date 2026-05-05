@@ -1715,3 +1715,93 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"ssthresh={session._ssthresh}."
             ),
         )
+
+    def test__accecn__abbreviated_form__length_8_peer_option_accepted(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when an
+        inbound ACK carries an AccECN0 option in the Length=8
+        wire form (peer omitted r.ECT(1) byte counter to save
+        TCP-option space), PyTCP parses the option without
+        raising IntegrityError and the session remains in a
+        usable state. The Length=8 form is the most common
+        abbreviated variant a §3.2.3-conforming peer would
+        emit during loss recovery when SACK blocks compete
+        for option space.
+
+        Reference: RFC 9768 §3.2.3 (Length 8 AccECN0 form parser acceptance).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        cwnd_before = session._cwnd
+        ssthresh_before = session._ssthresh
+
+        # Peer's Length=8 ACK: r.e0b and r.eceb on the wire,
+        # r.e1b absent (None). The 'accecn0_counters' tuple
+        # carries the per-slot Optional[int] semantics.
+        ack_len_8 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            accecn0_counters=(1, 0, None),
+        )
+        # Must not raise.
+        self._drive_rx(frame=ack_len_8)
+
+        # Session state stays consistent: no spurious cwnd
+        # reduction (eceb didn't advance), no crash, no
+        # state leak.
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=f"Length=8 AccECN0 parse MUST NOT corrupt FSM state. Got state={session.state!r}.",
+        )
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_before,
+            msg=(
+                "Length=8 AccECN0 with no eceb advance MUST NOT "
+                f"reduce ssthresh. Got before={ssthresh_before}, "
+                f"after={session._ssthresh}."
+            ),
+        )
+        self.assertEqual(
+            session._cwnd,
+            cwnd_before,
+            msg=f"cwnd MUST be unchanged. Got before={cwnd_before}, after={session._cwnd}.",
+        )
+
+    def test__accecn__abbreviated_form__length_2_empty_peer_option_accepted(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when an
+        inbound ACK carries a Length=2 (empty) AccECN0 option,
+        PyTCP parses it without raising IntegrityError. The
+        Length=2 form is allowed when option space is too
+        constrained to carry any counters but a §3.2.3
+        signature byte is still required (e.g. on a SYN/ACK
+        retransmit under heavy SACK load).
+
+        Reference: RFC 9768 §3.2.3 (Length 2 empty AccECN0 form parser acceptance).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        ack_len_2 = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            accecn0_counters=(None, None, None),
+        )
+        # Must not raise.
+        self._drive_rx(frame=ack_len_2)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg=f"Length=2 AccECN0 parse MUST NOT corrupt FSM state. Got state={session.state!r}.",
+        )

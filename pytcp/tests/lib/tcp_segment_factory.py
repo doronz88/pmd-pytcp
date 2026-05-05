@@ -78,7 +78,7 @@ def _build_tcp_assembler(
     tsval: int | None,
     tsecr: int | None,
     fastopen_cookie: bytes | None,
-    accecn0_counters: tuple[int, int, int] | None,
+    accecn0_counters: tuple[int | None, int | None, int | None] | None,
     payload: Buffer,
 ) -> TcpAssembler:
     """
@@ -131,7 +131,7 @@ def _build_options(
     tsval: int | None,
     tsecr: int | None,
     fastopen_cookie: bytes | None,
-    accecn0_counters: tuple[int, int, int] | None,
+    accecn0_counters: tuple[int | None, int | None, int | None] | None,
 ) -> TcpOptions:
     """
     Build a 'TcpOptions' container holding the requested MSS,
@@ -208,7 +208,7 @@ def build_tcp4(
     tsval: int | None = None,
     tsecr: int | None = None,
     fastopen_cookie: bytes | None = None,
-    accecn0_counters: tuple[int, int, int] | None = None,
+    accecn0_counters: tuple[int | None, int | None, int | None] | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """
@@ -272,7 +272,7 @@ def build_tcp6(
     tsval: int | None = None,
     tsecr: int | None = None,
     fastopen_cookie: bytes | None = None,
-    accecn0_counters: tuple[int, int, int] | None = None,
+    accecn0_counters: tuple[int | None, int | None, int | None] | None = None,
     payload: Buffer = b"",
 ) -> bytes:
     """

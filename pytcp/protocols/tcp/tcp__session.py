@@ -3699,6 +3699,7 @@ class TcpSession:
                 self._accecn_enabled
                 and packet_rx_md is not None
                 and packet_rx_md.tcp__accecn0_counters is not None
+                and packet_rx_md.tcp__accecn0_counters[1] is not None
                 and packet_rx_md.tcp__accecn0_counters[1] > self._accecn_s_ce_b
                 and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
             ):
@@ -3719,7 +3720,12 @@ class TcpSession:
             # 'if' so the tracker advances even when the
             # recovery-point guard suppresses the response
             # itself.
-            if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
+            if (
+                self._accecn_enabled
+                and packet_rx_md is not None
+                and packet_rx_md.tcp__accecn0_counters is not None
+                and packet_rx_md.tcp__accecn0_counters[1] is not None
+            ):
                 self._accecn_s_ce_b = packet_rx_md.tcp__accecn0_counters[1]
             # RFC 9768 §3.2.2.5 ACE-based fallback. When an
             # AccECN-mode inbound ACK arrives WITHOUT the
