@@ -17,15 +17,10 @@ under `pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused.
 
 > **Note on RFC numbering**: PyTCP source comments
-> consistently cite "RFC 9341" for AccECN, but RFC 9341
+> previously cited "RFC 9341" for AccECN, but RFC 9341
 > is actually the unrelated "Alternate-Marking Method"
-> document. The correct AccECN RFC is **9768**, which is
-> what this audit uses. Updating the citations in
-> `pytcp/protocols/tcp/tcp__session.py`,
-> `pytcp/protocols/tcp/tcp__fsm__listen.py`, and
-> `pytcp/protocols/tcp/tcp__fsm__syn_sent.py` is a
-> pending source-comment fix outside this audit's
-> scope.
+> document. The correct AccECN RFC is **9768**.
+> All citations were corrected in commit `a02436e5`.
 
 Sections without normative content (Abstract, §1
 Introduction, §1.1-§1.4 narrative, §2 Protocol
@@ -165,15 +160,21 @@ broken-server (1,1,1) reflection is not detected.
 > AccECN as if the three flags had been set to
 > (1,1,1)."
 
-**Adherence:** not implemented. The listener gate at
-`tcp__fsm__listen.py` checks for a clean (1,1,1) match
-only; other "future" combinations like (1,0,0),
-(1,1,0), (0,1,0), etc. would not enter AccECN mode.
+**Adherence:** met. The listener gate at
+`tcp__fsm__listen.py:228-243` accepts any AE/CWR/ECE
+combination except the (0,0,0) and (0,1,1) reserved
+cases, so all five "future" combinations
+((1,0,0), (1,1,0), (0,1,0), (1,0,1), (0,0,1)) enter
+AccECN mode per the spec mandate. The Classic ECN gate
+((0,1,1)) and the no-ECN fall-through ((0,0,0)) are
+preserved.
 
-This is a forward-compatibility gap that may matter
-when future TCP extensions arrive.
+The client side §3.1.3 clause for the (1,0,1)
+SYN/ACK is also met: the existing
+`tcp__fsm__syn_sent.py:257` gate accepts any non-zero
+AE or CWR, which captures (1,0,1).
 
-**Status:** gap.
+**Status:** met (commit `43b84ca5`).
 
 ---
 
@@ -232,25 +233,24 @@ acknowledgement when in AccECN mode.
 > Sender, it initializes its counters to s.cep = 5,
 > s.e0b = s.e1b = 1, and s.ceb = 0."
 
-**Adherence:** partial. `tcp__session.py:361-374` and
-the surrounding lines initialize:
+**Adherence:** met for the receiver-side counters.
+`tcp__session.py:361-378` initialises:
 
 ```python
-self._accecn_r_cep: int = 5             # OK matches RFC
-self._accecn_r_ect0_b: int = 0          # SHOULD BE 1
-self._accecn_r_ce_b: int = 0            # OK matches RFC (r.ceb)
-self._accecn_r_ect1_b: int = 0          # SHOULD BE 1
-self._accecn_s_ce_b: int = 0            # OK as initial s.ceb
+self._accecn_r_cep: int = 5     # matches RFC
+self._accecn_r_ect0_b: int = 1  # matches RFC (since commit 7b7cae0b)
+self._accecn_r_ce_b: int = 0    # matches RFC (r.ceb)
+self._accecn_r_ect1_b: int = 1  # matches RFC (since commit 7b7cae0b)
+self._accecn_s_ce_b: int = 0    # matches RFC initial s.ceb
 ```
 
-The `r.cep` initial value 5 is correct. However, the
-`r.e0b` and `r.e1b` byte counters initialize to 0 in
-PyTCP — RFC 9768 §3.2.1 mandates initial value 1
-specifically to be distinct from middlebox-zeroed
-fields (§3.2.3.2.4 detection).
+PyTCP does not maintain `s.cep`, `s.e0b`, or `s.e1b`
+sender-side counters (only `s.ceb`). These are needed
+for full §3.4 sender-side feedback consumption and
+remain a deferred implementation gap.
 
-**Status:** non-conformant initial values for r.e0b /
-r.e1b (off by 1).
+**Status:** met (receiver-side, commit `7b7cae0b`);
+sender-side `s.cep` / `s.e0b` / `s.e1b` not tracked.
 
 ---
 
@@ -298,17 +298,20 @@ dispatches SYN handling before this branch.
 > SYN/ACK to feed back which of the 4 possible values
 > of the IP-ECN field was on the SYN/ACK."
 
-**Adherence:** not implemented. PyTCP's
-`tcp__session.py:1441-1445` always encodes
-`_accecn_r_cep & 0b111` into ACE on non-SYN segments
-— it does NOT use the special handshake encoding from
-Table 3 on the ACK of the SYN/ACK. The Client's first
-post-SYN+ACK ACK would carry `(r.cep & 7)` which on
-fresh sessions is `5 & 7 = 0b101` rather than the
-Table-3 encoding (e.g. 0b010 for Not-ECT SYN/ACK).
+**Adherence:** met for the client-side Table-3
+emission. `tcp__fsm__syn_sent.py:257-275` populates
+`_accecn_handshake_ack_pending` from a Table-3 lookup
+keyed by the inbound SYN+ACK's `ip__ecn`, and the
+`_transmit_packet` ACE branch at `tcp__session.py:1452-1466`
+consumes the pending value on the third-leg ACK
+(then clears it so subsequent post-handshake segments
+fall back to `r.cep & 7`). A CE-marked SYN+ACK
+additionally bumps r.cep from 5 to 6 per §3.2.2.2.
 
-**Status:** gap. The Server's Table-4 inference logic
-on the inbound first ACK is also not implemented.
+**Status:** met for client (commit `9da9930a`); the
+server-side Table-4 inference logic on the inbound
+first ACK is not implemented (requires adding the
+`s.cep` tracker — see §3.2.1 above).
 
 ### §3.2.2.5 Safety Against Ambiguity (cycle handling)
 
@@ -441,33 +444,44 @@ reflection: gap).
 
 ### §3.1.3 forward compatibility
 
-- No tests; not implemented in code.
+- **Integration:** five tests pin AccECN entry on
+  server-side SYN with each of (1,0,0), (1,1,0),
+  (0,1,0), (1,0,1), (0,0,1); a sixth pins Classic ECN
+  on (0,1,1) (excluded from forward-compat); a seventh
+  pins client-side AccECN entry on SYN/ACK with
+  reserved (1,0,1).
 
-**Status:** n/a (gap).
+**Status:** locked in (commit `43b84ca5`).
 
 ### §3.2.1 counter initialization
 
-- **Unit / Integration:** post-handshake assertions
-  verify `_accecn_r_cep == 5`. The off-by-one initial
-  values for `_accecn_r_ect0_b` / `_accecn_r_ect1_b`
-  are pinned to PyTCP's 0 (not the RFC's 1) — tests
-  encode the implementation, not the spec.
+- **Unit:** four lifecycle tests in
+  `test__tcp__session__lifecycle.py` pin every receiver-
+  side counter's initial value (`r.cep=5, r.e0b=1,
+  r.ceb=0, r.e1b=1`) per RFC 9768 §3.2.1.
 
-**Status:** test pins implementation; spec deviation.
+**Status:** locked in (commit `7b7cae0b`).
 
 ### §3.2.2 ACE encoding on non-SYN segments
 
 - **Integration:** drives inbound CE-marked data,
   verifies outbound ACK ACE field reflects
-  `_accecn_r_cep & 7`.
+  `_accecn_r_cep & 7`. A regression test pins that
+  post-handshake (non-third-leg) ACKs use this regular
+  encoding.
 
 **Status:** locked in.
 
 ### §3.2.2.1 handshake encoding on ACK of SYN/ACK
 
-- No tests; not implemented.
+- **Integration:** five tests pin Table-3 ACE encoding
+  on the third-leg ACK for each IP-ECN codepoint on the
+  inbound SYN+ACK (Not-ECT/ECT(1)/ECT(0)/CE), plus a
+  test for the §3.2.2.2 r.cep increment to 6 on a
+  CE-marked SYN+ACK.
 
-**Status:** n/a (gap).
+**Status:** locked in client-side (commit `9da9930a`);
+server-side Table-4 inference not implemented.
 
 ### §3.2.3 AccECN option emission
 
@@ -486,73 +500,84 @@ not exercised).
 
 ### Test coverage summary
 
-| Aspect                                           | Coverage                       |
-|--------------------------------------------------|--------------------------------|
-| §3.1.1 active-open SYN signature                 | locked in                      |
-| §3.1.1 SYN+ACK Table-2 codepoint encoding        | locked in                      |
-| §3.1.1 mode entry post-handshake                 | locked in                      |
-| §3.1.2 RFC 3168 fallback                         | locked in                      |
-| §3.1.2 Broken-server (1,1,1) reflection          | n/a (gap)                      |
-| §3.1.3 forward compatibility                     | n/a (gap)                      |
-| §3.2.1 counter initial values                    | partial (off-by-1 r.e0b/r.e1b) |
-| §3.2.2 ACE encoding on non-SYN                   | locked in                      |
-| §3.2.2.1 handshake encoding (Tables 3+4)         | n/a (gap)                      |
-| §3.2.2.5 cycle handling                          | n/a (gap)                      |
-| §3.2.3 AccECN0 option emission                   | locked in (Order 0, length 11) |
-| §3.2.3 abbreviated option forms (length 8, 5, 2) | n/a                            |
-| §4 Updates to RFC 3168 (negotiation precedence)  | locked in                      |
-| §5 SACK + DSACK alongside AccECN                 | locked in                      |
+| Aspect                                           | Coverage                                |
+|--------------------------------------------------|-----------------------------------------|
+| §3.1.1 active-open SYN signature                 | locked in                               |
+| §3.1.1 SYN+ACK Table-2 codepoint encoding        | locked in                               |
+| §3.1.1 mode entry post-handshake                 | locked in                               |
+| §3.1.2 RFC 3168 fallback                         | locked in                               |
+| §3.1.2 Broken-server (1,1,1) reflection          | n/a (gap)                               |
+| §3.1.3 forward compatibility (server + client)   | locked in                               |
+| §3.2.1 counter initial values                    | locked in                               |
+| §3.2.2 ACE encoding on non-SYN                   | locked in                               |
+| §3.2.2.1 handshake encoding Table 3 (client)     | locked in                               |
+| §3.2.2.1 handshake encoding Table 4 (server)     | n/a (server-side Table 4 not impl.)     |
+| §3.2.2.5 cycle handling                          | n/a (gap)                               |
+| §3.2.3 AccECN0 option emission                   | locked in (Order 0, length 11)          |
+| §3.2.3 abbreviated option forms (length 8, 5, 2) | n/a (deferred bandwidth optimization)   |
+| §4 Updates to RFC 3168 (negotiation precedence)  | locked in                               |
+| §5 SACK + DSACK alongside AccECN                 | locked in                               |
 
 ---
 
 ## Overall assessment
 
-| Aspect                                       | Status                                     |
-|----------------------------------------------|--------------------------------------------|
-| §3.1.1 negotiation (basic)                   | met                                        |
-| §3.1.2 RFC 3168 fallback                     | met                                        |
-| §3.1.2 Broken-server detection               | not implemented                            |
-| §3.1.3 forward compatibility                 | not implemented                            |
-| §3.1.5 mode-mode invariants                  | met implicitly                             |
-| §3.2.1 r.cep initial value                   | met                                        |
-| §3.2.1 r.e0b / r.e1b initial values          | non-conformant (uses 0 instead of 1)       |
-| §3.2.2 ACE encoding on non-SYN               | met                                        |
-| §3.2.2.1 handshake encoding (ACK of SYN/ACK) | not implemented                            |
-| §3.2.2.3 IP-ECN mangling test                | not implemented                            |
-| §3.2.2.5 cycle handling                      | not implemented                            |
-| §3.2.3 AccECN0 option (Kind 172, Order 0)    | met (full length 11 only)                  |
-| §3.2.3 AccECN1 option (Kind 174, Order 1)    | not implemented                            |
-| §3.2.3 abbreviated lengths (8, 5, 2)         | not implemented                            |
-| §4 Updates to RFC 3168                       | met                                        |
-| §5.3 SACK + DSACK + AccECN coexistence       | met                                        |
+| Aspect                                          | Status                                  |
+|-------------------------------------------------|-----------------------------------------|
+| §3.1.1 negotiation (basic)                      | met                                     |
+| §3.1.2 RFC 3168 fallback                        | met                                     |
+| §3.1.2 Broken-server detection                  | not implemented                         |
+| §3.1.3 forward compatibility (server + client)  | met                                     |
+| §3.1.5 mode-mode invariants                     | met implicitly                          |
+| §3.2.1 r.cep / r.ceb initial values             | met                                     |
+| §3.2.1 r.e0b / r.e1b initial values             | met                                     |
+| §3.2.1 sender-side s.cep / s.e0b / s.e1b        | not implemented                         |
+| §3.2.2 ACE encoding on non-SYN                  | met                                     |
+| §3.2.2.1 Table-3 handshake encoding (client)    | met                                     |
+| §3.2.2.1 Table-4 inference (server)             | not implemented                         |
+| §3.2.2.3 IP-ECN mangling test                   | not implemented                         |
+| §3.2.2.5 cycle handling                         | not implemented                         |
+| §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11 only)               |
+| §3.2.3 AccECN1 option (Kind 174, Order 1)       | not implemented (bandwidth optimization)|
+| §3.2.3 abbreviated lengths (8, 5, 2)            | not implemented (bandwidth optimization)|
+| §4 Updates to RFC 3168                          | met                                     |
+| §5.3 SACK + DSACK + AccECN coexistence          | met                                     |
 
 PyTCP's AccECN implementation covers the negotiation
-flow (active and passive open), the post-handshake ACE
-encoding on non-SYN segments, and the AccECN0 option
-(full 11-byte form). The core feedback loop works:
-peer's CE marks reach the sender via either the ACE
-field or the byte counters in the option.
+flow (active and passive open including §3.1.3
+forward-compat for both sides), the post-handshake
+ACE encoding on non-SYN segments (including §3.2.2.1
+Table-3 handshake encoding on the client's third-leg
+ACK), the spec-mandated counter initial values, and
+the AccECN0 option (full 11-byte form). The core
+feedback loop works: peer's CE marks reach the sender
+via either the ACE field or the byte counters in the
+option.
 
-Implementation gaps cluster in three areas:
+Remaining implementation gaps:
 
-1. **Edge-case handshake encoding** (§3.2.2.1
-   handshake-encoded ACK of SYN/ACK; §3.1.3 forward
-   compatibility): less critical, primarily affects
-   IP-ECN-mangling detection.
-2. **Counter initial values** (§3.2.1): off-by-one
-   r.e0b / r.e1b. Easy fix.
-3. **Cycle / wrap safety** (§3.2.2.5): when AccECN0
+1. **Server-side Table-4 inference** (§3.2.2.1):
+   would require adding the `s.cep` tracker and the
+   first-ACK-in-SYN-RCVD decode path. Useful for
+   IP-ECN-mangling detection at the server.
+2. **Cycle / wrap safety** (§3.2.2.5): when AccECN
    options are stripped by middleboxes, the safety
    procedures for ACE wrap detection are not
    implemented. The pure-ACE-only mode is rare in
    practice.
+3. **AccECN1 / abbreviated option lengths** (§3.2.3):
+   PyTCP always emits Order 0, length 11. The Order 1
+   form (Kind 174) and abbreviated lengths (8, 5, 2)
+   are bandwidth optimisations the spec marks as MAY,
+   not MUST. Always-Order-0-full-length is conformant.
+4. **Broken-server (1,1,1) reflection detection**
+   (§3.1.2 fourth block): if a buggy server reflects
+   the client's (1,1,1) SYN flags in its SYN/ACK,
+   PyTCP currently treats it as AccECN-confirmed
+   rather than falling back to Not ECN.
 
-The most consequential gap is the off-by-one in
-§3.2.1 — easy to fix and pinned by an updated test.
-The handshake-encoding (§3.2.2.1) and forward-
-compatibility (§3.1.3) gaps are larger but less
-exercised in practice.
-
-The codebase's misattribution of "RFC 9341" instead of
-RFC 9768 in source comments is a separate cleanup
-task, not a functional gap.
+These gaps are bounded in practical impact. Closing
+all four would bring PyTCP to full §3 conformance;
+closing only #1 (Table-4 server inference) would
+unlock IP-ECN-mangling detection on the server
+side.
