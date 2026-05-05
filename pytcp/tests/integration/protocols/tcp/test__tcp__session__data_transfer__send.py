@@ -1220,3 +1220,101 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
                 f"_persist_timeout={session._persist_timeout} ms."
             ),
         )
+
+
+class TestTcpDataTransferRfc6691ReqB(TcpSessionTestCase):
+    """
+    RFC 6691 §2 Req B: "the sender MUST reduce the TCP data
+    length to account for any IP or TCP options that it is
+    including in the packets that it sends." When a session
+    has timestamps negotiated bilaterally, every outbound data
+    segment carries 12 bytes of TSopt (10 + 2 NOP padding); a
+    naive 'transmit_data_len = min(_snd_mss, ...)' produces an
+    on-wire segment of fixed_headers + 12 (options) + _snd_mss
+    (data) which exceeds the MTU by exactly options_len bytes
+    and fragments at the IP layer.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=0x1234_5678,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__data_transfer__rfc6691_req_b__tsopt_segment_data_capped(self) -> None:
+        """
+        Ensure that with TSopt active, an outbound data segment
+        carries at most '_snd_mss - options_overhead' bytes of
+        payload so the on-wire packet stays within the link
+        MTU. Per §2 Req B, the sender MUST reduce the data
+        length when options consume option-block bytes.
+
+        Reference: RFC 6691 §2 Req B (sender reduces data length for options).
+        """
+
+        session = self._drive_handshake_with_tsopt(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Send 2x MSS bytes; the first segment must be the
+        # full options-aware MSS, not _snd_mss naively.
+        session.send(data=b"X" * (2 * PEER__MSS))
+        tx = self._advance(ms=1)
+        self.assertGreaterEqual(
+            len(tx),
+            1,
+            msg="Setup precondition: at least one segment fires.",
+        )
+        first = self._parse_tx(tx[0])
+        # Per §2 Req B: data + TSopt (12 bytes) + fixed TCP header
+        # (20 bytes) ≤ MTU - fixed IP header (20). With MSS
+        # negotiated as 1460 (= 1500 - 20 - 20), the data length
+        # must be ≤ 1460 - 12 = 1448 to stay under MTU.
+        options_overhead = 12  # TSopt 10 bytes + 2 NOPs
+        max_data_per_segment = PEER__MSS - options_overhead
+        self.assertLessEqual(
+            len(first.payload),
+            max_data_per_segment,
+            msg=(
+                "RFC 6691 §2 Req B: with TSopt on every segment "
+                "the sender MUST reduce data length by the "
+                f"options overhead ({options_overhead} bytes). "
+                f"Expected ≤ {max_data_per_segment}, got "
+                f"{len(first.payload)} bytes."
+            ),
+        )

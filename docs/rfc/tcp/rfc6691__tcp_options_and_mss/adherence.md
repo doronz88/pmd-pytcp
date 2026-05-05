@@ -55,23 +55,28 @@ emitted on the SYN via the MSS option assembler at
 > to account for any IP or TCP options that it is including
 > in the packets that it sends."
 
-**Adherence:** NOT met. The sender's per-segment
-data-length cap at
-`pytcp/protocols/tcp/tcp__session.py:2346`:
+**Adherence:** met. The sender's per-segment data-length
+cap in `_transmit_data` subtracts an upper-bound estimate
+of options overhead from `_snd_mss` before clamping by
+usable window and remaining buffer:
 
 ```python
-transmit_data_len = min(self._snd_mss, usable_window, remaining_data_len)
+options_overhead = 0
+if self._send_ts:
+    options_overhead += 12  # TSopt + 2 NOPs
+if self._send_sack and (ooo or dsack):
+    sack_blocks_cap = 3 if self._send_ts else 4
+    options_overhead += ((2 + 8 * sack_blocks_cap + 3) // 4) * 4
+if self._accecn_enabled:
+    options_overhead += 12  # AccECN Length 11 + 1 NOP
+mss_for_data = max(self._snd_mss - options_overhead, 1)
+transmit_data_len = min(mss_for_data, usable_window, remaining_data_len)
 ```
 
-caps at `_snd_mss` directly without subtracting the byte
-count of TCP options that will be appended at the
-`packet_handler__tcp__tx.py` layer (timestamps option = 12
-bytes, SACK blocks = up to 32 bytes, etc.). When such
-options are present, the on-wire segment is
-`fixed_ip_header + fixed_tcp_header + option_bytes +
-_snd_mss bytes of data`, which exceeds the MTU by exactly
-the option-bytes amount and forces IP-layer fragmentation
-(or path-MTU-discovery drop).
+The estimate is intentionally conservative (uses worst-
+case option-block size for each negotiated option) so
+even SACK-heavy retransmits stay within MTU. Pinned by
+`TestTcpDataTransferRfc6691ReqB::test__data_transfer__rfc6691_req_b__tsopt_segment_data_capped`.
 
 **Fixed-header constants:**
 
@@ -243,20 +248,15 @@ any deviation through the MSS-value assertions.
 
 ### §2 Req B — sender reduces data length for options
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test is one that:
+- **Integration:**
+  `test__tcp__session__data_transfer__send.py::TestTcpDataTransferRfc6691ReqB::test__data_transfer__rfc6691_req_b__tsopt_segment_data_capped`
+  drives a TS-negotiated handshake to ESTABLISHED, sends
+  2*MSS of buffered bytes, and asserts the first emitted
+  segment carries at most `_snd_mss - 12` bytes of payload
+  so the on-wire IP packet stays within MTU and does not
+  trigger IP-layer fragmentation.
 
-1. Drives the active-open handshake to ESTABLISHED with
-   timestamps negotiated bilaterally (so each data
-   segment will carry the 12-byte TSopt + 2 NOPs = 12).
-2. Issues `session.send(data=b"X" * 2000)`.
-3. Asserts the resulting on-wire segment length is
-   `≤ link_MTU` (fixed_headers + options + data ≤ MTU).
-
-The current code would emit a 1500-byte data segment
-plus 12 bytes of options = 1512 bytes, fragmenting at
-the IP layer. A regression-guard test should be added
-alongside the fix.
+**Status:** locked in.
 
 ### §5.3 IPv6 jumbograms
 
@@ -313,10 +313,11 @@ by §2 Req A's wire-level layer.
 | Aspect                                                | Coverage                                |
 |-------------------------------------------------------|-----------------------------------------|
 | §2 Req A: MSS option value uses fixed-header sizes    | locked in (IPv4 + IPv6 integration)     |
-| §2 Req B: sender reduces data length for options      | n/a (gap not closed; add test with fix) |
+| §2 Req B: sender reduces data length for options      | locked in (TestTcpDataTransferRfc6691ReqB) |
 | §2: fixed header constants                            | locked in indirectly (via Req A)        |
-| §5.1 / §5.2 / §5.3                                    | n/a (not implemented)                   |
-| §5.4 fragmentation goal                               | n/a (gap inherits from §2 Req B)        |
+| §5.1                                                  | n/a (cross-cut RFC 1191/4821 PMTUD)     |
+| §5.2 / §5.3                                           | n/a (single-MTU stack; jumbograms RFC 2675) |
+| §5.4 fragmentation goal                               | met (closed by §2 Req B fix above)      |
 | Appendix A: default send MSS = 536                    | locked in (passive + MSS=0 cases)       |
 | Appendix A: MSS = MTU − fixed_ip − fixed_tcp          | locked in (IPv4 + IPv6 integration)     |
 | Wire-level MSS option encoding                        | locked in (asserts + assembler matrix)  |
@@ -328,25 +329,35 @@ by §2 Req A's wire-level layer.
 | Aspect                                                | Status                               |
 |-------------------------------------------------------|--------------------------------------|
 | §2 Req A: MSS option value uses fixed-header sizes    | met                                  |
-| §2 Req B: sender reduces data length for options      | not met                              |
+| §2 Req B: sender reduces data length for options      | met (options-aware MSS cap)          |
 | §2: fixed header constants (20 IPv4, 40 IPv6, 20 TCP) | met                                  |
-| §5.1 Path MTU Discovery                               | not implemented                      |
+| §5.1 Path MTU Discovery                               | n/a (cross-cut RFC 1191/4821)        |
 | §5.2 variable MSS interfaces                          | vacuous (single MTU)                 |
-| §5.3 IPv6 jumbograms                                  | not implemented                      |
-| §5.4 avoiding fragmentation                           | partial (undermined by §2 Req B gap) |
+| §5.3 IPv6 jumbograms                                  | n/a (RFC 2675 experimental)          |
+| §5.4 avoiding fragmentation                           | met (closed by §2 Req B fix)         |
 | Appendix A: default send MSS = 536                    | met                                  |
 | Appendix A: `MSS = MTU - fixed_ip - fixed_tcp`        | met                                  |
 
-The principal compliance gap is §2 Requirement B: when the
-session emits TCP options on data segments, the sender does
-not subtract the option byte count from the per-segment
-data-length cap. The fix is small and localised — replace
-`min(self._snd_mss, usable_window, remaining_data_len)`
-at `pytcp/protocols/tcp/tcp__session.py:2346` with
-`min(self._snd_mss - emitted_options_len, usable_window,
-remaining_data_len)`, where `emitted_options_len` is the
-total byte count (NOP-padded) of the options that
-`_transmit_packet` will append for this segment. The other
-items either fall outside the implementation's scope
-(PMTUD, multi-homing, ROHC, jumbograms) or are met
-correctly.
+PyTCP's RFC 6691 conformance is at full SHOULD/MUST
+parity for the in-scope clauses:
+
+- §2 Req A and Req B both met. The previously-open Req B
+  gap is closed by the options-aware MSS cap in
+  `_transmit_data`: `mss_for_data = max(self._snd_mss
+  - options_overhead, 1)`, where `options_overhead`
+  is the worst-case byte count of the options the
+  segment will carry (TSopt, SACK, AccECN). Pinned by
+  the dedicated integration test.
+- §5.4 fragmentation goal closed transitively: with
+  Req B fixed, no IP-layer fragmentation occurs from
+  the TCP TX path on a single-MTU link.
+
+Out-of-scope items remaining (n/a, not gaps):
+
+- §5.1 Path MTU Discovery — cross-cut with RFC 1191
+  (classic) and RFC 4821 (PLPMTUD), both gap-reported
+  separately.
+- §5.2 variable MSS interfaces — vacuous on PyTCP's
+  single-MTU stack.
+- §5.3 IPv6 jumbograms — RFC 2675 experimental
+  extension; out of scope for a 1500-MTU stack.

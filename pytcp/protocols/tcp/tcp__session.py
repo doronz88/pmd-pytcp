@@ -2762,7 +2762,37 @@ class TcpSession:
             self._advance_snd_nxt_past_sacked()
             remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
             usable_window = self._snd_ewn - self._tx_buffer_nxt
-            transmit_data_len = min(self._snd_mss, usable_window, remaining_data_len)
+            # RFC 6691 §2 Req B: "the sender MUST reduce the
+            # TCP data length to account for any IP or TCP
+            # options that it is including in the packets that
+            # it sends." TSopt = 12 bytes (10 + 2 NOP padding)
+            # on every post-handshake segment when bilaterally
+            # negotiated. SACK option = 2 (header) + 8*N (block
+            # count) bytes, padded to a 4-byte boundary; the
+            # block count is bounded by the §3 4-block cap (or
+            # 3 with TSopt). AccECN option = 2 + N bytes
+            # depending on the abbreviation length. Estimate
+            # the upper-bound option overhead conservatively
+            # so the data-segment + option-block + fixed
+            # headers stay within MTU.
+            options_overhead = 0
+            if self._send_ts:
+                options_overhead += 12  # TSopt 10 bytes + 2 NOPs
+            if self._send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
+                # Worst-case SACK option size when we'd emit
+                # blocks on a non-SYN segment. With TSopt the
+                # cap is 3 blocks (= 2 + 24 = 26, padded to 28);
+                # without TSopt it's 4 blocks (= 2 + 32 = 34,
+                # padded to 36).
+                sack_blocks_cap = 3 if self._send_ts else 4
+                options_overhead += ((2 + 8 * sack_blocks_cap + 3) // 4) * 4
+            if self._accecn_enabled:
+                # AccECN Length 11 (the largest variant)
+                # plus 1 NOP for alignment = 12 bytes worst
+                # case.
+                options_overhead += 12
+            mss_for_data = max(self._snd_mss - options_overhead, 1)
+            transmit_data_len = min(mss_for_data, usable_window, remaining_data_len)
             if remaining_data_len:
                 __debug__ and log(
                     "tcp-ss",
