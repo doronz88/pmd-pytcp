@@ -545,3 +545,77 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
                 f"flags={data.flags!r}."
             ),
         )
+
+    def test__ecn__retransmit_does_not_carry_ect(self) -> None:
+        """
+        Ensure that when the RTO retransmit timer fires for a
+        previously-ECT-marked data segment, the retransmit goes
+        out with the IP-ECN field cleared to Not-ECT (binary
+        '00' = 0). Per RFC 3168 §6.1.5, "ECN-capable TCP
+        implementations MUST NOT set either ECT codepoint
+        (ECT(0) or ECT(1)) in the IP header for retransmitted
+        data packets". The rationale is that an ECT-marked
+        retransmit that is later dropped in the network
+        prevents the end nodes from seeing a CE mark on the
+        original copy, and an ECT mark on the retransmit
+        ambiguates the congestion signal.
+
+        Reference: RFC 3168 §6.1.5 (no ECT on retransmits).
+        """
+
+        session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Original transmit: must carry ECT(0).
+        session.send(data=b"hello, ecn!")
+        original_tx = self._advance(ms=1)
+        self.assertEqual(
+            len(original_tx),
+            1,
+            msg="Setup precondition: original send must fire one segment.",
+        )
+        original = self._parse_tx(original_tx[0])
+        self.assertEqual(
+            original.ip_ecn,
+            2,
+            msg=(
+                "Setup precondition: original segment of an ECN-capable "
+                f"connection MUST carry ECT(0). Got ip_ecn={original.ip_ecn}."
+            ),
+        )
+
+        # Drive past the RTO to force a retransmit. Peer is silent.
+        retransmit_tx = self._advance(ms=session._rto_state.rto_ms + 10)
+        retransmit_segments = [
+            self._parse_tx(frame) for frame in retransmit_tx
+            if self._parse_tx(frame).payload
+        ]
+        self.assertGreaterEqual(
+            len(retransmit_segments),
+            1,
+            msg=(
+                "Setup precondition: at least one retransmit must fire "
+                "after the RTO. Got "
+                f"{len(retransmit_segments)} data segment(s) among "
+                f"{len(retransmit_tx)} TX frames."
+            ),
+        )
+        for retransmit in retransmit_segments:
+            self.assertEqual(
+                retransmit.payload,
+                b"hello, ecn!",
+                msg=(
+                    "Setup precondition: retransmit must carry the same "
+                    f"payload as the original. Got {retransmit.payload!r}."
+                ),
+            )
+            self.assertEqual(
+                retransmit.ip_ecn,
+                0,
+                msg=(
+                    "RFC 3168 §6.1.5: a retransmitted data packet MUST "
+                    "carry IP-ECN = Not-ECT (0). An ECT-marked retransmit "
+                    "ambiguates the congestion signal because a later "
+                    "drop of either copy hides the CE indication. Got "
+                    f"ip_ecn={retransmit.ip_ecn} (expected 0)."
+                ),
+            )

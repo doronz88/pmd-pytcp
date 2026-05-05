@@ -1770,8 +1770,17 @@ class TcpSession:
         # CE codepoint. §6.1.1 forbids ECT on SYNs and §6.1.6
         # advises against ECT on pure ACKs / FIN-only / RST,
         # so the marking is gated on the segment carrying a
-        # TCP payload.
-        ip__ecn = 2 if (self._ecn_enabled and data) else 0
+        # TCP payload. §6.1.5 also mandates "ECN-capable TCP
+        # implementations MUST NOT set either ECT codepoint
+        # (ECT(0) or ECT(1)) in the IP header for
+        # retransmitted data packets": a segment whose seq
+        # is strictly below the current SND.MAX (the high-
+        # water mark of seqs we've ever sent) is, by
+        # definition, a retransmit since SND.NXT was rewound
+        # to SND.UNA on the RTO/FR path. The 'lt32' modular
+        # comparison handles the 32-bit seq wrap correctly.
+        is_retransmit = bool(data) and lt32(seq, self._snd_max)
+        ip__ecn = 2 if (self._ecn_enabled and data and not is_retransmit) else 0
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,

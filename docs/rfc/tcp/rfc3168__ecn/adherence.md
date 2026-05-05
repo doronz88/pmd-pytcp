@@ -169,19 +169,16 @@ emitted as Not-ECT.
 > retransmission of a packet that was sent with the
 > ECT codepoint MUST NOT use the ECT codepoint."
 
-**Adherence:** partial. PyTCP's IP ECN codepoint
-emission at line 1500 unconditionally uses ECT(0)
-for any data segment (whether new or retransmitted)
-when `_ecn_enabled`. The §6.1.5 MUST NOT for
-retransmitted packets is NOT explicitly enforced.
-
-The deviation: a retransmit might still carry ECT(0)
-on the wire. This means routers can mark the
-retransmit with CE, and PyTCP would incorrectly
-treat the resulting ECE as a fresh congestion
-indication. The practical impact is bounded by the
-`_ecn_recovery_point` one-shot guard which prevents
-duplicate cwnd reductions within the same RTT.
+**Adherence:** met. PyTCP's IP ECN codepoint
+emission in `_transmit_packet` gates ECT(0) on
+`not is_retransmit`, where `is_retransmit = bool(data)
+and lt32(seq, self._snd_max)`. A segment whose seq is
+strictly below the high-water mark of seqs ever sent
+is, by definition, a retransmit because SND.NXT is
+rewound to SND.UNA on the RTO/FR path. The 32-bit
+modular comparison via `lt32` handles the seq wrap
+correctly. Retransmits go out with IP-ECN cleared to
+Not-ECT (0).
 
 ---
 
@@ -236,11 +233,14 @@ duplicate cwnd reductions within the same RTT.
 
 ### §6.1.5 Retransmits MUST NOT use ECT
 
-Not implemented; no test surface. A regression-guard
-test would assert that a retransmit carries
-`ip__ecn = 0` even when `_ecn_enabled` is True.
+- **Integration:**
+  `test__tcp__session__ecn.py::TestTcpSession__Ecn::test__ecn__retransmit_does_not_carry_ect`
+  drives an ECN-capable session past the RTO and
+  verifies the retransmitted segment carries
+  `ip_ecn = 0` (Not-ECT) while a fresh transmit on
+  the same connection carries `ip_ecn = 2` (ECT(0)).
 
-**Status:** n/a (gap; sketched test).
+**Status:** locked in.
 
 ### Test coverage summary
 
@@ -252,7 +252,7 @@ test would assert that a retransmit carries
 | §6.1.2 CWR on next data                         | locked in                                      |
 | §6.1.3 Receiver ECE feedback on CE              | locked in                                      |
 | §6.1.4 No ECT on non-data segments              | locked in                                      |
-| §6.1.5 Retransmits MUST NOT use ECT             | n/a (gap)                                      |
+| §6.1.5 Retransmits MUST NOT use ECT             | locked in (TestTcpSession__Ecn integration test) |
 
 ---
 
@@ -269,7 +269,7 @@ test would assert that a retransmit carries
 | §6.1.2 One-shot per RTT                           | met                                     |
 | §6.1.3 Receiver ECE feedback on CE                | met                                     |
 | §6.1.4 No ECT on pure ACKs / probes               | met                                     |
-| §6.1.5 Retransmits MUST NOT use ECT               | not met (gap)                           |
+| §6.1.5 Retransmits MUST NOT use ECT               | met (lt32(seq, snd_max) gate)           |
 
 PyTCP fully implements the core RFC 3168 ECN
 mechanism: bilateral negotiation on SYN, sender-side
@@ -281,11 +281,8 @@ middlebox-interop concern. Plus PyTCP supports
 RFC 9341 AccECN as an extension, audited under that
 RFC's record.
 
-The single substantive gap is §6.1.5: retransmits
-should not carry ECT, but PyTCP's `ip__ecn = 2 if
-(self._ecn_enabled and data) else 0` does not
-distinguish new transmissions from retransmits. The
-fix is localised — gate on a "is_retransmit" flag at
-the TX path. Practical impact bounded by the
-one-shot guard which prevents stacked cwnd
-reductions.
+The previously-open §6.1.5 gap is closed: PyTCP's
+`_transmit_packet` gates ECT(0) on `not is_retransmit`
+where `is_retransmit = bool(data) and lt32(seq,
+self._snd_max)`. Retransmits go out as Not-ECT,
+satisfying the §6.1.5 MUST NOT.
