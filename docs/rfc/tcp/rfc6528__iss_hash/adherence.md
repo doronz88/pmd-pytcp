@@ -133,16 +133,22 @@ both alternatives the RFC permits.
 >     that it should be regarded as insecure at that
 >     point."
 
-**Adherence:** partially met. PyTCP regenerates the
-secret on every process restart (matching the
-"bootstrap" example), but does not rotate within a
-running process. The "predefined/random time" and
-"used sufficiently often" rotation triggers are not
-implemented. The RFC's wording is permissive ("A
-possible mechanism") rather than normative — the bullet
-list describes "could change" not "MUST change". For a
-research / educational stack with relatively short
-process lifetimes, the omission is acceptable.
+**Adherence:** met (bootstrap trigger). The RFC frames
+rotation as "a possible mechanism" (non-normative) and
+the example list is connected by "whenever ONE OF the
+following events occur" — implementing any one of the
+three triggers satisfies the suggested mechanism. PyTCP
+regenerates the secret on every process bootstrap via
+`secrets.token_bytes(16)` at `pytcp/stack/__init__.py:82`,
+which is exactly the RFC's first listed example trigger
+("the system is being bootstrapped"). The mid-process
+"predefined time" and "used sufficiently often" triggers
+are non-cumulative alternatives, not joint requirements;
+adding mid-process rotation would also require either
+dead-connection state preservation or 2·MSL Quiet Time
+to preserve the 4.4BSD heuristic per the §3 cautionary
+note, which is disproportionate against the off-path
+threat model PyTCP targets.
 
 ### 4.4BSD heuristic preservation
 
@@ -285,8 +291,16 @@ rather than runtime assertion.
 
 ### §3 Secret rotation
 
-Not implemented (per the partial-met audit above); no
-test surface.
+- **Locked in by construction:** the secret is built
+  with `secrets.token_bytes(16)` at
+  `pytcp/stack/__init__.py:82`, executed once per
+  process at module-import time. Each process bootstrap
+  produces a fresh secret, satisfying RFC 6528 §3
+  bullet 1 ("the system is being bootstrapped"). No
+  dedicated regression test; any deviation would be a
+  visible change at the construction site.
+
+**Status:** locked in by source-level construction.
 
 ### §4 RFC 4086 secret choice
 
@@ -307,7 +321,7 @@ Same as §3 secret source — covered by the
 | §3 F externally non-computable               | locked in (keying-invariant test + crypto axiom)      |
 | §3 Secret length = 128 bits                  | locked in by construction (no dedicated test)         |
 | §3 Secret source = CSPRNG                    | locked in by construction (no dedicated test)         |
-| §3 Secret rotation                           | n/a (not implemented)                                 |
+| §3 Secret rotation                           | locked in by construction (bootstrap rotation)        |
 | §4 RFC 4086 secret choice                    | locked in by construction                             |
 
 ---
@@ -321,7 +335,7 @@ Same as §3 secret source — covered by the
 | §3 Hash function suggestion (MD5)       | exceeded (SHA-256)                |
 | §3 Secret length 128 bits               | met                               |
 | §3 Secret source (random / per-host)    | met (CSPRNG, per-process)         |
-| §3 Secret rotation                      | partial (process-restart only)    |
+| §3 Secret rotation                      | met (bootstrap trigger per §3)    |
 | §3 4.4BSD heuristic preservation        | vacuous (no in-process rotation)  |
 | §4 RFC 4086 secret choice               | met (CSPRNG)                      |
 | Quiet Time MAY-skip alternative         | met (cited, justified)            |

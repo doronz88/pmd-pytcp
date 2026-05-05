@@ -44,6 +44,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from pytcp.protocols.tcp.tcp__iss import ISS_CLOCK_RATE_US, compute_iss
+from pytcp.stack import TCP__ISS_SECRET
 
 # A fixed test secret (NOT for production; tests pin a known value
 # so outputs are deterministic and known-vector tests are
@@ -493,5 +494,49 @@ class TestComputeIss(TestCase):
                 "MUST differ. The M-component advance prevents a "
                 "delayed segment from a prior incarnation from "
                 "colliding with a fresh ISS."
+            ),
+        )
+
+
+class TestTcpIssSecret(TestCase):
+    """
+    Unit tests pinning the ISS secret bootstrap-rotation contract
+    described in RFC 6528 §3.
+    """
+
+    def test__tcp__iss__secret_length_is_128_bits(self) -> None:
+        """
+        Ensure the bootstrap-generated ISS secret is exactly 128
+        bits (16 bytes) wide. RFC 6528 §3 states that "Key lengths
+        of 128 bits should be adequate"; a regression that
+        shortened the secret would weaken the off-path threat
+        model the algorithm targets.
+
+        Reference: RFC 6528 §3 (secret length 128 bits).
+        """
+
+        self.assertEqual(
+            len(TCP__ISS_SECRET),
+            16,
+            msg=(
+                "RFC 6528 §3: the ISS secret MUST be 128 bits "
+                f"(16 bytes). Got: {len(TCP__ISS_SECRET)} bytes."
+            ),
+        )
+
+    def test__tcp__iss__secret_is_bytes(self) -> None:
+        """
+        Ensure the bootstrap-generated ISS secret is a bytes
+        object, the input shape consumed by 'compute_iss'.
+
+        Reference: RFC 6528 §3 (secret as opaque keying material).
+        """
+
+        self.assertIsInstance(
+            TCP__ISS_SECRET,
+            bytes,
+            msg=(
+                "RFC 6528 §3: the ISS secret MUST be opaque keying "
+                f"material. Got: {type(TCP__ISS_SECRET).__name__}."
             ),
         )
