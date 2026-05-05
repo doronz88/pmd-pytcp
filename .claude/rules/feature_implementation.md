@@ -53,18 +53,69 @@ tests that pin the spec requirement:
    `Reference: RFC X §Y (desc).` line per cited clause.
 4. Run the §7.2 audit script before staging.
 
-Tests live under:
+### 2.1 Both layers, where applicable
 
-| Source location              | Test path                                                        |
-|------------------------------|------------------------------------------------------------------|
-| `net_proto/protocols/<p>/`   | `net_proto/tests/unit/protocols/<p>/`                            |
-| `pytcp/protocols/tcp/*.py`   | `pytcp/tests/unit/protocols/tcp/` (unit) and `…/integration/…/` |
-| `pytcp/socket/*.py`          | `pytcp/tests/unit/socket/`                                       |
+PyTCP has two distinct test layers; new features need
+coverage at **every layer that applies**, not just one:
 
-Unit tests cover pure-function logic and per-helper
-edges; integration tests drive the FSM end-to-end via
-the `TcpSessionTestCase` harness. Both kinds usually
-exist for non-trivial features.
+| Layer       | Path                                                     | What it covers                                                                                |
+|-------------|----------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| Unit        | `<pkg>/tests/unit/...`                                   | Pure-function helpers, dataclass invariants, parser/assembler wire format, header asserts     |
+| Integration | `pytcp/tests/integration/...` (driven by `TcpSessionTestCase`) | FSM transitions, wire-level interactions across multiple segments, timer-driven behaviour, socket-API plumbing |
+
+Heuristic for which layer(s) apply:
+
+- **Pure helper / formula / dataclass.** Unit tests
+  alone cover it (e.g. `tcp__cwnd.py` formulas, RFC 6298
+  RTO update math, modular sequence arithmetic).
+- **Wire-format change** (new option, header field
+  meaning).  Unit tests on the parser/assembler **plus**
+  integration tests verifying the option appears on the
+  right outbound segments and is consumed correctly on
+  inbound.
+- **FSM transition / session-state change** (new
+  syscall path, RFC clause that gates state changes).
+  Integration tests are mandatory; unit tests only if
+  the change peels into a pure helper.
+- **Cross-RFC interaction** (RFC X behaviour gates on
+  RFC Y state). Integration tests at the interaction
+  point.
+- **Socket-API plumbing** (`setsockopt`, BSD facade).
+  Unit tests on the `TcpSocket` plumbing **plus**
+  integration tests verifying propagation into
+  `TcpSession`.
+
+For TCP work specifically, the bias is toward
+integration tests — protocol behaviour is
+fundamentally about wire-level interactions and FSM
+state, and unit-only coverage of session-touching
+features routinely misses real bugs. When in doubt,
+write the integration test; add a unit test on top
+if a helper extraction emerges.
+
+A feature commit that ships only unit tests for a
+protocol-level behaviour is incomplete. Reviewers
+should ask "what's the integration test?" — if the
+answer is "n/a, this is pure helper math", that's a
+valid answer; if the answer is "I forgot", land the
+integration test before claiming done.
+
+### 2.2 Test paths
+
+| Source location                | Test path                                                                                |
+|--------------------------------|------------------------------------------------------------------------------------------|
+| `net_proto/protocols/<p>/*`    | `net_proto/tests/unit/protocols/<p>/`                                                    |
+| `net_proto/lib/*`              | `net_proto/tests/unit/lib/`                                                              |
+| `pytcp/protocols/tcp/*.py`     | `pytcp/tests/unit/protocols/tcp/` (unit) **and** `pytcp/tests/integration/protocols/tcp/` (integration) |
+| `pytcp/socket/*.py`            | `pytcp/tests/unit/socket/` (unit) and integration via `TcpSessionTestCase`               |
+| `pytcp/lib/*`                  | `pytcp/tests/unit/lib/`                                                                  |
+| `pytcp/stack/packet_handler/*` | `pytcp/tests/integration/...` (RX/TX behaviour against a mock TAP)                       |
+
+Test docstring conventions (`Ensure …` opener,
+trailing `Reference:` line, no inline RFC citations,
+no `[FLAGS BUG]` markers) apply at **both** layers
+identically. The §7.2 audit script runs against any
+test file you write or modify, regardless of layer.
 
 ## 3. Implementation
 
