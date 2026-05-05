@@ -503,9 +503,25 @@ implemented; PyTCP silently drops.
 
 ### §5.5 Outdated timestamps mitigation
 
-Not implemented; no test surface.
+When the connection has been idle longer than the
+24-day threshold (`TS_RECENT_OUTDATED_THRESHOLD_MS` =
+24 * 86400 * 1000 ms), an inbound segment whose TSval
+would otherwise fail strict PAWS is accepted and
+TS.Recent is refreshed - per the §5.5 advisory to
+prevent a recovering idle connection from freezing
+until the peer's TS clock wraps its sign bit again.
+The local-clock 'last update' timestamp is captured
+at every TS.Recent write site (active-open SYN+ACK,
+passive-open SYN, post-handshake `_check_paws_and_
+update_ts_recent`).
 
-**Status:** n/a (out-of-scope).
+Pinned by two integration tests in
+`test__tcp__session__timestamps.py`:
+`test__timestamps__outdated__paws_invalidates_ts_
+recent_after_24_day_idle` and the within-window
+regression guard.
+
+**Status:** locked in.
 
 ### Test coverage summary
 
@@ -525,7 +541,7 @@ Not implemented; no test surface.
 | §5.2 PAWS basic                                 | locked in                                      |
 | §5.2 RST not subject to PAWS                    | locked in (with TIME-WAIT deviation)           |
 | §5.3 R1 ACK reply on PAWS drop                  | n/a (gap)                                      |
-| §5.5 Outdated timestamps mitigation             | n/a (out-of-scope)                             |
+| §5.5 Outdated timestamps mitigation             | locked in                                      |
 
 ---
 
@@ -549,7 +565,7 @@ Not implemented; no test surface.
 | §5.2 PAWS                                       | met                                     |
 | §5.2 RST not subject to PAWS                    | met (synchronized states)               |
 | §5.3 R1 ACK reply on PAWS drop                  | not met (SHOULD)                        |
-| §5.5 Outdated timestamps mitigation             | not implemented                         |
+| §5.5 Outdated timestamps mitigation             | met                                     |
 
 PyTCP fully implements the wire-level RFC 7323 option
 formats (WSCALE, Timestamps) and the core
@@ -565,8 +581,11 @@ mechanisms. Four SHOULD-level deviations:
 4. §5.3 R1 PAWS-drop should send ACK reply; PyTCP
    silently drops.
 
-§5.5 (outdated timestamps after >24-day idle) is not
-implemented; out-of-scope for typical use cases.
+§5.5 (outdated timestamps after >24-day idle) is shipped:
+the strict PAWS check is bypassed when the connection has
+been idle longer than the 24-day threshold so a recovered
+idle connection does not freeze until the peer's TS clock
+wraps its sign bit.
 
 Overall RFC 7323 conformance is solid for the modern
 high-performance scenarios the RFC targets; the

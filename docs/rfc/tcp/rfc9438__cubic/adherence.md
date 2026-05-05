@@ -193,14 +193,17 @@ reset post-RTO so the next CA stage starts fresh.
 > retransmission was spurious, it SHOULD restore
 > cwnd, ssthresh, W_max..."
 
-**Adherence:** PyTCP has F-RTO support that restores
-cwnd / ssthresh on spurious-RTO detection. The
-CUBIC-specific state (`_cubic_w_max`, K, epoch_start)
-is NOT explicitly restored. This is a §4.9
-SHOULD-level deviation. Practical impact: a
-spurious RTO leaves the CUBIC curve anchored at the
-spurious-event W_max, slightly reducing the post-
-recovery growth rate.
+**Adherence:** met for the §4.9.1 spurious-timeout
+case. PyTCP's F-RTO substrate snapshots the CUBIC
+state (`_cubic_w_max`, K, epoch_start, w_est)
+alongside cwnd/ssthresh in
+`_retransmit_packet_timeout`, and restores all four
+in `_process_ack_packet` when the first post-RTO ACK
+covers the snapshotted SND.MAX (the spurious-RTO
+signature). The §4.9.2 DSACK-based spurious-fast-
+retransmit detection + restore is a separate code
+path with a distinct trigger and snapshot site;
+left as future work.
 
 ### §4.10 Slow Start
 
@@ -301,7 +304,7 @@ not implemented; no test surface.
 | §4.6 Multiplicative Decrease                    | locked in                                      |
 | §4.7 Fast Convergence                           | locked in                                      |
 | §4.8 Timeout                                    | locked in                                      |
-| §4.9 Spurious Congestion (state restore)        | n/a (gap)                                      |
+| §4.9.1 Spurious-timeout state restore            | locked in                                      |
 | §4.10 Slow Start                                | locked in                                      |
 
 ---
@@ -320,7 +323,8 @@ not implemented; no test surface.
 | §4.6 Use cwnd vs flight_size                    | met (with required safeguard)           |
 | §4.7 Fast Convergence                           | met                                     |
 | §4.8 Timeout                                    | met                                     |
-| §4.9 Spurious Congestion state restore (SHOULD) | not implemented                         |
+| §4.9.1 Spurious-timeout state restore           | met                                     |
+| §4.9.2 Spurious-fast-retransmit state restore   | not implemented                         |
 | §4.10 Slow Start                                | met                                     |
 
 PyTCP fully implements RFC 9438 CUBIC's §4 algorithm
@@ -332,12 +336,14 @@ Two minor deviations:
    slightly more conservative target. Permitted by
    the RFC's implementation latitude.
 
-2. **§4.9 spurious-congestion state restore**: F-RTO
-   restores cwnd / ssthresh but not CUBIC-specific
-   state (W_max, K, epoch_start). Closing this gap
-   would require snapshotting the CUBIC state on RTO
-   and reverting it when F-RTO declares the RTO
-   spurious. Localised fix (~10-15 LOC).
+2. **§4.9.2 spurious-fast-retransmit restore**:
+   the §4.9.1 spurious-timeout path is shipped (F-RTO
+   now snapshots and restores the full CUBIC state
+   on spurious-RTO detection). The §4.9.2 DSACK-
+   based fast-retransmit-spurious detection + restore
+   is left as future work; it requires a distinct
+   trigger (DSACK or Eifel-detection) and a separate
+   snapshot site at fast-retransmit entry.
 
 CUBIC is on by default per the recent default flip;
 RENO is opt-in via setsockopt(IPPROTO_TCP,

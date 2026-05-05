@@ -533,11 +533,11 @@ not exercised).
 | §3.1.5 mode-mode invariants                     | met implicitly                          |
 | §3.2.1 r.cep / r.ceb initial values             | met                                     |
 | §3.2.1 r.e0b / r.e1b initial values             | met                                     |
-| §3.2.1 sender-side s.cep / s.e0b / s.e1b        | not implemented                         |
+| §3.2.1 sender-side s.cep / s.e0b / s.e1b        | met                                     |
 | §3.2.2 ACE encoding on non-SYN                  | met                                     |
 | §3.2.2.1 Table-3 handshake encoding (client)    | met                                     |
 | §3.2.2.1 Table-4 inference (server)             | met                                     |
-| §3.2.2.3 IP-ECN mangling test                   | not implemented                         |
+| §3.2.2.3 IP-ECN mangling test                   | met                                     |
 | §3.2.2.5 cycle / wrap safety (ACE fallback)     | met (option-stripped fallback)          |
 | §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11)                    |
 | §3.2.3 AccECN1 option (Kind 174, Order 1)       | met (full length 11)                    |
