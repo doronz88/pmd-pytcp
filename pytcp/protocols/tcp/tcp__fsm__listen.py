@@ -270,7 +270,18 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             #     accept any SYN-piggybacked data; otherwise
             #     discard it (the §4.1.2 amplification-attack
             #     defence).
-            tfo_enabled = listen_socket._tcp_fastopen_qlen > 0
+            # RFC 7413 §4.2 PendingFastOpenRequests gate: when
+            # the in-flight TFO-accepted SYN-RCVD count meets
+            # or exceeds the configured 'fastopen_qlen' limit,
+            # disable TFO acceptance for this incoming SYN so
+            # the client falls back to plain 3WHS. The counter
+            # is incremented below on TFO acceptance and
+            # decremented from '_change_state' on transition
+            # out of SYN_RCVD.
+            tfo_enabled = (
+                listen_socket._tcp_fastopen_qlen > 0
+                and stack.tcp__fastopen_pending_count < listen_socket._tcp_fastopen_qlen
+            )
             tfo_cookie_valid = False
             if tfo_enabled and packet_rx_md.tcp__fastopen_cookie is not None:
                 from pytcp.protocols.tcp.tcp__fastopen import generate_cookie, validate_cookie
@@ -322,6 +333,13 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                     f"[{session}] - Queued {len(syn_data)} bytes "
                     "of SYN-piggybacked data for delivery after ESTABLISHED",
                 )
+            # RFC 7413 §4.2: increment the PendingFastOpenRequests
+            # count when this SYN is accepted via the TFO fast
+            # path (cookie validated). The count is decremented
+            # in '_change_state' on transition out of SYN_RCVD.
+            if tfo_cookie_valid:
+                stack.tcp__fastopen_pending_count += 1
+                session._fastopen_pending_counted = True
             # Change state to SYN_RCVD; the actual SYN+ACK packet
             # is emitted from that state on the next timer tick by
             # '_transmit_data', which detects 'SND.NXT == SND.INI'

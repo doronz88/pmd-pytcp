@@ -111,6 +111,26 @@ tcp__fastopen_cookies: "dict[Ip4Address | Ip6Address, bytes]" = {}
 # path deterministically.
 TCP__FASTOPEN_CACHE_MAX_SIZE: int = 1024
 
+# RFC 7413 §4.1.3.1 negative-response cache: peers we have
+# seen TFO fail with (handshake completed via 3WHS rather
+# than the TFO fast path, indicating a middlebox or peer
+# that drops TFO-bearing SYNs). Subsequent active-open
+# attempts to a peer in this set bypass the TFO option
+# entirely so a known-bad path is not exercised on every
+# new connection. The cache is per-process and stable for
+# the process lifetime; restarts purge it.
+tcp__fastopen_negative: "set[Ip4Address | Ip6Address]" = set()
+
+# RFC 7413 §4.2 PendingFastOpenRequests: count of TFO-
+# accepted active connections in SYN-RCVD state on the
+# server side. When the count meets or exceeds the
+# 'fastopen_qlen' limit configured on a listening socket,
+# the listen handler refuses TFO acceptance for the
+# incoming SYN (returns the empty-cookie cookie response
+# so the client falls back to 3WHS) until the in-flight
+# TFO connections drain to ESTABLISHED or CLOSED.
+tcp__fastopen_pending_count: int = 0
+
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500
 INTERFACE__TUN__MTU = 1500

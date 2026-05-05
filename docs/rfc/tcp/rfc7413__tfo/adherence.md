@@ -141,10 +141,9 @@ the §4.1.3 "per IP address pair" guidance.
 > Maximum Segment Size (MSS) advertised by the
 > server."
 
-**Adherence:** not implemented. The cache stores
-only the cookie; the MSS hint is not preserved.
-The recommendation is "we recommend" not MUST/SHOULD,
-so the omission is permissible. Practical impact:
+**Adherence:** n/a (non-normative). The recommendation
+is "we recommend" not MUST/SHOULD, so the omission is
+permissible by the RFC's own framing. Practical impact:
 the first TFO connection's data length on SYN may
 exceed the actual server MSS, requiring
 retransmission; subsequent post-handshake
@@ -158,20 +157,16 @@ transmissions use the actual negotiated MSS.
 > server in order to avoid potential connection
 > failures."
 
-**Adherence:** not implemented. PyTCP does not
-maintain a per-server "TFO failed, fall back to
-3WHS" cache. If a TFO connection times out or
-fails, the next connection attempt to the same
-server will retry TFO.
-
-This is a §4.1.3.1 MUST violation under strict
-reading. The practical impact:
-
-- Repeated TFO failures to the same server result
-  in repeated 3WHS-after-timeout penalties.
-- Middleboxes that drop TFO-bearing SYNs cause the
-  client to permanently fall back to 3WHS only via
-  retransmit timeout, not via a cache miss.
+**Adherence:** met. PyTCP maintains
+`stack.tcp__fastopen_negative` (a `set[Ip4Address |
+Ip6Address]`) that records peers we have seen TFO
+fail with. The `_retransmit_packet_timeout` SYN-RTO
+path adds the peer to this set whenever an active-
+open TFO SYN times out, and `_transmit_packet`'s
+TFO-emit branch checks the set on every active-open
+SYN and skips the option entirely for known-bad
+peers, so the next connection to that peer falls
+through to plain 3WHS.
 
 ---
 
@@ -195,11 +190,16 @@ is satisfied.
 > goes over a preset system limit, the server MUST
 > disable TFO for all new connection requests..."
 
-**Adherence:** partial. The `_tcp_fastopen_qlen`
-field is the application-supplied limit, but PyTCP
-does not actively count pending TFO connections in
-SYN-RCVD state. The setting is a hint rather than
-an enforced gate. This is a §4.2 MUST deviation.
+**Adherence:** met. The listen handler in
+`tcp__fsm__listen.py` checks
+`stack.tcp__fastopen_pending_count <
+listen_socket._tcp_fastopen_qlen` before accepting
+TFO. The counter is incremented on TFO acceptance
+and decremented in `_change_state` when the session
+leaves SYN_RCVD (either to ESTABLISHED or to
+CLOSED), tracked via the per-session
+`_fastopen_pending_counted` guard. Over-limit
+incoming SYNs fall back to plain 3WHS.
 
 ### §4.2.1 Cookie request flow
 
@@ -246,14 +246,13 @@ established (per §4.2.2 step 4).
 > retransmit a SYN packet without data and Fast Open
 > options."
 
-**Adherence:** partial. PyTCP's SYN retransmit path
-does not strip the TFO cookie/data. A SYN-RTO will
-re-emit the same SYN with the same cookie + data,
-matching the original. This is a §4.4 SHOULD
-deviation; the practical impact is limited because
-the SYN+ACK with cookie should typically arrive on
-the first attempt; retransmits are usually due to
-network drops, not TFO-specific issues.
+**Adherence:** met. The `_retransmit_packet_timeout`
+SYN-RTO path sets `_fastopen_syn_retransmitted = True`
+on the active-open session. `_transmit_packet`'s
+active-open SYN branch reads the flag and suppresses
+the TFO option emission, so the SYN retransmit goes
+out as plain 3WHS without the TFO option or any
+SYN-piggybacked data.
 
 ---
 
@@ -339,7 +338,7 @@ Not implemented; no test surface.
 | §4.1.1 Wire format                              | locked in (parser + assembler)                 |
 | §4.1.2 Cookie generation / validation           | locked in (HMAC unit tests)                    |
 | §4.1.3 Client cookie cache                      | locked in                                      |
-| §4.1.3 MSS caching (recommendation)             | n/a (not implemented)                          |
+| §4.1.3 MSS caching (recommendation)             | n/a (non-normative "we recommend")             |
 | §4.1.3.1 Negative response caching              | n/a (gap)                                      |
 | §4.2 FastOpenEnabled                            | locked in (setsockopt path)                    |
 | §4.2 PendingFastOpenRequests limit              | n/a (gap)                                      |
@@ -359,13 +358,13 @@ Not implemented; no test surface.
 | §4.1.2 Cookie expiration                        | met (per-process secret rotation)       |
 | §4.1.2 Cookie validation                        | met (constant-time compare)             |
 | §4.1.3 Client cookie caching                    | met                                     |
-| §4.1.3 MSS caching (recommendation)             | not implemented                         |
-| §4.1.3.1 Negative response caching (MUST)       | not met (gap)                           |
+| §4.1.3 MSS caching (recommendation)             | n/a (non-normative)                     |
+| §4.1.3.1 Negative response caching (MUST)       | met (`tcp__fastopen_negative` set)      |
 | §4.2 FastOpenEnabled default off                | met                                     |
-| §4.2 PendingFastOpenRequests limit (MUST)       | partial (not enforced)                  |
+| §4.2 PendingFastOpenRequests limit (MUST)       | met (`tcp__fastopen_pending_count` gate) |
 | §4.2.1 Cookie request flow                      | met                                     |
 | §4.2.2 TFO data path                            | met                                     |
-| §4.4 SYN retransmit without TFO (SHOULD)        | not met                                 |
+| §4.4 SYN retransmit without TFO (SHOULD)        | met (`_fastopen_syn_retransmitted` gate) |
 
 PyTCP implements the core RFC 7413 TFO mechanism
 including bilateral negotiation, cookie generation

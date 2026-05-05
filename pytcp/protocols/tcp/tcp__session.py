@@ -314,6 +314,23 @@ class TcpSession:
         # retransmit does not re-issue a stale cookie.
         self._fastopen_cookie_to_emit: bytes | None = None
 
+        # RFC 7413 §4.2 PendingFastOpenRequests bookkeeping: True
+        # iff this session was accepted via TFO and counted into
+        # 'stack.tcp__fastopen_pending_count'. Cleared by the
+        # exit hook in '_change_state' when this session leaves
+        # SYN_RCVD, with a matching counter decrement so the
+        # global gauge tracks live TFO-accepted handshakes only.
+        self._fastopen_pending_counted: bool = False
+
+        # RFC 7413 §4.4 SYN retransmit without TFO. When the
+        # SYN timer fires on an active-open TFO connection,
+        # the next attempt MUST drop the TFO option and any
+        # SYN-data so the second attempt is a plain 3WHS. The
+        # flag is set by the SYN-RTO path the first time the
+        # active-open SYN re-fires; '_transmit_packet' reads
+        # it to suppress the TFO option emission.
+        self._fastopen_syn_retransmitted: bool = False
+
         # RFC 7413 §3.1 Fast Open client-side opt-out flag.
         # Defaults to True so active-open SYNs carry the TFO
         # option in the cookie-request form (empty cookie),
@@ -1297,6 +1314,17 @@ class TcpSession:
         # any transition out of SYN_RCVD.
         if old_state is FsmState.SYN_RCVD and state is not FsmState.SYN_RCVD:
             self._fastopen_cookie_to_emit = None
+            # RFC 7413 §4.2: decrement the global pending-TFO
+            # counter when this session leaves SYN_RCVD (either
+            # the handshake completes -> ESTABLISHED, or it
+            # aborts -> CLOSED). The '_fastopen_pending_counted'
+            # guard ensures we only decrement for sessions that
+            # were actually counted at TFO acceptance time.
+            if self._fastopen_pending_counted:
+                stack.tcp__fastopen_pending_count = max(
+                    0, stack.tcp__fastopen_pending_count - 1
+                )
+                self._fastopen_pending_counted = False
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
@@ -1603,12 +1631,23 @@ class TcpSession:
         if flag_syn and flag_ack and self._fastopen_cookie_to_emit is not None:
             tcp__fastopen_cookie = self._fastopen_cookie_to_emit
         elif flag_syn and not flag_ack and self._advertise_fastopen:
-            # Active-open SYN: emit TFO with the cached
-            # cookie for this peer if present, else the
-            # empty cookie-request form. Cookie cache is
-            # populated by the SYN_SENT handler when peer's
-            # SYN+ACK carries a TFO cookie.
-            tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
+            # RFC 7413 §4.1.3.1 negative-response cache
+            # bypass: if this peer has previously failed TFO,
+            # do NOT include the TFO option on the active-open
+            # SYN — fall back to a plain 3WHS so the known-bad
+            # path is not exercised. RFC 7413 §4.4 SYN-
+            # retransmit-without-TFO bypass: if this is a
+            # retransmit of an earlier SYN, drop the TFO option
+            # so the second attempt is plain 3WHS. Otherwise
+            # emit TFO with the cached cookie if known, else
+            # the empty cookie-request form.
+            if (
+                self._remote_ip_address in stack.tcp__fastopen_negative
+                or self._fastopen_syn_retransmitted
+            ):
+                tcp__fastopen_cookie = None
+            else:
+                tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
 
         # RFC 9768 §3.2.3 receiver-side AccECN option emission.
         # On every outbound non-SYN segment of an AccECN-
@@ -2905,6 +2944,20 @@ class TcpSession:
         # see the count regardless of evaluation order.
         if self._state in {FsmState.SYN_SENT, FsmState.SYN_RCVD}:
             self._syn_retransmit_count += 1
+            # RFC 7413 §4.4: SYN retransmits MUST NOT carry the
+            # TFO option or SYN-data. Mark the connection so
+            # '_transmit_packet' suppresses TFO emission on the
+            # retransmit. Set in SYN_SENT only; the peer side
+            # (SYN_RCVD) doesn't replay TFO on its SYN+ACK
+            # retransmit by construction.
+            if self._state is FsmState.SYN_SENT and self._advertise_fastopen:
+                self._fastopen_syn_retransmitted = True
+                # RFC 7413 §4.1.3.1: a SYN-RTO during TFO
+                # active-open is a strong signal that the path
+                # drops TFO-bearing SYNs. Add the peer to the
+                # negative-response cache so future active-
+                # opens to the same peer skip TFO entirely.
+                stack.tcp__fastopen_negative.add(self._remote_ip_address)
         stack.timer.register_timer(
             name=f"{self}-retransmit",
             timeout=self._rto_state.rto_ms,
