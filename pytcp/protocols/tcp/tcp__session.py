@@ -428,6 +428,21 @@ class TcpSession:
         self._accecn_s_cep: int = 5
         self._accecn_s_disabled: bool = False
 
+        # RFC 9768 §3.2.1 sender-side per-codepoint byte
+        # counters. 's.e0b' / 's.e1b' track the peer's r.e0b /
+        # r.e1b values as carried in the AccECN option's byte-
+        # count slots; both initialise to 1 per §3.2.1 to
+        # match the receiver-side initial values, so the first
+        # delta computed against an inbound option is computed
+        # off the correct baseline. PyTCP does not currently
+        # consume these counters for cwnd response (only the
+        # CE counter drives §3.4 reduction), but tracking them
+        # is the §3.2.1 mandate and provides the substrate for
+        # future L4S/DCTCP-style fine-grained congestion
+        # control.
+        self._accecn_s_ect0_b: int = 1
+        self._accecn_s_ect1_b: int = 1
+
         # RFC 9768 §3.4 sender-side r.CE tracker. Holds the
         # last peer-reported r.CE byte counter seen in an
         # inbound AccECN option. The 'tcp_fsm' wrapper compares
@@ -3799,6 +3814,18 @@ class TcpSession:
                 and packet_rx_md.tcp__accecn0_counters[1] is not None
             ):
                 self._accecn_s_ce_b = packet_rx_md.tcp__accecn0_counters[1]
+            # RFC 9768 §3.2.1 sender-side ECT(0) / ECT(1) byte
+            # counter trackers. Updated alongside s.ce_b so the
+            # sender's view stays synchronised with the
+            # receiver's r.e0b / r.e1b. Skipped per-slot when
+            # the inbound option's abbreviated form omitted
+            # the counter (None) - per §3.2.3 'unchanged from
+            # prior emission' semantics.
+            if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
+                if packet_rx_md.tcp__accecn0_counters[0] is not None:
+                    self._accecn_s_ect0_b = packet_rx_md.tcp__accecn0_counters[0]
+                if packet_rx_md.tcp__accecn0_counters[2] is not None:
+                    self._accecn_s_ect1_b = packet_rx_md.tcp__accecn0_counters[2]
             # RFC 9768 §3.2.2.5 ACE-based fallback. When an
             # AccECN-mode inbound ACK arrives WITHOUT the
             # AccECN option (e.g. a middlebox stripped it),

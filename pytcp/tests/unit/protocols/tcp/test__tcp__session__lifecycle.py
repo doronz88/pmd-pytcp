@@ -406,3 +406,38 @@ class TestTcpSessionStr(_TcpSessionFixture):
             "10.0.0.1/8080/10.0.0.2/44444",
             msg="TcpSession.__str__ must produce the four-field slash-separated identifier.",
         )
+
+    def test__tcp_session__init_accecn_s_ect0_b_starts_at_1(self) -> None:
+        """
+        Ensure the sender-side 's.e0b' (ECT(0) byte) counter
+        initialises to 1 per the spec mandated initial values;
+        the non-zero seed lets the sender's tracker match the
+        receiver's r.e0b initial value so the first inbound
+        AccECN option's per-counter delta is computed against
+        the correct baseline.
+
+        Reference: RFC 9768 §3.2.1 (Data Sender s.e0b initial value 1).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_s_ect0_b,
+            1,
+            msg="TcpSession._accecn_s_ect0_b must initialise to 1 (RFC 9768 §3.2.1).",
+        )
+
+    def test__tcp_session__init_accecn_s_ect1_b_starts_at_1(self) -> None:
+        """
+        Ensure the sender-side 's.e1b' (ECT(1) byte) counter
+        initialises to 1 for the same baseline-matching reason
+        as 's.e0b'.
+
+        Reference: RFC 9768 §3.2.1 (Data Sender s.e1b initial value 1).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_s_ect1_b,
+            1,
+            msg="TcpSession._accecn_s_ect1_b must initialise to 1 (RFC 9768 §3.2.1).",
+        )
