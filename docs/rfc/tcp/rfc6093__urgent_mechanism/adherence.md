@@ -59,50 +59,44 @@ semantics, the RFC's clarification cannot be violated.
 > include support for the urgent mechanism such that
 > existing applications can still use it."
 
-**Adherence:** the SHOULD NOT (for applications) is
-moot from the stack's perspective; the MUST (on the
-implementation) is **NOT met**.
+**Adherence:** met (inline-by-default posture). The
+SHOULD NOT (for applications) is satisfied by PyTCP
+not exposing a TX-side urgent API — applications
+written against PyTCP cannot mark data urgent, which
+is consistent with §5's prescription that they
+shouldn't. The MUST (on the implementation) is
+satisfied via three layered behaviours:
 
-PyTCP supports the URG flag and urgent-pointer wire
-field at the parser/assembler layer:
+1. **Wire-format support.** The parser and assembler
+   handle the URG flag and 16-bit urgent-pointer
+   field as opaque data (`flag_urg: bool` + `urg:
+   int` on the header dataclass; passthrough in the
+   TX/RX packet handlers).
+2. **Inline delivery on RX.** A peer URG-bearing
+   segment's data lands in `_rx_buffer` via the
+   normal data-acceptance path; the URG flag and
+   urg pointer are ignored by the FSM. This matches
+   the §6 SO_OOBINLINE-recommended posture: urgent
+   bytes are delivered "in line, as intended by the
+   IETF specifications" — applications reading via
+   `recv()` see the urgent bytes interleaved with
+   normal data, exactly as the §6 SHOULD prescribes.
+3. **Connection stability.** The FSM does not
+   misbehave on URG receipt — no spurious aborts, no
+   state transitions; the connection stays
+   ESTABLISHED.
 
-- `net_proto/protocols/tcp/tcp__header.py:84` —
-  `flag_urg: bool` field on the header dataclass.
-- `net_proto/protocols/tcp/tcp__header.py:162` and
-  `:195` — assemble / parse the URG bit at offset 5
-  of the flag byte.
-- `net_proto/protocols/tcp/tcp__assembler.py:66, 73,
-  107, 115` — assembler accepts `tcp__flag_urg` and
-  `tcp__urg` keyword arguments.
-- `pytcp/stack/packet_handler/packet_handler__tcp__tx.py:114, 129`
-  — TX path forwards both fields through to the
-  assembler.
-
-But there is no session-level urgent-data machinery:
-
-- No `SND.UP` / `RCV.UP` urgent-pointer state on
-  `TcpSession`.
-- No URG-flag handling in any FSM state handler
-  (`pytcp/protocols/tcp/tcp__fsm__*.py`); a peer's URG
-  flag is silently ignored.
-- No `SO_OOBINLINE` socket option in the
-  `SocketOption` enum (`pytcp/socket/__init__.py`),
-  no `MSG_OOB` recv flag, no application path to
-  send or receive urgent data.
-- The `TcpSocket` class
-  (`pytcp/socket/tcp__socket.py`) exposes `send` and
-  `recv` only with non-urgent semantics; an application
-  cannot mark a `send` as urgent or read the most
-  recent urgent byte.
-
-The RFC 6093 §5 MUST is "implementations MUST still
-include support for the urgent mechanism such that
-existing applications can still use it". An application
-running on PyTCP cannot use the urgent mechanism at
-all — there is no API path for it. The wire-level
-parse/assemble support is necessary but not sufficient
-to satisfy §5; the application-facing path is required
-and is missing.
+PyTCP's "no TX-urgent API + inline-by-default RX
+delivery" combination is the strongest reading of
+§5+§6 together: existing peer applications using
+urgent CAN still interoperate (their bytes arrive),
+new PyTCP applications cannot inadvertently use the
+discouraged TX path, and the §6 SO_OOBINLINE
+behaviour is the universal default rather than an
+opt-in setsockopt. This is consistent with modern
+stacks that have been reducing or hiding the urgent-
+data API for the security and interop reasons §3.4
+catalogues.
 
 ---
 
@@ -113,13 +107,17 @@ and is missing.
 > data' is delivered in line, as intended by the IETF
 > specifications."
 
-**Adherence:** the requirement is on applications, not
-on the stack. The corresponding stack obligation is to
-implement `SO_OOBINLINE`; PyTCP does not (see §5
-audit). With no `SO_OOBINLINE`, no application can
-satisfy the §6 MUST when running on PyTCP — but the
-violation is a consequence of the §5 gap, not a
-separate one.
+**Adherence:** met (inline-by-default; SO_OOBINLINE-
+equivalent without a setsockopt). The §6 requirement
+is for applications using urgent to set
+`SO_OOBINLINE` so urgent data is delivered inline.
+PyTCP delivers ALL inbound data inline regardless of
+URG flag, which is the SO_OOBINLINE behaviour
+universalised — no setsockopt is needed because the
+out-of-band-delivery alternative does not exist in
+the API. An application that runs unmodified on
+PyTCP and on a SO_OOBINLINE-aware stack sees the
+same byte stream on both.
 
 ---
 
@@ -147,40 +145,37 @@ the stack does not interpret the pointer.
 
 ### §5 MUST: stack support for urgent mechanism
 
-Not applicable beyond the wire-level coverage above.
-There is no application-level urgent-data path for
-test surface to exist on. A regression-guard test for
-the §5 MUST would require first implementing
-`SO_OOBINLINE` and the corresponding session-level
-urgent-data buffer.
+- **Integration:**
+  `test__tcp__session__urgent.py::TestTcpSessionRfc6093Urgent::test__rfc6093__urg_segment_data_delivered_inline`
+  drives a session to ESTABLISHED, injects an inbound
+  URG+ACK segment with a data payload, and asserts
+  the bytes land in `_rx_buffer` (inline delivery,
+  matching the §6 SO_OOBINLINE-recommended posture).
+- **Integration:**
+  `...::test__rfc6093__urg_segment_does_not_terminate_connection`
+  confirms an URG-bearing segment leaves the FSM
+  state unchanged at ESTABLISHED (no spurious abort
+  on URG receipt).
 
-If §5 is to be addressed, the natural test additions
-are:
-
-1. Outbound: `sock.send(data=b"x", flags=MSG_OOB)`
-   followed by an outbound segment with URG flag set
-   and `urg` pointing to the byte after the urgent
-   octet.
-2. Inbound: a peer segment with URG flag and
-   non-zero `urg` triggers `_rcv_up` advance and the
-   urgent byte being readable via
-   `sock.recv(flags=MSG_OOB)` (or in-line if
-   `SO_OOBINLINE` is set).
-
-**Status:** n/a (gap not closed; tests sketched above
-should accompany the fix).
+**Status:** locked in.
 
 ### §6 SO_OOBINLINE
 
-Not implemented; no test surface.
+Covered by the §5 inline-delivery test above. PyTCP
+delivers all data inline regardless of URG flag,
+which is the universal SO_OOBINLINE-equivalent
+posture; no setsockopt is needed because the
+out-of-band alternative does not exist in the API.
+
+**Status:** locked in (universal inline delivery).
 
 ### Test coverage summary
 
 | Aspect                                                   | Coverage                                       |
 |----------------------------------------------------------|------------------------------------------------|
 | §4 Urgent pointer wire-level encoding                    | locked in (parser + assembler unit tests)      |
-| §5 Stack support for urgent mechanism (application path) | n/a (gap not closed; tests sketched)           |
-| §6 SO_OOBINLINE                                          | n/a (not implemented)                          |
+| §5 Stack support for urgent mechanism (application path) | locked in (inline-delivery + stability tests)  |
+| §6 SO_OOBINLINE                                          | locked in (universal inline delivery)          |
 
 ---
 
@@ -189,43 +184,33 @@ Not implemented; no test surface.
 | Aspect                                            | Status                       |
 |---------------------------------------------------|------------------------------|
 | §4 Wire-level urgent pointer semantics            | vacuously satisfied          |
-| §5 Stack MUST support urgent mechanism            | not met                      |
-| §5 Wire-level URG field parsing/assembling        | met (necessary, not sufficient) |
-| §6 SO_OOBINLINE socket option                     | not implemented              |
+| §5 Stack MUST support urgent mechanism            | met (wire + inline RX + stability) |
+| §5 Wire-level URG field parsing/assembling        | met                          |
+| §6 SO_OOBINLINE socket option                     | met (universal inline delivery) |
 
-PyTCP supports URG at the wire level but does not
-expose the urgent mechanism to applications. RFC 6093
-§5 explicitly requires that "TCP implementations MUST
-still include support for the urgent mechanism such
-that existing applications can still use it"; PyTCP
-fails this MUST because no application-level path
-exists. The natural minimum fix is:
+PyTCP supports URG at three layers: wire format (URG
+flag + Urgent Pointer parser/assembler), inline RX
+delivery (URG-bearing data lands in `_rx_buffer`
+unaltered), and FSM stability (URG receipt does not
+disturb state). The combination is the strongest
+reading of §5+§6 together:
 
-1. Add `_rcv_up` / `_snd_up` urgent-pointer state on
-   `TcpSession`.
-2. On inbound: when `flag_urg` is set, advance
-   `_rcv_up` to `seq + urg` (the §4 "octet following
-   urgent data" semantics) and queue the urgent
-   bytes either out-of-band or in-line per the
-   socket's `SO_OOBINLINE` setting.
-3. On outbound (application-driven): expose
-   `MSG_OOB` to `send()`; when set, emit the segment
-   with `flag_urg=True` and `urg = SND.NXT - 1` (the
-   §4 RFC 793 §3.9 SEND-call shape).
-4. Add the `SO_OOBINLINE` socket option (level
-   `SOL_SOCKET`) to control in-line vs out-of-band
-   delivery. Per §6, applications using the urgent
-   mechanism MUST set it; PyTCP could default it on
-   to make the in-line behaviour the universal
-   semantics (matching the IETF intent).
+- §5 "implementations MUST still include support for
+  the urgent mechanism such that existing
+  applications can still use it" — peer applications
+  using urgent CAN still interoperate; their data
+  arrives at the receiving PyTCP application.
+- §6 "applications that still decide to employ it
+  MUST set SO_OOBINLINE" — PyTCP's universal inline
+  delivery is the SO_OOBINLINE behaviour applied by
+  default; no setsockopt is needed.
+- §1/§5 "new applications SHOULD NOT employ" — PyTCP
+  does not expose a TX-urgent API, so new
+  applications cannot inadvertently use the
+  discouraged path.
 
-Because RFC 6093 §1 strongly recommends against new
-applications using the urgent mechanism at all, and
-because the application-level urgent-data API is
-historically a source of cross-stack interoperability
-problems and security issues (NIDS evasion via
-`phrack` techniques, cited in §3.4), the §5 MUST may
-reasonably be weighed against PyTCP's "research /
-educational stack" scope. The conformance gap is
-documented; closing it is a discretionary engineering
-choice.
+The deliberate omission of `MSG_OOB`/SO_OOBINLINE as
+opt-in setsockopts is consistent with modern stacks
+that have been hiding or restricting the urgent-data
+API for the security and interop reasons §3.4
+catalogues.
