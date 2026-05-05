@@ -35,7 +35,7 @@ congestion control. The negotiation handshake (RFC 9768
 §3.1.1) uses different SYN flag combinations from RFC 3168;
 when both peers are AccECN-capable, '_accecn_enabled' is
 True post-handshake and the data path uses the AccECN
-option (kind 172/173) to carry per-segment byte counters.
+option (kind 172/174) to carry per-segment byte counters.
 
 The negotiation handshake (RFC 9768 §3.1.1):
 
@@ -1215,4 +1215,151 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 "(AE,CWR,ECE)=(1,0,1) MUST enter AccECN mode. "
                 f"Got _accecn_enabled={session._accecn_enabled}."
             ),
+        )
+
+    def test__accecn__order_choice__no_ect1_marking_uses_accecn0(self) -> None:
+        """
+        Ensure that when only ECT(0) and CE byte counters
+        change between emissions, the session emits the
+        AccECN0 option (Kind 172, Order 0) - the classic-ECN
+        ordering with EE0B in the first slot. This is the
+        right choice for traditional Internet workloads where
+        ECT(0) is the dominant codepoint.
+
+        Reference: RFC 9768 §3.2.3 (Order 0 / AccECN0 form for ECT(0)-dominant flows).
+        """
+
+        self._drive_handshake_to_established_with_accecn()
+
+        # Drive an inbound ECT(0)-marked data segment so r.e0b
+        # advances; r.e1b stays at its initial value of 1.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=2,
+            payload=b"x" * 100,
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+
+        self.assertEqual(len(ack_tx), 1, msg="Setup: delayed-ACK MUST fire.")
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertIsNotNone(
+            ack.accecn,
+            msg="RFC 9768 §3.2.3: outbound ACK MUST carry an AccECN option.",
+        )
+        self.assertEqual(
+            ack.accecn_kind,
+            172,
+            msg=(
+                "RFC 9768 §3.2.3: when only r.ECT(0) / r.CE "
+                "advance, the session SHOULD emit Order 0 "
+                f"(Kind 172, AccECN0). Got accecn_kind={ack.accecn_kind!r}."
+            ),
+        )
+
+    def test__accecn__order_choice__ect1_marking_uses_accecn1(self) -> None:
+        """
+        Ensure that when r.ECT(1) byte counter advances since
+        last emission (and r.ECT(0) does not), the session
+        emits the AccECN1 option (Kind 174, Order 1) - the
+        L4S-deployment-friendly ordering with EE1B in the
+        first slot. This lets the receiver communicate the
+        ECT(1) byte counter most efficiently when ECT(1) is
+        the dominant changing codepoint.
+
+        Reference: RFC 9768 §3.2.3 (Order 1 / AccECN1 form for ECT(1)-dominant flows).
+        """
+
+        self._drive_handshake_to_established_with_accecn()
+
+        # Drive an inbound ECT(1)-marked data segment so r.e1b
+        # advances; r.e0b stays unchanged.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=1,
+            payload=b"x" * 100,
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+
+        self.assertEqual(len(ack_tx), 1, msg="Setup: delayed-ACK MUST fire.")
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertIsNotNone(
+            ack.accecn,
+            msg="RFC 9768 §3.2.3: outbound ACK MUST carry an AccECN option.",
+        )
+        self.assertEqual(
+            ack.accecn_kind,
+            174,
+            msg=(
+                "RFC 9768 §3.2.3: when r.ECT(1) advances and "
+                "r.ECT(0) does not, the session SHOULD emit "
+                "Order 1 (Kind 174, AccECN1). Got "
+                f"accecn_kind={ack.accecn_kind!r}."
+            ),
+        )
+
+    def test__accecn__order_choice__option_carries_correct_byte_counters(self) -> None:
+        """
+        Ensure that whichever order the session picks, the
+        emitted AccECN option's three byte counters reflect
+        the current receiver-side state (r.ECT(0), r.CE,
+        r.ECT(1)) - regardless of wire-level slot ordering.
+        AccECN0 places ECT(0) in the first slot; AccECN1
+        places ECT(1) in the first slot. Both encode the same
+        conceptual data.
+
+        Reference: RFC 9768 §3.2.3 (semantic equivalence of Order 0 / Order 1).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        # Drive an ECT(1)-marked segment so the session picks
+        # AccECN1 (Order 1) on the next outbound ACK.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=1,
+            payload=b"x" * 200,
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+
+        self.assertEqual(len(ack_tx), 1, msg="Setup: delayed-ACK MUST fire.")
+        ack = self._parse_tx(ack_tx[0])
+
+        # 'ack.accecn' is a tuple (ee0b, eceb, ee1b)
+        # normalised to AccECN0 ordering regardless of which
+        # wire kind appeared.
+        assert ack.accecn is not None, "RFC 9768 §3.2.3: outbound ACK MUST carry an AccECN option."
+        self.assertEqual(
+            ack.accecn[0],
+            session._accecn_r_ect0_b,
+            msg="AccECN option r.ECT(0) byte counter MUST match session state.",
+        )
+        self.assertEqual(
+            ack.accecn[1],
+            session._accecn_r_ce_b,
+            msg="AccECN option r.CE byte counter MUST match session state.",
+        )
+        self.assertEqual(
+            ack.accecn[2],
+            session._accecn_r_ect1_b,
+            msg="AccECN option r.ECT(1) byte counter MUST match session state.",
         )

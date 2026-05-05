@@ -105,6 +105,11 @@ class TcpProbe:
     # convention (ECT(0), CE, ECT(1)) regardless of which
     # kind appeared on the wire.
     accecn: tuple[int, int, int] | None
+    # AccECN option ordering: 172 = AccECN0 (Order 0, ECT(0)
+    # in first wire slot); 174 = AccECN1 (Order 1, ECT(1)
+    # in first wire slot); None when no AccECN option is
+    # present.
+    accecn_kind: int | None
     payload: bytes
 
 
@@ -260,6 +265,7 @@ class TcpSessionTestCase(NetworkTestCase):
         fastopen_cookie = packet_rx.tcp._options.fastopen
         accecn_raw = packet_rx.tcp._options.accecn
         accecn = None if accecn_raw is None else (accecn_raw.ee0b, accecn_raw.eceb, accecn_raw.ee1b)
+        accecn_kind = None if accecn_raw is None else int(accecn_raw.type)
         return TcpProbe(
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
@@ -278,6 +284,7 @@ class TcpSessionTestCase(NetworkTestCase):
             tsecr=tsecr,
             fastopen_cookie=fastopen_cookie,
             accecn=accecn,
+            accecn_kind=accecn_kind,
             payload=bytes(packet_rx.tcp.payload),
         )
 

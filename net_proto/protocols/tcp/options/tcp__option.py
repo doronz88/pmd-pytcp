@@ -52,7 +52,7 @@ class TcpOptionType(ProtoOptionType):
     TIMESTAMPS = 8
     FASTOPEN = 34
     ACCECN0 = 172
-    ACCECN1 = 173
+    ACCECN1 = 174
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -23,7 +23,7 @@
 
 
 """
-This module contains the TCP AccECN1 (kind=173) option support code.
+This module contains the TCP AccECN1 (kind=174) option support code.
 
 net_proto/protocols/tcp/options/tcp__option__accecn1.py
 
@@ -42,16 +42,16 @@ from net_proto.protocols.tcp.options.tcp__option import (
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP AccECN1 option [RFC 9768 §3.2.3] - kind=173 form carrying all
-# three 24-bit byte counters with r.ECT(1) in the first slot. The kind=173
-# variant is the L4S-deployment-friendly form (per RFC 9332) where ECT(1)
+# The TCP AccECN1 option [RFC 9768 §3.2.3] - kind=174 form carrying all
+# three 24-bit byte counters with r.ECT(1) in the first slot. The kind=174
+# variant is the L4S-deployment-friendly form (per RFC 9331) where ECT(1)
 # is the scalable-congestion signal; the sibling AccECN0 (kind=172)
 # reorders the counters to put r.ECT(0) first for classic-ECN deployments.
 # Both kinds encode the same conceptual data; only the wire ordering
 # differs.
 #
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |   Kind = 173  |   Length = 11 |
+# |   Kind = 174  |   Length = 11 |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                  EE1B (r.ECT(1))              |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -66,7 +66,7 @@ TCP__OPTION__ACCECN1__LEN = 11
 @dataclass(frozen=True, kw_only=True, slots=True)
 class TcpOptionAccecn1(TcpOption):
     """
-    The TCP AccECN1 option support class (RFC 9768 §3.2.3, kind=173).
+    The TCP AccECN1 option support class (RFC 9768 §3.2.3, kind=174).
     """
 
     type: TcpOptionType = field(

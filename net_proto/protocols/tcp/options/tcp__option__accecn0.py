@@ -45,7 +45,7 @@ from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 # The TCP AccECN0 option [RFC 9768 §3.2.3] - kind=172 form carrying all
 # three 24-bit byte counters with r.ECT(0) in the first slot. The kind=172
 # variant is conventional for classic-ECN-style deployments where ECT(0) is
-# the dominant codepoint; the sibling AccECN1 (kind=173) reorders the
+# the dominant codepoint; the sibling AccECN1 (kind=174) reorders the
 # counters to put r.ECT(1) first for L4S deployments. Both kinds encode
 # the same conceptual data; only the wire ordering differs.
 #

@@ -389,6 +389,19 @@ class TcpSession:
         self._accecn_r_ce_b: int = 0
         self._accecn_r_ect1_b: int = 1
 
+        # RFC 9768 §3.2.3 last-emit tracker for the §3.2.3
+        # order choice (AccECN0 vs AccECN1). At each outbound
+        # AccECN option emission the session compares the
+        # current 'r.ECT(0)' / 'r.ECT(1)' byte counters
+        # against the last-emitted values to decide which
+        # codepoint changed since last emission, and picks
+        # the order that puts the changed counter in the
+        # first slot. Initial values match the §3.2.1
+        # initial counter values so a freshly-negotiated
+        # session sees no change on its first emission.
+        self._accecn_r_last_emit_e0b: int = 1
+        self._accecn_r_last_emit_e1b: int = 1
+
         # RFC 9768 §3.4 sender-side r.CE tracker. Holds the
         # last peer-reported r.CE byte counter seen in an
         # inbound AccECN option. The 'tcp_fsm' wrapper compares
@@ -1500,19 +1513,38 @@ class TcpSession:
 
         # RFC 9768 §3.2.3 receiver-side AccECN option emission.
         # On every outbound non-SYN segment of an AccECN-
-        # enabled connection, attach the AccECN0 option with
+        # enabled connection, attach an AccECN option with
         # the cumulative byte counters so the sender can
         # compute precise per-codepoint feedback deltas
         # across ACKs. Skipped on SYN-only segments (where
         # the codepoint encoding in AE/CWR/ECE handles
         # negotiation) and RST.
+        #
+        # Order choice between AccECN0 (Kind 172, ECT(0)
+        # first) and AccECN1 (Kind 174, ECT(1) first) per
+        # §3.2.3 'whichever order is more efficient': pick
+        # AccECN1 when r.ECT(1) advanced since the last
+        # emission and r.ECT(0) did not (the L4S-style
+        # workload pattern - putting the changed counter
+        # first minimises bytes when abbreviated forms are
+        # later adopted). Otherwise pick AccECN0 (the
+        # classic-ECN default and most common case).
         tcp__accecn0_counters: tuple[int, int, int] | None = None
+        tcp__accecn1_counters: tuple[int, int, int] | None = None
         if self._accecn_enabled and not flag_rst and not (flag_syn and not flag_ack):
-            tcp__accecn0_counters = (
+            e0b_changed = self._accecn_r_ect0_b != self._accecn_r_last_emit_e0b
+            e1b_changed = self._accecn_r_ect1_b != self._accecn_r_last_emit_e1b
+            counters = (
                 self._accecn_r_ect0_b,
                 self._accecn_r_ce_b,
                 self._accecn_r_ect1_b,
             )
+            if e1b_changed and not e0b_changed:
+                tcp__accecn1_counters = counters
+            else:
+                tcp__accecn0_counters = counters
+            self._accecn_r_last_emit_e0b = self._accecn_r_ect0_b
+            self._accecn_r_last_emit_e1b = self._accecn_r_ect1_b
 
         # RFC 3168 §6.1.5: when bilateral ECN has been
         # negotiated, every outbound data segment MUST set
@@ -1554,6 +1586,7 @@ class TcpSession:
             tcp__tsecr=tcp__tsecr,
             tcp__fastopen_cookie=tcp__fastopen_cookie,
             tcp__accecn0_counters=tcp__accecn0_counters,
+            tcp__accecn1_counters=tcp__accecn1_counters,
             tcp__payload=data,
         )
         # RFC 8985 §5.2 / §6.1 RACK per-segment record: insert a

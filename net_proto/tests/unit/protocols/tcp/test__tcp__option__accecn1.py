@@ -23,7 +23,7 @@
 
 
 """
-Module contains tests for the TCP AccECN1 (kind=173) option code.
+Module contains tests for the TCP AccECN1 (kind=174) option code.
 
 net_proto/tests/unit/protocols/tcp/test__tcp__option__accecn1.py
 
@@ -193,12 +193,12 @@ class TestTcpOptionAccecn1Asserts(TestCase):
                 "__str__": "accecn1 ect1=0/ce=0/ect0=0",
                 "__repr__": "TcpOptionAccecn1(ee0b=0, eceb=0, ee1b=0)",
                 # TCP AccECN1 wire frame (11 bytes):
-                #   Byte 0     : 0xad     -> type=TcpOptionType.ACCECN1 (173)
+                #   Byte 0     : 0xae     -> type=TcpOptionType.ACCECN1 (174)
                 #   Byte 1     : 0x0b     -> len=TCP__OPTION__ACCECN1__LEN (11)
                 #   Bytes 2-4  : 0x000000 -> ee1b=0   (r.ECT(1)) - first slot in AccECN1
                 #   Bytes 5-7  : 0x000000 -> eceb=0   (r.CE)
                 #   Bytes 8-10 : 0x000000 -> ee0b=0   (r.ECT(0)) - third slot in AccECN1
-                "__bytes__": b"\xad\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                "__bytes__": b"\xae\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             },
         },
         {
@@ -212,12 +212,12 @@ class TestTcpOptionAccecn1Asserts(TestCase):
                 "__str__": "accecn1 ect1=16777215/ce=16777215/ect0=16777215",
                 "__repr__": "TcpOptionAccecn1(ee0b=16777215, eceb=16777215, ee1b=16777215)",
                 # TCP AccECN1 wire frame (11 bytes):
-                #   Byte 0     : 0xad     -> type=TcpOptionType.ACCECN1 (173)
+                #   Byte 0     : 0xae     -> type=TcpOptionType.ACCECN1 (174)
                 #   Byte 1     : 0x0b     -> len=11
                 #   Bytes 2-4  : 0xffffff -> ee1b=UINT_24__MAX
                 #   Bytes 5-7  : 0xffffff -> eceb=UINT_24__MAX
                 #   Bytes 8-10 : 0xffffff -> ee0b=UINT_24__MAX
-                "__bytes__": b"\xad\x0b\xff\xff\xff\xff\xff\xff\xff\xff\xff",
+                "__bytes__": b"\xae\x0b\xff\xff\xff\xff\xff\xff\xff\xff\xff",
             },
         },
         {
@@ -231,12 +231,12 @@ class TestTcpOptionAccecn1Asserts(TestCase):
                 "__str__": "accecn1 ect1=14610450/ce=7903932/ect0=1193046",
                 "__repr__": "TcpOptionAccecn1(ee0b=1193046, eceb=7903932, ee1b=14610450)",
                 # TCP AccECN1 wire frame (11 bytes):
-                #   Byte 0     : 0xad     -> type=TcpOptionType.ACCECN1 (173)
+                #   Byte 0     : 0xae     -> type=TcpOptionType.ACCECN1 (174)
                 #   Byte 1     : 0x0b     -> len=11
                 #   Bytes 2-4  : 0xdef012 -> ee1b=0xdef012 (r.ECT(1)) - first slot
                 #   Bytes 5-7  : 0x789abc -> eceb=0x789abc (r.CE)
                 #   Bytes 8-10 : 0x123456 -> ee0b=0x123456 (r.ECT(0)) - third slot
-                "__bytes__": b"\xad\x0b\xde\xf0\x12\x78\x9a\xbc\x12\x34\x56",
+                "__bytes__": b"\xae\x0b\xde\xf0\x12\x78\x9a\xbc\x12\x34\x56",
             },
         },
     ]
