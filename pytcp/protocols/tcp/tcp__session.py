@@ -399,8 +399,15 @@ class TcpSession:
         # first slot. Initial values match the §3.2.1
         # initial counter values so a freshly-negotiated
         # session sees no change on its first emission.
-        self._accecn_r_last_emit_e0b: int = 1
-        self._accecn_r_last_emit_e1b: int = 1
+        # Sentinel '-1' is outside the uint24 range of the real
+        # byte counters, so the very first AccECN-option emission
+        # always sees 'changed' for all three slots and emits the
+        # full Length=11 form to seed the peer with our initial
+        # state. Subsequent emissions track real deltas and may
+        # abbreviate to Length 8/5/2.
+        self._accecn_r_last_emit_e0b: int = -1
+        self._accecn_r_last_emit_ceb: int = -1
+        self._accecn_r_last_emit_e1b: int = -1
 
         # RFC 9768 §3.2.1 / §3.2.2.1 sender-side counters.
         # 's.cep' tracks the peer's r.cep value as inferred
@@ -1543,24 +1550,87 @@ class TcpSession:
         # AccECN1 when r.ECT(1) advanced since the last
         # emission and r.ECT(0) did not (the L4S-style
         # workload pattern - putting the changed counter
-        # first minimises bytes when abbreviated forms are
-        # later adopted). Otherwise pick AccECN0 (the
-        # classic-ECN default and most common case).
-        tcp__accecn0_counters: tuple[int, int, int] | None = None
-        tcp__accecn1_counters: tuple[int, int, int] | None = None
+        # first minimises bytes under the abbreviation
+        # rule). Otherwise pick AccECN0 (the classic-ECN
+        # default and most common case).
+        #
+        # Length choice per §3.2.3 / §3.2.3.3 abbreviation
+        # rule: include any counter that changed since the
+        # last emission; once a counter is included, the
+        # ordering rule forces all preceding (less-trailing)
+        # counters in the natural order to also be included.
+        # AccECN0 wire order is e0b, ceb, e1b - so e1b is
+        # the most-trailing field and is dropped first when
+        # unchanged. AccECN1 wire order is e1b, ceb, e0b -
+        # so e0b is the most-trailing field and is dropped
+        # first when unchanged. Lengths 11/8/5/2 correspond
+        # to including 3/2/1/0 counters respectively.
+        #
+        # Trackers initialise to -1 (outside the uint24
+        # range) so the first emission always picks Length
+        # 11 - seeding the peer with the full §3.2.1
+        # initial state on the third-leg ACK.
+        tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None
+        tcp__accecn1_counters: tuple[int | None, int | None, int | None] | None = None
         if self._accecn_enabled and not flag_rst and not (flag_syn and not flag_ack):
             e0b_changed = self._accecn_r_ect0_b != self._accecn_r_last_emit_e0b
+            ceb_changed = self._accecn_r_ce_b != self._accecn_r_last_emit_ceb
             e1b_changed = self._accecn_r_ect1_b != self._accecn_r_last_emit_e1b
-            counters = (
-                self._accecn_r_ect0_b,
-                self._accecn_r_ce_b,
-                self._accecn_r_ect1_b,
-            )
             if e1b_changed and not e0b_changed:
-                tcp__accecn1_counters = counters
+                # AccECN1 (wire order: e1b, ceb, e0b).
+                if e0b_changed:
+                    # Length 11: all three on wire.
+                    tcp__accecn1_counters = (
+                        self._accecn_r_ect0_b,
+                        self._accecn_r_ce_b,
+                        self._accecn_r_ect1_b,
+                    )
+                elif ceb_changed:
+                    # Length 8: drop trailing e0b.
+                    tcp__accecn1_counters = (
+                        None,
+                        self._accecn_r_ce_b,
+                        self._accecn_r_ect1_b,
+                    )
+                else:
+                    # Length 5: only e1b on wire (the
+                    # gating outer condition guarantees
+                    # e1b_changed=True).
+                    tcp__accecn1_counters = (
+                        None,
+                        None,
+                        self._accecn_r_ect1_b,
+                    )
             else:
-                tcp__accecn0_counters = counters
+                # AccECN0 (wire order: e0b, ceb, e1b).
+                if e1b_changed:
+                    # Length 11: all three on wire.
+                    tcp__accecn0_counters = (
+                        self._accecn_r_ect0_b,
+                        self._accecn_r_ce_b,
+                        self._accecn_r_ect1_b,
+                    )
+                elif ceb_changed:
+                    # Length 8: ee0b + eceb on wire, drop
+                    # trailing ee1b.
+                    tcp__accecn0_counters = (
+                        self._accecn_r_ect0_b,
+                        self._accecn_r_ce_b,
+                        None,
+                    )
+                elif e0b_changed:
+                    # Length 5: only ee0b on wire.
+                    tcp__accecn0_counters = (
+                        self._accecn_r_ect0_b,
+                        None,
+                        None,
+                    )
+                else:
+                    # Length 2: empty option (no counters
+                    # changed since last emission).
+                    tcp__accecn0_counters = (None, None, None)
             self._accecn_r_last_emit_e0b = self._accecn_r_ect0_b
+            self._accecn_r_last_emit_ceb = self._accecn_r_ce_b
             self._accecn_r_last_emit_e1b = self._accecn_r_ect1_b
 
         # RFC 3168 §6.1.5: when bilateral ECN has been

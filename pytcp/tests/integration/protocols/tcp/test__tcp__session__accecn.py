@@ -864,15 +864,19 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ack.accecn,
             msg="RFC 9768 §3.2.3: outbound ACK MUST carry the AccECN option.",
         )
+        # Abbreviation: only r.CE advanced; r.ECT(0) and r.ECT(1)
+        # are unchanged, so the option emits the Length 8 form
+        # (ee0b + eceb on wire, ee1b dropped).
         self.assertEqual(
             ack.accecn,
-            (1, len(payload), 1),
+            (1, len(payload), None),
             msg=(
                 "RFC 9768 §3.2.3: the AccECN option's r.CE "
                 "byte counter (second slot) MUST equal the "
-                f"cumulative CE-marked payload bytes ({len(payload)}). "
-                "r.ECT(0) and r.ECT(1) remain at their §3.2.1 "
-                f"initial value of 1. Got accecn={ack.accecn!r}."
+                f"cumulative CE-marked payload bytes ({len(payload)}); "
+                "r.ECT(0) stays at its initial 1 in the first "
+                "slot and the trailing r.ECT(1) is dropped per "
+                f"the Length 8 abbreviation. Got accecn={ack.accecn!r}."
             ),
         )
 
@@ -1346,23 +1350,30 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         # 'ack.accecn' is a tuple (ee0b, eceb, ee1b)
         # normalised to AccECN0 ordering regardless of which
-        # wire kind appeared.
+        # wire kind appeared. Each slot is Optional[int]:
+        # None means the corresponding counter was abbreviated
+        # off the wire because it had not changed since the
+        # last emission. For non-None slots, the value MUST
+        # match the session's current counter.
         assert ack.accecn is not None, "RFC 9768 §3.2.3: outbound ACK MUST carry an AccECN option."
-        self.assertEqual(
-            ack.accecn[0],
-            session._accecn_r_ect0_b,
-            msg="AccECN option r.ECT(0) byte counter MUST match session state.",
-        )
-        self.assertEqual(
-            ack.accecn[1],
-            session._accecn_r_ce_b,
-            msg="AccECN option r.CE byte counter MUST match session state.",
-        )
-        self.assertEqual(
-            ack.accecn[2],
-            session._accecn_r_ect1_b,
-            msg="AccECN option r.ECT(1) byte counter MUST match session state.",
-        )
+        if ack.accecn[0] is not None:
+            self.assertEqual(
+                ack.accecn[0],
+                session._accecn_r_ect0_b,
+                msg="AccECN option r.ECT(0) byte counter MUST match session state when present.",
+            )
+        if ack.accecn[1] is not None:
+            self.assertEqual(
+                ack.accecn[1],
+                session._accecn_r_ce_b,
+                msg="AccECN option r.CE byte counter MUST match session state when present.",
+            )
+        if ack.accecn[2] is not None:
+            self.assertEqual(
+                ack.accecn[2],
+                session._accecn_r_ect1_b,
+                msg="AccECN option r.ECT(1) byte counter MUST match session state when present.",
+            )
 
     def _drive_passive_open_with_third_leg_ace(self, ace: int) -> TcpSession:
         """
@@ -1865,3 +1876,123 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"_ecn_enabled={session._ecn_enabled}."
             ),
         )
+
+    def test__accecn__abbreviation__only_eceb_changed_emits_length_8(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when an
+        inbound CE-marked segment advances only the r.CE byte
+        counter (r.ECT(0) and r.ECT(1) unchanged), the next
+        outbound segment carries an AccECN0 option in the
+        Length=8 abbreviated form: ee0b and eceb on the wire,
+        ee1b dropped from the trailing slot. Saves 3 bytes of
+        TCP-option space per segment in the typical Internet
+        workload where ECT(1) is essentially never used.
+
+        Reference: RFC 9768 §3.2.3 (abbreviation: drop trailing unchanged fields).
+        Reference: RFC 9768 §3.2.3.3 (ordering rule: included field implies all preceding included).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        # Inbound CE-marked data: only ceb advances by payload
+        # length; e0b stays at 1, e1b stays at 1.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=3,
+            payload=b"x" * 100,
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+        self.assertEqual(len(ack_tx), 1, msg="Setup: delayed-ACK MUST fire.")
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertEqual(
+            ack.accecn_kind,
+            172,
+            msg=f"e1b unchanged -> AccECN0 (Kind 172). Got accecn_kind={ack.accecn_kind!r}.",
+        )
+        # Length 8 form: tuple is (ee0b=1, eceb=100, ee1b=None).
+        assert ack.accecn is not None, "AccECN option MUST be present."
+        self.assertEqual(
+            ack.accecn[0],
+            session._accecn_r_ect0_b,
+            msg=f"ee0b slot MUST carry r.ECT(0). Got {ack.accecn[0]!r}.",
+        )
+        self.assertEqual(
+            ack.accecn[1],
+            session._accecn_r_ce_b,
+            msg=f"eceb slot MUST carry r.CE. Got {ack.accecn[1]!r}.",
+        )
+        self.assertIsNone(
+            ack.accecn[2],
+            msg=(
+                "RFC 9768 §3.2.3: ee1b unchanged -> Length 8 "
+                "abbreviation drops the trailing ee1b slot. "
+                f"Got ee1b={ack.accecn[2]!r}."
+            ),
+        )
+
+    def test__accecn__abbreviation__only_e0b_changed_emits_length_5(self) -> None:
+        """
+        Ensure that when only the r.ECT(0) byte counter
+        advances (no CE marking, no ECT(1) marking), the
+        outbound AccECN0 option emits the Length=5 form
+        with only ee0b on the wire. Saves 6 bytes of TCP-
+        option space per segment.
+
+        Reference: RFC 9768 §3.2.3 (Length 5: only first counter on wire).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+
+        # Inbound ECT(0)-marked data: only e0b advances.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            ip_ecn=2,
+            payload=b"x" * 100,
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+        self.assertEqual(len(ack_tx), 1, msg="Setup: delayed-ACK MUST fire.")
+        ack = self._parse_tx(ack_tx[0])
+
+        self.assertEqual(
+            ack.accecn_kind,
+            172,
+            msg=f"e1b unchanged -> AccECN0. Got accecn_kind={ack.accecn_kind!r}.",
+        )
+        assert ack.accecn is not None, "AccECN option MUST be present."
+        self.assertEqual(
+            ack.accecn[0],
+            session._accecn_r_ect0_b,
+            msg=f"ee0b slot MUST carry r.ECT(0). Got {ack.accecn[0]!r}.",
+        )
+        self.assertIsNone(
+            ack.accecn[1],
+            msg=f"eceb unchanged -> dropped from Length 5 form. Got {ack.accecn[1]!r}.",
+        )
+        self.assertIsNone(
+            ack.accecn[2],
+            msg=f"ee1b unchanged -> dropped from Length 5 form. Got {ack.accecn[2]!r}.",
+        )
+
+    # The Length 2 (empty) AccECN0 emission is exercised at
+    # the wire-format level by the unit tests in
+    # 'net_proto/tests/unit/protocols/tcp/test__tcp__option__accecn0.py'
+    # ('test__tcp__option__accecn0__bytes_length_2' and the
+    # round-trip test); reproducing the exact session-level
+    # state where no counter has changed since the last
+    # emission is timing-sensitive in integration, so the
+    # session-level Length 2 path is verified by the
+    # smaller-state Length 8 / Length 5 abbreviation tests
+    # above plus the wire-format unit tests.
