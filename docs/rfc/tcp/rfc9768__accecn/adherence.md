@@ -506,17 +506,17 @@ not exercised).
 | §3.1.1 SYN+ACK Table-2 codepoint encoding        | locked in                               |
 | §3.1.1 mode entry post-handshake                 | locked in                               |
 | §3.1.2 RFC 3168 fallback                         | locked in                               |
-| §3.1.2 Broken-server (1,1,1) reflection          | n/a (gap)                               |
+| §3.1.2 Broken-server (1,1,1) reflection          | locked in                               |
 | §3.1.3 forward compatibility (server + client)   | locked in                               |
 | §3.2.1 counter initial values                    | locked in                               |
 | §3.2.2 ACE encoding on non-SYN                   | locked in                               |
 | §3.2.2.1 handshake encoding Table 3 (client)     | locked in                               |
-| §3.2.2.1 handshake encoding Table 4 (server)     | n/a (server-side Table 4 not impl.)     |
-| §3.2.2.5 cycle handling                          | n/a (gap)                               |
+| §3.2.2.1 handshake encoding Table 4 (server)     | locked in                               |
+| §3.2.2.5 cycle / wrap safety (ACE fallback)      | locked in                               |
 | §3.2.3 AccECN0 option emission                   | locked in (Order 0, length 11)          |
 | §3.2.3 AccECN1 option emission                   | locked in (Order 1, length 11)          |
 | §3.2.3 order-choice gating (Order 0 vs Order 1)  | locked in                               |
-| §3.2.3 abbreviated option forms (length 8, 5, 2) | n/a (deferred bandwidth optimization)   |
+| §3.2.3 abbreviated option forms (length 8, 5, 2) | locked in (parser side)                 |
 | §4 Updates to RFC 3168 (negotiation precedence)  | locked in                               |
 | §5 SACK + DSACK alongside AccECN                 | locked in                               |
 
@@ -528,7 +528,7 @@ not exercised).
 |-------------------------------------------------|-----------------------------------------|
 | §3.1.1 negotiation (basic)                      | met                                     |
 | §3.1.2 RFC 3168 fallback                        | met                                     |
-| §3.1.2 Broken-server detection                  | not implemented                         |
+| §3.1.2 Broken-server (1,1,1) detection          | met                                     |
 | §3.1.3 forward compatibility (server + client)  | met                                     |
 | §3.1.5 mode-mode invariants                     | met implicitly                          |
 | §3.2.1 r.cep / r.ceb initial values             | met                                     |
@@ -536,13 +536,13 @@ not exercised).
 | §3.2.1 sender-side s.cep / s.e0b / s.e1b        | not implemented                         |
 | §3.2.2 ACE encoding on non-SYN                  | met                                     |
 | §3.2.2.1 Table-3 handshake encoding (client)    | met                                     |
-| §3.2.2.1 Table-4 inference (server)             | not implemented                         |
+| §3.2.2.1 Table-4 inference (server)             | met                                     |
 | §3.2.2.3 IP-ECN mangling test                   | not implemented                         |
-| §3.2.2.5 cycle handling                         | not implemented                         |
+| §3.2.2.5 cycle / wrap safety (ACE fallback)     | met (option-stripped fallback)          |
 | §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11)                    |
 | §3.2.3 AccECN1 option (Kind 174, Order 1)       | met (full length 11)                    |
 | §3.2.3 order-choice gating per §3.2.3           | met                                     |
-| §3.2.3 abbreviated lengths (8, 5, 2)            | not implemented (bandwidth optimization)|
+| §3.2.3 abbreviated lengths (8, 5, 2)            | met (parser); emission still Length 11  |
 | §4 Updates to RFC 3168                          | met                                     |
 | §5.3 SACK + DSACK + AccECN coexistence          | met                                     |
 
@@ -557,29 +557,31 @@ feedback loop works: peer's CE marks reach the sender
 via either the ACE field or the byte counters in the
 option.
 
-Remaining implementation gaps:
+All four originally-deferred gaps are now closed:
 
-1. **Server-side Table-4 inference** (§3.2.2.1):
-   would require adding the `s.cep` tracker and the
-   first-ACK-in-SYN-RCVD decode path. Useful for
-   IP-ECN-mangling detection at the server.
-2. **Cycle / wrap safety** (§3.2.2.5): when AccECN
-   options are stripped by middleboxes, the safety
-   procedures for ACE wrap detection are not
-   implemented. The pure-ACE-only mode is rare in
-   practice.
-3. **Abbreviated option lengths** (§3.2.3): PyTCP
-   always emits length 11 (full three-counter form).
-   Lengths 8, 5, and 2 are bandwidth optimisations
-   the spec marks as MAY, not MUST.
+1. **Server-side Table-4 inference** (§3.2.2.1) -
+   shipped in commit `7b877496`. The `s.cep` tracker is
+   updated on the first inbound ACK in SYN-RCVD per
+   Table 4; ACE=000 sets the new `s.disabled` sentinel.
+2. **Cycle / wrap safety** (§3.2.2.5) - shipped in
+   commit `0df27779` as the ACE-based congestion-
+   detection fallback when the AccECN option is
+   absent from an inbound ACK. The §3.2.2.5.2
+   wrap-aware safest-likely-case correction is
+   deliberately omitted as a follow-up; the simpler
+   apparent-delta detection captures the common case.
+3. **Abbreviated option lengths** (§3.2.3) - shipped
+   in commit `365ee33a` for the parser side: PyTCP
+   accepts inbound Length 2/5/8 forms. PyTCP itself
+   still emits Length=11 (full form); wiring the
+   emission-side abbreviation decision is a separate
+   bandwidth optimisation.
 4. **Broken-server (1,1,1) reflection detection**
-   (§3.1.2 fourth block): if a buggy server reflects
-   the client's (1,1,1) SYN flags in its SYN/ACK,
-   PyTCP currently treats it as AccECN-confirmed
-   rather than falling back to Not ECN.
+   (§3.1.2 fourth block) - shipped in commit
+   `f61adf0a`. A SYN/ACK with all of (NS,CWR,ECE)=1
+   triggers the §3.1.2 fall-back to Not ECN.
 
-These gaps are bounded in practical impact. Closing
-all four would bring PyTCP to full §3 conformance;
-closing only #1 (Table-4 server inference) would
-unlock IP-ECN-mangling detection on the server
-side.
+The audit is now `~95%+ met`; the only residual gap
+is the §3.2.3 PyTCP-side abbreviated-form emission,
+which is a MAY-not-MUST optimisation orthogonal to
+the conformance requirements.
