@@ -7,8 +7,8 @@ session should pick this file up and execute the phases
 below verbatim.
 
 The RFC 8985 text is available at
-`docs/rfc/tcp/rfc8985.txt`. All section references in this
-plan refer to that document.
+`docs/rfc/tcp/rfc8985__rack_tlp/rfc8985.txt`. All section
+references in this plan refer to that document.
 
 ---
 
@@ -559,7 +559,7 @@ What it tells you:
 
 ## 8. Cross-references
 
-- RFC text: `docs/rfc/tcp/rfc8985.txt`
+- RFC text: `docs/rfc/tcp/rfc8985__rack_tlp/rfc8985.txt`
 - Adjacent shipped: `tcp_sack_implementation.md` (RFC
   2018 + 6675 SACK; RACK uses the SACK scoreboard
   events as input).

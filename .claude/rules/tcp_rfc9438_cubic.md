@@ -6,8 +6,8 @@ Reads as a self-contained project brief; a fresh post-
 compact session should pick this file up and execute the
 phases below verbatim.
 
-The RFC 9438 text should be downloaded to
-`docs/rfc/tcp/rfc9438.txt` before phase 1 starts; if absent,
+The RFC 9438 text lives at
+`docs/rfc/tcp/rfc9438__cubic/rfc9438.txt`; if absent,
 fetch from `https://www.rfc-editor.org/rfc/rfc9438.txt`.
 
 ---

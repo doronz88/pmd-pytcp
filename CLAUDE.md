@@ -101,6 +101,10 @@ This enforces which payloads are legal at compile time via mypy.
 
 Stack-wide constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, logger channels) live in `pytcp/stack/__init__.py` lines 76–138.
 
+### TCP RFC adherence
+
+Per-RFC adherence audits live at `docs/rfc/tcp/rfcXXXX__*/adherence.md` (41 RFCs covered; ~21 shipped, ~5 partial, ~15 gap-reports for not-yet-implemented mechanisms). Use the [`rfc_adherence_audit`](.claude/skills/rfc_adherence_audit/SKILL.md) skill to add or update an entry.
+
 ## Conventions
 
 - **File naming**: double-underscore separators — `tcp__socket.py`, `packet_handler__arp__rx.py`, `test__arp__assembler__operation.py`.
