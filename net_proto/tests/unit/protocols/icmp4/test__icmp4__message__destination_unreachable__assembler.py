@@ -572,23 +572,6 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
             msg=f"Unexpected 'cksum' for case: {self._description}",
         )
 
-    def test__icmp4__message__destination_unreachable__assembler__mtu(self) -> None:
-        """
-        Ensure the assembler exposes the wrapped message 'mtu' field for the
-        FRAGMENTATION_NEEDED fixture (other fixtures omit 'mtu' from
-        '_results' and are skipped here — they carry mtu=None, which is
-        already covered by the repr/bytes comparisons).
-        """
-
-        if "mtu" not in self._results:
-            self.skipTest("Non-FRAGMENTATION_NEEDED fixture: mtu is None by construction.")
-
-        self.assertEqual(
-            cast(Icmp4MessageDestinationUnreachable, self._icmp4__assembler.message).mtu,
-            self._results["mtu"],
-            msg=f"Unexpected 'mtu' for case: {self._description}",
-        )
-
     def test__icmp4__message__destination_unreachable__assembler__data(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'data' field
@@ -614,4 +597,38 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
             b"".join(buffers),
             self._results["__bytes__"],
             msg=f"Unexpected assemble() output for case: {self._description}",
+        )
+
+
+class TestIcmp4MessageDestinationUnreachableAssembler__FragmentationNeededMtu(TestCase):
+    """
+    Standalone test for the 'mtu' field on a FRAGMENTATION_NEEDED message.
+    The 'mtu' field is meaningful only for code 4; the parameterized
+    assembler tests above intentionally omit 'mtu' from the per-fixture
+    '_results' for non-FRAGMENTATION_NEEDED codes (where the field is
+    None by construction and already covered by repr/bytes assertions).
+    """
+
+    def test__icmp4__message__destination_unreachable__fragmentation_needed__mtu_field(self) -> None:
+        """
+        Ensure a FRAGMENTATION_NEEDED message constructed with mtu=1200
+        round-trips that value through the assembler's wrapped message.
+        """
+
+        assembler = Icmp4Assembler(
+            icmp4__message=Icmp4MessageDestinationUnreachable(
+                code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
+                mtu=1200,
+                data=b"",
+            ),
+        )
+
+        self.assertEqual(
+            cast(Icmp4MessageDestinationUnreachable, assembler.message).mtu,
+            1200,
+            msg=(
+                "FRAGMENTATION_NEEDED message MUST round-trip 'mtu' through "
+                "the assembler. Got "
+                f"{cast(Icmp4MessageDestinationUnreachable, assembler.message).mtu!r}."
+            ),
         )
