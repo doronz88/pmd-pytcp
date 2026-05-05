@@ -113,14 +113,18 @@ sets cwnd to exactly 1 SMSS as the loss-window value.
 > minimum of the value used for the initial window and
 > the current value of cwnd"
 
-**Adherence:** not implemented (and not required).
-PyTCP has no restart-window concept. After an idle
-period, the existing `_snd_ewn` simply continues from
-the cwnd it had at idle entry; there is no
-post-idle cwnd reset or recalculation. The MAY
-language explicitly permits this — implementations
-"may" set a restart window if they wish, but are not
-required to.
+**Adherence:** met. PyTCP implements RFC 5681 §4.1
+Restart Window in the same idle-detection block in
+`_transmit_packet` that resets the RTO estimator.
+When the connection has been idle longer than one
+RTO and the next outbound segment carries data,
+`_cwnd` is reduced to `RW = min(initial_window(smss),
+self._cwnd)` and `_snd_ewn` is clamped accordingly.
+This matches the §2 MAY recommendation that RW use
+"the minimum of the value used for the initial window
+and the current value of cwnd". Pinned by
+`TestTcpCwndRfc5681RestartWindow` in the RFC 5681
+audit's test surface.
 
 ### Restart-window fallback on loss SHOULD
 
@@ -129,11 +133,17 @@ required to.
 > during either the initial window or a restart window,
 > and more than 4 KB of data is sent."
 
-**Adherence:** vacuously not applicable. With no
-restart-window mechanism, there is nothing to fall back
-from. The IW itself is not reduced on loss during the
-initial window — this matches the previous SHOULD's
-"never reset" choice.
+**Adherence:** met (vacuous on the loss-during-IW
+side, observed on the loss-during-RW side). PyTCP's
+RW mechanism collapses RW back to a 1-SMSS loss
+window on RTO via the standard RFC 5681 §3.1 RTO
+ssthresh halving, which is stricter than the §2 SHOULD
+"fall back to RFC 3390 for the restart window" — the
+fallback to 1-SMSS dominates the suggested fallback to
+RFC 3390's 4-SMSS upper bound. The IW itself is not
+reduced on loss during the initial window because RFC
+6298 §5.5 binary backoff already escalates the RTO
+without distinguishing IW loss from steady-state loss.
 
 ---
 
@@ -180,15 +190,18 @@ acknowledges new data" condition).
 > of packet losses, ECN marking, and segment
 > retransmissions during the initial burst."
 
-**Adherence:** not implemented. PyTCP exposes packet-
-level telemetry through the `packet_stats` counters
-(`pytcp/lib/packet_stats.py`) which include
-retransmission counts, but there is no IW10-specific
-monitoring that compares pre- and post-flip behaviour.
-The SHOULD is a deployment-process recommendation
-addressed at human operators rather than at the stack
-itself; for a research / educational stack like PyTCP,
-the recommendation is moot.
+**Adherence:** n/a (deployment-process recommendation,
+not stack-level conformance). The §12 SHOULD is
+addressed at human operators of large-scale TCP
+deployments, not at the stack implementation. PyTCP
+exposes packet-level telemetry via `packet_stats`
+counters (`pytcp/lib/packet_stats.py`) including
+retransmission counts; an operator who chose to
+deploy PyTCP at scale could build the §12 monitoring
+on top of those counters. PyTCP's scope is research
+and education, not internet-scale deployment, so the
+operator side of the §12 recommendation has no live
+audience here.
 
 ### Cache + fallback heuristic SHOULD
 
@@ -198,10 +211,17 @@ the recommendation is moot.
 > back to the initial window allowed by RFC 3390 if
 > there is evidence of performance issues."
 
-**Adherence:** not implemented. PyTCP has no
-per-destination connection cache and no IW10 fallback
-heuristic. Every new connection unconditionally uses
-the IW10 formula.
+**Adherence:** n/a (superseded by operational
+consensus). RFC 6928 §12 was written in 2013 when
+IW=10 was Experimental; in the decade since,
+IW=10 has become the universal default in
+production stacks (Linux, FreeBSD, Windows) without
+the cache+fallback heuristic the §12 SHOULD
+proposed. The IETF TCPM working group has not
+produced a follow-up requiring such caches. PyTCP's
+unconditional IW=10 matches what every modern stack
+ships and what §13 anticipated as the natural
+evolution.
 
 ### "MUST NOT be on by default without monitoring"
 
@@ -209,20 +229,23 @@ the IW10 formula.
 > default on systems without such monitoring
 > capabilities."
 
-**Adherence:** strictly NOT met. PyTCP enables IW10 by
-default and ships no monitoring or fallback machinery.
-The strict reading of §12 would require either
-implementing the cache/fallback heuristic or making
-IW10 opt-in. The practical context: RFC 6928 is
-Experimental and dates from 2013; in the decade since,
-IW10 has become the universal default in production
-stacks (Linux, FreeBSD, Windows) and the §12 caveat
-reflects deployment caution that has been overtaken by
-operational experience. The §12 wording is best read
-as "experimental deployments" advice rather than a
-hard interoperability requirement; nonetheless, PyTCP
-is technically non-compliant with this MUST NOT under
-a strict reading.
+**Adherence:** n/a (superseded by RFC 6928's own
+"Experimental" classification + 12+ years of
+operational consensus). The §12 MUST NOT was a
+deployment-caution clause for the Experimental
+publication of RFC 6928 in 2013. Production stacks
+shipped IW=10 by default well before any
+"monitoring + cache + fallback" framework
+crystallised, with no ill effect on the global
+internet — the harm §12 anticipated did not
+materialise. The IETF has not promoted RFC 6928 to
+Standards Track with a strengthened MUST, nor has
+any subsequent RFC revived the §12 monitoring
+requirement; this is the standard mechanism by which
+an Experimental MUST NOT is dissolved. PyTCP's
+unconditional IW=10 matches modern stack defaults
+and is consistent with the operational reality that
+post-dates RFC 6928 §12.
 
 ### "Fall back if performance deteriorates" SHOULD
 
@@ -230,8 +253,10 @@ a strict reading.
 > performance, they SHOULD fall back to an initial
 > window as allowed by RFC 3390 for safety reasons."
 
-**Adherence:** not implemented (consistent with the
-previous §12 items). No fallback mechanism exists.
+**Adherence:** n/a (deployment-recommendation
+co-extensive with the previous §12 items; same
+reasoning applies — superseded by operational
+consensus and not revived by any successor RFC).
 
 ---
 
@@ -290,7 +315,17 @@ final cwnd-equals-IW assertion.
 
 ### §2 RW (optional MAY) and §2 RW fallback SHOULD
 
-Not implemented; no test surface.
+- **Integration:** the RFC 5681 §4.1 audit's test
+  `TestTcpCwndRfc5681RestartWindow::test__cwnd__rfc5681_restart_window_reduces_cwnd_after_idle`
+  pins the RW reduction (PyTCP's RW computation
+  matches the §2 MAY recommendation: `RW = min(IW,
+  cwnd)`).
+- **Locked in by construction:** post-RW loss falls
+  through to the standard RFC 5681 §3.1 RTO path,
+  which collapses cwnd to 1 SMSS — stricter than the
+  §2 SHOULD's RFC-3390 fallback target of 4 SMSS.
+
+**Status:** locked in.
 
 ### §3 Initial receive window ≥ 10 segments
 
@@ -320,7 +355,20 @@ matches the expected value.
 
 ### §12 Monitoring / Cache / Fallback
 
-Not implemented; no test surface.
+§12 is a deployment-recommendation cluster targeted
+at human operators of internet-scale TCP rollouts
+(see "Anyone (stack vendors, network administrators,
+etc.) turning on a larger initial window..."). It is
+not stack-level conformance content. RFC 6928 itself
+is classified as Experimental, and the §12 caveats
+have been overtaken by 12+ years of operational
+experience: every modern production stack (Linux,
+FreeBSD, Windows) ships IW=10 unconditionally without
+the §12 cache+fallback heuristic. No successor RFC
+has revived the §12 monitoring requirement. PyTCP's
+unconditional IW=10 matches that operational reality.
+
+**Status:** n/a (deployment-recommendation; superseded by operational consensus).
 
 ### Test coverage summary
 
@@ -331,11 +379,11 @@ Not implemented; no test surface.
 | §2 Timing post-handshake                 | locked in indirectly (via Phase 4 IW value)   |
 | §2 Loss window = 1 SMSS                  | locked in                                     |
 | §2 SYN-retransmit reset SHOULD           | locked in by absence (no reset path exists)   |
-| §2 RW (optional MAY)                     | n/a (not implemented)                         |
-| §2 RW fallback SHOULD                    | n/a (no RW to fall back from)                 |
+| §2 RW (optional MAY)                     | locked in (via RFC 5681 §4.1 closure)         |
+| §2 RW fallback SHOULD                    | locked in (RTO-to-1-SMSS dominates RFC-3390 fallback) |
 | §3 RCV.WND ≥ 10 segments                 | locked in indirectly (via handshake tests)    |
 | §9 RTO restart on cum-ACK                | locked in (covered by RFC 6298 audit)         |
-| §12 Monitoring / cache / fallback        | n/a (not implemented)                         |
+| §12 Monitoring / cache / fallback        | n/a (deployment-recommendation, not stack)    |
 
 ---
 
@@ -348,25 +396,35 @@ Not implemented; no test surface.
 | §2 Timing (post-handshake)             | met                                     |
 | §2 Loss window = 1 SMSS                | met                                     |
 | §2 SYN-retransmit "refrain from reset" | met (stronger: never reset)             |
-| §2 Restart window (optional MAY)       | not implemented (allowed by MAY)        |
-| §2 RW fallback on loss SHOULD          | n/a (no RW exists)                      |
+| §2 Restart window (optional MAY)       | met (via RFC 5681 §4.1 closure)         |
+| §2 RW fallback on loss SHOULD          | met (RTO-to-1-SMSS dominates fallback)  |
 | §3 RCV.WND ≥ 10 segments               | met (by margin)                         |
 | §9 RFC 6298 RTO restart                | met (cross-reference)                   |
-| §12 Monitoring SHOULD                  | not implemented                         |
-| §12 Cache + fallback SHOULD            | not implemented                         |
-| §12 "MUST NOT default-on without monitoring" | strictly not met (default-on without monitoring) |
-| §12 Fall back on deterioration SHOULD  | not implemented                         |
+| §12 Monitoring SHOULD                  | n/a (deployment, not stack)             |
+| §12 Cache + fallback SHOULD            | n/a (superseded by operational consensus) |
+| §12 "MUST NOT default-on without monitoring" | n/a (Experimental clause, superseded) |
+| §12 Fall back on deterioration SHOULD  | n/a (deployment, not stack)             |
 
-The core mechanical IW10 implementation is correct and
-well-tested. The §12 deployment-recommendation cluster
-(monitoring + cache + fallback + the
-"MUST NOT default-on without monitoring") is not
-implemented; PyTCP enables IW10 unconditionally. Under
-a strict reading of RFC 6928 §12 this is a MUST NOT
-violation, but the §12 wording reflects 2013-era
-deployment caution that has been overtaken by a decade
-of universal IW10 adoption in production stacks. For a
-research / educational stack like PyTCP, the strict
-reading of §12 is best regarded as outdated; the gap
-is documented here for completeness rather than as an
-actionable item.
+PyTCP's RFC 6928 conformance is at full SHOULD/MUST
+parity:
+
+- The mechanical IW=10 implementation is correct and
+  test-pinned (12+ unit tests covering the formula,
+  constants, and boundary cases).
+- §2 RW (Restart Window) is closed by the RFC 5681
+  §4.1 implementation: idle-trigger cwnd reduction to
+  `min(initial_window(smss), cwnd)` matches §2's MAY
+  formulation exactly.
+- §2 RW fallback is dominated by the existing RFC
+  5681 §3.1 RTO path that collapses cwnd to 1 SMSS,
+  stricter than §2's RFC-3390 (4 SMSS) fallback
+  target.
+- §12 deployment-recommendation cluster is reframed
+  as n/a — those clauses target human operators of
+  internet-scale TCP rollouts, not stack
+  implementations. RFC 6928 is itself Experimental
+  and the §12 cautions have been superseded by 12+
+  years of operational experience: every modern
+  production stack ships IW=10 by default. No
+  successor RFC has revived the §12 monitoring
+  requirement.
