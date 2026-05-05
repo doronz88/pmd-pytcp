@@ -2014,8 +2014,44 @@ class TcpSession:
         granularity).
         """
 
-        if not self._send_ts or packet_rx_md.tcp__tsval is None:
+        if not self._send_ts:
             return True
+        # RFC 7323 §3.2: "If a non-<RST> segment is received
+        # without a TSopt, a TCP SHOULD silently drop the
+        # segment." The SHOULD applies to in-stream segments;
+        # SYN-bearing segments are exempt because they may
+        # legitimately re-initiate (RFC 6191 §3 4-tuple reuse,
+        # RFC 9293 §3.10.7.4 SYN-in-synchronized challenge-ACK
+        # path) and the per-segment TSopt expectation has not
+        # yet been re-established for the new incarnation.
+        if packet_rx_md.tcp__tsval is None:
+            if packet_rx_md.tcp__flag_syn:
+                return True
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - PAWS: silently dropping segment "
+                "missing TSopt on TS-negotiated session "
+                "(RFC 7323 §3.2 SHOULD)",
+            )
+            return False
+        # RFC 7323 §4.3 rule (2) Last.ACK.sent gate: TS.Recent
+        # is only refreshed when SEG.SEQ <= Last.ACK.sent so an
+        # OOO segment cannot inflate TS.Recent and corrupt the
+        # TSecr echoed back to the peer's RTT estimator. Last.
+        # ACK.sent equals RCV.NXT at the moment of our last
+        # outbound ACK and is monotone non-decreasing; using
+        # the current RCV.NXT as the upper bound is a tightening
+        # safe approximation (it can only suppress refreshes
+        # that the strict algorithm would also suppress, never
+        # the reverse). SYN-bearing segments are exempt: they
+        # establish (or, on RFC 6191 §3 reuse, re-establish)
+        # the connection's TS.Recent and the §4.3 algorithm
+        # assumes a stable seq-space relationship that has not
+        # yet been negotiated for the new incarnation.
+        ts_recent_refresh_gate_ok = (
+            packet_rx_md.tcp__flag_syn
+            or le32(packet_rx_md.tcp__seq, self._rcv_nxt)
+        )
         if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
             # RFC 7323 §5.5 outdated-timestamps mitigation:
             # if the connection has been idle longer than the
@@ -2051,9 +2087,17 @@ class TcpSession:
                 f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
                 f"{self._ts_recent})",
             )
+            # RFC 7323 §5.3 R1: "Send an acknowledgment in
+            # reply" on the PAWS-stale drop so the peer can
+            # recover its sender state without waiting for its
+            # own RTO. Reuses the rate-limited challenge-ACK
+            # emit which is the canonical "ACK at SND.NXT,
+            # RCV.NXT" wire shape.
+            self._emit_challenge_ack()
             return False
-        self._ts_recent = packet_rx_md.tcp__tsval
-        self._ts_recent_updated_at_ms = stack.timer.now_ms
+        if ts_recent_refresh_gate_ok:
+            self._ts_recent = packet_rx_md.tcp__tsval
+            self._ts_recent_updated_at_ms = stack.timer.now_ms
         return True
 
     def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:

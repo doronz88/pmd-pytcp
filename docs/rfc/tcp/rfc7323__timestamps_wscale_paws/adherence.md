@@ -199,20 +199,33 @@ audit).
 > TCP MUST NOT abort a TCP connection because any
 > segment lacks an expected TSopt."
 
-**Adherence:** partial. PyTCP does not silently drop
-non-RST segments missing TSopt when `_send_ts` is
-True. The PAWS check at `_check_paws_and_update_ts_recent`
-(line 1789-1821) returns True when the segment has
-no TSopt — meaning the segment is processed
-normally. This is a SHOULD-level deviation; the §3.2
-"NOT abort" MUST is met (no abort path exists).
+**Adherence:** met. PyTCP's
+`_check_paws_and_update_ts_recent` returns False when
+`_send_ts` is True and the inbound segment lacks TSopt,
+causing the caller to silently drop the segment per
+the §3.2 SHOULD. SYN-bearing segments are exempt because
+they may legitimately re-initiate (RFC 6191 §3 4-tuple
+reuse, RFC 9293 §3.10.7.4 SYN-in-synchronized
+challenge-ACK path) and the per-segment TSopt
+expectation has not yet been re-established for the
+new incarnation. The §3.2 "NOT abort" MUST is also met
+(no abort path exists).
 
 ### TSopt on RST: SHOULD include
 
 > "TSopt SHOULD be sent in an <RST> segment."
 
-**Adherence:** not implemented. RST emission paths
-do not include TSopt. SHOULD-level deviation.
+**Adherence:** met. PyTCP's `_transmit_packet` carries
+no RST-specific TSopt-suppress gate, so an RST emitted
+in a TS-negotiated session naturally includes TSopt
+(TSval = current TS clock, TSecr = `_ts_recent`). All
+session-state RST emissions (ABORT path, retransmit-
+exhaustion path) are routed through `_transmit_packet`
+and therefore satisfy the SHOULD. Stateless RSTs from
+LISTEN / SYN_SENT pre-handshake paths cannot include
+TSopt because no `_ts_recent` has been negotiated; the
+SHOULD does not apply to those connectionless emit
+paths.
 
 ---
 
@@ -249,30 +262,19 @@ The §4.3 algorithm specifies the `TS.Recent` /
 >      Last.ACK.sent then SEG.TSval is copied to
 >      TS.Recent; otherwise, it is ignored."
 
-**Adherence:** partial. PyTCP's `_ts_recent` update
-at `tcp__session.py:1820`:
-
-```python
-self._ts_recent = packet_rx_md.tcp__tsval
-```
-
-is unconditional after the PAWS-not-stale check.
-The §4.3 rule (2) requires also checking `SEG.SEQ
-<= Last.ACK.sent` before copying. PyTCP doesn't
-track `Last.ACK.sent` separately; the practical
-effect is that PyTCP's `_ts_recent` may update on
-out-of-order segments where the §4.3 strict reading
-would not.
-
-The deviation is forward-only: when PyTCP updates
-`_ts_recent`, it always advances (PAWS check
-prevents going backwards). The §4.3 case (A) /
-case (B) distinction matters for the TSecr value
-echoed in delayed-ACK / hole-fill scenarios; PyTCP's
-echo always uses the latest `_ts_recent`, which can
-yield slightly inflated RTT measurements compared to
-the §4.3 algorithm's "echo from oldest unacked" or
-"echo from last in-sequence" rules.
+**Adherence:** met. PyTCP's
+`_check_paws_and_update_ts_recent` gates the TS.Recent
+update on `SEG.SEQ <= self._rcv_nxt` (the safe
+tightening of `SEG.SEQ <= Last.ACK.sent`, since
+Last.ACK.sent is monotone non-decreasing and equals
+RCV.NXT at the moment of our last outbound ACK; the
+gate can only suppress refreshes the strict algorithm
+would also suppress, never the reverse). OOO segments
+pass PAWS but do not refresh TS.Recent, so the next
+outbound TSecr correctly echoes the last in-sequence
+peer TSval. SYN-bearing segments are exempt because
+they establish (or re-establish on RFC 6191 reuse)
+the connection's TS.Recent in a fresh seq space.
 
 ---
 
@@ -344,17 +346,15 @@ auditied separately under RFC 1337.
 > arriving segment as not acceptable: Send an
 > acknowledgment in reply..."
 
-**Adherence:** partial. PyTCP's `_check_paws_and_update_ts_recent`
-returns False on stale-TSval, and the caller drops
-the segment — matching the "drop the segment" half
-of R1. The "Send an acknowledgment in reply" half is
-NOT implemented: PyTCP's PAWS-stale path silently
-drops without an ACK reply. R1 says SHOULD send an
-ACK; PyTCP's deviation is the silent drop.
-
-The practical impact is small: a peer whose stale
-TSval segment is dropped will retransmit per its
-RTO; the missing ACK doesn't break the connection.
+**Adherence:** met. PyTCP's
+`_check_paws_and_update_ts_recent` calls
+`_emit_challenge_ack()` on the stale-TSval drop,
+satisfying R1's "Send an acknowledgment in reply"
+SHOULD. The challenge-ACK helper is rate-limited per
+RFC 5961 §3 so a burst of stale-TSval segments cannot
+amplify into an outbound ACK flood. The peer can
+recover its sender state without waiting for its own
+RTO.
 
 ### R3) Update TS.Recent
 
@@ -537,10 +537,10 @@ regression guard.
 | §3.2 SHOULD drop missing-TSopt                  | n/a (gap)                                      |
 | §4 RTTM rule                                    | locked in                                      |
 | §4.2 EWMA with multiple samples                 | locked in (covered by RFC 6298 audit)          |
-| §4.3 Which TSval to echo (A/B/C)                | partial (simple case only)                     |
+| §4.3 Which TSval to echo (A/B/C)                | locked in (Last.ACK.sent gate test)            |
 | §5.2 PAWS basic                                 | locked in                                      |
 | §5.2 RST not subject to PAWS                    | locked in (with TIME-WAIT deviation)           |
-| §5.3 R1 ACK reply on PAWS drop                  | n/a (gap)                                      |
+| §5.3 R1 ACK reply on PAWS drop                  | locked in (challenge-ACK on stale-TSval)       |
 | §5.5 Outdated timestamps mitigation             | locked in                                      |
 
 ---
@@ -557,14 +557,14 @@ regression guard.
 | §2.4 Window retraction handling                 | met (cross-cut RFC 1122)                |
 | §3.2 TSopt wire format                          | met                                     |
 | §3.2 TSopt on every non-RST                     | met                                     |
-| §3.2 TSopt on RST                               | not met (SHOULD)                        |
-| §3.2 SHOULD drop missing-TSopt                  | not met (SHOULD)                        |
+| §3.2 TSopt on RST                               | met (synchronized states)               |
+| §3.2 SHOULD drop missing-TSopt                  | met                                     |
 | §4 RTTM rule                                    | met                                     |
 | §4.2 EWMA multi-sample                          | met                                     |
-| §4.3 TSval-to-echo (A/B/C)                      | partial (simple case only)              |
+| §4.3 TSval-to-echo (A/B/C)                      | met (Last.ACK.sent gate via RCV.NXT)    |
 | §5.2 PAWS                                       | met                                     |
 | §5.2 RST not subject to PAWS                    | met (synchronized states)               |
-| §5.3 R1 ACK reply on PAWS drop                  | not met (SHOULD)                        |
+| §5.3 R1 ACK reply on PAWS drop                  | met (challenge-ACK rate-limited)        |
 | §5.5 Outdated timestamps mitigation             | met                                     |
 
 PyTCP fully implements the wire-level RFC 7323 option

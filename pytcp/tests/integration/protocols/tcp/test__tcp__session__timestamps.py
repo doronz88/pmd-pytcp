@@ -1065,17 +1065,36 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         )
         frames_tx_before = len(self._frames_tx)
         self._drive_rx(frame=stale_late_fin)
+        new_frames = list(self._frames_tx[frames_tx_before:])
 
-        self.assertEqual(
-            len(self._frames_tx),
-            frames_tx_before,
-            msg=("Stale-TSval late segment MUST be dropped " "before the FIN-retransmit handler emits an " "ACK."),
-        )
+        # PAWS MUST gate the segment before the FIN-retransmit
+        # handler runs; '_ts_recent' MUST NOT advance and the
+        # only legal outbound is the §5.3 R1 challenge-ACK
+        # reply (a no-data, no-FIN ACK at SND.NXT/RCV.NXT).
         self.assertEqual(
             session._ts_recent,
             ts_recent_pre,
             msg=("PAWS-rejected segment MUST NOT update " "'_ts_recent'."),
         )
+        for frame in new_frames:
+            probe = self._parse_tx(frame)
+            self.assertNotIn(
+                "FIN",
+                probe.flags,
+                msg=(
+                    "PAWS gate MUST drop the stale FIN before "
+                    "the TIME_WAIT FIN-retransmit handler runs; "
+                    f"got TX FIN flags={probe.flags}."
+                ),
+            )
+            self.assertEqual(
+                probe.payload,
+                b"",
+                msg=(
+                    "Only legal post-PAWS-drop emit is an empty "
+                    f"R1 ACK; got payload={probe.payload!r}."
+                ),
+            )
 
 
 class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
@@ -1550,5 +1569,305 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
                 "RFC 7323 §5: TS.Recent MUST NOT advance on a "
                 "stale-TSval segment dropped by strict PAWS. "
                 f"Got _ts_recent={session._ts_recent}."
+            ),
+        )
+
+
+class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
+    """
+    RFC 7323 SHOULD-level deviations audited in
+    'docs/rfc/tcp/rfc7323__timestamps_wscale_paws/adherence.md':
+
+    1. §3.2 - TSopt SHOULD be present on every non-<RST> segment
+       (already met by '_transmit_packet'); the matching
+       SHOULD-include-TSopt-on-RST is also met because
+       '_transmit_packet' carries no RST-specific suppress gate.
+    2. §3.2 - "If a non-<RST> segment is received without a TSopt,
+       a TCP SHOULD silently drop the segment". Implemented by
+       '_check_paws_and_update_ts_recent' returning False when
+       '_send_ts' is True and the inbound segment lacks TSopt.
+    3. §5.3 R1 - the PAWS-stale drop SHOULD be accompanied by an
+       ACK reply. Implemented by '_emit_paws_ack_reply' helper
+       called from each PAWS-drop call site.
+    4. §4.3 - 'Last.ACK.sent' gate on '_ts_recent' update. The
+       A/B/C echo cases reduce to "advance _ts_recent only on
+       segments that fall within the most-recent-ACKed window";
+       PyTCP's strict PAWS check + cum-ACK left-edge advance
+       satisfies this without an extra Last.ACK.sent variable.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
+        """Drive the active-open handshake with bilateral TSopt."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=peer_tsval,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_ts
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rfc7323__rst_in_synchronized_state_carries_tsopt(self) -> None:
+        """
+        Ensure that an RST emitted by the session FSM in a
+        synchronized state (here: ABORT from ESTABLISHED) carries
+        the Timestamps option when bilateral TSopt negotiation
+        succeeded. The §3.2 "TSopt SHOULD be sent in an <RST>"
+        SHOULD is implemented implicitly by '_transmit_packet'
+        having no RST-specific suppress gate.
+
+        Reference: RFC 7323 §3.2 (TSopt on RST SHOULD).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        before_tx = len(self._frames_tx)
+        send_now_ms = self._timer.now_ms
+        session.abort()
+        tx = list(self._frames_tx[before_tx:])
+
+        rsts = [self._parse_tx(frame) for frame in tx if "RST" in self._parse_tx(frame).flags]
+        self.assertEqual(
+            len(rsts),
+            1,
+            msg=(
+                "ABORT in ESTABLISHED MUST emit exactly one RST. "
+                f"Got {len(rsts)} RST frames among {len(tx)} TX frames."
+            ),
+        )
+        probe = rsts[0]
+        self.assertIsNotNone(
+            probe.tsval,
+            msg=(
+                "RFC 7323 §3.2: RST emitted in a TS-negotiated "
+                "session MUST carry the Timestamps option. Got "
+                f"tsval={probe.tsval} on RST={probe.flags}."
+            ),
+        )
+        self.assertEqual(
+            probe.tsval,
+            send_now_ms,
+            msg=(
+                "RST TSval MUST equal current TS clock. Got "
+                f"tsval={probe.tsval}, expected {send_now_ms}."
+            ),
+        )
+        self.assertEqual(
+            probe.tsecr,
+            PEER__TSVAL_INITIAL,
+            msg=(
+                "RST TSecr MUST equal '_ts_recent' (peer's last "
+                f"TSval = {PEER__TSVAL_INITIAL:#x}). Got "
+                f"tsecr={probe.tsecr}."
+            ),
+        )
+
+    def test__rfc7323__missing_tsopt_segment_silently_dropped(self) -> None:
+        """
+        Ensure that a non-RST inbound segment lacking TSopt on a
+        TS-negotiated session is silently dropped: its payload
+        does not enter the receive buffer and no FIN-ack reply is
+        emitted by the data path.
+
+        Reference: RFC 7323 §3.2 (silent drop of missing-TSopt segments).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        # Inbound DATA segment with NO TSopt on a TS-negotiated session.
+        data_frame_no_ts = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"missing-tsopt",
+        )
+        self._drive_rx(frame=data_frame_no_ts)
+
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"",
+            msg=(
+                "RFC 7323 §3.2: a non-RST inbound segment lacking "
+                "TSopt on a TS-negotiated session MUST be silently "
+                "dropped before its data enters the RX buffer. "
+                f"Got _rx_buffer={bytes(session._rx_buffer)!r}."
+            ),
+        )
+
+    def test__rfc7323__paws_drop_emits_ack_reply(self) -> None:
+        """
+        Ensure that a stale-TSval segment dropped by PAWS triggers
+        an ACK reply per RFC 7323 §5.3 R1, so the peer can re-sync
+        its sender state without waiting for its own RTO.
+
+        Reference: RFC 7323 §5.3 (R1 ACK reply on PAWS drop).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        stale_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL - 1,
+            tsecr=0,
+            payload=b"paws-stale",
+        )
+        tx = self._drive_rx(frame=stale_data)
+
+        # Payload MUST NOT enter the buffer.
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"",
+            msg=(
+                "PAWS drop must keep the stale segment's data out "
+                f"of the buffer. Got _rx_buffer={bytes(session._rx_buffer)!r}."
+            ),
+        )
+        # An ACK reply MUST be emitted.
+        replies = [self._parse_tx(frame) for frame in tx]
+        ack_replies = [p for p in replies if "ACK" in p.flags and "RST" not in p.flags]
+        self.assertGreaterEqual(
+            len(ack_replies),
+            1,
+            msg=(
+                "RFC 7323 §5.3 R1: PAWS-stale drop MUST be "
+                f"accompanied by an ACK reply. Got {len(ack_replies)} "
+                f"ACK frames among {len(replies)} TX frames."
+            ),
+        )
+
+    def test__rfc7323__ooo_segment_does_not_refresh_ts_recent(self) -> None:
+        """
+        Ensure that an inbound OOO segment (SEG.SEQ > RCV.NXT)
+        passes PAWS but does NOT refresh '_ts_recent' per
+        RFC 7323 §4.3 rule (2)'s SEG.SEQ <= Last.ACK.sent gate.
+        Without this gate, OOO segments inflate TS.Recent and
+        the next outbound TSecr echoes a TSval the peer hasn't
+        yet seen acknowledged, distorting the peer's RTT
+        estimator.
+
+        Reference: RFC 7323 §4.3 (Last.ACK.sent gate on TS.Recent).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+        ts_recent_before = session._ts_recent
+
+        # OOO data segment: SEQ jumps past RCV.NXT by 1000 bytes,
+        # leaving a hole. Fresh-TSval so PAWS lets it through.
+        ooo_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1 + 1000,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL + 50,
+            tsecr=PEER__TSVAL_INITIAL,
+            payload=b"ooo-bytes",
+        )
+        self._drive_rx(frame=ooo_data)
+
+        self.assertEqual(
+            session._ts_recent,
+            ts_recent_before,
+            msg=(
+                "RFC 7323 §4.3 rule (2): OOO segment's TSval "
+                "MUST NOT refresh TS.Recent. Got "
+                f"_ts_recent={session._ts_recent}, expected "
+                f"{ts_recent_before}."
+            ),
+        )
+
+    def test__rfc7323__in_order_segment_refreshes_ts_recent(self) -> None:
+        """
+        Ensure that an in-order inbound segment (SEG.SEQ ==
+        RCV.NXT) refreshes '_ts_recent' per RFC 7323 §4.3
+        rule (2)'s SEG.SEQ <= Last.ACK.sent gate (the gate
+        passes for in-order segments).
+
+        Reference: RFC 7323 §4.3 (TS.Recent refresh on in-order accept).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+
+        in_order_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=PEER__TSVAL_INITIAL + 100,
+            tsecr=PEER__TSVAL_INITIAL,
+            payload=b"in-order",
+        )
+        self._drive_rx(frame=in_order_data)
+
+        self.assertEqual(
+            session._ts_recent,
+            PEER__TSVAL_INITIAL + 100,
+            msg=(
+                "RFC 7323 §4.3 rule (2): in-order segment's "
+                "TSval MUST refresh TS.Recent. Got "
+                f"_ts_recent={session._ts_recent}."
             ),
         )
