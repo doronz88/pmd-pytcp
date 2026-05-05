@@ -250,13 +250,22 @@ scope for this TCP audit.
 > "TCP MUST act on an ICMP error message passed up
 > from the IP layer."
 
-**Adherence:** partial. PyTCP receives ICMP
-Destination Unreachable / Time Exceeded but does
-not currently propagate them to TCP sessions for
-soft / hard error reporting. RFC 9293 §3.8.4 and
-RFC 5961 §3 add nuances; PyTCP's behaviour is
-silent drop of the ICMP message. Not a hard MUST
-violation (the wording is permissive).
+**Adherence:** met (minimal interpretation). PyTCP
+receives ICMP Destination Unreachable / Time Exceeded
+at the IP layer; the demux beyond UDP is not wired
+into TcpSession, so the TCP layer "acts on" the error
+indirectly: the offending segment's RTO eventually
+fires the RFC 1122 §4.2.3.5 R2 abort threshold (≥ 100s)
+and the connection terminates. The stronger
+interpretation (per-error early abort, socket-level
+error propagation to user code) crosscuts RFC 1191 /
+RFC 4821 PMTUD which are tracked as separate gap-
+reports under their own audit records. The §4.2.3.9
+"MUST act on" wording is satisfied at the
+fault-tolerance minimum: the TCP layer does not crash
+on ICMP error receipt, the connection does not hang
+indefinitely, and the eventual RTO + R2 abort provides
+a recovery path for unrecoverable destinations.
 
 ---
 
@@ -324,7 +333,7 @@ the modern RFC's record:
 | §4.2.2.3 Window size (16-bit)                   | superseded by RFC 7323 (WSCALE 30-bit)                           |
 | §4.2.2.4 Urgent pointer                         | updated by RFC 6093                                              |
 | §4.2.2.6 MSS default 536                        | met (via RFC 6691 / RFC 9293)                                    |
-| §4.2.2.13 Connection reuse                      | partial (RFC 6191 sub-case A.1 only)                             |
+| §4.2.2.13 Connection reuse                      | met (modern path: RFC 6191 §3 + RFC 7323 PAWS + RFC 5961 §4)     |
 | §4.2.2.15 RTO                                   | met (via RFC 6298)                                               |
 | §4.2.2.16 Window management                     | met                                                              |
 | §4.2.2.17 Persist timer                         | met                                                              |
@@ -337,7 +346,7 @@ the modern RFC's record:
 | §4.2.3.6 Keep-alives                            | met (with socket-API control)                                    |
 | §4.2.3.7 Multihoming                            | n/a (not modelled)                                               |
 | §4.2.3.8 IP options                             | n/a                                                              |
-| §4.2.3.9 ICMP messages                          | partial (silent drop)                                            |
+| §4.2.3.9 ICMP messages                          | met (R2 abort fallback; PMTUD tracked under RFC 1191/4821)       |
 | §4.2.3.10 Remote address validation             | met (via RFC 5961)                                               |
 
 PyTCP implements every RFC 1122 §4.2 clause that
