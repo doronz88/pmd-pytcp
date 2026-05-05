@@ -221,6 +221,7 @@ def cubic_grow_per_ack(
     now_ms: int,
     bytes_acked: int,
     smss: int,
+    srtt_ms: int = 0,
 ) -> int:
     """
     Compute the post-growth cwnd value for a cumulative ACK
@@ -257,7 +258,14 @@ def cubic_grow_per_ack(
     if cwnd < ssthresh:
         return cwnd + min(bytes_acked, smss)
 
-    t_ms = max(0, now_ms - epoch_start_ms)
+    # RFC 9438 §4.2: target = clamp(W_cubic(t + RTT), [cwnd, 1.5*cwnd]).
+    # The +RTT projection lets the curve aim at the cwnd value
+    # the network is expected to support one RTT in the future,
+    # smoothing growth across the ACK arrival window. The 'srtt_ms'
+    # default of 0 preserves the legacy 'W_cubic(t)' behaviour for
+    # callers that don't pass a smoothed RTT (chiefly the unit
+    # tests).
+    t_ms = max(0, now_ms - epoch_start_ms) + srtt_ms
     target = cubic_target(cwnd, w_max, K_ms, t_ms, smss)
 
     if target <= cwnd:

@@ -80,20 +80,16 @@ module).
 
 > "target = clamp(W_cubic(t + RTT), [cwnd, 1.5 * cwnd])"
 
-**Adherence:** simplified. PyTCP's `cubic_target`
-clamps `W_cubic(t)` to `[cwnd, 1.5*cwnd]` but does
-NOT add RTT to the time argument — uses `W_cubic(t)`
-directly. This means the target is computed at the
-current time, not "after the next RTT".
-
-The deviation makes PyTCP's CUBIC slightly more
-conservative than RFC 9438 strict (the target
-won't reach as high during an RTT). The
-RFC permits implementation latitude in §4.2's
-"target = W_cubic(t + RTT)" language ("Upon
-receiving a new ACK during congestion avoidance,
-CUBIC computes the target congestion window size
-after the next RTT using Figure 1").
+**Adherence:** met. `cubic_grow_per_ack` now passes
+`srtt_ms=self._rto_state.srtt_ms` from the session
+into `cubic_target`, which evaluates the cubic curve
+at `t + RTT` per the §4.2 formula. The +RTT
+projection lets the curve aim at the cwnd value the
+network is expected to support one RTT in the future,
+smoothing growth across the ACK arrival window. The
+unit-test signature retains a default `srtt_ms=0` so
+the legacy `W_cubic(t)` callers (the unit tests) are
+unaffected.
 
 ### §4.3 Reno-Friendly Region
 
@@ -280,10 +276,15 @@ CUBIC takes over only when cwnd >= ssthresh.
 
 ### §4.9 Spurious Congestion
 
-CUBIC-specific state restoration on spurious RTO is
-not implemented; no test surface.
+§4.9.1 spurious-RTO state restore is locked in via the
+F-RTO substrate (snapshot CUBIC state at RTO entry,
+restore on first post-RTO ACK that covers SND.MAX).
+§4.9.2 spurious-FR state restore is locked in via the
+new `_fr_pre_cubic_*` snapshot at fast-retransmit
+entry plus the DSACK-driven rollback in
+`_ingest_sack_info`.
 
-**Status:** n/a (gap).
+**Status:** locked in.
 
 ### §4.10 Slow Start
 
@@ -316,7 +317,7 @@ not implemented; no test surface.
 | §4.1 Constants (C, β_cubic, α_cubic)            | met                                     |
 | §4.2 W_cubic(t) formula                         | met                                     |
 | §4.2 K computation                              | met                                     |
-| §4.2 target = W_cubic(t + RTT)                  | partial (uses W_cubic(t) only)          |
+| §4.2 target = W_cubic(t + RTT)                  | met (`srtt_ms` passed to cubic_target)  |
 | §4.3 Reno-Friendly W_est                        | met                                     |
 | §4.4-§4.5 CA growth                             | met                                     |
 | §4.6 Multiplicative Decrease (β_cubic = 0.7)    | met                                     |
@@ -324,7 +325,7 @@ not implemented; no test surface.
 | §4.7 Fast Convergence                           | met                                     |
 | §4.8 Timeout                                    | met                                     |
 | §4.9.1 Spurious-timeout state restore           | met                                     |
-| §4.9.2 Spurious-fast-retransmit state restore   | not implemented                         |
+| §4.9.2 Spurious-fast-retransmit state restore   | met (DSACK-driven CUBIC rollback)       |
 | §4.10 Slow Start                                | met                                     |
 
 PyTCP fully implements RFC 9438 CUBIC's §4 algorithm

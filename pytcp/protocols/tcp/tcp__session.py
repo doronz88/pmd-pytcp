@@ -545,6 +545,22 @@ class TcpSession:
         self._frto_pre_cubic_epoch_start_ms: int = 0
         self._frto_pre_cubic_w_est: int = 0
 
+        # RFC 9438 §4.9.2 spurious-fast-retransmit state restore.
+        # When fast-retransmit fires, snapshot the CUBIC state so a
+        # subsequent DSACK observation in the same recovery
+        # episode (proving the retransmit was spurious) can roll
+        # back W_max / K / epoch_start / W_est to their pre-FR
+        # values. Mirrors the F-RTO snapshot pattern; the snapshot
+        # is gated by '_fr_cubic_snapshot_valid' so a DSACK
+        # outside a recovery episode does not spuriously restore.
+        self._fr_pre_cubic_w_max: int = 0
+        self._fr_pre_cubic_K_ms: int = 0
+        self._fr_pre_cubic_epoch_start_ms: int = 0
+        self._fr_pre_cubic_w_est: int = 0
+        self._fr_pre_cwnd: int = 0
+        self._fr_pre_ssthresh: int = 0
+        self._fr_cubic_snapshot_valid: bool = False
+
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -2509,6 +2525,32 @@ class TcpSession:
                     break
         if is_dsack:
             self._dsack_received += 1
+            # RFC 9438 §4.9.2 spurious-fast-retransmit restore:
+            # a DSACK observed during a recovery episode that
+            # had snapshotted CUBIC state at FR entry indicates
+            # the retransmit was spurious. Roll back W_max, K,
+            # epoch_start, W_est, cwnd, and ssthresh to their
+            # pre-FR values so post-FR throughput is not
+            # artificially anchored at the reduced W_max.
+            if (
+                self._cc_mode is CcMode.CUBIC
+                and self._fr_cubic_snapshot_valid
+                and self._recovery_point != 0
+            ):
+                self._cubic_w_max = self._fr_pre_cubic_w_max
+                self._cubic_K_ms = self._fr_pre_cubic_K_ms
+                self._cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
+                self._cubic_w_est = self._fr_pre_cubic_w_est
+                self._cwnd = self._fr_pre_cwnd
+                self._ssthresh = self._fr_pre_ssthresh
+                self._fr_cubic_snapshot_valid = False
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RFC 9438 §4.9.2 spurious-FR "
+                    "restore: rolled back CUBIC state on DSACK "
+                    f"(cwnd={self._cwnd}, ssthresh={self._ssthresh}, "
+                    f"W_max={self._cubic_w_max})",
+                )
             # RFC 8985 §6.2 step 4 DSACK-round handling. A
             # DSACK observed outside recovery indicates a
             # spurious retransmit (the peer received what we
@@ -3204,6 +3246,17 @@ class TcpSession:
         # W_max anchor.
         if self._cc_mode is CcMode.CUBIC:
             prior_w_max = self._cubic_w_max
+            # RFC 9438 §4.9.2 spurious-fast-retransmit snapshot:
+            # capture the pre-FR CUBIC state so a DSACK during
+            # this recovery episode can roll back the
+            # multiplicative decrease + curve re-anchor below.
+            self._fr_pre_cubic_w_max = self._cubic_w_max
+            self._fr_pre_cubic_K_ms = self._cubic_K_ms
+            self._fr_pre_cubic_epoch_start_ms = self._cubic_epoch_start_ms
+            self._fr_pre_cubic_w_est = self._cubic_w_est
+            self._fr_pre_cwnd = self._cwnd
+            self._fr_pre_ssthresh = self._ssthresh
+            self._fr_cubic_snapshot_valid = True
             self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=self._cwnd,
                 smss=self._snd_mss,
@@ -3601,6 +3654,7 @@ class TcpSession:
                         now_ms=now_ms,
                         bytes_acked=bytes_acked,
                         smss=self._snd_mss,
+                        srtt_ms=self._rto_state.srtt_ms or 0,
                     )
                     # RFC 9438 §4.3: track the Reno-equivalent
                     # cwnd ('W_est') in parallel; if the cubic
@@ -3816,6 +3870,10 @@ class TcpSession:
             self._cwnd = self._ssthresh
             self._snd_ewn = min(self._cwnd, self._snd_wnd)
             self._recovery_point = 0
+            # RFC 9438 §4.9.2 snapshot is scoped to a single
+            # recovery episode; clear on exit so a stray DSACK
+            # post-recovery does not roll back unrelated state.
+            self._fr_cubic_snapshot_valid = False
             # RFC 6937 §3.1 PRR: per-recovery state is scoped
             # to a single recovery episode. Reset on exit so
             # the next loss event snapshots a fresh
