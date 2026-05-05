@@ -446,16 +446,30 @@ typical PyTCP use cases.
 
 ### §3.2 TSopt on RST segments (SHOULD)
 
-Not implemented; no test surface.
+- **Integration:**
+  `test__tcp__session__timestamps.py::TestTcpTimestampsRfc7323ShouldClauses::test__rfc7323__rst_in_synchronized_state_carries_tsopt`
+  drives a TS-negotiated session to ESTABLISHED, calls
+  `session.abort()`, and verifies the emitted RST
+  carries TSopt with TSval=now and TSecr=peer's
+  cached TSval.
 
-**Status:** n/a (gap).
+**Status:** locked in.
 
 ### §3.2 SHOULD silently drop missing-TSopt segments
 
-Not implemented; no test surface (the "process
-normally" fallthrough is the de facto behaviour).
+- **Integration:**
+  `test__tcp__session__timestamps.py::TestTcpTimestampsRfc7323ShouldClauses::test__rfc7323__missing_tsopt_segment_silently_dropped`
+  injects a non-RST inbound data segment lacking TSopt
+  on a TS-negotiated session and asserts (a) the
+  payload does NOT enter the RX buffer and (b) no
+  acknowledgement fires from the data path. The
+  SYN-segment exemption (RFC 6191 §3 reuse path) is
+  pinned indirectly by the existing
+  `test__rfc6191__syn_without_tsopt_falls_back_to_challenge_ack`
+  test which verifies a SYN-without-TSopt to TIME_WAIT
+  still elicits the challenge ACK.
 
-**Status:** n/a (gap).
+**Status:** locked in.
 
 ### §4 RTTM rule (SND.UNA-advancing ACK only)
 
@@ -468,14 +482,17 @@ normally" fallthrough is the de facto behaviour).
 
 ### §4.3 Which TSval to echo
 
-- **Integration:** the broader timestamps integration
-  tests cover the simple "echo most recent" case;
-  the case-A / case-B / case-C distinction is not
-  specifically tested. The implementation deviation
-  (§4.3 audit above) is not pinned by a negative
-  test.
+- **Integration:**
+  `test__tcp__session__timestamps.py::TestTcpTimestampsRfc7323ShouldClauses::test__rfc7323__ooo_segment_does_not_refresh_ts_recent`
+  injects an OOO segment (SEG.SEQ > RCV.NXT) with a
+  fresh TSval and asserts `_ts_recent` does NOT
+  advance.
+  `...::test__rfc7323__in_order_segment_refreshes_ts_recent`
+  is the positive control: an in-order (SEG.SEQ ==
+  RCV.NXT) segment DOES refresh `_ts_recent`. Together
+  these pin the §4.3 rule (2) Last.ACK.sent gate.
 
-**Status:** partial; the simple case is locked in.
+**Status:** locked in.
 
 ### §5.2 PAWS basic mechanism
 
@@ -496,10 +513,20 @@ TIME-WAIT deviation).
 
 ### §5.3 R1) Stale-TSval drops + ACK reply (SHOULD)
 
-The "send ACK in reply" sub-clause is not
-implemented; PyTCP silently drops.
+- **Integration:**
+  `test__tcp__session__timestamps.py::TestTcpTimestampsRfc7323ShouldClauses::test__rfc7323__paws_drop_emits_ack_reply`
+  injects a stale-TSval data segment, asserts (a) the
+  payload does NOT enter the RX buffer and (b) at
+  least one ACK reply (no FIN, no RST) fires per the
+  R1 SHOULD. The reply uses the rate-limited
+  challenge-ACK helper so a burst of stale-TSval
+  segments cannot amplify into an outbound ACK flood.
+  The pre-existing
+  `test__paws__time_wait_late_segment_with_stale_tsval_dropped`
+  was updated to allow the new R1 ACK reply (verified
+  to be a no-FIN, no-data ACK shape).
 
-**Status:** n/a (gap; the SHOULD ACK is missing).
+**Status:** locked in.
 
 ### §5.5 Outdated timestamps mitigation
 
@@ -570,16 +597,24 @@ regression guard.
 PyTCP fully implements the wire-level RFC 7323 option
 formats (WSCALE, Timestamps) and the core
 bilateral-negotiation, RTTM-driven RTO, and PAWS
-mechanisms. Four SHOULD-level deviations:
+mechanisms. The four SHOULD-level deviations
+previously open are now closed:
 
-1. §3.2 TSopt on RST not emitted.
-2. §3.2 missing-TSopt segments not silently dropped
-   (processed normally).
-3. §4.3 `Last.ACK.sent` check missing on `_ts_recent`
-   update — yields slightly inflated RTT in edge
-   cases.
-4. §5.3 R1 PAWS-drop should send ACK reply; PyTCP
-   silently drops.
+1. §3.2 TSopt on RST: emitted by `_transmit_packet` on
+   any RST in a TS-negotiated session (no RST-suppress
+   gate).
+2. §3.2 missing-TSopt silent drop: implemented in
+   `_check_paws_and_update_ts_recent`; SYN-bearing
+   segments are exempt to preserve RFC 6191 §3 reuse
+   and RFC 9293 §3.10.7.4 challenge-ACK paths.
+3. §4.3 `Last.ACK.sent` gate: `_ts_recent` refresh is
+   gated on `SEG.SEQ <= self._rcv_nxt`, the safe
+   tightening of the strict algorithm. OOO segments
+   pass PAWS but no longer inflate `TS.Recent`.
+4. §5.3 R1 PAWS-drop ACK reply: stale-TSval drop now
+   emits the rate-limited challenge-ACK so the peer
+   can recover sender state without waiting for its
+   own RTO.
 
 §5.5 (outdated timestamps after >24-day idle) is shipped:
 the strict PAWS check is bypassed when the connection has
@@ -587,8 +622,5 @@ been idle longer than the 24-day threshold so a recovered
 idle connection does not freeze until the peer's TS clock
 wraps its sign bit.
 
-Overall RFC 7323 conformance is solid for the modern
-high-performance scenarios the RFC targets; the
-deviations are SHOULD-level and primarily affect
-edge cases (RST + TSopt interop, very-long-idle
-connections).
+Overall RFC 7323 conformance is at full SHOULD/MUST
+parity; no remaining deviations.

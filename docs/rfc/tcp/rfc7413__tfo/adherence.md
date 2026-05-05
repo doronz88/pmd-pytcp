@@ -285,15 +285,26 @@ SYN-piggybacked data.
 
 ### §4.1.3 MSS caching
 
-Not implemented; no test surface.
+The recommendation is "we recommend" (non-normative);
+PyTCP omits the MSS hint by design. No test surface
+needed.
 
-**Status:** n/a (gap).
+**Status:** n/a (non-normative).
 
 ### §4.1.3.1 Negative response caching
 
-Not implemented; no test surface.
+- **Locked in by construction:**
+  `stack.tcp__fastopen_negative` is a module-level
+  `set[Ip4Address | Ip6Address]` populated by the SYN-
+  RTO path in `_retransmit_packet_timeout` and
+  consulted by the active-open TFO emit branch in
+  `_transmit_packet`. A regression that bypassed
+  either site would surface as a TFO option emitted
+  to a peer in the negative cache. No dedicated
+  end-to-end test (the cache is local stack state,
+  not wire-observable on a single connection).
 
-**Status:** n/a (gap).
+**Status:** locked in by construction.
 
 ### §4.2 FastOpenEnabled / qlen
 
@@ -306,10 +317,17 @@ Not implemented; no test surface.
 
 ### §4.2 PendingFastOpenRequests limit
 
-Not enforced; no test surface for the over-limit
-case.
+- **Locked in by construction:** the listen handler
+  in `tcp__fsm__listen.py` checks
+  `stack.tcp__fastopen_pending_count <
+  listen_socket._tcp_fastopen_qlen` before accepting
+  TFO. The counter increments on TFO acceptance and
+  decrements via `_change_state` when leaving
+  SYN_RCVD (gated by per-session
+  `_fastopen_pending_counted`). Over-limit incoming
+  SYNs fall through to plain 3WHS.
 
-**Status:** n/a (gap).
+**Status:** locked in by construction.
 
 ### §4.2.1 Cookie request flow
 
@@ -327,9 +345,16 @@ case.
 
 ### §4.4 SYN retransmit without TFO
 
-Not implemented; no test surface.
+- **Locked in by construction:**
+  `_retransmit_packet_timeout` sets
+  `_fastopen_syn_retransmitted = True` on the active-
+  open SYN-RTO path. `_transmit_packet` reads the
+  flag and suppresses TFO option emission on the
+  retransmit, so the second attempt goes out as plain
+  3WHS without the option or any SYN-piggybacked
+  data.
 
-**Status:** n/a (gap).
+**Status:** locked in by construction.
 
 ### Test coverage summary
 
@@ -339,12 +364,12 @@ Not implemented; no test surface.
 | §4.1.2 Cookie generation / validation           | locked in (HMAC unit tests)                    |
 | §4.1.3 Client cookie cache                      | locked in                                      |
 | §4.1.3 MSS caching (recommendation)             | n/a (non-normative "we recommend")             |
-| §4.1.3.1 Negative response caching              | n/a (gap)                                      |
+| §4.1.3.1 Negative response caching              | locked in by construction                      |
 | §4.2 FastOpenEnabled                            | locked in (setsockopt path)                    |
-| §4.2 PendingFastOpenRequests limit              | n/a (gap)                                      |
+| §4.2 PendingFastOpenRequests limit              | locked in by construction                      |
 | §4.2.1 Cookie request flow                      | locked in                                      |
 | §4.2.2 TFO data path                            | locked in                                      |
-| §4.4 SYN retransmit without TFO                 | n/a (gap)                                      |
+| §4.4 SYN retransmit without TFO                 | locked in by construction                      |
 
 ---
 

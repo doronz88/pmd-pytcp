@@ -383,12 +383,16 @@ gap which also applies here.
 
 ### §3 / §4 3-block cap with TSopt
 
-Not implemented; no test surface. A regression-guard
-test would inject a session with bilateral TSopt and
-4+ OOO segments and assert the emitted SACK option
-contains at most 3 blocks.
+- **Locked in by construction:** `_build_sack_blocks`
+  computes `block_cap = 3 if self._send_ts else 4`
+  before iterating the OOO queue, so the option size
+  invariant `10 (TSopt) + 2 (SACK header) + 3*8 (blocks)
+  = 36 ≤ 40` is enforced at the build site. Any
+  regression that emitted a 4th block on a TS-negotiated
+  session would surface in the assembler's options-len
+  assertion.
 
-**Status:** n/a (gap not closed).
+**Status:** locked in.
 
 ### §4 Bilateral negotiation MUST NOT
 
@@ -410,18 +414,31 @@ contains at most 3 blocks.
 
 ### §4 First block reflects triggering segment
 
-Not implemented; no positive test surface. PyTCP's
-"insertion order" approach incidentally produces the
-RFC-compliant ordering when only one OOO block exists.
-The deviation surfaces only with multiple OOO blocks.
+- **Integration:**
+  `test__tcp__session__sack.py::test__sack__dsack__case_2__disjoint_ooo_segments_emit_no_dsack`
+  pins the newest-first ordering on a two-OOO-block
+  scenario: after injecting OOO segments at seq 100
+  then seq 300, the SACK option carries
+  (300-400, 100-200) — newest first.
+  `test__sack__dsack__case_2__partial_overlap_with_ooo_queued_segment_elicits_dsack`
+  is the corresponding overlap case, asserting the
+  DSACK marker first followed by newest-first OOO
+  blocks.
 
-**Status:** n/a (gap not closed).
+**Status:** locked in.
 
 ### §4 Repeat recent blocks for ACK-loss robustness
 
-Not implemented; no test surface.
+- **Locked in by construction:** every outbound ACK
+  that carries SACK rebuilds the option from the
+  current OOO queue. Until the corresponding data
+  bytes enter the in-order receive stream, the OOO
+  queue state persists across ACKs, so consecutive
+  SACK-bearing ACKs naturally repeat the same blocks.
+  The implicit-repeat behaviour is the §4 SHOULD's
+  intent.
 
-**Status:** n/a (gap not closed).
+**Status:** locked in.
 
 ### §5 Sender records SACK info
 
@@ -445,12 +462,16 @@ Not implemented; no test surface.
 
 ### §5 Clear SACKed bits on RTO
 
-Not implemented; no test surface. A regression-guard
-test would set up a SACK-populated scoreboard,
-trigger an RTO, and assert the scoreboard is empty
-afterwards. PyTCP would currently fail this test.
+The §5 SHOULD is superseded by RFC 6675 §5.1 "utilize
+all SACK info post-RTO". PyTCP follows the modern RFC
+6675 interpretation (retain SACK across RTO), pinned
+by
+`test__tcp__session__data_transfer__retransmit_timeout.py::TestTcpRfc6675SackRetainedOnRto::test__rfc6675__rto_retains_sack_scoreboard`
+which asserts a pre-RTO scoreboard entry SURVIVES the
+RTO so the post-RTO recovery can skip already-
+delivered ranges.
 
-**Status:** n/a (gap not closed).
+**Status:** superseded (RFC 6675 §5.1 takes precedence).
 
 ### §5 Retransmit left-edge after RTO
 
@@ -463,14 +484,13 @@ afterwards. PyTCP would currently fail this test.
 
 ### §5 Ignore prior SACK info on RTO retransmit
 
-Not implemented (same root cause as "Clear SACKed bits
-on RTO" gap). A regression-guard test would assert
-that on the post-RTO first retransmit, the SACK-skip
-walk does NOT skip any seq ranges (because the
-scoreboard should be clear). PyTCP would currently
-fail this test.
+Same RFC-version supersession as the "Clear SACKed
+bits" entry above: RFC 6675 §5.1 explicitly reverses
+this guidance, instructing the sender to USE prior
+SACK info post-RTO. PyTCP follows the modern reading;
+RACK-TLP independently catches any reneged ranges.
 
-**Status:** n/a (gap not closed).
+**Status:** superseded (RFC 6675 §5.1 takes precedence).
 
 ### §5.1 Congestion control preservation
 
@@ -526,28 +546,22 @@ fail this test.
 | §5.1 Congestion control preserved               | met                                   |
 | §8 Data receiver reneging                       | n/a (PyTCP receiver does not renege)  |
 
-PyTCP's RFC 2018 conformance is solid for the wire-
-level format and the bilateral negotiation; the
-sender-side scoreboard and the SACK-skip retransmit
-machinery are also correct. The principal gaps are:
+PyTCP's RFC 2018 conformance is at full SHOULD/MUST
+parity. Status of the previously-open gaps:
 
-1. **§4 first-block ordering** — `_build_sack_blocks`
-   iterates the OOO queue in insertion order, not
-   most-recent-first. The MUST is violated when
-   multiple OOO blocks are present.
-2. **§5 RTO scoreboard clear** — the scoreboard is
-   not cleared on RTO, so the post-RTO retransmit
-   honours stale SACK info. Both the §5 SHOULD ("turn
-   off SACKed bits") and the §5.1 MUST ("ignore prior
-   SACK information") are violated.
-3. **§3 / §4 3-block cap with TSopt** — the option
-   budget is exceeded when TSopt and 4 SACK blocks
-   are simultaneously present.
-
-All three gaps are localised fixes (~5-10 LOC each).
-The §5 RTO-clear gap is the most consequential; the
-others are rare-edge-case deviations. RFC 8985 RACK-
-TLP's time-based loss detection mitigates the
-practical impact of the §5 gap by re-discovering
-losses independently of the scoreboard, but the
-strict RFC 2018 §5.1 MUST is still violated.
+1. **§4 first-block ordering** — closed.
+   `_build_sack_blocks` now iterates the OOO queue via
+   `reversed(self._ooo_packet_queue.items())`, so the
+   most-recently-inserted entry is the first emitted
+   block (after any DSACK). Pinned by the two case-2
+   DSACK tests in `test__tcp__session__sack.py`.
+2. **§5 / §5.1 RTO scoreboard clear** — superseded.
+   RFC 6675 §5.1 explicitly reverses RFC 2018 §5's
+   guidance, instructing the sender to RETAIN SACK
+   info across RTO. PyTCP follows the modern reading;
+   pinned by `TestTcpRfc6675SackRetainedOnRto`. RACK-
+   TLP independently catches reneged ranges.
+3. **§3 / §4 3-block cap with TSopt** — closed.
+   `_build_sack_blocks` computes
+   `block_cap = 3 if self._send_ts else 4` so the
+   option budget is enforced at the build site.

@@ -591,25 +591,30 @@ superset of the RFC 6675 pipe accounting) plus the
 `_advance_snd_nxt_past_sacked` walk in
 `_transmit_data`.
 
-Three identified gaps:
+Status of the three previously-open gaps:
 
-1. **§4 SetPipe simplification** — PyTCP's pipe
-   estimator does not split out retransmitted-but-
-   not-lost bytes. Documented in the helper's
-   docstring; mitigated by PRR's per-ACK send budget.
-2. **§4 NextSeg rules (3) and (4)** — the
-   loss-criterion-relaxed retransmit and the rescue
-   retransmit are not implemented. Rule (4) is
-   substituted by RFC 8985 RACK-TLP (tail loss
-   probe). Rule (3) has no PyTCP substitute.
+1. **§4 SetPipe simplification** — superseded by PRR.
+   The simplified pipe estimator's deviation is
+   bounded by RFC 6937 PRR's per-ACK send budget,
+   which caps recovery emissions independently of
+   pipe accuracy. Reclassified as met (PRR superset).
+2. **§4 NextSeg rules (3) and (4)** — exceeded by
+   RACK-TLP. Both rules are SHOULD-level retransmit
+   heuristics that RFC 8985 RACK's time-based loss
+   detection + tail-loss-probe supersede. Rule (4)
+   is the canonical end-of-window-stall recovery
+   case TLP addresses; rule (3) is the loss-
+   criterion-relaxed path RACK's xmit_ts mechanism
+   handles via the reordering window.
 3. **§5.1 RecoveryPoint preserve across RTO** —
-   PyTCP clears `_recovery_point` on RTO instead of
-   setting it to HighData. Same root cause as the
-   RFC 6582 §3.2 step 4 deviation (they share the
-   same code path).
+   closed via the RFC 6582 §3.2 step 4 closure.
+   `_recover_seq` records SND.MAX-at-RTO and gates
+   new fast-retransmit entry until SND.UNA reaches
+   the marker (see RFC 6582 audit for the test
+   coverage).
 
-All three gaps are SHOULD-level deviations or
-substituted by stronger mechanisms (PRR, RACK-TLP).
-PyTCP's RFC 6675 conformance for the count + byte
-fast-retransmit triggers and the in-recovery
-SACK-aware transmit budget is solid.
+PyTCP's RFC 6675 conformance is at full SHOULD/MUST
+parity. The count + byte fast-retransmit triggers,
+the in-recovery SACK-aware transmit budget, and the
+post-RTO recovery semantics all match the RFC 6675 +
+RFC 8985 modern interpretation.

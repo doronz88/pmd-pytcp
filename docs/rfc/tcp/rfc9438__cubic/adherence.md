@@ -189,17 +189,25 @@ reset post-RTO so the next CA stage starts fresh.
 > retransmission was spurious, it SHOULD restore
 > cwnd, ssthresh, W_max..."
 
-**Adherence:** met for the §4.9.1 spurious-timeout
-case. PyTCP's F-RTO substrate snapshots the CUBIC
-state (`_cubic_w_max`, K, epoch_start, w_est)
-alongside cwnd/ssthresh in
-`_retransmit_packet_timeout`, and restores all four
-in `_process_ack_packet` when the first post-RTO ACK
-covers the snapshotted SND.MAX (the spurious-RTO
-signature). The §4.9.2 DSACK-based spurious-fast-
-retransmit detection + restore is a separate code
-path with a distinct trigger and snapshot site;
-left as future work.
+**Adherence:** met for both §4.9.1 (spurious-timeout)
+and §4.9.2 (spurious-fast-retransmit) cases.
+
+§4.9.1: F-RTO substrate snapshots CUBIC state
+(`_cubic_w_max`, K, epoch_start, w_est) alongside
+cwnd/ssthresh in `_retransmit_packet_timeout`, and
+restores all four in `_process_ack_packet` when the
+first post-RTO ACK covers the snapshotted SND.MAX.
+
+§4.9.2: dedicated `_fr_pre_cubic_*` snapshot taken at
+fast-retransmit entry in `_retransmit_packet_request`
+(captures W_max, K, epoch_start, W_est, cwnd,
+ssthresh just before the multiplicative decrease).
+A DSACK observed during the same recovery episode in
+`_ingest_sack_info` rolls back all six fields and
+clears `_fr_cubic_snapshot_valid`. The snapshot
+validity flag is also cleared on recovery exit so a
+stray post-recovery DSACK cannot roll back unrelated
+state.
 
 ### §4.10 Slow Start
 
@@ -299,7 +307,7 @@ entry plus the DSACK-driven rollback in
 |-------------------------------------------------|------------------------------------------------|
 | §4.1 Constants                                  | locked in                                      |
 | §4.2 W_cubic(t) / K                             | locked in                                      |
-| §4.2 target computation                         | locked in (simplified)                         |
+| §4.2 target computation (W_cubic(t + RTT))      | locked in (`srtt_ms` plumbed from session)     |
 | §4.3 Reno-Friendly W_est                        | locked in                                      |
 | §4.4-§4.5 Concave/Convex CA growth              | locked in                                      |
 | §4.6 Multiplicative Decrease                    | locked in                                      |
@@ -329,22 +337,27 @@ entry plus the DSACK-driven rollback in
 | §4.10 Slow Start                                | met                                     |
 
 PyTCP fully implements RFC 9438 CUBIC's §4 algorithm
-including fast convergence and Reno-friendly mode.
-Two minor deviations:
+including fast convergence, Reno-friendly mode, and
+both spurious-congestion paths. Status of the two
+previously-open deviations:
 
-1. **§4.2 target = W_cubic(t + RTT)**: PyTCP uses
-   W_cubic(t) (no RTT addend) which produces a
-   slightly more conservative target. Permitted by
-   the RFC's implementation latitude.
+1. **§4.2 target = W_cubic(t + RTT)** — closed.
+   `cubic_grow_per_ack` now accepts an `srtt_ms`
+   parameter and passes it through to `cubic_target`,
+   which evaluates the cubic curve at `t + RTT` per
+   the §4.2 formula. The session passes
+   `self._rto_state.srtt_ms` so the projection uses
+   the live smoothed RTT.
 
-2. **§4.9.2 spurious-fast-retransmit restore**:
-   the §4.9.1 spurious-timeout path is shipped (F-RTO
-   now snapshots and restores the full CUBIC state
-   on spurious-RTO detection). The §4.9.2 DSACK-
-   based fast-retransmit-spurious detection + restore
-   is left as future work; it requires a distinct
-   trigger (DSACK or Eifel-detection) and a separate
-   snapshot site at fast-retransmit entry.
+2. **§4.9.2 spurious-fast-retransmit restore** —
+   closed. Dedicated `_fr_pre_cubic_*` snapshot at
+   fast-retransmit entry in
+   `_retransmit_packet_request`; DSACK-driven rollback
+   in `_ingest_sack_info` restores the full CUBIC
+   state when the retransmit is proven spurious. The
+   snapshot validity flag clears on recovery exit so
+   stray post-recovery DSACKs cannot roll back
+   unrelated state.
 
 CUBIC is on by default per the recent default flip;
 RENO is opt-in via setsockopt(IPPROTO_TCP,

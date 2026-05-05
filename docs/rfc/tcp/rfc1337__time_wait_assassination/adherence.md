@@ -205,7 +205,12 @@ TestTcpTimestampsPhase4 stale-TSval tests.
 
 ### §3 F3 — 64-bit sequence numbers
 
-Not implemented; no test surface.
+Wire-incompatible alternative path; RFC §4 selects F1
+as the chosen short-term solution. PyTCP's F1 + PAWS-
+strict combination already prevents all three hazards
+F3 was designed to address. No test surface.
+
+**Status:** n/a (alternative architecture).
 
 ### Hazard H1 (data acceptance)
 

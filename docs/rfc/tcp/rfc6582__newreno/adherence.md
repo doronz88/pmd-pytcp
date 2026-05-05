@@ -336,16 +336,31 @@ exercised in integration tests.
 
 ### §3.2 step 4 — Post-RTO `recover` recording
 
-Not implemented; no test surface. A regression-guard
-test for the gap would assert that after an RTO,
-post-RTO dup-ACKs do not re-trigger fast retransmit
-until the cum-ACK advances past SND.MAX-at-RTO. PyTCP
-would currently fail such a test (see "deviates
-non-normatively" status).
+- **Integration:**
+  `test__tcp__session__data_transfer__retransmit_timeout.py::TestTcpRfc6582Recover`
+  pins the three sentinel transitions:
+  - `test__rfc6582__recover_seq_initialised_zero` — fresh
+    connections start with `_recover_seq == 0` so the first
+    loss event is not artificially gated.
+  - `test__rfc6582__rto_records_snd_max_into_recover_seq`
+    — after an RTO the recover marker equals SND.MAX at
+    RTO entry.
+  - `test__rfc6582__recover_seq_clears_when_cum_ack_passes_marker`
+    — once SND.UNA reaches the marker, `_recover_seq`
+    decays back to 0 so subsequent legitimate loss
+    events can enter recovery normally.
+
+**Status:** locked in.
 
 ### §4 ACK / Timestamp heuristics
 
-Not implemented; no test surface.
+Not implemented; the heuristics are explicitly "may"
+optional and PyTCP runs RFC 8985 RACK-TLP for post-RTO
+loss detection instead, which provides strictly
+stronger time-based detection. The full RACK-TLP test
+coverage is audited under the RFC 8985 record.
+
+**Status:** exceeded (RACK-TLP supersedes).
 
 ### §5 Receiver immediate ACK on OOO
 
@@ -366,7 +381,7 @@ Not implemented; no test surface.
 | §3.2 step 3 full-ACK cwnd = ssthresh             | locked in                                     |
 | §3.2 step 3 partial-ACK PRR substitute           | locked in (PRR formula tested)                |
 | §3.2 step 3b literal helper (unused)             | locked in as reference (10 unit tests)        |
-| §3.2 step 4 post-RTO `recover` recording         | n/a (gap not closed; tests would fail)        |
+| §3.2 step 4 post-RTO `recover` recording         | locked in (TestTcpRfc6582Recover, 3 tests)    |
 | §4 ACK heuristic                                 | exceeded by RFC 8985 RACK time-based detection|
 | §4.2 Timestamp heuristic                         | exceeded by RFC 8985 RACK time-based detection|
 | §5 Receiver immediate ACK on OOO                 | locked in (cross-cut with RFC 5681 §4.2)      |
