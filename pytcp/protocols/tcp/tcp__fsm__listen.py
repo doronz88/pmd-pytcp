@@ -47,15 +47,20 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__listen(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__listen__syscall(session: TcpSession, syscall: SysCall) -> None:
     """
-    TCP FSM LISTEN state handler.
+    TCP FSM LISTEN state syscall handler.
+
+    Got CLOSE syscall -> Change state to CLOSED.
+    """
+
+    if syscall is SysCall.CLOSE:
+        session._change_state(FsmState.CLOSED)
+
+
+def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM LISTEN state packet handler.
     """
 
     from pytcp.protocols.tcp.tcp__session import TcpSession
@@ -63,16 +68,12 @@ def fsm__listen(
     from pytcp.socket.tcp__socket import TcpSocket
 
     # Got SYN packet -> Send SYN + ACK packet / change state to SYN_RCVD.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_syn})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_ack,
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_rst,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_syn}) and not any(
+        {
+            packet_rx_md.tcp__flag_ack,
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_rst,
+        }
     ):
         # Packet sanity check. RFC 9293 §3.10.7.2 step 3 explicitly
         # permits piggybacked data on the initial SYN ("any other
@@ -321,9 +322,3 @@ def fsm__listen(
             # '_transmit_data', which detects 'SND.NXT == SND.INI'
             # in SYN_RCVD and fires the SYN+ACK.
             session._change_state(FsmState.SYN_RCVD)
-            return
-
-    # Got CLOSE syscall -> Change state to CLOSED.
-    if syscall is SysCall.CLOSE:
-        session._change_state(FsmState.CLOSED)
-        return

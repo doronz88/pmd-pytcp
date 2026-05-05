@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.protocols.tcp.tcp__seq import ge32, gt32, in_range32
 
 if TYPE_CHECKING:
@@ -47,29 +47,29 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__fin_wait_1(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__fin_wait_1__timer(session: TcpSession) -> None:
     """
-    TCP FSM FIN_WAIT_1 state handler.
+    TCP FSM FIN_WAIT_1 state timer handler.
+
+    Run retransmit-timeout machinery and drain the TX
+    buffer so the final FIN can fire.
     """
 
-    # Got timer event -> Transmit final FIN packet.
-    if timer:
-        session._retransmit_packet_timeout()
-        session._transmit_data()
-        return
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+
+
+def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM FIN_WAIT_1 state packet handler.
+    """
 
     # Got SYN-bearing segment in a synchronized state -> Send a
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4
     # ('irrespective of the sequence number, TCP endpoints MUST
     # send a challenge ACK to the remote peer'). Mirrors the
     # ESTABLISHED / SYN_RCVD branches.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn:
+    if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
@@ -80,20 +80,16 @@ def fsm__fin_wait_1(
     # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
     # check; on unacceptable segments the helper emits the
     # mandated ACK reply and returns False, the caller drops.
-    if packet_rx_md is not None and not session._check_segment_acceptability(packet_rx_md):
+    if not session._check_segment_acceptability(packet_rx_md):
         return
 
     # Got ACK (acking our FIN) packet -> Change state to FIN_WAIT_2.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_ack})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_syn,
-                packet_rx_md.tcp__flag_rst,
-                packet_rx_md.tcp__flag_fin,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_ack}) and not any(
+        {
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_rst,
+            packet_rx_md.tcp__flag_fin,
+        }
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
@@ -119,10 +115,8 @@ def fsm__fin_wait_1(
 
     # Got FIN + ACK packet -> Send ACK packet / change state to TIME_WAIT
     # or CLOSING.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_ack})
-        and not any({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst})
+    if all({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_ack}) and not any(
+        {packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst}
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
@@ -148,11 +142,6 @@ def fsm__fin_wait_1(
 
     # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
     # three-way classification via the shared helper.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_rst
-        and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
-    ):
+    if packet_rx_md.tcp__flag_rst and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}):
         if session._check_rst_acceptability(packet_rx_md):
             session._change_state(FsmState.CLOSED)
-        return

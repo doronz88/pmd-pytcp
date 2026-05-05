@@ -40,18 +40,11 @@ from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession
-    from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__closed(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__closed__syscall(session: TcpSession, syscall: SysCall) -> None:
     """
-    TCP FSM CLOSED state handler.
+    TCP FSM CLOSED state syscall handler.
     """
 
     # Got CONNECT syscall -> Send SYN packet (this actually will be done in

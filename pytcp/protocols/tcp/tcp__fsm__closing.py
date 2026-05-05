@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.protocols.tcp.tcp__seq import ge32, gt32, in_range32
 
 if TYPE_CHECKING:
@@ -47,20 +47,14 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__closing(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """
-    TCP FSM CLOSING state handler.
+    TCP FSM CLOSING state packet handler.
     """
 
     # Got SYN-bearing segment in a synchronized state -> Send a
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn:
+    if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
@@ -71,7 +65,7 @@ def fsm__closing(
     # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
     # check; on unacceptable segments the helper emits the
     # mandated ACK reply and returns False, the caller drops.
-    if packet_rx_md is not None and not session._check_segment_acceptability(packet_rx_md):
+    if not session._check_segment_acceptability(packet_rx_md):
         return
 
     # Got ACK packet -> ESTABLISHED-style ACK processing per
@@ -89,16 +83,12 @@ def fsm__closing(
     # snd_max' cases that RFC §3.10.7.4 step 5 mandates an
     # empty-ACK reply for; the new shape inherits the
     # sibling-state empty-ACK fallback below.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_ack})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_syn,
-                packet_rx_md.tcp__flag_rst,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_ack}) and not any(
+        {
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_rst,
+        }
     ):
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_una, session._snd_max
@@ -120,11 +110,6 @@ def fsm__closing(
 
     # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4
     # three-way classification via the shared helper.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_rst
-        and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
-    ):
+    if packet_rx_md.tcp__flag_rst and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}):
         if session._check_rst_acceptability(packet_rx_md):
             session._change_state(FsmState.CLOSED)
-        return

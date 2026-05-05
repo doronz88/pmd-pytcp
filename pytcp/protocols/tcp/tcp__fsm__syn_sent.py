@@ -49,22 +49,40 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__syn_sent(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__syn_sent__timer(session: TcpSession) -> None:
     """
-    TCP FSM SYN_SENT state handler.
+    TCP FSM SYN_SENT state timer handler.
+
+    Resend the SYN if its retransmit timer expired and drain
+    any TFO-piggybacked TX buffer.
     """
 
-    # Got timer event -> Resend SYN packet if its timer expired.
-    if timer:
-        session._retransmit_packet_timeout()
-        session._transmit_data()
-        return
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+
+
+def fsm__syn_sent__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM SYN_SENT state syscall handler.
+
+    Got CLOSE syscall -> Change state to CLOSED. Also signal
+    any blocked CONNECT caller (typical for a multi-threaded
+    app with one thread blocked on 'connect()' and another
+    calling 'close()') with 'ConnError.CANCELED' so they
+    unblock with 'TcpSessionError("Connection canceled")'
+    rather than hanging on the dead session forever.
+    """
+
+    if syscall is SysCall.CLOSE:
+        session._connection_error = ConnError.CANCELED
+        session._event__connect.release()
+        session._change_state(FsmState.CLOSED)
+
+
+def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM SYN_SENT state packet handler.
+    """
 
     # RFC 9293 §3.10.7.3 step 1: ACK acceptability check.
     # Any incoming segment with ACK set whose SEG.ACK falls outside
@@ -86,10 +104,8 @@ def fsm__syn_sent(
     # has wrapped to 0; the modular helpers fire the
     # acceptability test correctly regardless of where in
     # the seq space the ISS happens to fall.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_ack
-        and not (lt32(session._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_max))
+    if packet_rx_md.tcp__flag_ack and not (
+        lt32(session._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_max)
     ):
         if not packet_rx_md.tcp__flag_rst:
             stack.packet_handler.send_tcp_packet(
@@ -110,10 +126,8 @@ def fsm__syn_sent(
         return
 
     # Got SYN + ACK packet -> Send ACK / change state to ESTABLISHED.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_ack})
-        and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_rst})
+    if all({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_ack}) and not any(
+        {packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_rst}
     ):
         # Packet sanity check. RFC 9293 §3.10.7.3 step 4 ("If
         # there are other controls or text in the segment, then
@@ -325,16 +339,12 @@ def fsm__syn_sent(
     # uninitialised '_rcv_nxt' default) and peer's TCP would
     # reject it as not acknowledging their SYN, leaving both
     # ends stuck until R2 fires.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_syn})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_ack,
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_rst,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_syn}) and not any(
+        {
+            packet_rx_md.tcp__flag_ack,
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_rst,
+        }
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
@@ -381,10 +391,8 @@ def fsm__syn_sent(
             return
 
     # Got RST + ACK packet -> Change state to CLOSED.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack})
-        and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
+    if all({packet_rx_md.tcp__flag_rst, packet_rx_md.tcp__flag_ack}) and not any(
+        {packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == 0 and packet_rx_md.tcp__ack == session._snd_nxt:
@@ -393,16 +401,3 @@ def fsm__syn_sent(
             # Inform connect syscall that connection related event happened.
             session._connection_error = ConnError.REFUSED
             session._event__connect.release()
-        return
-
-    # Got CLOSE syscall -> Change state to CLOSED. Also signal
-    # any blocked CONNECT caller (typical for a multi-threaded
-    # app with one thread blocked on 'connect()' and another
-    # calling 'close()') with 'ConnError.CANCELED' so they
-    # unblock with 'TcpSessionError("Connection canceled")'
-    # rather than hanging on the dead session forever.
-    if syscall is SysCall.CLOSE:
-        session._connection_error = ConnError.CANCELED
-        session._event__connect.release()
-        session._change_state(FsmState.CLOSED)
-        return

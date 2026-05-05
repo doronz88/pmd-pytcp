@@ -407,25 +407,67 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
     The top-level 'tcp_fsm' dispatch tests.
     """
 
-    def test__tcp_session__fsm_dispatches_by_current_state(self) -> None:
+    def test__tcp_session__fsm_dispatches_packet_by_current_state(self) -> None:
         """
-        Ensure 'tcp_fsm' routes the event to the per-state free-
-        function handler matching the current '_state'. Exercised by
-        seeding each state in turn and verifying the corresponding
-        entry in the FSM_HANDLERS dispatch table was called.
+        Ensure 'tcp_fsm' routes an inbound-packet event to the
+        per-state packet handler matching the current '_state'.
+        Exercised by seeding each packet-handling state in turn
+        and verifying the corresponding entry in
+        FSM_PACKET_HANDLERS was called with the packet metadata.
+
         Reference: RFC 9293 §3.3.2 (state machine dispatch).
         """
 
-        from pytcp.protocols.tcp.tcp__fsm import FSM_HANDLERS
+        from pytcp.protocols.tcp.tcp__fsm import FSM_PACKET_HANDLERS
 
-        for state in FSM_HANDLERS:
+        dummy_md = MagicMock()
+        for state in FSM_PACKET_HANDLERS:
             with self.subTest(state=state):
                 session = self._make_session()
                 session._state = state
                 mock_handler = MagicMock()
-                with patch.dict(FSM_HANDLERS, {state: mock_handler}):
-                    session.tcp_fsm()
-                mock_handler.assert_called_once()
+                with patch.dict(FSM_PACKET_HANDLERS, {state: mock_handler}):
+                    session.tcp_fsm(packet_rx_md=dummy_md)
+                mock_handler.assert_called_once_with(session, dummy_md)
+
+    def test__tcp_session__fsm_dispatches_syscall_by_current_state(self) -> None:
+        """
+        Ensure 'tcp_fsm' routes a syscall event to the per-state
+        syscall handler matching the current '_state'.
+
+        Reference: RFC 9293 §3.3.2 (state machine dispatch).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import SysCall
+        from pytcp.protocols.tcp.tcp__fsm import FSM_SYSCALL_HANDLERS
+
+        for state in FSM_SYSCALL_HANDLERS:
+            with self.subTest(state=state):
+                session = self._make_session()
+                session._state = state
+                mock_handler = MagicMock()
+                with patch.dict(FSM_SYSCALL_HANDLERS, {state: mock_handler}):
+                    session.tcp_fsm(syscall=SysCall.CLOSE)
+                mock_handler.assert_called_once_with(session, SysCall.CLOSE)
+
+    def test__tcp_session__fsm_dispatches_timer_by_current_state(self) -> None:
+        """
+        Ensure 'tcp_fsm' routes a timer-tick event to the
+        per-state timer handler matching the current '_state'.
+
+        Reference: RFC 9293 §3.3.2 (state machine dispatch).
+        """
+
+        from pytcp.protocols.tcp.tcp__fsm import FSM_TIMER_HANDLERS
+
+        for state in FSM_TIMER_HANDLERS:
+            with self.subTest(state=state):
+                session = self._make_session()
+                session._state = state
+                mock_handler = MagicMock()
+                with patch.dict(FSM_TIMER_HANDLERS, {state: mock_handler}):
+                    session.tcp_fsm(timer=True)
+                mock_handler.assert_called_once_with(session)
 
 
 class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):

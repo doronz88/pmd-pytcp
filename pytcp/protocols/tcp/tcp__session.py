@@ -60,7 +60,9 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
 )
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
-from pytcp.protocols.tcp.tcp__fsm import dispatch as tcp_fsm_dispatch
+from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
+from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
+from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
 from pytcp.protocols.tcp.tcp__rack import (
@@ -3839,9 +3841,12 @@ class TcpSession:
                 # Always advance s.cep so subsequent ACKs
                 # reporting the same ACE value are idempotent.
                 self._accecn_s_cep = (self._accecn_s_cep + apparent_delta) & 0xFF_FFFF
-            tcp_fsm_dispatch(
-                self,
-                packet_rx_md=packet_rx_md,
-                syscall=syscall,
-                timer=timer,
-            )
+            # Route to the per-event-kind dispatcher.
+            # 'tcp_fsm()' is invoked with exactly one of the
+            # three kwargs set; pick the matching dispatcher.
+            if packet_rx_md is not None:
+                tcp_fsm_dispatch_packet(self, packet_rx_md)
+            elif syscall is not None:
+                tcp_fsm_dispatch_syscall(self, syscall)
+            elif timer:
+                tcp_fsm_dispatch_timer(self)

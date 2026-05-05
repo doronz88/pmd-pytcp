@@ -45,22 +45,43 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__syn_rcvd(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__syn_rcvd__timer(session: TcpSession) -> None:
     """
-    TCP FSM SYN_RCVD state handler.
+    TCP FSM SYN_RCVD state timer handler.
+
+    Resend the SYN+ACK if its retransmit timer expired and
+    drain the TX buffer.
     """
 
-    # Got timer event -> Resend SYN packet if its timer expired.
-    if timer:
-        session._retransmit_packet_timeout()
-        session._transmit_data()
-        return
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+
+
+def fsm__syn_rcvd__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM SYN_RCVD state syscall handler.
+
+    Got CLOSE syscall in SYN_RCVD -> change state to
+    FIN_WAIT_1; the FIN packet is emitted from that state
+    on the next timer tick. The pre-handshake-completion
+    close is legal per RFC 9293 §3.10.4 (CLOSE in
+    SYN-RECEIVED). Also signal any blocked CONNECT caller
+    (active-open simultaneous-open path) with
+    'ConnError.CANCELED' so they unblock with
+    'TcpSessionError("Connection canceled")' rather than
+    hanging through the entire FIN-exchange lifecycle.
+    """
+
+    if syscall is SysCall.CLOSE:
+        session._connection_error = ConnError.CANCELED
+        session._event__connect.release()
+        session._change_state(FsmState.FIN_WAIT_1)
+
+
+def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM SYN_RCVD state packet handler.
+    """
 
     # Got SYN-bearing segment without RST in SYN_RCVD -> Send a challenge
     # ACK per RFC 9293 §3.10.7.4 step 1 / step 4 (folding RFC 5961 §4).
@@ -75,7 +96,7 @@ def fsm__syn_rcvd(
     # so the existing RST+ACK and RST branches below still take priority
     # for tear-down semantics. This is the symmetric analog of the
     # SYN-on-established branch in '_tcp_fsm_established'.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
+    if packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
@@ -84,16 +105,12 @@ def fsm__syn_rcvd(
         return
 
     # Got ACK packet -> Change state to ESTABLISHED.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_ack})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_syn,
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_rst,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_ack}) and not any(
+        {
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_rst,
+        }
     ):
         # Packet sanity check. RFC 9293 §3.10.7.4 step 7 ("Once
         # in the ESTABLISHED state, it is possible to deliver
@@ -206,32 +223,13 @@ def fsm__syn_rcvd(
     # ('Semaphore.release()' just increments the counter), so
     # the same path applies uniformly to passive-open
     # listener-fork children where no caller is blocked.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_rst
-        and not any(
-            {
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_syn,
-            }
-        )
+    if packet_rx_md.tcp__flag_rst and not any(
+        {
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_syn,
+        }
     ):
         if session._check_rst_acceptability(packet_rx_md):
             session._connection_error = ConnError.REFUSED
             session._event__connect.release()
             session._change_state(FsmState.CLOSED)
-        return
-
-    # Got CLOSE syscall in SYN_RCVD -> change state to FIN_WAIT_1;
-    # the FIN packet is emitted from that state on the next timer
-    # tick. The pre-handshake-completion close is legal per
-    # RFC 9293 §3.10.4 (CLOSE in SYN-RECEIVED). Also signal any
-    # blocked CONNECT caller (active-open simultaneous-open path)
-    # with 'ConnError.CANCELED' so they unblock with
-    # 'TcpSessionError("Connection canceled")' rather than
-    # hanging through the entire FIN-exchange lifecycle.
-    if syscall is SysCall.CLOSE:
-        session._connection_error = ConnError.CANCELED
-        session._event__connect.release()
-        session._change_state(FsmState.FIN_WAIT_1)
-        return

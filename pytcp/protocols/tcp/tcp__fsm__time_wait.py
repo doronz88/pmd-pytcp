@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.protocols.tcp.tcp__seq import add32, gt32
 
 if TYPE_CHECKING:
@@ -47,15 +47,21 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__time_wait(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__time_wait__timer(session: TcpSession) -> None:
     """
-    TCP FSM TIME_WAIT state handler.
+    TCP FSM TIME_WAIT state timer handler.
+
+    Run the TIME_WAIT delay: when the named '-time_wait'
+    timer expires, transition to CLOSED.
+    """
+
+    if stack.timer.is_expired(f"{session}-time_wait"):
+        session._change_state(FsmState.CLOSED)
+
+
+def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM TIME_WAIT state packet handler.
 
     Implements the RFC 1337 'TIME-WAIT Assassination Hazards'
     mitigations:
@@ -81,11 +87,6 @@ def fsm__time_wait(
     inbound dispatch.
     """
 
-    # Got timer event -> Run TIME_WAIT delay.
-    if timer and stack.timer.is_expired(f"{session}-time_wait"):
-        session._change_state(FsmState.CLOSED)
-        return
-
     # Capture '_ts_recent' BEFORE the PAWS helper runs - the
     # helper updates '_ts_recent' to the segment's TSval as a
     # side effect on any non-stale TSopt-bearing segment, and
@@ -100,7 +101,7 @@ def fsm__time_wait(
     # This is the strongest form of RFC 1337 TIME-WAIT
     # assassination protection: PAWS catches the stale
     # segment regardless of seq.
-    if packet_rx_md is not None and not session._check_paws_and_update_ts_recent(packet_rx_md):
+    if not session._check_paws_and_update_ts_recent(packet_rx_md):
         return
 
     # RFC 6191 §3 TIME-WAIT 4-tuple reuse: a SYN whose TSval
@@ -114,8 +115,7 @@ def fsm__time_wait(
     # gate (strict '>') and falls through to the RFC 1337 /
     # RFC 9293 §3.10.7.4 challenge-ACK path below.
     if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_syn
+        packet_rx_md.tcp__flag_syn
         and not packet_rx_md.tcp__flag_ack
         and not packet_rx_md.tcp__flag_rst
         and session._send_ts
@@ -141,7 +141,7 @@ def fsm__time_wait(
     # timeout.' The FIN's seq does not advance with retransmits,
     # so peer is replaying the same byte of sequence space we
     # already accepted (RCV.NXT - 1).
-    if packet_rx_md and packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_nxt:
+    if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_nxt:
         session._transmit_packet(flag_ack=True)
         stack.timer.register_timer(
             name=f"{session}-time_wait",
@@ -158,10 +158,9 @@ def fsm__time_wait(
     # implement the Timestamp Option (PAWS), so RFC 9293's
     # TIME_WAIT-special connection-recycling path is unreachable
     # and the default challenge-ACK behaviour applies.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn:
+    if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-time_wait (RFC 9293 §3.10.7.4)",
         )
-        return

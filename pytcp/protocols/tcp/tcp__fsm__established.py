@@ -46,38 +46,57 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__established(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__established__timer(session: TcpSession) -> None:
     """
-    TCP FSM ESTABLISHED state handler.
+    TCP FSM ESTABLISHED state timer handler.
+
+    Send out data and run Delayed ACK mechanism. Service
+    keep-alive, RACK reordering, and TLP PTO timers. When
+    the application has called CLOSE and the TX buffer has
+    fully drained, transition to FIN_WAIT_1 to emit the FIN.
     """
 
-    # Got timer event -> Send out data and run Delayed ACK mechanism.
-    if timer:
-        session._retransmit_packet_timeout()
-        session._transmit_data()
-        session._delayed_ack()
-        session._keepalive_tick()
-        # RFC 8985 §6.2 step 5 reordering-timer service.
-        # When the 'f"{session}-rack"' timer has expired,
-        # re-run rack_detect_loss + arm a fresh timer if
-        # more pending candidates exist.
-        session._rack_reorder_tick()
-        # RFC 8985 §7.3 Tail Loss Probe service. When the
-        # f'{session}-tlp' timer expires, send a probe -
-        # retransmit of the highest-seq segment (most common
-        # tail-loss case after _transmit_data has drained the
-        # buffer). The new-data branch fires only when fresh
-        # bytes arrive between TLP arming and PTO expiry.
-        session._tlp_pto_tick()
-        if session._closing and not session._tx_buffer:
-            session._change_state(FsmState.FIN_WAIT_1)
-        return
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+    session._delayed_ack()
+    session._keepalive_tick()
+    # RFC 8985 §6.2 step 5 reordering-timer service.
+    # When the 'f"{session}-rack"' timer has expired,
+    # re-run rack_detect_loss + arm a fresh timer if
+    # more pending candidates exist.
+    session._rack_reorder_tick()
+    # RFC 8985 §7.3 Tail Loss Probe service. When the
+    # f'{session}-tlp' timer expires, send a probe -
+    # retransmit of the highest-seq segment (most common
+    # tail-loss case after _transmit_data has drained the
+    # buffer). The new-data branch fires only when fresh
+    # bytes arrive between TLP arming and PTO expiry.
+    session._tlp_pto_tick()
+    if session._closing and not session._tx_buffer:
+        session._change_state(FsmState.FIN_WAIT_1)
+
+
+def fsm__established__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM ESTABLISHED state syscall handler.
+
+    Got CLOSE syscall in ESTABLISHED -> mark the session
+    closing; the actual transition to FIN_WAIT_1 (and the
+    FIN emission from there) is deferred until the TX buffer
+    drains, per RFC 9293 §3.10.4 ("a CLOSE call should ...
+    cause outstanding SENDs to be transmitted"). The
+    ESTABLISHED timer branch checks 'self._closing and not
+    self._tx_buffer' to fire the state change.
+    """
+
+    if syscall is SysCall.CLOSE:
+        session._closing = True
+
+
+def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM ESTABLISHED state packet handler.
+    """
 
     # Got SYN-bearing segment in a synchronized state -> Send a challenge ACK
     # per RFC 9293 §3.10.7.4 (folding RFC 5961 §4). A SYN flag set on a segment
@@ -90,7 +109,7 @@ def fsm__established(
     # The branch must precede the receive-window check below because a
     # retransmitted SYN+ACK carries SEG.SEQ = peer_ISS, one byte before our
     # current RCV.NXT, and would otherwise be silently dropped.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn:
+    if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
@@ -101,27 +120,23 @@ def fsm__established(
     # RFC 9293 §3.10.7.4 step 1 receive-window acceptability
     # check; on unacceptable segments the helper emits the
     # mandated ACK reply and returns False, the caller drops.
-    if packet_rx_md is not None and not session._check_segment_acceptability(packet_rx_md):
+    if not session._check_segment_acceptability(packet_rx_md):
         return
 
     # RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh applied
     # at the dispatch boundary so the dup-ACK fast-retransmit
     # branch and OOO-queue branch below benefit from the same
     # protection as the regular '_process_ack_packet' path.
-    if packet_rx_md is not None and not session._check_paws_and_update_ts_recent(packet_rx_md):
+    if not session._check_paws_and_update_ts_recent(packet_rx_md):
         return
 
     # Got ACK packet.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_ack})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_syn,
-                packet_rx_md.tcp__flag_rst,
-                packet_rx_md.tcp__flag_fin,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_ack}) and not any(
+        {
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_rst,
+            packet_rx_md.tcp__flag_fin,
+        }
     ):
         # Inbound ACK with the dup-ACK wire shape ('seq ==
         # RCV.NXT, ack == SND.UNA, no data'). Per RFC 5681 §2(e)
@@ -288,10 +303,8 @@ def fsm__established(
     # Got FIN + ACK packet -> Send ACK packet (let delayed ACK mechanism
     # do it) / change state to CLOSE_WAIT / notify app that peer closed
     # connection.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_ack})
-        and not any({packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst})
+    if all({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_ack}) and not any(
+        {packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst}
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
@@ -316,23 +329,7 @@ def fsm__established(
     # additionally wake any blocked 'recv()' caller so the
     # application sees the connection-reset signal without
     # blocking forever on the rx-buffer event.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_rst
-        and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn})
-    ):
+    if packet_rx_md.tcp__flag_rst and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}):
         if session._check_rst_acceptability(packet_rx_md):
             session._event__rx_buffer.set()
             session._change_state(FsmState.CLOSED)
-        return
-
-    # Got CLOSE syscall in ESTABLISHED -> mark the session
-    # closing; the actual transition to FIN_WAIT_1 (and the FIN
-    # emission from there) is deferred until the TX buffer
-    # drains, per RFC 9293 §3.10.4 ("a CLOSE call should ...
-    # cause outstanding SENDs to be transmitted"). The
-    # ESTABLISHED timer branch checks 'self._closing and not
-    # self._tx_buffer' to fire the state change.
-    if syscall is SysCall.CLOSE:
-        session._closing = True
-        return

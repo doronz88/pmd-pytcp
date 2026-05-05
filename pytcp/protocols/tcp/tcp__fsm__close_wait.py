@@ -46,29 +46,47 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__close_wait(
-    session: TcpSession,
-    *,
-    packet_rx_md: TcpMetadata | None,
-    syscall: SysCall | None,
-    timer: bool | None,
-) -> None:
+def fsm__close_wait__timer(session: TcpSession) -> None:
     """
-    TCP FSM CLOSE_WAIT state handler.
+    TCP FSM CLOSE_WAIT state timer handler.
+
+    Send out data and run Delayed ACK mechanism. When the
+    application has called CLOSE and the TX buffer has fully
+    drained, transition to LAST_ACK to emit the FIN.
     """
 
-    # Got timer event -> Send out data and run Delayed ACK mechanism.
-    if timer:
-        session._retransmit_packet_timeout()
-        session._transmit_data()
-        session._delayed_ack()
-        if session._closing and not session._tx_buffer:
-            session._change_state(FsmState.LAST_ACK)
-        return
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+    session._delayed_ack()
+    if session._closing and not session._tx_buffer:
+        session._change_state(FsmState.LAST_ACK)
+
+
+def fsm__close_wait__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM CLOSE_WAIT state syscall handler.
+
+    Got CLOSE syscall in CLOSE_WAIT -> mark the session
+    closing so the post-half-close FIN emission can fire
+    from LAST_ACK once the TX buffer drains, per RFC 9293
+    §3.10.4. The actual transition to LAST_ACK is deferred
+    via the timer-branch 'self._closing and not
+    self._tx_buffer' check (mirrors the ESTABLISHED CLOSE
+    handler above).
+    """
+
+    if syscall is SysCall.CLOSE:
+        session._closing = True
+
+
+def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
+    """
+    TCP FSM CLOSE_WAIT state packet handler.
+    """
 
     # Got SYN-bearing segment in a synchronized state -> Send a
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
-    if packet_rx_md and packet_rx_md.tcp__flag_syn:
+    if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
@@ -82,20 +100,16 @@ def fsm__close_wait(
     # window forward segments, emits the mandated ACK reply
     # so peer's retransmit machinery sees fresh activity, and
     # returns False for the caller to drop.
-    if packet_rx_md is not None and not session._check_segment_acceptability(packet_rx_md):
+    if not session._check_segment_acceptability(packet_rx_md):
         return
 
     # Got ACK packet.
-    if (
-        packet_rx_md
-        and all({packet_rx_md.tcp__flag_ack})
-        and not any(
-            {
-                packet_rx_md.tcp__flag_syn,
-                packet_rx_md.tcp__flag_rst,
-                packet_rx_md.tcp__flag_fin,
-            }
-        )
+    if all({packet_rx_md.tcp__flag_ack}) and not any(
+        {
+            packet_rx_md.tcp__flag_syn,
+            packet_rx_md.tcp__flag_rst,
+            packet_rx_md.tcp__flag_fin,
+        }
     ):
         # Inbound ACK with the dup-ACK wire shape ('seq ==
         # RCV.NXT, ack == SND.UNA, no data'). Per RFC 5681 §2(e)
@@ -198,26 +212,11 @@ def fsm__close_wait(
     # per RFC convention, so excluding 'tcp__flag_ack' from
     # the predicate would (and previously did) make this
     # branch never fire in real traffic.
-    if (
-        packet_rx_md
-        and packet_rx_md.tcp__flag_rst
-        and not any(
-            {
-                packet_rx_md.tcp__flag_fin,
-                packet_rx_md.tcp__flag_syn,
-            }
-        )
+    if packet_rx_md.tcp__flag_rst and not any(
+        {
+            packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_syn,
+        }
     ):
         if session._check_rst_acceptability(packet_rx_md):
             session._change_state(FsmState.CLOSED)
-        return
-
-    # Got CLOSE syscall in CLOSE_WAIT -> mark the session closing
-    # so the post-half-close FIN emission can fire from LAST_ACK
-    # once the TX buffer drains, per RFC 9293 §3.10.4. The actual
-    # transition to LAST_ACK is deferred via the timer-branch
-    # 'self._closing and not self._tx_buffer' check (mirrors the
-    # ESTABLISHED CLOSE handler above).
-    if syscall is SysCall.CLOSE:
-        session._closing = True
-        return
