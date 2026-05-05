@@ -917,3 +917,86 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
                 f"_recover_seq={session._recover_seq}."
             ),
         )
+
+
+class TestTcpRfc2018SackOnRto(TcpSessionTestCase):
+    """
+    RFC 2018 §5: post-RTO the data sender SHOULD turn off all
+    SACKed bits and MUST ignore prior SACK info on retransmit.
+    PyTCP clears '_sack_scoreboard' in the RTO handler so a
+    receiver-renege scenario does not leave a permanent hole.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive active-open handshake."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            sackperm=True,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        assert session._send_sack
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__rfc2018__rto_clears_sack_scoreboard(self) -> None:
+        """
+        Ensure that the RTO retransmit handler clears
+        '_sack_scoreboard' so prior SACK info does not influence
+        the post-RTO retransmit (the receiver may have reneged;
+        the sender MUST re-establish the scoreboard from
+        post-RTO ACKs).
+
+        Reference: RFC 2018 §5 (turn off SACKed bits + ignore prior on retransmit).
+        """
+
+        session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Inject a SACK block manually so the scoreboard is
+        # non-empty pre-RTO.
+        session._sack_scoreboard.add_block(LOCAL__ISS + 100, LOCAL__ISS + 200)
+        assert len(session._sack_scoreboard.blocks()) == 1
+
+        session.send(data=b"X" * 100)
+        self._advance(ms=1)
+        self._advance(ms=session._rto_state.rto_ms + 10)
+
+        self.assertEqual(
+            session._sack_scoreboard.blocks(),
+            [],
+            msg=(
+                "RFC 2018 §5: post-RTO the SACK scoreboard MUST "
+                "be empty so prior SACK info does not influence "
+                "retransmit. Got "
+                f"{session._sack_scoreboard.blocks()!r}."
+            ),
+        )

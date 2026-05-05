@@ -1477,9 +1477,12 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             flags=frozenset({"ACK"}),
             ack=PEER__ISS + 1,
             sack_blocks=[
+                # RFC 2883 §4: DSACK first.
                 (PEER__ISS + 1 + 150, PEER__ISS + 1 + 200),  # DSACK overlap
-                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),  # original OOO
+                # RFC 2018 §4 first-block ordering: most-recent
+                # OOO arrival comes first after the DSACK.
                 (PEER__ISS + 1 + 150, PEER__ISS + 1 + 250),  # new OOO
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),  # original OOO
             ],
         )
 
@@ -1534,16 +1537,18 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             flags=frozenset({"ACK"}),
             ack=PEER__ISS + 1,
             sack_blocks=[
-                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),
+                # RFC 2018 §4 first-block ordering: most-recent
+                # OOO arrival comes first.
                 (PEER__ISS + 1 + 300, PEER__ISS + 1 + 400),
+                (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200),
             ],
         )
         # Sanity: the case-2 signature requires block-0 to be
         # contained in a later block. Confirm that NEITHER
         # block-0 sits inside any later block here - the
         # negative-control invariant.
-        block0 = (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)
-        block1 = (PEER__ISS + 1 + 300, PEER__ISS + 1 + 400)
+        block0 = (PEER__ISS + 1 + 300, PEER__ISS + 1 + 400)
+        block1 = (PEER__ISS + 1 + 100, PEER__ISS + 1 + 200)
         self.assertFalse(
             block1[0] <= block0[0] and block0[1] <= block1[1],
             msg="Negative control: block-0 must NOT lie inside any later block (no spurious DSACK signature).",

@@ -64,6 +64,17 @@ class SackScoreboard:
 
         self._blocks = []
 
+    def clear(self) -> None:
+        """
+        Drop every SACK block, returning the scoreboard to its
+        empty state. Called from the RTO retransmit path per
+        RFC 2018 §5 (turn off SACKed bits + ignore prior SACK
+        info on retransmit) so the post-RTO loss recovery does
+        not skip seq ranges the receiver may have reneged.
+        """
+
+        self._blocks.clear()
+
     def add_block(self, left: Seq32, right: Seq32) -> None:
         """
         Add a '[left, right)' SACK block to the scoreboard, merging

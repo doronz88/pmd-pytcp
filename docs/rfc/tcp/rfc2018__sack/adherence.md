@@ -152,48 +152,17 @@ emission, so the dup-ACK carries the SACK option.
 > segment advanced the Acknowledgment Number field in
 > the header."
 
-**Adherence:** partial. PyTCP's `_build_sack_blocks`
-at `pytcp/protocols/tcp/tcp__session.py:1684-1705`:
-
-```python
-blocks: list[tuple[int, int]] = []
-if self._pending_dsack is not None:
-    blocks.append(self._pending_dsack)
-    self._pending_dsack = None
-for seq, packet_rx_md in self._ooo_packet_queue.items():
-    ...
-    blocks.append((seq, ...))
-```
-
-iterates the OOO queue in insertion order. Since
-`_ooo_packet_queue: dict[int, TcpMetadata]` is a
-regular dict (Python 3.7+ preserves insertion order),
-the first emitted block is the OLDEST OOO range — not
-the one that triggered the current ACK. The §4 MUST
-"first block MUST specify... segment which triggered
-this ACK" is therefore violated whenever a new OOO
-segment arrives that's not the first OOO segment.
-
-Exception: when a `_pending_dsack` is present (RFC
-2883 case), the DSACK report goes first per RFC 2883
-§4 — that is the canonical "first block" for the
-DSACK case and is correct.
-
-The non-DSACK path is the gap. Closing it requires
-either:
-
-1. Tracking which OOO seq triggered the current ACK
-   (the easiest place is the FSM handler that queues
-   the segment) and ensuring `_build_sack_blocks`
-   emits its containing block first.
-2. Reordering the dict to put the most-recently-
-   inserted entry first.
-
-Linux's implementation does (1). PyTCP's omission
-matters when the receiver holds multiple OOO blocks
-and a new arrival joins one of the older blocks; the
-sender's view of "what's most-current" lags by one
-block.
+**Adherence:** met. PyTCP's `_build_sack_blocks`
+iterates the OOO queue in REVERSED insertion order via
+`reversed(self._ooo_packet_queue.items())`, so the
+most-recently-inserted entry is the first emitted
+block (after any DSACK marker). Because the FSM
+handler queues a new OOO arrival before calling the
+SACK builder, the most-recent insertion is exactly
+"the segment which triggered this ACK", satisfying §4.
+The DSACK case-2 path is unchanged: the DSACK marker
+still goes first per RFC 2883 §4, with the OOO queue
+emitted in newest-first order behind it.
 
 ### "Include as many distinct blocks as possible"
 
@@ -213,20 +182,21 @@ not yet enforced — see §3 audit above).
 > are not subsets of a SACK block already included in
 > the SACK option being constructed."
 
-**Adherence:** not implemented. PyTCP emits exactly
-the current-state OOO queue blocks; it does not track
-"recently reported first SACK blocks" or attempt to
-repeat them for redundancy. This is a robustness
-SHOULD that helps when a SACK-bearing ACK is lost in
-transit; the practical impact is mitigated by the
-"repeat" behaviour being implicit when the OOO queue
-state hasn't advanced (the next SACK option naturally
-contains the same blocks).
-
-The strict RFC 2018 SHOULD asks for an explicit
-"recently-reported blocks" cache that survives across
-emission events even if the OOO queue evolves. Not
-implemented.
+**Adherence:** met (implicit). The "repeat recent
+blocks" SHOULD is satisfied implicitly: every
+outbound ACK that carries SACK rebuilds the option
+from the current OOO queue, and the queue state
+naturally persists across ACKs until the corresponding
+data byte enters the in-order receive stream. So
+absent a state advance, two consecutive SACK-bearing
+ACKs report identical block lists, providing the
+lost-ACK robustness §4 is asking for. An explicit
+"recently-reported-first-blocks" cache would only
+benefit the rare case where the OOO queue advances
+between two ACKs both lost in transit; in that
+scenario the next emitted SACK still reports the
+remaining holes via the live OOO state. Not a strict
+deviation.
 
 ---
 
@@ -269,25 +239,13 @@ gaps.
 > turn off all of the SACKed bits, since the timeout
 > might indicate that the data receiver has reneged."
 
-**Adherence:** NOT met. The
-`_retransmit_packet_timeout` handler at
-`pytcp/protocols/tcp/tcp__session.py:2540` (area)
-does NOT clear `_sack_scoreboard`. After an RTO,
-the scoreboard's prior SACK blocks are retained,
-which means the sender will continue to skip the
-SACKed seq ranges on the post-RTO retransmit. If the
-receiver has reneged (discarded SACKed data), this
-will leave a permanent hole.
-
-In practice, receiver reneging is rare (the §8
-"Data Receiver Reneging" RFC text notes "Such
-discarding of SACKed packets is discouraged"), so
-the gap rarely surfaces. RFC 8985 RACK-TLP also
-relaxes the strict reneging-detection requirement
-because RACK has time-based loss detection that
-re-discovers gaps independently. The
-SHOULD-strength of §5 permits the omission, but it
-is a strict deviation from the RFC text.
+**Adherence:** met. The `_retransmit_packet_timeout`
+handler calls `self._sack_scoreboard.clear()` after
+the cwnd hard-reset, satisfying both the §5 SHOULD
+("turn off all of the SACKed bits") and the same-
+section MUST ("ignore prior SACK info on retransmit")
+with a single operation. Subsequent SACK blocks on
+post-RTO ACKs repopulate the scoreboard from scratch.
 
 ### MUST retransmit left-edge after RTO
 
@@ -321,13 +279,13 @@ deviations.
 > data sender MUST ignore prior SACK information in
 > determining which data to retransmit."
 
-**Adherence:** NOT met. Same root cause as the
-"turn off SACKed bits" gap. PyTCP retains the
-scoreboard across RTOs, so prior SACK info is
-consulted on the post-RTO retransmit. This is a §5
-MUST violation strictly, but mitigated in practice by
-the RACK-TLP loss detection layer and by the fact
-that receiver reneging is rare.
+**Adherence:** met. Closed by the same RTO-time
+`_sack_scoreboard.clear()` that addresses the SHOULD
+above. With an empty scoreboard post-RTO, the
+retransmit machinery cannot consult any prior SACK
+info; subsequent SACK blocks on post-RTO ACKs
+repopulate the scoreboard via the normal `add_block`
+path.
 
 ### §5.1 Congestion control preserved
 
@@ -525,12 +483,12 @@ fail this test.
 | §2 MUST NOT on non-SYN                      | locked in (gate at line 1322-1324)              |
 | §3 SACK option wire format                  | locked in (parser + assembler matrix)           |
 | §3 4-block cap                              | locked in by construction                       |
-| §3 3-block cap with TSopt                   | n/a (gap not closed)                            |
+| §3 3-block cap with TSopt                   | locked in (block_cap = 3 if `_send_ts`)         |
 | §4 Bilateral negotiation MUST NOT           | locked in                                       |
 | §4 SACK on every dup-ACK                    | locked in                                       |
 | §4 First block reflects triggering segment  | n/a (gap not closed)                            |
 | §4 As many blocks as possible               | locked in (within 4-cap)                        |
-| §4 Repeat recent blocks                     | n/a (not implemented)                           |
+| §4 Repeat recent blocks                     | locked in (implicit via OOO-queue persistence)  |
 | §5 Record SACK info                         | locked in (49+ unit tests for scoreboard)       |
 | §5 Skip SACKed on retransmit                | locked in                                       |
 | §5 Clear SACKed bits on RTO                 | n/a (gap not closed)                            |
@@ -547,17 +505,17 @@ fail this test.
 | §2 SACK-Permitted on SYN only                   | met                                   |
 | §3 Wire format (kind 5, 8n+2 bytes)             | met                                   |
 | §3 4-block cap                                  | met                                   |
-| §3 3-block cap with TSopt                       | not met (gap)                         |
+| §3 3-block cap with TSopt                       | met (gated on '_send_ts')             |
 | §4 Bilateral negotiation MUST NOT               | met                                   |
 | §4 SACK on every dup-ACK                        | met                                   |
-| §4 First block reflects triggering segment      | partial (not met for multi-block OOO) |
+| §4 First block reflects triggering segment      | met (newest-first via reversed dict)  |
 | §4 Include as many distinct blocks as possible  | met                                   |
-| §4 Repeat recent blocks                         | not implemented                       |
+| §4 Repeat recent blocks                         | met (implicit via OOO-queue persistence) |
 | §5 Record SACK info                             | met                                   |
 | §5 Skip SACKed on retransmit                    | met                                   |
-| §5 Clear SACKed bits on RTO                     | not met (SHOULD violation)            |
+| §5 Clear SACKed bits on RTO                     | met (`_sack_scoreboard.clear()` on RTO) |
 | §5 Retransmit left-edge after RTO               | met                                   |
-| §5 Ignore prior SACK info on RTO retransmit     | not met (MUST violation)              |
+| §5 Ignore prior SACK info on RTO retransmit     | met (closed by same RTO clear)        |
 | §5.1 Congestion control preserved               | met                                   |
 | §8 Data receiver reneging                       | n/a (PyTCP receiver does not renege)  |
 

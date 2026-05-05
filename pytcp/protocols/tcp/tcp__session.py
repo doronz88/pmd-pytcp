@@ -1914,12 +1914,28 @@ class TcpSession:
         exactly one outbound ACK.
         """
 
+        # RFC 2018 §3 block-cap: at most 4 blocks per SACK
+        # option (40-byte options window divided by the 8-byte-
+        # per-block + 2-byte SACK header). When TSopt is also
+        # being emitted (10 bytes consumed), the cap drops to 3
+        # blocks because 10 + 2 + 4*8 = 44 > 40 byte options
+        # cap. The §3 examples explicitly enumerate the 3-block
+        # cap as the TSopt-coexistence form.
+        block_cap = 3 if self._send_ts else 4
         blocks: list[tuple[int, int]] = []
         if self._pending_dsack is not None:
             blocks.append(self._pending_dsack)
             self._pending_dsack = None
-        for seq, packet_rx_md in self._ooo_packet_queue.items():
-            if len(blocks) >= 4:
+        # RFC 2018 §4 first-block ordering: the most recent OOO
+        # arrival should be the first block (after any DSACK).
+        # PyTCP's '_ooo_packet_queue' is an insertion-ordered
+        # dict where the newest entry is the LAST item; reverse
+        # the iteration so the newest comes first. The remaining
+        # blocks follow in newest-first order, satisfying the
+        # §4 "first block reflects triggering segment" intent
+        # without an extra triggering-segment tracker.
+        for seq, packet_rx_md in reversed(self._ooo_packet_queue.items()):
+            if len(blocks) >= block_cap:
                 break
             blocks.append((seq, add32(seq, len(packet_rx_md.tcp__data))))
         return blocks
@@ -2982,6 +2998,16 @@ class TcpSession:
         # next dup-ACK from re-entering recovery via the
         # one-shot guard in '_retransmit_packet_request'.
         self._recovery_point = 0
+        # RFC 2018 §5: "After a retransmit timeout the data
+        # sender SHOULD turn off all of the SACKed bits, since
+        # the timeout might indicate that the data receiver has
+        # reneged." The §5 also-MUST "ignore prior SACK info on
+        # retransmit" depends on this clear. PyTCP's
+        # '_sack_scoreboard' carries the scoreboard state; the
+        # clear here matches both clauses with a single
+        # operation. Subsequent SACK blocks on post-RTO ACKs
+        # repopulate the scoreboard from scratch.
+        self._sack_scoreboard.clear()
         # RFC 6582 §3.2 step 4: record the highest SND.MAX
         # transmitted before the RTO so a subsequent burst of
         # dup-ACKs (often produced by the post-RTO retransmit
