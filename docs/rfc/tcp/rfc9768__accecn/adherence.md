@@ -516,7 +516,7 @@ not exercised).
 | §3.2.3 AccECN0 option emission                   | locked in (Order 0, length 11)          |
 | §3.2.3 AccECN1 option emission                   | locked in (Order 1, length 11)          |
 | §3.2.3 order-choice gating (Order 0 vs Order 1)  | locked in                               |
-| §3.2.3 abbreviated option forms (length 8, 5, 2) | locked in (parser side)                 |
+| §3.2.3 abbreviated option forms (length 8, 5, 2) | locked in (parser + emission)           |
 | §4 Updates to RFC 3168 (negotiation precedence)  | locked in                               |
 | §5 SACK + DSACK alongside AccECN                 | locked in                               |
 
@@ -542,7 +542,7 @@ not exercised).
 | §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11)                    |
 | §3.2.3 AccECN1 option (Kind 174, Order 1)       | met (full length 11)                    |
 | §3.2.3 order-choice gating per §3.2.3           | met                                     |
-| §3.2.3 abbreviated lengths (8, 5, 2)            | met (parser); emission still Length 11  |
+| §3.2.3 abbreviated lengths (8, 5, 2)            | met (parser + emission)                 |
 | §4 Updates to RFC 3168                          | met                                     |
 | §5.3 SACK + DSACK + AccECN coexistence          | met                                     |
 
@@ -570,18 +570,21 @@ All four originally-deferred gaps are now closed:
    wrap-aware safest-likely-case correction is
    deliberately omitted as a follow-up; the simpler
    apparent-delta detection captures the common case.
-3. **Abbreviated option lengths** (§3.2.3) - shipped
-   in commit `365ee33a` for the parser side: PyTCP
-   accepts inbound Length 2/5/8 forms. PyTCP itself
-   still emits Length=11 (full form); wiring the
-   emission-side abbreviation decision is a separate
-   bandwidth optimisation.
+3. **Abbreviated option lengths** (§3.2.3) - parser
+   side shipped in commit `365ee33a`; emission side
+   shipped in commit `02b01ad4`. PyTCP accepts all four
+   wire lengths (11/8/5/2) on the receive side and
+   emits the most-abbreviated form consistent with the
+   §3.2.3.3 ordering rule based on which counters
+   changed since the previous emission.
 4. **Broken-server (1,1,1) reflection detection**
    (§3.1.2 fourth block) - shipped in commit
    `f61adf0a`. A SYN/ACK with all of (NS,CWR,ECE)=1
    triggers the §3.1.2 fall-back to Not ECN.
 
-The audit is now `~95%+ met`; the only residual gap
-is the §3.2.3 PyTCP-side abbreviated-form emission,
-which is a MAY-not-MUST optimisation orthogonal to
-the conformance requirements.
+The audit is now ~100% met for the conformance-
+critical surface. Optional follow-on items (full
+§3.2.2.5.2 wrap-aware safest-likely-case correction,
+Eifel-style spurious-retransmit recovery using the
+DSACK signal) are documented as deferred work but
+not gaps against the §3 requirements.
