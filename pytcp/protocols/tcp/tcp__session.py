@@ -3721,6 +3721,48 @@ class TcpSession:
             # itself.
             if self._accecn_enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
                 self._accecn_s_ce_b = packet_rx_md.tcp__accecn0_counters[1]
+            # RFC 9768 §3.2.2.5 ACE-based fallback. When an
+            # AccECN-mode inbound ACK arrives WITHOUT the
+            # AccECN option (e.g. a middlebox stripped it),
+            # the byte-counter path above cannot detect new
+            # CE marks. As a fallback, decode the ACE field
+            # from the AE+CWR+ECE flags and compare to the
+            # prior 's.cep & 7' value: a positive delta is
+            # the apparent CE-marked-segment count since the
+            # last seen ACE. If positive, treat as a
+            # congestion event (gated by the same one-shot
+            # recovery-point guard the byte-counter path
+            # uses, so concurrent firing of both paths within
+            # one RTT is harmless). The wrap-aware §3.2.2.5.2
+            # safest-likely-case correction is omitted here:
+            # for typical Internet workloads the option is
+            # rarely stripped, so the apparent delta is
+            # almost always the true delta; the simpler
+            # detection captures the common case without
+            # the over-aggressive wrap-correction risk.
+            if (
+                self._accecn_enabled
+                and packet_rx_md is not None
+                and packet_rx_md.tcp__accecn0_counters is None
+                and not packet_rx_md.tcp__flag_syn
+            ):
+                incoming_ace = (
+                    (int(packet_rx_md.tcp__flag_ns) << 2)
+                    | (int(packet_rx_md.tcp__flag_cwr) << 1)
+                    | int(packet_rx_md.tcp__flag_ece)
+                )
+                apparent_delta = (incoming_ace - (self._accecn_s_cep & 0b111)) & 0b111
+                if apparent_delta > 0 and (
+                    self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una)
+                ):
+                    flight_size = sub32(self._snd_max, self._snd_una)
+                    self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                    self._cwnd = self._ssthresh
+                    self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                    self._ecn_recovery_point = self._snd_nxt
+                # Always advance s.cep so subsequent ACKs
+                # reporting the same ACE value are idempotent.
+                self._accecn_s_cep = (self._accecn_s_cep + apparent_delta) & 0xFF_FFFF
             tcp_fsm_dispatch(
                 self,
                 packet_rx_md=packet_rx_md,

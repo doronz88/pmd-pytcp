@@ -1579,3 +1579,139 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             5,
             msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=111 -> s.cep=5. Got {session._accecn_s_cep}.",
         )
+
+    def test__accecn__ace_only_response__delta_triggers_cwnd_reduction(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when an
+        inbound ACK arrives with NO AccECN option (e.g. a
+        middlebox stripped it) but the ACE field shows a
+        positive delta from the last-tracked s.cep value,
+        the sender treats the apparent CE delta as a
+        congestion event and halves ssthresh per the ABE
+        multiplier. This is the §3.2.2.5 fallback that lets
+        AccECN keep working when options are stripped.
+
+        Reference: RFC 9768 §3.2.2.5 (cycle/wrap safety: ACE-based fallback).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        session.send(data=b"x" * 6000)
+        self._advance(ms=10)
+
+        ssthresh_before = session._ssthresh
+
+        # Peer's ACK with no AccECN option but ACE field
+        # encoding a +1 delta (s.cep was 5 = 0b101; new ACE
+        # = 6 = 0b110 maps to AE=1, CWR=1, ECE=0 - a one-CE
+        # advance from the prior tracker).
+        ack_with_ace = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "NS", "CWR"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=ack_with_ace)
+
+        self.assertLess(
+            session._ssthresh,
+            ssthresh_before,
+            msg=(
+                "RFC 9768 §3.2.2.5: an inbound ACK with no "
+                "AccECN option but a positive ACE delta MUST "
+                "trigger a congestion response. Got "
+                f"ssthresh_before={ssthresh_before}, "
+                f"ssthresh={session._ssthresh}."
+            ),
+        )
+
+    def test__accecn__ace_only_response__no_delta_no_response(self) -> None:
+        """
+        Ensure that on an AccECN-enabled connection, when an
+        inbound ACK arrives with NO AccECN option and the
+        ACE field is unchanged from the last-tracked s.cep
+        value (i.e. apparent delta = 0), the sender does NOT
+        trigger a spurious congestion response. This pins
+        the regression-guard semantics: ACE-based fallback
+        only fires on an actual change.
+
+        Reference: RFC 9768 §3.2.2.5 (no response without apparent CE delta).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        session.send(data=b"x" * 4000)
+        self._advance(ms=10)
+
+        ssthresh_before = session._ssthresh
+
+        # Peer's ACK with no AccECN option and ACE field
+        # = 5 = 0b101 (the initial s.cep value, no delta).
+        clean_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "NS", "ECE"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=clean_ack)
+
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_before,
+            msg=(
+                "RFC 9768 §3.2.2.5: an inbound ACK with no "
+                "AccECN option and ACE unchanged MUST NOT "
+                "trigger a spurious congestion response. Got "
+                f"ssthresh_before={ssthresh_before}, "
+                f"ssthresh={session._ssthresh}."
+            ),
+        )
+
+    def test__accecn__ace_only_response__option_present_takes_precedence(self) -> None:
+        """
+        Ensure that when an inbound ACK carries BOTH the
+        AccECN option AND non-zero ACE flags, the byte-
+        counter path takes precedence over the ACE-only
+        fallback - i.e. the response is gated on the
+        AccECN option's byte counters rather than on ACE
+        decoding. This regression-guard prevents double-
+        counting CE marks when both paths could fire.
+
+        Reference: RFC 9768 §3.2.2.5 (option-present path is dependable; ACE is fallback).
+        """
+
+        session = self._drive_handshake_to_established_with_accecn()
+        session.send(data=b"x" * 6000)
+        self._advance(ms=10)
+
+        ssthresh_before = session._ssthresh
+
+        # Peer's ACK with the AccECN option present (clean
+        # byte counters) AND ACE flags that would otherwise
+        # decode as a +1 delta. The byte-counter path
+        # reports no delta -> no congestion response, even
+        # though ACE alone would suggest one.
+        ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "NS", "CWR"),
+            win=PEER__WIN,
+            accecn0_counters=(1, 0, 1),
+        )
+        self._drive_rx(frame=ack)
+
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_before,
+            msg=(
+                "RFC 9768 §3.2.2.5: when the AccECN option "
+                "is present the byte counter takes precedence "
+                "over ACE decoding; ssthresh MUST NOT change. "
+                f"Got ssthresh_before={ssthresh_before}, "
+                f"ssthresh={session._ssthresh}."
+            ),
+        )
