@@ -1805,3 +1805,63 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             FsmState.ESTABLISHED,
             msg=f"Length=2 AccECN0 parse MUST NOT corrupt FSM state. Got state={session.state!r}.",
         )
+
+    def test__accecn__broken_server__synack_111_falls_back_to_not_ecn(self) -> None:
+        """
+        Ensure that when an active-open client sends an
+        AccECN-setup SYN with (AE,CWR,ECE)=(1,1,1) and the
+        peer reflects the same flags back in its SYN/ACK,
+        the client treats the peer as a broken non-ECN
+        server and falls back to Not ECN mode for both
+        half-connections. This guards against older broken
+        TCP implementations that reflect SYN flags into
+        the SYN/ACK; without this fall-back the client would
+        misinterpret the reflection as a genuine AccECN
+        confirmation with CE-on-SYN, then proceed with ECN
+        signalling on a peer that cannot honour it.
+
+        Reference: RFC 9768 §3.1.2 (broken-server reflection: fall back to Not ECN).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        # Peer's SYN/ACK reflects all three of the client's
+        # AccECN-setup flags - the broken-reflector signature
+        # per the fourth block of Table 2.
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "NS", "CWR", "ECE"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            ip_ecn=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: handshake reaches ESTABLISHED.",
+        )
+        self.assertFalse(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.2 fourth block: a (1,1,1) SYN/ACK "
+                "MUST be treated as broken-server reflection and "
+                "MUST NOT enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+        self.assertFalse(
+            session._ecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.2 fourth block: broken-server "
+                "fall-back MUST disable Classic ECN as well, "
+                f"yielding Not ECN mode. Got "
+                f"_ecn_enabled={session._ecn_enabled}."
+            ),
+        )

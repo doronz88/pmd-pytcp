@@ -254,7 +254,20 @@ def fsm__syn_sent(
             # enforced by the order of these branches: at
             # most one of '_accecn_enabled' / '_ecn_enabled'
             # is set.
-            if session._advertise_accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
+            # RFC 9768 §3.1.2 fourth-block 'Broken' guard: some
+            # older TCP servers incorrectly reflect the SYN's
+            # AE+CWR+ECE flags into the SYN/ACK. The client
+            # cannot distinguish the reflected (1,1,1) SYN/ACK
+            # from a genuine AccECN top-block CE-on-SYN
+            # response, so the spec mandates falling back to
+            # Not ECN whenever (1,1,1) appears - both halves
+            # of the connection skip ECN/AccECN entirely.
+            is_broken_reflection = (
+                packet_rx_md.tcp__flag_ns and packet_rx_md.tcp__flag_cwr and packet_rx_md.tcp__flag_ece
+            )
+            if is_broken_reflection:
+                pass  # neither _accecn_enabled nor _ecn_enabled set
+            elif session._advertise_accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
                 session._accecn_enabled = True
                 # RFC 9768 §3.2.2.1: derive the Table-3 ACE value
                 # from the inbound SYN+ACK's IP-ECN codepoint so
