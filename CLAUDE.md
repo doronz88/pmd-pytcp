@@ -113,6 +113,10 @@ Per-RFC adherence audits live at `docs/rfc/tcp/rfcXXXX__*/adherence.md` (41 RFCs
 - **Zero external runtime deps**: the stack itself uses stdlib only; `aenum` and `click` are only for `net_addr` CLI helpers.
 - **Memory**: prefer `memoryview`/buffer protocol for packet data; assemblers expose `__buffer__()`.
 
+## Feature Implementation
+
+**Canonical rule: [`.claude/rules/feature_implementation.md`](.claude/rules/feature_implementation.md)** — workflow for new features and spec-conformance work: spec grounding (read the RFC fresh, cite the clause), tests-first (failing test pins the spec; implementation flips it green), commit discipline, scope discipline, and reporting format.
+
 ## Coding Style Rules
 
 **Canonical rule: [`.claude/rules/coding_style.md`](.claude/rules/coding_style.md)** — read and follow it for every new or rewritten non-test Python file. It covers the full file skeleton, the 80-char GPL block (verbatim), imports, module constants, frozen dataclasses, the per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options-bearing protocols, enums, the `Subsystem` runtime, naming, validation idioms, docstrings, formatting, and canonical reference implementations. The bullets below are only a quick summary.
