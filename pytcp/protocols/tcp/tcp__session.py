@@ -308,7 +308,7 @@ class TcpSession:
         # 'LISTEN'.
         self._advertise_ecn: bool = True
 
-        # RFC 9341 §3.1.1 AccECN advertise opt-out flag. When
+        # RFC 9768 §3.1.1 AccECN advertise opt-out flag. When
         # True (default), the active-open SYN carries AE+CWR+ECE
         # (the canonical AccECN-setup signal); when False, the
         # SYN falls back to the RFC 3168 CWR+ECE form if
@@ -331,7 +331,7 @@ class TcpSession:
         # cwnd reduction per §6.1.2.
         self._ecn_enabled: bool = False
 
-        # RFC 9341 §3.1.1 AccECN bilateral-success flag. Set
+        # RFC 9768 §3.1.1 AccECN bilateral-success flag. Set
         # True post-handshake when the peer's SYN+ACK carried
         # one of the four AccECN-capable codepoints (AE=1 OR
         # CWR=1, with ECE varying per the IP-ECN of the
@@ -339,7 +339,7 @@ class TcpSession:
         # '_ecn_enabled'.
         self._accecn_enabled: bool = False
 
-        # RFC 9341 §3.1.1 passive-side codepoint capture. When
+        # RFC 9768 §3.1.1 passive-side codepoint capture. When
         # an AccECN-setup SYN arrives at LISTEN, the listener
         # captures the IP-ECN codepoint of the received SYN
         # here so '_transmit_packet' can encode it as the
@@ -348,7 +348,7 @@ class TcpSession:
         # 3=CE. Unused on the active-open side.
         self._accecn_synack_codepoint: int = 0
 
-        # RFC 9341 §3.2.2 receiver-side r.cep counter. Tracks
+        # RFC 9768 §3.2.2 receiver-side r.cep counter. Tracks
         # the cumulative count of CE-marked inbound segments
         # (modulo 2^24 per the option counter width). The low
         # 3 bits encode the ACE field on every outbound non-
@@ -360,7 +360,7 @@ class TcpSession:
         # segment with IP-ECN codepoint CE (3).
         self._accecn_r_cep: int = 5
 
-        # RFC 9341 §3.2.3 receiver-side per-codepoint TCP-
+        # RFC 9768 §3.2.3 receiver-side per-codepoint TCP-
         # payload byte counters. Each counter accumulates the
         # cumulative byte count of TCP payload received in
         # segments carrying the corresponding IP-ECN
@@ -373,7 +373,7 @@ class TcpSession:
         self._accecn_r_ce_b: int = 0
         self._accecn_r_ect1_b: int = 0
 
-        # RFC 9341 §3.4 sender-side r.CE tracker. Holds the
+        # RFC 9768 §3.4 sender-side r.CE tracker. Holds the
         # last peer-reported r.CE byte counter seen in an
         # inbound AccECN option. The 'tcp_fsm' wrapper compares
         # the newly-arrived value against this tracker; a
@@ -1398,7 +1398,7 @@ class TcpSession:
         flag_ece = False
         flag_cwr = False
         flag_ns = False
-        # RFC 9341 §3.1.1 active-open AccECN-setup SYN. When
+        # RFC 9768 §3.1.1 active-open AccECN-setup SYN. When
         # we advertise AccECN, the SYN carries AE+CWR+ECE -
         # the AE bit (NS position) is the wire signal that
         # distinguishes us from an RFC-3168-only client. A
@@ -1413,7 +1413,7 @@ class TcpSession:
         elif flag_syn and not flag_ack and self._advertise_ecn:
             flag_ece = True
             flag_cwr = True
-        # RFC 9341 §3.1.1 passive-side AccECN SYN+ACK. When
+        # RFC 9768 §3.1.1 passive-side AccECN SYN+ACK. When
         # the listener has accepted an AccECN-setup SYN, the
         # SYN+ACK carries one of four codepoints encoding the
         # IP-ECN of the received SYN:
@@ -1432,7 +1432,7 @@ class TcpSession:
             flag_ece = bool(cp & 0b01)
         elif flag_syn and flag_ack and self._ecn_enabled:
             flag_ece = True
-        # RFC 9341 §3.2.2.1 ACE field encoding on non-SYN
+        # RFC 9768 §3.2.2.1 ACE field encoding on non-SYN
         # segments of an AccECN-capable connection. The 3-bit
         # 'r.cep modulo 8' counter is encoded into the
         # AE+CWR+ECE flags as: bit2 -> AE (NS bit position),
@@ -1473,7 +1473,7 @@ class TcpSession:
             # SYN+ACK carries a TFO cookie.
             tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
 
-        # RFC 9341 §3.2.3 receiver-side AccECN option emission.
+        # RFC 9768 §3.2.3 receiver-side AccECN option emission.
         # On every outbound non-SYN segment of an AccECN-
         # enabled connection, attach the AccECN0 option with
         # the cumulative byte counters so the sender can
@@ -3565,7 +3565,7 @@ class TcpSession:
                     self._send_ece = False
                 if packet_rx_md.ip__ecn == 3:
                     self._send_ece = True
-            # RFC 9341 §3.2.2 / §3.2.3 receiver-side counter
+            # RFC 9768 §3.2.2 / §3.2.3 receiver-side counter
             # accumulation. On AccECN-enabled connections,
             # count inbound segments per IP-ECN codepoint: the
             # r.cep packet counter increments on CE only (low
@@ -3608,7 +3608,7 @@ class TcpSession:
                 self._snd_ewn = min(self._cwnd, self._snd_wnd)
                 self._ecn_send_cwr = True
                 self._ecn_recovery_point = self._snd_nxt
-            # RFC 9341 §3.4 sender-side response to AccECN
+            # RFC 9768 §3.4 sender-side response to AccECN
             # feedback. When the peer's inbound AccECN option
             # reports an r.CE byte counter higher than our
             # tracked value, treat the delta as a single

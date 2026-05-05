@@ -99,7 +99,7 @@ class TcpProbe:
     # b"" = empty-cookie request form, b"..." = cookie
     # response/use form.
     fastopen_cookie: bytes | None
-    # RFC 9341 §3.2.3 AccECN option: tuple of three 24-bit
+    # RFC 9768 §3.2.3 AccECN option: tuple of three 24-bit
     # byte counters (ee0b, eceb, ee1b) when present, None
     # when absent on the wire. The ordering is the AccECN0
     # convention (ECT(0), CE, ECT(1)) regardless of which

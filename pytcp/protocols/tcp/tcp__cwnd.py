@@ -44,7 +44,7 @@ Three operations the caller invokes from
 
     compute_ecn_event_ssthresh(flight_size, smss) -> int
         RFC 8511 §3 ABE: less aggressive ssthresh reduction on
-        ECN-class congestion events (RFC 3168 ECE / RFC 9341
+        ECN-class congestion events (RFC 3168 ECE / RFC 9768
         r.CE delta).
         ssthresh = max(flight_size * 17 // 20, 2 * smss)
 

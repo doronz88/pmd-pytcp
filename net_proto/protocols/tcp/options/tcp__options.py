@@ -153,7 +153,7 @@ class TcpOptions(ProtoOptions):
     @property
     def accecn(self) -> TcpOptionAccecn0 | TcpOptionAccecn1 | None:
         """
-        Get the TCP AccECN option if present (RFC 9341 §3.2.3).
+        Get the TCP AccECN option if present (RFC 9768 §3.2.3).
         Returns either the kind=172 (AccECN0) or kind=173 (AccECN1)
         wire-form variant, whichever the peer chose to emit.
         """

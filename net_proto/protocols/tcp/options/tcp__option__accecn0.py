@@ -42,7 +42,7 @@ from net_proto.protocols.tcp.options.tcp__option import (
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP AccECN0 option [RFC 9341 §3.2.3] - kind=172 form carrying all
+# The TCP AccECN0 option [RFC 9768 §3.2.3] - kind=172 form carrying all
 # three 24-bit byte counters with r.ECT(0) in the first slot. The kind=172
 # variant is conventional for classic-ECN-style deployments where ECT(0) is
 # the dominant codepoint; the sibling AccECN1 (kind=173) reorders the
@@ -65,7 +65,7 @@ TCP__OPTION__ACCECN0__LEN = 11
 @dataclass(frozen=True, kw_only=True, slots=True)
 class TcpOptionAccecn0(TcpOption):
     """
-    The TCP AccECN0 option support class (RFC 9341 §3.2.3, AccECN0 form).
+    The TCP AccECN0 option support class (RFC 9768 §3.2.3, AccECN0 form).
     """
 
     type: TcpOptionType = field(

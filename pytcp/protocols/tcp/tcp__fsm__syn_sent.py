@@ -245,7 +245,7 @@ def fsm__syn_sent(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
-            # RFC 9341 §3.1.1 / §3.1.2 active-side bilateral
+            # RFC 9768 §3.1.1 / §3.1.2 active-side bilateral
             # ECN/AccECN confirmation. The peer's SYN+ACK
             # codepoint disambiguates which protocol it
             # supports. AccECN-capable (AE=1 OR CWR=1) takes

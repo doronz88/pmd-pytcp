@@ -216,7 +216,7 @@ def fsm__listen(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
-            # RFC 9341 §3.1.1 / RFC 3168 §6.1.1 bilateral
+            # RFC 9768 §3.1.1 / RFC 3168 §6.1.1 bilateral
             # ECN/AccECN negotiation. The AccECN-setup SYN
             # carries AE+CWR+ECE; classic RFC 3168 SYN
             # carries CWR+ECE only. Detect AccECN first

@@ -27,17 +27,17 @@
 
 
 """
-This module contains integration tests for RFC 9341 Accurate
+This module contains integration tests for RFC 9768 Accurate
 ECN (AccECN) in 'TcpSession'. AccECN replaces RFC 3168's
 binary CE/ECE feedback channel with byte-counter-based
 feedback that is granular enough for L4S-style scalable
-congestion control. The negotiation handshake (RFC 9341
+congestion control. The negotiation handshake (RFC 9768
 §3.1.1) uses different SYN flag combinations from RFC 3168;
 when both peers are AccECN-capable, '_accecn_enabled' is
 True post-handshake and the data path uses the AccECN
 option (kind 172/173) to carry per-segment byte counters.
 
-The negotiation handshake (RFC 9341 §3.1.1):
+The negotiation handshake (RFC 9768 §3.1.1):
 
   Active-open SYN:    AE=1, CWR=1, ECE=1 (the canonical
                       AccECN-setup SYN; AE=0 is RFC 3168).
@@ -90,7 +90,7 @@ PEER__MSS: int = 1460
 
 class TestTcpSession__Accecn(TcpSessionTestCase):
     """
-    Integration tests for the RFC 9341 AccECN negotiation,
+    Integration tests for the RFC 9768 AccECN negotiation,
     counter encoding, byte-count emission, and proportional
     cwnd response paths.
     """
@@ -118,7 +118,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
     def test__accecn__active_open_syn_advertises_ae_cwr_ece(self) -> None:
         """
         Ensure the active-open SYN sets all three of AE, CWR,
-        and ECE - the canonical RFC 9341 §3.1.1 client-side
+        and ECE - the canonical RFC 9768 §3.1.1 client-side
         AccECN-setup signal. The AE bit (the legacy NS bit
         position) is what distinguishes an AccECN-capable
         SYN from a classic RFC 3168 SYN, which sets only
@@ -128,7 +128,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         recognise AccECN respond with classic RFC 3168 ECE
         alone, and the session falls back gracefully.
 
-        Reference: RFC 9341 §3.1.1 (AccECN-setup SYN: AE+CWR+ECE).
+        Reference: RFC 9768 §3.1.1 (AccECN-setup SYN: AE+CWR+ECE).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -150,18 +150,18 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self.assertIn(
             "ECE",
             syn.flags,
-            msg=("RFC 9341 §3.1.1: AccECN-setup SYN MUST carry " f"the ECE flag. Got flags={syn.flags!r}."),
+            msg=("RFC 9768 §3.1.1: AccECN-setup SYN MUST carry " f"the ECE flag. Got flags={syn.flags!r}."),
         )
         self.assertIn(
             "CWR",
             syn.flags,
-            msg=("RFC 9341 §3.1.1: AccECN-setup SYN MUST carry " f"the CWR flag. Got flags={syn.flags!r}."),
+            msg=("RFC 9768 §3.1.1: AccECN-setup SYN MUST carry " f"the CWR flag. Got flags={syn.flags!r}."),
         )
         self.assertIn(
             "NS",
             syn.flags,
             msg=(
-                "RFC 9341 §3.1.1: AccECN-setup SYN MUST carry "
+                "RFC 9768 §3.1.1: AccECN-setup SYN MUST carry "
                 "the AE flag (the legacy NS bit position). The "
                 "AE bit is what distinguishes an AccECN SYN from "
                 "a classic RFC 3168 SYN; without it a peer that "
@@ -183,7 +183,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         data-path uses the AccECN option (kind 172/173) to
         carry per-segment byte counters.
 
-        Reference: RFC 9341 §3.1.1 (server AccECN-capable SYN+ACK).
+        Reference: RFC 9768 §3.1.1 (server AccECN-capable SYN+ACK).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -217,7 +217,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self.assertTrue(
             session._accecn_enabled,
             msg=(
-                "RFC 9341 §3.1.1: when our SYN advertised AccECN "
+                "RFC 9768 §3.1.1: when our SYN advertised AccECN "
                 "and the peer's SYN+ACK carries one of the four "
                 "AccECN-capable codepoints (here: AE=0, CWR=1, "
                 "ECE=0 = saw Not-ECT), '_accecn_enabled' MUST "
@@ -247,7 +247,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         backward-compatibility guarantee that lets AccECN
         deploy incrementally on the internet.
 
-        Reference: RFC 9341 §3.1.2 (active-open RFC 3168 fallback).
+        Reference: RFC 9768 §3.1.2 (active-open RFC 3168 fallback).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -277,7 +277,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self.assertTrue(
             session._ecn_enabled,
             msg=(
-                "RFC 9341 §3.1.2: when the peer's SYN+ACK is "
+                "RFC 9768 §3.1.2: when the peer's SYN+ACK is "
                 "the RFC 3168 form (AE=0, CWR=0, ECE=1), the "
                 "session MUST fall back to classic ECN. "
                 f"Got _ecn_enabled={session._ecn_enabled}."
@@ -286,7 +286,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self.assertFalse(
             session._accecn_enabled,
             msg=(
-                "RFC 9341 §3.1.2: classic RFC 3168 fallback "
+                "RFC 9768 §3.1.2: classic RFC 3168 fallback "
                 "MUST leave '_accecn_enabled' False. Got "
                 f"_accecn_enabled={session._accecn_enabled}."
             ),
@@ -324,7 +324,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         distinguishes the AccECN-capable response from a
         classic RFC 3168 (CWR=0, ECE=1) reply.
 
-        Reference: RFC 9341 §3.1.1 (server SYN+ACK codepoint for received Not-ECT).
+        Reference: RFC 9768 §3.1.1 (server SYN+ACK codepoint for received Not-ECT).
         """
 
         self._make_listen_session()
@@ -354,7 +354,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "NS",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "RFC 9768 §3.1.1: SYN+ACK responding to a "
                 "Not-ECT AccECN SYN MUST clear the AE flag "
                 "(the canonical codepoint is AE=0, CWR=1, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -364,7 +364,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "CWR",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "RFC 9768 §3.1.1: SYN+ACK responding to a "
                 "Not-ECT AccECN SYN MUST set the CWR flag "
                 "(the canonical codepoint is AE=0, CWR=1, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -374,7 +374,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "ECE",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to a "
+                "RFC 9768 §3.1.1: SYN+ACK responding to a "
                 "Not-ECT AccECN SYN MUST clear the ECE flag "
                 "(the canonical codepoint is AE=0, CWR=1, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -392,7 +392,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         SYN was a marked packet (ECT(0) or CE) rather than
         an unmarked one.
 
-        Reference: RFC 9341 §3.1.1 (server SYN+ACK codepoint for received ECT(0)).
+        Reference: RFC 9768 §3.1.1 (server SYN+ACK codepoint for received ECT(0)).
         """
 
         self._make_listen_session()
@@ -422,7 +422,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "NS",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "RFC 9768 §3.1.1: SYN+ACK responding to an "
                 "ECT(0) AccECN SYN MUST set the AE flag "
                 "(the canonical codepoint is AE=1, CWR=0, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -432,7 +432,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "CWR",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "RFC 9768 §3.1.1: SYN+ACK responding to an "
                 "ECT(0) AccECN SYN MUST clear the CWR flag "
                 "(the canonical codepoint is AE=1, CWR=0, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -442,7 +442,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "ECE",
             syn_ack.flags,
             msg=(
-                "RFC 9341 §3.1.1: SYN+ACK responding to an "
+                "RFC 9768 §3.1.1: SYN+ACK responding to an "
                 "ECT(0) AccECN SYN MUST clear the ECE flag "
                 "(the canonical codepoint is AE=1, CWR=0, "
                 f"ECE=0). Got flags={syn_ack.flags!r}."
@@ -491,11 +491,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         (binary 101) in the AE+CWR+ECE flags. The mapping is:
         bit2 (msb of the 3-bit counter) -> AE, bit1 -> CWR,
         bit0 (lsb) -> ECE. The initial value of 5 is the
-        canonical RFC 9341 §3.2.2.1 starting point that
+        canonical RFC 9768 §3.2.2.1 starting point that
         distinguishes a freshly-negotiated AccECN session
         from value 0 (which has special meaning).
 
-        Reference: RFC 9341 §3.2.2.1 (initial ACE value 5).
+        Reference: RFC 9768 §3.2.2.1 (initial ACE value 5).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -535,7 +535,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "NS",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "RFC 9768 §3.2.2.1: initial ACE value 5 "
                 "(binary 101) MUST encode AE (NS bit) = 1 "
                 f"on the first outbound segment. Got flags={ack.flags!r}."
             ),
@@ -544,7 +544,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "CWR",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "RFC 9768 §3.2.2.1: initial ACE value 5 "
                 "(binary 101) MUST encode CWR = 0 on the "
                 f"first outbound segment. Got flags={ack.flags!r}."
             ),
@@ -553,7 +553,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "ECE",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2.1: initial ACE value 5 "
+                "RFC 9768 §3.2.2.1: initial ACE value 5 "
                 "(binary 101) MUST encode ECE = 1 on the "
                 f"first outbound segment. Got flags={ack.flags!r}."
             ),
@@ -571,7 +571,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         signal: the sender reads counter deltas across ACKs
         to count CE marks accurately.
 
-        Reference: RFC 9341 §3.2.2 (r.cep counter increment on inbound CE).
+        Reference: RFC 9768 §3.2.2 (r.cep counter increment on inbound CE).
         """
 
         session = self._drive_handshake_to_established_with_accecn()
@@ -607,7 +607,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._accecn_r_cep,
             6,
             msg=(
-                "RFC 9341 §3.2.2: r.cep MUST advance from 5 to 6 "
+                "RFC 9768 §3.2.2: r.cep MUST advance from 5 to 6 "
                 "on receipt of one CE-marked inbound segment. Got "
                 f"_accecn_r_cep={session._accecn_r_cep}."
             ),
@@ -616,7 +616,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "NS",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "RFC 9768 §3.2.2: ACE = 6 (binary 110) MUST "
                 "encode AE (NS bit) = 1 on the next outbound "
                 f"segment. Got flags={ack.flags!r}."
             ),
@@ -625,7 +625,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "CWR",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "RFC 9768 §3.2.2: ACE = 6 (binary 110) MUST "
                 "encode CWR = 1 on the next outbound segment. "
                 f"Got flags={ack.flags!r}."
             ),
@@ -634,7 +634,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             "ECE",
             ack.flags,
             msg=(
-                "RFC 9341 §3.2.2: ACE = 6 (binary 110) MUST "
+                "RFC 9768 §3.2.2: ACE = 6 (binary 110) MUST "
                 "encode ECE = 0 on the next outbound segment. "
                 f"Got flags={ack.flags!r}."
             ),
@@ -651,7 +651,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         wrap was missed and to compute precise CE-byte
         deltas across ACKs.
 
-        Reference: RFC 9341 §3.2.3 (AccECN option emission post-handshake).
+        Reference: RFC 9768 §3.2.3 (AccECN option emission post-handshake).
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -679,7 +679,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self.assertIsNotNone(
             ack.accecn,
             msg=(
-                "RFC 9341 §3.2.3: the first outbound non-SYN "
+                "RFC 9768 §3.2.3: the first outbound non-SYN "
                 "segment of an AccECN-enabled connection MUST "
                 "carry the AccECN option (kind 172). Got "
                 f"accecn={ack.accecn!r}."
@@ -689,7 +689,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ack.accecn,
             (0, 0, 0),
             msg=(
-                "RFC 9341 §3.2.3: the AccECN option's three "
+                "RFC 9768 §3.2.3: the AccECN option's three "
                 "byte counters (r.ECT(0), r.CE, r.ECT(1)) MUST "
                 "all be zero immediately after the handshake "
                 f"(no inbound data yet). Got accecn={ack.accecn!r}."
@@ -709,7 +709,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         r.CE-bytes across two ACKs to compute exactly how
         many bytes the network marked.
 
-        Reference: RFC 9341 §3.2.3 (r.CE byte counter increment by payload length).
+        Reference: RFC 9768 §3.2.3 (r.CE byte counter increment by payload length).
         """
 
         session = self._drive_handshake_to_established_with_accecn()
@@ -739,20 +739,20 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._accecn_r_ce_b,
             len(payload),
             msg=(
-                "RFC 9341 §3.2.3: r.CEB MUST advance by the "
+                "RFC 9768 §3.2.3: r.CEB MUST advance by the "
                 f"TCP-payload byte length ({len(payload)}). Got "
                 f"_accecn_r_ce_b={session._accecn_r_ce_b}."
             ),
         )
         self.assertIsNotNone(
             ack.accecn,
-            msg="RFC 9341 §3.2.3: outbound ACK MUST carry the AccECN option.",
+            msg="RFC 9768 §3.2.3: outbound ACK MUST carry the AccECN option.",
         )
         self.assertEqual(
             ack.accecn,
             (0, len(payload), 0),
             msg=(
-                "RFC 9341 §3.2.3: the AccECN option's r.CE "
+                "RFC 9768 §3.2.3: the AccECN option's r.CE "
                 "byte counter (second slot) MUST equal the "
                 f"cumulative CE-marked payload bytes ({len(payload)}). "
                 f"r.ECT(0) and r.ECT(1) stay at 0. Got accecn={ack.accecn!r}."
@@ -773,7 +773,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         fraction, but the per-RTT halving is the canonical
         backwards-compatible fallback.
 
-        Reference: RFC 9341 §3.4 (sender response to AccECN feedback).
+        Reference: RFC 9768 §3.4 (sender response to AccECN feedback).
         """
 
         session = self._drive_handshake_to_established_with_accecn()
@@ -823,7 +823,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._cwnd,
             expected_ssthresh,
             msg=(
-                "RFC 9341 §3.4: on AccECN feedback with positive "
+                "RFC 9768 §3.4: on AccECN feedback with positive "
                 "r.CE delta the sender MUST collapse cwnd to "
                 f"ssthresh. Got cwnd={session._cwnd}, "
                 f"ssthresh={session._ssthresh}."
@@ -833,7 +833,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._accecn_s_ce_b,
             1500,
             msg=(
-                "RFC 9341 §3.4: the sender-side r.CE tracker "
+                "RFC 9768 §3.4: the sender-side r.CE tracker "
                 "MUST advance to the latest value reported by "
                 "the peer (1500). Got "
                 f"_accecn_s_ce_b={session._accecn_s_ce_b}."
@@ -850,7 +850,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         cumulative r.CE byte count would reduce cwnd on
         every ACK, defeating the per-RTT-event semantics.
 
-        Reference: RFC 9341 §3.4 (no reduction without delta).
+        Reference: RFC 9768 §3.4 (no reduction without delta).
         """
 
         session = self._drive_handshake_to_established_with_accecn()
@@ -876,7 +876,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._ssthresh,
             ssthresh_before,
             msg=(
-                "RFC 9341 §3.4: a peer's AccECN option with "
+                "RFC 9768 §3.4: a peer's AccECN option with "
                 "r.CE unchanged from the prior tracker value "
                 "MUST NOT trigger ssthresh reduction. Got "
                 f"ssthresh_before={ssthresh_before}, "
@@ -887,7 +887,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._cwnd,
             cwnd_before,
             msg=(
-                "RFC 9341 §3.4: a peer's AccECN option with "
+                "RFC 9768 §3.4: a peer's AccECN option with "
                 "r.CE unchanged from the prior tracker value "
                 "MUST NOT trigger cwnd reduction. Got "
                 f"cwnd_before={cwnd_before}, "

@@ -42,7 +42,7 @@ from net_proto.protocols.tcp.options.tcp__option import (
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP AccECN1 option [RFC 9341 §3.2.3] - kind=173 form carrying all
+# The TCP AccECN1 option [RFC 9768 §3.2.3] - kind=173 form carrying all
 # three 24-bit byte counters with r.ECT(1) in the first slot. The kind=173
 # variant is the L4S-deployment-friendly form (per RFC 9332) where ECT(1)
 # is the scalable-congestion signal; the sibling AccECN0 (kind=172)
@@ -66,7 +66,7 @@ TCP__OPTION__ACCECN1__LEN = 11
 @dataclass(frozen=True, kw_only=True, slots=True)
 class TcpOptionAccecn1(TcpOption):
     """
-    The TCP AccECN1 option support class (RFC 9341 §3.2.3, kind=173).
+    The TCP AccECN1 option support class (RFC 9768 §3.2.3, kind=173).
     """
 
     type: TcpOptionType = field(
