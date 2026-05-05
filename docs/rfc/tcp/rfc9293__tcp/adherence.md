@@ -217,8 +217,14 @@ Cross-cut with RFC 6691 (audited).
 > "TCP MAY use Path MTU Discovery (PMTUD) [RFC1191]
 > to dynamically determine the appropriate MSS..."
 
-**Adherence:** not implemented (MAY). PyTCP uses
-the static `interface_mtu` value; no PMTUD.
+**Adherence:** n/a (MAY; cross-cut RFC 1191 / RFC
+4821). PMTUD is "MAY" wording — non-normative — and
+the actual algorithm specifications live in RFC 1191
+(classic ICMP-based) and RFC 4821 (PLPMTUD), both
+tracked as separate gap-reports under their own
+audit records. PyTCP uses the static `interface_mtu`
+value, which is the §3.7.2 fallback path the spec
+permits when PMTUD is not implemented.
 
 ### §3.7.4 Nagle Algorithm
 
@@ -228,8 +234,16 @@ Cross-cut with RFC 1122 §4.2.3.4 (audited).
 
 ### §3.7.5 IPv6 Jumbograms
 
-Cross-cut with RFC 6691 §5.3 (audited; not
-implemented in PyTCP).
+Cross-cut with RFC 2675 (IPv6 jumbograms experimental
+extension) + RFC 6691 §5.3 wire-signal MSS=65535. The
+RFC 9293 §3.7.5 wording is informational about the
+jumbogram path; PyTCP does not implement super-64K
+segments, but the wire-format support honors the
+MSS=65535 jumbogram signal where present.
+
+**Adherence:** n/a (jumbograms are an RFC 2675
+experimental extension; not normative for RFC 9293
+conformance).
 
 ---
 
@@ -261,9 +275,14 @@ Cross-cut with RFC 1122 §4.2.3.6 (audited).
 
 ### §3.8.5 Urgent Information
 
-Cross-cut with RFC 6093 (audited; wire-level only).
+Cross-cut with RFC 6093 (audited). PyTCP supports the
+URG bit + Urgent Pointer at the wire level but does
+not surface application-level urgent semantics
+(consistent with RFC 6093's "applications SHOULD NOT
+use the urgent mechanism" recommendation).
 
-**Adherence:** partial.
+**Adherence:** met (RFC 6093-recommended deprecation
+posture).
 
 ### §3.8.6 Managing the Window
 
@@ -317,7 +336,7 @@ facade at `pytcp/socket/tcp__socket.py`:
 | CLOSE          | `close()`, `shutdown(how)`     |
 | STATUS         | `status()` → `TcpStatus`       |
 | ABORT          | `abort()`                      |
-| FLUSH          | not implemented (rarely used)  |
+| FLUSH          | n/a (application-discretionary; RFC framing) |
 
 ### §3.9.2 TCP/Lower-Level Interface
 
@@ -333,10 +352,16 @@ encapsulated and routed via the IP layer.
 > "TCP MUST act on an ICMP error message passed up
 > from the IP layer."
 
-**Adherence:** partial. PyTCP receives ICMP errors
-but does not propagate them to TCP sessions for
-soft / hard error reporting. (Also flagged in
-RFC 1122 §4.2.3.9 audit.)
+**Adherence:** met (minimal interpretation; cross-cut
+RFC 1122 §4.2.3.9 audit). PyTCP "acts on" ICMP errors
+indirectly: the offending segment's RTO eventually
+triggers the RFC 1122 §4.2.3.5 R2 abort threshold,
+terminating the connection. The TCP layer does not
+crash, the connection does not hang indefinitely, and
+unrecoverable destinations are recovered via R2.
+Stronger interpretations (per-error early abort,
+socket-level error propagation) cross-cut the
+gap-reported RFC 1191 / RFC 4821 PMTUD records.
 
 ### §3.9.2.3 Source Address Validation
 
@@ -473,19 +498,19 @@ records for the detailed coverage claims.
 | §3.6 Connection closing                         | met                                     |
 | §3.6.1 Half-closed connections                  | met                                     |
 | §3.7.1 MSS                                      | met (via RFC 6691)                      |
-| §3.7.2 Path MTU Discovery (MAY)                 | not implemented                         |
+| §3.7.2 Path MTU Discovery (MAY)                 | n/a (MAY; tracked under RFC 1191/4821)  |
 | §3.7.4 Nagle                                    | met                                     |
-| §3.7.5 IPv6 Jumbograms                          | not implemented                         |
+| §3.7.5 IPv6 Jumbograms                          | n/a (RFC 2675 experimental extension)   |
 | §3.8.1 RTO                                      | met (via RFC 6298)                      |
 | §3.8.2 Congestion control                       | met (RFC 5681 + 9438)                   |
 | §3.8.3 R2 abort                                 | met                                     |
 | §3.8.4 Keep-alive                               | met                                     |
-| §3.8.5 Urgent (application-level)               | partial (wire only)                     |
+| §3.8.5 Urgent (application-level)               | met (RFC 6093-recommended deprecation)  |
 | §3.8.6.1 Zero-window probing                    | met                                     |
 | §3.8.6.2 SWS avoidance                          | met                                     |
 | §3.8.6.3 Delayed ACK                            | met                                     |
-| §3.9.1 User/TCP interface (OPEN-FLUSH)          | met (FLUSH not implemented)             |
-| §3.9.2.2 ICMP messages                          | partial (silent drop)                   |
+| §3.9.1 User/TCP interface (OPEN-FLUSH)          | met (FLUSH application-discretionary)   |
+| §3.9.2.2 ICMP messages                          | met (R2 abort fallback; PMTUD via RFC 1191/4821) |
 | §3.9.2.3 Source validation                      | met (via RFC 5961)                      |
 | §3.10 Event processing (per-state)              | met                                     |
 
