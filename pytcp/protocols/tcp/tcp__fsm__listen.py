@@ -216,25 +216,30 @@ def fsm__listen(
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
-            # RFC 9768 §3.1.1 / RFC 3168 §6.1.1 bilateral
-            # ECN/AccECN negotiation. The AccECN-setup SYN
-            # carries AE+CWR+ECE; classic RFC 3168 SYN
-            # carries CWR+ECE only. Detect AccECN first
-            # (AE bit present) so the SYN+ACK we emit next
-            # uses one of the four AccECN codepoints
-            # encoding the IP-ECN of this SYN. Fall back
-            # to RFC 3168 when the AE bit is absent.
+            # RFC 9768 §3.1.1 / §3.1.3 / RFC 3168 §6.1.1
+            # bilateral ECN/AccECN negotiation. The canonical
+            # AccECN-setup SYN carries (AE,CWR,ECE)=(1,1,1);
+            # classic RFC 3168 SYN carries (0,1,1). Per
+            # §3.1.3 forward-compatibility, ANY other
+            # combination of AE/CWR/ECE on the SYN MUST be
+            # treated as AccECN-setup so installed servers
+            # stay forward-compatible with future TCP
+            # extensions. The three combinations explicitly
+            # excluded from the AccECN bucket are:
+            #   (0,0,0): No ECN
+            #   (0,1,1): Classic ECN
+            #   (1,1,1): canonical AccECN (handled below)
             # Mutually exclusive: at most one of
             # '_accecn_enabled' / '_ecn_enabled' is set.
-            if (
-                session._advertise_accecn
-                and packet_rx_md.tcp__flag_ns
-                and packet_rx_md.tcp__flag_cwr
-                and packet_rx_md.tcp__flag_ece
-            ):
+            ns = packet_rx_md.tcp__flag_ns
+            cwr = packet_rx_md.tcp__flag_cwr
+            ece = packet_rx_md.tcp__flag_ece
+            is_classic_ecn_syn = (not ns) and cwr and ece
+            any_ecn_bit = ns or cwr or ece
+            if session._advertise_accecn and any_ecn_bit and not is_classic_ecn_syn:
                 session._accecn_enabled = True
                 session._accecn_synack_codepoint = packet_rx_md.ip__ecn
-            elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and packet_rx_md.tcp__flag_cwr:
+            elif session._advertise_ecn and is_classic_ecn_syn:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie
             # issuance + validation, gated on the listening

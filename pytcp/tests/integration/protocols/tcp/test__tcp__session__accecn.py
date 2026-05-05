@@ -1012,3 +1012,207 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 f"cwnd={session._cwnd}."
             ),
         )
+
+    def _drive_passive_open_with_syn_flags(self, syn_flags: tuple[str, ...]) -> TcpSession:
+        """
+        Drive a passive open by feeding the listener a SYN with
+        the supplied AE/CWR/ECE flag combination (ip_ecn=Not-ECT).
+        Returns the resulting session.
+        """
+
+        session = self._make_listen_session()
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN",) + syn_flags,
+            ip_ecn=0,
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        self._advance(ms=1)
+        return session
+
+    def test__accecn__forward_compat__server_syn_100_enters_accecn(self) -> None:
+        """
+        Ensure a passive-side server enters AccECN mode when the
+        inbound SYN carries the reserved (AE,CWR,ECE)=(1,0,0)
+        combination. The strict negotiation table only lists
+        (1,1,1) as the canonical AccECN-setup SYN; the forward-
+        compatibility clause requires the server to treat any
+        non-(0,0,0)/(0,1,1)/(1,1,1) combination as an AccECN
+        request so future TCP extensions can introduce new
+        signalling without breaking installed servers.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN combinations).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("NS",))
+
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,0,0) "
+                "MUST enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__server_syn_110_enters_accecn(self) -> None:
+        """
+        Ensure a passive-side server enters AccECN mode when the
+        inbound SYN carries the reserved (AE,CWR,ECE)=(1,1,0)
+        combination.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN combinations).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("NS", "CWR"))
+
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,1,0) "
+                "MUST enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__server_syn_010_enters_accecn(self) -> None:
+        """
+        Ensure a passive-side server enters AccECN mode when the
+        inbound SYN carries the reserved (AE,CWR,ECE)=(0,1,0)
+        combination.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN combinations).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("CWR",))
+
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(0,1,0) "
+                "MUST enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__server_syn_101_enters_accecn(self) -> None:
+        """
+        Ensure a passive-side server enters AccECN mode when the
+        inbound SYN carries the reserved (AE,CWR,ECE)=(1,0,1)
+        combination.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN combinations).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("NS", "ECE"))
+
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,0,1) "
+                "MUST enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__server_syn_001_enters_accecn(self) -> None:
+        """
+        Ensure a passive-side server enters AccECN mode when the
+        inbound SYN carries the reserved (AE,CWR,ECE)=(0,0,1)
+        combination. While (0,0,1) is the SYN/ACK signature for
+        Classic ECN confirmation, on a SYN it falls into the
+        forward-compatibility 'any other combination' bucket
+        and MUST be treated as AccECN.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN combinations).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("ECE",))
+
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(0,0,1) "
+                "MUST enter AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__server_classic_ecn_syn_does_not_enter_accecn(self) -> None:
+        """
+        Ensure that the (AE,CWR,ECE)=(0,1,1) SYN is treated as
+        Classic ECN, NOT AccECN. (0,1,1) is the canonical
+        Classic ECN-setup SYN signature and is one of the three
+        combinations explicitly excluded from the forward-
+        compatibility 'treat as AccECN' clause.
+
+        Reference: RFC 9768 §3.1.3 (Classic ECN excluded from forward-compat).
+        Reference: RFC 3168 §6.1.1 (Classic ECN-setup SYN signature).
+        """
+
+        session = self._drive_passive_open_with_syn_flags(syn_flags=("CWR", "ECE"))
+
+        self.assertFalse(
+            session._accecn_enabled,
+            msg=(
+                "Classic ECN-setup SYN (0,1,1) MUST NOT enter "
+                "AccECN mode. Got "
+                f"_accecn_enabled={session._accecn_enabled}."
+            ),
+        )
+        self.assertTrue(
+            session._ecn_enabled,
+            msg=(
+                "Classic ECN-setup SYN (0,1,1) MUST enable "
+                "Classic ECN mode. Got "
+                f"_ecn_enabled={session._ecn_enabled}."
+            ),
+        )
+
+    def test__accecn__forward_compat__client_synack_101_enters_accecn(self) -> None:
+        """
+        Ensure that an active-open client receiving a SYN/ACK
+        with the currently-reserved (AE,CWR,ECE)=(1,0,1)
+        combination enters AccECN mode. The client interprets
+        this as 'server supports AccECN; treat IP-ECN-on-SYN as
+        having arrived unchanged' so installed clients stay
+        forward-compatible with future TCP extensions that may
+        define semantics for this combination.
+
+        Reference: RFC 9768 §3.1.3 (forward-compatibility for reserved SYN/ACK combinations).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK", "NS", "ECE"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            ip_ecn=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+
+        self.assertIs(
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: handshake reaches ESTABLISHED.",
+        )
+        self.assertTrue(
+            session._accecn_enabled,
+            msg=(
+                "RFC 9768 §3.1.3: a SYN/ACK with reserved "
+                "(AE,CWR,ECE)=(1,0,1) MUST enter AccECN mode. "
+                f"Got _accecn_enabled={session._accecn_enabled}."
+            ),
+        )
