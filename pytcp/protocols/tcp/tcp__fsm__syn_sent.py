@@ -299,6 +299,22 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 # field on subsequent post-handshake segments.
                 if packet_rx_md.ip__ecn == 3:
                     session._accecn_r_cep = 6
+                # RFC 9768 §3.2.2.3 IP-ECN mangling test
+                # (client side). The SYN/ACK's AE+ECE flag
+                # pair encodes the IP-ECN codepoint peer
+                # observed on the SYN we sent (Table 2):
+                # codepoint = (AE << 1) | ECE. PyTCP always
+                # transmits Not-ECT (0) on SYNs per RFC 3168
+                # §6.1.1, so any peer-observed codepoint
+                # other than Not-ECT is an invalid transition
+                # of the IP-ECN field along the path - the
+                # 'mangling' the §3.2.2.3 procedure detects.
+                # The (1,1,1) broken-reflection case is
+                # handled by the outer 'is_broken_reflection'
+                # branch above and never reaches this point.
+                observed_ipecn = (int(packet_rx_md.tcp__flag_ns) << 1) | int(packet_rx_md.tcp__flag_ece)
+                if observed_ipecn != 0:
+                    session._accecn_mangling_detected = True
             elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 client-side cookie cache update:

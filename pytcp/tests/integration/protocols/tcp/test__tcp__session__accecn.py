@@ -1996,3 +1996,169 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
     # session-level Length 2 path is verified by the
     # smaller-state Length 8 / Length 5 abbreviation tests
     # above plus the wire-format unit tests.
+
+    def _drive_active_open_with_synack_table2_flags(self, synack_flags: tuple[str, ...]) -> TcpSession:
+        """
+        Drive an active-open through to ESTABLISHED with the
+        peer's SYN/ACK carrying the supplied AccECN Table-2
+        AE+CWR+ECE flag combination, encoding which IP-ECN
+        codepoint the peer reports observing on our SYN.
+        Returns the resulting session for mangling-detected
+        assertions.
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK") + synack_flags,
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            ip_ecn=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        return session
+
+    def test__accecn__mangling_test__client_synack_not_ect_no_mangling(self) -> None:
+        """
+        Ensure that on the active-open path, when the peer's
+        AccECN-confirming SYN/ACK Table-2 codepoint reports
+        observing Not-ECT on the SYN we sent (matching what
+        we actually sent per RFC 3168 §6.1.1), no IP-ECN
+        mangling is detected. Pins the regression-guard
+        semantics: mangling detection only fires on an actual
+        mismatch.
+
+        Reference: RFC 9768 §3.2.2.3 (no mangling when peer-observed IP-ECN matches our Not-ECT).
+        """
+
+        # Table-2 'Not-ECT observed' codepoint: (AE=0, CWR=1, ECE=0)
+        session = self._drive_active_open_with_synack_table2_flags(synack_flags=("CWR",))
+        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertFalse(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-reported Not-ECT on SYN "
+                "matches our actual Not-ECT send -> NO mangling. "
+                f"Got _accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )
+
+    def test__accecn__mangling_test__client_synack_ect0_detects_mangling(self) -> None:
+        """
+        Ensure that on the active-open path, when the peer's
+        AccECN-confirming SYN/ACK Table-2 codepoint reports
+        observing ECT(0) on the SYN we sent (which we sent
+        as Not-ECT per RFC 3168 §6.1.1), the IP-ECN field
+        underwent an invalid Not-ECT-changes transition and
+        PyTCP detects mangling.
+
+        Reference: RFC 9768 §3.2.2.3 (Not-ECT codepoint changes is an invalid transition).
+        """
+
+        # Table-2 'ECT(0) observed' codepoint: (AE=1, CWR=0, ECE=0)
+        session = self._drive_active_open_with_synack_table2_flags(synack_flags=("NS",))
+        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertTrue(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-observed ECT(0) on a SYN "
+                "we sent as Not-ECT MUST be detected as IP-ECN "
+                "mangling. Got "
+                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )
+
+    def test__accecn__mangling_test__client_synack_ect1_detects_mangling(self) -> None:
+        """
+        Ensure that on the active-open path, when the peer's
+        AccECN-confirming SYN/ACK Table-2 codepoint reports
+        observing ECT(1) on the SYN we sent (which we sent
+        as Not-ECT), PyTCP detects mangling.
+
+        Reference: RFC 9768 §3.2.2.3 (Not-ECT codepoint changes is an invalid transition).
+        """
+
+        # Table-2 'ECT(1) observed' codepoint: (AE=0, CWR=1, ECE=1)
+        session = self._drive_active_open_with_synack_table2_flags(synack_flags=("CWR", "ECE"))
+        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertTrue(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-observed ECT(1) on a SYN "
+                "we sent as Not-ECT MUST be detected as IP-ECN "
+                "mangling. Got "
+                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )
+
+    def test__accecn__mangling_test__server_third_leg_not_ect_no_mangling(self) -> None:
+        """
+        Ensure that on the passive-open path, when the peer's
+        third-leg ACK ACE field reports observing Not-ECT on
+        the SYN/ACK we sent (matching our actual send), no
+        mangling is detected.
+
+        Reference: RFC 9768 §3.2.2.3 (no mangling when peer-observed IP-ECN matches our Not-ECT).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b010)
+        self.assertFalse(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-reported Not-ECT (ACE=010) "
+                "on our SYN/ACK matches our actual Not-ECT send -> "
+                "NO mangling. Got "
+                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )
+
+    def test__accecn__mangling_test__server_third_leg_ect0_detects_mangling(self) -> None:
+        """
+        Ensure that on the passive-open path, when the peer's
+        third-leg ACK ACE field reports observing ECT(0) on
+        the SYN/ACK we sent (which we sent as Not-ECT), PyTCP
+        detects mangling.
+
+        Reference: RFC 9768 §3.2.2.3 (Not-ECT codepoint changes is an invalid transition).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b100)
+        self.assertTrue(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-observed ECT(0) (ACE=100) "
+                "on our Not-ECT SYN/ACK MUST be detected as "
+                f"mangling. Got "
+                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )
+
+    def test__accecn__mangling_test__server_third_leg_ce_detects_mangling(self) -> None:
+        """
+        Ensure that on the passive-open path, when the peer's
+        third-leg ACK ACE field reports observing CE on the
+        SYN/ACK we sent, PyTCP detects mangling - any change
+        from our Not-ECT to any non-Not-ECT codepoint is
+        invalid per §3.2.2.3, including the CE-observed case.
+        The Table-4 r.cep increment to 6 on ACE=110 stays
+        active (covered by an earlier Gap 1 test); this test
+        adds the orthogonal mangling-detected flag check.
+
+        Reference: RFC 9768 §3.2.2.3 (CE-observed-on-Not-ECT-sent is an invalid transition).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b110)
+        self.assertTrue(
+            session._accecn_mangling_detected,
+            msg=(
+                "RFC 9768 §3.2.2.3: peer-observed CE (ACE=110) on "
+                "our Not-ECT SYN/ACK MUST be detected as mangling. "
+                f"Got _accecn_mangling_detected={session._accecn_mangling_detected}."
+            ),
+        )

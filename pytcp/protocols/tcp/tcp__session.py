@@ -428,6 +428,23 @@ class TcpSession:
         self._accecn_s_cep: int = 5
         self._accecn_s_disabled: bool = False
 
+        # RFC 9768 §3.2.2.3 IP-ECN mangling detector. Set
+        # True when the IP-ECN codepoint peer reports
+        # observing on our handshake-leg segment (SYN for
+        # client, SYN/ACK for server) does not match the
+        # Not-ECT we actually sent per RFC 3168 §6.1.1. PyTCP
+        # always emits Not-ECT (codepoint 0) on SYN /
+        # SYN/ACK, so any peer-reported codepoint other than
+        # Not-ECT is an 'invalid transition' per §3.2.2.3.
+        # The flag is purely observational at present - PyTCP
+        # currently does not gate outbound ECT marking on it
+        # (the §3.1.5 'Sending ECT' clause is not wired into
+        # the TX-side ip__ecn gate yet); future work will
+        # consume this flag to disable ECT emission on
+        # mangled paths while keeping AccECN feedback
+        # responsive per the §3.2.2.3 advisory.
+        self._accecn_mangling_detected: bool = False
+
         # RFC 9768 §3.2.1 sender-side per-codepoint byte
         # counters. 's.e0b' / 's.e1b' track the peer's r.e0b /
         # r.e1b values as carried in the AccECN option's byte-

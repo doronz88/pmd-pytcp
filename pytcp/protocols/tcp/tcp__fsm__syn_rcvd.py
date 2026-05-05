@@ -152,6 +152,25 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                     session._accecn_s_cep = 6
                 else:
                     session._accecn_s_cep = 5
+                # RFC 9768 §3.2.2.3 IP-ECN mangling test
+                # (server side). Each Table-4 ACE value
+                # encodes the IP-ECN codepoint client
+                # observed on the SYN/ACK we sent. PyTCP
+                # always transmits Not-ECT (0) on SYN/ACK
+                # per RFC 3168 §6.1.1, so any client-observed
+                # codepoint other than Not-ECT is an invalid
+                # transition - the 'mangling' the §3.2.2.3
+                # procedure detects. ACE=000 is the §3.2.2.1
+                # Note 1 protocol-non-compliance signal
+                # already handled above (sets s.disabled);
+                # ACE=001 / 0b101 / 0b111 are the §3.2.2.1
+                # Note 2 'currently unused' codepoints,
+                # forward-compat default to 's.cep = 5' with
+                # no mangling claim. The remaining four
+                # canonical ACE values map to non-Not-ECT
+                # codepoints and trigger the flag.
+                if ace in (0b011, 0b100, 0b110):  # ECT(1), ECT(0), CE
+                    session._accecn_mangling_detected = True
             session._process_ack_packet(packet_rx_md)
             # RFC 6928 §2 Initial Window: post-handshake cwnd
             # = min(10*MSS, max(2*MSS, 14600)). Set after
