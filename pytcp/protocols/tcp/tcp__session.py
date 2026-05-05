@@ -210,6 +210,20 @@ class TcpSession:
         self._send_ts: bool = False
         self._ts_recent: int = 0
 
+        # RFC 7323 §5.5 outdated-timestamps mitigation.
+        # Stamps the local monotonic clock value (ms) at
+        # which '_ts_recent' was last updated. Used by the
+        # PAWS check to detect when the connection has been
+        # idle long enough that a strict 'lt32' comparison
+        # would freeze a recovering session: per §5.5 the
+        # 'TS.Recent' value MUST be invalidated when more
+        # than 24 days have elapsed without an update so a
+        # stale-but-actually-fresh TSval can be accepted.
+        # Initialised to 0 (which the §5.5 helper treats as
+        # 'never updated' - the outdated check requires a
+        # non-zero baseline before it can fire).
+        self._ts_recent_updated_at_ms: int = 0
+
         # RFC 1122 §4.2.3.6 keep-alive opt-in flag. Defaults False
         # per the RFC's MUST: "If keep-alive are included, the
         # application MUST be able to turn them on or off for
@@ -1989,6 +2003,34 @@ class TcpSession:
         if not self._send_ts or packet_rx_md.tcp__tsval is None:
             return True
         if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
+            # RFC 7323 §5.5 outdated-timestamps mitigation:
+            # if the connection has been idle longer than the
+            # 24-day threshold, 'TS.Recent' MUST be treated as
+            # invalidated and the segment accepted (rule R3
+            # then refreshes TS.Recent with the segment's
+            # TSval). Without this gate, a recovered idle
+            # connection past the 24-day mark would freeze
+            # because every subsequent segment's TSval would
+            # appear stale until the peer's TS clock wrapped
+            # its sign bit. The check requires a non-zero
+            # last-update timestamp so freshly-handshaked
+            # sessions (initialised to 0) cannot trigger
+            # the mitigation spuriously.
+            if (
+                self._ts_recent_updated_at_ms != 0
+                and stack.timer.now_ms - self._ts_recent_updated_at_ms > tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS
+            ):
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - PAWS: TS.Recent outdated past "
+                    f"{tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS} ms idle threshold, "
+                    "accepting segment per RFC 7323 §5.5 mitigation "
+                    f"(tsval={packet_rx_md.tcp__tsval}, "
+                    f"_ts_recent={self._ts_recent})",
+                )
+                self._ts_recent = packet_rx_md.tcp__tsval
+                self._ts_recent_updated_at_ms = stack.timer.now_ms
+                return True
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - PAWS: dropping stale-TSval segment "
@@ -1997,6 +2039,7 @@ class TcpSession:
             )
             return False
         self._ts_recent = packet_rx_md.tcp__tsval
+        self._ts_recent_updated_at_ms = stack.timer.now_ms
         return True
 
     def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:

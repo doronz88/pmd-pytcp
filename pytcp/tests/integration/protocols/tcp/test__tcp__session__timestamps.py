@@ -1427,3 +1427,128 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
                 f"TSecr={first_retransmit.tsecr}."
             ),
         )
+
+    def test__timestamps__outdated__paws_invalidates_ts_recent_after_24_day_idle(self) -> None:
+        """
+        Ensure that when the connection has been idle for
+        more than 24 days, an inbound segment whose TSval
+        appears 'stale' under the strict PAWS check is NOT
+        dropped: TS.Recent is invalidated per the §5.5
+        outdated-timestamps mitigation, the segment is
+        accepted, and TS.Recent is refreshed to the
+        incoming TSval. Without this gate a connection
+        idled past the 24-day window would freeze (PAWS
+        rejecting every subsequent segment) until the peer's
+        TS clock wrapped its sign bit again.
+
+        Reference: RFC 7323 §5.5 (invalidate TS.Recent on idle > 24 days).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+        # Snapshot current state and make TS.Recent look as
+        # if it was last updated 25 days ago.
+        ts_recent_before = session._ts_recent
+        twenty_five_days_ms = 25 * 24 * 3600 * 1000
+        session._ts_recent_updated_at_ms -= twenty_five_days_ms
+
+        # Inbound segment with TSval one tick older than
+        # _ts_recent. Under strict PAWS this would be
+        # dropped; under §5.5 it MUST be accepted because
+        # _ts_recent is now outdated.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=(ts_recent_before - 1) & 0xFFFF_FFFF,
+            tsecr=session._snd_ini,
+            payload=b"hello",
+        )
+        self._drive_rx(frame=peer_data)
+        self._advance(ms=200)
+
+        # Segment was accepted: data made it into the rx
+        # buffer (non-empty) and _ts_recent advanced to the
+        # new (apparently-stale) value.
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"hello",
+            msg=(
+                "RFC 7323 §5.5: a stale-TSval segment past the "
+                "24-day idle threshold MUST be accepted; the "
+                "payload should be enqueued. Got "
+                f"_rx_buffer={bytes(session._rx_buffer)!r}."
+            ),
+        )
+        self.assertEqual(
+            session._ts_recent,
+            (ts_recent_before - 1) & 0xFFFF_FFFF,
+            msg=(
+                "RFC 7323 §5.5: after accepting a stale-TSval "
+                "segment via the outdated-mitigation path, "
+                "TS.Recent MUST be refreshed to the segment's "
+                f"TSval. Got _ts_recent={session._ts_recent}."
+            ),
+        )
+
+    def test__timestamps__outdated__paws_still_drops_stale_segment_within_idle_window(self) -> None:
+        """
+        Ensure the regression-guard direction: when the
+        connection has been idle for less than 24 days, a
+        stale-TSval segment is still dropped by strict
+        PAWS. The §5.5 outdated-timestamps mitigation only
+        relaxes the check past the 24-day threshold; before
+        that, the strict §5 PAWS rule applies unchanged.
+
+        Reference: RFC 7323 §5 (strict PAWS within the 24-day idle window).
+        """
+
+        session = self._drive_handshake_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval=PEER__TSVAL_INITIAL,
+        )
+        ts_recent_before = session._ts_recent
+        # Pretend TS.Recent is 1 hour old - well within the
+        # 24-day idle window. Strict PAWS must still apply.
+        one_hour_ms = 3600 * 1000
+        session._ts_recent_updated_at_ms -= one_hour_ms
+
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            tsval=(ts_recent_before - 1) & 0xFFFF_FFFF,
+            tsecr=session._snd_ini,
+            payload=b"world",
+        )
+        self._drive_rx(frame=peer_data)
+        self._advance(ms=200)
+
+        self.assertEqual(
+            bytes(session._rx_buffer),
+            b"",
+            msg=(
+                "RFC 7323 §5: within the 24-day idle window, "
+                "PAWS MUST still drop a stale-TSval segment. "
+                f"Got _rx_buffer={bytes(session._rx_buffer)!r}."
+            ),
+        )
+        self.assertEqual(
+            session._ts_recent,
+            ts_recent_before,
+            msg=(
+                "RFC 7323 §5: TS.Recent MUST NOT advance on a "
+                "stale-TSval segment dropped by strict PAWS. "
+                f"Got _ts_recent={session._ts_recent}."
+            ),
+        )

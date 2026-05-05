@@ -259,6 +259,9 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
+                # RFC 7323 §5.5 outdated-timestamps mitigation:
+                # seed the last-update clock at handshake.
+                session._ts_recent_updated_at_ms = stack.timer.now_ms
             # RFC 9768 §3.1.1 / §3.1.2 active-side bilateral
             # ECN/AccECN confirmation. The peer's SYN+ACK
             # codepoint disambiguates which protocol it
@@ -385,6 +388,9 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
                 session._send_ts = True
                 session._ts_recent = packet_rx_md.tcp__tsval
+                # RFC 7323 §5.5 outdated-timestamps mitigation:
+                # seed the last-update clock at handshake.
+                session._ts_recent_updated_at_ms = stack.timer.now_ms
             # Receive sequence space: advance past peer's SYN.
             session._rcv_ini = packet_rx_md.tcp__seq
             session._rcv_nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)

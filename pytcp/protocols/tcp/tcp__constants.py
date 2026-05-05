@@ -76,3 +76,15 @@ PERSIST_TIMEOUT_MAX = 60_000
 KEEPALIVE_IDLE_TIME = 7_200_000
 KEEPALIVE_PROBE_INTERVAL = 75_000
 KEEPALIVE_PROBE_MAX_COUNT = 9
+
+# RFC 7323 §5.5 outdated-timestamps mitigation threshold.
+# When the connection has been idle longer than this without
+# updating TS.Recent, the next inbound segment whose TSval
+# would otherwise fail strict PAWS is accepted instead -
+# TS.Recent is treated as 'invalidated' per §5.5 to avoid
+# permanently freezing a connection past the 24-day mark.
+# 24 days at 1 ms granularity is roughly 2 ** 31 ms, the
+# RFC's chosen worst-case TSval-clock sign-bit-wrap window;
+# an exact integer of 24 * 86400 * 1000 ms is conservative
+# and arithmetic-friendly.
+TS_RECENT_OUTDATED_THRESHOLD_MS = 24 * 86_400 * 1_000
