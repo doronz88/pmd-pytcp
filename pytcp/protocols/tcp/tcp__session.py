@@ -500,6 +500,20 @@ class TcpSession:
         self._frto_pre_cwnd: int = 0
         self._frto_pre_ssthresh: int = 0
         self._frto_pre_snd_max: int = 0
+        # RFC 9438 §4.9.1 CUBIC spurious-timeout state
+        # snapshot. Captured alongside the cwnd / ssthresh /
+        # SND.MAX snapshot in '_retransmit_packet_timeout',
+        # restored alongside them in '_process_ack_packet'
+        # when the first post-RTO ACK covers the
+        # snapshotted SND.MAX (the spurious signature).
+        # Without restoring these the cubic curve would stay
+        # anchored at the artificially-reduced W_max even
+        # after cwnd is restored, degrading post-recovery
+        # throughput.
+        self._frto_pre_cubic_w_max: int = 0
+        self._frto_pre_cubic_K_ms: int = 0
+        self._frto_pre_cubic_epoch_start_ms: int = 0
+        self._frto_pre_cubic_w_est: int = 0
 
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
@@ -2842,6 +2856,14 @@ class TcpSession:
         self._frto_pre_cwnd = self._cwnd
         self._frto_pre_ssthresh = self._ssthresh
         self._frto_pre_snd_max = self._snd_max
+        # RFC 9438 §4.9.1: snapshot the CUBIC-specific
+        # state alongside the cwnd/ssthresh snapshot so a
+        # later spurious-detection event can roll back the
+        # full congestion-control state.
+        self._frto_pre_cubic_w_max = self._cubic_w_max
+        self._frto_pre_cubic_K_ms = self._cubic_K_ms
+        self._frto_pre_cubic_epoch_start_ms = self._cubic_epoch_start_ms
+        self._frto_pre_cubic_w_est = self._cubic_w_est
 
         # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
         # post-RTO slow-start exits at the previously-observed
@@ -3509,11 +3531,24 @@ class TcpSession:
                     self._cwnd = self._frto_pre_cwnd
                     self._ssthresh = self._frto_pre_ssthresh
                     self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                    # RFC 9438 §4.9.1: restore CUBIC state
+                    # alongside cwnd/ssthresh on spurious-RTO
+                    # detection so the cubic curve continues
+                    # from where it was pre-RTO rather than
+                    # from the artificially-collapsed
+                    # post-loss-event values.
+                    self._cubic_w_max = self._frto_pre_cubic_w_max
+                    self._cubic_K_ms = self._frto_pre_cubic_K_ms
+                    self._cubic_epoch_start_ms = self._frto_pre_cubic_epoch_start_ms
+                    self._cubic_w_est = self._frto_pre_cubic_w_est
                     __debug__ and log(
                         "tcp-ss",
                         f"[{self}] - RFC 5682 F-RTO: spurious RTO "
                         f"detected, restored cwnd={self._cwnd} "
-                        f"ssthresh={self._ssthresh}",
+                        f"ssthresh={self._ssthresh}; "
+                        f"RFC 9438 §4.9.1: restored cubic "
+                        f"w_max={self._cubic_w_max} "
+                        f"K_ms={self._cubic_K_ms}",
                     )
                 self._frto_active = False
         # RFC 7323 §4 TSecr-driven RTTM: peer's TSecr identifies

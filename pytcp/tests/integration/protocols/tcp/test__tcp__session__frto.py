@@ -294,3 +294,148 @@ class TestTcpSession__Frto(TcpSessionTestCase):
                 f"{ssthresh_before_rto})."
             ),
         )
+
+    def test__frto__spurious_rto_restores_cubic_state(self) -> None:
+        """
+        Ensure that when a spurious RTO is detected (the
+        first post-RTO ACK covers all pre-RTO outstanding
+        data), the CUBIC-specific state ('_cubic_w_max',
+        '_cubic_K_ms', '_cubic_epoch_start_ms', '_cubic_w_est')
+        is also restored to its pre-RTO snapshot, alongside
+        the cwnd / ssthresh restore the §3.1 F-RTO machinery
+        already performs. Without this, a spurious RTO would
+        leave CUBIC's curve permanently anchored at the
+        artificially-reduced W_max even after cwnd is
+        restored, degrading post-recovery throughput.
+
+        Reference: RFC 9438 §4.9.1 (CUBIC spurious-timeout state restore via F-RTO).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import CcMode
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # Force CUBIC mode (default may be RENO depending on
+        # the surrounding test fixture).
+        session._cc_mode = CcMode.CUBIC
+
+        # Drive 3 segments and snapshot CUBIC state pre-RTO.
+        payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=10)
+
+        cwnd_before_rto = session._cwnd
+        snd_max_at_rto = session._snd_max
+        cubic_w_max_before = session._cubic_w_max
+        cubic_K_ms_before = session._cubic_K_ms
+        cubic_epoch_before = session._cubic_epoch_start_ms
+        cubic_w_est_before = session._cubic_w_est
+
+        # Trigger RTO without peer ACK.
+        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+
+        # Peer's cum-ACK covers all pre-RTO data: spurious
+        # signature.
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=snd_max_at_rto,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+
+        # cwnd restored (already covered by the parent F-RTO
+        # test) - assert here as a setup invariant.
+        self.assertEqual(
+            session._cwnd,
+            cwnd_before_rto,
+            msg="Setup invariant: F-RTO restores cwnd on spurious detection.",
+        )
+        # CUBIC state restored too.
+        self.assertEqual(
+            session._cubic_w_max,
+            cubic_w_max_before,
+            msg=(
+                "RFC 9438 §4.9.1: spurious-timeout detection MUST "
+                "restore _cubic_w_max to the pre-RTO snapshot. Got "
+                f"{session._cubic_w_max}, expected {cubic_w_max_before}."
+            ),
+        )
+        self.assertEqual(
+            session._cubic_K_ms,
+            cubic_K_ms_before,
+            msg=(
+                "RFC 9438 §4.9.1: spurious-timeout detection MUST "
+                "restore _cubic_K_ms to the pre-RTO snapshot. Got "
+                f"{session._cubic_K_ms}, expected {cubic_K_ms_before}."
+            ),
+        )
+        self.assertEqual(
+            session._cubic_epoch_start_ms,
+            cubic_epoch_before,
+            msg=(
+                "RFC 9438 §4.9.1: spurious-timeout detection MUST "
+                "restore _cubic_epoch_start_ms to the pre-RTO snapshot. "
+                f"Got {session._cubic_epoch_start_ms}, expected "
+                f"{cubic_epoch_before}."
+            ),
+        )
+        self.assertEqual(
+            session._cubic_w_est,
+            cubic_w_est_before,
+            msg=(
+                "RFC 9438 §4.9.1: spurious-timeout detection MUST "
+                "restore _cubic_w_est to the pre-RTO snapshot. Got "
+                f"{session._cubic_w_est}, expected {cubic_w_est_before}."
+            ),
+        )
+
+    def test__frto__genuine_rto_keeps_cubic_state_reduced(self) -> None:
+        """
+        Ensure the regression-guard direction for §4.9.1: when
+        a genuine RTO fires (first post-RTO ACK covers only
+        the retransmit, not all pre-RTO data), the CUBIC
+        state stays at its post-loss-event values - the
+        snapshot MUST NOT be restored on a non-spurious RTO.
+
+        Reference: RFC 9438 §4.9.1 (CUBIC restore only on detected spurious timeout).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import CcMode
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cc_mode = CcMode.CUBIC
+        payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=10)
+
+        snd_una_at_rto = session._snd_una
+        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+
+        # Snapshot post-RTO CUBIC state.
+        cubic_w_max_after_rto = session._cubic_w_max
+
+        # Peer ACK covers ONLY the retransmit (snd_una + 1
+        # MSS), not all pre-RTO data.
+        peer_partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=snd_una_at_rto + PEER__MSS,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_partial_ack)
+
+        # CUBIC state MUST NOT be restored on a genuine RTO.
+        self.assertEqual(
+            session._cubic_w_max,
+            cubic_w_max_after_rto,
+            msg=(
+                "RFC 9438 §4.9.1: a genuine-RTO partial cum-ACK "
+                "MUST NOT trigger CUBIC state restore. Got "
+                f"_cubic_w_max={session._cubic_w_max}, "
+                f"expected {cubic_w_max_after_rto}."
+            ),
+        )
