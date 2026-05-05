@@ -132,7 +132,8 @@ not apply.
 > an appropriate modification of the TCP parameters
 > could defeat all of the TWA hazards H1, H2, and H3."
 
-**Adherence:** not implemented. PyTCP uses the
+**Adherence:** n/a — wire-incompatible alternative path
+not selected by RFC §4. PyTCP uses the
 RFC 9293 32-bit sequence space (see `tcp__seq.py`'s
 `Seq32 = int` alias and the `& 0xFFFF_FFFF` modular
 masks throughout). Extending to 64-bit sequences is a
@@ -253,7 +254,7 @@ referenced from the RFC 1337 test class:
 |---------------------------|--------------------------------------------|
 | §3 F1 (ignore RST)        | locked in                                  |
 | §3 F2 (PAWS mitigation)   | locked in indirectly (via RFC 7323 §5)     |
-| §3 F3 (64-bit sequences)  | n/a (not implemented)                      |
+| §3 F3 (64-bit sequences)  | n/a (alternative path; RFC §4 selects F1)  |
 | Hazard H1 (data acceptance) | locked in by absence (no data path)      |
 | Hazard H2 (desync)        | locked in transitively via F1 test         |
 | Hazard H3 (conn failure)  | locked in transitively via F1 test         |
@@ -267,7 +268,7 @@ referenced from the RFC 1337 test class:
 |--------------------------|-----------------------------------|
 | §3 F1 (ignore RST)       | met                               |
 | §3 F2 (PAWS mitigation)  | exceeded (F1 + PAWS strict)       |
-| §3 F3 (64-bit sequences) | not implemented (32-bit per 9293) |
+| §3 F3 (64-bit sequences) | n/a — alternative architecture; RFC §4 selects F1 |
 | §4 conclusion (use F1)   | met                               |
 | Hazard H1 prevention     | met (no data path)                |
 | Hazard H2 prevention     | met (F1 precludes)                |
