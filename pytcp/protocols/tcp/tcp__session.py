@@ -402,6 +402,23 @@ class TcpSession:
         self._accecn_r_last_emit_e0b: int = 1
         self._accecn_r_last_emit_e1b: int = 1
 
+        # RFC 9768 §3.2.1 / §3.2.2.1 sender-side counters.
+        # 's.cep' tracks the peer's r.cep value as inferred
+        # from the third-leg ACK's ACE field per Table 4 (in
+        # SYN-RCVD) and from each subsequent ACK's regular
+        # ACE delta (in ESTABLISHED). Initial value is 5 per
+        # §3.2.1; Table 4 sets it to 5 or 6 depending on the
+        # IP-ECN codepoint the SYN/ACK arrived with.
+        # 's.disabled' is the §3.2.2.1 Note 1 sentinel: when
+        # the third-leg ACK arrives with ACE=000, the server
+        # MUST NOT set ECT on outgoing packets and MUST NOT
+        # respond to AccECN feedback for the rest of the
+        # connection (it remains an AccECN-feedback-emitting
+        # Data Receiver, just not a Data Sender that responds
+        # to feedback).
+        self._accecn_s_cep: int = 5
+        self._accecn_s_disabled: bool = False
+
         # RFC 9768 §3.4 sender-side r.CE tracker. Holds the
         # last peer-reported r.CE byte counter seen in an
         # inbound AccECN option. The 'tcp_fsm' wrapper compares

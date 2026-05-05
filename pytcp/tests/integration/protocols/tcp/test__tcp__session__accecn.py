@@ -1363,3 +1363,219 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             session._accecn_r_ect1_b,
             msg="AccECN option r.ECT(1) byte counter MUST match session state.",
         )
+
+    def _drive_passive_open_with_third_leg_ace(self, ace: int) -> TcpSession:
+        """
+        Drive a passive open: peer's AccECN-setup SYN arrives,
+        the listener emits a SYN+ACK, then peer's third-leg
+        ACK arrives carrying the supplied raw ACE field value
+        (encoded as the AE+CWR+ECE flag combination). Returns
+        the resulting ESTABLISHED session.
+        """
+
+        session = self._make_listen_session()
+
+        peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=0,
+            flags=("SYN", "ECE", "CWR", "NS"),
+            ip_ecn=0,
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn)
+        synack_tx = self._advance(ms=1)
+        assert len(synack_tx) == 1, f"Setup: SYN+ACK MUST fire. Got {len(synack_tx)}."
+        synack = self._parse_tx(synack_tx[0])
+
+        # Build third-leg ACK with the supplied ACE bits encoded
+        # into the AE+CWR+ECE flags (bit2 -> NS, bit1 -> CWR,
+        # bit0 -> ECE).
+        ace_flags: tuple[str, ...] = ("ACK",)
+        if ace & 0b100:
+            ace_flags = ace_flags + ("NS",)
+        if ace & 0b010:
+            ace_flags = ace_flags + ("CWR",)
+        if ace & 0b001:
+            ace_flags = ace_flags + ("ECE",)
+
+        peer_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=synack.seq + 1,
+            flags=ace_flags,
+            ip_ecn=0,
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=peer_ack)
+        return session
+
+    def test__accecn__server_table_4_inference__ace_010_sets_s_cep_5_not_ect(self) -> None:
+        """
+        Ensure that a passive-side server in SYN-RCVD state,
+        on receiving a pure ACK whose ACE field carries the
+        Table-4 binary value 010 (AE=0, CWR=1, ECE=0), infers
+        that the IP-ECN field on its SYN+ACK was Not-ECT and
+        sets its sender-side 's.cep' counter to 5. The
+        handshake encoding is one-shot: subsequent ACKs use
+        the regular 'r.cep & 7' interpretation.
+
+        Reference: RFC 9768 §3.2.2.1 (Table 4, ACE=010 -> Not-ECT, s.cep=5).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b010)
+
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=(
+                "RFC 9768 §3.2.2.1 Table 4: ACE=010 on the "
+                "first inbound ACK in SYN-RCVD MUST set "
+                f"s.cep = 5. Got s.cep={session._accecn_s_cep}."
+            ),
+        )
+        self.assertFalse(
+            session._accecn_s_disabled,
+            msg=(
+                "ACE=010 is a normal AccECN handshake ACK; "
+                "MUST NOT disable sender-side AccECN. Got "
+                f"s_disabled={session._accecn_s_disabled}."
+            ),
+        )
+
+    def test__accecn__server_table_4_inference__ace_011_sets_s_cep_5_ect1(self) -> None:
+        """
+        Ensure that a passive-side server in SYN-RCVD state,
+        on receiving a pure ACK whose ACE field carries the
+        Table-4 binary value 011, infers that the IP-ECN
+        field on its SYN+ACK was ECT(1) and sets s.cep=5.
+
+        Reference: RFC 9768 §3.2.2.1 (Table 4, ACE=011 -> ECT(1), s.cep=5).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b011)
+
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=011 -> s.cep=5. Got {session._accecn_s_cep}.",
+        )
+
+    def test__accecn__server_table_4_inference__ace_100_sets_s_cep_5_ect0(self) -> None:
+        """
+        Ensure that a passive-side server in SYN-RCVD state,
+        on receiving a pure ACK whose ACE field carries the
+        Table-4 binary value 100, infers that the IP-ECN
+        field on its SYN+ACK was ECT(0) and sets s.cep=5.
+
+        Reference: RFC 9768 §3.2.2.1 (Table 4, ACE=100 -> ECT(0), s.cep=5).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b100)
+
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=100 -> s.cep=5. Got {session._accecn_s_cep}.",
+        )
+
+    def test__accecn__server_table_4_inference__ace_110_sets_s_cep_6_ce(self) -> None:
+        """
+        Ensure that a passive-side server in SYN-RCVD state,
+        on receiving a pure ACK whose ACE field carries the
+        Table-4 binary value 110, infers that the IP-ECN
+        field on its SYN+ACK was CE-marked and sets s.cep=6
+        (one increment from initial 5). This communicates
+        the CE marking back to the application's congestion
+        control state.
+
+        Reference: RFC 9768 §3.2.2.1 (Table 4, ACE=110 -> CE, s.cep=6).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b110)
+
+        self.assertEqual(
+            session._accecn_s_cep,
+            6,
+            msg=(
+                "RFC 9768 §3.2.2.1 Table 4: ACE=110 (CE on "
+                "SYN/ACK) MUST set s.cep = 6. Got "
+                f"{session._accecn_s_cep}."
+            ),
+        )
+
+    def test__accecn__server_table_4_inference__ace_000_disables_sender_side_accecn(self) -> None:
+        """
+        Ensure that a passive-side server in SYN-RCVD state,
+        on receiving a pure ACK whose ACE field carries the
+        Table-4 binary value 000 (the protocol-non-compliance
+        signal per Table 4 Note 1), disables sender-side
+        AccECN: it MUST NOT set ECT on outgoing packets and
+        MUST NOT respond to AccECN feedback for the rest of
+        the connection. As a Data Receiver, AccECN feedback
+        emission continues normally.
+
+        Reference: RFC 9768 §3.2.2.1 Note 1 (ACE=000 -> sender-side AccECN disabled).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b000)
+
+        self.assertTrue(
+            session._accecn_s_disabled,
+            msg=(
+                "RFC 9768 §3.2.2.1 Note 1: ACE=000 on the "
+                "first inbound ACK in SYN-RCVD MUST disable "
+                "sender-side AccECN. Got "
+                f"s_disabled={session._accecn_s_disabled}."
+            ),
+        )
+
+    def test__accecn__server_table_4_inference__ace_001_unused_defaults_to_5(self) -> None:
+        """
+        Ensure ACE=001 on the third-leg ACK (a currently-
+        unused Table-4 codepoint) defaults s.cep to 5,
+        keeping installed servers forward-compatible with
+        future TCP extensions.
+
+        Reference: RFC 9768 §3.2.2.1 Note 2 (forward-compat for unused ACE).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b001)
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=001 -> s.cep=5. Got {session._accecn_s_cep}.",
+        )
+
+    def test__accecn__server_table_4_inference__ace_101_unused_defaults_to_5(self) -> None:
+        """
+        Ensure ACE=101 on the third-leg ACK (a currently-
+        unused Table-4 codepoint) defaults s.cep to 5.
+
+        Reference: RFC 9768 §3.2.2.1 Note 2 (forward-compat for unused ACE).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b101)
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=101 -> s.cep=5. Got {session._accecn_s_cep}.",
+        )
+
+    def test__accecn__server_table_4_inference__ace_111_unused_defaults_to_5(self) -> None:
+        """
+        Ensure ACE=111 on the third-leg ACK (a currently-
+        unused Table-4 codepoint) defaults s.cep to 5.
+
+        Reference: RFC 9768 §3.2.2.1 Note 2 (forward-compat for unused ACE).
+        """
+
+        session = self._drive_passive_open_with_third_leg_ace(ace=0b111)
+        self.assertEqual(
+            session._accecn_s_cep,
+            5,
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=111 -> s.cep=5. Got {session._accecn_s_cep}.",
+        )

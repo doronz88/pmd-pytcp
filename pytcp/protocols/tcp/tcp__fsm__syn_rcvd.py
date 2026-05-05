@@ -104,6 +104,37 @@ def fsm__syn_rcvd(
         # still at 'peer_ISS + 1' here, so the overlap prefix
         # is 0 and the full payload is enqueued).
         if packet_rx_md.tcp__seq == session._rcv_nxt and packet_rx_md.tcp__ack == session._snd_nxt:
+            # RFC 9768 §3.2.2.1 Table 4: when an AccECN
+            # server's first inbound ACK arrives in
+            # SYN-RCVD as a pure ACK with no SACK blocks,
+            # decode the AE+CWR+ECE flags as the §3.2.2.1
+            # handshake-encoded ACE field and infer the
+            # IP-ECN codepoint of the SYN/ACK as observed
+            # by the client. Update s.cep accordingly:
+            #   ACE=000 -> s.disabled = True (§3.2.2.1
+            #             Note 1 - server MUST NOT set ECT
+            #             on outgoing packets and MUST NOT
+            #             respond to AccECN feedback)
+            #   ACE=110 -> s.cep = 6 (CE on SYN/ACK)
+            #   any other ACE -> s.cep = 5
+            # The decode runs only when AccECN is enabled
+            # for this session and the inbound ACK has no
+            # SACK blocks (the §3.2.2.1 gating condition
+            # for the handshake encoding); a SACK-bearing
+            # ACK falls through to the regular post-
+            # handshake processing.
+            if session._accecn_enabled and not packet_rx_md.tcp__sack_blocks:
+                ace = (
+                    (int(packet_rx_md.tcp__flag_ns) << 2)
+                    | (int(packet_rx_md.tcp__flag_cwr) << 1)
+                    | int(packet_rx_md.tcp__flag_ece)
+                )
+                if ace == 0b000:
+                    session._accecn_s_disabled = True
+                elif ace == 0b110:
+                    session._accecn_s_cep = 6
+                else:
+                    session._accecn_s_cep = 5
             session._process_ack_packet(packet_rx_md)
             # RFC 6928 §2 Initial Window: post-handshake cwnd
             # = min(10*MSS, max(2*MSS, 14600)). Set after
