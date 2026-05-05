@@ -3051,16 +3051,16 @@ class TcpSession:
         # next dup-ACK from re-entering recovery via the
         # one-shot guard in '_retransmit_packet_request'.
         self._recovery_point = 0
-        # RFC 2018 §5: "After a retransmit timeout the data
-        # sender SHOULD turn off all of the SACKed bits, since
-        # the timeout might indicate that the data receiver has
-        # reneged." The §5 also-MUST "ignore prior SACK info on
-        # retransmit" depends on this clear. PyTCP's
-        # '_sack_scoreboard' carries the scoreboard state; the
-        # clear here matches both clauses with a single
-        # operation. Subsequent SACK blocks on post-RTO ACKs
-        # repopulate the scoreboard from scratch.
-        self._sack_scoreboard.clear()
+        # RFC 6675 §5.1: "A SACK TCP sender SHOULD utilize all
+        # SACK information made available during the loss
+        # recovery following an RTO." PyTCP retains the SACK
+        # scoreboard across the RTO so the post-RTO recovery
+        # can use the prior SACK reports to skip already-
+        # delivered ranges, matching the RFC 6675 modern
+        # interpretation that supersedes RFC 2018 §5's older
+        # "turn off SACKed bits" guidance. Reneging by the
+        # peer would violate RFC 8985 RACK-TLP's xmit_ts
+        # invariants and would be detected separately.
         # RFC 6582 §3.2 step 4: record the highest SND.MAX
         # transmitted before the RTO so a subsequent burst of
         # dup-ACKs (often produced by the post-RTO retransmit

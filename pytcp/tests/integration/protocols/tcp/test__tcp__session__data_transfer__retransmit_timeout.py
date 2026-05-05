@@ -919,12 +919,13 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         )
 
 
-class TestTcpRfc2018SackOnRto(TcpSessionTestCase):
+class TestTcpRfc6675SackRetainedOnRto(TcpSessionTestCase):
     """
-    RFC 2018 §5: post-RTO the data sender SHOULD turn off all
-    SACKed bits and MUST ignore prior SACK info on retransmit.
-    PyTCP clears '_sack_scoreboard' in the RTO handler so a
-    receiver-renege scenario does not leave a permanent hole.
+    RFC 6675 §5.1: "A SACK TCP sender SHOULD utilize all SACK
+    information made available during the loss recovery
+    following an RTO." This is the modern interpretation that
+    supersedes RFC 2018 §5's older "turn off SACKed bits"
+    guidance. PyTCP retains the SACK scoreboard across the RTO.
     """
 
     def _make_active_session(self, *, iss: int) -> TcpSession:
@@ -969,15 +970,15 @@ class TestTcpRfc2018SackOnRto(TcpSessionTestCase):
         session._snd_ewn = PEER__WIN
         return session
 
-    def test__rfc2018__rto_clears_sack_scoreboard(self) -> None:
+    def test__rfc6675__rto_retains_sack_scoreboard(self) -> None:
         """
-        Ensure that the RTO retransmit handler clears
-        '_sack_scoreboard' so prior SACK info does not influence
-        the post-RTO retransmit (the receiver may have reneged;
-        the sender MUST re-establish the scoreboard from
-        post-RTO ACKs).
+        Ensure that the RTO retransmit handler retains the
+        '_sack_scoreboard' so the post-RTO recovery can use the
+        prior SACK reports to skip already-delivered ranges.
+        RFC 6675 §5.1 modern interpretation supersedes RFC 2018
+        §5's older "turn off SACKed bits" guidance.
 
-        Reference: RFC 2018 §5 (turn off SACKed bits + ignore prior on retransmit).
+        Reference: RFC 6675 §5.1 (utilize all SACK info on RTO).
         """
 
         session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -992,11 +993,10 @@ class TestTcpRfc2018SackOnRto(TcpSessionTestCase):
 
         self.assertEqual(
             session._sack_scoreboard.blocks(),
-            [],
+            [(LOCAL__ISS + 100, LOCAL__ISS + 200)],
             msg=(
-                "RFC 2018 §5: post-RTO the SACK scoreboard MUST "
-                "be empty so prior SACK info does not influence "
-                "retransmit. Got "
+                "RFC 6675 §5.1: post-RTO the SACK scoreboard "
+                "MUST retain prior SACK info. Got "
                 f"{session._sack_scoreboard.blocks()!r}."
             ),
         )

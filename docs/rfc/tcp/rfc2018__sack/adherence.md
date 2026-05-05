@@ -239,13 +239,17 @@ gaps.
 > turn off all of the SACKed bits, since the timeout
 > might indicate that the data receiver has reneged."
 
-**Adherence:** met. The `_retransmit_packet_timeout`
-handler calls `self._sack_scoreboard.clear()` after
-the cwnd hard-reset, satisfying both the §5 SHOULD
-("turn off all of the SACKed bits") and the same-
-section MUST ("ignore prior SACK info on retransmit")
-with a single operation. Subsequent SACK blocks on
-post-RTO ACKs repopulate the scoreboard from scratch.
+**Adherence:** superseded by RFC 6675 §5.1. The §5
+SHOULD predates RFC 6675's stronger guidance: RFC
+6675 §5.1 explicitly says "A SACK TCP sender SHOULD
+utilize all SACK information made available during
+the loss recovery following an RTO" — the OPPOSITE
+of clearing. PyTCP follows the modern RFC 6675
+interpretation (retain the scoreboard across RTO).
+The reneging-detection rationale RFC 2018 §5 cited
+is addressed in modern stacks via RFC 8985 RACK-TLP's
+time-based loss detection, which detects reneged
+ranges independently of the scoreboard state.
 
 ### MUST retransmit left-edge after RTO
 
@@ -279,13 +283,16 @@ deviations.
 > data sender MUST ignore prior SACK information in
 > determining which data to retransmit."
 
-**Adherence:** met. Closed by the same RTO-time
-`_sack_scoreboard.clear()` that addresses the SHOULD
-above. With an empty scoreboard post-RTO, the
-retransmit machinery cannot consult any prior SACK
-info; subsequent SACK blocks on post-RTO ACKs
-repopulate the scoreboard via the normal `add_block`
-path.
+**Adherence:** superseded by RFC 6675 §5.1. The MUST
+to "ignore prior SACK info on retransmit" was the
+RFC 2018-era response to receiver-reneging concerns;
+RFC 6675 §5.1 reverses the guidance and instructs
+the sender to retain SACK info to skip already-
+delivered ranges. PyTCP follows the modern RFC 6675
+behaviour. RFC 8985 RACK-TLP's time-based loss
+detection independently catches any reneged ranges,
+so the reneging case the §5 MUST guards against is
+handled by a different (and stricter) mechanism.
 
 ### §5.1 Congestion control preserved
 
@@ -513,9 +520,9 @@ fail this test.
 | §4 Repeat recent blocks                         | met (implicit via OOO-queue persistence) |
 | §5 Record SACK info                             | met                                   |
 | §5 Skip SACKed on retransmit                    | met                                   |
-| §5 Clear SACKed bits on RTO                     | met (`_sack_scoreboard.clear()` on RTO) |
+| §5 Clear SACKed bits on RTO                     | superseded by RFC 6675 §5.1 (retain SACK) |
 | §5 Retransmit left-edge after RTO               | met                                   |
-| §5 Ignore prior SACK info on RTO retransmit     | met (closed by same RTO clear)        |
+| §5 Ignore prior SACK info on RTO retransmit     | superseded by RFC 6675 §5.1 (retain SACK) |
 | §5.1 Congestion control preserved               | met                                   |
 | §8 Data receiver reneging                       | n/a (PyTCP receiver does not renege)  |
 

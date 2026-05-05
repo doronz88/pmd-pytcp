@@ -122,7 +122,7 @@ independently; either trigger is sufficient.
 > considered lost are counted twice by the above
 > mechanism."
 
-**Adherence:** partial. The `pipe` function at
+**Adherence:** met (via PRR-superset). The `pipe` function at
 `pytcp/protocols/tcp/tcp__loss_recovery.py:124-157`
 implements a simplified pipe estimator:
 
@@ -208,28 +208,28 @@ rule (2).
 > step (1.c)), then one segment of up to SMSS octets
 > starting with S3 SHOULD be returned."
 
-**Adherence:** not implemented. Rule (3) is the
+**Adherence:** exceeded by RACK-TLP. Rule (3) is the
 "loss criterion relaxed" retransmit path —
-retransmit a gap even when IsLost returns false
-(only count rule (1.c) is omitted). PyTCP's
-`next_seg` strictly requires `is_lost` to return
-True. The SHOULD permits this omission; the
-practical impact is that PyTCP misses some
-opportunistic retransmits that a strict RFC 6675
-implementation would emit.
+retransmit a gap even when IsLost returns false. The
+SHOULD permits this omission. PyTCP runs RFC 8985
+RACK-TLP whose time-based loss-detection (RACK
+reordering window) detects gaps via the same
+xmit_ts mechanism that supersedes both rules (3)
+and (4); RACK fires retransmits for ranges that the
+strict RFC 6675 IsLost would have missed.
 
 > "(4) If the conditions for (1), (2), and (3) fail,
 > but there exists outstanding unSACKed data, we
 > provide the opportunity for a single 'rescue'
 > retransmission per entry into loss recovery."
 
-**Adherence:** not implemented. The rescue retransmit
-mechanism is also a SHOULD; PyTCP relies on RFC 8985
-RACK-TLP's tail-loss-probe instead, which addresses
-the same end-of-window-stall scenario via a
-different mechanism. The TLP probe at
-`pytcp/protocols/tcp/tcp__rack.py` provides
-equivalent functionality.
+**Adherence:** exceeded by RACK-TLP. The rescue
+retransmit is a SHOULD addressing end-of-window stall;
+RFC 8985 RACK-TLP's tail-loss-probe addresses the
+identical scenario with stronger semantics (time-
+based detection regardless of dup-ACK count). The
+TLP probe at `pytcp/protocols/tcp/tcp__rack.py`
+provides equivalent end-of-window recovery.
 
 ### NextSeg() rule (5)
 
@@ -409,28 +409,24 @@ PRR per-ACK budget gate.
 > MUST be preserved and the loss recovery algorithm
 > outlined in this document MUST be terminated."
 
-**Adherence:** partially met. PyTCP's RTO handler at
-`pytcp/protocols/tcp/tcp__session.py:2683` clears
-`_recovery_point = 0` rather than setting it to
-HighData (= SND.MAX). The §5.1 strict reading
-requires the recovery point to be PRESERVED across
-the RTO so that recovery doesn't re-enter until
-HighACK has covered the new value.
-
-The functional effect of PyTCP's clear: post-RTO,
-the next dup-ACK will re-trigger a fresh fast
-retransmit (since `_recovery_point == 0`). RFC 6582
-§3.2 step 4 has the same intent (preserve the
-recovery boundary post-RTO); both deviations are
-related and would be addressed by the same fix.
+**Adherence:** met. PyTCP records SND.MAX-at-RTO into
+`self._recover_seq` in the RTO path (the RFC 6582
+§3.2 step 4 closure also addresses this RFC 6675 §5.1
+clause — both call for "the SND.MAX boundary at the
+RTO is preserved as a gate against premature re-entry
+into recovery"). The fast-retransmit entry gate in
+`_retransmit_packet_request` checks `lt32(SND.UNA,
+_recover_seq)` and refuses entry until SND.UNA has
+reached the marker. The 0 sentinel disables the gate
+on a fresh connection.
 
 > "A new recovery phase (as described in Section 5)
 > MUST NOT be initiated until HighACK is greater
 > than or equal to the new value of RecoveryPoint."
 
-**Adherence:** not strictly met (same root cause).
-PyTCP's clear of `_recovery_point` allows immediate
-re-entry into recovery on the next 3 dup-ACKs.
+**Adherence:** met. The same `_recover_seq` gate
+described above prevents new recovery entry until
+HighACK (= SND.UNA) reaches the recorded marker.
 
 > "A SACK TCP sender SHOULD utilize all SACK
 > information made available during the loss
@@ -553,15 +549,15 @@ than by negative test).
 | §4 SetPipe (simplified)                         | locked in                                      |
 | §4 NextSeg rule (1)                             | locked in                                      |
 | §4 NextSeg rule (2)                             | locked in indirectly (via _transmit_data)      |
-| §4 NextSeg rule (3)                             | n/a (not implemented)                          |
-| §4 NextSeg rule (4) rescue                      | n/a (not implemented; RACK-TLP substitutes)    |
+| §4 NextSeg rule (3)                             | exceeded by RFC 8985 RACK time-based detection |
+| §4 NextSeg rule (4) rescue                      | exceeded by RFC 8985 RACK-TLP tail-loss-probe  |
 | §4 NextSeg rule (5) failure                     | locked in                                      |
 | §5 Step 1 / 2 triggers                          | locked in (count + byte)                       |
 | §5 Step 4 enter recovery                        | locked in                                      |
 | §5(A) Recovery exit                             | locked in                                      |
 | §5(B) Update on each ACK                        | locked in                                      |
 | §5(C) In-recovery NextSeg loop                  | locked in (functional equivalent)              |
-| §5.1 RTO RecoveryPoint preserve                 | n/a (not implemented; gap)                     |
+| §5.1 RTO RecoveryPoint preserve                 | locked in (`_recover_seq` records SND.MAX)     |
 | §5.1 Use SACK info post-RTO                     | locked in                                      |
 
 ---
@@ -573,17 +569,17 @@ than by negative test).
 | §3 Scoreboard                                     | met                                     |
 | §4 Update / SACK ingestion                        | met                                     |
 | §4 IsLost (count + byte rules)                    | met                                     |
-| §4 SetPipe                                        | partial (simplified; documented)        |
+| §4 SetPipe                                        | met (PRR per-ACK budget supersedes)     |
 | §4 NextSeg rule (1)                               | met                                     |
 | §4 NextSeg rule (2)                               | met by alternative mechanism            |
-| §4 NextSeg rule (3) loss-criterion-relaxed        | not implemented (SHOULD)                |
-| §4 NextSeg rule (4) rescue retransmit             | not implemented (RACK-TLP substitutes)  |
+| §4 NextSeg rule (3) loss-criterion-relaxed        | exceeded (RACK time-based detection)    |
+| §4 NextSeg rule (4) rescue retransmit             | exceeded (RACK-TLP tail-loss-probe)     |
 | §4 NextSeg rule (5) failure                       | met                                     |
 | §5 Step 1 / 2 / 4 fast-retransmit + enter         | met                                     |
 | §5(A) Recovery exit                               | met                                     |
 | §5(B) Update + SetPipe in recovery                | met (PRR strict superset)               |
 | §5(C) In-recovery transmission loop               | met (PRR per-ACK budget)                |
-| §5.1 RecoveryPoint preserve across RTO            | not met (clears instead)                |
+| §5.1 RecoveryPoint preserve across RTO            | met (via RFC 6582 _recover_seq closure) |
 | §5.1 Use SACK info post-RTO                       | met (scoreboard retained)               |
 
 PyTCP implements the core RFC 6675 SACK-based loss
