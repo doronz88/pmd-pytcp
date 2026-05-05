@@ -514,6 +514,8 @@ not exercised).
 | §3.2.2.1 handshake encoding Table 4 (server)     | n/a (server-side Table 4 not impl.)     |
 | §3.2.2.5 cycle handling                          | n/a (gap)                               |
 | §3.2.3 AccECN0 option emission                   | locked in (Order 0, length 11)          |
+| §3.2.3 AccECN1 option emission                   | locked in (Order 1, length 11)          |
+| §3.2.3 order-choice gating (Order 0 vs Order 1)  | locked in                               |
 | §3.2.3 abbreviated option forms (length 8, 5, 2) | n/a (deferred bandwidth optimization)   |
 | §4 Updates to RFC 3168 (negotiation precedence)  | locked in                               |
 | §5 SACK + DSACK alongside AccECN                 | locked in                               |
@@ -537,8 +539,9 @@ not exercised).
 | §3.2.2.1 Table-4 inference (server)             | not implemented                         |
 | §3.2.2.3 IP-ECN mangling test                   | not implemented                         |
 | §3.2.2.5 cycle handling                         | not implemented                         |
-| §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11 only)               |
-| §3.2.3 AccECN1 option (Kind 174, Order 1)       | not implemented (bandwidth optimization)|
+| §3.2.3 AccECN0 option (Kind 172, Order 0)       | met (full length 11)                    |
+| §3.2.3 AccECN1 option (Kind 174, Order 1)       | met (full length 11)                    |
+| §3.2.3 order-choice gating per §3.2.3           | met                                     |
 | §3.2.3 abbreviated lengths (8, 5, 2)            | not implemented (bandwidth optimization)|
 | §4 Updates to RFC 3168                          | met                                     |
 | §5.3 SACK + DSACK + AccECN coexistence          | met                                     |
@@ -565,11 +568,10 @@ Remaining implementation gaps:
    procedures for ACE wrap detection are not
    implemented. The pure-ACE-only mode is rare in
    practice.
-3. **AccECN1 / abbreviated option lengths** (§3.2.3):
-   PyTCP always emits Order 0, length 11. The Order 1
-   form (Kind 174) and abbreviated lengths (8, 5, 2)
-   are bandwidth optimisations the spec marks as MAY,
-   not MUST. Always-Order-0-full-length is conformant.
+3. **Abbreviated option lengths** (§3.2.3): PyTCP
+   always emits length 11 (full three-counter form).
+   Lengths 8, 5, and 2 are bandwidth optimisations
+   the spec marks as MAY, not MUST.
 4. **Broken-server (1,1,1) reflection detection**
    (§3.1.2 fourth block): if a buggy server reflects
    the client's (1,1,1) SYN flags in its SYN/ACK,
