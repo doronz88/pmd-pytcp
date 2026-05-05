@@ -348,6 +348,17 @@ class TcpSession:
         # 3=CE. Unused on the active-open side.
         self._accecn_synack_codepoint: int = 0
 
+        # RFC 9768 §3.2.2.1 active-side handshake ACE encoding.
+        # On the active-open client, when an AccECN-confirming
+        # SYN+ACK arrives, the SYN_SENT handler stores the
+        # Table-3 ACE value (derived from the SYN+ACK's
+        # IP-ECN codepoint) here so the third-leg ACK encodes
+        # it instead of the regular 'r.cep & 7' value. Cleared
+        # by '_transmit_packet' once consumed - subsequent
+        # post-handshake ACKs use the regular encoding. None
+        # means no handshake-encoded ACK is pending.
+        self._accecn_handshake_ack_pending: int | None = None
+
         # RFC 9768 §3.2.2 receiver-side r.cep counter. Tracks
         # the cumulative count of CE-marked inbound segments
         # (modulo 2^24 per the option counter width). The low
@@ -1438,8 +1449,22 @@ class TcpSession:
         # AE+CWR+ECE flags as: bit2 -> AE (NS bit position),
         # bit1 -> CWR, bit0 -> ECE. RST segments stay
         # unmarked per the §3.2 advisory.
+        #
+        # On the active-open client's third-leg ACK the
+        # encoding is the §3.2.2.1 Table-3 handshake form
+        # instead of 'r.cep & 7' - the SYN_SENT handler
+        # populated '_accecn_handshake_ack_pending' with the
+        # Table-3 value derived from the inbound SYN+ACK's
+        # IP-ECN codepoint. The pending field is consumed
+        # (cleared to None) by this branch so subsequent
+        # post-handshake segments fall back to the regular
+        # encoding.
         elif self._accecn_enabled and not flag_rst:
-            ace = self._accecn_r_cep & 0b111
+            if self._accecn_handshake_ack_pending is not None:
+                ace = self._accecn_handshake_ack_pending
+                self._accecn_handshake_ack_pending = None
+            else:
+                ace = self._accecn_r_cep & 0b111
             flag_ns = bool(ace & 0b100)
             flag_cwr = bool(ace & 0b010)
             flag_ece = bool(ace & 0b001)

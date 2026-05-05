@@ -71,7 +71,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_session_testcase import TcpProbe, TcpSessionTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -482,20 +482,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         )
         return session
 
-    def test__accecn__post_handshake_first_segment_encodes_ace_initial_5(self) -> None:
+    def _drive_third_leg_ack_with_synack_ipecn(self, ip_ecn: int) -> TcpProbe:
         """
-        Ensure that on an AccECN-enabled connection, the first
-        outbound non-SYN segment (the third-leg ACK that
-        completes the handshake, or any subsequent data
-        segment) encodes the initial ACE counter value of 5
-        (binary 101) in the AE+CWR+ECE flags. The mapping is:
-        bit2 (msb of the 3-bit counter) -> AE, bit1 -> CWR,
-        bit0 (lsb) -> ECE. The initial value of 5 is the
-        canonical starting point that distinguishes a
-        freshly-negotiated AccECN session from value 0
-        (which has special meaning).
-
-        Reference: RFC 9768 §3.2.2.1 (initial ACE value 5).
+        Drive an active-open through the third-leg ACK, with the
+        peer's SYN+ACK carrying the supplied IP-ECN codepoint.
+        Returns the parsed third-leg ACK probe.
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
@@ -510,52 +501,173 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             flags=("SYN", "ACK", "CWR"),
             win=PEER__WIN,
             mss=PEER__MSS,
+            ip_ecn=ip_ecn,
         )
-        # Capture the third-leg ACK that fires inline.
         third_leg_tx = self._drive_rx(frame=peer_syn_ack)
 
-        self.assertIs(
-            session.state,
-            FsmState.ESTABLISHED,
-            msg="Setup precondition: handshake reaches ESTABLISHED.",
+        assert session.state is FsmState.ESTABLISHED, (
+            "Setup precondition: handshake reaches ESTABLISHED. " f"Got state={session.state!r}."
         )
+        assert len(third_leg_tx) == 1, (
+            "Setup precondition: third-leg ACK MUST fire inline. " f"Got {len(third_leg_tx)} TX frames."
+        )
+        self._last_handshake_session = session
+        return self._parse_tx(third_leg_tx[0])
+
+    def test__accecn__handshake_encoding_not_ect_synack_emits_ace_010(self) -> None:
+        """
+        Ensure that on the active-open third-leg ACK following a
+        SYN+ACK whose IP-ECN was Not-ECT (00), the AE+CWR+ECE
+        flags carry the handshake encoding 010 (AE=0, CWR=1,
+        ECE=0). The handshake encoding lets the server compare
+        what IP-ECN it set on its SYN+ACK against what the
+        client reports it received, enabling detection of IP-ECN
+        mangling along the path.
+
+        Reference: RFC 9768 §3.2.2.1 (Table 3 handshake encoding for ACK of SYN/ACK).
+        """
+
+        ack = self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=0)
+
+        self.assertNotIn("NS", ack.flags, msg=f"AE MUST be 0 for Not-ECT-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertIn("CWR", ack.flags, msg=f"CWR MUST be 1 for Not-ECT-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertNotIn("ECE", ack.flags, msg=f"ECE MUST be 0 for Not-ECT-on-SYN/ACK. Got flags={ack.flags!r}.")
+
+    def test__accecn__handshake_encoding_ect1_synack_emits_ace_011(self) -> None:
+        """
+        Ensure that on the active-open third-leg ACK following a
+        SYN+ACK whose IP-ECN was ECT(1) (01), the AE+CWR+ECE
+        flags carry the handshake encoding 011 (AE=0, CWR=1,
+        ECE=1).
+
+        Reference: RFC 9768 §3.2.2.1 (Table 3 handshake encoding for ACK of SYN/ACK).
+        """
+
+        ack = self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=1)
+
+        self.assertNotIn("NS", ack.flags, msg=f"AE MUST be 0 for ECT(1)-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertIn("CWR", ack.flags, msg=f"CWR MUST be 1 for ECT(1)-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertIn("ECE", ack.flags, msg=f"ECE MUST be 1 for ECT(1)-on-SYN/ACK. Got flags={ack.flags!r}.")
+
+    def test__accecn__handshake_encoding_ect0_synack_emits_ace_100(self) -> None:
+        """
+        Ensure that on the active-open third-leg ACK following a
+        SYN+ACK whose IP-ECN was ECT(0) (10), the AE+CWR+ECE
+        flags carry the handshake encoding 100 (AE=1, CWR=0,
+        ECE=0).
+
+        Reference: RFC 9768 §3.2.2.1 (Table 3 handshake encoding for ACK of SYN/ACK).
+        """
+
+        ack = self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=2)
+
+        self.assertIn("NS", ack.flags, msg=f"AE MUST be 1 for ECT(0)-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertNotIn("CWR", ack.flags, msg=f"CWR MUST be 0 for ECT(0)-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertNotIn("ECE", ack.flags, msg=f"ECE MUST be 0 for ECT(0)-on-SYN/ACK. Got flags={ack.flags!r}.")
+
+    def test__accecn__handshake_encoding_ce_synack_emits_ace_110(self) -> None:
+        """
+        Ensure that on the active-open third-leg ACK following a
+        SYN+ACK whose IP-ECN was CE (11), the AE+CWR+ECE flags
+        carry the handshake encoding 110 (AE=1, CWR=1, ECE=0).
+
+        Reference: RFC 9768 §3.2.2.1 (Table 3 handshake encoding for ACK of SYN/ACK).
+        """
+
+        ack = self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=3)
+
+        self.assertIn("NS", ack.flags, msg=f"AE MUST be 1 for CE-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertIn("CWR", ack.flags, msg=f"CWR MUST be 1 for CE-on-SYN/ACK. Got flags={ack.flags!r}.")
+        self.assertNotIn("ECE", ack.flags, msg=f"ECE MUST be 0 for CE-on-SYN/ACK. Got flags={ack.flags!r}.")
+
+    def test__accecn__ce_marked_synack_increments_r_cep_to_6(self) -> None:
+        """
+        Ensure that when the active-open client receives a CE-
+        marked SYN+ACK, the receiver-side 'r.cep' counter
+        increments from its initial value 5 to 6. This ensures
+        the CE marking is reliably delivered back to the server
+        once the client starts using the ACE field on subsequent
+        post-handshake segments. The increment is a one-shot
+        cap: even multiple CE-marked SYN+ACKs (retransmissions)
+        only advance r.cep by 1.
+
+        Reference: RFC 9768 §3.2.2.2 (CE on SYN/ACK increments r.cep, capped at +1).
+        """
+
+        self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=3)
+        session = self._last_handshake_session
+
         self.assertEqual(
-            len(third_leg_tx),
-            1,
+            session._accecn_r_cep,
+            6,
             msg=(
-                "Setup precondition: third-leg ACK MUST fire "
-                "inline on receipt of the SYN+ACK. Got "
-                f"{len(third_leg_tx)} TX frames."
+                "RFC 9768 §3.2.2.2: a CE-marked SYN+ACK MUST "
+                "increment r.cep from 5 to 6 so the marking is "
+                "reliably delivered to the peer via the ACE "
+                f"field. Got _accecn_r_cep={session._accecn_r_cep}."
             ),
         )
-        ack = self._parse_tx(third_leg_tx[0])
 
-        # ACE = 5 = binary 101 -> AE=1, CWR=0, ECE=1.
+    def test__accecn__post_handshake_data_ack_uses_regular_ace_encoding(self) -> None:
+        """
+        Ensure that after the handshake-encoded third-leg ACK,
+        a subsequent outbound ACK (e.g. acknowledging an inbound
+        data segment) uses the regular 'r.cep & 7' ACE encoding
+        instead of the handshake encoding. The handshake encoding
+        is one-shot per connection setup.
+
+        Reference: RFC 9768 §3.2.2 (regular ACE encoding on non-handshake segments).
+        """
+
+        # Drive handshake with Not-ECT SYN+ACK so r.cep stays at 5
+        # → regular encoding ACE = 5 = 0b101 = (AE=1, CWR=0, ECE=1).
+        self._drive_third_leg_ack_with_synack_ipecn(ip_ecn=0)
+        session = self._last_handshake_session
+
+        # Send an inbound data segment to elicit a non-handshake
+        # outbound ACK after the delayed-ACK timer fires.
+        peer_data = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK",),
+            win=PEER__WIN,
+            payload=b"hello",
+        )
+        self._drive_rx(frame=peer_data)
+        ack_tx = self._advance(ms=200)
+
+        self.assertEqual(
+            len(ack_tx),
+            1,
+            msg=f"Setup precondition: delayed-ACK must fire. Got {len(ack_tx)} TX frames.",
+        )
+        ack = self._parse_tx(ack_tx[0])
+
         self.assertIn(
             "NS",
             ack.flags,
-            msg=(
-                "RFC 9768 §3.2.2.1: initial ACE value 5 "
-                "(binary 101) MUST encode AE (NS bit) = 1 "
-                f"on the first outbound segment. Got flags={ack.flags!r}."
-            ),
+            msg=f"Regular ACE = 5 (binary 101) MUST set AE = 1. Got flags={ack.flags!r}.",
         )
         self.assertNotIn(
             "CWR",
             ack.flags,
-            msg=(
-                "RFC 9768 §3.2.2.1: initial ACE value 5 "
-                "(binary 101) MUST encode CWR = 0 on the "
-                f"first outbound segment. Got flags={ack.flags!r}."
-            ),
+            msg=f"Regular ACE = 5 (binary 101) MUST clear CWR. Got flags={ack.flags!r}.",
         )
         self.assertIn(
             "ECE",
             ack.flags,
+            msg=f"Regular ACE = 5 (binary 101) MUST set ECE = 1. Got flags={ack.flags!r}.",
+        )
+        self.assertEqual(
+            session._accecn_r_cep,
+            5,
             msg=(
-                "RFC 9768 §3.2.2.1: initial ACE value 5 "
-                "(binary 101) MUST encode ECE = 1 on the "
-                f"first outbound segment. Got flags={ack.flags!r}."
+                "Setup precondition: r.cep MUST stay at 5 after a "
+                "non-CE inbound segment (the inbound data is "
+                "Not-ECT). Got "
+                f"_accecn_r_cep={session._accecn_r_cep}."
             ),
         )
 
