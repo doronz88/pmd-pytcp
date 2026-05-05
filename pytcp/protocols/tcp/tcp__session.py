@@ -368,10 +368,15 @@ class TcpSession:
         # counter width. The three counters are emitted in
         # the AccECN0 option (kind=172) on every outbound
         # non-SYN segment so the sender can compute precise
-        # per-codepoint deltas across ACKs.
-        self._accecn_r_ect0_b: int = 0
+        # per-codepoint deltas across ACKs. r.e0b and r.e1b
+        # initialise to 1 (not 0) per §3.2.1 so a freshly
+        # negotiated session is distinguishable from
+        # middlebox-zeroed fields; r.ceb initialises to 0
+        # because zero CE marks at connection start is the
+        # expected steady state.
+        self._accecn_r_ect0_b: int = 1
         self._accecn_r_ce_b: int = 0
-        self._accecn_r_ect1_b: int = 0
+        self._accecn_r_ect1_b: int = 1
 
         # RFC 9768 §3.4 sender-side r.CE tracker. Holds the
         # last peer-reported r.CE byte counter seen in an

@@ -118,15 +118,15 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
     def test__accecn__active_open_syn_advertises_ae_cwr_ece(self) -> None:
         """
         Ensure the active-open SYN sets all three of AE, CWR,
-        and ECE - the canonical RFC 9768 §3.1.1 client-side
-        AccECN-setup signal. The AE bit (the legacy NS bit
-        position) is what distinguishes an AccECN-capable
-        SYN from a classic RFC 3168 SYN, which sets only
-        CWR+ECE. Servers that recognise AccECN respond with
-        one of four AE/CWR/ECE codepoints encoding the IP-
-        ECN of the received SYN; servers that do not
-        recognise AccECN respond with classic RFC 3168 ECE
-        alone, and the session falls back gracefully.
+        and ECE - the canonical client-side AccECN-setup
+        signal. The AE bit (the legacy NS bit position) is
+        what distinguishes an AccECN-capable SYN from a
+        classic ECN SYN which sets only CWR+ECE. Servers
+        that recognise AccECN respond with one of four
+        AE/CWR/ECE codepoints encoding the IP-ECN of the
+        received SYN; servers that do not recognise AccECN
+        respond with classic ECE alone, and the session
+        falls back gracefully.
 
         Reference: RFC 9768 §3.1.1 (AccECN-setup SYN: AE+CWR+ECE).
         """
@@ -491,9 +491,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         (binary 101) in the AE+CWR+ECE flags. The mapping is:
         bit2 (msb of the 3-bit counter) -> AE, bit1 -> CWR,
         bit0 (lsb) -> ECE. The initial value of 5 is the
-        canonical RFC 9768 §3.2.2.1 starting point that
-        distinguishes a freshly-negotiated AccECN session
-        from value 0 (which has special meaning).
+        canonical starting point that distinguishes a
+        freshly-negotiated AccECN session from value 0
+        (which has special meaning).
 
         Reference: RFC 9768 §3.2.2.1 (initial ACE value 5).
         """
@@ -640,17 +640,19 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
 
-    def test__accecn__post_handshake_first_segment_carries_accecn_option_with_zero_counters(self) -> None:
+    def test__accecn__post_handshake_first_segment_carries_accecn_option_with_initial_counters(self) -> None:
         """
         Ensure that the first outbound non-SYN segment after
         an AccECN handshake carries the AccECN option (kind
-        172, AccECN0 form) with all three byte counters set
-        to zero. The option provides the full 24-bit byte
-        counts that complement the 3-bit ACE field; the
-        sender uses the option to validate that no counter
-        wrap was missed and to compute precise CE-byte
-        deltas across ACKs.
+        172, AccECN0 form) with the spec-mandated initial
+        counter values: r.ECT(0)=1, r.CE=0, r.ECT(1)=1. The
+        non-zero r.ECT(0) and r.ECT(1) initial values
+        distinguish a freshly-negotiated session from
+        middlebox-zeroed fields; r.CE starts at 0 because
+        zero CE marks at connection start is the expected
+        steady state.
 
+        Reference: RFC 9768 §3.2.1 (Initialization of Feedback Counters).
         Reference: RFC 9768 §3.2.3 (AccECN option emission post-handshake).
         """
 
@@ -687,12 +689,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         )
         self.assertEqual(
             ack.accecn,
-            (0, 0, 0),
+            (1, 0, 1),
             msg=(
-                "RFC 9768 §3.2.3: the AccECN option's three "
-                "byte counters (r.ECT(0), r.CE, r.ECT(1)) MUST "
-                "all be zero immediately after the handshake "
-                f"(no inbound data yet). Got accecn={ack.accecn!r}."
+                "RFC 9768 §3.2.1: the AccECN option's three "
+                "byte counters MUST start at (r.ECT(0)=1, "
+                "r.CE=0, r.ECT(1)=1) immediately after the "
+                "handshake. Non-zero ECT counters distinguish "
+                "a freshly-negotiated session from middlebox-"
+                f"zeroed fields. Got accecn={ack.accecn!r}."
             ),
         )
 
@@ -750,12 +754,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         )
         self.assertEqual(
             ack.accecn,
-            (0, len(payload), 0),
+            (1, len(payload), 1),
             msg=(
                 "RFC 9768 §3.2.3: the AccECN option's r.CE "
                 "byte counter (second slot) MUST equal the "
                 f"cumulative CE-marked payload bytes ({len(payload)}). "
-                f"r.ECT(0) and r.ECT(1) stay at 0. Got accecn={ack.accecn!r}."
+                "r.ECT(0) and r.ECT(1) remain at their §3.2.1 "
+                f"initial value of 1. Got accecn={ack.accecn!r}."
             ),
         )
 
@@ -765,15 +770,16 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         peer's inbound ACK carries an AccECN option whose r.CE
         byte counter has increased since the last received
         option, the sender treats it as a congestion event:
-        ssthresh is halved per RFC 5681 §3.1 and cwnd is
-        collapsed to ssthresh. This is the substrate
-        proportional-response that AccECN provides; for a
-        full L4S-style scalable response a CC-mode-aware
-        formula would weight the reduction by the marked-byte
-        fraction, but the per-RTT halving is the canonical
-        backwards-compatible fallback.
+        ssthresh is halved and cwnd is collapsed to ssthresh.
+        This is the substrate proportional-response that
+        AccECN provides; for a full L4S-style scalable
+        response a CC-mode-aware formula would weight the
+        reduction by the marked-byte fraction, but the per-
+        RTT halving is the canonical backwards-compatible
+        fallback.
 
         Reference: RFC 9768 §3.4 (sender response to AccECN feedback).
+        Reference: RFC 5681 §3.1 (ssthresh halving on congestion event).
         """
 
         session = self._drive_handshake_to_established_with_accecn()

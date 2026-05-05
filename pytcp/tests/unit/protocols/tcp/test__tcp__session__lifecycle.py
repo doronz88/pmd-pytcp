@@ -266,6 +266,73 @@ class TestTcpSessionInit(_TcpSessionFixture):
             msg="TcpSession._connection_error must default to ConnError.NONE.",
         )
 
+    def test__tcp_session__init_accecn_r_cep_starts_at_5(self) -> None:
+        """
+        Ensure the receiver-side 'r.cep' counter initialises to 5
+        per the AccECN feedback protocol; 5 is the canonical
+        initial value chosen so a freshly negotiated session is
+        distinguishable from middlebox-zeroed fields.
+
+        Reference: RFC 9768 §3.2.1 (Initialization of Feedback Counters).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_r_cep,
+            5,
+            msg="TcpSession._accecn_r_cep must initialise to 5 (RFC 9768 §3.2.1).",
+        )
+
+    def test__tcp_session__init_accecn_r_e0b_starts_at_1(self) -> None:
+        """
+        Ensure the receiver-side 'r.e0b' (ECT(0) byte) counter
+        initialises to 1; the non-zero initial value distinguishes
+        a freshly negotiated session from middlebox-zeroed fields
+        and supports the §3.2.3.2.4 zeroing-detection logic.
+
+        Reference: RFC 9768 §3.2.1 (Initialization of Feedback Counters).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_r_ect0_b,
+            1,
+            msg="TcpSession._accecn_r_ect0_b must initialise to 1 (RFC 9768 §3.2.1).",
+        )
+
+    def test__tcp_session__init_accecn_r_e1b_starts_at_1(self) -> None:
+        """
+        Ensure the receiver-side 'r.e1b' (ECT(1) byte) counter
+        initialises to 1 for the same zeroing-distinguishability
+        reason as 'r.e0b'.
+
+        Reference: RFC 9768 §3.2.1 (Initialization of Feedback Counters).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_r_ect1_b,
+            1,
+            msg="TcpSession._accecn_r_ect1_b must initialise to 1 (RFC 9768 §3.2.1).",
+        )
+
+    def test__tcp_session__init_accecn_r_ceb_starts_at_0(self) -> None:
+        """
+        Ensure the receiver-side 'r.ceb' (CE byte) counter
+        initialises to 0 per the spec; unlike 'r.e0b' / 'r.e1b'
+        the CE counter starts at zero because zero CE marks at
+        connection start is the expected steady state.
+
+        Reference: RFC 9768 §3.2.1 (Initialization of Feedback Counters).
+        """
+
+        session = self._make_session()
+        self.assertEqual(
+            session._accecn_r_ce_b,
+            0,
+            msg="TcpSession._accecn_r_ce_b must initialise to 0 (RFC 9768 §3.2.1).",
+        )
+
 
 class TestTcpSessionProperties(_TcpSessionFixture):
     """
