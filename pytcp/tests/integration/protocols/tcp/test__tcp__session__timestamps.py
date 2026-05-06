@@ -254,7 +254,7 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
-        session._advertise_ts = False
+        session._advertise.ts = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
         tx = self._advance(ms=1)
 

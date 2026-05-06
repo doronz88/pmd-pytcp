@@ -43,6 +43,7 @@ from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
+from pytcp.protocols.tcp.state.tcp__state__advertise import AdvertiseState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
 from pytcp.protocols.tcp.state.tcp__state__ecn_classic import ClassicEcnState
 from pytcp.protocols.tcp.state.tcp__state__fastopen import FastOpenState
@@ -177,40 +178,12 @@ class TcpSession:
         # / LISTEN. When False, the bilateral-non-offer rule
         # forces '_rcv_wsc = 0' on handshake completion so the
         # post-handshake outbound 'win' is not shifted either.
-        self._advertise_wscale: bool = True
-
-        # Whether to advertise SACK-Permitted on this session's
-        # outbound SYN / SYN+ACK per RFC 2018 §2. Defaults True
-        # (modern default - SACK enables RFC 6675 Conservative
-        # Loss Recovery); flip False before CONNECT / LISTEN to
-        # opt out. The bilateral-non-offer rule mirrors WSCALE:
-        # a session that did not advertise will not enable SACK
-        # even if peer offered it, and a session that did
-        # advertise will not enable SACK unless peer also
-        # offered.
-        self._advertise_sack: bool = True
-
-        # Whether SACK is enabled for this session, set after
-        # bilateral SACK-Permitted negotiation succeeds in
-        # '_tcp_fsm_listen' / '_tcp_fsm_syn_sent'. Gates the
-        # emission of SACK options on outbound ACKs over an
-        # OOO-buffered receive queue (RFC 2018 §3) and the
-        # ingestion of inbound SACK blocks into the scoreboard
-        # (phase 4).
-        self._send_sack: bool = False
-
-        # RFC 7323 §3 Timestamps option (TSopt) state. The
-        # opt-out flag '_advertise_ts' is application-level
-        # (default True, can be disabled before connect /
-        # listen). The bilateral-success flag '_send_ts' is set
-        # by the FSM during handshake when both sides
-        # advertised TSopt. '_ts_recent' carries peer's most-
-        # recently-seen TSval, echoed back as TSecr on every
-        # post-handshake outbound segment so peer can drive
-        # exact-RTT measurements per RFC 7323 §4. See
-        # 'docs/rfc/tcp/rfc7323__timestamps_wscale_paws/adherence.md'
-        # for the per-clause spec audit.
-        self._advertise_ts: bool = True
+        # Per-session option-advertise + SACK-active state.
+        # Defaults: all 'advertise_*' flags True (modern,
+        # throughput-friendly), 'send_sack' False until
+        # handshake bilaterally negotiates SACK-Permitted. See
+        # 'state/tcp__state__advertise.py' for per-field rationale.
+        self._advertise: AdvertiseState = AdvertiseState()
         # RFC 7323 §2 / §4.3 / §5.5 Timestamps state (send_ts
         # bilateral-success flag, ts_recent peer-TSval tracker,
         # ts_recent_updated_at_ms staleness clock). See
@@ -252,42 +225,8 @@ class TcpSession:
         self._fastopen: FastOpenState = FastOpenState()
 
         # RFC 7413 §3.1 Fast Open client-side opt-out flag.
-        # Defaults to True so active-open SYNs carry the TFO
-        # option in the cookie-request form (empty cookie),
-        # eliciting cookie issuance from the server. Mirrors
-        # the '_advertise_sack' / '_advertise_ts' /
-        # '_advertise_wscale' bilateral-negotiation pattern.
-        # Applications that need to suppress TFO on outbound
-        # SYNs (interop with broken middleboxes, restricted
-        # buffer profiles, etc.) flip this to False before
-        # 'CONNECT'.
-        self._advertise_fastopen: bool = True
-
-        # RFC 3168 §6.1.1 Explicit Congestion Notification
-        # opt-out flag. Defaults to True so the active-open
-        # SYN carries ECE+CWR (the canonical ECN-setup
-        # signal) and the passive-open SYN+ACK echoes ECE
-        # only (ECN-Echo confirmation). Applications that
-        # need to suppress ECN on outbound SYNs (interop
-        # with broken middleboxes that drop ECT-marked
-        # packets) flip this to False before 'CONNECT' /
-        # 'LISTEN'.
-        self._advertise_ecn: bool = True
-
-        # RFC 9768 §3.1.1 AccECN advertise opt-out flag. When
-        # True (default), the active-open SYN carries AE+CWR+ECE
-        # (the canonical AccECN-setup signal); when False, the
-        # SYN falls back to the RFC 3168 CWR+ECE form if
-        # '_advertise_ecn' is also True. AccECN takes precedence
-        # over RFC 3168 in negotiation: an AccECN-capable peer
-        # responds with one of four AE/CWR/ECE codepoints
-        # encoding the IP-ECN it received on our SYN, and the
-        # session locks in '_accecn_enabled = True'. A peer that
-        # does not understand AccECN responds with the RFC 3168
-        # ECE-only form, and the session falls back to classic
-        # ECN ('_ecn_enabled = True'). The two flags are
-        # mutually exclusive post-handshake.
-        self._advertise_accecn: bool = True
+        # The fastopen, ecn, accecn advertise flags live on
+        # self._advertise (AdvertiseState) above.
 
         # RFC 3168 classic ECN per-session state (enabled flag,
         # send_ece receiver-echo, send_cwr sender-confirmation,
@@ -935,7 +874,7 @@ class TcpSession:
         # treats 'tcp__wscale=0' as "no option" (falsy guard),
         # which is the bilateral-non-offer wire form.
         tcp__wscale: int | None
-        if flag_syn and self._advertise_wscale:
+        if flag_syn and self._advertise.wscale:
             tcp__wscale = self._win.rcv_wsc
         elif flag_syn:
             tcp__wscale = 0
@@ -950,9 +889,9 @@ class TcpSession:
         # never carry the option (RFC 2018 §2: "MUST NOT be sent
         # on non-SYN segments").
         if flag_syn and not flag_ack:
-            tcp__sackperm = self._advertise_sack
+            tcp__sackperm = self._advertise.sack
         elif flag_syn and flag_ack:
-            tcp__sackperm = self._send_sack
+            tcp__sackperm = self._advertise.send_sack
         else:
             tcp__sackperm = False
 
@@ -963,7 +902,7 @@ class TcpSession:
         # An empty SACK option is illegal per RFC 2018 §3
         # (length must cover at least one 8-byte block).
         tcp__sack_blocks: list[tuple[int, int]] | None
-        if not flag_syn and self._send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
+        if not flag_syn and self._advertise.send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
             tcp__sack_blocks = self._build_sack_blocks()
         else:
             tcp__sack_blocks = None
@@ -981,7 +920,7 @@ class TcpSession:
         tcp__tsval: int | None
         tcp__tsecr: int | None
         if flag_syn and not flag_ack:
-            if self._advertise_ts:
+            if self._advertise.ts:
                 tcp__tsval = stack.timer.now_ms
                 tcp__tsecr = 0
             else:
@@ -1235,11 +1174,11 @@ class TcpSession:
         # four AE/CWR/ECE codepoints; one that does not
         # responds with the RFC 3168 ECE-only form, and we
         # fall back gracefully in the SYN_SENT handler.
-        if flag_syn and not flag_ack and self._advertise_accecn:
+        if flag_syn and not flag_ack and self._advertise.accecn:
             flag_ns = True
             flag_cwr = True
             flag_ece = True
-        elif flag_syn and not flag_ack and self._advertise_ecn:
+        elif flag_syn and not flag_ack and self._advertise.ecn:
             flag_ece = True
             flag_cwr = True
         # RFC 9768 §3.1.1 passive-side AccECN SYN+ACK. When
@@ -1385,7 +1324,7 @@ class TcpSession:
 
         if flag_syn and flag_ack and self._fastopen.cookie_to_emit is not None:
             return self._fastopen.cookie_to_emit
-        if flag_syn and not flag_ack and self._advertise_fastopen:
+        if flag_syn and not flag_ack and self._advertise.fastopen:
             # RFC 7413 §4.1.3.1 negative-response cache
             # bypass: if this peer has previously failed TFO,
             # do NOT include the TFO option on the active-open
@@ -1701,7 +1640,7 @@ class TcpSession:
         # RFC 2883 DSACK case 1: stash the duplicate range so
         # the ACK below reports it as the FIRST SACK block.
         if (
-            self._send_sack
+            self._advertise.send_sack
             and len(packet_rx_md.tcp__data) > 0
             and lt32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
             and le32(seg_end, self._rcv_seq.nxt)
@@ -1925,13 +1864,13 @@ class TcpSession:
 
         # Re-run the bilateral negotiation against peer's new SYN -
         # WSCALE / SACK / TSopt may all differ between incarnations.
-        if self._advertise_wscale and packet_rx_md.tcp__wscale:
+        if self._advertise.wscale and packet_rx_md.tcp__wscale:
             self._win.snd_wsc = packet_rx_md.tcp__wscale
         else:
             self._win.rcv_wsc = 0
             self._win.snd_wsc = 0
-        self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
-        self._ts.send_ts = self._advertise_ts and packet_rx_md.tcp__tsval is not None
+        self._advertise.send_sack = self._advertise.sack and packet_rx_md.tcp__sackperm
+        self._ts.send_ts = self._advertise.ts and packet_rx_md.tcp__tsval is not None
         # '_ts_recent' was already refreshed to peer's new TSval
         # by the PAWS helper in the FSM handler before this point.
 
@@ -2172,7 +2111,7 @@ class TcpSession:
         consumers of this counter are out of scope for phase 7.
         """
 
-        if not self._send_sack:
+        if not self._advertise.send_sack:
             return
 
         blocks = list(packet_rx_md.tcp__sack_blocks)
@@ -2250,7 +2189,7 @@ class TcpSession:
         pruning is a no-op on connections without bilateral SACK.
         """
 
-        if self._send_sack:
+        if self._advertise.send_sack:
             self._sack_scoreboard.prune_below(self._snd_seq.una)
 
     def _advance_snd_nxt_past_sacked(self) -> None:
@@ -2268,7 +2207,7 @@ class TcpSession:
         intended to send has been sent).
         """
 
-        if self._cc.recovery_point == 0 or not self._send_sack:
+        if self._cc.recovery_point == 0 or not self._advertise.send_sack:
             return
 
         for left, right in sorted(
@@ -2348,7 +2287,7 @@ class TcpSession:
             # acceptance per §4.1.2.
             tfo_data: bytes = b""
             cached = stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address)
-            if cached and self._advertise_fastopen and self._tx.buffer:
+            if cached and self._advertise.fastopen and self._tx.buffer:
                 with self._lock__tx_buffer:
                     slice_len = min(self._win.snd_mss, len(self._tx.buffer))
                     tfo_data = bytes(self._tx.buffer[:slice_len])
@@ -2400,7 +2339,7 @@ class TcpSession:
             options_overhead = 0
             if self._ts.send_ts:
                 options_overhead += 12  # TSopt 10 bytes + 2 NOPs
-            if self._send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
+            if self._advertise.send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
                 # Worst-case SACK option size when we'd emit
                 # blocks on a non-SYN segment. With TSopt the
                 # cap is 3 blocks (= 2 + 24 = 26, padded to 28);
@@ -2673,7 +2612,7 @@ class TcpSession:
             # retransmit. Set in SYN_SENT only; the peer side
             # (SYN_RCVD) doesn't replay TFO on its SYN+ACK
             # retransmit by construction.
-            if self._state is FsmState.SYN_SENT and self._advertise_fastopen:
+            if self._state is FsmState.SYN_SENT and self._advertise.fastopen:
                 self._fastopen.syn_retransmitted = True
                 # RFC 7413 §4.1.3.1: a SYN-RTO during TFO
                 # active-open is a strong signal that the path
@@ -2897,7 +2836,7 @@ class TcpSession:
         #     faster than the count-based threshold on bursty
         #     loss patterns.
         count_trigger = self._tx.retransmit_request_counter[packet_rx_md.tcp__ack] == 3
-        sack_trigger = self._send_sack and is_lost(
+        sack_trigger = self._advertise.send_sack and is_lost(
             self._snd_seq.una,
             scoreboard=self._sack_scoreboard,
             snd_una=self._snd_seq.una,
@@ -3007,7 +2946,7 @@ class TcpSession:
                 snd_max=self._snd_seq.max,
                 mss=self._win.snd_mss,
             )
-            if self._send_sack
+            if self._advertise.send_sack
             else None
         )
         self._snd_seq.nxt = ns if ns is not None else self._snd_seq.una
@@ -3163,7 +3102,7 @@ class TcpSession:
             if seq in self._rack_tlp.rack_acked_seqs:
                 continue
             cum_acked = le32(seg.end_seq, self._snd_seq.una)
-            sack_acked = self._send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
+            sack_acked = self._advertise.send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
             if cum_acked or sack_acked:
                 newly_acked.append(seg)
                 self._rack_tlp.rack_acked_seqs.add(seq)
@@ -3388,7 +3327,7 @@ class TcpSession:
                 # data this ACK) lets cwnd grow up to one
                 # SMSS per ACK; CRB (no SACK or no new
                 # data) caps at the unsent prr_delivered.
-                if self._send_sack and bytes_acked > 0:
+                if self._advertise.send_sack and bytes_acked > 0:
                     limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._win.snd_mss
                 else:
                     limit = self._cc.prr_delivered - self._cc.prr_out
@@ -3796,7 +3735,7 @@ class TcpSession:
         # next outbound ACK reports it as the FIRST SACK block.
         # The range is '[seg_seq, seg_seq + overlap_prefix)' which
         # equals '[seg_seq, OLD RCV.NXT)' (RCV.NXT advances later).
-        if self._send_sack and overlap_prefix > 0:
+        if self._advertise.send_sack and overlap_prefix > 0:
             self._pending_dsack = (
                 packet_rx_md.tcp__seq,
                 add32(packet_rx_md.tcp__seq, overlap_prefix),

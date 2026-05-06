@@ -254,7 +254,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         snd_max_before = session._snd_seq.max
 
         self.assertFalse(
-            session._send_sack,
+            session._advertise.send_sack,
             msg=(
                 "Setup precondition: bilateral SACK negotiation must "
                 "have failed (peer didn't offer) so '_send_sack' is "
@@ -365,8 +365,8 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             sackperm=True,
         )
         self.assertTrue(
-            session._advertise_sack,
-            msg="The default value of 'TcpSession._advertise_sack' must be True.",
+            session._advertise.sack,
+            msg="The default value of 'TcpSession._advertise.sack' must be True.",
         )
 
     def test__sack__bilateral_sack_negotiation_sets_send_sack(self) -> None:
@@ -374,7 +374,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         Ensure that when both sides advertise SACK-Permitted
         on their SYN exchange, the active-open session
         records the successful bilateral negotiation by
-        setting 'self._send_sack = True'.
+        setting 'self._advertise.send_sack = True'.
 
         Reference: RFC 2018 §2 (SACK bilateral negotiation).
         """
@@ -385,7 +385,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
         self.assertTrue(
-            session._send_sack,
+            session._advertise.send_sack,
             msg=(
                 "After bilateral SACK-Permitted negotiation "
                 "the session must record success in "
@@ -413,7 +413,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         # Sanity: bilateral negotiation must have succeeded so the
         # SACK-emit path is enabled.
         self.assertTrue(
-            session._send_sack,
+            session._advertise.send_sack,
             msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
         )
 
@@ -457,7 +457,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
         self.assertTrue(
-            session._send_sack,
+            session._advertise.send_sack,
             msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
         )
 
@@ -682,7 +682,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
         self.assertTrue(
-            session._send_sack,
+            session._advertise.send_sack,
             msg="Setup precondition: bilateral SACK negotiation must have succeeded.",
         )
 

@@ -196,7 +196,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # WSCALE on the SYN+ACK we send next). Otherwise,
             # both directions clear to 0 - peer's non-offer
             # forces us to non-offer too.
-            if session._advertise_wscale and packet_rx_md.tcp__wscale:
+            if session._advertise.wscale and packet_rx_md.tcp__wscale:
                 session._win.snd_wsc = packet_rx_md.tcp__wscale
             else:
                 session._win.rcv_wsc = 0
@@ -209,13 +209,13 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # carries SACK-Permitted iff '_send_sack') and
             # subsequent SACK-option emission on outbound
             # ACKs over an OOO-buffered queue.
-            session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            session._advertise.send_sack = session._advertise.sack and packet_rx_md.tcp__sackperm
             # RFC 7323 §3 bilateral negotiation: enable TSopt
             # on our SYN+ACK and all subsequent segments iff we
             # advertise AND peer's SYN carried TSopt. Cache
             # peer's TSval as '_ts_recent' so the SYN+ACK we
             # emit next echoes it via TSecr.
-            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+            if session._advertise.ts and packet_rx_md.tcp__tsval is not None:
                 session._ts.send_ts = True
                 session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:
@@ -243,10 +243,10 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             ece = packet_rx_md.tcp__flag_ece
             is_classic_ecn_syn = (not ns) and cwr and ece
             any_ecn_bit = ns or cwr or ece
-            if session._advertise_accecn and any_ecn_bit and not is_classic_ecn_syn:
+            if session._advertise.accecn and any_ecn_bit and not is_classic_ecn_syn:
                 session._accecn.enabled = True
                 session._accecn.synack_codepoint = packet_rx_md.ip__ecn
-            elif session._advertise_ecn and is_classic_ecn_syn:
+            elif session._advertise.ecn and is_classic_ecn_syn:
                 session._ecn.enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie
             # issuance + validation, gated on the listening

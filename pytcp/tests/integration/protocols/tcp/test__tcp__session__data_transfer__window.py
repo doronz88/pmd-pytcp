@@ -287,7 +287,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # This test deliberately exercises the asymmetric-non-offer
         # path, so opt out of advertising via the
         # '_advertise_wscale' flag before driving CONNECT.
-        session._advertise_wscale = False
+        session._advertise.wscale = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         # Initial SYN fires on the first tick. Inspect it to confirm

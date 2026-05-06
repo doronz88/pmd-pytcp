@@ -240,7 +240,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # Set '_snd_wsc' AFTER '_process_ack_packet' so the
             # SYN+ACK's literal 'win' value is used unshifted
             # per scenario #6's invariant.
-            if session._advertise_wscale and packet_rx_md.tcp__wscale:
+            if session._advertise.wscale and packet_rx_md.tcp__wscale:
                 session._win.snd_wsc = packet_rx_md.tcp__wscale
             else:
                 # Bilateral non-offer: no scaling on either side.
@@ -250,13 +250,13 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # active-open mirrors peer's offer. SACK is
             # enabled iff WE advertised on the SYN we sent
             # AND peer echoed SACK-Permitted on the SYN+ACK.
-            session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            session._advertise.send_sack = session._advertise.sack and packet_rx_md.tcp__sackperm
             # RFC 7323 §3 bilateral negotiation: enable post-
             # handshake TSopt iff WE advertised on our SYN AND
             # peer's SYN+ACK carried TSopt. Cache peer's TSval
             # as '_ts_recent' so the third-leg ACK and all
             # subsequent segments echo it via TSecr.
-            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+            if session._advertise.ts and packet_rx_md.tcp__tsval is not None:
                 session._ts.send_ts = True
                 session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:
@@ -284,7 +284,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             )
             if is_broken_reflection:
                 pass  # neither _accecn_enabled nor _ecn_enabled set
-            elif session._advertise_accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
+            elif session._advertise.accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
                 session._accecn.enabled = True
                 # RFC 9768 §3.2.2.1: derive the Table-3 ACE value
                 # from the inbound SYN+ACK's IP-ECN codepoint so
@@ -318,7 +318,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 observed_ipecn = (int(packet_rx_md.tcp__flag_ns) << 1) | int(packet_rx_md.tcp__flag_ece)
                 if observed_ipecn != 0:
                     session._accecn.mangling_detected = True
-            elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
+            elif session._advertise.ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
                 session._ecn.enabled = True
             # RFC 7413 §3.1 client-side cookie cache update:
             # when peer's SYN+ACK carries a non-empty TFO
@@ -376,16 +376,16 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             )
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2.
-            if session._advertise_wscale and packet_rx_md.tcp__wscale:
+            if session._advertise.wscale and packet_rx_md.tcp__wscale:
                 session._win.snd_wsc = packet_rx_md.tcp__wscale
             else:
                 session._win.rcv_wsc = 0
                 session._win.snd_wsc = 0
             # SACK bilateral negotiation per RFC 2018 §2.
-            session._send_sack = session._advertise_sack and packet_rx_md.tcp__sackperm
+            session._advertise.send_sack = session._advertise.sack and packet_rx_md.tcp__sackperm
             # RFC 7323 §3 bilateral negotiation (simultaneous-
             # open path): same shape as the SYN+ACK case above.
-            if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
+            if session._advertise.ts and packet_rx_md.tcp__tsval is not None:
                 session._ts.send_ts = True
                 session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:

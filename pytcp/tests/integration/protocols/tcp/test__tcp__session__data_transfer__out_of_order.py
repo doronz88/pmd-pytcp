@@ -581,7 +581,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
         # byte-rule analysis is out of scope for this test. The same
         # cap-at-2 gate would inhibit SACK byte-rule recovery too, but
         # the count-rule is the cleaner failure to pin first.
-        session._send_sack = False
+        session._advertise.send_sack = False
         # Clear handshake-residual frames (our SYN, our third-leg ACK)
         # so 'self._frames_tx' below contains only the OOO-burst's
         # outbound dup-ACKs. The third-leg ACK has the same shape as

@@ -218,7 +218,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
             # additional disjoint overlaps are still
             # representable through the regular OOO-queue
             # blocks that follow the DSACK marker.
-            if session._send_sack:
+            if session._advertise.send_sack:
                 seg_left = packet_rx_md.tcp__seq
                 seg_right = add32(seg_left, len(packet_rx_md.tcp__data))
                 for existing_seq, existing_md in session._ooo_packet_queue.items():

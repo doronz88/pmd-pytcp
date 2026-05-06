@@ -979,7 +979,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
         assert session.state is FsmState.ESTABLISHED
 
         # Confirm non-SACK / non-TSopt peer scenario.
-        assert not session._send_sack, "Setup invariant: peer's SYN+ACK had no SACK-Permitted."
+        assert not session._advertise.send_sack, "Setup invariant: peer's SYN+ACK had no SACK-Permitted."
         assert not session._ts.send_ts, "Setup invariant: peer's SYN+ACK had no TSopt."
         return session
 
@@ -1135,8 +1135,9 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_sack == sackperm, (
-            f"Setup invariant: bilateral SACK negotiation expected={sackperm}, " f"got _send_sack={session._send_sack}."
+        assert session._advertise.send_sack == sackperm, (
+            f"Setup invariant: bilateral SACK negotiation expected={sackperm}, "
+            f"got _send_sack={session._advertise.send_sack}."
         )
         return session
 
@@ -1807,7 +1808,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_sack, "Bilateral SACK must be active for SACK-delta tests."
+        assert session._advertise.send_sack, "Bilateral SACK must be active for SACK-delta tests."
         return session
 
     def test__cwnd__prr__sack_bearing_dup_ack_increments_prr_delivered(self) -> None:

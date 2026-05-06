@@ -966,7 +966,7 @@ class TestTcpRfc6675SackRetainedOnRto(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_sack
+        assert session._advertise.send_sack
         session._cc.snd_ewn = PEER__WIN
         return session
 

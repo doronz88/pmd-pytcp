@@ -614,7 +614,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        assert session._send_sack, "Setup invariant: bilateral SACK must be negotiated."
+        assert session._advertise.send_sack, "Setup invariant: bilateral SACK must be negotiated."
         session._cc.snd_ewn = PEER__WIN
         return session
 

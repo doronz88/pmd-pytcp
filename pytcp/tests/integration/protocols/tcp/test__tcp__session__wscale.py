@@ -698,7 +698,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
         # Once the WSCALE implementation lands and defaults to
         # advertising, this is the API the user (or test) flips to
         # match a non-WSCALE peer or a constrained-buffer profile.
-        session._advertise_wscale = False
+        session._advertise.wscale = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         syn_tx = self._advance(ms=1)
@@ -836,7 +836,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
         """
 
         session = self._make_active_session(iss=LOCAL__ISS)
-        session._advertise_wscale = False
+        session._advertise.wscale = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         syn_tx = self._advance(ms=1)

@@ -223,7 +223,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
         # specifically tests "we did not advertise SACK-Permitted -
         # peer's offer is silently ignored", so opt out before
         # CONNECT.
-        session._advertise_sack = False
+        session._advertise.sack = False
         session.tcp_fsm(syscall=SysCall.CONNECT)
 
         # Inspect our outbound SYN.
