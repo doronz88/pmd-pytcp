@@ -3542,222 +3542,7 @@ class TcpSession:
         # is disabled.
         self._keepalive_arm_idle()
 
-        # Make note of the local SEQ that has been acked by peer.
-        # Modular 'max': SND.UNA advances iff peer's ack is
-        # "ahead" of it in the 32-bit modular sense. Plain 'max()'
-        # uses numerical order, which is wrong across the wrap.
-        if lt32(self._snd_una, packet_rx_md.tcp__ack):
-            # Modular bytes-acked computation per RFC 9293 §3.4
-            # so the §3.1 cwnd growth formula gets the correct
-            # delta when the cum-ACK straddles the 32-bit wrap.
-            bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
-            self._snd_una = packet_rx_md.tcp__ack
-            # RFC 9406 §4.2 round-boundary detection: if SND.UNA
-            # has reached or passed the round's window_end_seq,
-            # rotate the per-round minRTT trackers. The first
-            # round bootstrap-initialises window_end_seq from
-            # SND.NXT; subsequent rotations also re-anchor
-            # window_end_seq to the current SND.NXT so the next
-            # round measures samples until the in-flight
-            # high-water mark is acked. CSS_ROUNDS exhaustion
-            # is signalled by 'css_rounds_remaining == 0' after
-            # rotate_round; that triggers the §4.2 "set
-            # ssthresh = cwnd" entry into congestion avoidance.
-            if self._cc.cwnd < self._cc.ssthresh:
-                if self._cc.hystart_state.window_end_seq == 0:
-                    # Bootstrap: first round of slow-start.
-                    self._cc.hystart_state.window_end_seq = self._snd_nxt
-                elif not lt32(self._snd_una, self._cc.hystart_state.window_end_seq):
-                    rotate_round(self._cc.hystart_state, new_window_end_seq=self._snd_nxt)
-                    if self._cc.hystart_state.in_css and self._cc.hystart_state.css_rounds_remaining == 0:
-                        # CSS_ROUNDS exhausted -> ssthresh =
-                        # cwnd, enter CA. Clear CSS state.
-                        self._cc.ssthresh = self._cc.cwnd
-                        resume_slow_start(self._cc.hystart_state)
-                        __debug__ and log(
-                            "tcp-ss",
-                            f"[{self}] - RFC 9406 HyStart++ "
-                            "CSS_ROUNDS exhausted; ssthresh = "
-                            f"cwnd = {self._cc.cwnd}, entering CA",
-                        )
-            # RFC 6582 §3.2 step 4 marker decay: clear the
-            # recover marker once SND.UNA has reached or passed
-            # it. SND.UNA is the next-byte-expected from peer,
-            # so 'SND.UNA == recover' means peer has acked the
-            # last byte recorded into the marker (recover ==
-            # snd_max-at-RTO == one past last data seq); 'ge32'
-            # is the right comparison. Subsequent dup-ACK bursts
-            # can then drive fast retransmit normally without
-            # the post-RTO gate suppressing legitimate loss
-            # recovery.
-            if self._cc.recover_seq != 0 and ge32(self._snd_una, self._cc.recover_seq):
-                self._cc.recover_seq = 0
-            # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
-            # recovery feed 'prr_delivered'. Out-of-recovery
-            # cum-ACKs do not - the accumulator is scoped to a
-            # single recovery episode.
-            if self._cc.recovery_point != 0:
-                self._cc.prr_delivered += bytes_acked
-            # Cwnd update on cum-ACK that advances SND.UNA.
-            # Three branches gated on recovery state:
-            #   - in recovery, partial cum-ACK (snd_una hasn't
-            #     reached recovery_point): RFC 6937 §3.1 PRR
-            #     proportional pacing - 'cwnd = pipe + sndcnt'
-            #     where sndcnt is computed from the
-            #     'prr_delivered * ssthresh / RecoverFS' ratio.
-            #     Replaces the RFC 6582 NewReno step 3b
-            #     deflation; PRR's per-ACK proportional pacing
-            #     subsumes both the deflate-on-partial-ACK
-            #     intent and RFC 5681 §3.2 step 4's per-dup-ACK
-            #     inflation.
-            #   - in recovery, full cum-ACK (snd_una reached
-            #     recovery_point): RFC 5681 §3.2 step 6
-            #     deflation (cwnd = ssthresh) - handled at the
-            #     recovery-exit branch below.
-            #   - not in recovery: RFC 5681 §3.1 slow-start vs
-            #     congestion-avoidance growth.
-            if self._cc.recovery_point != 0 and lt32(self._snd_una, self._cc.recovery_point):
-                current_pipe = pipe(
-                    scoreboard=self._sack_scoreboard,
-                    snd_una=self._snd_una,
-                    snd_max=self._snd_max,
-                )
-                if current_pipe > self._cc.ssthresh:
-                    # PRR proper: aim for ssthresh/RecoverFS
-                    # ratio. Integer CEIL via the standard
-                    # '-(-a // b)' trick to avoid float math.
-                    target = -(-self._cc.prr_delivered * self._cc.ssthresh // self._cc.recover_fs)
-                    sndcnt = target - self._cc.prr_out
-                else:
-                    # PRR-CRB / PRR-SSRB: pipe has dropped at
-                    # or below ssthresh; allow conservative
-                    # send budget. SSRB (bilateral SACK + new
-                    # data this ACK) lets cwnd grow up to one
-                    # SMSS per ACK; CRB (no SACK or no new
-                    # data) caps at the unsent prr_delivered.
-                    if self._send_sack and bytes_acked > 0:
-                        limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._snd_mss
-                    else:
-                        limit = self._cc.prr_delivered - self._cc.prr_out
-                    sndcnt = min(self._cc.ssthresh - current_pipe, limit)
-                self._cc.cwnd = current_pipe + max(0, sndcnt)
-            else:
-                # RFC 9438 §4.4 / §4.5: when '_cc_mode == CUBIC'
-                # AND we are in CA (cwnd >= ssthresh), use the
-                # cubic growth formula instead of the linear
-                # Reno CA branch. Slow-start (cwnd < ssthresh)
-                # is handled inside both helpers and yields the
-                # same RFC 5681 §3.1 path either way.
-                if self._cc.cc_mode is CcMode.CUBIC and self._cc.cwnd >= self._cc.ssthresh:
-                    self._cc.cubic_in_ca = True
-                    now_ms = stack.timer.now_ms
-                    cubic_cwnd = cubic_grow_per_ack(
-                        cwnd=self._cc.cwnd,
-                        ssthresh=self._cc.ssthresh,
-                        w_max=self._cc.cubic_w_max,
-                        K_ms=self._cc.cubic_K_ms,
-                        epoch_start_ms=self._cc.cubic_epoch_start_ms,
-                        now_ms=now_ms,
-                        bytes_acked=bytes_acked,
-                        smss=self._snd_mss,
-                        srtt_ms=self._rto_state.srtt_ms or 0,
-                    )
-                    # RFC 9438 §4.3: track the Reno-equivalent
-                    # cwnd ('W_est') in parallel; if the cubic
-                    # formula yields a smaller cwnd than Reno
-                    # would, fall back to W_est so CUBIC never
-                    # under-performs Reno on small-BDP / short-
-                    # RTT paths. Lazy-initialise on first CA
-                    # entry from cwnd_epoch.
-                    if self._cc.cubic_w_est == 0:
-                        self._cc.cubic_w_est = self._cc.cwnd
-                    self._cc.cubic_w_est = cubic_w_est(
-                        w_est_prev=self._cc.cubic_w_est,
-                        cwnd=self._cc.cwnd,
-                        smss=self._snd_mss,
-                        bytes_acked=bytes_acked,
-                    )
-                    self._cc.cwnd = max(cubic_cwnd, self._cc.cubic_w_est)
-                else:
-                    # RFC 9406 §4.2 CSS phase override: when
-                    # HyStart++ has detected delay-increase and
-                    # we are in Conservative Slow Start, grow
-                    # cwnd at 1/CSS_GROWTH_DIVISOR the normal
-                    # rate. Outside CSS this is the normal
-                    # RFC 5681 / RFC 6928 slow-start or RFC
-                    # 5681 §3.1 congestion-avoidance growth via
-                    # 'cwnd_grow_per_ack'.
-                    if self._cc.cwnd < self._cc.ssthresh and self._cc.hystart_state.in_css:
-                        self._cc.cwnd += css_growth_increment(bytes_acked, self._snd_mss)
-                    else:
-                        self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._snd_mss)
-            # RFC 9293 §3.8.4: the effective send window is
-            # 'min(cwnd, snd_wnd)'. Recompute now so
-            # '_transmit_data' sees the new value on the same
-            # FSM tick.
-            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-            # RFC 6298 §5.2 / §5.3: peer has acknowledged new
-            # data, fresh evidence of liveness. Reset the R2
-            # abort counter and manage the retransmit timer:
-            # turn it off iff every in-flight byte is now
-            # acked (§5.2), else restart it with the current
-            # 'rto_ms' (§5.3). 'unregister_timers_with_prefix'
-            # with the full timer name as prefix is the
-            # canonical "stop this timer" idiom in the
-            # codebase; it incidentally drops any legacy
-            # 'f"{self}-retransmit_seq-X"' keys too, though
-            # Phase 3 no longer creates those.
-            self._retransmit_count = 0
-            # RFC 8985 §7.4 TLP loss-detection on inbound ACK.
-            # Apply BEFORE the cum-ACK drain hook so a Case-3
-            # ('ack > tlp_end_seq') ACK that also drains the
-            # tail can invoke the §7.4.2 CC response. Returns
-            # the new '_tlp_end_seq' (None on outcome
-            # determined; preserved otherwise) and a flag
-            # indicating whether to halve cwnd / ssthresh.
-            new_tlp_end_seq, invoke_cc = tlp_process_ack(
-                tlp_end_seq=self._tlp_end_seq,
-                tlp_is_retrans=self._tlp_is_retrans,
-                ack_seq=packet_rx_md.tcp__ack,
-                has_dsack_for_probe=(self._dsack_received > 0),
-                has_sack_blocks=bool(self._sack_scoreboard.blocks()),
-            )
-            self._tlp_end_seq = new_tlp_end_seq
-            if invoke_cc:
-                # RFC 8985 §7.4.2: probe repaired a single
-                # tail loss; the network signalled a real
-                # loss event so apply the conventional
-                # cwnd halving (ssthresh = max(flight/2,
-                # 2*SMSS); cwnd = ssthresh).
-                from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
-
-                flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-                self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
-                self._cc.cwnd = self._cc.ssthresh
-                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair "
-                    f"CC: ssthresh={self._cc.ssthresh} cwnd={self._cc.cwnd}",
-                )
-            if self._snd_una == self._snd_max:
-                stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
-                # RFC 8985 §7.2 TLP cancellation: when a
-                # cum-ACK drains all in-flight bytes, there is
-                # no tail to probe. Cancel the TLP timer so a
-                # late expiry does not fire a stale probe.
-                # Also clear the once-per-tail state so the
-                # next tail can fire its own probe.
-                stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
-                self._tlp_end_seq = None
-                self._tlp_is_retrans = False
-                self._tlp_armed = False
-            else:
-                stack.timer.register_timer(
-                    name=f"{self}-retransmit",
-                    timeout=self._rto_state.rto_ms,
-                )
-            self._phase2_frto_spurious_detect()
+        self._phase1_cum_ack_side_effects(packet_rx_md)
         self._phase3_harvest_rtt_samples(packet_rx_md)
         # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
         # §3: prune any blocks now absorbed by the cumulative ACK,
@@ -3767,6 +3552,259 @@ class TcpSession:
         self._ingest_sack_info(packet_rx_md)
         self._phase4_loss_detection_and_recovery_exit(packet_rx_md)
         self._phase5_consume_segment_and_postprocess(packet_rx_md)
+
+    def _phase1_cum_ack_side_effects(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Phase 1 of the inbound-ACK pipeline. Process the side-
+        effects of a cum-ACK that advances SND.UNA: bytes_acked
+        compute, SND.UNA advance, RFC 9406 round-boundary rotate,
+        RFC 6582 recover_seq decay, RFC 6937 PRR delivered
+        accumulation, RFC 9438 / 5681 / 6928 cwnd growth (CUBIC
+        vs Reno + HyStart CSS override), RFC 9293 §3.8.4 snd_ewn
+        recompute, RFC 6298 retransmit-timer manage, RFC 8985
+        §7.2 / §7.4 TLP loss-detect / repair / cancel, and the
+        RFC 5682 §2.1 F-RTO step 2 / step 3 spurious-RTO
+        detection (delegated to phase 2).
+
+        Returns early when the inbound ACK does not advance
+        SND.UNA — dup-ACKs and stale ACKs do not exercise any
+        of these side-effects.
+
+        Reference: RFC 5681 §3.1 (slow-start vs CA growth).
+        Reference: RFC 5681 §3.2 step 4 (per-dup-ACK inflation).
+        Reference: RFC 6298 §5.2 (retransmit-timer off on full drain).
+        Reference: RFC 6298 §5.3 (retransmit-timer restart on advance).
+        Reference: RFC 6582 §3.2 step 4 (NewReno recover decay).
+        Reference: RFC 6928 (initial-window slow-start).
+        Reference: RFC 6937 §3.1 (PRR proportional pacing).
+        Reference: RFC 8985 §7.2 (TLP cancellation on cum-ACK drain).
+        Reference: RFC 8985 §7.4 (TLP loss-detection on inbound ACK).
+        Reference: RFC 8985 §7.4.2 (TLP probe-repair CC response).
+        Reference: RFC 9293 §3.4 (modular SND.UNA arithmetic).
+        Reference: RFC 9293 §3.8.4 (snd_ewn = min(cwnd, snd_wnd)).
+        Reference: RFC 9406 §4.2 (HyStart++ round-boundary + CSS).
+        Reference: RFC 9438 §4.3 (W_est Reno-friendly tracker).
+        Reference: RFC 9438 §4.4 (CUBIC growth in CA).
+        Reference: RFC 9438 §4.5 (CUBIC slow-start path).
+        """
+
+        # Make note of the local SEQ that has been acked by peer.
+        # Modular 'max': SND.UNA advances iff peer's ack is
+        # "ahead" of it in the 32-bit modular sense. Plain 'max()'
+        # uses numerical order, which is wrong across the wrap.
+        if not lt32(self._snd_una, packet_rx_md.tcp__ack):
+            return
+        # Modular bytes-acked computation per RFC 9293 §3.4
+        # so the §3.1 cwnd growth formula gets the correct
+        # delta when the cum-ACK straddles the 32-bit wrap.
+        bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
+        self._snd_una = packet_rx_md.tcp__ack
+        # RFC 9406 §4.2 round-boundary detection: if SND.UNA
+        # has reached or passed the round's window_end_seq,
+        # rotate the per-round minRTT trackers. The first
+        # round bootstrap-initialises window_end_seq from
+        # SND.NXT; subsequent rotations also re-anchor
+        # window_end_seq to the current SND.NXT so the next
+        # round measures samples until the in-flight
+        # high-water mark is acked. CSS_ROUNDS exhaustion
+        # is signalled by 'css_rounds_remaining == 0' after
+        # rotate_round; that triggers the §4.2 "set
+        # ssthresh = cwnd" entry into congestion avoidance.
+        if self._cc.cwnd < self._cc.ssthresh:
+            if self._cc.hystart_state.window_end_seq == 0:
+                # Bootstrap: first round of slow-start.
+                self._cc.hystart_state.window_end_seq = self._snd_nxt
+            elif not lt32(self._snd_una, self._cc.hystart_state.window_end_seq):
+                rotate_round(self._cc.hystart_state, new_window_end_seq=self._snd_nxt)
+                if self._cc.hystart_state.in_css and self._cc.hystart_state.css_rounds_remaining == 0:
+                    # CSS_ROUNDS exhausted -> ssthresh =
+                    # cwnd, enter CA. Clear CSS state.
+                    self._cc.ssthresh = self._cc.cwnd
+                    resume_slow_start(self._cc.hystart_state)
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - RFC 9406 HyStart++ "
+                        "CSS_ROUNDS exhausted; ssthresh = "
+                        f"cwnd = {self._cc.cwnd}, entering CA",
+                    )
+        # RFC 6582 §3.2 step 4 marker decay: clear the
+        # recover marker once SND.UNA has reached or passed
+        # it. SND.UNA is the next-byte-expected from peer,
+        # so 'SND.UNA == recover' means peer has acked the
+        # last byte recorded into the marker (recover ==
+        # snd_max-at-RTO == one past last data seq); 'ge32'
+        # is the right comparison. Subsequent dup-ACK bursts
+        # can then drive fast retransmit normally without
+        # the post-RTO gate suppressing legitimate loss
+        # recovery.
+        if self._cc.recover_seq != 0 and ge32(self._snd_una, self._cc.recover_seq):
+            self._cc.recover_seq = 0
+        # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
+        # recovery feed 'prr_delivered'. Out-of-recovery
+        # cum-ACKs do not - the accumulator is scoped to a
+        # single recovery episode.
+        if self._cc.recovery_point != 0:
+            self._cc.prr_delivered += bytes_acked
+        # Cwnd update on cum-ACK that advances SND.UNA.
+        # Three branches gated on recovery state:
+        #   - in recovery, partial cum-ACK (snd_una hasn't
+        #     reached recovery_point): RFC 6937 §3.1 PRR
+        #     proportional pacing - 'cwnd = pipe + sndcnt'
+        #     where sndcnt is computed from the
+        #     'prr_delivered * ssthresh / RecoverFS' ratio.
+        #     Replaces the RFC 6582 NewReno step 3b
+        #     deflation; PRR's per-ACK proportional pacing
+        #     subsumes both the deflate-on-partial-ACK
+        #     intent and RFC 5681 §3.2 step 4's per-dup-ACK
+        #     inflation.
+        #   - in recovery, full cum-ACK (snd_una reached
+        #     recovery_point): RFC 5681 §3.2 step 6
+        #     deflation (cwnd = ssthresh) - handled at the
+        #     recovery-exit branch below.
+        #   - not in recovery: RFC 5681 §3.1 slow-start vs
+        #     congestion-avoidance growth.
+        if self._cc.recovery_point != 0 and lt32(self._snd_una, self._cc.recovery_point):
+            current_pipe = pipe(
+                scoreboard=self._sack_scoreboard,
+                snd_una=self._snd_una,
+                snd_max=self._snd_max,
+            )
+            if current_pipe > self._cc.ssthresh:
+                # PRR proper: aim for ssthresh/RecoverFS
+                # ratio. Integer CEIL via the standard
+                # '-(-a // b)' trick to avoid float math.
+                target = -(-self._cc.prr_delivered * self._cc.ssthresh // self._cc.recover_fs)
+                sndcnt = target - self._cc.prr_out
+            else:
+                # PRR-CRB / PRR-SSRB: pipe has dropped at
+                # or below ssthresh; allow conservative
+                # send budget. SSRB (bilateral SACK + new
+                # data this ACK) lets cwnd grow up to one
+                # SMSS per ACK; CRB (no SACK or no new
+                # data) caps at the unsent prr_delivered.
+                if self._send_sack and bytes_acked > 0:
+                    limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._snd_mss
+                else:
+                    limit = self._cc.prr_delivered - self._cc.prr_out
+                sndcnt = min(self._cc.ssthresh - current_pipe, limit)
+            self._cc.cwnd = current_pipe + max(0, sndcnt)
+        else:
+            # RFC 9438 §4.4 / §4.5: when '_cc_mode == CUBIC'
+            # AND we are in CA (cwnd >= ssthresh), use the
+            # cubic growth formula instead of the linear
+            # Reno CA branch. Slow-start (cwnd < ssthresh)
+            # is handled inside both helpers and yields the
+            # same RFC 5681 §3.1 path either way.
+            if self._cc.cc_mode is CcMode.CUBIC and self._cc.cwnd >= self._cc.ssthresh:
+                self._cc.cubic_in_ca = True
+                now_ms = stack.timer.now_ms
+                cubic_cwnd = cubic_grow_per_ack(
+                    cwnd=self._cc.cwnd,
+                    ssthresh=self._cc.ssthresh,
+                    w_max=self._cc.cubic_w_max,
+                    K_ms=self._cc.cubic_K_ms,
+                    epoch_start_ms=self._cc.cubic_epoch_start_ms,
+                    now_ms=now_ms,
+                    bytes_acked=bytes_acked,
+                    smss=self._snd_mss,
+                    srtt_ms=self._rto_state.srtt_ms or 0,
+                )
+                # RFC 9438 §4.3: track the Reno-equivalent
+                # cwnd ('W_est') in parallel; if the cubic
+                # formula yields a smaller cwnd than Reno
+                # would, fall back to W_est so CUBIC never
+                # under-performs Reno on small-BDP / short-
+                # RTT paths. Lazy-initialise on first CA
+                # entry from cwnd_epoch.
+                if self._cc.cubic_w_est == 0:
+                    self._cc.cubic_w_est = self._cc.cwnd
+                self._cc.cubic_w_est = cubic_w_est(
+                    w_est_prev=self._cc.cubic_w_est,
+                    cwnd=self._cc.cwnd,
+                    smss=self._snd_mss,
+                    bytes_acked=bytes_acked,
+                )
+                self._cc.cwnd = max(cubic_cwnd, self._cc.cubic_w_est)
+            else:
+                # RFC 9406 §4.2 CSS phase override: when
+                # HyStart++ has detected delay-increase and
+                # we are in Conservative Slow Start, grow
+                # cwnd at 1/CSS_GROWTH_DIVISOR the normal
+                # rate. Outside CSS this is the normal
+                # RFC 5681 / RFC 6928 slow-start or RFC
+                # 5681 §3.1 congestion-avoidance growth via
+                # 'cwnd_grow_per_ack'.
+                if self._cc.cwnd < self._cc.ssthresh and self._cc.hystart_state.in_css:
+                    self._cc.cwnd += css_growth_increment(bytes_acked, self._snd_mss)
+                else:
+                    self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._snd_mss)
+        # RFC 9293 §3.8.4: the effective send window is
+        # 'min(cwnd, snd_wnd)'. Recompute now so
+        # '_transmit_data' sees the new value on the same
+        # FSM tick.
+        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+        # RFC 6298 §5.2 / §5.3: peer has acknowledged new
+        # data, fresh evidence of liveness. Reset the R2
+        # abort counter and manage the retransmit timer:
+        # turn it off iff every in-flight byte is now
+        # acked (§5.2), else restart it with the current
+        # 'rto_ms' (§5.3). 'unregister_timers_with_prefix'
+        # with the full timer name as prefix is the
+        # canonical "stop this timer" idiom in the
+        # codebase; it incidentally drops any legacy
+        # 'f"{self}-retransmit_seq-X"' keys too, though
+        # Phase 3 no longer creates those.
+        self._retransmit_count = 0
+        # RFC 8985 §7.4 TLP loss-detection on inbound ACK.
+        # Apply BEFORE the cum-ACK drain hook so a Case-3
+        # ('ack > tlp_end_seq') ACK that also drains the
+        # tail can invoke the §7.4.2 CC response. Returns
+        # the new '_tlp_end_seq' (None on outcome
+        # determined; preserved otherwise) and a flag
+        # indicating whether to halve cwnd / ssthresh.
+        new_tlp_end_seq, invoke_cc = tlp_process_ack(
+            tlp_end_seq=self._tlp_end_seq,
+            tlp_is_retrans=self._tlp_is_retrans,
+            ack_seq=packet_rx_md.tcp__ack,
+            has_dsack_for_probe=(self._dsack_received > 0),
+            has_sack_blocks=bool(self._sack_scoreboard.blocks()),
+        )
+        self._tlp_end_seq = new_tlp_end_seq
+        if invoke_cc:
+            # RFC 8985 §7.4.2: probe repaired a single
+            # tail loss; the network signalled a real
+            # loss event so apply the conventional
+            # cwnd halving (ssthresh = max(flight/2,
+            # 2*SMSS); cwnd = ssthresh).
+            from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
+
+            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.cwnd = self._cc.ssthresh
+            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair "
+                f"CC: ssthresh={self._cc.ssthresh} cwnd={self._cc.cwnd}",
+            )
+        if self._snd_una == self._snd_max:
+            stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
+            # RFC 8985 §7.2 TLP cancellation: when a
+            # cum-ACK drains all in-flight bytes, there is
+            # no tail to probe. Cancel the TLP timer so a
+            # late expiry does not fire a stale probe.
+            # Also clear the once-per-tail state so the
+            # next tail can fire its own probe.
+            stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
+            self._tlp_end_seq = None
+            self._tlp_is_retrans = False
+            self._tlp_armed = False
+        else:
+            stack.timer.register_timer(
+                name=f"{self}-retransmit",
+                timeout=self._rto_state.rto_ms,
+            )
+        self._phase2_frto_spurious_detect()
 
     def _phase2_frto_spurious_detect(self) -> None:
         """
