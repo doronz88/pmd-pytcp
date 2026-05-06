@@ -1788,6 +1788,38 @@ class TcpSession:
         if flag_ack:
             self._delayed_ack_segments_pending = 0
 
+        self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
+            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
+            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
+            f"dlen {len(data)}",
+        )
+
+    def _phase5_post_send_timers(self, *, flag_syn: bool, flag_fin: bool, data: bytes) -> None:
+        """
+        Phase 5 of the outbound-send pipeline. Arm the per-send
+        timers and reset the keep-alive idle counter:
+
+          - Keep-alive idle reset on every outbound segment
+            (RFC 1122 §4.2.3.6).
+          - Delayed-ACK timer arm on ESTABLISHED so the next
+            inbound data segment cannot fire an immediate ACK
+            via the every-other-segment branch in
+            '_phase5_consume_segment_and_postprocess'.
+          - Retransmit timer 'if not running, start it' on every
+            sequence-consuming segment (RFC 6298 §5.1).
+          - TLP timer arm on data segments outside recovery,
+            using the §7.2 PTO formula clamped against the
+            RTO expiration (RFC 8985 §7.2).
+
+        Reference: RFC 1122 §4.2.3.6 (keep-alive activity reset).
+        Reference: RFC 6298 §5.1 (retransmit-timer arm).
+        Reference: RFC 8985 §7.2 (TLP scheduling + PTO clamp).
+        """
+
         # RFC 1122 §4.2.3.6: any outbound segment counts as
         # "activity" for keep-alive purposes - reset the idle
         # timer. No-op when keep-alive is disabled. The keep-alive
@@ -1862,14 +1894,6 @@ class TcpSession:
             if pto_ms > 0:
                 stack.timer.register_timer(name=f"{self}-tlp", timeout=pto_ms)
                 self._tlp_armed = True
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
-            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
-            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
-            f"dlen {len(data)}",
-        )
 
     def _build_sack_blocks(self) -> list[tuple[int, int]]:
         """
