@@ -94,6 +94,7 @@ class PacketHandlerIp4Tx(ABC):
         ip4__src: Ip4Address,
         ip4__ttl: int = IP4__DEFAULT_TTL,
         ip4__ecn: int = 0,
+        ip4__flag_df: bool = False,
         ip4__payload: Ip4Payload = RawAssembler(),
     ) -> TxStatus:
         """
@@ -135,6 +136,7 @@ class PacketHandlerIp4Tx(ABC):
             ip4__dst=ip4__dst,
             ip4__ttl=ip4__ttl,
             ip4__ecn=ip4__ecn,
+            ip4__flag_df=ip4__flag_df,
             ip4__payload=ip4__payload,
         )
 

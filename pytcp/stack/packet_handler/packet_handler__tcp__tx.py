@@ -96,6 +96,7 @@ class PacketHandlerTcpTx(ABC):
             ip4__src: Ip4Address,
             ip4__ttl: int = IP4__DEFAULT_TTL,
             ip4__ecn: int = 0,
+            ip4__flag_df: bool = False,
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -258,10 +259,15 @@ class PacketHandlerTcpTx(ABC):
                 )
             case False, False, True, True:
                 self._packet_stats_tx.tcp__send += 1
+                # RFC 1191 §3 / RFC 9293 §3.7.5: outbound TCP segments
+                # set DF=1 to elicit ICMP Frag-Needed for path-MTU
+                # discovery rather than allowing in-network
+                # fragmentation.
                 return self._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
                     ip4__ecn=ip__ecn,
+                    ip4__flag_df=True,
                     ip4__payload=tcp_packet_tx,
                 )
             case _:

@@ -77,6 +77,7 @@ class PacketHandlerUdpTx(ABC):
             ip4__dst: Ip4Address,
             ip4__src: Ip4Address,
             ip4__ttl: int = IP4__DEFAULT_TTL,
+            ip4__flag_df: bool = False,
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -115,9 +116,15 @@ class PacketHandlerUdpTx(ABC):
                 )
             case False, False, True, True:
                 self._packet_stats_tx.udp__send += 1
+                # RFC 1191 §3 / RFC 8201 §4: outbound UDP datagrams
+                # set DF=1 by default so PMTUD signals reach the
+                # sender. UDP applications that want in-network
+                # fragmentation can disable IP_PMTUDISC at the
+                # socket layer (deferred to a follow-up commit).
                 return self._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
+                    ip4__flag_df=True,
                     ip4__payload=udp_packet_tx,
                 )
             case _:
