@@ -61,6 +61,16 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
 )
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
+from pytcp.protocols.tcp.tcp__hystart import (
+    HyStartState,
+    css_growth_increment,
+    enter_css,
+    fold_rtt_sample,
+    resume_slow_start,
+    rotate_round,
+    should_exit_slow_start_to_css,
+    should_resume_slow_start_from_css,
+)
 from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
 from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
 from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
@@ -924,6 +934,21 @@ class TcpSession:
         # only fires when this is True. Slow-start exits via
         # the existing Reno path until this flag flips.
         self._cubic_in_ca: bool = False
+
+        # RFC 9406 HyStart++ state. The algorithm is delay-
+        # based slow-start exit: track per-round min RTT,
+        # detect bandwidth saturation BEFORE loss occurs by
+        # comparing the current round's min RTT to the
+        # previous round's. On detection, enter Conservative
+        # Slow Start (CSS) which grows cwnd at 1/4 the normal
+        # rate; if RTT recovers, resume slow-start (the early
+        # exit was spurious); if not, after CSS_ROUNDS rounds
+        # set ssthresh = cwnd and enter congestion avoidance.
+        # Always-on (no opt-out flag); the algorithm is a
+        # no-op until N_RTT_SAMPLE samples accumulate in a
+        # single round, so handshake-only sessions never see
+        # any HyStart-driven behaviour.
+        self._hystart_state: HyStartState = HyStartState()
 
         # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
         # don't use wscale for backward compatibility.
@@ -2396,6 +2421,51 @@ class TcpSession:
         if packet_rx_md.tcp__data:
             self._enqueue_rx_buffer(packet_rx_md.tcp__data)
 
+    def _hystart_check_phase_transition(self) -> None:
+        """
+        Apply the RFC 9406 §4.2 phase-transition checks after
+        a fresh RTT sample has been folded into the HyStart++
+        state. Two transitions are possible:
+
+          - Slow-start -> CSS: the §4.2 delay-increase trigger
+            fires (currentRoundMinRTT exceeds lastRoundMinRTT
+            by more than RttThresh) — record the baseline and
+            switch to Conservative Slow Start.
+          - CSS -> Slow-start: the §4.2 spurious-CSS-exit
+            check fires (currentRoundMinRTT drops below the
+            CSS-entry baseline) — clear CSS state and resume
+            normal slow-start.
+
+        Caller MUST have folded the RTT sample BEFORE calling
+        this helper. Called from both the TSecr-driven RTTM
+        site and the Karn sample-tracker harvest site.
+
+        Reference: RFC 9406 §4.2 (delay-increase trigger / spurious-exit recovery).
+        """
+
+        if should_exit_slow_start_to_css(self._hystart_state):
+            enter_css(self._hystart_state)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 9406 §4.2 HyStart++ SS->CSS: "
+                f"currentRoundMinRTT="
+                f"{self._hystart_state.current_round_min_rtt_ms} >= "
+                f"lastRoundMinRTT="
+                f"{self._hystart_state.last_round_min_rtt_ms} + RttThresh; "
+                f"baseline={self._hystart_state.css_baseline_min_rtt_ms}",
+            )
+        elif should_resume_slow_start_from_css(self._hystart_state):
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 9406 §4.2 HyStart++ CSS->SS: "
+                f"currentRoundMinRTT="
+                f"{self._hystart_state.current_round_min_rtt_ms} < "
+                f"cssBaselineMinRtt="
+                f"{self._hystart_state.css_baseline_min_rtt_ms}; "
+                "early CSS exit was spurious, resuming slow-start",
+            )
+            resume_slow_start(self._hystart_state)
+
     def _restore_frto_snapshot(self) -> None:
         """
         Restore the pre-RTO cwnd / ssthresh / CUBIC state on
@@ -3700,6 +3770,34 @@ class TcpSession:
             # delta when the cum-ACK straddles the 32-bit wrap.
             bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
             self._snd_una = packet_rx_md.tcp__ack
+            # RFC 9406 §4.2 round-boundary detection: if SND.UNA
+            # has reached or passed the round's window_end_seq,
+            # rotate the per-round minRTT trackers. The first
+            # round bootstrap-initialises window_end_seq from
+            # SND.NXT; subsequent rotations also re-anchor
+            # window_end_seq to the current SND.NXT so the next
+            # round measures samples until the in-flight
+            # high-water mark is acked. CSS_ROUNDS exhaustion
+            # is signalled by 'css_rounds_remaining == 0' after
+            # rotate_round; that triggers the §4.2 "set
+            # ssthresh = cwnd" entry into congestion avoidance.
+            if self._cwnd < self._ssthresh:
+                if self._hystart_state.window_end_seq == 0:
+                    # Bootstrap: first round of slow-start.
+                    self._hystart_state.window_end_seq = self._snd_nxt
+                elif not lt32(self._snd_una, self._hystart_state.window_end_seq):
+                    rotate_round(self._hystart_state, new_window_end_seq=self._snd_nxt)
+                    if self._hystart_state.in_css and self._hystart_state.css_rounds_remaining == 0:
+                        # CSS_ROUNDS exhausted -> ssthresh =
+                        # cwnd, enter CA. Clear CSS state.
+                        self._ssthresh = self._cwnd
+                        resume_slow_start(self._hystart_state)
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - RFC 9406 HyStart++ "
+                            "CSS_ROUNDS exhausted; ssthresh = "
+                            f"cwnd = {self._cwnd}, entering CA",
+                        )
             # RFC 6582 §3.2 step 4 marker decay: clear the
             # recover marker once SND.UNA has reached or passed
             # it. SND.UNA is the next-byte-expected from peer,
@@ -3799,7 +3897,18 @@ class TcpSession:
                     )
                     self._cwnd = max(cubic_cwnd, self._cubic_w_est)
                 else:
-                    self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
+                    # RFC 9406 §4.2 CSS phase override: when
+                    # HyStart++ has detected delay-increase and
+                    # we are in Conservative Slow Start, grow
+                    # cwnd at 1/CSS_GROWTH_DIVISOR the normal
+                    # rate. Outside CSS this is the normal
+                    # RFC 5681 / RFC 6928 slow-start or RFC
+                    # 5681 §3.1 congestion-avoidance growth via
+                    # 'cwnd_grow_per_ack'.
+                    if self._cwnd < self._ssthresh and self._hystart_state.in_css:
+                        self._cwnd += css_growth_increment(bytes_acked, self._snd_mss)
+                    else:
+                        self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
             # 'min(cwnd, snd_wnd)'. Recompute now so
             # '_transmit_data' sees the new value on the same
@@ -3931,6 +4040,15 @@ class TcpSession:
         if self._send_ts and packet_rx_md.tcp__tsecr is not None and packet_rx_md.tcp__tsecr != 0:
             ts_rtt_ms = (stack.timer.now_ms - packet_rx_md.tcp__tsecr) & 0xFFFF_FFFF
             self._rto_state = update(self._rto_state, ts_rtt_ms)
+            # RFC 9406 §4.2: fold the RTT sample into HyStart
+            # state during slow-start (or CSS) so the per-round
+            # min-RTT trackers can drive the SS->CSS / CSS->SS
+            # transitions. Skipped after slow-start exits
+            # (cwnd >= ssthresh AND not in_css) — HyStart++ is a
+            # slow-start-only mechanism.
+            if self._cwnd < self._ssthresh or self._hystart_state.in_css:
+                fold_rtt_sample(self._hystart_state, ts_rtt_ms)
+                self._hystart_check_phase_transition()
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 7323 §4 TSecr-driven RTTM: "
@@ -3955,6 +4073,11 @@ class TcpSession:
                 assert self._rtt_sample_send_time_ms is not None
                 observed_rtt_ms = stack.timer.now_ms - self._rtt_sample_send_time_ms
                 self._rto_state = update(self._rto_state, observed_rtt_ms)
+                # RFC 9406 §4.2: see TSecr-fold note above; same
+                # HyStart++ feed in the Karn-tracker harvest path.
+                if self._cwnd < self._ssthresh or self._hystart_state.in_css:
+                    fold_rtt_sample(self._hystart_state, observed_rtt_ms)
+                    self._hystart_check_phase_transition()
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - RTT sample harvested: rtt={observed_rtt_ms} ms, " f"rto_state={self._rto_state}",
