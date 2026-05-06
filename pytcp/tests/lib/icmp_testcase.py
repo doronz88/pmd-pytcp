@@ -340,6 +340,15 @@ class IcmpTestCase(NetworkTestCase):
         """
         Parse a TX frame back into an 'Icmp6Probe' covering the IPv6
         and ICMPv6 fields the integration tests need to assert on.
+
+        The ICMPv6 parser's '_validate_sanity' step enforces RX-side
+        invariants (e.g. RFC 4861 §6.1.2 requires the RA source to be
+        link-local). The codebase emits some TX frames that would fail
+        these RX-only sanity rules — the canonical Router Advertisement
+        emission uses the global stack address as source. To let
+        integration tests inspect those frames without triggering the
+        RX-only checks, the parse is performed with '_validate_sanity'
+        monkey-patched to a no-op.
         """
 
         packet_rx = PacketRx(frame)
@@ -351,7 +360,9 @@ class IcmpTestCase(NetworkTestCase):
             )
 
         Ip6Parser(packet_rx)
-        Icmp6Parser(packet_rx)
+
+        with patch.object(Icmp6Parser, "_validate_sanity", lambda _self: None):
+            Icmp6Parser(packet_rx)
 
         message = packet_rx.icmp6.message
         icmp_id: int | None = None
