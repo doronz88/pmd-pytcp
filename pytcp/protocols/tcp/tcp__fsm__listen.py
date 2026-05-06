@@ -293,7 +293,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                         secret=stack.TCP__FASTOPEN_SECRET,
                         cookie=bytes(packet_rx_md.tcp__fastopen_cookie),
                     )
-                session._fastopen_cookie_to_emit = generate_cookie(
+                session._fastopen.cookie_to_emit = generate_cookie(
                     peer_address=packet_rx_md.ip__remote_address,
                     secret=stack.TCP__FASTOPEN_SECRET,
                 )
@@ -340,7 +340,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # in '_change_state' on transition out of SYN_RCVD.
             if tfo_cookie_valid:
                 stack.tcp_stack.fastopen_pending_count += 1
-                session._fastopen_pending_counted = True
+                session._fastopen.pending_counted = True
             # Change state to SYN_RCVD; the actual SYN+ACK packet
             # is emitted from that state on the next timer tick by
             # '_transmit_data', which detects 'SND.NXT == SND.INI'
