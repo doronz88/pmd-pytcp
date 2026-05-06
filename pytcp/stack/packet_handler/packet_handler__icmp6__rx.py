@@ -30,14 +30,11 @@ pytcp/subsystems/packet_handler/packet_handler__icmp6__rx.py
 ver 3.0.4
 """
 
-import struct
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip6Address, IpVersion
 from net_proto import (
-    IP6__HEADER__LEN,
-    UDP__HEADER__LEN,
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
@@ -59,6 +56,7 @@ from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
+from pytcp.stack.packet_handler._icmp_error_demux import parse_embedded_l4
 
 
 class PacketHandlerIcmp6Rx(ABC):
@@ -153,49 +151,48 @@ class PacketHandlerIcmp6Rx(ABC):
             f"from {packet_rx.ip6.src}, will try to match UDP socket",
         )
 
-        # Quick and dirty way to validate received data and pull useful
-        # information from it.
-        # TODO - This will not work in case of IPv6 extension headers present.
-        frame = packet_rx.icmp6.message.data
-        if len(frame) >= IP6__HEADER__LEN + UDP__HEADER__LEN and frame[0] >> 4 == 6 and frame[6] == int(IpProto.UDP):
-            # Create UdpMetadata object and try to find matching UDP socket.
-            udp_offset = IP6__HEADER__LEN
-            packet = UdpMetadata(
-                ip__ver=IpVersion.IP6,
-                ip__local_address=Ip6Address(frame[8:24]),
-                ip__remote_address=Ip6Address(frame[24:40]),
-                udp__local_port=struct.unpack("!H", frame[udp_offset + 0 : udp_offset + 2])[0],
-                udp__remote_port=struct.unpack("!H", frame[udp_offset + 2 : udp_offset + 4])[0],
-            )
-
-            for socket_id in packet.socket_ids:
-                if socket := cast(
-                    UdpSocket,
-                    stack.sockets.get(socket_id, None),
-                ):
-                    __debug__ and log(
-                        "icmp6",
-                        f"{packet_rx.tracker} - <INFO>Found matching "
-                        f"listening socket {socket} for Unreachable "
-                        f"packet from {packet_rx.ip6.src}</>",
-                    )
-                    socket.notify_unreachable()
-                    return
-
-            # TODO: Need to add here handler for situation where Destination Unreachable
-            # message is received as response to TCP SYN packet.
-            # Way to reproduce: 'examples/tcp_echo_client.py --remote-ip-address 2600::'
-            # Similar handler shlould be added to ICMPv4 as well.
-
+        # IPv6 extension headers in the embedded packet are not
+        # supported by the helper — those frames fall through to the
+        # 'no demux possible' log path.
+        embedded = parse_embedded_l4(packet_rx.icmp6.message.data, IpVersion.IP6)
+        if embedded is None:
             __debug__ and log(
                 "icmp6",
-                f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
+                f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
             )
             return
 
+        if embedded.proto is not IpProto.UDP:
+            # TODO: TCP demux is wired up in Phase 5 of the ICMP demux
+            # + PMTUD refactor (see docs/refactor/icmp_demux_pmtud_plan.md).
+            return
+
+        # Create UdpMetadata object and try to find matching UDP socket.
+        packet = UdpMetadata(
+            ip__ver=IpVersion.IP6,
+            ip__local_address=cast(Ip6Address, embedded.local_ip),
+            ip__remote_address=cast(Ip6Address, embedded.remote_ip),
+            udp__local_port=embedded.local_port,
+            udp__remote_port=embedded.remote_port,
+        )
+
+        for socket_id in packet.socket_ids:
+            if socket := cast(
+                UdpSocket,
+                stack.sockets.get(socket_id, None),
+            ):
+                __debug__ and log(
+                    "icmp6",
+                    f"{packet_rx.tracker} - <INFO>Found matching "
+                    f"listening socket {socket} for Unreachable "
+                    f"packet from {packet_rx.ip6.src}</>",
+                )
+                socket.notify_unreachable()
+                return
+
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
+            f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:

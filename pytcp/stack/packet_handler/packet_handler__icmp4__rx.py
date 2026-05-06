@@ -30,14 +30,11 @@ pytcp/subsystems/packet_handler/packet_handler__icmp4__rx.py
 ver 3.0.4
 """
 
-import struct
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, IpVersion
 from net_proto import (
-    IP4__HEADER__LEN,
-    UDP__HEADER__LEN,
     Icmp4MessageDestinationUnreachable,
     Icmp4MessageEchoReply,
     Icmp4MessageEchoRequest,
@@ -53,6 +50,7 @@ from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
+from pytcp.stack.packet_handler._icmp_error_demux import parse_embedded_l4
 
 
 class PacketHandlerIcmp4Rx(ABC):
@@ -160,46 +158,40 @@ class PacketHandlerIcmp4Rx(ABC):
         )
         self._packet_stats_rx.icmp4__destination_unreachable += 1
 
-        # Quick and dirty way to validate received data and pull useful
-        # information from it.
-        frame = packet_rx.icmp4.message.data
-        if (
-            len(frame) >= IP4__HEADER__LEN
-            and frame[0] >> 4 == 4
-            and len(frame) >= ((frame[0] & 0b00001111) << 2)
-            and frame[9] == IpProto.UDP
-            and len(frame) >= ((frame[0] & 0b00001111) << 2) + UDP__HEADER__LEN
-        ):
-            # Create UdpMetadata object and try to find matching UDP socket.
-            udp_offset = (frame[0] & 0b00001111) << 2
-            packet = UdpMetadata(
-                ip__ver=IpVersion.IP4,
-                ip__local_address=Ip4Address(frame[12:16]),
-                ip__remote_address=Ip4Address(frame[16:20]),
-                udp__local_port=struct.unpack("!H", frame[udp_offset + 0 : udp_offset + 2])[0],
-                udp__remote_port=struct.unpack("!H", frame[udp_offset + 2 : udp_offset + 4])[0],
-            )
-
-            for socket_id in packet.socket_ids:
-                if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                    __debug__ and log(
-                        "icmp4",
-                        f"{packet_rx.tracker} - <INFO>Found matching "
-                        f"listening socket {socket}, for Unreachable "
-                        f"packet from {packet_rx.ip4.src}</>",
-                    )
-                    socket.notify_unreachable()
-                    return
-
+        embedded = parse_embedded_l4(packet_rx.icmp4.message.data, IpVersion.IP4)
+        if embedded is None:
             __debug__ and log(
                 "icmp4",
-                f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
+                f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
             )
             return
 
+        if embedded.proto is not IpProto.UDP:
+            return
+
+        # Create UdpMetadata object and try to find matching UDP socket.
+        packet = UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=cast(Ip4Address, embedded.local_ip),
+            ip__remote_address=cast(Ip4Address, embedded.remote_ip),
+            udp__local_port=embedded.local_port,
+            udp__remote_port=embedded.remote_port,
+        )
+
+        for socket_id in packet.socket_ids:
+            if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                __debug__ and log(
+                    "icmp4",
+                    f"{packet_rx.tracker} - <INFO>Found matching "
+                    f"listening socket {socket}, for Unreachable "
+                    f"packet from {packet_rx.ip4.src}</>",
+                )
+                socket.notify_unreachable()
+                return
+
         __debug__ and log(
             "icmp4",
-            f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
+            f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
