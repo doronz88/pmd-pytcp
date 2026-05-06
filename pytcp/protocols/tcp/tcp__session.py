@@ -3957,6 +3957,26 @@ class TcpSession:
             if self._rack_reo_wnd_persist == 0:
                 self._rack_reo_wnd_mult = 1
                 self._rack_reo_wnd_persist = 16
+        self._phase5_consume_segment_and_postprocess(packet_rx_md)
+
+    def _phase5_consume_segment_and_postprocess(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Phase 5 of the inbound-ACK pipeline. Consume the inbound
+        segment's data + window field, fire the delayed-ACK side-
+        effects, purge stale TX-retransmit bookkeeping, and drain
+        a queued out-of-order segment if 'rcv_nxt' has advanced
+        across it. Last phase; reads everything settled by the
+        earlier phases.
+
+        Reference: RFC 9293 §3.4 (RCV.NXT advance protections).
+        Reference: RFC 9293 §3.8.4 (snd_ewn = min(cwnd, snd_wnd)).
+        Reference: RFC 9293 §3.8.6.1 (persist timer reset on reopen).
+        Reference: RFC 9293 §3.10.7.4 (segment-arrives RCV.NXT update).
+        Reference: RFC 1122 §4.2.3.2 (delayed-ACK every-other-segment).
+        Reference: RFC 2883 §3 (DSACK detection / generation).
+        Reference: RFC 5961 §5 (MAX.SND.WND running maximum).
+        """
+
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
         if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):
