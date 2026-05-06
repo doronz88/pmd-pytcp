@@ -36,6 +36,10 @@ and call `socket.notify_unreachable()`.
 
 ### 1.2 What this plan delivers
 
+0. **ICMP integration-test harness** mirroring `TcpSessionTestCase`
+   so this refactor and the future ICMP protocol refactor have a
+   fluent, low-friction integration-test surface instead of the
+   coarse parametrized golden-bytes matrix.
 1. **Shared embedded-header parser** so the same parsing code drives
    all four error handlers (v4/v6 × Dest-Unreachable / Frag-Needed
    / Packet-Too-Big).
@@ -156,8 +160,56 @@ hop-limit-exceeded / packet-too-big paths handle it.
 ## 3. Phased implementation
 
 Each phase is one commit. Suite must be green at every phase
-boundary. Order is bottom-up so the demux infrastructure exists
-before the protocol callbacks reach for it.
+boundary. Order is bottom-up so the testing harness and demux
+infrastructure exist before the protocol callbacks reach for them.
+
+> Note on existing exact-bytes-match integration tests: Phase 8
+> (DF=1 default in `_phtx_ip4`) will toggle the IPv4 flags byte
+> on every existing outbound v4 frame in the
+> `_expected__frames_tx` golden buffers across
+> `test__packet_handler__udp__rx.py`,
+> `test__packet_handler__tcp__rx.py`,
+> `test__packet_handler__udp__tx.py`,
+> `test__packet_handler__icmp4__rx.py`, etc. Phase 8's commit
+> body must enumerate the golden-byte updates explicitly. That
+> churn is mechanical but high-volume — anticipate it.
+
+### Phase 0 — ICMP integration-test harness (1 commit)
+
+Mirrors `TcpSessionTestCase` so subsequent ICMP-related work
+(this refactor + the future ICMP protocol refactor) writes
+fluent integration tests instead of golden-byte parametrized
+matrices.
+
+- New file `pytcp/tests/lib/icmp_testcase.py`:
+  - `Icmp4Probe` frozen dataclass — decoded snapshot of one
+    outbound IPv4/ICMPv4 frame: `ip_src`, `ip_dst`, `ip_df`,
+    `ip_mf`, `ip_offset`, `icmp_type`, `icmp_code`, `icmp_id`,
+    `icmp_seq`, `icmp_mtu` (Frag-Needed only),
+    `embedded_proto`, `embedded_l4` (`EmbeddedL4` re-exported
+    from Phase 1's helper), `data` (raw embedded bytes).
+  - `Icmp6Probe` — IPv6/ICMPv6 counterpart, plus ND fields
+    (`nd_target`, `nd_options`).
+  - `IcmpTestCase(NetworkTestCase)` extending the shared
+    snapshot+clear+restore harness with the same isolation
+    hooks as `TcpSessionTestCase` (`stack.sockets`,
+    `stack.tcp_stack`, `stack.interface_mtu`, plus
+    `stack.pmtu_cache` once Phase 3 lands — wire the snapshot
+    in Phase 0 with a no-op fallback if the attribute doesn't
+    exist yet, so Phase 3 lands without harness churn).
+  - Helpers: `_drive_rx`, `_advance`, `_parse_tx_icmp4`,
+    `_parse_tx_icmp6`, `_assert_icmp4_message`,
+    `_assert_icmp6_message`, `_assert_no_tx`.
+- Migration: reshape the existing parametrized
+  `pytcp/tests/integration/test__packet_handler__icmp4__rx.py`
+  and `test__packet_handler__icmp6__rx.py` (and the `tx`
+  counterparts) into per-scenario files under
+  `pytcp/tests/integration/protocols/icmp4/` and
+  `protocols/icmp6/` using `IcmpTestCase`. Keep one fluent
+  test per existing parametrized case so coverage parity is
+  obvious in the diff. Delete the old monolithic files only
+  after the new tests pass.
+- No production-code changes.
 
 ### Phase 1 — Embedded-header parser helper (1 commit)
 
@@ -246,7 +298,7 @@ before the protocol callbacks reach for it.
   driving the full path: outbound segment, ICMP Frag-Needed /
   PTB inbound, MSS recompute, smaller retransmit on the wire.
 
-### Phase 7 — DF=1 on outbound IPv4 (1 commit)
+### Phase 8 — DF=1 on outbound IPv4 (1 commit)
 
 - Audit `pytcp/stack/packet_handler/packet_handler__ip4__tx.py`
   to find the IPv4 TX entry point (likely `_phtx_ip4` or
@@ -258,7 +310,7 @@ before the protocol callbacks reach for it.
 - Update existing integration tests that observe outbound IPv4
   flag bits.
 
-### Phase 8 — Per-RFC adherence audit updates (1 commit)
+### Phase 9 — Per-RFC adherence audit updates (1 commit)
 
 - Update `docs/rfc/tcp/rfc1191__path_mtu_discovery/adherence.md`
   reflecting shipped status.
@@ -306,20 +358,38 @@ and (for the test commits) in test docstring `Reference:` lines.
 
 ### 5.2 New integration tests
 
+All built on top of the new `IcmpTestCase` harness from Phase 0.
+
 | File | Coverage |
 |---|---|
-| `pytcp/tests/integration/stack/test__icmp4__error_demux.py` | ICMPv4 Type 3 + Type 11 RX paths into UDP/TCP |
-| `pytcp/tests/integration/stack/test__icmp6__error_demux.py` | ICMPv6 Type 1 + Type 2 + Type 3 RX paths |
-| `pytcp/tests/integration/stack/test__udp__pmtud.py` | End-to-end PMTUD signal for UDP |
+| `pytcp/tests/integration/protocols/icmp4/test__icmp4__error_demux.py` | ICMPv4 Type 3 + Type 11 RX paths into UDP/TCP demux |
+| `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` | ICMPv4 Type 3 Code 4 → `pmtu_cache` update + UDP/TCP callbacks |
+| `pytcp/tests/integration/protocols/icmp6/test__icmp6__error_demux.py` | ICMPv6 Type 1 + Type 2 + Type 3 RX paths |
+| `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` | ICMPv6 Type 2 (Packet Too Big) → `pmtu_cache` update + UDP/TCP callbacks |
 | `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py` | End-to-end PMTUD signal for TCP — outbound segment, ICMP Frag-Needed inbound, MSS recompute, smaller retransmit observable on the mock TAP |
+| `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` | End-to-end SYN_SENT ICMP-Port-Unreachable → ConnectionRefused abort |
 
 ### 5.3 Existing tests that may need updates
 
-- `pytcp/tests/integration/stack/test__icmp4__rx.py` — already
-  exercises the existing UDP Dest-Unreachable demux; assert
-  the post-Phase-2 refactor doesn't change observable behaviour.
-- Any integration test that observes the IPv4 DF flag bit on
-  outbound packets — Phase 7 changes the default to True.
+- `pytcp/tests/integration/test__packet_handler__icmp4__rx.py`
+  and `test__packet_handler__icmp6__rx.py` — Phase 0 migrates
+  these into per-scenario files under
+  `pytcp/tests/integration/protocols/icmp4/` and
+  `protocols/icmp6/` using `IcmpTestCase`. Coverage parity
+  is the migration acceptance gate.
+- `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp4__rx.py`
+  — already exercises the existing UDP Dest-Unreachable demux
+  unit-level; Phase 2's refactor must keep this green.
+- Every integration test that exact-bytes-matches outbound v4
+  frames in `_expected__frames_tx` — Phase 8 changes the
+  default DF bit, so the IPv4 flags byte (offset 6 in the v4
+  header) flips from `0x00` to `0x40` on every emitted v4
+  frame. Affects (at minimum):
+  `test__packet_handler__udp__rx.py`,
+  `test__packet_handler__udp__tx.py`,
+  `test__packet_handler__tcp__rx.py`,
+  `test__packet_handler__icmp4__rx.py`. Mechanical
+  golden-byte updates only; enumerate in Phase 8 commit body.
 
 ---
 
@@ -366,20 +436,30 @@ this ceiling — already handled by the existing
 
 | Phase | Commits | Risk | Notes |
 |---|---|---|---|
-| 1 — Helper | 1 | Low | Pure new code |
-| 2 — Refactor existing UDP demux | 1 | Low | No behaviour change |
-| 3 — pmtu_cache substrate | 1 | Low | Module-level dict |
-| 4 — UDP PMTUD callback | 1 | Medium | New ICMP type-2 handler |
-| 5 — TCP demux | 1 | Medium | RFC 5927 guard, FSM transitions |
-| 6 — TCP PMTUD | 1 | Medium-High | MSS recompute + retransmit walkback |
-| 7 — DF=1 outbound | 1 | Medium | Wire-format change observable in tests |
-| 8 — Audits | 1 | Low | Documentation |
-| **Total** | **8** | **Medium overall** | |
+| 0 — ICMP harness + migration                   | 1 | Low         | Pure test-side; coverage parity gate |
+| 1 — Embedded-header parser helper              | 1 | Low         | Pure new code |
+| 2 — Refactor existing UDP demux onto helper    | 1 | Low         | No behaviour change |
+| 3 — `pmtu_cache` substrate                     | 1 | Low         | Module-level dict + harness snapshot hook |
+| 4 — UDP PMTUD callback                         | 1 | Medium      | New ICMP type-2 handler |
+| 5 — TCP demux (Dest-Unreachable v4 + v6)       | 1 | Medium      | RFC 5927 guard, FSM transitions |
+| 6 — TCP PMTUD                                  | 1 | Medium-High | MSS recompute + retransmit walkback |
+| 8 — DF=1 outbound IPv4                         | 1 | Medium      | Wire-format default change; golden-byte updates across existing exact-bytes tests |
+| 9 — Audits                                     | 1 | Low         | Documentation |
+| **Total**                                      | **9** | **Medium overall** | |
 
-Realistic estimate: 8 commits, roughly half a day of focused
-work each. The TCP PMTUD path (Phase 6) has the highest risk
-because of the retransmit-walkback subtlety; the rest is more
-mechanical.
+Phase numbers skip 7 deliberately — Phase 7 was used in an
+earlier draft and dropped during the Phase-0 insertion. The
+sequencing rationale (test-harness first, demux second,
+substrate third, callbacks last, wire-default change after
+all behaviour pinned) is what matters; the labels are stable
+references for commit messages.
+
+Realistic estimate: 9 commits, roughly half a day of focused
+work each. Phase 0 is mostly mechanical migration of existing
+ICMP integration cases and pays for itself across the rest of
+the refactor and the future ICMP protocol refactor. Phase 6
+remains the highest-risk slice because of the retransmit-
+walkback subtlety.
 
 ---
 
