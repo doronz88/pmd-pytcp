@@ -38,7 +38,7 @@ States that have nothing to do for a given event kind are
 absent from that event's table - the dispatcher uses dict
 '.get()' so the no-op case is a single attribute access.
 
-pytcp/protocols/tcp/tcp__fsm.py
+pytcp/protocols/tcp/fsm/tcp__fsm.py
 
 ver 3.0.4
 """
@@ -48,46 +48,46 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
-from pytcp.protocols.tcp.tcp__fsm__close_wait import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__close_wait import (
     fsm__close_wait__packet,
     fsm__close_wait__syscall,
     fsm__close_wait__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__closed import fsm__closed__syscall
-from pytcp.protocols.tcp.tcp__fsm__closing import fsm__closing__packet
-from pytcp.protocols.tcp.tcp__fsm__established import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__closed import fsm__closed__syscall
+from pytcp.protocols.tcp.fsm.tcp__fsm__closing import fsm__closing__packet
+from pytcp.protocols.tcp.fsm.tcp__fsm__established import (
     fsm__established__packet,
     fsm__established__syscall,
     fsm__established__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__fin_wait_1 import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_1 import (
     fsm__fin_wait_1__packet,
     fsm__fin_wait_1__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__fin_wait_2 import fsm__fin_wait_2__packet
-from pytcp.protocols.tcp.tcp__fsm__last_ack import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_2 import fsm__fin_wait_2__packet
+from pytcp.protocols.tcp.fsm.tcp__fsm__last_ack import (
     fsm__last_ack__packet,
     fsm__last_ack__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__listen import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__listen import (
     fsm__listen__packet,
     fsm__listen__syscall,
 )
-from pytcp.protocols.tcp.tcp__fsm__syn_rcvd import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__syn_rcvd import (
     fsm__syn_rcvd__packet,
     fsm__syn_rcvd__syscall,
     fsm__syn_rcvd__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__syn_sent import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__syn_sent import (
     fsm__syn_sent__packet,
     fsm__syn_sent__syscall,
     fsm__syn_sent__timer,
 )
-from pytcp.protocols.tcp.tcp__fsm__time_wait import (
+from pytcp.protocols.tcp.fsm.tcp__fsm__time_wait import (
     fsm__time_wait__packet,
     fsm__time_wait__timer,
 )
+from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession

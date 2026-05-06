@@ -27,7 +27,7 @@
 """
 This module contains the TCP FSM LISTEN state handler.
 
-pytcp/protocols/tcp/tcp__fsm__listen.py
+pytcp/protocols/tcp/fsm/tcp__fsm__listen.py
 
 ver 3.0.4
 """

@@ -27,7 +27,7 @@
 """
 This module contains the TCP FSM TIME_WAIT state handler.
 
-pytcp/protocols/tcp/tcp__fsm__time_wait.py
+pytcp/protocols/tcp/fsm/tcp__fsm__time_wait.py
 
 ver 3.0.4
 """

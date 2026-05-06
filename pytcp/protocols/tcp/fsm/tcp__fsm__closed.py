@@ -27,7 +27,7 @@
 """
 This module contains the TCP FSM CLOSED state handler.
 
-pytcp/protocols/tcp/tcp__fsm__closed.py
+pytcp/protocols/tcp/fsm/tcp__fsm__closed.py
 
 ver 3.0.4
 """

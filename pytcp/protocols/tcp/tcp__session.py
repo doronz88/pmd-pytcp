@@ -42,6 +42,9 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
+from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
+from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__advertise import AdvertiseState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
@@ -76,9 +79,6 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
 )
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
-from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
-from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
-from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.tcp__hystart import (
     css_growth_increment,
     enter_css,

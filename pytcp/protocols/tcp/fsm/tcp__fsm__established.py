@@ -27,7 +27,7 @@
 """
 This module contains the TCP FSM ESTABLISHED state handler.
 
-pytcp/protocols/tcp/tcp__fsm__established.py
+pytcp/protocols/tcp/fsm/tcp__fsm__established.py
 
 ver 3.0.4
 """

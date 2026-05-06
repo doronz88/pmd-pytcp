@@ -27,7 +27,7 @@ This module contains tests for the 'TcpSession' FSM state-transition
 handlers ('_tcp_fsm_closed' through '_tcp_fsm_time_wait') and the
 top-level 'tcp_fsm' dispatch.
 
-pytcp/tests/unit/protocols/tcp/test__tcp__fsm.py
+pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm.py
 
 ver 3.0.4
 """
@@ -418,7 +418,7 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
         Reference: RFC 9293 §3.3.2 (state machine dispatch).
         """
 
-        from pytcp.protocols.tcp.tcp__fsm import FSM_PACKET_HANDLERS
+        from pytcp.protocols.tcp.fsm.tcp__fsm import FSM_PACKET_HANDLERS
 
         dummy_md = MagicMock()
         for state in FSM_PACKET_HANDLERS:
@@ -438,8 +438,8 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
         Reference: RFC 9293 §3.3.2 (state machine dispatch).
         """
 
+        from pytcp.protocols.tcp.fsm.tcp__fsm import FSM_SYSCALL_HANDLERS
         from pytcp.protocols.tcp.tcp__enums import SysCall
-        from pytcp.protocols.tcp.tcp__fsm import FSM_SYSCALL_HANDLERS
 
         for state in FSM_SYSCALL_HANDLERS:
             with self.subTest(state=state):
@@ -458,7 +458,7 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
         Reference: RFC 9293 §3.3.2 (state machine dispatch).
         """
 
-        from pytcp.protocols.tcp.tcp__fsm import FSM_TIMER_HANDLERS
+        from pytcp.protocols.tcp.fsm.tcp__fsm import FSM_TIMER_HANDLERS
 
         for state in FSM_TIMER_HANDLERS:
             with self.subTest(state=state):

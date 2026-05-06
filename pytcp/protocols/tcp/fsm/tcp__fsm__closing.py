@@ -25,9 +25,9 @@
 # pyright: reportPrivateUsage=false, reportUnusedExpression=false
 
 """
-This module contains the TCP FSM LAST_ACK state handler.
+This module contains the TCP FSM CLOSING state handler.
 
-pytcp/protocols/tcp/tcp__fsm__last_ack.py
+pytcp/protocols/tcp/fsm/tcp__fsm__closing.py
 
 ver 3.0.4
 """
@@ -36,31 +36,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState
-from pytcp.protocols.tcp.tcp__seq import gt32, in_range32
+from pytcp.protocols.tcp.tcp__seq import ge32, gt32, in_range32
 
 if TYPE_CHECKING:
     from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
-def fsm__last_ack__timer(session: TcpSession) -> None:
+def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """
-    TCP FSM LAST_ACK state timer handler.
-
-    Run retransmit-timeout machinery and drain any remaining
-    TX buffer (typically the final FIN that we are awaiting
-    an ACK for).
-    """
-
-    session._retransmit_packet_timeout()
-    session._transmit_data()
-
-
-def fsm__last_ack__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
-    """
-    TCP FSM LAST_ACK state packet handler.
+    TCP FSM CLOSING state packet handler.
     """
 
     # Got SYN-bearing segment in a synchronized state -> Send a
@@ -69,7 +58,7 @@ def fsm__last_ack__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         session._emit_challenge_ack()
         __debug__ and log(
             "tcp-ss",
-            f"[{session}] - Sent challenge ACK for SYN-in-last_ack (RFC 9293 §3.10.7.4)",
+            f"[{session}] - Sent challenge ACK for SYN-in-closing (RFC 9293 §3.10.7.4)",
         )
         return
 
@@ -79,23 +68,42 @@ def fsm__last_ack__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
     if not session._check_segment_acceptability(packet_rx_md):
         return
 
-    # Got ACK packet -> Change state to CLOSED.
+    # Got ACK packet -> ESTABLISHED-style ACK processing per
+    # RFC 9293 §3.10.7.4 ("CLOSING STATE: In addition to the
+    # processing for the ESTABLISHED state, if our FIN is now
+    # acknowledged then enter the TIME-WAIT state, otherwise
+    # ignore the segment."). Mirrors the FIN_WAIT_1 /
+    # FIN_WAIT_2 / LAST_ACK shape: '_process_ack_packet'
+    # handles SND.UNA advance, scoreboard prune, retransmit-
+    # counter purge, and persist-timer reset; the FIN-acked
+    # check uses 'ge32(snd_una, snd_fin)' on the post-update
+    # SND.UNA. The strict 'tcp__ack == self._snd_seq.nxt' check
+    # used previously was equivalent in the canonical
+    # simultaneous-close flow but silently dropped 'ack >
+    # snd_max' cases that RFC §3.10.7.4 step 5 mandates an
+    # empty-ACK reply for; the new shape inherits the
+    # sibling-state empty-ACK fallback below.
     if all({packet_rx_md.tcp__flag_ack}) and not any(
         {
-            packet_rx_md.tcp__flag_syn,
             packet_rx_md.tcp__flag_fin,
+            packet_rx_md.tcp__flag_syn,
             packet_rx_md.tcp__flag_rst,
         }
     ):
-        # Packet sanity check.
-        if packet_rx_md.tcp__ack == session._snd_seq.nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
-            session._change_state(FsmState.CLOSED)
+            session._process_ack_packet(packet_rx_md)
+            # If our FIN is now acked, enter TIME_WAIT.
+            if ge32(session._snd_seq.una, session._snd_seq.fin):
+                session._change_state(FsmState.TIME_WAIT)
+                stack.timer.register_timer(name=f"{session}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
             return
-        # RFC 9293 §3.10.7.4 step 5 empty-ACK reply on
-        # 'ack > SND.MAX'. Same gap as fixed in CLOSING /
-        # FIN_WAIT_1 / FIN_WAIT_2.
+        # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
+        # data we have never sent (ack > SND.MAX) MUST elicit
+        # an empty-ACK reply carrying our current SND.NXT and
+        # RCV.NXT. The strict-equality predecessor of this
+        # branch silently dropped these.
         if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
         return
