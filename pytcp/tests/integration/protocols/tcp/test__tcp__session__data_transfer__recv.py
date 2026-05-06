@@ -156,7 +156,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        rcv_una_before = session._rcv_una
+        rcv_una_before = session._rcv_seq.una
         snd_nxt_before = session._snd_seq.nxt
 
         # Peer sends 5 bytes of in-order data.
@@ -192,12 +192,12 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(payload),
             msg=("'_rcv_nxt' must advance by len(payload) after " "consuming the in-order data segment."),
         )
         self.assertEqual(
-            session._rcv_una,
+            session._rcv_seq.una,
             rcv_una_before,
             msg=("'_rcv_una' must be unchanged - we have not yet " "acknowledged the new data."),
         )
@@ -247,8 +247,8 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         # After the ACK fires, '_rcv_una' must catch up with '_rcv_nxt'.
         self.assertEqual(
-            session._rcv_una,
-            session._rcv_nxt,
+            session._rcv_seq.una,
+            session._rcv_seq.nxt,
             msg=(
                 "After the delayed ACK fires, '_rcv_una' must equal "
                 "'_rcv_nxt' - we have acknowledged everything we have "
@@ -310,7 +310,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 1460,
             msg="After the first segment, '_rcv_nxt' must advance by MSS bytes.",
         )
@@ -354,13 +354,13 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             msg=("Both back-to-back segments must be delivered to " "'_rx_buffer' in the order they arrived."),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 2 * 1460,
             msg="'_rcv_nxt' must equal PEER__ISS + 1 + 2*MSS after both segments.",
         )
         self.assertEqual(
-            session._rcv_una,
-            session._rcv_nxt,
+            session._rcv_seq.una,
+            session._rcv_seq.nxt,
             msg=(
                 "After the inline 'every other segment' ACK fires, "
                 "'_rcv_una' must equal '_rcv_nxt' - we have just "
@@ -389,8 +389,8 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
-        rcv_una_before = session._rcv_una
+        rcv_nxt_before = session._rcv_seq.nxt
+        rcv_una_before = session._rcv_seq.una
 
         # Peer sends a bare ACK acknowledging our SYN once more.
         bare_ack = build_tcp4(
@@ -419,14 +419,14 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             msg="A bare ACK carries no data; '_rx_buffer' must remain empty.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "'_rcv_nxt' must NOT advance on a bare ACK with no " "data - there is no new sequence space to consume."
             ),
         )
         self.assertEqual(
-            session._rcv_una,
+            session._rcv_seq.una,
             rcv_una_before,
             msg="'_rcv_una' must be unchanged after a bare ACK that elicits no outbound ACK.",
         )
@@ -480,7 +480,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer sends a segment with an ACK that acknowledges data we
         # have never sent. Pick 0xDEAD as the offset so the bogus
@@ -532,7 +532,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             msg="'_snd_nxt' must be unchanged - we have transmitted nothing new.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "'_rcv_nxt' must be unchanged - the offending "

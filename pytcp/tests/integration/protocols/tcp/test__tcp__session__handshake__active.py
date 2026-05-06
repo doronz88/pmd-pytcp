@@ -255,7 +255,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             msg="'_snd_una' must equal ISS+1 after peer ACKs our SYN.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg="'_rcv_nxt' must equal peer_ISS+1 after consuming the SYN's one byte of sequence space.",
         )
@@ -333,12 +333,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(payload),
             msg=(
                 "'RCV.NXT' MUST advance past BOTH the SYN's one "
                 "byte AND every byte of payload. Got: "
-                f"{session._rcv_nxt:#x}, expected: "
+                f"{session._rcv_seq.nxt:#x}, expected: "
                 f"{PEER__ISS + 1 + len(payload):#x}."
             ),
         )
@@ -709,7 +709,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         snd_una_before = session._snd_seq.una
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer's third-leg ACK was lost in flight; their RTO fires and
         # they retransmit the SAME SYN+ACK. Drive it into our session.
@@ -767,7 +767,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "Reprocessing a retransmitted SYN+ACK must not advance "
@@ -893,7 +893,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer sends SYN+ACK with a clearly unacceptable ACK number.
         # 0xDEADBEEF is far outside the only valid value ISS+1=0x1001
@@ -959,7 +959,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "A rejected SYN+ACK's SYN must not be processed - "
@@ -1183,7 +1183,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "handler at '_tcp_fsm_syn_sent' line ~2024 calls "
                 "'_transmit_packet' without bootstrapping "
                 "'_rcv_nxt' from peer's SYN, so the default "
-                "'ack = self._rcv_nxt = 0' is used. Peer's TCP "
+                "'ack = self._rcv_seq.nxt = 0' is used. Peer's TCP "
                 "rejects our SYN+ACK as not acknowledging their "
                 "SYN, and the connection never establishes."
             ),
@@ -1209,7 +1209,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
 
         # Bootstrapped peer-side state.
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg=(
                 "'_rcv_nxt' MUST be advanced past peer's SYN "
@@ -1218,7 +1218,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_ini,
+            session._rcv_seq.ini,
             PEER__ISS,
             msg="'_rcv_ini' MUST record peer's ISN for downstream consistency.",
         )

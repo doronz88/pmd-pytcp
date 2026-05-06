@@ -132,7 +132,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             session.state == FsmState.ESTABLISHED
             session._snd_seq.nxt == iss + 1
             session._snd_seq.una == iss + 1
-            session._rcv_nxt == peer_iss + 1
+            session._rcv_seq.nxt == peer_iss + 1
         """
 
         session = self._make_active_session(iss=iss)
@@ -161,8 +161,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             session._snd_seq.nxt == iss + 1
         ), f"Handshake setup failed: '_snd_nxt' is {session._snd_seq.nxt:#x}, expected {iss + 1:#x}."
         assert (
-            session._rcv_nxt == peer_iss + 1
-        ), f"Handshake setup failed: '_rcv_nxt' is {session._rcv_nxt:#x}, expected {peer_iss + 1:#x}."
+            session._rcv_seq.nxt == peer_iss + 1
+        ), f"Handshake setup failed: '_rcv_nxt' is {session._rcv_seq.nxt:#x}, expected {peer_iss + 1:#x}."
 
         return session
 
@@ -691,7 +691,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Setup precondition: peer's FIN+ACK must transition us to CLOSE_WAIT.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg=(
                 "Setup precondition: '_rcv_nxt' must equal "

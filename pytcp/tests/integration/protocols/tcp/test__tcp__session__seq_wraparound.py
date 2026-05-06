@@ -466,7 +466,7 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             0xFFFF_FFFD,
             msg=("Setup precondition: post-handshake 'RCV.NXT' must " "equal 'peer_iss + 1' = 0xFFFF_FFFD."),
         )
@@ -488,7 +488,7 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
         # The spec encoding: RCV.NXT advances modularly.
         expected_rcv_nxt = (0xFFFF_FFFD + len(peer_payload)) % SEQ32__MOD
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             expected_rcv_nxt,
             msg=(
                 "After peer's 8-byte data segment at "
@@ -627,9 +627,9 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
     """
     Tests for the receive-window acceptability check
     ('RCV.NXT <= SEG.SEQ < RCV.NXT + RCV.WND') across the 32-bit
-    wrap. The right-edge expression 'self._rcv_nxt + self._rcv_wnd'
+    wrap. The right-edge expression 'self._rcv_seq.nxt + self._rcv_wnd'
     is raw Python addition that overflows past 2**32 when
-    'self._rcv_nxt' is near the wrap; the resulting comparison
+    'self._rcv_seq.nxt' is near the wrap; the resulting comparison
     rejects in-window segments whose seq numerically exceeds
     2**32 even though they are modularly inside the window.
     """
@@ -700,9 +700,9 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
         # in-order; its 'seg_end' wraps past the 32-bit ceiling,
         # which is what exercises the receive-window
         # acceptability check's modular right-edge computation.
-        session._rcv_nxt = 0xFFFF_FFE0
-        session._rcv_una = 0xFFFF_FFE0
-        session._rcv_ini = 0xFFFF_FFE0
+        session._rcv_seq.nxt = 0xFFFF_FFE0
+        session._rcv_seq.una = 0xFFFF_FFE0
+        session._rcv_seq.ini = 0xFFFF_FFE0
 
         # Peer sends 50 bytes at seq=RCV.NXT (=0xFFFF_FFE0). The
         # segment's right edge wraps past 0xFFFF_FFFF to 0x12,
@@ -724,7 +724,7 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
         # bytes consumed from 0xFFFF_FFE0 to 0xFFFF_FFFF + 1
         # phantom, then 18 bytes from 0x0 to 0x12).
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             0x0000_0012,
             msg=(
                 "An in-order peer data segment whose "
@@ -1154,7 +1154,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
 
 class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
     """
-    Tests the 'self._rcv_nxt > 0' sentinel collision in
+    Tests the 'self._rcv_seq.nxt > 0' sentinel collision in
     '_retransmit_packet_timeout's R2-abort RST emission. The
     abort path emits a RST to peer iff '_rcv_nxt > 0', the
     rationale being '_rcv_nxt' is initialised to 0 and becomes
@@ -1232,7 +1232,7 @@ class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
         )
         # Sanity - the wrap precondition the bug hinges on.
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             0,
             msg=(
                 "Setup precondition: post-handshake 'RCV.NXT' "

@@ -126,7 +126,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # still ingested in case peer piggybacked OOO state on
         # the wnd-update.
         if (
-            packet_rx_md.tcp__seq == session._rcv_nxt
+            packet_rx_md.tcp__seq == session._rcv_seq.nxt
             and packet_rx_md.tcp__ack == session._snd_seq.una
             and not packet_rx_md.tcp__data
         ):
@@ -163,19 +163,19 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # which queues the segment with DSACK case-2
         # detection (commit 'b69e8b1') because RCV.NXT in
         # ESTABLISHED can still advance to fill the gap.
-        if gt32(packet_rx_md.tcp__seq, session._rcv_nxt) and in_range32(
+        if gt32(packet_rx_md.tcp__seq, session._rcv_seq.nxt) and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
                 "tcp-ss",
                 f"[{session}] - OOO post-FIN data in CLOSE_WAIT (RFC violation by peer); "
-                f"acked at RCV.NXT={session._rcv_nxt} without queueing",
+                f"acked at RCV.NXT={session._rcv_seq.nxt} without queueing",
             )
             return
         # Regular ACK packet (no data) -> ACK-field processing.
         if (
-            packet_rx_md.tcp__seq == session._rcv_nxt
+            packet_rx_md.tcp__seq == session._rcv_seq.nxt
             and in_range32(packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max)
             and not packet_rx_md.tcp__data
         ):
@@ -193,14 +193,14 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # emit carries our current RCV.NXT (= peer's FIN seq
         # + 1, unchanged), which signals peer "we acknowledge
         # receipt but cannot consume past your FIN".
-        if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
                 "tcp-ss",
                 f"[{session}] - Post-FIN data in CLOSE_WAIT (RFC violation by peer); "
-                f"acked at RCV.NXT={session._rcv_nxt} without enqueue",
+                f"acked at RCV.NXT={session._rcv_seq.nxt} without enqueue",
             )
             return
         return

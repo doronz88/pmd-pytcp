@@ -1184,7 +1184,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self._advance(ms=200)
 
         rx_buffer_before = bytes(session._rx_buffer)
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer re-sends segment 1 - fully duplicate.
         seg1_dup = build_tcp4(

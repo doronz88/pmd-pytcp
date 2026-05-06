@@ -267,7 +267,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         session._keepalive.enabled = True
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         boundary_tx = self._advance(ms=TEST__KEEPALIVE_IDLE_TIME_MS + 1)
         self.assertEqual(
@@ -329,7 +329,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         peer_ack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt,
+            seq=session._rcv_seq.nxt,
             ack=session._snd_seq.nxt,
             flags=("ACK",),
             win=PEER__WIN,
@@ -433,7 +433,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt,
+            seq=session._rcv_seq.nxt,
             ack=session._snd_seq.nxt,
             flags=("ACK",),
             win=PEER__WIN,

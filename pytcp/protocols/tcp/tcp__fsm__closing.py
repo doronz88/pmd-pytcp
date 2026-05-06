@@ -90,7 +90,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
             packet_rx_md.tcp__flag_rst,
         }
     ):
-        if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)

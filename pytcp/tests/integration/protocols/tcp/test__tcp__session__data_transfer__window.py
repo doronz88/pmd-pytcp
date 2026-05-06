@@ -805,7 +805,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         # Initial right edge: rcv_nxt + _rcv_wnd_max.
-        initial_right_edge = session._rcv_nxt + session._rcv_wnd_max
+        initial_right_edge = session._rcv_seq.nxt + session._rcv_wnd_max
 
         # Drive 8 back-to-back full-MSS segments with no app reads.
         # Each pair of segments fires one inline cumulative ACK
@@ -870,13 +870,13 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         session._rx_buffer.extend(b"P" * prefill_count)
         # Manually advance rcv_nxt so the rx buffer occupancy
         # is consistent (peer's seq view).
-        session._rcv_nxt = (PEER__ISS + 1 + prefill_count) & 0xFFFF_FFFF
+        session._rcv_seq.nxt = (PEER__ISS + 1 + prefill_count) & 0xFFFF_FFFF
 
         # Trigger an outbound ACK to observe the floor.
         seg = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt,
+            seq=session._rcv_seq.nxt,
             ack=LOCAL__ISS + 1,
             flags=("ACK",),
             win=PEER__WIN,
@@ -887,7 +887,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         seg2 = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt + 50,
+            seq=session._rcv_seq.nxt + 50,
             ack=LOCAL__ISS + 1,
             flags=("ACK",),
             win=PEER__WIN,
@@ -922,7 +922,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         seg3 = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt + 100,
+            seq=session._rcv_seq.nxt + 100,
             ack=LOCAL__ISS + 1,
             flags=("ACK",),
             win=PEER__WIN,
@@ -931,7 +931,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         seg4 = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt + 101,
+            seq=session._rcv_seq.nxt + 101,
             ack=LOCAL__ISS + 1,
             flags=("ACK",),
             win=PEER__WIN,

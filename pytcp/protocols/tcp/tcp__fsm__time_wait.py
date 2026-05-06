@@ -125,7 +125,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
         and not packet_rx_md.tcp__flag_ack
         and not packet_rx_md.tcp__flag_rst
         and (
-            gt32(packet_rx_md.tcp__seq, session._rcv_nxt)
+            gt32(packet_rx_md.tcp__seq, session._rcv_seq.nxt)
             or (packet_rx_md.tcp__tsval is not None and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry))
         )
     ):
@@ -133,7 +133,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
             "tcp-ss",
             f"[{session}] - RFC 6191 §2 reuse: peer SYN "
             f"seq={packet_rx_md.tcp__seq} (> RCV.NXT="
-            f"{session._rcv_nxt}) or TSval="
+            f"{session._rcv_seq.nxt}) or TSval="
             f"{packet_rx_md.tcp__tsval} (> _ts_recent="
             f"{ts_recent_at_entry}); terminating TIME_WAIT and "
             "accepting fresh SYN",
@@ -150,7 +150,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     # timeout.' The FIN's seq does not advance with retransmits,
     # so peer is replaying the same byte of sequence space we
     # already accepted (RCV.NXT - 1).
-    if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_nxt:
+    if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_seq.nxt:
         session._transmit_packet(flag_ack=True)
         stack.timer.register_timer(
             name=f"{session}-time_wait",

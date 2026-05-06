@@ -235,7 +235,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg="'RCV.NXT' must advance past peer's FIN's one byte of sequence space.",
         )
@@ -325,7 +325,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer sends a bare ACK with ack acknowledging unsent
         # data. The receiver MUST emit an empty-ACK reply.
@@ -424,7 +424,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer retransmits the original 50-byte data segment - seq
         # below RCV.NXT, fully duplicate. We MUST emit an ACK reply.
@@ -488,7 +488,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             msg="Setup precondition: state must be CLOSING.",
         )
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_rst_off_seq = build_tcp4(
             sport=PEER__PORT,

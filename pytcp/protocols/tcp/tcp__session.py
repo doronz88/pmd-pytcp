@@ -46,6 +46,7 @@ from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
 from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
+from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
@@ -140,18 +141,11 @@ class TcpSession:
         # Keeps data sent by application but not acknowledged by peer yet.
         self._tx_buffer: bytearray = bytearray()
 
-        ###
-        # Receiving window parameters.
-        ###
-
-        # Initial sequence number.
-        self._rcv_ini: Seq32 = 0
-
-        # Next sequence number to be received.
-        self._rcv_nxt: Seq32 = 0
-
-        # Sequence number we acked.
-        self._rcv_una: Seq32 = 0
+        # RFC 9293 §3.4 receive-side seq state (IRS / RCV.NXT /
+        # RCV.UNA). Anchored at handshake time via
+        # 'self._rcv_seq.reset_to(irs=peer_isn)' once peer's SYN
+        # is observed. See 'state/tcp__state__recv_seq.py'.
+        self._rcv_seq: RecvSeqState = RecvSeqState()
 
         # IP+TCP header overhead for MSS calculation. RFC 8200's
         # IPv6 fixed header is 40 bytes (vs IPv4's 20); the TCP
@@ -473,7 +467,7 @@ class TcpSession:
         # peer signals the abort even when 'RCV.NXT' happens to
         # equal 0 (which it does when peer's ISN was exactly
         # 0xFFFF_FFFF and 'add32(peer_isn, 1)' wraps). Without
-        # the explicit flag, the previous 'self._rcv_nxt > 0'
+        # the explicit flag, the previous 'self._rcv_seq.nxt > 0'
         # gate would suppress the RST whenever peer's ISN hit
         # the wrap-point sentinel - probability 2**-32 but a
         # real correctness gap.
@@ -993,7 +987,7 @@ class TcpSession:
         """
 
         seq = seq if seq is not None else self._snd_seq.nxt
-        ack = self._rcv_nxt if flag_ack else 0
+        ack = self._rcv_seq.nxt if flag_ack else 0
 
         self._phase0_pre_send_hygiene(seq=seq, flag_syn=flag_syn, flag_fin=flag_fin, data=data)
 
@@ -1554,7 +1548,7 @@ class TcpSession:
         # 'RCV.UNA != RCV.NXT' inequality as the gate for firing the
         # next delayed ACK; resetting them to equal here disarms
         # that gate until the next inbound data segment.
-        self._rcv_una = self._rcv_nxt
+        self._rcv_seq.una = self._rcv_seq.nxt
         # RFC 9293 §3.4: modular SND.NXT advance + SND.MAX bump.
         self._snd_seq.advance_nxt(seq=seq, data_len=len(data), flag_syn=flag_syn, flag_fin=flag_fin)
         self._snd_seq.bump_max_to_nxt()
@@ -1764,13 +1758,15 @@ class TcpSession:
         seg_end = add32(packet_rx_md.tcp__seq, seg_len)
         if seg_len == 0:
             if self._rcv_wnd > 0:
-                acceptable = in_range32(packet_rx_md.tcp__seq, self._rcv_nxt, add32(self._rcv_nxt, self._rcv_wnd))
+                acceptable = in_range32(
+                    packet_rx_md.tcp__seq, self._rcv_seq.nxt, add32(self._rcv_seq.nxt, self._rcv_wnd)
+                )
             else:
-                acceptable = packet_rx_md.tcp__seq == self._rcv_nxt
+                acceptable = packet_rx_md.tcp__seq == self._rcv_seq.nxt
         else:
             if self._rcv_wnd > 0:
-                acceptable = lt32(packet_rx_md.tcp__seq, add32(self._rcv_nxt, self._rcv_wnd)) and gt32(
-                    seg_end, self._rcv_nxt
+                acceptable = lt32(packet_rx_md.tcp__seq, add32(self._rcv_seq.nxt, self._rcv_wnd)) and gt32(
+                    seg_end, self._rcv_seq.nxt
                 )
             else:
                 acceptable = False
@@ -1793,8 +1789,8 @@ class TcpSession:
         if (
             self._send_sack
             and len(packet_rx_md.tcp__data) > 0
-            and lt32(packet_rx_md.tcp__seq, self._rcv_nxt)
-            and le32(seg_end, self._rcv_nxt)
+            and lt32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
+            and le32(seg_end, self._rcv_seq.nxt)
         ):
             self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
         # RFC 9293 §3.10.7.4 step 1: ACK the unacceptable
@@ -1860,7 +1856,7 @@ class TcpSession:
         # the connection's TS.Recent and the §4.3 algorithm
         # assumes a stable seq-space relationship that has not
         # yet been negotiated for the new incarnation.
-        ts_recent_refresh_gate_ok = packet_rx_md.tcp__flag_syn or le32(packet_rx_md.tcp__seq, self._rcv_nxt)
+        ts_recent_refresh_gate_ok = packet_rx_md.tcp__flag_syn or le32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
         if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
             # RFC 7323 §5.5 outdated-timestamps mitigation:
             # if the connection has been idle longer than the
@@ -1942,12 +1938,12 @@ class TcpSession:
         ack_acceptable = (not packet_rx_md.tcp__flag_ack) or in_range32(
             packet_rx_md.tcp__ack, self._snd_seq.una, self._snd_seq.max
         )
-        if seq == self._rcv_nxt and ack_acceptable:
+        if seq == self._rcv_seq.nxt and ack_acceptable:
             return True
-        if lt32(self._rcv_nxt, seq) and lt32(seq, add32(self._rcv_nxt, self._rcv_wnd)):
+        if lt32(self._rcv_seq.nxt, seq) and lt32(seq, add32(self._rcv_seq.nxt, self._rcv_wnd)):
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - In-window mismatched RST (seq={seq}, RCV.NXT={self._rcv_nxt}); challenge-ACK",
+                f"[{self}] - In-window mismatched RST (seq={seq}, RCV.NXT={self._rcv_seq.nxt}); challenge-ACK",
             )
             self._emit_challenge_ack()
         return False
@@ -2036,13 +2032,13 @@ class TcpSession:
         self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
 
         # Receive-side state from the new SYN.
-        self._rcv_ini = packet_rx_md.tcp__seq
-        self._rcv_nxt = add32(
+        self._rcv_seq.ini = packet_rx_md.tcp__seq
+        self._rcv_seq.nxt = add32(
             packet_rx_md.tcp__seq,
             packet_rx_md.tcp__flag_syn,
             len(packet_rx_md.tcp__data),
         )
-        self._rcv_una = self._rcv_nxt
+        self._rcv_seq.una = self._rcv_seq.nxt
         self._peer_contacted = True
 
         # Reset RFC 6298 RTO estimator + sample tracker so the new
@@ -2223,7 +2219,7 @@ class TcpSession:
             tcp__remote_port=self._remote_port,
             tcp__flag_ack=True,
             tcp__seq=sub32(self._snd_seq.nxt, 1),
-            tcp__ack=self._rcv_nxt,
+            tcp__ack=self._rcv_seq.nxt,
             tcp__win=self._rcv_wnd >> self._rcv_wsc,
         )
         self._keepalive.probes_unacked += 1
@@ -2235,7 +2231,7 @@ class TcpSession:
             "tcp-ss",
             f"[{self}] - Keep-alive: emitted probe "
             f"{self._keepalive.probes_unacked}/{max_count} "
-            f"at seq={sub32(self._snd_seq.nxt, 1)} ack={self._rcv_nxt}",
+            f"at seq={sub32(self._snd_seq.nxt, 1)} ack={self._rcv_seq.nxt}",
         )
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
@@ -2637,11 +2633,11 @@ class TcpSession:
         """
 
         if stack.timer.is_expired(f"{self}-delayed_ack"):
-            if gt32(self._rcv_nxt, self._rcv_una):
+            if gt32(self._rcv_seq.nxt, self._rcv_seq.una):
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Sent out delayed ACK ({self._rcv_nxt})",
+                    f"[{self}] - Sent out delayed ACK ({self._rcv_seq.nxt})",
                 )
             stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
 
@@ -3885,8 +3881,8 @@ class TcpSession:
         # this segment we have already received (RCV.NXT - seq,
         # in modular 32-bit space; clamped to 0 if the segment is
         # entirely new).
-        if lt32(packet_rx_md.tcp__seq, self._rcv_nxt):
-            overlap_prefix = (self._rcv_nxt - packet_rx_md.tcp__seq) & 0xFFFF_FFFF
+        if lt32(packet_rx_md.tcp__seq, self._rcv_seq.nxt):
+            overlap_prefix = (self._rcv_seq.nxt - packet_rx_md.tcp__seq) & 0xFFFF_FFFF
         else:
             overlap_prefix = 0
         # RFC 2883 DSACK: stash the duplicate-prefix range so the
@@ -3900,8 +3896,8 @@ class TcpSession:
             )
         # Modular 'max' on RCV.NXT: advance iff the segment's end
         # is ahead of our current RCV.NXT in modular order.
-        if lt32(self._rcv_nxt, seg_end):
-            self._rcv_nxt = seg_end
+        if lt32(self._rcv_seq.nxt, seg_end):
+            self._rcv_seq.nxt = seg_end
         # In case packet contains data enqueue it. RFC 1122 §4.2.3.2 governs
         # how we acknowledge it: count pending unacked segments since the
         # last ACK, force an inline ACK once two segments are pending
@@ -3931,7 +3927,7 @@ class TcpSession:
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Sent inline ACK (every-other-segment, {self._rcv_nxt})",
+                    f"[{self}] - Sent inline ACK (every-other-segment, {self._rcv_seq.nxt})",
                 )
             else:
                 # First pending segment: ensure the delayed-ACK timer is
@@ -3988,10 +3984,10 @@ class TcpSession:
                     f"[{self}] - Purged expired TX packet retransmit request counter for {seq}",
                 )
         # Bring next packet from ooo_packet_queue if available.
-        if ooo_packet := self._ooo_packet_queue.pop(self._rcv_nxt, None):
+        if ooo_packet := self._ooo_packet_queue.pop(self._rcv_seq.nxt, None):
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - <lg>Retrieving packet {self._rcv_nxt} from Out of Order queue</>",
+                f"[{self}] - <lg>Retrieving packet {self._rcv_seq.nxt} from Out of Order queue</>",
             )
             self.tcp_fsm(ooo_packet)
 

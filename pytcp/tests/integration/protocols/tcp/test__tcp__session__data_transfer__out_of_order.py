@@ -214,7 +214,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg=("RCV.NXT must NOT advance on an OOO arrival - the " "byte we are still expecting is unchanged."),
         )
@@ -272,13 +272,13 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 2 * 1460,
             msg=("RCV.NXT must advance past BOTH segments after the " "drain."),
         )
         self.assertEqual(
-            session._rcv_una,
-            session._rcv_nxt,
+            session._rcv_seq.una,
+            session._rcv_seq.nxt,
             msg=("RCV.UNA must equal RCV.NXT after the inline " "cumulative ACK fires."),
         )
         self.assertEqual(
@@ -336,7 +336,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
         )
         self.assertIn(seg2_seq, session._ooo_packet_queue, msg="seg2 must be stored in OOO queue.")
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg="RCV.NXT must NOT advance on the seg2 OOO arrival.",
         )
@@ -390,7 +390,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             msg="rx_buffer must hold seg1 followed by seg2 in send order.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 2 * 1460,
             msg="RCV.NXT must equal peer_ISS + 1 + 2*MSS after the seg1+seg2 drain.",
         )
@@ -427,7 +427,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 4 * 1460,
             msg="RCV.NXT must equal peer_ISS + 1 + 4*MSS after all four segments drain.",
         )
@@ -475,7 +475,7 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             msg="Setup precondition: first 5 bytes must be in '_rx_buffer'.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(first_payload),
             msg="Setup precondition: RCV.NXT must advance past the first segment.",
         )
@@ -544,13 +544,13 @@ class TestTcpDataTransfer__OutOfOrder(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(overlap_payload),
             msg=("RCV.NXT must advance to peer_ISS + 1 + 11 after " "consuming the overlap segment's new tail bytes."),
         )
         self.assertEqual(
-            session._rcv_una,
-            session._rcv_nxt,
+            session._rcv_seq.una,
+            session._rcv_seq.nxt,
             msg=(
                 "RCV.UNA must equal RCV.NXT after the inline ACK fires "
                 "- the every-other-segment threshold (count == 2 "

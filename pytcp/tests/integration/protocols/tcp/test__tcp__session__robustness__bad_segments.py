@@ -152,7 +152,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         snd_una_before = session._snd_seq.una
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer sends FIN+RST+ACK - the malformed flag combination.
         peer_fin_rst = build_tcp4(
@@ -186,7 +186,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
             msg="'SND.UNA' must not advance on a dropped FIN+RST segment.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "'RCV.NXT' must not advance on a dropped FIN+RST "
@@ -212,7 +212,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         snd_una_before = session._snd_seq.una
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer sends a flag-less segment.
         peer_no_flags = build_tcp4(
@@ -246,7 +246,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
             msg="'SND.UNA' must not advance on a dropped no-flags segment.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg="'RCV.NXT' must not advance on a dropped no-flags segment.",
         )
@@ -302,7 +302,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(peer_payload),
             msg="'RCV.NXT' must advance by len(peer_payload) after the data is enqueued.",
         )

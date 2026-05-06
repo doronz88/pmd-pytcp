@@ -164,7 +164,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # segments will be shifted by '_snd_wsc' inside
             # '_process_ack_packet'.
             session._snd_wnd = packet_rx_md.tcp__win
-            session._rcv_ini = packet_rx_md.tcp__seq
+            session._rcv_seq.ini = packet_rx_md.tcp__seq
             # Bootstrap RCV.NXT from peer's ISN before
             # '_process_ack_packet' runs - the modular 'max'
             # inside that helper cannot bootstrap from
@@ -172,7 +172,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # the 32-bit wrap (modular distance 0 -> high seq
             # goes the "wrong way"). Mirror the passive-open
             # path's explicit assignment.
-            session._rcv_nxt = add32(
+            session._rcv_seq.nxt = add32(
                 packet_rx_md.tcp__seq,
                 packet_rx_md.tcp__flag_syn,
                 len(packet_rx_md.tcp__data),
@@ -339,7 +339,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
                 "tcp-ss",
-                f"[{session}] - Sent initial ACK ({session._rcv_una}) packet",
+                f"[{session}] - Sent initial ACK ({session._rcv_seq.una}) packet",
             )
             # Change state to ESTABLISHED.
             session._change_state(FsmState.ESTABLISHED)
@@ -392,8 +392,8 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 # seed the last-update clock at handshake.
                 session._ts_recent_updated_at_ms = stack.timer.now_ms
             # Receive sequence space: advance past peer's SYN.
-            session._rcv_ini = packet_rx_md.tcp__seq
-            session._rcv_nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)
+            session._rcv_seq.ini = packet_rx_md.tcp__seq
+            session._rcv_seq.nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)
             # Mark peer as contacted so the R2-abort RST gate
             # fires correctly across the seq wrap (commit
             # 'e5e12dc' rationale).

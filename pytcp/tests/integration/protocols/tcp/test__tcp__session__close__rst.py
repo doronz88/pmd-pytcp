@@ -402,7 +402,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be CLOSE_WAIT after peer's FIN+ACK.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg="Setup precondition: 'RCV.NXT' must have advanced past peer's FIN.",
         )
@@ -825,7 +825,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be ESTABLISHED.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg="Setup precondition: RCV.NXT after handshake must be PEER__ISS + 1.",
         )
@@ -904,7 +904,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_1.",
         )
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_rst_off_seq = build_tcp4(
             sport=PEER__PORT,
@@ -971,7 +971,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_2.",
         )
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_rst_off_seq = build_tcp4(
             sport=PEER__PORT,
@@ -1034,7 +1034,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be CLOSE_WAIT.",
         )
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_rst_off_seq = build_tcp4(
             sport=PEER__PORT,
@@ -1100,7 +1100,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be LAST_ACK.",
         )
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_rst_off_seq = build_tcp4(
             sport=PEER__PORT,

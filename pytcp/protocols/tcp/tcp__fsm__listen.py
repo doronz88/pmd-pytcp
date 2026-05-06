@@ -309,7 +309,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             tfo_option_relevant = tfo_enabled and packet_rx_md.tcp__fastopen_cookie is not None
             accept_syn_data = (not tfo_option_relevant) or tfo_cookie_valid
             syn_data = packet_rx_md.tcp__data if accept_syn_data else memoryview(b"")
-            session._rcv_ini = packet_rx_md.tcp__seq
+            session._rcv_seq.ini = packet_rx_md.tcp__seq
             session._cc.cwnd = session._snd_mss
             session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # Make note of the remote SEQ number, advancing past the
@@ -317,7 +317,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # so the SYN+ACK we emit acknowledges the data and the
             # peer does not have to retransmit it (RFC 9293 §3.10.7.2
             # step 3).
-            session._rcv_nxt = add32(
+            session._rcv_seq.nxt = add32(
                 packet_rx_md.tcp__seq,
                 packet_rx_md.tcp__flag_syn,
                 len(syn_data),

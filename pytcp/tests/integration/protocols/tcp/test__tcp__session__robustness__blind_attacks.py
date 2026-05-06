@@ -574,7 +574,7 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
         peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt - 1,
+            seq=session._rcv_seq.nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,

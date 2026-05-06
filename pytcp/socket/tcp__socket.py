@@ -261,7 +261,7 @@ class TcpSocket(socket):
             snd_una=session._snd_seq.una,
             snd_nxt=session._snd_seq.nxt,
             snd_wnd=session._snd_wnd,
-            rcv_nxt=session._rcv_nxt,
+            rcv_nxt=session._rcv_seq.nxt,
             rcv_wnd=session._rcv_wnd,
             snd_mss=session._snd_mss,
             rcv_mss=session._rcv_mss,

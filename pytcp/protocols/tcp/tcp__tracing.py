@@ -52,12 +52,12 @@ def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:
     def wrapper(self: TcpSession, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
         print(
             f"[ >>> ] snd_nxt {self._snd_seq.nxt}, snd_una {self._snd_seq.una},",
-            f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
+            f"rcv_nxt {self._rcv_seq.nxt}, rcv_una {self._rcv_seq.una}",
         )
         retval = function(self, *args, **kwargs)
         print(
             f"[ <<< ] snd_nxt {self._snd_seq.nxt}, snd_una {self._snd_seq.una},",
-            f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
+            f"rcv_nxt {self._rcv_seq.nxt}, rcv_una {self._rcv_seq.una}",
         )
         return retval
 

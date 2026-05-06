@@ -153,7 +153,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # still ingested in case peer piggybacked OOO state on
         # the wnd-update.
         if (
-            packet_rx_md.tcp__seq == session._rcv_nxt
+            packet_rx_md.tcp__seq == session._rcv_seq.nxt
             and packet_rx_md.tcp__ack == session._snd_seq.una
             and not packet_rx_md.tcp__data
         ):
@@ -199,7 +199,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # send 'fast retransmit' request (don't send more than two).
         # Modular comparators per RFC 9293 §3.4.
         if (
-            gt32(packet_rx_md.tcp__seq, session._rcv_nxt)
+            gt32(packet_rx_md.tcp__seq, session._rcv_seq.nxt)
             and le32(session._snd_seq.una, packet_rx_md.tcp__ack)
             and le32(packet_rx_md.tcp__ack, session._snd_seq.max)
         ):
@@ -257,8 +257,8 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
             packet_rx_md.tcp__flag_syn,
             packet_rx_md.tcp__flag_fin,
         )
-        in_order = seg_seq == session._rcv_nxt
-        overlap_with_new = lt32(seg_seq, session._rcv_nxt) and lt32(session._rcv_nxt, seg_end)
+        in_order = seg_seq == session._rcv_seq.nxt
+        overlap_with_new = lt32(seg_seq, session._rcv_seq.nxt) and lt32(session._rcv_seq.nxt, seg_end)
         if (
             (in_order or overlap_with_new)
             and le32(session._snd_seq.una, packet_rx_md.tcp__ack)
@@ -307,7 +307,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         {packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst}
     ):
         # Packet sanity check.
-        if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)

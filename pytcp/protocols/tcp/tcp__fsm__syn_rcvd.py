@@ -121,7 +121,7 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         # enqueues it via its overlap-prefix logic (RCV.NXT is
         # still at 'peer_ISS + 1' here, so the overlap prefix
         # is 0 and the full payload is enqueued).
-        if packet_rx_md.tcp__seq == session._rcv_nxt and packet_rx_md.tcp__ack == session._snd_seq.nxt:
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and packet_rx_md.tcp__ack == session._snd_seq.nxt:
             # RFC 9768 §3.2.2.1 Table 4: when an AccECN
             # server's first inbound ACK arrives in
             # SYN-RCVD as a pure ACK with no SACK blocks,

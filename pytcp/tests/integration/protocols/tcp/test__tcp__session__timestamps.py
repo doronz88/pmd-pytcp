@@ -768,7 +768,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
             peer_tsval=PEER__TSVAL_INITIAL,
         )
 
-        rcv_nxt_pre = session._rcv_nxt
+        rcv_nxt_pre = session._rcv_seq.nxt
         rx_buffer_pre = bytes(session._rx_buffer)
 
         stale_tsval = PEER__TSVAL_INITIAL - 100
@@ -786,14 +786,14 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_data)
 
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_pre,
             msg=(
                 f"Stale-TSval segment "
                 f"(tsval={stale_tsval:#x} < _ts_recent="
                 f"{PEER__TSVAL_INITIAL:#x}) MUST be dropped "
                 "without advancing RCV.NXT. Got "
-                f"_rcv_nxt={session._rcv_nxt}."
+                f"_rcv_nxt={session._rcv_seq.nxt}."
             ),
         )
         self.assertEqual(
@@ -832,7 +832,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_data)
 
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(b"fresh-data"),
             msg=("A fresh-TSval segment MUST be accepted " "normally; RCV.NXT advances past the data."),
         )

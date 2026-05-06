@@ -92,7 +92,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         }
     ):
         # Packet sanity check.
-        if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
@@ -119,7 +119,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         {packet_rx_md.tcp__flag_syn, packet_rx_md.tcp__flag_rst}
     ):
         # Packet sanity check.
-        if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
+        if packet_rx_md.tcp__seq == session._rcv_seq.nxt and in_range32(
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
@@ -127,7 +127,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
                 "tcp-ss",
-                f"[{session}] - Sent final ACK ({session._rcv_nxt}) packet",
+                f"[{session}] - Sent final ACK ({session._rcv_seq.nxt}) packet",
             )
             # Check if packet acks our FIN.
             if ge32(packet_rx_md.tcp__ack, session._snd_seq.fin):

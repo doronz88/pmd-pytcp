@@ -345,7 +345,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg=("After peer's FIN+ACK in ESTABLISHED, state must " "transition to CLOSE_WAIT per RFC 9293 §3.10.7.4."),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg=(
                 "'RCV.NXT' must advance past the FIN's one byte of "
@@ -722,7 +722,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(peer_payload) + 1,
             msg=(
                 "'RCV.NXT' must advance past BOTH the data ("
@@ -812,7 +812,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
         rx_buffer_before = bytes(session._rx_buffer)
 
         # Peer retransmits the original 50-byte data segment
@@ -863,7 +863,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg="RCV.NXT must not advance on a fully-duplicate segment.",
         )
@@ -928,7 +928,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
         snd_una_before = session._snd_seq.una
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Peer retransmits the original 50-byte data segment - seq
         # entirely below RCV.NXT, fully duplicate, unacceptable per
@@ -1018,7 +1018,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         retransmit = build_tcp4(
             sport=PEER__PORT,
@@ -1102,7 +1102,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         retransmit = build_tcp4(
             sport=PEER__PORT,
@@ -1159,7 +1159,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_unacceptable_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1225,7 +1225,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_unacceptable_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1296,7 +1296,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
         snd_nxt_before = session._snd_seq.nxt
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         peer_unacceptable_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1361,12 +1361,12 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: state must be CLOSE_WAIT after peer FIN.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg=("Setup precondition: RCV.NXT must have advanced past " "peer's FIN to PEER__ISS+2."),
         )
         rx_buffer_before = bytes(session._rx_buffer)
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
 
         # Step 3: peer sends post-FIN data at seq == RCV.NXT.
         # RFC violation by peer, but PyTCP must respond
@@ -1426,7 +1426,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         # the receive sequence space would violate the "FIN
         # consumes the last byte of seq space" invariant.
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "Peer's post-FIN data MUST NOT advance RCV.NXT - "
@@ -1473,7 +1473,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: state must be CLOSE_WAIT after peer FIN.",
         )
         rx_buffer_before = bytes(session._rx_buffer)
-        rcv_nxt_before = session._rcv_nxt
+        rcv_nxt_before = session._rcv_seq.nxt
         ooo_count_before = len(session._ooo_packet_queue)
         self.assertEqual(
             ooo_count_before,
@@ -1538,7 +1538,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Peer's OOO post-FIN data MUST NOT be enqueued into '_rx_buffer'.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             rcv_nxt_before,
             msg="Peer's OOO post-FIN data MUST NOT advance RCV.NXT.",
         )

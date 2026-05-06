@@ -272,7 +272,7 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
         session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 2,
             msg=("Setup precondition: 'RCV.NXT' must have advanced " "past peer's FIN's one byte of sequence space."),
         )
@@ -519,7 +519,7 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
         peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt - 1,
+            seq=session._rcv_seq.nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,
@@ -962,7 +962,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         new_peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=session._rcv_nxt - 1,
+            seq=session._rcv_seq.nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,

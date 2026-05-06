@@ -387,7 +387,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
         # Receive-side state advanced by exactly 3 * 100 bytes.
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + 3 * len(peer_data_chunk),
             msg=(
                 "'RCV.NXT' must advance by the cumulative length of "

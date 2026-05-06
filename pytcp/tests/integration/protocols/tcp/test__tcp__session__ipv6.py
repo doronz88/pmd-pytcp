@@ -214,7 +214,7 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg="'RCV.NXT' must advance past peer's SYN's one byte of sequence space.",
         )
@@ -284,7 +284,7 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             msg="Peer's data must be delivered to '_rx_buffer' over IPv6.",
         )
         self.assertEqual(
-            session._rcv_nxt,
+            session._rcv_seq.nxt,
             PEER__ISS + 1 + len(inbound_payload),
             msg="'RCV.NXT' must advance by len(inbound_payload).",
         )

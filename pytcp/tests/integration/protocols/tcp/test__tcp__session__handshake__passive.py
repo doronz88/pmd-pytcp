@@ -320,7 +320,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._rcv_nxt,
+            child_session._rcv_seq.nxt,
             PEER__ISS + 1,
             msg=(
                 "After processing the peer's SYN, '_rcv_nxt' must equal "
@@ -531,13 +531,13 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._rcv_nxt,
+            child_session._rcv_seq.nxt,
             PEER__ISS + 1 + len(payload),
             msg=(
                 "After processing a SYN-with-data, '_rcv_nxt' must "
                 "advance past BOTH the SYN's one byte AND every byte "
                 "of payload. Got "
-                f"{child_session._rcv_nxt:#x}, expected "
+                f"{child_session._rcv_seq.nxt:#x}, expected "
                 f"{PEER__ISS + 1 + len(payload):#x}. "
                 'RFC 9293 §3.10.7.2 step 3: "any other incoming '
                 "control or data (combined with SYN) will be "
@@ -669,12 +669,12 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._rcv_nxt,
+            child_session._rcv_seq.nxt,
             PEER__ISS + 1 + len(payload),
             msg=(
                 "'RCV.NXT' MUST advance past every byte of the "
                 "third-leg ACK's payload. Got: "
-                f"{child_session._rcv_nxt:#x}, expected: "
+                f"{child_session._rcv_seq.nxt:#x}, expected: "
                 f"{PEER__ISS + 1 + len(payload):#x}."
             ),
         )
@@ -894,12 +894,12 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
                 ),
             )
             self.assertEqual(
-                child_session._rcv_nxt,
+                child_session._rcv_seq.nxt,
                 peer_iss + 1,
                 msg=(
                     f"Child session for HOST_A:{peer_port} must have "
                     f"_rcv_nxt = {peer_iss + 1:#x} (= peer ISN + 1). "
-                    f"Got {child_session._rcv_nxt:#x}. A bug here "
+                    f"Got {child_session._rcv_seq.nxt:#x}. A bug here "
                     f"would indicate concurrent SYNs are clobbering "
                     f"each other's '_rcv_nxt'."
                 ),
@@ -1021,7 +1021,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
         assert child_session_before is not None
         snd_nxt_before = child_session_before._snd_seq.nxt
         snd_una_before = child_session_before._snd_seq.una
-        rcv_nxt_before = child_session_before._rcv_nxt
+        rcv_nxt_before = child_session_before._rcv_seq.nxt
         sockets_before = set(stack.sockets)
 
         self.assertIs(
@@ -1108,7 +1108,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             msg="Challenge ACK does not affect '_snd_una' - the original SYN+ACK is still unacknowledged.",
         )
         self.assertEqual(
-            child_session_after._rcv_nxt,
+            child_session_after._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "Reprocessing a duplicate SYN must not advance "
@@ -1191,7 +1191,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
 
         snd_nxt_before = child_session._snd_seq.nxt
         snd_una_before = child_session._snd_seq.una
-        rcv_nxt_before = child_session._rcv_nxt
+        rcv_nxt_before = child_session._rcv_seq.nxt
         sockets_before = set(stack.sockets)
 
         # Stage 2: inject a SYN to the established child's 4-tuple.
@@ -1252,7 +1252,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             msg=("Rogue SYN's ACK was 0 - it acknowledges nothing - so '_snd_una' must be unchanged."),
         )
         self.assertEqual(
-            child_session._rcv_nxt,
+            child_session._rcv_seq.nxt,
             rcv_nxt_before,
             msg=(
                 "The rogue SYN's seq is far outside our receive "
