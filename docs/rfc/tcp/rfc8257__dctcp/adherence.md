@@ -121,13 +121,13 @@ AccECN) has its own test surface.
 
 | Aspect                                  | Coverage  |
 |-----------------------------------------|-----------|
-| §3.2 DCTCP.CE state + edge ACKs         | n/a (gap) |
-| §3.3 DCTCP.Alpha estimation             | n/a (gap) |
-| §3.4 cwnd reduction by alpha/2          | n/a (gap) |
+| §3.2 DCTCP.CE state + edge ACKs         | deferred  |
+| §3.3 DCTCP.Alpha estimation             | deferred  |
+| §3.4 cwnd reduction by alpha/2          | deferred  |
 | §3.5 RFC 5681 loss handling             | met       |
 | §3.6 no ECT on SYN / SYN-ACK / RST      | locked in |
-| §4.1 enable/disable configuration       | n/a (gap) |
-| §4.2 per-RTT byte counters              | n/a (gap) |
+| §4.1 enable/disable configuration       | deferred  |
+| §4.2 per-RTT byte counters              | deferred  |
 
 ---
 
@@ -135,28 +135,36 @@ AccECN) has its own test surface.
 
 | Aspect                                | Status          |
 |---------------------------------------|-----------------|
-| §3.2 DCTCP.CE receiver state machine  | not implemented |
-| §3.3 DCTCP.Alpha sender estimation    | not implemented |
-| §3.4 cwnd = cwnd * (1 - alpha/2)      | not implemented |
+| §3.2 DCTCP.CE receiver state machine  | deferred        |
+| §3.3 DCTCP.Alpha sender estimation    | deferred        |
+| §3.4 cwnd = cwnd * (1 - alpha/2)      | deferred        |
 | §3.5 RFC 5681 loss-handling baseline  | met             |
 | §3.6 no ECT on SYN/SYN-ACK/RST        | met             |
-| §4.x configuration / tuning           | not implemented |
+| §4.x configuration / tuning           | deferred        |
 
-PyTCP does not implement DCTCP. ECN response in PyTCP
-is the simpler RFC 8511 ABE multiplier (0.85
-ssthresh reduction on ECN signal) — appropriate for
-public-Internet deployments which is PyTCP's primary
-target. DCTCP's fine-grained alpha-based cwnd scaling
-is meaningful only inside a controlled-domain data
-center deployment (per §1) and would require:
+**Status: deferred by scope decision.** PyTCP targets
+public-Internet TCP semantics; DCTCP is explicitly a
+data-center-only protocol. RFC 8257 §1.1 itself
+states that "DCTCP MUST NOT be deployed over the
+public Internet without additional measures, as
+detailed in §6," and §6 frames it as a controlled-
+domain protocol incompatible with the standard ECN
+response curve. ECN response in PyTCP is the simpler
+RFC 8511 ABE multiplier (0.85 ssthresh reduction on
+ECN signal) which is the appropriate response for
+public-Internet deployments.
 
-- Per-RTT byte-marked / byte-total counters at the
-  receiver and sender.
-- DCTCP.Alpha state tracking with EWMA update.
-- Replacement of the ABE multiplier in the cwnd-
-  response path with `cwnd * (1 - alpha/2)` formula.
-- Configuration knob to enable DCTCP per connection
-  (probably a setsockopt level/option similar to
-  TCP_CONGESTION).
+If a future PyTCP deployment scenario requires
+data-center semantics, the unimplemented sub-clauses
+below would be the work item. Estimated effort:
+~6-8 commits.
 
-Estimated effort: ~6-8 commits.
+- §3.2: per-RTT byte-marked / byte-total counters at
+  the receiver and sender.
+- §3.3: DCTCP.Alpha state tracking with EWMA update.
+- §3.4: replacement of the ABE multiplier in the
+  cwnd-response path with the `cwnd * (1 - alpha/2)`
+  formula.
+- §4.x: configuration knob to enable DCTCP per
+  connection (probably a setsockopt level/option
+  similar to TCP_CONGESTION).

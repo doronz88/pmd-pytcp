@@ -106,11 +106,11 @@ Classic ECN feedback path that L4S leverages.
 
 | Aspect                                  | Coverage  |
 |-----------------------------------------|-----------|
-| §4.1 ECT(1) marking on outbound         | n/a (gap) |
+| §4.1 ECT(1) marking on outbound         | deferred  |
 | §4.2 AccECN feedback prerequisite       | met       |
-| §4.3 Scalable congestion control        | n/a (gap) |
-| §4.4 ECN feedback filtering             | n/a (gap) |
-| §5.5 packet pacing                      | n/a (gap) |
+| §4.3 Scalable congestion control        | deferred  |
+| §4.4 ECN feedback filtering             | deferred  |
+| §5.5 packet pacing                      | deferred  |
 
 ---
 
@@ -118,34 +118,34 @@ Classic ECN feedback path that L4S leverages.
 
 | Aspect                                | Status                            |
 |---------------------------------------|-----------------------------------|
-| §4.1 ECT(1) outbound marking          | not implemented                   |
+| §4.1 ECT(1) outbound marking          | deferred                          |
 | §4.2 AccECN feedback prerequisite     | met (RFC 9768 shipped)            |
-| §4.3 Scalable congestion control      | not implemented                   |
-| §4.4 ECN feedback filtering/smoothing | not implemented                   |
-| §5.5 packet pacing                    | not implemented                   |
+| §4.3 Scalable congestion control      | deferred                          |
+| §4.4 ECN feedback filtering/smoothing | deferred                          |
+| §5.5 packet pacing                    | deferred                          |
 
-PyTCP does not implement L4S endpoint behavior. The
-AccECN substrate (RFC 9768) is in place — meaning
-PyTCP can receive fine-grained CE-mark feedback —
-but the consumer (a Scalable congestion control)
-that turns those marks into proportional per-RTT
-cwnd adjustments is missing.
+**Status: deferred by scope decision.** RFC 9331 is
+Standards Track but the companion endpoint transport
+(TCP Prague) is still under IETF standardization, so
+the endpoint behaviour prescribed here is bleeding-
+edge and would drift as the in-progress documents
+evolve. PyTCP's RFC 9768 AccECN substrate is the
+necessary feedback layer if a future Scalable
+congestion control mode is added; the AccECN audit
+at 100% is the closest PyTCP gets today.
 
-For PyTCP to act as an L4S sender, the following
-additions would be needed:
-- `ip__ecn` outbound marking changeable to 1 (ECT(1))
-  per-connection.
-- A new scalable congestion control mode (e.g.
+If a future PyTCP scope decision pulls L4S in, the
+unimplemented sub-clauses below would be the work
+item. Estimated effort: ~10-15 commits, plus
+co-evolution with whichever Scalable CC the IETF
+finalises.
+
+- §4.1: `ip__ecn` outbound marking changeable to 1
+  (ECT(1)) per-connection.
+- §4.3: a new scalable congestion control mode (e.g.
   TCP Prague or DCTCP variant) registered as a
-  CcMode enum value, alongside the existing RENO
-  and CUBIC.
-- A per-RTT CE-fraction estimator (similar to
-  DCTCP.Alpha but consumed differently — Prague
-  uses scalable AIMD on the cwnd directly).
-- Optional packet pacing.
-
-Estimated effort: ~10-15 commits. Note that L4S is
-Experimental and the proposed L4S transport (TCP
-Prague) is also still under standardization — this
-is bleeding-edge work that would drift as the IETF
-documents evolve.
+  `CcMode` enum value alongside RENO and CUBIC.
+- §4.4: a per-RTT CE-fraction estimator (similar to
+  DCTCP.Alpha but consumed by Prague's scalable
+  AIMD on cwnd directly).
+- §5.5: optional packet pacing.
