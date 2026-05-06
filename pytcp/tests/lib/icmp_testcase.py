@@ -177,7 +177,6 @@ class IcmpTestCase(NetworkTestCase):
     _interface_mtu_prior: object
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
-    _pmtu_cache_was_set: bool
     _pmtu_cache_prior: dict[Any, Any]
 
     def setUp(self) -> None:
@@ -215,14 +214,9 @@ class IcmpTestCase(NetworkTestCase):
         stack.tcp_stack = TcpStack()
 
         # 'stack.pmtu_cache' is the per-destination Path-MTU dict
-        # added by Phase 3 of the ICMP demux + PMTUD refactor. The
-        # attribute is absent today; once Phase 3 lands the snapshot
-        # below kicks in automatically without harness churn.
-        self._pmtu_cache_was_set = "pmtu_cache" in stack.__dict__
-        if self._pmtu_cache_was_set:
-            cache = cast(dict[Any, Any], stack.__dict__["pmtu_cache"])
-            self._pmtu_cache_prior = dict(cache)
-            cache.clear()
+        # used by the ICMP PMTUD callbacks (Phase 4 onward).
+        self._pmtu_cache_prior = dict(stack.pmtu_cache)
+        stack.pmtu_cache.clear()
 
         self._patches = []
 
@@ -247,10 +241,8 @@ class IcmpTestCase(NetworkTestCase):
 
         stack.tcp_stack = self._tcp_stack_prior
 
-        if self._pmtu_cache_was_set:
-            cache = cast(dict[Any, Any], stack.__dict__["pmtu_cache"])
-            cache.clear()
-            cache.update(self._pmtu_cache_prior)
+        stack.pmtu_cache.clear()
+        stack.pmtu_cache.update(self._pmtu_cache_prior)
 
         super().tearDown()
 

@@ -128,6 +128,7 @@ class TcpSessionTestCase(NetworkTestCase):
     _interface_mtu_prior: object
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
+    _pmtu_cache_prior: dict[Any, Any]
 
     def setUp(self) -> None:
         """
@@ -166,6 +167,14 @@ class TcpSessionTestCase(NetworkTestCase):
         self._tcp_stack_prior = stack.tcp_stack
         stack.tcp_stack = TcpStack()
 
+        # 'stack.pmtu_cache' is the per-destination Path-MTU dict
+        # added by Phase 3 of the ICMP demux + PMTUD refactor.
+        # Snapshot+clear+restore so a TCP session test that triggers
+        # an MSS recompute via a PMTUD ICMP cannot leak its
+        # per-destination MTU into an unrelated test.
+        self._pmtu_cache_prior = dict(stack.pmtu_cache)
+        stack.pmtu_cache.clear()
+
         self._patches = []
 
     def tearDown(self) -> None:
@@ -188,6 +197,9 @@ class TcpSessionTestCase(NetworkTestCase):
         stack.sockets.update(self._sockets_prior)
 
         stack.tcp_stack = self._tcp_stack_prior
+
+        stack.pmtu_cache.clear()
+        stack.pmtu_cache.update(self._pmtu_cache_prior)
 
         super().tearDown()
 

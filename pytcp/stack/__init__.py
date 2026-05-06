@@ -52,7 +52,7 @@ from pytcp.stack.timer import Timer
 from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address
+    from net_addr import Ip4Address, Ip6Address
     from pytcp.socket import socket
 
 
@@ -187,6 +187,13 @@ stack_initialized: bool = False
 interface_mtu: int
 sockets: dict[SocketId, socket] = {}
 arp_probe_unicast_conflict: set[Ip4Address] = set()
+# RFC 1191 §3 / RFC 8201 §4 per-destination Path-MTU cache. Keyed
+# by remote IP (v4 or v6); value is the most recently learned next-
+# hop MTU. Populated by ICMP Frag-Needed / Packet-Too-Big handlers
+# in Phases 4-6 of the ICMP demux + PMTUD refactor; consulted by
+# UDP and TCP TX paths for fragment-or-fail / MSS-recompute
+# decisions. Process-lifetime only — entries do not expire.
+pmtu_cache: dict[Ip4Address | Ip6Address, int] = {}
 
 
 def initialize_interface__tap(interface_name: str, *, mac_address: MacAddress | None = None) -> dict[str, Any]:
