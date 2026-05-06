@@ -24,16 +24,16 @@
 
 """
 This module contains unit tests for the per-session AccECN state
-container in 'pytcp/protocols/tcp/tcp__accecn_state.py'.
+container in 'pytcp/protocols/tcp/state/tcp__state__accecn.py'.
 
-pytcp/tests/unit/protocols/tcp/test__tcp__accecn_state.py
+pytcp/tests/unit/protocols/tcp/state/test__tcp__state__accecn.py
 
 ver 3.0.4
 """
 
 from unittest import TestCase
 
-from pytcp.protocols.tcp.tcp__accecn_state import (
+from pytcp.protocols.tcp.state.tcp__state__accecn import (
     ACCECN__COUNTER_MASK,
     ACCECN__INITIAL_BYTE_COUNTER,
     ACCECN__INITIAL_CE_BYTE_COUNTER,

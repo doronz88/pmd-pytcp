@@ -47,7 +47,7 @@ every cum-ACK and every RTO. The frozen-protocol-header convention
 from 'coding_style.md' §7 applies to wire-format dataclasses, not
 session state.
 
-pytcp/protocols/tcp/tcp__cc_state.py
+pytcp/protocols/tcp/state/tcp__state__cc.py
 
 ver 3.0.4
 """
@@ -67,7 +67,7 @@ CC_STATE__SSTHRESH_INF: int = 0x7FFF_FFFF
 
 
 @dataclass(slots=True)
-class CongestionControlState:
+class CcState:
     """
     Per-session congestion-control variables and their snapshot /
     restore operations. Owned by 'TcpSession'; mutated in place by

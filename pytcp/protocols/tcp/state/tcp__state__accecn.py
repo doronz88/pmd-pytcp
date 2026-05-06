@@ -35,11 +35,11 @@ abbreviation), the §3.2.1 / §3.2.2.1 sender mirrors (s.cep,
 s.e0b, s.e1b, s.ce_b), and the §3.2.2.1 Note 1 / §3.2.2.3
 disable / mangling sentinels.
 
-Mutability mirrors 'CongestionControlState' and 'HyStartState':
+Mutability mirrors 'CcState' and 'HyStartState':
 '@dataclass(slots=True)' rather than 'frozen=True' because the
 counters wrap on every inbound segment.
 
-pytcp/protocols/tcp/tcp__accecn_state.py
+pytcp/protocols/tcp/state/tcp__state__accecn.py
 
 ver 3.0.4
 """

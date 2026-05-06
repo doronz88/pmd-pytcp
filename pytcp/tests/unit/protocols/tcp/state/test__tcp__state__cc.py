@@ -24,27 +24,27 @@
 
 """
 This module contains unit tests for the per-session congestion-
-control state container in 'pytcp/protocols/tcp/tcp__cc_state.py'.
+control state container in 'pytcp/protocols/tcp/state/tcp__state__cc.py'.
 
-pytcp/tests/unit/protocols/tcp/test__tcp__cc_state.py
+pytcp/tests/unit/protocols/tcp/state/test__tcp__state__cc.py
 
 ver 3.0.4
 """
 
 from unittest import TestCase
 
-from pytcp.protocols.tcp.tcp__cc_state import (
+from pytcp.protocols.tcp.state.tcp__state__cc import (
     CC_STATE__SSTHRESH_INF,
-    CongestionControlState,
+    CcState,
 )
 from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__hystart import HyStartState
 
 
-class TestCongestionControlState__Defaults(TestCase):
+class TestCcState__Defaults(TestCase):
     """
     Per-field default values pinning the post-construction state
-    of 'CongestionControlState'.
+    of 'CcState'.
     """
 
     def setUp(self) -> None:
@@ -52,7 +52,7 @@ class TestCongestionControlState__Defaults(TestCase):
         Construct a default state instance for every test.
         """
 
-        self._cc = CongestionControlState()
+        self._cc = CcState()
 
     def test__cc_state__cwnd_default_zero(self) -> None:
         """
@@ -66,7 +66,7 @@ class TestCongestionControlState__Defaults(TestCase):
         self.assertEqual(
             self._cc.cwnd,
             0,
-            msg="CongestionControlState.cwnd must default to 0.",
+            msg="CcState.cwnd must default to 0.",
         )
 
     def test__cc_state__ssthresh_default_inf(self) -> None:
@@ -82,7 +82,7 @@ class TestCongestionControlState__Defaults(TestCase):
         self.assertEqual(
             self._cc.ssthresh,
             CC_STATE__SSTHRESH_INF,
-            msg="CongestionControlState.ssthresh must default to INT32_MAX.",
+            msg="CcState.ssthresh must default to INT32_MAX.",
         )
         self.assertEqual(
             CC_STATE__SSTHRESH_INF,
@@ -101,7 +101,7 @@ class TestCongestionControlState__Defaults(TestCase):
         self.assertEqual(
             self._cc.snd_ewn,
             0,
-            msg="CongestionControlState.snd_ewn must default to 0.",
+            msg="CcState.snd_ewn must default to 0.",
         )
 
     def test__cc_state__recovery_markers_default_zero(self) -> None:
@@ -303,15 +303,15 @@ class TestCongestionControlState__Defaults(TestCase):
         """
         Ensure 'hystart_state' defaults to a fresh 'HyStartState'
         instance via 'default_factory'. Two separate
-        'CongestionControlState' instances must own independent
+        'CcState' instances must own independent
         'HyStartState' objects so per-session HyStart++ progress
         does not bleed across sessions.
 
         Reference: RFC 9406 §4.2 (per-connection HyStart++ state).
         """
 
-        cc_a = CongestionControlState()
-        cc_b = CongestionControlState()
+        cc_a = CcState()
+        cc_b = CcState()
 
         self.assertIsInstance(
             cc_a.hystart_state,
@@ -325,7 +325,7 @@ class TestCongestionControlState__Defaults(TestCase):
         )
 
 
-class TestCongestionControlState__FrtoSnapshot(TestCase):
+class TestCcState__FrtoSnapshot(TestCase):
     """
     Save / restore lifecycle of the F-RTO snapshot.
     """
@@ -341,7 +341,7 @@ class TestCongestionControlState__FrtoSnapshot(TestCase):
         Reference: RFC 9438 §4.9.1 (snapshot CUBIC state).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.cwnd = 8000
         cc.ssthresh = 12000
         cc.cubic_w_max = 16000
@@ -408,7 +408,7 @@ class TestCongestionControlState__FrtoSnapshot(TestCase):
         Reference: RFC 9438 §4.9.1 (restore CUBIC state).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.frto_pre_cwnd = 20000
         cc.frto_pre_ssthresh = 30000
         cc.frto_pre_cubic_w_max = 40000
@@ -464,7 +464,7 @@ class TestCongestionControlState__FrtoSnapshot(TestCase):
         Reference: RFC 5681 §2 (cwnd as send-rate ceiling).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.frto_pre_cwnd = 8000
         cc.frto_pre_ssthresh = 16000
 
@@ -477,7 +477,7 @@ class TestCongestionControlState__FrtoSnapshot(TestCase):
         )
 
 
-class TestCongestionControlState__FrCubicSnapshot(TestCase):
+class TestCcState__FrCubicSnapshot(TestCase):
     """
     Save / restore / clear lifecycle of the spurious-fast-retransmit
     CUBIC snapshot.
@@ -492,7 +492,7 @@ class TestCongestionControlState__FrCubicSnapshot(TestCase):
         Reference: RFC 9438 §4.9.2 (snapshot for spurious-FR rollback).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.cwnd = 12000
         cc.ssthresh = 24000
         cc.cubic_w_max = 30000
@@ -547,7 +547,7 @@ class TestCongestionControlState__FrCubicSnapshot(TestCase):
         Reference: RFC 9438 §4.9.2 (rollback on spurious-FR DSACK).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.fr_pre_cwnd = 10000
         cc.fr_pre_ssthresh = 20000
         cc.fr_pre_cubic_w_max = 25000
@@ -607,7 +607,7 @@ class TestCongestionControlState__FrCubicSnapshot(TestCase):
         Reference: RFC 9438 §4.9.2 (snapshot scope is one episode).
         """
 
-        cc = CongestionControlState()
+        cc = CcState()
         cc.fr_pre_cwnd = 7777
         cc.fr_pre_ssthresh = 8888
         cc.fr_cubic_snapshot_valid = True

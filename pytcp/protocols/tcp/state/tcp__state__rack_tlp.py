@@ -35,7 +35,7 @@ ACKs (§7.4), and the §6.2 step 4 reo_wnd_persist counter decays
 on every recovery exit regardless of whether a TLP probe was the
 trigger.
 
-pytcp/protocols/tcp/tcp__rack_tlp_state.py
+pytcp/protocols/tcp/state/tcp__state__rack_tlp.py
 
 ver 3.0.4
 """

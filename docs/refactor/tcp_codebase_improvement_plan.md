@@ -125,12 +125,12 @@ dataclass with one place to flip defaults would be cleaner.
 
 ## 2. Recommended refactors (ordered for sequencing)
 
-### Refactor #1 — Extract `CongestionControlState` dataclass
+### Refactor #1 — Extract `CcState` dataclass
 
 **Effort:** 3–4 commits. **Risk:** Low. **Closes:** Concern #1 (partial).
 
-Extract a `CongestionControlState` dataclass under
-`pytcp/protocols/tcp/tcp__cc_state.py` carrying:
+Extract a `CcState` dataclass under
+`pytcp/protocols/tcp/tcp__state__cc.py` carrying:
 
 - `cwnd, ssthresh, snd_ewn` — primary CC variables
 - `recovery_point, recover_seq` — RFC 6582 step 4 + RFC 6675 §5.1
@@ -345,7 +345,7 @@ tests because the helpers are already factored.
 If a week of cleanup time were available, the highest-value
 sequence is:
 
-1. **Refactor #1** (CongestionControlState extraction)
+1. **Refactor #1** (CcState extraction)
 2. **Refactor #2** (`_process_ack_packet` phase split)
 3. **Refactor #4** (ICMP→TCP demux) — unblocks PMTUD
 

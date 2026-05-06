@@ -42,8 +42,9 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.tcp__accecn_state import AccEcnState
-from pytcp.protocols.tcp.tcp__cc_state import CongestionControlState
+from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
+from pytcp.protocols.tcp.state.tcp__state__cc import CcState
+from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
@@ -85,7 +86,6 @@ from pytcp.protocols.tcp.tcp__rack import (
     tlp_calc_pto,
     tlp_process_ack,
 )
-from pytcp.protocols.tcp.tcp__rack_tlp_state import RackTlpState
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
@@ -298,11 +298,11 @@ class TcpSession:
         # Per-session congestion-control variables (cwnd, ssthresh,
         # snd_ewn, recovery_point, recover_seq, PRR counters, F-RTO
         # snapshot, CUBIC curve, HyStart++ state). Lives as one
-        # coherent object on 'tcp__cc_state.py'. Primary CC fields
+        # coherent object on 'tcp__state__cc.py'. Primary CC fields
         # (cwnd / snd_ewn) are initialised below once 'snd_mss' is
         # known; everything else uses the dataclass's RFC-anchored
         # defaults.
-        self._cc: CongestionControlState = CongestionControlState()
+        self._cc: CcState = CcState()
 
         # RFC 7413 §3.1 Fast Open server-side state. When peer's
         # passive-open SYN carries the TFO option, the LISTEN
@@ -380,11 +380,11 @@ class TcpSession:
         # codepoint capture, receiver/sender byte counters, ACE
         # encoding state, last-emit tracker, mangling sentinel).
         # Defaults are RFC-anchored on the dataclass — see
-        # 'tcp__accecn_state.py' for the full per-field rationale.
+        # 'tcp__state__accecn.py' for the full per-field rationale.
         self._accecn: AccEcnState = AccEcnState()
 
         # F-RTO state, CUBIC F-RTO snapshot, and the FR-CUBIC
-        # snapshot all live on 'self._cc' (CongestionControlState).
+        # snapshot all live on 'self._cc' (CcState).
         # Defaults are RFC-anchored on the dataclass; no per-field
         # init needed here.
 
@@ -431,7 +431,7 @@ class TcpSession:
         # scoreboard, RACK scalars, fold-tracker set, reorder-
         # window state, DSACK round marker, TLP arming state).
         # Defaults are RFC-anchored on the dataclass — see
-        # 'tcp__rack_tlp_state.py' for the full per-field
+        # 'tcp__state__rack_tlp.py' for the full per-field
         # rationale.
         self._rack_tlp: RackTlpState = RackTlpState()
 
@@ -558,7 +558,7 @@ class TcpSession:
         # receiver-advertised window) from 'snd_mss' now that
         # 'snd_mss' is known. 'ssthresh' keeps the dataclass
         # default 'CC_STATE__SSTHRESH_INF' (0x7FFF_FFFF) per
-        # RFC 5681 §3.1. See 'tcp__cc_state.py' for the full
+        # RFC 5681 §3.1. See 'tcp__state__cc.py' for the full
         # CC-variable surface and 'docs/rfc/tcp/rfc5681__reno_cwnd
         # /adherence.md' for the per-clause spec audit.
         self._cc.cwnd = self._snd_mss

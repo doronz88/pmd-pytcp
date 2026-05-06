@@ -24,22 +24,22 @@
 
 """
 This module contains unit tests for the per-session RACK + TLP
-state container in 'pytcp/protocols/tcp/tcp__rack_tlp_state.py'.
+state container in 'pytcp/protocols/tcp/state/tcp__state__rack_tlp.py'.
 
-pytcp/tests/unit/protocols/tcp/test__tcp__rack_tlp_state.py
+pytcp/tests/unit/protocols/tcp/state/test__tcp__state__rack_tlp.py
 
 ver 3.0.4
 """
 
 from unittest import TestCase
 
-from pytcp.protocols.tcp.tcp__rack import RackSegment
-from pytcp.protocols.tcp.tcp__rack_tlp_state import (
+from pytcp.protocols.tcp.state.tcp__state__rack_tlp import (
     RACK__REO_WND_MULT_INITIAL,
     RACK__REO_WND_PERSIST_DEFAULT,
     TLP__MAX_ACK_DELAY_MS_DEFAULT,
     RackTlpState,
 )
+from pytcp.protocols.tcp.tcp__rack import RackSegment
 
 
 class TestRackTlpState__Defaults(TestCase):
