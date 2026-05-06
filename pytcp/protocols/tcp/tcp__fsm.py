@@ -21,6 +21,8 @@
 ##                                                                            ##
 ################################################################################
 
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false
 
 """
 This module contains the TCP FSM dispatch tables.
@@ -136,7 +138,7 @@ def dispatch_packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     packet handler (e.g. CLOSED) silently no-op.
     """
 
-    handler = FSM_PACKET_HANDLERS.get(session._state)  # pylint: disable=protected-access
+    handler = FSM_PACKET_HANDLERS.get(session._state)
     if handler is not None:
         handler(session, packet_rx_md)
 
@@ -148,7 +150,7 @@ def dispatch_syscall(session: TcpSession, syscall: SysCall) -> None:
     handler (e.g. CLOSING, FIN_WAIT_1) silently no-op.
     """
 
-    handler = FSM_SYSCALL_HANDLERS.get(session._state)  # pylint: disable=protected-access
+    handler = FSM_SYSCALL_HANDLERS.get(session._state)
     if handler is not None:
         handler(session, syscall)
 
@@ -160,6 +162,6 @@ def dispatch_timer(session: TcpSession) -> None:
     a timer handler (e.g. CLOSED, LISTEN) silently no-op.
     """
 
-    handler = FSM_TIMER_HANDLERS.get(session._state)  # pylint: disable=protected-access
+    handler = FSM_TIMER_HANDLERS.get(session._state)
     if handler is not None:
         handler(session)
