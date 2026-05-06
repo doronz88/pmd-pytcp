@@ -47,6 +47,7 @@ from pytcp.protocols.tcp.state.tcp__state__cc import CcState
 from pytcp.protocols.tcp.state.tcp__state__ecn_classic import ClassicEcnState
 from pytcp.protocols.tcp.state.tcp__state__fastopen import FastOpenState
 from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
+from pytcp.protocols.tcp.state.tcp__state__persist import PersistState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
@@ -453,8 +454,8 @@ class TcpSession:
         # the current back-off interval (initial =
         # tcp__constants.PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
         # tcp__constants.PERSIST_TIMEOUT_MAX).
-        self._persist_active: bool = False
-        self._persist_timeout: int = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+        self._persist: PersistState = PersistState()
+        self._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
 
         # Number of in-order data segments received since we last transmitted
         # an ACK. Tracks the RFC 1122 §4.2.3.2 "ACK every other segment"
@@ -2505,13 +2506,13 @@ class TcpSession:
                     # connection would stall indefinitely whenever the
                     # peer temporarily closed its window.
                     persist_timer = f"{self}-persist"
-                    if not self._persist_active:
-                        self._persist_active = True
-                        self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
-                        stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
+                    if not self._persist.active:
+                        self._persist.active = True
+                        self._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+                        stack.timer.register_timer(name=persist_timer, timeout=self._persist.timeout)
                         __debug__ and log(
                             "tcp-ss",
-                            f"[{self}] - Persist: zero-window, armed timer " f"with timeout {self._persist_timeout} ms",
+                            f"[{self}] - Persist: zero-window, armed timer " f"with timeout {self._persist.timeout} ms",
                         )
                     elif stack.timer.is_expired(persist_timer):
                         with self._lock__tx_buffer:
@@ -2524,8 +2525,8 @@ class TcpSession:
                         # The probe is by definition a partial; track
                         # it for Nagle so subsequent partials defer.
                         self._snd_seq.sml = self._snd_seq.nxt
-                        self._persist_timeout = min(self._persist_timeout * 2, tcp__constants.PERSIST_TIMEOUT_MAX)
-                        stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
+                        self._persist.timeout = min(self._persist.timeout * 2, tcp__constants.PERSIST_TIMEOUT_MAX)
+                        stack.timer.register_timer(name=persist_timer, timeout=self._persist.timeout)
                 return
 
         # Check if we need to (re)transmit final FIN packet.
@@ -3871,10 +3872,9 @@ class TcpSession:
         # persist timer and reset the back-off interval so the next
         # zero-window event starts fresh at the initial RTO
         # (RFC 9293 §3.8.6.1).
-        if self._win.snd_wnd > 0 and self._persist_active:
+        if self._win.snd_wnd > 0 and self._persist.active:
             __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
-            self._persist_active = False
-            self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+            self._persist.deactivate(initial_timeout=tcp__constants.PACKET_RETRANSMIT_TIMEOUT)
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - cwnd={self._cc.cwnd} ssthresh={self._cc.ssthresh} snd_ewn={self._cc.snd_ewn}",

@@ -170,13 +170,13 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
                     f"[{session}] - Updated sending window size " f"{session._win.snd_wnd} -> {new_wnd} (wnd-update)",
                 )
                 session._win.snd_wnd = new_wnd
-                if session._win.snd_wnd > 0 and session._persist_active:
+                if session._win.snd_wnd > 0 and session._persist.active:
                     __debug__ and log(
                         "tcp-ss",
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",
                     )
-                    session._persist_active = False
-                    session._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+                    session._persist.active = False
+                    session._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
                 session._ingest_sack_info(packet_rx_md)
                 return
             # Idle session (SND.UNA == SND.NXT) with an ACK at

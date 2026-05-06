@@ -1129,7 +1129,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
         # Pin '_persist_timeout' to the cap directly and re-arm
         # the timer at that interval. The next probe must fire
         # at exactly PERSIST_TIMEOUT_MAX, NOT 2 * PERSIST_TIMEOUT_MAX.
-        session._persist_timeout = tcp__constants.PERSIST_TIMEOUT_MAX
+        session._persist.timeout = tcp__constants.PERSIST_TIMEOUT_MAX
         stack.timer.register_timer(name=f"{session}-persist", timeout=tcp__constants.PERSIST_TIMEOUT_MAX)
 
         early_tx = self._advance(ms=tcp__constants.PERSIST_TIMEOUT_MAX - 100)
@@ -1157,12 +1157,12 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._persist_timeout,
+            session._persist.timeout,
             tcp__constants.PERSIST_TIMEOUT_MAX,
             msg=(
                 "Persist cap: '_persist_timeout' MUST stay at "
                 "PERSIST_TIMEOUT_MAX after a post-cap probe. "
-                f"Got _persist_timeout={session._persist_timeout} ms."
+                f"Got _persist_timeout={session._persist.timeout} ms."
             ),
         )
 
@@ -1185,12 +1185,12 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
         # doubled multiple times.
         self._advance(ms=8000)
         self.assertGreater(
-            session._persist_timeout,
+            session._persist.timeout,
             1000,
             msg=(
                 "Setup invariant: after several probes, "
                 "'_persist_timeout' MUST be > 1000 ms (doubled). "
-                f"Got {session._persist_timeout} ms."
+                f"Got {session._persist.timeout} ms."
             ),
         )
 
@@ -1205,11 +1205,11 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
         self._drive_rx(frame=peer_window_update)
 
         self.assertFalse(
-            session._persist_active,
+            session._persist.active,
             msg="Peer's window reopen MUST deactivate persist mode.",
         )
         self.assertEqual(
-            session._persist_timeout,
+            session._persist.timeout,
             tcp__constants.PACKET_RETRANSMIT_TIMEOUT,
             msg=(
                 "RFC 9293 §3.8.6.1: peer's window reopen MUST reset "
@@ -1217,7 +1217,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
                 "(1000 ms) so a future zero-window event restarts "
                 "the geometric series from the beginning, not from "
                 "the previously-doubled value. Got "
-                f"_persist_timeout={session._persist_timeout} ms."
+                f"_persist_timeout={session._persist.timeout} ms."
             ),
         )
 
