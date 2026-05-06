@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, IpVersion
 from net_proto import (
+    Icmp4DestinationUnreachableCode,
     Icmp4MessageDestinationUnreachable,
     Icmp4MessageEchoReply,
     Icmp4MessageEchoRequest,
@@ -144,21 +145,29 @@ class PacketHandlerIcmp4Rx(ABC):
 
     def __phrx_icmp4__destination_unreachable(self, packet_rx: PacketRx) -> None:
         """
-        Handle inbound ICMPv4 Port Unreachable packets.
+        Handle inbound ICMPv4 Destination Unreachable packets. The
+        Code 4 (Fragmentation Needed and DF Set) subcase carries the
+        next-hop MTU per RFC 1191 §3 and is dispatched to the PMTUD
+        path; every other code routes to the UDP-socket
+        notify_unreachable lookup.
         """
 
-        # TODO: The proper support for MTU Exceeded ICMPv4 message needs to be added.
-
         assert isinstance(packet_rx.icmp4.message, Icmp4MessageDestinationUnreachable)
+
+        message = packet_rx.icmp4.message
 
         __debug__ and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Destination Unreachable packet "
-            f"from {packet_rx.ip4.src}, will try to match UDP socket",
+            f"from {packet_rx.ip4.src}, code={message.code}",
         )
         self._packet_stats_rx.icmp4__destination_unreachable += 1
 
-        embedded = parse_embedded_l4(packet_rx.icmp4.message.data, IpVersion.IP4)
+        is_frag_needed = message.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
+        if is_frag_needed:
+            self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed += 1
+
+        embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
             __debug__ and log(
                 "icmp4",
@@ -186,7 +195,12 @@ class PacketHandlerIcmp4Rx(ABC):
                     f"listening socket {socket}, for Unreachable "
                     f"packet from {packet_rx.ip4.src}</>",
                 )
-                socket.notify_unreachable()
+                if is_frag_needed and message.mtu is not None:
+                    stack.pmtu_cache[cast(Ip4Address, embedded.remote_ip)] = message.mtu
+                    socket.notify_pmtu(next_hop_mtu=message.mtu)
+                    self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
+                else:
+                    socket.notify_unreachable()
                 return
 
         __debug__ and log(

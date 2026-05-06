@@ -54,6 +54,7 @@ class Icmp6Type(ProtoEnumByte):
     """
 
     DESTINATION_UNREACHABLE = 1
+    PACKET_TOO_BIG = 2
     ECHO_REQUEST = 128
     ECHO_REPLY = 129
     ND__ROUTER_SOLICITATION = 133

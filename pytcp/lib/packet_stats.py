@@ -108,12 +108,16 @@ class PacketStatsRx(PacketStats):
     icmp4__failed_parse__drop: int = 0
     icmp4__echo_reply: int = 0
     icmp4__destination_unreachable: int = 0
+    icmp4__destination_unreachable__fragmentation_needed: int = 0
+    icmp4__destination_unreachable__fragmentation_needed__notify_pmtu: int = 0
     icmp4__echo_request__respond_echo_reply: int = 0
     icmp4__unknown: int = 0
 
     icmp6__pre_parse: int = 0
     icmp6__failed_parse__drop: int = 0
     icmp6__destination_unreachable: int = 0
+    icmp6__packet_too_big: int = 0
+    icmp6__packet_too_big__notify_pmtu: int = 0
     icmp6__echo_request__respond_echo_reply: int = 0
     icmp6__echo_reply: int = 0
     icmp6__nd_neighbor_solicitation: int = 0

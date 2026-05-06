@@ -401,3 +401,16 @@ class UdpSocket(socket):
         """
 
         self._unreachable = True
+
+    def notify_pmtu(self, *, next_hop_mtu: int) -> None:
+        """
+        Receive a Path-MTU update for this socket's remote peer. The
+        per-destination MTU is recorded in 'stack.pmtu_cache' so the
+        next 'sendto' call can fragment-or-fail-or-shrink against it.
+        Currently a thin shim: the callback's behaviour is just to
+        update the cache; the policy for what to do with the smaller
+        MTU is deferred to a future feature commit (RFC 4821 / 8899
+        active probing).
+        """
+
+        stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu

@@ -51,6 +51,9 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_reply import (
 from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
     Icmp6MessageEchoRequest,
 )
+from net_proto.protocols.icmp6.message.icmp6__message__packet_too_big import (
+    Icmp6MessagePacketTooBig,
+)
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
@@ -104,6 +107,8 @@ class Icmp6Parser(Icmp6, ProtoParser):
         match Icmp6Type.from_int(self._frame[0]):
             case Icmp6Type.DESTINATION_UNREACHABLE:
                 return Icmp6MessageDestinationUnreachable
+            case Icmp6Type.PACKET_TOO_BIG:
+                return Icmp6MessagePacketTooBig
             case Icmp6Type.ECHO_REQUEST:
                 return Icmp6MessageEchoRequest
             case Icmp6Type.ECHO_REPLY:

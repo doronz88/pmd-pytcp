@@ -210,6 +210,11 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
     Icmp6EchoRequestCode,
     Icmp6MessageEchoRequest,
 )
+from net_proto.protocols.icmp6.message.icmp6__message__packet_too_big import (
+    ICMP6__PACKET_TOO_BIG__LEN,
+    Icmp6MessagePacketTooBig,
+    Icmp6PacketTooBigCode,
+)
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
@@ -462,6 +467,7 @@ __all__ = [
     "ICMP6__DESTINATION_UNREACHABLE__LEN",
     "ICMP6__ECHO_REPLY__LEN",
     "ICMP6__ECHO_REQUEST__LEN",
+    "ICMP6__PACKET_TOO_BIG__LEN",
     "ICMP6__MLD2__REPORT__LEN",
     "ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN",
     "ICMP6__ND__NEIGHBOR_SOLICITATION__LEN",
@@ -508,6 +514,8 @@ __all__ = [
     "Icmp6MessageEchoReply",
     "Icmp6EchoRequestCode",
     "Icmp6MessageEchoRequest",
+    "Icmp6PacketTooBigCode",
+    "Icmp6MessagePacketTooBig",
     "Icmp6IntegrityError",
     "Icmp6Message",
     "Icmp6Mld2MulticastAddressRecord",

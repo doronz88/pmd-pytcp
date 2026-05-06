@@ -38,6 +38,7 @@ from net_proto import (
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
+    Icmp6MessagePacketTooBig,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRouterAdvertisement,
@@ -120,6 +121,8 @@ class PacketHandlerIcmp6Rx(ABC):
         match packet_rx.icmp6.message.type:
             case Icmp6Type.DESTINATION_UNREACHABLE:
                 self.__phrx_icmp6__destination_unreachable(packet_rx)
+            case Icmp6Type.PACKET_TOO_BIG:
+                self.__phrx_icmp6__packet_too_big(packet_rx)
             case Icmp6Type.ECHO_REQUEST:
                 self.__phrx_icmp6__echo_request(packet_rx)
             case Icmp6Type.ECHO_REPLY:
@@ -194,6 +197,49 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
+
+    def __phrx_icmp6__packet_too_big(self, packet_rx: PacketRx) -> None:
+        """
+        Handle inbound ICMPv6 Packet Too Big messages — the IPv6
+        PMTUD signal. Updates 'stack.pmtu_cache' for the destination
+        and notifies the matching UDP socket via 'notify_pmtu' so it
+        can refit subsequent sends to the new path MTU.
+
+        Reference: RFC 4443 §3.2 (Packet Too Big Message).
+        Reference: RFC 8201 §4 (IPv6 Path MTU Discovery).
+        """
+
+        assert isinstance(packet_rx.icmp6.message, Icmp6MessagePacketTooBig)
+
+        message = packet_rx.icmp6.message
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - Received ICMPv6 Packet Too Big " f"from {packet_rx.ip6.src}, mtu={message.mtu}",
+        )
+        self._packet_stats_rx.icmp6__packet_too_big += 1
+
+        embedded = parse_embedded_l4(message.data, IpVersion.IP6)
+        if embedded is None:
+            return
+
+        if embedded.proto is not IpProto.UDP:
+            return
+
+        packet = UdpMetadata(
+            ip__ver=IpVersion.IP6,
+            ip__local_address=cast(Ip6Address, embedded.local_ip),
+            ip__remote_address=cast(Ip6Address, embedded.remote_ip),
+            udp__local_port=embedded.local_port,
+            udp__remote_port=embedded.remote_port,
+        )
+
+        for socket_id in packet.socket_ids:
+            if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                stack.pmtu_cache[cast(Ip6Address, embedded.remote_ip)] = message.mtu
+                socket.notify_pmtu(next_hop_mtu=message.mtu)
+                self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
+                return
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:
         """
