@@ -3757,76 +3757,7 @@ class TcpSession:
                     name=f"{self}-retransmit",
                     timeout=self._rto_state.rto_ms,
                 )
-            # RFC 5682 §2.1 step 2 / step 3 spurious-RTO
-            # detection. The algorithm requires up to two
-            # post-RTO ACKs to definitively classify the RTO:
-            #
-            #   step==1 (first post-RTO ACK):
-            #     - SND.UNA covers all pre-RTO data (>= recover):
-            #       single-ACK strong-spurious; restore and exit.
-            #     - SND.UNA partially advances (still < recover):
-            #       step 2b — defer decision to second ACK,
-            #       set _frto_step=2 and stay in F-RTO. PyTCP's
-            #       existing _transmit_data flow naturally
-            #       sends up to 2 new segments after this cum-
-            #       ACK because cwnd was reset to 1 SMSS on RTO
-            #       and slow-start grows it by 1 SMSS per ACK.
-            #   step==2 (second post-RTO ACK):
-            #     - SND.UNA advanced further: spurious declared
-            #       per step 3b; restore and exit.
-            #     - (dup-ACK paths handled in the dup-ACK branch.)
-            #
-            # 'gt32(self._snd_una, snd_una_before_ack)' is True
-            # for any cum-ACK that advances SND.UNA, which is
-            # exactly the §2.1 "advances the window" signal.
-            if self._cc.frto_active:
-                fully_covered = not lt32(self._snd_una, self._cc.frto_pre_snd_max)
-                if self._cc.frto_step == 1:
-                    if fully_covered:
-                        # Single-ACK strong-spurious — restore.
-                        self._cc.frto_step = 0
-                        self._cc.frto_active = False
-                        self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
-                        __debug__ and log(
-                            "tcp-ss",
-                            f"[{self}] - RFC 5682 F-RTO: spurious RTO "
-                            f"detected, restored cwnd={self._cc.cwnd} "
-                            f"ssthresh={self._cc.ssthresh}; "
-                            f"RFC 9438 §4.9.1: restored cubic "
-                            f"w_max={self._cc.cubic_w_max} "
-                            f"K_ms={self._cc.cubic_K_ms}",
-                        )
-                    else:
-                        # Step 2b: partial advance, defer to step 3.
-                        self._cc.frto_step = 2
-                        __debug__ and log(
-                            "tcp-ss",
-                            f"[{self}] - RFC 5682 §2.1 step 2b: "
-                            f"partial first post-RTO ACK "
-                            f"(SND.UNA={self._snd_una} < recover="
-                            f"{self._cc.frto_pre_snd_max}); waiting "
-                            "for second ACK to declare spurious",
-                        )
-                elif self._cc.frto_step == 2:
-                    # Second ACK that advances the window
-                    # declares the timeout spurious per §2.1
-                    # step 3b. We landed here because SND.UNA
-                    # advanced ('lt32(snd_una_before_ack,
-                    # tcp__ack)' was True at the top of this
-                    # block); that's the §2.1 "acknowledgment
-                    # advances the window" condition.
-                    self._cc.frto_step = 0
-                    self._cc.frto_active = False
-                    self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
-                    __debug__ and log(
-                        "tcp-ss",
-                        f"[{self}] - RFC 5682 F-RTO: spurious RTO "
-                        f"detected, restored cwnd={self._cc.cwnd} "
-                        f"ssthresh={self._cc.ssthresh}; "
-                        f"RFC 9438 §4.9.1: restored cubic "
-                        f"w_max={self._cc.cubic_w_max} "
-                        f"K_ms={self._cc.cubic_K_ms}",
-                    )
+            self._phase2_frto_spurious_detect()
         self._phase3_harvest_rtt_samples(packet_rx_md)
         # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
         # §3: prune any blocks now absorbed by the cumulative ACK,
@@ -3836,6 +3767,85 @@ class TcpSession:
         self._ingest_sack_info(packet_rx_md)
         self._phase4_loss_detection_and_recovery_exit(packet_rx_md)
         self._phase5_consume_segment_and_postprocess(packet_rx_md)
+
+    def _phase2_frto_spurious_detect(self) -> None:
+        """
+        Phase 2 of the inbound-ACK pipeline. RFC 5682 §2.1 step 2
+        / step 3 F-RTO spurious-RTO detection. Up to two post-RTO
+        ACKs classify the RTO:
+
+          step==1 (first post-RTO ACK):
+            - SND.UNA covers all pre-RTO data (>= recover):
+              single-ACK strong-spurious; restore and exit.
+            - SND.UNA partially advances (still < recover):
+              step 2b — defer decision to second ACK, set
+              frto_step=2 and stay in F-RTO. PyTCP's existing
+              _transmit_data flow naturally sends up to 2 new
+              segments after this cum-ACK because cwnd was reset
+              to 1 SMSS on RTO and slow-start grows it by 1 SMSS
+              per ACK.
+          step==2 (second post-RTO ACK):
+            - SND.UNA advanced further: spurious declared per
+              step 3b; restore and exit.
+            - (dup-ACK paths are handled in the dup-ACK branch.)
+
+        Caller MUST guard the invocation on cum-ACK advance
+        (lt32(self._snd_una, packet_rx_md.tcp__ack) was True at
+        the top of phase 1) — F-RTO step transitions assume the
+        ACK advances the window.
+
+        Reference: RFC 5682 §2.1 step 2 (single-ACK strong-spurious).
+        Reference: RFC 5682 §2.1 step 3b (two-ACK advancing path).
+        Reference: RFC 9438 §4.9.1 (CUBIC F-RTO snapshot restore).
+        """
+
+        if not self._cc.frto_active:
+            return
+        fully_covered = not lt32(self._snd_una, self._cc.frto_pre_snd_max)
+        if self._cc.frto_step == 1:
+            if fully_covered:
+                # Single-ACK strong-spurious — restore.
+                self._cc.frto_step = 0
+                self._cc.frto_active = False
+                self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RFC 5682 F-RTO: spurious RTO "
+                    f"detected, restored cwnd={self._cc.cwnd} "
+                    f"ssthresh={self._cc.ssthresh}; "
+                    f"RFC 9438 §4.9.1: restored cubic "
+                    f"w_max={self._cc.cubic_w_max} "
+                    f"K_ms={self._cc.cubic_K_ms}",
+                )
+            else:
+                # Step 2b: partial advance, defer to step 3.
+                self._cc.frto_step = 2
+                __debug__ and log(
+                    "tcp-ss",
+                    f"[{self}] - RFC 5682 §2.1 step 2b: "
+                    f"partial first post-RTO ACK "
+                    f"(SND.UNA={self._snd_una} < recover="
+                    f"{self._cc.frto_pre_snd_max}); waiting "
+                    "for second ACK to declare spurious",
+                )
+        elif self._cc.frto_step == 2:
+            # Second ACK that advances the window declares the
+            # timeout spurious per §2.1 step 3b. We landed here
+            # because the caller's cum-ACK advance gate was True;
+            # that's the §2.1 "acknowledgment advances the window"
+            # condition.
+            self._cc.frto_step = 0
+            self._cc.frto_active = False
+            self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - RFC 5682 F-RTO: spurious RTO "
+                f"detected, restored cwnd={self._cc.cwnd} "
+                f"ssthresh={self._cc.ssthresh}; "
+                f"RFC 9438 §4.9.1: restored cubic "
+                f"w_max={self._cc.cubic_w_max} "
+                f"K_ms={self._cc.cubic_K_ms}",
+            )
 
     def _phase3_harvest_rtt_samples(self, packet_rx_md: TcpMetadata) -> None:
         """
