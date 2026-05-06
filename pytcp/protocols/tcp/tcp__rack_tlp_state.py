@@ -43,7 +43,7 @@ ver 3.0.4
 from dataclasses import dataclass, field
 
 from pytcp.protocols.tcp.tcp__rack import RackSegment
-from pytcp.protocols.tcp.tcp__seq import Seq32
+from pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32
 
 # RFC 8985 §6.2 step 4 reorder-window persist counter default.
 # Decrements on each recovery exit; resets the multiplier back
@@ -155,3 +155,94 @@ class RackTlpState:
     tlp_end_seq: Seq32 | None = None
     tlp_max_ack_delay_ms: int = TLP__MAX_ACK_DELAY_MS_DEFAULT
     tlp_armed: bool = False
+
+    def record_segment(self, *, seq: Seq32, end_seq: Seq32, xmit_ts: int) -> None:
+        """
+        Insert a 'RackSegment' for an outbound segment that
+        consumes sequence space. Keyed by the segment's starting
+        seq. If the seq is already in the dict the segment is a
+        retransmit (re-entered '_transmit_packet' with the same
+        SND.NXT after a walkback) — record the latest xmit_ts AND
+        set 'retransmitted' so RACK §6.2 step 2 can disambiguate
+        samples per Karn's algorithm.
+
+        Reference: RFC 8985 §5.2 (per-segment xmit_ts tagging).
+        Reference: RFC 8985 §6.1 (retransmit-tag for sample selection).
+        """
+
+        self.rack_segments[seq] = RackSegment(
+            end_seq=end_seq,
+            xmit_ts=xmit_ts,
+            retransmitted=seq in self.rack_segments,
+            lost=False,
+        )
+
+    def prune_segments(self, *, snd_una: Seq32) -> None:
+        """
+        Drop scoreboard entries whose 'end_seq' is at or below
+        SND.UNA (the segment has been delivered and is no longer
+        in flight). Modular 'le32' so the prune fires correctly
+        when both 'end_seq' and SND.UNA straddle the 32-bit
+        wrap. The parallel 'rack_acked_seqs' set is pruned
+        alongside so a future segment that lands at the same
+        seq (post-wrap) is not falsely treated as already-acked.
+
+        Reference: RFC 8985 §5.2 (per-segment dict pruning).
+        """
+
+        for entry_seq in [s for s, e in self.rack_segments.items() if le32(e.end_seq, snd_una)]:
+            del self.rack_segments[entry_seq]
+            self.rack_acked_seqs.discard(entry_seq)
+
+    def decay_reo_wnd_persist(self) -> None:
+        """
+        Decrement the §6.2 step 4 reo_wnd_persist counter on a
+        recovery exit; if the counter reaches zero, reset the
+        multiplier back to 1 and refresh persist back to its
+        default so the connection eventually decays back to the
+        canonical reordering tolerance after a long stretch of
+        recoveries without DSACK.
+
+        Reference: RFC 8985 §6.2 step 4 (reo_wnd_persist decay).
+        """
+
+        self.rack_reo_wnd_persist -= 1
+        if self.rack_reo_wnd_persist == 0:
+            self.rack_reo_wnd_mult = RACK__REO_WND_MULT_INITIAL
+            self.rack_reo_wnd_persist = RACK__REO_WND_PERSIST_DEFAULT
+
+    def maybe_close_dsack_round(self, *, snd_una: Seq32, snd_max: Seq32) -> None:
+        """
+        On a DSACK observation, increment the reorder-window
+        multiplier and arm a new DSACK round at SND.MAX. A burst
+        of DSACKs within one round (SND.UNA still below the
+        prior round's marker) is collapsed to a single
+        increment so the multiplier does not run away.
+
+        Caller is responsible for the recovery_point gate (the
+        DSACK-round increment is suppressed inside an active
+        recovery episode); this method assumes the caller has
+        already cleared that gate.
+
+        Reference: RFC 8985 §6.2 step 4 (DSACK-round closure).
+        """
+
+        if self.rack_dsack_round is None or not lt32(snd_una, self.rack_dsack_round):
+            self.rack_reo_wnd_mult += 1
+            self.rack_dsack_round = snd_max
+
+    def cancel_tlp(self) -> None:
+        """
+        Clear the once-per-tail TLP state so the next tail can
+        fire its own probe. Called from the cum-ACK-drain path
+        when SND.UNA reaches SND.MAX. The caller is responsible
+        for unregistering the 'f"{self}-tlp"' timer in the stack
+        timer subsystem; this method only clears the per-session
+        TLP state fields.
+
+        Reference: RFC 8985 §7.2 (TLP cancellation on cum-ACK drain).
+        """
+
+        self.tlp_end_seq = None
+        self.tlp_is_retrans = False
+        self.tlp_armed = False

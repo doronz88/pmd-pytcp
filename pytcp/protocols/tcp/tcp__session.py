@@ -1600,12 +1600,10 @@ class TcpSession:
         # disambiguate samples per Karn's algorithm. Phase 1
         # only ships the storage; Phase 2 onward consumes it.
         if data or flag_syn or flag_fin:
-            seg_end_seq = add32(seq, len(data), flag_syn, flag_fin)
-            self._rack_tlp.rack_segments[seq] = RackSegment(
-                end_seq=seg_end_seq,
+            self._rack_tlp.record_segment(
+                seq=seq,
+                end_seq=add32(seq, len(data), flag_syn, flag_fin),
                 xmit_ts=stack.timer.now_ms,
-                retransmitted=seq in self._rack_tlp.rack_segments,
-                lost=False,
             )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted
         # acknowledged everything up to RCV.NXT (via the piggybacked
@@ -2392,11 +2390,8 @@ class TcpSession:
             # the next increment, so a burst of DSACKs at the
             # same round boundary doesn't multiply the
             # multiplier away.
-            if self._cc.recovery_point == 0 and (
-                self._rack_tlp.rack_dsack_round is None or not lt32(self._snd_una, self._rack_tlp.rack_dsack_round)
-            ):
-                self._rack_tlp.rack_reo_wnd_mult += 1
-                self._rack_tlp.rack_dsack_round = self._snd_max
+            if self._cc.recovery_point == 0:
+                self._rack_tlp.maybe_close_dsack_round(snd_una=self._snd_una, snd_max=self._snd_max)
             blocks = blocks[1:]
 
         # RFC 6937 §3.1 SACK delta tracking: when in recovery,
@@ -3678,9 +3673,7 @@ class TcpSession:
             # Also clear the once-per-tail state so the
             # next tail can fire its own probe.
             stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
-            self._rack_tlp.tlp_end_seq = None
-            self._rack_tlp.tlp_is_retrans = False
-            self._rack_tlp.tlp_armed = False
+            self._rack_tlp.cancel_tlp()
         else:
             stack.timer.register_timer(
                 name=f"{self}-retransmit",
@@ -3886,9 +3879,7 @@ class TcpSession:
         # parallel '_rack_acked_seqs' set is pruned alongside so
         # a future segment that lands at the same seq (post-
         # wrap) is not falsely treated as already-acked.
-        for entry_seq in [s for s, e in self._rack_tlp.rack_segments.items() if le32(e.end_seq, self._snd_una)]:
-            del self._rack_tlp.rack_segments[entry_seq]
-            self._rack_tlp.rack_acked_seqs.discard(entry_seq)
+        self._rack_tlp.prune_segments(snd_una=self._snd_una)
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
@@ -3919,15 +3910,12 @@ class TcpSession:
             self._cc.prr_out = 0
             # RFC 8985 §6.2 step 4 reo_wnd_persist decay. Each
             # recovery exit decrements the persist counter; on
-            # reaching zero, reset 'reo_wnd_mult' back to 1
-            # and refresh persist back to 16 so the connection
-            # eventually decays back to the canonical
-            # reordering tolerance after a long stretch of
-            # recoveries without DSACK.
-            self._rack_tlp.rack_reo_wnd_persist -= 1
-            if self._rack_tlp.rack_reo_wnd_persist == 0:
-                self._rack_tlp.rack_reo_wnd_mult = 1
-                self._rack_tlp.rack_reo_wnd_persist = 16
+            # reaching zero, the multiplier and persist counter
+            # reset to their defaults so the connection
+            # eventually decays back to the canonical reordering
+            # tolerance after a long stretch of recoveries
+            # without DSACK.
+            self._rack_tlp.decay_reo_wnd_persist()
 
     def _phase5_consume_segment_and_postprocess(self, packet_rx_md: TcpMetadata) -> None:
         """
