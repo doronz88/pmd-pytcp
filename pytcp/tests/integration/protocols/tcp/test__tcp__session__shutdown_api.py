@@ -132,7 +132,7 @@ class TestTcpShutdownApi(TcpSessionTestCase):
             msg="shutdown(SHUT_WR) MUST transition to FIN_WAIT_1.",
         )
         self.assertTrue(
-            session._shut_wr,
+            session._shut.wr,
             msg="_shut_wr MUST be set after shutdown(SHUT_WR).",
         )
 
@@ -183,7 +183,7 @@ class TestTcpShutdownApi(TcpSessionTestCase):
             ),
         )
         self.assertTrue(
-            session._shut_rd,
+            session._shut.rd,
             msg="_shut_rd MUST be set after shutdown(SHUT_RD).",
         )
 
@@ -201,8 +201,8 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         self._advance(ms=1)
         self._advance(ms=1)
 
-        self.assertTrue(session._shut_rd)
-        self.assertTrue(session._shut_wr)
+        self.assertTrue(session._shut.rd)
+        self.assertTrue(session._shut.wr)
         self.assertIs(
             session.state,
             FsmState.FIN_WAIT_1,
@@ -366,15 +366,15 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         sock.shutdown(SHUT_WR)
         self._advance(ms=1)
         self._advance(ms=1)
-        self.assertTrue(session._shut_wr)
+        self.assertTrue(session._shut.wr)
         self.assertFalse(
-            session._shut_rd,
+            session._shut.rd,
             msg="Setup invariant: SHUT_WR alone MUST NOT set _shut_rd.",
         )
 
         sock.shutdown(SHUT_RD)
-        self.assertTrue(session._shut_rd)
+        self.assertTrue(session._shut.rd)
         self.assertTrue(
-            session._shut_wr,
+            session._shut.wr,
             msg="Sequential shutdown: _shut_wr MUST remain set after the second shutdown(SHUT_RD).",
         )

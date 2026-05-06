@@ -53,6 +53,7 @@ from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
+from pytcp.protocols.tcp.state.tcp__state__shutdown import ShutdownState
 from pytcp.protocols.tcp.state.tcp__state__timestamps import TimestampsState
 from pytcp.protocols.tcp.state.tcp__state__tx_buffer import TxBufferState
 from pytcp.protocols.tcp.state.tcp__state__window import WindowState
@@ -411,8 +412,7 @@ class TcpSession:
         # drains. '_shut_wr' triggers FIN emission (same effect as
         # 'close()' on the write side) but leaves '_shut_rd'
         # untouched so the receive side stays open.
-        self._shut_rd: bool = False
-        self._shut_wr: bool = False
+        self._shut: ShutdownState = ShutdownState()
 
         ###
         # Other variables.
@@ -598,7 +598,7 @@ class TcpSession:
         # timer tick after the TX buffer drains. Without this guard,
         # the post-close-but-pre-tick window would silently accept
         # writes that get serialised onto the wire ahead of the FIN.
-        if self._closing or self._shut_wr:
+        if self._closing or self._shut.wr:
             raise TcpSessionError("TCP session is closing")
 
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
@@ -688,8 +688,8 @@ class TcpSession:
         # SHUT_RD or SHUT_RDWR: discard subsequent inbound data
         # and unblock any pending recv() with end-of-stream.
         if how in (0, 2):
-            if not self._shut_rd:
-                self._shut_rd = True
+            if not self._shut.rd:
+                self._shut.rd = True
                 # Wake any blocked recv() so it observes the
                 # shutdown and returns 0 (the FSM check + empty
                 # buffer makes recv() yield empty bytes).
@@ -699,8 +699,8 @@ class TcpSession:
         # SHUT_WR or SHUT_RDWR: trigger FIN emission via the
         # existing close() machinery if not already closing.
         if how in (1, 2):
-            if not self._shut_wr and not self._closing:
-                self._shut_wr = True
+            if not self._shut.wr and not self._closing:
+                self._shut.wr = True
                 self.tcp_fsm(syscall=SysCall.CLOSE)
                 __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_WR): send side closed")
 
@@ -2229,7 +2229,7 @@ class TcpSession:
         # data per RFC 9293 §3.9.1 half-close semantics. The
         # peer's ACK still acknowledges the seq space (advancing
         # RCV.NXT), but the application never sees the bytes.
-        if self._shut_rd:
+        if self._shut.rd:
             return
 
         with self._lock__rx_buffer:
