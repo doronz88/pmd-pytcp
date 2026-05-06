@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket.socket_id import SocketId
 from pytcp.stack.arp_cache import ArpCache
 from pytcp.stack.nd_cache import NdCache
@@ -51,7 +52,7 @@ from pytcp.stack.timer import Timer
 from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address, Ip6Address
+    from net_addr import Ip4Address
     from pytcp.socket import socket
 
 
@@ -90,15 +91,12 @@ TCP__ISS_SECRET: bytes = secrets.token_bytes(16)
 # it stable for the process lifetime.
 TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
 
-# RFC 7413 §3.1 / §4.1.3 Fast Open client-side cookie cache.
-# Maps peer IP address to the most-recently-seen cookie issued
-# by that peer in a SYN+ACK. A subsequent active-open SYN to
-# the same peer replays the cached cookie + (optionally) data
-# to skip the data RTT. The cache is per-process and stable
-# for the process lifetime; restarts purge it (matching the
-# secret rotation behaviour). Wire-format compatibility: the
-# cookie byte-strings are 4..16 bytes per RFC 7413 §2.
-tcp__fastopen_cookies: "dict[Ip4Address | Ip6Address, bytes]" = {}
+# Mutable TCP-stack-level state (TFO cookie cache + negative
+# cache + pending-request counter). Aggregated under one
+# 'TcpStack' instance so test fixtures snapshot+restore one
+# object instead of three separate fields, and a future new
+# field is automatically covered by the existing reset path.
+tcp_stack: TcpStack = TcpStack()
 
 # RFC 7413 §3.1 cookie cache size cap. Bounds the per-process
 # memory footprint of the TFO cookie cache for long-running
@@ -110,26 +108,6 @@ tcp__fastopen_cookies: "dict[Ip4Address | Ip6Address, bytes]" = {}
 # tests patch this to small values to exercise the eviction
 # path deterministically.
 TCP__FASTOPEN_CACHE_MAX_SIZE: int = 1024
-
-# RFC 7413 §4.1.3.1 negative-response cache: peers we have
-# seen TFO fail with (handshake completed via 3WHS rather
-# than the TFO fast path, indicating a middlebox or peer
-# that drops TFO-bearing SYNs). Subsequent active-open
-# attempts to a peer in this set bypass the TFO option
-# entirely so a known-bad path is not exercised on every
-# new connection. The cache is per-process and stable for
-# the process lifetime; restarts purge it.
-tcp__fastopen_negative: "set[Ip4Address | Ip6Address]" = set()
-
-# RFC 7413 §4.2 PendingFastOpenRequests: count of TFO-
-# accepted active connections in SYN-RCVD state on the
-# server side. When the count meets or exceeds the
-# 'fastopen_qlen' limit configured on a listening socket,
-# the listen handler refuses TFO acceptance for the
-# incoming SYN (returns the empty-cookie cookie response
-# so the client falls back to 3WHS) until the in-flight
-# TFO connections drain to ESTABLISHED or CLOSED.
-tcp__fastopen_pending_count: int = 0
 
 # Interface configuration.
 INTERFACE__TAP__MTU = 1500

@@ -81,7 +81,7 @@ def validate_cookie(*, peer_address: Ip4Address | Ip6Address, secret: bytes, coo
 def cache_cookie(*, peer_address: Ip4Address | Ip6Address, cookie: bytes) -> None:
     """
     Insert (or refresh) 'peer_address -> cookie' in the
-    'stack.tcp__fastopen_cookies' cache, applying RFC 7413
+    'stack.tcp_stack.fastopen_cookies' cache, applying RFC 7413
     §3.1 / §4.1.3 FIFO eviction when the cache would exceed
     'stack.TCP__FASTOPEN_CACHE_MAX_SIZE'. Refreshing an
     existing entry moves it to the most-recently-used end
@@ -98,7 +98,7 @@ def cache_cookie(*, peer_address: Ip4Address | Ip6Address, cookie: bytes) -> Non
     documented contract.
     """
 
-    cache = stack.tcp__fastopen_cookies
+    cache = stack.tcp_stack.fastopen_cookies
     # Refresh insertion order: pop existing entry (if any)
     # so the re-insert lands at the tail.
     cache.pop(peer_address, None)

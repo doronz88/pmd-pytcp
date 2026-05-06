@@ -49,6 +49,7 @@ from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.tests.lib.fake_timer import FakeTimer
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
@@ -126,17 +127,16 @@ class TcpSessionTestCase(NetworkTestCase):
     _interface_mtu_was_set: bool
     _interface_mtu_prior: object
     _sockets_prior: dict[Any, Any]
-    _fastopen_negative_prior: set[Any]
-    _fastopen_pending_count_prior: int
+    _tcp_stack_prior: TcpStack
 
     def setUp(self) -> None:
         """
         Install a 'FakeTimer' over 'stack.timer' on top of the parent
         mock-network setup, set 'stack.interface_mtu' so 'TcpSession'
         construction succeeds, snapshot+clear the module-global
-        'stack.sockets' dict and the RFC 7413 §4.1.3.1 / §4.2 TFO
-        per-stack state so tests start with no leftover registrations
-        or cached negative-response peers, and initialize the patch
+        'stack.sockets' dict and replace 'stack.tcp_stack' with a
+        fresh 'TcpStack' instance so tests start with no leftover
+        registrations or cached TFO state, and initialize the patch
         tracking list so per-test 'mock.patch' handles get torn down
         deterministically.
         """
@@ -157,25 +157,21 @@ class TcpSessionTestCase(NetworkTestCase):
         self._sockets_prior = cast(dict[Any, Any], dict(stack.sockets))
         stack.sockets.clear()
 
-        # RFC 7413 §4.1.3.1 negative-response cache + §4.2 pending-
-        # TFO-request counter are module-level state that, like
-        # 'stack.sockets', accumulates across tests if not cleared.
-        # In particular, any test that drives a SYN-RTO on an active-
-        # open TFO session adds the peer to 'tcp__fastopen_negative',
-        # which would silently suppress TFO emission in subsequent
-        # tests' active-open paths. Snapshot+clear matches the
-        # 'stack.sockets' pattern.
-        self._fastopen_negative_prior = set(stack.tcp__fastopen_negative)
-        stack.tcp__fastopen_negative.clear()
-        self._fastopen_pending_count_prior = stack.tcp__fastopen_pending_count
-        stack.tcp__fastopen_pending_count = 0
+        # 'stack.tcp_stack' aggregates the RFC 7413 §4.1.3.1 negative-
+        # response cache, §4.2 pending-request counter, and §3.1
+        # cookie cache. Replace with a fresh instance so any
+        # registrations from earlier tests (especially TFO peers added
+        # to the negative cache via a SYN-RTO) do not silently
+        # suppress TFO emission in subsequent tests' active-open paths.
+        self._tcp_stack_prior = stack.tcp_stack
+        stack.tcp_stack = TcpStack()
 
         self._patches = []
 
     def tearDown(self) -> None:
         """
         Stop any 'mock.patch' handle started by '_start_patch', restore
-        'stack.interface_mtu' / TFO per-stack state to their pre-test
+        'stack.interface_mtu' / 'stack.tcp_stack' to their pre-test
         values, then defer to the parent teardown so test-only state
         does not leak between tests.
         """
@@ -191,9 +187,7 @@ class TcpSessionTestCase(NetworkTestCase):
         stack.sockets.clear()
         stack.sockets.update(self._sockets_prior)
 
-        stack.tcp__fastopen_negative.clear()
-        stack.tcp__fastopen_negative.update(self._fastopen_negative_prior)
-        stack.tcp__fastopen_pending_count = self._fastopen_pending_count_prior
+        stack.tcp_stack = self._tcp_stack_prior
 
         super().tearDown()
 

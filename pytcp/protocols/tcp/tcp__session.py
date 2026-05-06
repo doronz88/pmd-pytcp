@@ -313,7 +313,7 @@ class TcpSession:
 
         # RFC 7413 §4.2 PendingFastOpenRequests bookkeeping: True
         # iff this session was accepted via TFO and counted into
-        # 'stack.tcp__fastopen_pending_count'. Cleared by the
+        # 'stack.tcp_stack.fastopen_pending_count'. Cleared by the
         # exit hook in '_change_state' when this session leaves
         # SYN_RCVD, with a matching counter decrement so the
         # global gauge tracks live TFO-accepted handshakes only.
@@ -1229,7 +1229,7 @@ class TcpSession:
             # guard ensures we only decrement for sessions that
             # were actually counted at TFO acceptance time.
             if self._fastopen_pending_counted:
-                stack.tcp__fastopen_pending_count = max(0, stack.tcp__fastopen_pending_count - 1)
+                stack.tcp_stack.fastopen_pending_count = max(0, stack.tcp_stack.fastopen_pending_count - 1)
                 self._fastopen_pending_counted = False
 
         # Unregister session.
@@ -1841,9 +1841,9 @@ class TcpSession:
             # so the second attempt is plain 3WHS. Otherwise
             # emit TFO with the cached cookie if known, else
             # the empty cookie-request form.
-            if self._remote_ip_address in stack.tcp__fastopen_negative or self._fastopen_syn_retransmitted:
+            if self._remote_ip_address in stack.tcp_stack.fastopen_negative or self._fastopen_syn_retransmitted:
                 return None
-            return stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
+            return stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address, b"")
         return None
 
     def _phase4_advance_send_state(
@@ -2819,7 +2819,7 @@ class TcpSession:
             # cookie request form is invalid for data
             # acceptance per §4.1.2.
             tfo_data: bytes = b""
-            cached = stack.tcp__fastopen_cookies.get(self._remote_ip_address)
+            cached = stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address)
             if cached and self._advertise_fastopen and self._tx_buffer:
                 with self._lock__tx_buffer:
                     slice_len = min(self._snd_mss, len(self._tx_buffer))
@@ -3152,7 +3152,7 @@ class TcpSession:
                 # drops TFO-bearing SYNs. Add the peer to the
                 # negative-response cache so future active-
                 # opens to the same peer skip TFO entirely.
-                stack.tcp__fastopen_negative.add(self._remote_ip_address)
+                stack.tcp_stack.fastopen_negative.add(self._remote_ip_address)
         stack.timer.register_timer(
             name=f"{self}-retransmit",
             timeout=self._rto_state.rto_ms,
@@ -3628,7 +3628,7 @@ class TcpSession:
         'rack_compute_reo_wnd'.
         """
 
-        newly_acked = []
+        newly_acked: list[RackSegment] = []
         for seq, seg in self._rack_segments.items():
             if seq in self._rack_acked_seqs:
                 continue

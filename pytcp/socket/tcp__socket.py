@@ -463,7 +463,7 @@ class TcpSocket(socket):
         'data' optionally pre-loads the session's TX buffer
         before the FSM is driven into SYN_SENT. When a TFO
         cookie is cached for the peer
-        ('stack.tcp__fastopen_cookies'), the
+        ('stack.tcp_stack.fastopen_cookies'), the
         connect-with-data path emits SYN-with-data on the
         wire, eliminating the data RTT for short-lived
         connections (RFC 7413 §3.1).
@@ -535,7 +535,7 @@ class TcpSocket(socket):
         # before driving the FSM into SYN_SENT. The session-
         # internal '_transmit_data' SYN-with-data emission
         # picks the pre-loaded bytes up when a TFO cookie is
-        # cached for the peer ('stack.tcp__fastopen_cookies'),
+        # cached for the peer ('stack.tcp_stack.fastopen_cookies'),
         # eliminating the data RTT of a vanilla 3WHS-then-
         # send sequence. Empty 'data' (the default) is a
         # no-op; the standard 3WHS path runs unchanged.

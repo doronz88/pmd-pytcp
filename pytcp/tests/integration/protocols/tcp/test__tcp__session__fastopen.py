@@ -440,7 +440,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         # Ensure the cache is empty for this test scenario;
         # a previous test (or test order) may have populated
         # it via the cache scenario below.
-        stack.tcp__fastopen_cookies.pop(PEER__IP, None)
+        stack.tcp_stack.fastopen_cookies.pop(PEER__IP, None)
 
         session = self._make_active_session(iss=LOCAL__ISS)
         session.tcp_fsm(syscall=SysCall.CONNECT)
@@ -488,7 +488,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         """
 
         cached_cookie = b"\xde\xad\xbe\xef\xca\xfe\xba\xbe"
-        stack.tcp__fastopen_cookies.pop(PEER__IP, None)
+        stack.tcp_stack.fastopen_cookies.pop(PEER__IP, None)
 
         # First connection: empty cookie request. Drive the
         # SYN+ACK with the server-supplied cookie.
@@ -517,12 +517,12 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
         # The spec encoding: cache is populated.
         self.assertEqual(
-            stack.tcp__fastopen_cookies.get(PEER__IP),
+            stack.tcp_stack.fastopen_cookies.get(PEER__IP),
             cached_cookie,
             msg=(
                 "RFC 7413 §3.1: a peer-supplied TFO cookie "
                 "MUST be cached against the peer IP. Cache "
-                f"lookup: {stack.tcp__fastopen_cookies.get(PEER__IP)!r}, "
+                f"lookup: {stack.tcp_stack.fastopen_cookies.get(PEER__IP)!r}, "
                 f"expected {cached_cookie!r}."
             ),
         )
@@ -595,7 +595,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         """
 
         cached_cookie = b"\x12\x34\x56\x78\x9a\xbc\xde\xf0"
-        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+        stack.tcp_stack.fastopen_cookies[PEER__IP] = cached_cookie
 
         session = self._make_active_session(iss=LOCAL__ISS)
         # Pre-load the TX buffer with application data the
@@ -657,7 +657,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         """
 
         cached_cookie = b"\xab\xcd\xef\x01\x23\x45\x67\x89"
-        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+        stack.tcp_stack.fastopen_cookies[PEER__IP] = cached_cookie
 
         session = self._make_active_session(iss=LOCAL__ISS)
         early_data = b"hello-tfo"
@@ -810,7 +810,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         """
 
         cached_cookie = b"\x10\x20\x30\x40\x50\x60\x70\x80"
-        stack.tcp__fastopen_cookies[PEER__IP] = cached_cookie
+        stack.tcp_stack.fastopen_cookies[PEER__IP] = cached_cookie
 
         session = self._make_active_session(iss=LOCAL__ISS)
         early_data = b"reject-me"
@@ -949,7 +949,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         # observe the eviction without inserting 1024
         # entries.
         self._start_patch("pytcp.stack.TCP__FASTOPEN_CACHE_MAX_SIZE", 3)
-        stack.tcp__fastopen_cookies.clear()
+        stack.tcp_stack.fastopen_cookies.clear()
 
         peers = [
             Ip4Address("10.1.1.1"),
@@ -963,13 +963,13 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
         # The spec encoding: cap honoured.
         self.assertEqual(
-            len(stack.tcp__fastopen_cookies),
+            len(stack.tcp_stack.fastopen_cookies),
             3,
             msg=(
                 "RFC 7413 §3.1: cache MUST NOT exceed "
                 "'TCP__FASTOPEN_CACHE_MAX_SIZE = 3' "
                 "entries. Got "
-                f"{len(stack.tcp__fastopen_cookies)} entries; "
+                f"{len(stack.tcp_stack.fastopen_cookies)} entries; "
                 "the eviction logic in 'cache_cookie' did not "
                 "fire."
             ),
@@ -977,7 +977,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         # Oldest entry MUST be evicted.
         self.assertNotIn(
             peers[0],
-            stack.tcp__fastopen_cookies,
+            stack.tcp_stack.fastopen_cookies,
             msg=(
                 "FIFO eviction: the oldest peer "
                 f"({peers[0]}) MUST be the first evicted "
@@ -986,12 +986,12 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         )
         # Newest entry MUST be present.
         self.assertEqual(
-            stack.tcp__fastopen_cookies.get(peers[-1]),
+            stack.tcp_stack.fastopen_cookies.get(peers[-1]),
             cookies[-1],
             msg=(
                 f"Newest cookie (peer={peers[-1]}) MUST be "
                 f"present and equal to {cookies[-1]!r}. Got "
-                f"{stack.tcp__fastopen_cookies.get(peers[-1])!r}."
+                f"{stack.tcp_stack.fastopen_cookies.get(peers[-1])!r}."
             ),
         )
 
