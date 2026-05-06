@@ -209,7 +209,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
 
         # Post-handshake the SYN sample has been harvested.
         self.assertIsNone(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             msg=(
                 "Post-handshake the SYN sample MUST have "
                 "been harvested by peer's SYN+ACK; "
@@ -223,7 +223,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self._advance(ms=1)
 
         self.assertEqual(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             LOCAL__ISS + 1,
             msg=(
                 "An outbound data segment in"
@@ -232,12 +232,12 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rtt_sample_send_time_ms,
+            session._rtt.send_time_ms,
             send_tick_now_ms,
             msg=("The recorded send-time MUST equal the " "virtual clock at the moment " "'_transmit_packet' fired."),
         )
         self.assertFalse(
-            session._rtt_sample_retransmitted,
+            session._rtt.retransmitted,
             msg=(
                 "A fresh outbound segment MUST mark the "
                 "pending sample as not-retransmitted; Karn's "
@@ -262,7 +262,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         payload = b"hello, world!"
         session.send(data=payload)
         self._advance(ms=1)
-        sample_send_time = session._rtt_sample_send_time_ms
+        sample_send_time = session._rtt.send_time_ms
 
         self._advance(ms=9)
 
@@ -290,7 +290,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             ),
         )
         self.assertIsNone(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             msg=(
                 "After harvest the sample tracker MUST be "
                 "cleared so the next outbound segment can "
@@ -318,7 +318,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             1,
             msg=(f"Setup invariant: first tick must produce exactly " f"one segment. Got {len(first_tx)}."),
         )
-        first_sample_seq = session._rtt_sample_seq
+        first_sample_seq = session._rtt.seq
 
         second_tx = self._advance(ms=1)
         self.assertEqual(
@@ -328,7 +328,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             first_sample_seq,
             msg=(
                 "While a sample is pending, subsequent "
@@ -367,7 +367,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         )
         self._drive_rx(frame=first_ack)
         self.assertIsNone(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             msg=(
                 "Setup invariant: the first sample must have been "
                 "harvested by the first ACK before the second "
@@ -381,7 +381,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self._advance(ms=1)
 
         self.assertEqual(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             LOCAL__ISS + 1 + len(first_payload),
             msg=(
                 "After a sample is harvested, the "
@@ -390,12 +390,12 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rtt_sample_send_time_ms,
+            session._rtt.send_time_ms,
             second_send_now_ms,
             msg=("The fresh sample's send-time MUST " "equal the virtual clock at the second-segment " "send."),
         )
         self.assertFalse(
-            session._rtt_sample_retransmitted,
+            session._rtt.retransmitted,
             msg=("A fresh post-harvest sample is not " "Karn-tainted; '_rtt_sample_retransmitted' MUST " "be False."),
         )
 
@@ -414,14 +414,14 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         payload = b"hello, world!"
         session.send(data=payload)
         self._advance(ms=1)
-        original_sample_seq = session._rtt_sample_seq
+        original_sample_seq = session._rtt.seq
 
         # Advance past the per-seq retransmit timeout (1000 ms)
         # so '_retransmit_packet_timeout' fires.
         self._advance(ms=1001)
 
         self.assertTrue(
-            session._rtt_sample_retransmitted,
+            session._rtt.retransmitted,
             msg=(
                 "Karn: retransmit of the sampled "
                 "segment MUST set '_rtt_sample_retransmitted' so "
@@ -430,7 +430,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             original_sample_seq,
             msg=(
                 "Karn's algorithm taints the sample "
@@ -459,7 +459,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
 
         # Taint the sample via retransmit timeout fire.
         self._advance(ms=1001)
-        assert session._rtt_sample_retransmitted, (
+        assert session._rtt.retransmitted, (
             "Setup invariant: the retransmit timeout must have "
             "fired and tainted the pending sample before the "
             "covering ACK arrives."
@@ -477,7 +477,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertIsNone(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             msg=(
                 "Harvest of a Karn-tainted sample MUST "
                 "clear the sample tracker even though the "
@@ -540,15 +540,15 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
             ),
         )
         self.assertIsNone(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             msg="A fresh session has no pending sample.",
         )
         self.assertIsNone(
-            session._rtt_sample_send_time_ms,
+            session._rtt.send_time_ms,
             msg="A fresh session has no pending sample.",
         )
         self.assertFalse(
-            session._rtt_sample_retransmitted,
+            session._rtt.retransmitted,
             msg="A fresh session's sample tracker is not Karn-tainted.",
         )
 
@@ -932,7 +932,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
             seq_offset=0,
             payload=first_payload,
         )
-        first_send_time = session._last_send_time_ms
+        first_send_time = session._rtt.last_send_time_ms
         self.assertIsNotNone(
             first_send_time,
             msg="Setup invariant: '_last_send_time_ms' must be recorded after the first send.",
@@ -958,7 +958,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rtt_sample_seq,
+            session._rtt.seq,
             LOCAL__ISS + 1 + len(first_payload),
             msg=(
                 "The §5.7 reset must not interfere with "
@@ -987,7 +987,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         )
         pre_idle_state = session._rto_state
         self.assertIsNotNone(
-            session._last_send_time_ms,
+            session._rtt.last_send_time_ms,
             msg="Setup invariant: '_last_send_time_ms' must be recorded after the first send.",
         )
 
@@ -1027,7 +1027,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         # post-handshake '_last_send_time_ms' is the SYN send
         # time (= 0 ms on FakeTimer's virtual clock).
         self.assertIsNotNone(
-            session._last_send_time_ms,
+            session._rtt.last_send_time_ms,
             msg=(
                 "Baseline: '_last_send_time_ms' MUST be "
                 "recorded by the SYN send during handshake. "
@@ -1043,7 +1043,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         self._advance(ms=1)
 
         self.assertEqual(
-            session._last_send_time_ms,
+            session._rtt.last_send_time_ms,
             send_tick_now_ms,
             msg=(
                 "'_last_send_time_ms' MUST equal the "

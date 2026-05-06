@@ -585,7 +585,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
 
         # Verify the retransmit fired (Karn-tainted sample).
         self.assertTrue(
-            session._rtt_sample_retransmitted,
+            session._rtt.retransmitted,
             msg="Setup invariant: retransmit must have tainted the sample.",
         )
         post_retransmit_state = session._rto_state
@@ -667,7 +667,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
         payload = b"hello"
         session.send(data=payload)
         self._advance(ms=1)
-        sample_send_time = session._rtt_sample_send_time_ms
+        sample_send_time = session._rtt.send_time_ms
 
         self._advance(ms=10)
 

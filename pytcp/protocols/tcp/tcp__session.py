@@ -48,6 +48,7 @@ from pytcp.protocols.tcp.state.tcp__state__ecn_classic import ClassicEcnState
 from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
+from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
@@ -386,9 +387,10 @@ class TcpSession:
         # the last cum-ACK that advanced SND.UNA; cleared on
         # progress in '_process_ack_packet'.
         self._rto_state: RtoState = initial_state()
-        self._rtt_sample_seq: Seq32 | None = None
-        self._rtt_sample_send_time_ms: int | None = None
-        self._rtt_sample_retransmitted: bool = False
+        # RFC 6298 §4 single-pending RTT-sample tracker plus the
+        # §5.7 idle-baseline 'last_send_time_ms'. See
+        # 'state/tcp__state__rtt_sample.py'.
+        self._rtt: RttSampleState = RttSampleState()
         self._retransmit_count: int = 0
         # RFC 6298 §5.7 second-clause SYN-retransmit counter.
         # Decoupled from '_retransmit_count' (which
@@ -402,15 +404,7 @@ class TcpSession:
         # Incremented in '_retransmit_packet_timeout' iff the
         # session is currently in {SYN_SENT, SYN_RCVD}.
         self._syn_retransmit_count: int = 0
-        # RFC 6298 §5.7 restart-after-idle baseline. 'None' until
-        # the first outbound segment fires; '_transmit_packet'
-        # then refreshes it on every send that consumes sequence
-        # space (data / SYN / FIN). Phase 4 wires the §5.7 reset
-        # hook in '_transmit_packet' to compare 'now_ms -
-        # _last_send_time_ms' against '_rto_state.rto_ms' and
-        # reset the estimator when the silence exceeded the
-        # in-flight RTO.
-        self._last_send_time_ms: int | None = None
+        # 'last_send_time_ms' moved onto self._rtt above.
 
         ###
         # Sending window parameters.
@@ -1188,14 +1182,14 @@ class TcpSession:
         # before any send has occurred.
         if (
             (data or flag_syn or flag_fin)
-            and self._last_send_time_ms is not None
-            and stack.timer.now_ms - self._last_send_time_ms > self._rto_state.rto_ms
+            and self._rtt.last_send_time_ms is not None
+            and stack.timer.now_ms - self._rtt.last_send_time_ms > self._rto_state.rto_ms
         ):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 6298 §5.7 idle-reset: now="
                 f"{stack.timer.now_ms} last_send="
-                f"{self._last_send_time_ms} rto_ms="
+                f"{self._rtt.last_send_time_ms} rto_ms="
                 f"{self._rto_state.rto_ms}; resetting estimator",
             )
             self._rto_state = initial_state()
@@ -1232,17 +1226,15 @@ class TcpSession:
         # send-time stays paired with the original seq, with the
         # taint flag controlling whether the eventual ACK
         # produces an estimator update.
-        if (data or flag_syn or flag_fin) and self._rtt_sample_seq is None:
-            self._rtt_sample_seq = seq
-            self._rtt_sample_send_time_ms = stack.timer.now_ms
-            self._rtt_sample_retransmitted = False
+        if (data or flag_syn or flag_fin) and self._rtt.seq is None:
+            self._rtt.record(seq=seq, send_time_ms=stack.timer.now_ms)
 
         # RFC 6298 §5.7 idle-baseline tracking: refresh the
         # last-send timestamp on every outbound segment that
         # consumes sequence space, so the §5.7 idle-check above
         # has an accurate baseline for the next send.
         if data or flag_syn or flag_fin:
-            self._last_send_time_ms = stack.timer.now_ms
+            self._rtt.last_send_time_ms = stack.timer.now_ms
 
     def _phase1_compose_ecn_flags(
         self,
@@ -2024,10 +2016,8 @@ class TcpSession:
         # incarnation re-establishes its own RTT measurements.
         self._rto_state = initial_state()
         self._retransmit_count = 0
-        self._last_send_time_ms = None
-        self._rtt_sample_seq = None
-        self._rtt_sample_send_time_ms = None
-        self._rtt_sample_retransmitted = False
+        self._rtt.last_send_time_ms = None
+        self._rtt.clear()
 
         # Clear SACK + DSACK + recovery state from the prior incarnation.
         self._sack_scoreboard = SackScoreboard()
@@ -2698,8 +2688,8 @@ class TcpSession:
         # The pending sample's send-time and seq remain set
         # so the harvest path can recognise the covering
         # ACK; only the "skip update" flag flips.
-        if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_seq.una:
-            self._rtt_sample_retransmitted = True
+        if self._rtt.seq is not None and self._rtt.seq == self._snd_seq.una:
+            self._rtt.taint()
 
         # RFC 8985 §6.3: on RTO, mark all in-flight segments
         # lost. Subsequent retransmit walking treats them as
@@ -3707,9 +3697,7 @@ class TcpSession:
                 f"{packet_rx_md.tcp__tsecr}; rto_state="
                 f"{self._rto_state}",
             )
-            self._rtt_sample_seq = None
-            self._rtt_sample_send_time_ms = None
-            self._rtt_sample_retransmitted = False
+            self._rtt.clear()
 
         # RFC 6298 §4 sample harvest: peer's cumulative ACK has
         # advanced past the seq of our pending RTT sample. Fold
@@ -3719,10 +3707,10 @@ class TcpSession:
         # segment can start a fresh sample. Modular 'gt32' so the
         # harvest fires correctly when both seq and ack straddle
         # the 32-bit wrap.
-        if self._rtt_sample_seq is not None and gt32(packet_rx_md.tcp__ack, self._rtt_sample_seq):
-            if not self._rtt_sample_retransmitted:
-                assert self._rtt_sample_send_time_ms is not None
-                observed_rtt_ms = stack.timer.now_ms - self._rtt_sample_send_time_ms
+        if self._rtt.seq is not None and gt32(packet_rx_md.tcp__ack, self._rtt.seq):
+            if not self._rtt.retransmitted:
+                assert self._rtt.send_time_ms is not None
+                observed_rtt_ms = stack.timer.now_ms - self._rtt.send_time_ms
                 self._rto_state = update(self._rto_state, observed_rtt_ms)
                 # RFC 9406 §4.2: see TSecr-fold note above; same
                 # HyStart++ feed in the Karn-tracker harvest path.
@@ -3738,9 +3726,7 @@ class TcpSession:
                     "tcp-ss",
                     f"[{self}] - RTT sample tainted by retransmit (Karn); " f"skipping update of {self._rto_state}",
                 )
-            self._rtt_sample_seq = None
-            self._rtt_sample_send_time_ms = None
-            self._rtt_sample_retransmitted = False
+            self._rtt.clear()
 
     def _phase4_loss_detection_and_recovery_exit(self, packet_rx_md: TcpMetadata) -> None:
         """
