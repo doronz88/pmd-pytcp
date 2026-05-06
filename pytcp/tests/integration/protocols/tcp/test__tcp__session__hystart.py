@@ -344,7 +344,7 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
             peer_tsval=PEER__TSVAL_INITIAL,
         )
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         peer_tsval = PEER__TSVAL_INITIAL
 
         # Drive 3 rounds with stable 50 ms RTT (24 ACKs).

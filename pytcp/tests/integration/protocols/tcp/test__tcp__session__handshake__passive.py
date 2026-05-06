@@ -757,18 +757,18 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
         assert child_session is not None
 
         self.assertEqual(
-            child_session._snd_mss,
+            child_session._win.snd_mss,
             536,
             msg=(
                 "When the peer's SYN omits the MSS option, "
                 "'_snd_mss' must default to the RFC 9293 §3.7.1 "
                 "IPv4 fallback of 536 octets (= 576 default MTU - 20 "
                 "IPv4 hdr - 20 TCP hdr). Got "
-                f"_snd_mss={child_session._snd_mss}."
+                f"_snd_mss={child_session._win.snd_mss}."
             ),
         )
         self.assertEqual(
-            child_session._rcv_mss,
+            child_session._win.rcv_mss,
             1460,
             msg=(
                 "'_rcv_mss' is derived from our own MTU "

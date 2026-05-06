@@ -203,7 +203,7 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             msg="IPv6 active handshake must complete to ESTABLISHED.",
         )
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             1500 - 60,
             msg=(
                 "Post-handshake '_snd_mss' on an IPv6 session must "
@@ -445,12 +445,12 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
 
         self.assertIs(session.state, FsmState.ESTABLISHED)
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             1500 - 60,
             msg=(
                 "Peer's MSS=65535 (RFC 2675 jumbogram signal) MUST "
                 "still be clamped by our local 'interface_mtu - 60' "
                 f"ceiling on a non-jumbogram-capable IP layer. "
-                f"Got _snd_mss={session._snd_mss}, expected 1440."
+                f"Got _snd_mss={session._win.snd_mss}, expected 1440."
             ),
         )

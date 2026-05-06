@@ -181,7 +181,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
         # segments can apply the inverse shift to the
         # advertised window.
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             LOCAL__RCV_WSCALE,
             msg=(
                 f"Session '_rcv_wsc' must equal the advertised "
@@ -230,7 +230,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
         # Our advertised shift (governs outbound win shifts).
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             LOCAL__RCV_WSCALE,
             msg=(
                 f"Session '_rcv_wsc' must equal our advertised "
@@ -243,7 +243,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
         # Peer's advertised shift (governs inbound win interpretation).
         self.assertEqual(
-            session._snd_wsc,
+            session._win.snd_wsc,
             peer_wscale,
             msg=(
                 f"Session '_snd_wsc' must equal peer's advertised "
@@ -315,7 +315,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
         # The spec encoding: _snd_wnd is shifted.
         expected_snd_wnd = peer_post_handshake_win << peer_wscale
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             expected_snd_wnd,
             msg=(
                 f"Peer's post-handshake 'win = {peer_post_handshake_win}' "
@@ -525,12 +525,12 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._rcv_wsc,
+            child_session._win.rcv_wsc,
             LOCAL__RCV_WSCALE,
             msg=(f"Child session '_rcv_wsc' must equal our advertised " f"shift ({LOCAL__RCV_WSCALE})."),
         )
         self.assertEqual(
-            child_session._snd_wsc,
+            child_session._win.snd_wsc,
             peer_wscale,
             msg=(
                 f"Child session '_snd_wsc' must equal peer's "
@@ -613,7 +613,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._rcv_wsc,
+            child_session._win.rcv_wsc,
             0,
             msg=(
                 "Child session '_rcv_wsc' must equal 0 when peer "
@@ -622,7 +622,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._snd_wsc,
+            child_session._win.snd_wsc,
             0,
             msg=(
                 "Child session '_snd_wsc' must equal 0 when peer "
@@ -669,7 +669,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
         # The spec encoding: SYN+ACK's win is NOT shifted.
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_win_on_syn_ack,
             msg=(
                 f"Post-handshake '_snd_wnd' MUST equal the literal "
@@ -740,7 +740,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
         # The spec encoding: peer's WSCALE is ignored in both
         # directions; window stays unshifted.
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             0,
             msg=(
                 "Session '_rcv_wsc' must equal 0 when we opted out "
@@ -749,7 +749,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_wsc,
+            session._win.snd_wsc,
             0,
             msg=(
                 "Session '_snd_wsc' must equal 0 when we opted out, "
@@ -759,7 +759,7 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_post_handshake_win,
             msg=(
                 f"'_snd_wnd' must equal peer's raw advertised window "
@@ -808,20 +808,20 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
             msg="Setup invariant: handshake must complete on peer SYN+ACK.",
         )
         self.assertEqual(
-            session._snd_wsc,
+            session._win.snd_wsc,
             0,
             msg=(
                 "RFC 7323 §2.2 us-only asymmetric: peer omitted WSCALE, "
-                f"so '_snd_wsc' MUST stay at 0. Got {session._snd_wsc}."
+                f"so '_snd_wsc' MUST stay at 0. Got {session._win.snd_wsc}."
             ),
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_post_handshake_win,
             msg=(
                 f"RFC 7323 §2.2 us-only asymmetric: '_snd_wnd' MUST equal "
                 f"peer's raw 'win' ({peer_post_handshake_win}) unshifted. "
-                f"Got {session._snd_wnd}."
+                f"Got {session._win.snd_wnd}."
             ),
         )
 
@@ -861,21 +861,21 @@ class TestTcpSession__Wscale(TcpSessionTestCase):
 
         self.assertIs(session.state, FsmState.ESTABLISHED)
         self.assertEqual(
-            session._snd_wsc,
+            session._win.snd_wsc,
             0,
-            msg=("Neither side offered WSCALE: '_snd_wsc' MUST be 0. " f"Got {session._snd_wsc}."),
+            msg=("Neither side offered WSCALE: '_snd_wsc' MUST be 0. " f"Got {session._win.snd_wsc}."),
         )
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             0,
-            msg=("Neither side offered WSCALE: '_rcv_wsc' MUST be 0. " f"Got {session._rcv_wsc}."),
+            msg=("Neither side offered WSCALE: '_rcv_wsc' MUST be 0. " f"Got {session._win.rcv_wsc}."),
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_post_handshake_win,
             msg=(
                 f"Neither side offered WSCALE: '_snd_wnd' MUST equal "
                 f"peer's raw 'win' ({peer_post_handshake_win}) "
-                f"unshifted. Got {session._snd_wnd}."
+                f"unshifted. Got {session._win.snd_wnd}."
             ),
         )

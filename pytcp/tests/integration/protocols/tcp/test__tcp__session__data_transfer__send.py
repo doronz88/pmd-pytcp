@@ -261,7 +261,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         # Restrict the effective and advertised send windows to 3 MSS,
         # bypassing slow-start so the window edge is the only constraint.
         snd_wnd_limit = 3 * 1460
-        session._snd_wnd = snd_wnd_limit
+        session._win.snd_wnd = snd_wnd_limit
         session._cc.snd_ewn = snd_wnd_limit
 
         payload = b"X" * 8000
@@ -422,7 +422,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack_zero_window)
 
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             0,
             msg="Setup precondition: peer's zero-window ACK must have set '_snd_wnd' to 0.",
         )
@@ -1012,7 +1012,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
             win=0,
         )
         self._drive_rx(frame=peer_zero_window)
-        assert session._snd_wnd == 0, "Setup: peer must have shut the window."
+        assert session._win.snd_wnd == 0, "Setup: peer must have shut the window."
         session.send(data=b"x" * 10)
         return session
 

@@ -835,7 +835,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (4 * mss))
         # '_transmit_data' sends one MSS-sized segment per timer
         # tick; advance enough ticks so all 4 outstanding
@@ -917,7 +917,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
             self._advance(ms=1)
@@ -976,7 +976,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
             self._advance(ms=1)
@@ -1080,7 +1080,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
             self._advance(ms=1)
@@ -1245,7 +1245,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (2 * mss))
         for _ in range(2):
             self._advance(ms=1)
@@ -1304,7 +1304,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
 
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
             self._advance(ms=1)

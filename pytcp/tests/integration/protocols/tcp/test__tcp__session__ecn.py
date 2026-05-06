@@ -453,7 +453,7 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        snd_mss = session._snd_mss
+        snd_mss = session._win.snd_mss
         flight_size_before = (session._snd_seq.max - session._snd_seq.una) & 0xFFFF_FFFF
         # RFC 8511 ABE: on ECN events the sender uses a less
         # aggressive multiplier (0.85) instead of the canonical

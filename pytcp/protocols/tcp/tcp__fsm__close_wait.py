@@ -130,14 +130,14 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             and packet_rx_md.tcp__ack == session._snd_seq.una
             and not packet_rx_md.tcp__data
         ):
-            new_wnd = packet_rx_md.tcp__win << session._snd_wsc
-            if new_wnd != session._snd_wnd:
+            new_wnd = packet_rx_md.tcp__win << session._win.snd_wsc
+            if new_wnd != session._win.snd_wnd:
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{session}] - Updated sending window size " f"{session._snd_wnd} -> {new_wnd} (wnd-update)",
+                    f"[{session}] - Updated sending window size " f"{session._win.snd_wnd} -> {new_wnd} (wnd-update)",
                 )
-                session._snd_wnd = new_wnd
-                if session._snd_wnd > 0 and session._persist_active:
+                session._win.snd_wnd = new_wnd
+                if session._win.snd_wnd > 0 and session._persist_active:
                     __debug__ and log(
                         "tcp-ss",
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",

@@ -184,11 +184,11 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # SMSS floor that 'option absent' would yield - any
             # smaller peer-advertised value, including the
             # malformed 0, is treated as 'option absent').
-            session._snd_mss = max(
+            session._win.snd_mss = max(
                 TCP__MIN_MSS,
                 min(packet_rx_md.tcp__mss, stack.interface_mtu - session._ip_tcp_overhead),
             )
-            session._snd_wnd = packet_rx_md.tcp__win
+            session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2:
             # passive-open mirrors peer's offer. If peer's SYN
             # carries WSCALE AND we are configured to advertise,
@@ -197,10 +197,10 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # both directions clear to 0 - peer's non-offer
             # forces us to non-offer too.
             if session._advertise_wscale and packet_rx_md.tcp__wscale:
-                session._snd_wsc = packet_rx_md.tcp__wscale
+                session._win.snd_wsc = packet_rx_md.tcp__wscale
             else:
-                session._rcv_wsc = 0
-                session._snd_wsc = 0
+                session._win.rcv_wsc = 0
+                session._win.snd_wsc = 0
             # SACK bilateral negotiation per RFC 2018 §2:
             # passive-open mirrors peer's offer. SACK is
             # enabled iff we are configured to advertise AND
@@ -310,8 +310,8 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             accept_syn_data = (not tfo_option_relevant) or tfo_cookie_valid
             syn_data = packet_rx_md.tcp__data if accept_syn_data else memoryview(b"")
             session._rcv_seq.ini = packet_rx_md.tcp__seq
-            session._cc.cwnd = session._snd_mss
-            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+            session._cc.cwnd = session._win.snd_mss
+            session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
             # Make note of the remote SEQ number, advancing past the
             # SYN's one byte AND every byte of any piggybacked payload
             # so the SYN+ACK we emit acknowledges the data and the

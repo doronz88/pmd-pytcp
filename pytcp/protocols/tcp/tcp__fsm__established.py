@@ -163,14 +163,14 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
             # idle timer regardless of which sub-branch handles
             # the segment below.
             session._keepalive_arm_idle()
-            new_wnd = packet_rx_md.tcp__win << session._snd_wsc
-            if new_wnd != session._snd_wnd:
+            new_wnd = packet_rx_md.tcp__win << session._win.snd_wsc
+            if new_wnd != session._win.snd_wnd:
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{session}] - Updated sending window size " f"{session._snd_wnd} -> {new_wnd} (wnd-update)",
+                    f"[{session}] - Updated sending window size " f"{session._win.snd_wnd} -> {new_wnd} (wnd-update)",
                 )
-                session._snd_wnd = new_wnd
-                if session._snd_wnd > 0 and session._persist_active:
+                session._win.snd_wnd = new_wnd
+                if session._win.snd_wnd > 0 and session._persist_active:
                     __debug__ and log(
                         "tcp-ss",
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",
@@ -289,7 +289,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # Emit a rate-limited challenge ACK so the legitimate
         # peer can re-sync; without this gate, very-stale ACKs
         # would be silently dropped.
-        ack_lower_bound = sub32(session._snd_seq.una, session._max_window)
+        ack_lower_bound = sub32(session._snd_seq.una, session._win.max_window)
         if lt32(packet_rx_md.tcp__ack, ack_lower_bound):
             session._emit_challenge_ack()
             __debug__ and log(

@@ -141,7 +141,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
             msg="Setup precondition: handshake must complete to ESTABLISHED.",
         )
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             TCP__MIN_MSS,
             msg=(
                 f"Peer's MSS=0 must be clamped to TCP__MIN_MSS "
@@ -149,7 +149,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
                 "§2 mandates 536 as the SMSS floor; MSS=0 is "
                 "nonsensical and must be treated as 'option absent' "
                 "for the floor purposes. Without the clamp, "
-                "'_transmit_data's 'min(self._snd_mss, ...)' produces "
+                "'_transmit_data's 'min(self._win.snd_mss, ...)' produces "
                 "'transmit_data_len=0' and the session can never send "
                 "any application data."
             ),
@@ -194,7 +194,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
         # is 40 bytes, so the effective MSS ceiling is 1460.
         expected_snd_mss = 1500 - 40
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             expected_snd_mss,
             msg=(
                 f"Peer's MSS={peer_jumbo_mss} must be clamped down "

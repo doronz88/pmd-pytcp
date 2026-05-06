@@ -183,24 +183,24 @@ class TestTcpSessionInit(_TcpSessionFixture):
             msg="TcpSession._rcv_wnd must default to 65535.",
         )
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             7,
             msg=(
-                "TcpSession._rcv_wsc must default to 7 (the throughput-"
+                "TcpSession._win.rcv_wsc must default to 7 (the throughput-"
                 "friendly WSCALE shift advertised on outbound SYN per "
                 "RFC 7323 §2.2; matches the Linux/FreeBSD default and "
                 "yields a max advertised window of 65535 << 7 ~= 8 MB)."
             ),
         )
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             536,
-            msg="TcpSession._snd_mss must default to 536 (RFC 879 minimum).",
+            msg="TcpSession._win.snd_mss must default to 536 (RFC 879 minimum).",
         )
         self.assertEqual(
-            session._rcv_mss,
+            session._win.rcv_mss,
             1500 - 40,
-            msg="TcpSession._rcv_mss must default to stack.interface_mtu - 40.",
+            msg="TcpSession._win.rcv_mss must default to stack.interface_mtu - 40.",
         )
 
     def test__tcp_session__init_syn_numbers_are_consistent(self) -> None:

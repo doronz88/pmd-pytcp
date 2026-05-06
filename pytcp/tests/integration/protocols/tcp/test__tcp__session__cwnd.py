@@ -226,7 +226,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         # Pin slow-start regime.
         session._cc.cwnd = 2 * PEER__MSS
         session._cc.ssthresh = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Send 2 MSS and let both segments fire on consecutive ticks.
         payload = b"x" * (2 * PEER__MSS)
@@ -271,7 +271,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
         session._cc.cwnd = 10 * PEER__MSS
         session._cc.ssthresh = 5 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * PEER__MSS
         session.send(data=payload)
@@ -318,11 +318,11 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
         # cwnd-bound case: cwnd is the tighter constraint.
         session._cc.cwnd = 3 * PEER__MSS
-        session._snd_wnd = 5 * PEER__MSS
+        session._win.snd_wnd = 5 * PEER__MSS
         # Phase 1 design: a helper recomputes _snd_ewn whenever
         # cwnd or snd_wnd changes. Tests can observe via setting
         # _snd_ewn directly here for the assertion baseline.
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         self.assertEqual(
             session._cc.snd_ewn,
             3 * PEER__MSS,
@@ -333,8 +333,8 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
 
         # snd_wnd-bound case: peer's window is the tighter constraint.
         session._cc.cwnd = 10 * PEER__MSS
-        session._snd_wnd = 5 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._win.snd_wnd = 5 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         self.assertEqual(
             session._cc.snd_ewn,
             5 * PEER__MSS,
@@ -390,7 +390,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         # the runtime.
         session._cc.cwnd = 4 * PEER__MSS
         session._cc.ssthresh = 0x7FFF_FFFF
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Send 1 MSS, let it fire.
         payload = b"x" * PEER__MSS
@@ -431,12 +431,12 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         )
         self.assertEqual(
             session._cc.snd_ewn,
-            min(session._cc.cwnd, session._snd_wnd),
+            min(session._cc.cwnd, session._win.snd_wnd),
             msg=(
                 "Canonical invariant: _snd_ewn = min(_cwnd, "
                 "_snd_wnd) after every cum-ACK. Got "
                 f"_snd_ewn={session._cc.snd_ewn}, "
-                f"min={min(session._cc.cwnd, session._snd_wnd)}."
+                f"min={min(session._cc.cwnd, session._win.snd_wnd)}."
             ),
         )
 
@@ -527,7 +527,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Send 6 MSS so 6 segments are in flight at RTO time.
         payload = b"x" * (6 * PEER__MSS)
@@ -562,7 +562,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
         # Phase 1 regression: cwnd reset to 1 SMSS.
         self.assertEqual(
             session._cc.cwnd,
-            session._snd_mss,
+            session._win.snd_mss,
             msg=("Post-RTO cwnd MUST collapse to 1 SMSS for " f"slow-start re-entry. Got cwnd={session._cc.cwnd}."),
         )
 
@@ -578,7 +578,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * PEER__MSS
         session.send(data=payload)
@@ -676,7 +676,7 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         """
 
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (n_segments * PEER__MSS)
         session.send(data=payload)
@@ -1005,7 +1005,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=iss, peer_iss=peer_iss)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (n_segments * PEER__MSS)
         session.send(data=payload)
@@ -1158,7 +1158,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (3 * PEER__MSS)
         session.send(data=payload)
@@ -1264,7 +1264,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS, sackperm=True)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (3 * PEER__MSS)
         session.send(data=payload)
@@ -1330,7 +1330,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
 
         session = self._drive_handshake(iss=wrap_iss, peer_iss=wrap_peer_iss)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (3 * PEER__MSS)
         session.send(data=payload)
@@ -1452,7 +1452,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Get N segments in flight then enter recovery via 3 dup-ACKs.
         n_segments = 5
@@ -1498,7 +1498,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         )
         self.assertEqual(
             session._cc.cwnd,
-            session._snd_mss,
+            session._win.snd_mss,
             msg="RTO: cwnd MUST collapse to LW=SMSS for slow-start re-entry.",
         )
 
@@ -1608,7 +1608,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         """
 
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         payload = b"x" * (n_segments * PEER__MSS)
         session.send(data=payload)
@@ -1830,7 +1830,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         # Pre-fill 5 segments and enter recovery via the
         # count-based trigger.
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         session.send(data=b"x" * (5 * PEER__MSS))
         for _ in range(5):
             self._advance(ms=1)
@@ -1894,7 +1894,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         session.send(data=b"x" * (5 * PEER__MSS))
         for _ in range(5):
             self._advance(ms=1)
@@ -1952,7 +1952,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         session.send(data=b"x" * (5 * PEER__MSS))
         for _ in range(5):
             self._advance(ms=1)
@@ -2158,7 +2158,7 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
         # already <= IW; the SHOULD only kicks in when the
         # session has accumulated history.
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         # Prime '_last_send_time_ms' so the §4.1 'has not sent
         # data in an interval exceeding RTO' clock has a
         # reference point. Without a real prior send the §4.1
@@ -2182,7 +2182,7 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
         # known target (slow-start growth on the prime ACK
         # would otherwise add to the cwnd).
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Now sit idle past one RTO.
         idle_ms = session._rto_state.rto_ms + 100
@@ -2197,7 +2197,7 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
         # 10*MSS, RW = min(14600, 100*1460) = 14600.
         from pytcp.protocols.tcp.tcp__cwnd import initial_window
 
-        expected_rw = min(initial_window(session._snd_mss), 100 * PEER__MSS)
+        expected_rw = min(initial_window(session._win.snd_mss), 100 * PEER__MSS)
         self.assertEqual(
             session._cc.cwnd,
             expected_rw,

@@ -849,7 +849,7 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.cwnd = 100 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
 
         # Get N segments in flight then enter recovery.
         n_segments = 5

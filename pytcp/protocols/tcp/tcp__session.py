@@ -52,6 +52,7 @@ from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
 from pytcp.protocols.tcp.state.tcp__state__timestamps import TimestampsState
+from pytcp.protocols.tcp.state.tcp__state__window import WindowState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
@@ -158,26 +159,12 @@ class TcpSession:
         # headers are subtracted.
         self._ip_tcp_overhead: int = (40 if isinstance(local_ip_address, Ip6Address) else 20) + 20
 
-        # Maximum segment size.
-        self._rcv_mss: int = stack.interface_mtu - self._ip_tcp_overhead
-
-        # Maximum receive-window size advertised to the peer. The
-        # actual '_rcv_wnd' value put on outbound segments is
-        # derived from this and current '_rx_buffer' occupancy via
-        # the '_rcv_wnd' property, so the peer's flow-control loop
-        # sees backpressure as the application falls behind on
-        # 'recv()' (RFC 9293 §3.8.6).
-        self._rcv_wnd_max: int = 65535
-
-        # Window scale advertised on outbound SYN / SYN+ACK per
-        # RFC 7323 §2.2. Default 7 yields a maximum advertised
-        # window of '65535 << 7 ~= 8 MB', matching the Linux /
-        # FreeBSD default. Set to 0 if the bilateral negotiation
-        # fails (peer didn't offer / we opted out via
-        # '_advertise_wscale = False'); the field is then both
-        # the wire-level shift count AND the post-handshake
-        # right-shift applied to the outbound 'win' field.
-        self._rcv_wsc: int = 7
+        # RFC 9293 §3.7.1 / RFC 7323 §2.3 / RFC 9293 §3.8.4 /
+        # RFC 5961 §5 window state container (snd_mss, snd_wnd,
+        # snd_wsc, max_window, rcv_mss, rcv_wsc, rcv_wnd_max).
+        # See 'state/tcp__state__window.py'.
+        self._win: WindowState = WindowState()
+        self._win.rcv_mss = stack.interface_mtu - self._ip_tcp_overhead
 
         # Whether to advertise WSCALE on this session's outbound
         # SYN / SYN+ACK. Defaults True (the modern, throughput-
@@ -419,36 +406,18 @@ class TcpSession:
         # real correctness gap.
         self._peer_contacted: bool = False
 
-        # Maximum segment size.
-        self._snd_mss: int = 536
+        # Conservative-start defaults for snd_wnd / max_window:
+        # one SMSS (not 0, not 65535) so the first segment can
+        # fire before peer's ACK reveals the real window size.
+        # Updated by '_process_ack_packet' on every accepted ACK.
+        self._win.snd_wnd = self._win.snd_mss
+        self._win.max_window = self._win.snd_mss
 
-        # Peer-advertised receive window. Initialised to one SMSS
-        # (not 0, not 65535) so the conservative-start path can
-        # emit a single segment before peer's first ACK reveals
-        # the real window size. Updated to peer's advertised value
-        # (shifted by '_snd_wsc' once WSCALE negotiation finishes)
-        # in '_process_ack_packet'.
-        self._snd_wnd: int = self._snd_mss
-
-        # RFC 5961 §5 'MAX.SND.WND': the largest 'snd_wnd' value
-        # ever observed from peer. Used as the lower-bound
-        # tolerance for ACK acceptability ('SND.UNA - MAX.SND.WND
-        # <= SEG.ACK <= SND.NXT'); ACKs below 'SND.UNA -
-        # MAX.SND.WND' are blind-injected very-stale ACKs and
-        # MUST elicit a challenge ACK. Updated alongside
-        # '_snd_wnd' in '_process_ack_packet'.
-        self._max_window: int = self._snd_mss
-
-        # Initialise the RFC 5681 cwnd and 'snd_ewn' (PyTCP's
-        # simplified pacing variable that clamps cwnd to the
-        # receiver-advertised window) from 'snd_mss' now that
-        # 'snd_mss' is known. 'ssthresh' keeps the dataclass
-        # default 'CC_STATE__SSTHRESH_INF' (0x7FFF_FFFF) per
-        # RFC 5681 §3.1. See 'tcp__state__cc.py' for the full
-        # CC-variable surface and 'docs/rfc/tcp/rfc5681__reno_cwnd
-        # /adherence.md' for the per-clause spec audit.
-        self._cc.cwnd = self._snd_mss
-        self._cc.snd_ewn = self._snd_mss
+        # Initialise the RFC 5681 cwnd and 'snd_ewn' from
+        # 'win.snd_mss' now that the MSS is known. 'ssthresh'
+        # keeps the dataclass default. See 'state/tcp__state__cc.py'.
+        self._cc.cwnd = self._win.snd_mss
+        self._cc.snd_ewn = self._win.snd_mss
 
         # CUBIC curve state ('cubic_w_max', 'cubic_K_ms', etc.) and
         # 'cc_mode' live on 'self._cc'. Override the algorithm per
@@ -456,9 +425,10 @@ class TcpSession:
         # CcMode.RENO.value)'; the dataclass default mirrors
         # Linux's CUBIC-since-2.6.18.
 
-        # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
-        # don't use wscale for backward compatibility.
-        self._snd_wsc: int = 0
+        # 'snd_wsc' lives on self._win and defaults to 0 there
+        # (the canonical "initial SYN / SYN+ACK don't use WSCALE"
+        # value). Set to peer's WSCALE value at handshake by
+        # the FSM SYN_SENT / SYN_RCVD entries.
 
         # Nagle/Minshall partial-segment seq lives on the SendSeqState
         # dataclass; reset_to(iss=...) above already anchored it.
@@ -617,7 +587,7 @@ class TcpSession:
         when the application is slow to consume (RFC 9293 §3.8.6).
         """
 
-        return max(0, self._rcv_wnd_max - len(self._rx_buffer))
+        return max(0, self._win.rcv_wnd_max - len(self._rx_buffer))
 
     @property
     def _tx_buffer_nxt(self) -> int:
@@ -945,7 +915,7 @@ class TcpSession:
         # is also a "SYN segment" for this rule.
         if flag_syn:
             tcp__win = min(self._rcv_wnd, 0xFFFF)
-        elif 0 < self._rcv_wnd < self._rcv_mss:
+        elif 0 < self._rcv_wnd < self._win.rcv_mss:
             # RFC 1122 §4.2.3.3 receiver SWS avoidance: when the
             # available receive-window is non-zero but smaller
             # than one MSS, advertise zero so peer's persist-
@@ -956,7 +926,7 @@ class TcpSession:
             # '_rcv_wnd >= _rcv_mss' again.
             tcp__win = 0
         else:
-            tcp__win = self._rcv_wnd >> self._rcv_wsc
+            tcp__win = self._rcv_wnd >> self._win.rcv_wsc
 
         # WSCALE option presence on outbound SYN / SYN+ACK is
         # gated on '_advertise_wscale' per RFC 7323 §2.2's
@@ -965,7 +935,7 @@ class TcpSession:
         # which is the bilateral-non-offer wire form.
         tcp__wscale: int | None
         if flag_syn and self._advertise_wscale:
-            tcp__wscale = self._rcv_wsc
+            tcp__wscale = self._win.rcv_wsc
         elif flag_syn:
             tcp__wscale = 0
         else:
@@ -1087,7 +1057,7 @@ class TcpSession:
             # overflow the assembler's uint16 assert. Cap at 65535
             # which RFC 2675 reserves as the "use path-MTU-derived
             # MSS" signal for jumbogram-capable IPv6 paths.
-            tcp__mss=min(self._rcv_mss, 0xFFFF) if flag_syn else None,
+            tcp__mss=min(self._win.rcv_mss, 0xFFFF) if flag_syn else None,
             tcp__wscale=tcp__wscale,
             tcp__sackperm=tcp__sackperm,
             tcp__sack_blocks=tcp__sack_blocks,
@@ -1174,16 +1144,16 @@ class TcpSession:
             # already the post-handshake IW) and on FIN-only
             # (no data to pace).
             if data:
-                rw = min(initial_window(self._snd_mss), self._cc.cwnd)
+                rw = min(initial_window(self._win.snd_mss), self._cc.cwnd)
                 if rw < self._cc.cwnd:
                     __debug__ and log(
                         "tcp-ss",
                         f"[{self}] - RFC 5681 §4.1 Restart Window: "
                         f"cwnd {self._cc.cwnd} -> {rw} (IW="
-                        f"{initial_window(self._snd_mss)})",
+                        f"{initial_window(self._win.snd_mss)})",
                     )
                     self._cc.cwnd = rw
-                    self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+                    self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
 
         # RFC 6298 §4 sample collection: record one in-flight RTT
         # sample at a time. The covering ACK harvest hook in
@@ -1612,7 +1582,7 @@ class TcpSession:
             pto_ms = tlp_calc_pto(
                 srtt_ms=self._rto_state.srtt_ms,
                 flight_size=flight_size,
-                smss=self._snd_mss,
+                smss=self._win.snd_mss,
                 max_ack_delay_ms=self._rack_tlp.tlp_max_ack_delay_ms,
                 rto_expiration_ms=rto_expiration_ms,
                 now_ms=stack.timer.now_ms,
@@ -1945,20 +1915,20 @@ class TcpSession:
         # RFC 879 / RFC 6691 bounds; an explicit floor at TCP__MIN_MSS
         # treats peer-advertised 0 (or any malformed sub-floor value)
         # as 'option absent'.
-        self._snd_mss = max(
+        self._win.snd_mss = max(
             TCP__MIN_MSS,
             min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
         )
-        self._snd_wnd = packet_rx_md.tcp__win
-        self._max_window = self._snd_wnd
+        self._win.snd_wnd = packet_rx_md.tcp__win
+        self._win.max_window = self._win.snd_wnd
 
         # Re-run the bilateral negotiation against peer's new SYN -
         # WSCALE / SACK / TSopt may all differ between incarnations.
         if self._advertise_wscale and packet_rx_md.tcp__wscale:
-            self._snd_wsc = packet_rx_md.tcp__wscale
+            self._win.snd_wsc = packet_rx_md.tcp__wscale
         else:
-            self._rcv_wsc = 0
-            self._snd_wsc = 0
+            self._win.rcv_wsc = 0
+            self._win.snd_wsc = 0
         self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
         self._ts.send_ts = self._advertise_ts and packet_rx_md.tcp__tsval is not None
         # '_ts_recent' was already refreshed to peer's new TSval
@@ -1969,9 +1939,9 @@ class TcpSession:
         # actual IW assignment happens at the SYN_RCVD -> ESTABLISHED
         # transition; here we set the SYN-RCVD-phase value
         # (one SMSS) so the outbound SYN+ACK is emitted correctly.
-        self._cc.cwnd = self._snd_mss
+        self._cc.cwnd = self._win.snd_mss
         self._cc.ssthresh = 0x7FFF_FFFF
-        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
 
         # Receive-side state from the new SYN.
         self._rcv_seq.ini = packet_rx_md.tcp__seq
@@ -2160,7 +2130,7 @@ class TcpSession:
             tcp__flag_ack=True,
             tcp__seq=sub32(self._snd_seq.nxt, 1),
             tcp__ack=self._rcv_seq.nxt,
-            tcp__win=self._rcv_wnd >> self._rcv_wsc,
+            tcp__win=self._rcv_wnd >> self._win.rcv_wsc,
         )
         self._keepalive.probes_unacked += 1
         stack.timer.register_timer(
@@ -2379,7 +2349,7 @@ class TcpSession:
             cached = stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address)
             if cached and self._advertise_fastopen and self._tx_buffer:
                 with self._lock__tx_buffer:
-                    slice_len = min(self._snd_mss, len(self._tx_buffer))
+                    slice_len = min(self._win.snd_mss, len(self._tx_buffer))
                     tfo_data = bytes(self._tx_buffer[:slice_len])
             __debug__ and log(
                 "tcp-ss",
@@ -2442,7 +2412,7 @@ class TcpSession:
                 # plus 1 NOP for alignment = 12 bytes worst
                 # case.
                 options_overhead += 12
-            mss_for_data = max(self._snd_mss - options_overhead, 1)
+            mss_for_data = max(self._win.snd_mss - options_overhead, 1)
             transmit_data_len = min(mss_for_data, usable_window, remaining_data_len)
             if remaining_data_len:
                 __debug__ and log(
@@ -2487,7 +2457,7 @@ class TcpSession:
                     # disables R2-based connection-abort progression,
                     # silently hanging the connection.
                     is_retransmit = lt32(self._snd_seq.nxt, self._snd_seq.max)
-                    is_partial = transmit_data_len < self._snd_mss
+                    is_partial = transmit_data_len < self._win.snd_mss
                     prev_partial_in_flight = gt32(self._snd_seq.sml, self._snd_seq.una)
                     # RFC 1122 §4.2.3.4: TCP_NODELAY disables
                     # Nagle for latency-sensitive applications;
@@ -2772,8 +2742,8 @@ class TcpSession:
         if self._cc.cc_mode is CcMode.CUBIC:
             prior_w_max = self._cc.cubic_w_max
             self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
-                cwnd=max(self._cc.cwnd, self._snd_mss),
-                smss=self._snd_mss,
+                cwnd=max(self._cc.cwnd, self._win.snd_mss),
+                smss=self._win.snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
             )
@@ -2782,8 +2752,8 @@ class TcpSession:
             # cwnd_epoch = SMSS for the cube-root computation.
             self._cc.cubic_K_ms = cubic_compute_K(
                 w_max=self._cc.cubic_w_max,
-                cwnd_epoch=self._snd_mss,
-                smss=self._snd_mss,
+                cwnd_epoch=self._win.snd_mss,
+                smss=self._win.snd_mss,
             )
             self._cc.cubic_epoch_start_ms = stack.timer.now_ms
             self._cc.cubic_in_ca = False
@@ -2792,14 +2762,14 @@ class TcpSession:
             # cum-ACK in '_process_ack_packet').
             self._cc.cubic_w_est = 0
         else:
-            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._win.snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
         # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
         # §4.2.2.16 still require respecting peer's advertised
         # window: a 0-window peer means '_snd_ewn = 0' so
         # '_transmit_data' falls through to the persist branch.
-        self._cc.cwnd = self._snd_mss
-        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+        self._cc.cwnd = self._win.snd_mss
+        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
         self._snd_seq.nxt = self._snd_seq.una
         # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
         # event, distinct from the dup-ACK-driven fast-
@@ -2930,7 +2900,7 @@ class TcpSession:
             self._snd_seq.una,
             scoreboard=self._sack_scoreboard,
             snd_una=self._snd_seq.una,
-            mss=self._snd_mss,
+            mss=self._win.snd_mss,
         )
         # RFC 3042 Limited Transmit: on the first two
         # duplicate ACKs, send one new segment from the TX
@@ -2946,7 +2916,7 @@ class TcpSession:
         count = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack]
         if count in (1, 2) and len(self._tx_buffer) > 0:
             saved_ewn = self._cc.snd_ewn
-            self._cc.snd_ewn = min(self._cc.cwnd + count * self._snd_mss, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd + count * self._win.snd_mss, self._win.snd_wnd)
             self._transmit_data()
             self._cc.snd_ewn = saved_ewn
 
@@ -2972,7 +2942,7 @@ class TcpSession:
             self._cc.save_fr_cubic_snapshot()
             self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=self._cc.cwnd,
-                smss=self._snd_mss,
+                smss=self._win.snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
             )
@@ -2980,7 +2950,7 @@ class TcpSession:
             self._cc.cubic_K_ms = cubic_compute_K(
                 w_max=self._cc.cubic_w_max,
                 cwnd_epoch=self._cc.ssthresh,
-                smss=self._snd_mss,
+                smss=self._win.snd_mss,
             )
             self._cc.cubic_epoch_start_ms = stack.timer.now_ms
             self._cc.cubic_in_ca = True
@@ -2988,7 +2958,7 @@ class TcpSession:
             # bootstraps from the post-recovery cwnd anchor.
             self._cc.cubic_w_est = 0
         else:
-            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._win.snd_mss)
 
         # RFC 6937 §3.1 PRR per-recovery state initialisation:
         # snapshot pipe at entry as 'RecoverFS' so the per-ACK
@@ -3010,7 +2980,7 @@ class TcpSession:
         # ACKs recompute cwnd via the proportional ratio in
         # '_process_ack_packet'.
         self._cc.cwnd = flight_size
-        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
 
         # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
         # within the loss event do not re-trigger; '_process_ack_packet'
@@ -3034,7 +3004,7 @@ class TcpSession:
                 scoreboard=self._sack_scoreboard,
                 snd_una=self._snd_seq.una,
                 snd_max=self._snd_seq.max,
-                mss=self._snd_mss,
+                mss=self._win.snd_mss,
             )
             if self._send_sack
             else None
@@ -3115,7 +3085,7 @@ class TcpSession:
             # MSS (or less if in-flight is shorter) so
             # _transmit_data re-sends the highest-seq segment.
             flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
-            walk_back = min(self._snd_mss, flight_size)
+            walk_back = min(self._win.snd_mss, flight_size)
             self._snd_seq.nxt = sub32(self._snd_seq.max, walk_back)
             self._rack_tlp.tlp_is_retrans = True
 
@@ -3418,7 +3388,7 @@ class TcpSession:
                 # SMSS per ACK; CRB (no SACK or no new
                 # data) caps at the unsent prr_delivered.
                 if self._send_sack and bytes_acked > 0:
-                    limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._snd_mss
+                    limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._win.snd_mss
                 else:
                     limit = self._cc.prr_delivered - self._cc.prr_out
                 sndcnt = min(self._cc.ssthresh - current_pipe, limit)
@@ -3441,7 +3411,7 @@ class TcpSession:
                     epoch_start_ms=self._cc.cubic_epoch_start_ms,
                     now_ms=now_ms,
                     bytes_acked=bytes_acked,
-                    smss=self._snd_mss,
+                    smss=self._win.snd_mss,
                     srtt_ms=self._rto_state.srtt_ms or 0,
                 )
                 # RFC 9438 §4.3: track the Reno-equivalent
@@ -3456,7 +3426,7 @@ class TcpSession:
                 self._cc.cubic_w_est = cubic_w_est(
                     w_est_prev=self._cc.cubic_w_est,
                     cwnd=self._cc.cwnd,
-                    smss=self._snd_mss,
+                    smss=self._win.snd_mss,
                     bytes_acked=bytes_acked,
                 )
                 self._cc.cwnd = max(cubic_cwnd, self._cc.cubic_w_est)
@@ -3470,14 +3440,14 @@ class TcpSession:
                 # 5681 §3.1 congestion-avoidance growth via
                 # 'cwnd_grow_per_ack'.
                 if self._cc.cwnd < self._cc.ssthresh and self._cc.hystart_state.in_css:
-                    self._cc.cwnd += css_growth_increment(bytes_acked, self._snd_mss)
+                    self._cc.cwnd += css_growth_increment(bytes_acked, self._win.snd_mss)
                 else:
-                    self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._snd_mss)
+                    self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._win.snd_mss)
         # RFC 9293 §3.8.4: the effective send window is
         # 'min(cwnd, snd_wnd)'. Recompute now so
         # '_transmit_data' sees the new value on the same
         # FSM tick.
-        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
         # RFC 6298 §5.2 / §5.3: peer has acknowledged new
         # data, fresh evidence of liveness. Reset the R2
         # abort counter and manage the retransmit timer:
@@ -3514,9 +3484,9 @@ class TcpSession:
             from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
 
             flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
-            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._win.snd_mss)
             self._cc.cwnd = self._cc.ssthresh
-            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair "
@@ -3578,7 +3548,7 @@ class TcpSession:
                 # Single-ACK strong-spurious — restore.
                 self._cc.frto_step = 0
                 self._cc.frto_active = False
-                self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+                self._cc.restore_frto_snapshot(snd_wnd=self._win.snd_wnd)
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - RFC 5682 F-RTO: spurious RTO "
@@ -3607,7 +3577,7 @@ class TcpSession:
             # condition.
             self._cc.frto_step = 0
             self._cc.frto_active = False
-            self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+            self._cc.restore_frto_snapshot(snd_wnd=self._win.snd_wnd)
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 5682 F-RTO: spurious RTO "
@@ -3749,7 +3719,7 @@ class TcpSession:
                 f"reached RecoveryPoint={self._cc.recovery_point}",
             )
             self._cc.cwnd = self._cc.ssthresh
-            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
             self._cc.recovery_point = 0
             # RFC 9438 §4.9.2 snapshot is scoped to a single
             # recovery episode; clear on exit so a stray DSACK
@@ -3879,29 +3849,29 @@ class TcpSession:
             f"[{self}] - Purged TX buffer up to SEQ {self._snd_seq.una}",
         )
         # Update remote window size.
-        if self._snd_wnd != packet_rx_md.tcp__win << self._snd_wsc:
+        if self._win.snd_wnd != packet_rx_md.tcp__win << self._win.snd_wsc:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Updated sending window size {self._snd_wnd} -> {packet_rx_md.tcp__win << self._snd_wsc}",
+                f"[{self}] - Updated sending window size {self._win.snd_wnd} -> "
+                f"{packet_rx_md.tcp__win << self._win.snd_wsc}",
             )
-            self._snd_wnd = packet_rx_md.tcp__win << self._snd_wsc
+            self._win.snd_wnd = packet_rx_md.tcp__win << self._win.snd_wsc
             # RFC 9293 §3.8.4: '_snd_ewn = min(cwnd, snd_wnd)'.
             # Recompute when peer's advertised window changes so
             # the wire-level transmit gate sees a coherent
             # min(cwnd, snd_wnd) regardless of which side just
             # moved.
-            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
         # RFC 5961 §5 'MAX.SND.WND': running maximum of peer's
         # advertised window. Used as the lower-bound tolerance
         # for ACK acceptability ('SND.UNA - MAX.SND.WND <=
         # SEG.ACK <= SND.NXT').
-        if self._snd_wnd > self._max_window:
-            self._max_window = self._snd_wnd
+        self._win.bump_max_window(snd_wnd=self._win.snd_wnd)
         # If peer has reopened their receive window, deactivate the
         # persist timer and reset the back-off interval so the next
         # zero-window event starts fresh at the initial RTO
         # (RFC 9293 §3.8.6.1).
-        if self._snd_wnd > 0 and self._persist_active:
+        if self._win.snd_wnd > 0 and self._persist_active:
             __debug__ and log("tcp-ss", f"[{self}] - Persist: peer reopened window, deactivating timer")
             self._persist_active = False
             self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
@@ -3977,9 +3947,9 @@ class TcpSession:
                 # ssthresh by the less-aggressive 0.85
                 # multiplier instead of the 0.5 used for
                 # genuine packet-loss events.
-                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
-                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+                self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
                 self._ecn.arm_cwr_response(snd_nxt=self._snd_seq.nxt)
             # RFC 9768 §3.4 sender-side response to AccECN
             # feedback. When the peer's inbound AccECN option
@@ -4007,9 +3977,9 @@ class TcpSession:
                 # the less-aggressive 0.85 multiplier rather
                 # than the 0.5 reserved for genuine packet
                 # loss events.
-                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
-                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+                self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
                 self._ecn.recovery_point = self._snd_seq.nxt
             # RFC 9768 §3.2.1 sender-side counter mirrors. Update
             # s.e0b / s.ce_b / s.e1b from the inbound option's
@@ -4054,9 +4024,9 @@ class TcpSession:
                     self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una)
                 ):
                     flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
-                    self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                    self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
                     self._cc.cwnd = self._cc.ssthresh
-                    self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+                    self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
                     self._ecn.recovery_point = self._snd_seq.nxt
             # Route to the per-event-kind dispatcher.
             # 'tcp_fsm()' is invoked with exactly one of the

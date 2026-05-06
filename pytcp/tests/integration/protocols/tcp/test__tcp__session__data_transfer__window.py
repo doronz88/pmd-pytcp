@@ -341,7 +341,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # remains 0; '_snd_wnd' is the raw advertised window with
         # no left shift.
         self.assertEqual(
-            session._snd_wsc,
+            session._win.snd_wsc,
             0,
             msg=(
                 "Peer's WSCALE option (=7) on the SYN+ACK MUST be "
@@ -351,7 +351,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_raw_win,
             msg=(
                 f"'_snd_wnd' must equal the raw advertised window "
@@ -386,7 +386,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # to assert against. The handshake set '_snd_wnd' from the
         # peer's SYN+ACK 'win' (= PEER__WIN = 64240) and '_snd_ewn'
         # to MSS; we want both at the 3-MSS pre-shrink value.
-        session._snd_wnd = peer_initial_win
+        session._win.snd_wnd = peer_initial_win
         session._cc.snd_ewn = peer_initial_win
 
         # Application sends 3 * MSS. All three segments fire on the
@@ -442,7 +442,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             msg="The shrink ACK must advance 'SND.UNA' past payload_a.",
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             peer_shrunk_win,
             msg=(
                 "The shrink ACK's 'win' field must update 'SND.WND' "
@@ -548,7 +548,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         self.assertIs(session.state, FsmState.ESTABLISHED)
         self.assertEqual(
-            session._rcv_wsc,
+            session._win.rcv_wsc,
             7,
             msg="Setup precondition: bilateral WSCALE must yield '_rcv_wsc = 7'.",
         )
@@ -556,7 +556,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # Pre-fill '_rx_buffer' so the available window is sub-MSS.
         # '_rcv_wnd' is a property: 'max(0, _rcv_wnd_max - len(_rx_buffer))'.
         target_available = 535  # sub-MSS (< 1460)
-        prefill_count = session._rcv_wnd_max - target_available
+        prefill_count = session._win.rcv_wnd_max - target_available
         with session._lock__rx_buffer:
             session._rx_buffer.extend(b"\x00" * prefill_count)
         self.assertEqual(
@@ -585,14 +585,14 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             msg="Setup precondition: the delayed ACK must fire on the next tick after DELAYED_ACK_DELAY.",
         )
         ack_probe = self._parse_tx(delayed_ack_tx[0])
-        effective_window = ack_probe.win << session._rcv_wsc
+        effective_window = ack_probe.win << session._win.rcv_wsc
         self.assertTrue(
-            effective_window == 0 or effective_window >= session._rcv_mss,
+            effective_window == 0 or effective_window >= session._win.rcv_mss,
             msg=(
                 f"RFC 1122 §4.2.3.3 receiver SWS avoidance: "
                 f"the advertised window's effective byte count "
-                f"({effective_window} = {ack_probe.win} << {session._rcv_wsc}) "
-                f"MUST be either 0 or >= MSS ({session._rcv_mss}). "
+                f"({effective_window} = {ack_probe.win} << {session._win.rcv_wsc}) "
+                f"MUST be either 0 or >= MSS ({session._win.rcv_mss}). "
                 f"Today PyTCP advertises a small positive window "
                 f"({ack_probe.win}) representing {effective_window} "
                 f"effective bytes - sub-MSS."
@@ -615,7 +615,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             PEER__WIN,
             msg="Setup precondition: post-handshake SND.WND must equal peer's SYN+ACK win.",
         )
@@ -640,13 +640,13 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         self._drive_rx(frame=peer_wnd_update)
 
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             new_win,
             msg=(
                 "An ACK whose wire shape matches the dup-ACK "
                 "pattern but carries a NEW window value MUST "
                 f"update SND.WND. Got '_snd_wnd' = "
-                f"{session._snd_wnd}, expected {new_win}."
+                f"{session._win.snd_wnd}, expected {new_win}."
             ),
         )
         self.assertIs(
@@ -805,7 +805,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         # Initial right edge: rcv_nxt + _rcv_wnd_max.
-        initial_right_edge = session._rcv_seq.nxt + session._rcv_wnd_max
+        initial_right_edge = session._rcv_seq.nxt + session._win.rcv_wnd_max
 
         # Drive 8 back-to-back full-MSS segments with no app reads.
         # Each pair of segments fires one inline cumulative ACK
@@ -837,7 +837,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
             for frame in tx_after_b:
                 probe = self._parse_tx(frame)
                 if "ACK" in probe.flags and not probe.payload:
-                    right_edges.append(probe.ack + (probe.win << session._rcv_wsc))
+                    right_edges.append(probe.ack + (probe.win << session._win.rcv_wsc))
 
         for i in range(1, len(right_edges)):
             self.assertGreaterEqual(
@@ -866,7 +866,7 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
 
         # Fill buffer to within < 1 MSS of capacity so the SWS
         # floor advertises 0.
-        prefill_count = session._rcv_wnd_max - 100  # leaves 100 bytes free, < MSS
+        prefill_count = session._win.rcv_wnd_max - 100  # leaves 100 bytes free, < MSS
         session._rx_buffer.extend(b"P" * prefill_count)
         # Manually advance rcv_nxt so the rx buffer occupancy
         # is consistent (peer's seq view).
@@ -952,13 +952,13 @@ class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
         # the wire-level 'win' value should be meaningfully
         # above zero AND above one MSS (not a tiny advance).
         self.assertGreaterEqual(
-            reopen_ack.win << session._rcv_wsc,
+            reopen_ack.win << session._win.rcv_wsc,
             PEER__MSS,
             msg=(
                 f"RFC 9293 §3.8.6.2: when the buffer drains across "
                 f"the SWS floor, the reopened window MUST be at "
                 f"least one MSS ({PEER__MSS}). Got win="
                 f"{reopen_ack.win} (post-shift "
-                f"{reopen_ack.win << session._rcv_wsc})."
+                f"{reopen_ack.win << session._win.rcv_wsc})."
             ),
         )

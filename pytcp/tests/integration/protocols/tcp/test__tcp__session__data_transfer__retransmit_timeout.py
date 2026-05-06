@@ -323,7 +323,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         snd_ewn_before_ack = session._cc.snd_ewn
         self.assertEqual(
             snd_ewn_before_ack,
-            session._snd_mss,
+            session._win.snd_mss,
             msg=(
                 "Pre-ACK precondition: '_snd_ewn' must be back at one "
                 "MSS after the retransmit-timeout reset collapsed it."
@@ -661,7 +661,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         # doesn't update '_snd_wnd'. This is equivalent to peer
         # having processed a fresh ACK that advances SND.UNA AND
         # advertises win=0.
-        session._snd_wnd = 0
+        session._win.snd_wnd = 0
         session._cc.snd_ewn = 0
 
         # Step 4: advance past PACKET_RETRANSMIT_TIMEOUT so the
@@ -676,9 +676,9 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
                 "After RTO with peer's 0-window, '_snd_ewn' MUST "
                 "be 0 (clamped to '_snd_wnd'). Today "
                 "'_retransmit_packet_timeout' sets '_snd_ewn = "
-                "self._snd_mss' unconditionally, ignoring peer's "
+                "self._win.snd_mss' unconditionally, ignoring peer's "
                 "advertised window. Fix: clamp via "
-                "'_snd_ewn = min(self._snd_mss, self._snd_wnd)'."
+                "'_snd_ewn = min(self._win.snd_mss, self._win.snd_wnd)'."
             ),
         )
 

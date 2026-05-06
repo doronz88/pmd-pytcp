@@ -260,7 +260,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             msg="'_rcv_nxt' must equal peer_ISS+1 after consuming the SYN's one byte of sequence space.",
         )
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             PEER__MSS,
             msg="'_snd_mss' must be clamped to peer's advertised MSS once the handshake completes (RFC 6691).",
         )
@@ -1223,12 +1223,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             msg="'_rcv_ini' MUST record peer's ISN for downstream consistency.",
         )
         self.assertEqual(
-            session._snd_mss,
+            session._win.snd_mss,
             PEER__MSS,
             msg=("'_snd_mss' MUST be clamped to peer's MSS " "advertisement (RFC 6691)."),
         )
         self.assertEqual(
-            session._snd_wnd,
+            session._win.snd_wnd,
             PEER__WIN,
             msg="'_snd_wnd' MUST be initialised from peer's advertised window.",
         )

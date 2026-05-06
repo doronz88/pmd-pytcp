@@ -616,7 +616,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         )
         self.assertEqual(
             session._cc.snd_ewn,
-            session._snd_mss,
+            session._win.snd_mss,
             msg=(
                 "Sanity: RTO MUST collapse '_snd_ewn' to one SMSS "
                 "per RFC 5681 §3.1 (slow-start re-entry). If this "
@@ -640,7 +640,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc.snd_ewn = PEER__WIN
-        mss = session._snd_mss
+        mss = session._win.snd_mss
 
         # Send 4 MSS and drain so SND.MAX is well past SND.UNA.
         session.send(data=b"X" * (4 * mss))
@@ -754,7 +754,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         # segments and have 4 more queued in '_tx_buffer'
         # for Limited Transmit to inject.
         session._cc.cwnd = 4 * PEER__MSS
-        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
         # Queue 8 segments worth of data; only 4 will fit
         # in cwnd.
         session.send(data=b"x" * (8 * PEER__MSS))
