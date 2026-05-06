@@ -16,18 +16,34 @@ statement in RFC 1191.
 
 ## Top-line adherence
 
-PyTCP has **zero PMTUD support** for IPv4. A grep
-across `pytcp/`, `net_proto/`, and `net_addr/`
-returns no references to PMTUD, Path MTU Discovery,
-DF flag handling for MTU probing, or ICMP
-"Datagram Too Big" / "Fragmentation Needed"
-processing for MTU updates.
+After the ICMP demux + PMTUD refactor (commits in
+`docs/refactor/icmp_demux_pmtud_plan.md` Phases 1-8),
+PyTCP **partially implements** classic RFC 1191:
+
+- Outbound TCP and UDP set DF=1 on the IP4 header.
+- Inbound ICMPv4 Type 3 Code 4 (Frag-Needed) carrying
+  a Next-Hop MTU is parsed, demuxed to the matching
+  TCP/UDP socket, and lands in the per-destination
+  `stack.pmtu_cache`.
+- TCP recomputes `snd_mss` from the new path MTU.
+- UDP records the new MTU on the socket via
+  `notify_pmtu`.
+
+What still **does not happen**:
+
+- Per-destination MTU aging (RFC 1191 §7) — entries
+  never expire.
+- Plateau-search fallback for non-RFC-1191 routers
+  whose ICMP error has no Next-Hop MTU (§6.5).
+- Active retransmit-walkback when an in-flight TCP
+  segment exceeds the new MSS (RFC 1191 §6.5; left
+  for the RFC 4821 PLPMTUD follow-up).
 
 ---
 
-## §3 Mechanisms — Gaps
+## §3 Mechanisms
 
-### §3 IP DF flag set on outbound TCP segments
+### §3 IP DF flag set on outbound IPv4
 
 > "When an IP datagram is sent with DF=1 ('Don't
 > Fragment'), routers that cannot fit it through the
@@ -35,34 +51,47 @@ processing for MTU updates.
 > Destination Unreachable / Fragmentation Needed
 > message."
 
-**Adherence:** not implemented as a PMTUD mechanism.
-PyTCP's outbound IP4 packets have the DF flag set
-to 0 by default (allowing in-network fragmentation).
+**Adherence:** **shipped** (Phase 8). The TCP TX
+(`pytcp/stack/packet_handler/packet_handler__tcp__tx.py`)
+and UDP TX
+(`pytcp/stack/packet_handler/packet_handler__udp__tx.py`)
+paths now pass `ip4__flag_df=True` to `_phtx_ip4`. ICMPv4
+TX paths and other internally-generated v4 frames keep
+`ip4__flag_df=False` so error replies preserve the
+inbound DF semantics.
 
-### §3 ICMP "Fragmentation Needed" reception with
-Next-Hop MTU field
+### §3 ICMP "Fragmentation Needed" reception with Next-Hop MTU field
 
 > "Upon receipt of an ICMP Destination Unreachable /
 > Fragmentation Needed message, the host MUST reduce
 > its estimate of the path MTU to the value indicated
 > in the Next-Hop MTU field (RFC 1191 §4)."
 
-**Adherence:** not implemented. PyTCP's ICMP4
-parser (`net_proto/protocols/icmp4/`) supports
-parsing the Destination Unreachable + Fragmentation
-Needed message type, but the per-route MTU update
-path on RX is not wired through to TCP's
-`_snd_mss` or to the IP layer's path-MTU cache.
+**Adherence:** **shipped** (Phases 4 + 6). The
+ICMPv4 RX handler at
+`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py`
+demuxes Type 3 Code 4 (Frag-Needed) on the embedded
+4-tuple. UDP sockets see the update via
+`UdpSocket.notify_pmtu`; TCP sessions see it via
+`TcpSession.on_pmtu` which records the Next-Hop MTU
+into `stack.pmtu_cache` keyed by remote address and
+shrinks `self._win.snd_mss` accordingly. The RFC 5927
+§4 sequence-in-window guard is applied before
+notifying TCP.
 
-### §6.5 Old-style ICMP detection (non-RFC-1191
-routers)
+### §6.5 Old-style ICMP detection (non-RFC-1191 routers)
 
 > "Hosts MUST be prepared to fall back to a
 > conservative MTU value when the ICMP response does
 > not carry the Next-Hop MTU field (i.e. older
 > routers without RFC 1191 support)."
 
-**Adherence:** not implemented.
+**Adherence:** not implemented. The codebase only
+honors Frag-Needed messages that carry a Next-Hop MTU
+field. Older routers' "ICMP-without-Next-Hop-MTU"
+fallback to a plateau-table search (576, 1280, ...) is
+out of scope for this refactor and deferred alongside
+RFC 4821 PLPMTUD.
 
 ### §7 Path MTU Aging
 
@@ -70,22 +99,22 @@ routers)
 > periodically so that increases in the path MTU
 > can be detected."
 
-**Adherence:** not implemented.
+**Adherence:** not implemented. `stack.pmtu_cache`
+is process-lifetime; entries do not expire. A
+process restart purges the cache. Periodic
+re-discovery is left for the RFC 4821 PLPMTUD
+follow-up.
 
 ---
 
 ## Test coverage audit
 
-No PMTUD tests exist; the ICMP parser is tested for
-wire-format integrity in
-`net_proto/tests/unit/protocols/icmp4/`.
-
-### Test coverage summary
-
-| Aspect                                              | Coverage  |
-|-----------------------------------------------------|-----------|
-| §3 outbound DF=1 on TCP segments                    | n/a (gap) |
-| §4 ICMP Frag-Needed Next-Hop MTU update             | n/a (gap) |
+| Aspect                                              | Coverage |
+|-----------------------------------------------------|----------|
+| §3 outbound DF=1 on TCP segments                    | shipped — `pytcp/tests/integration/test__packet_handler__tcp__tx.py` golden frames |
+| §3 outbound DF=1 on UDP datagrams                   | shipped — `pytcp/tests/integration/test__packet_handler__udp__tx.py` golden frames |
+| §4 ICMP Frag-Needed Next-Hop MTU update for UDP     | shipped — `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` |
+| §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py` |
 | §6.5 fallback for non-RFC-1191 routers              | n/a (gap) |
 | §7 PMTU aging                                       | n/a (gap) |
 
@@ -93,40 +122,20 @@ wire-format integrity in
 
 ## Overall assessment
 
-| Aspect                                  | Status          |
-|-----------------------------------------|-----------------|
-| §3 outbound DF=1 + ICMP-driven discovery | not implemented |
-| §4 Next-Hop MTU field consumption       | not implemented |
-| §6.5 plateau-search fallback            | not implemented |
-| §7 path-MTU aging                       | not implemented |
+| Aspect                                       | Status          |
+|----------------------------------------------|-----------------|
+| §3 outbound DF=1 + ICMP-driven discovery     | **shipped**     |
+| §4 Next-Hop MTU field consumption            | **shipped**     |
+| §6.5 plateau-search fallback                 | not implemented |
+| §7 path-MTU aging                            | not implemented |
 
-PyTCP relies on the local interface MTU
-(`stack.interface_mtu`, default 1500) for outbound
-TCP MSS clamping (RFC 6691 §2: MSS = MTU - IP - TCP).
-This is sufficient when the entire path can carry
-local-MTU-sized datagrams. On paths where a
-bottleneck has a smaller MTU and DF=1, PyTCP would
-either:
-- Send DF=0 (allow router fragmentation) — current
-  default behavior.
-- If DF=1 were ever enabled, segments larger than
-  the path MTU would be dropped silently from
-  PyTCP's perspective (no consumption of the
-  resulting ICMP Frag-Needed messages).
-
-The simpler RFC 4821 PLPMTUD (Packetization Layer
-PMTUD) achieves the same goal without needing to
-trust ICMP — see the companion `rfc4821__plpmtud/`
-adherence record. Neither is implemented.
-
-Implementing classic RFC 1191 PMTUD would require:
-- An IPv4 layer DF=1 on outbound TCP segments.
-- An ICMP4 RX path that extracts the Next-Hop MTU
-  field and updates a per-destination path-MTU
-  cache.
-- A `_path_mtu` field on `TcpSession` (or a stack-
-  wide path-MTU table keyed by remote address).
-- An MSS recalculation hook when path MTU changes.
-- A periodic aging timer.
-
-Estimated effort: ~6-8 commits.
+PyTCP now sets DF=1 on outbound TCP/UDP, consumes
+ICMPv4 Frag-Needed Next-Hop MTU updates, and shrinks
+both the per-destination MTU cache and the TCP
+session's `snd_mss`. The two remaining RFC 1191 gaps
+(plateau-search fallback and path-MTU aging) are
+substrate-completable: the substrate added by this
+refactor (`stack.pmtu_cache`, embedded-header demux,
+`on_pmtu` callback) makes both follow-ups tractable
+as separate feature commits, ideally alongside RFC
+4821 / 8899 active probing.

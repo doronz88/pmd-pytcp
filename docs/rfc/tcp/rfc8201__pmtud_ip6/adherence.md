@@ -8,15 +8,108 @@
 | Date        | July 2017                                          |
 | Source text | [`rfc8201.txt`](rfc8201.txt)                       |
 
-This adherence record is a stub. RFC 8201 prescribes the
-IPv6 PMTUD algorithm: Packet-Too-Big handling, the 1280-byte
-floor, periodic re-discovery of higher MTUs, and
-per-destination MTU caching. PyTCP currently has no PMTUD
-support for IPv6 (or IPv4 — see also
-[rfc1191](../rfc1191__pmtud_ip4/adherence.md)). Closing the
-gap is the goal of the ICMP demux + PMTUD refactor (Phases
-4 + 6).
+---
 
-The audit will be filled in using the
-[`rfc_adherence_audit`](../../../../.claude/skills/rfc_adherence_audit/SKILL.md)
-skill once the relevant refactor phase lands.
+## Top-line adherence
+
+After Phases 4 + 6 of the ICMP demux + PMTUD refactor,
+PyTCP **partially implements** RFC 8201:
+
+- Inbound ICMPv6 Type 2 (Packet Too Big) is parsed,
+  demuxed to the matching TCP/UDP socket, and lands
+  in the per-destination `stack.pmtu_cache`.
+- TCP recomputes `snd_mss` from the new path MTU
+  (1280 minimum floor enforced).
+- UDP records the new MTU on the socket via
+  `notify_pmtu`.
+- The 1280-byte IPv6 minimum MTU floor is enforced
+  in `TcpSession.on_pmtu`.
+
+What still **does not happen**:
+
+- Per-destination MTU aging — entries never expire.
+- Active retransmit-walkback when an in-flight TCP
+  segment exceeds the new MSS (deferred alongside
+  RFC 8899 DPLPMTUD probing).
+
+---
+
+## §4 Mechanisms
+
+### §4 ICMPv6 Packet Too Big reception with MTU field
+
+> "Upon receiving a Packet Too Big message, the
+> source node reduces the path MTU value for the
+> destination if the message's MTU field value is
+> less than the current cached PMTU."
+
+**Adherence:** **shipped** (Phases 4 + 6). The
+ICMPv6 RX handler at
+`pytcp/stack/packet_handler/packet_handler__icmp6__rx.py`
+includes `__phrx_icmp6__packet_too_big` which
+parses the embedded IPv6+L4 4-tuple via the shared
+`parse_embedded_l4` helper, demuxes to UDP via
+`UdpSocket.notify_pmtu` or to TCP via
+`TcpSession.on_pmtu`. RFC 5927 §4 sequence-in-window
+guard applies on the TCP path.
+
+### §4 Minimum MTU = 1280 bytes
+
+> "An implementation MUST NOT reduce its estimate
+> of the Path MTU below the IPv6 minimum link MTU
+> [RFC 8200 §5]."
+
+**Adherence:** **shipped**. `TcpSession.on_pmtu`
+applies the floor: `floor = 1280 - 40 - 20` for
+IPv6, where 40 is the IPv6 header and 20 is the
+TCP header. `snd_mss` never drops below the floor.
+
+### §4 PMTU only shrinks on PTB; never grows
+
+> "An implementation MUST NOT increase its
+> estimate of the Path MTU in response to a
+> Packet Too Big message."
+
+**Adherence:** **shipped**. `TcpSession.on_pmtu`
+contains an explicit `if new_mss < self._win.snd_mss`
+guard so MSS only shrinks on a Packet Too Big.
+
+### §4 Path MTU Aging
+
+> "Note that increasing the cached PMTU
+> requires periodic probing — see RFC 8201 §4
+> 'Aging the Path MTU'."
+
+**Adherence:** not implemented. `stack.pmtu_cache`
+is process-lifetime; entries do not expire. Periodic
+re-discovery is left for the RFC 4821 / 8899 PLPMTUD
+follow-up.
+
+---
+
+## Test coverage audit
+
+| Aspect                                              | Coverage |
+|-----------------------------------------------------|----------|
+| §4 ICMPv6 Packet Too Big MTU update for UDP         | shipped — `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` |
+| §4 ICMPv6 Packet Too Big MTU update for TCP         | shipped (substrate) — TCP path goes through the same `TcpSession.on_pmtu` covered by `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py` (the v4 Frag-Needed test exercises the shared callback) |
+| §4 1280-byte minimum MTU floor                      | shipped — `TcpSession.on_pmtu` floor logic |
+| §4 PMTU only shrinks                                | shipped — `test__tcp__session__on_pmtu.py::test__icmp4__frag_needed__never_grows_snd_mss` |
+| §4 Path MTU Aging                                   | n/a (gap) |
+
+---
+
+## Overall assessment
+
+| Aspect                                       | Status          |
+|----------------------------------------------|-----------------|
+| §4 ICMPv6 PTB consumption                    | **shipped**     |
+| §4 1280 minimum MTU floor                    | **shipped**     |
+| §4 PMTU shrink-only semantics                | **shipped**     |
+| §4 Path MTU Aging                            | not implemented |
+
+The substrate (`stack.pmtu_cache`, embedded-header
+demux, ICMPv6 PacketTooBig message class, TCP/UDP
+on_pmtu callbacks) makes the remaining aging gap
+addressable as a focused feature commit alongside
+RFC 8899 DPLPMTUD probing.
