@@ -51,6 +51,7 @@ class IcmpErrorBlockReason(IntEnum):
     INBOUND_DST_IS_MULTICAST = 3
     INBOUND_SRC_INVALID = 4
     INBOUND_NON_INITIAL_FRAGMENT = 5
+    RATE_LIMIT_EXCEEDED = 6
 
     @override
     def __str__(self) -> str:
@@ -69,6 +70,8 @@ class IcmpErrorBlockReason(IntEnum):
                 return "inbound-src-invalid"
             case IcmpErrorBlockReason.INBOUND_NON_INITIAL_FRAGMENT:
                 return "inbound-non-initial-fragment"
+            case IcmpErrorBlockReason.RATE_LIMIT_EXCEEDED:
+                return "rate-limit-exceeded"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -171,3 +174,27 @@ class IcmpErrorRateLimiter:
             return True
 
         return False
+
+
+def try_emit_icmp_error(
+    ctx: IcmpErrorContext,
+    /,
+    *,
+    rate_limiter: IcmpErrorRateLimiter,
+    now: float,
+) -> IcmpErrorBlockReason | None:
+    """
+    Compose the host-requirements gate and the rate limiter into a
+    single emit/drop decision.
+
+    Returns None if emission is permitted; the block reason otherwise.
+    A gate-block does NOT consume a rate-limiter token.
+    """
+
+    if (reason := should_emit_icmp_error(ctx)) is not None:
+        return reason
+
+    if not rate_limiter.try_consume(now=now):
+        return IcmpErrorBlockReason.RATE_LIMIT_EXCEEDED
+
+    return None
