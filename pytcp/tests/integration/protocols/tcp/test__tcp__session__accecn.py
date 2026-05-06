@@ -225,13 +225,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertFalse(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "When AccECN negotiation succeeds, the session "
                 "uses AccECN (not RFC 3168 ECN). "
                 "'_ecn_enabled' MUST remain False so the two "
                 "paths cannot both fire. Got "
-                f"_ecn_enabled={session._ecn_enabled}."
+                f"_ecn_enabled={session._ecn.enabled}."
             ),
         )
 
@@ -275,12 +275,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             msg="Setup precondition: handshake MUST reach ESTABLISHED.",
         )
         self.assertTrue(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "RFC 9768 §3.1.2: when the peer's SYN+ACK is "
                 "the RFC 3168 form (AE=0, CWR=0, ECE=1), the "
                 "session MUST fall back to classic ECN. "
-                f"Got _ecn_enabled={session._ecn_enabled}."
+                f"Got _ecn_enabled={session._ecn.enabled}."
             ),
         )
         self.assertFalse(
@@ -1170,11 +1170,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertTrue(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "Classic ECN-setup SYN (0,1,1) MUST enable "
                 "Classic ECN mode. Got "
-                f"_ecn_enabled={session._ecn_enabled}."
+                f"_ecn_enabled={session._ecn.enabled}."
             ),
         )
 
@@ -1868,12 +1868,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertFalse(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "RFC 9768 §3.1.2 fourth block: broken-server "
                 "fall-back MUST disable Classic ECN as well, "
                 f"yielding Not ECN mode. Got "
-                f"_ecn_enabled={session._ecn_enabled}."
+                f"_ecn_enabled={session._ecn.enabled}."
             ),
         )
 

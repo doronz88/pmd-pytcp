@@ -44,6 +44,7 @@ from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
+from pytcp.protocols.tcp.state.tcp__state__ecn_classic import ClassicEcnState
 from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
@@ -324,13 +325,12 @@ class TcpSession:
         # mutually exclusive post-handshake.
         self._advertise_accecn: bool = True
 
-        # RFC 3168 §6.1.1 ECN bilateral-success flag.
-        # Set True post-handshake when both sides advertised
-        # ECN support. While True, outbound data carries IP
-        # ECT(0), inbound CE marks are echoed via ECE on the
-        # next outbound segment, and inbound ECE triggers
-        # cwnd reduction per §6.1.2.
-        self._ecn_enabled: bool = False
+        # RFC 3168 classic ECN per-session state (enabled flag,
+        # send_ece receiver-echo, send_cwr sender-confirmation,
+        # recovery_point one-shot gate). Mutually exclusive with
+        # 'self._accecn.enabled' per RFC 9768 §3.1.1. See
+        # 'state/tcp__state__ecn_classic.py' for per-field rationale.
+        self._ecn: ClassicEcnState = ClassicEcnState()
 
         # RFC 9768 AccECN per-session state (negotiation flag,
         # codepoint capture, receiver/sender byte counters, ACE
@@ -344,28 +344,8 @@ class TcpSession:
         # Defaults are RFC-anchored on the dataclass; no per-field
         # init needed here.
 
-        # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
-        # when an inbound segment arrives with the IP CE
-        # codepoint ('11' = 3); every subsequent outbound TCP
-        # segment carries the ECE flag as the wire echo back to
-        # the sender. Cleared when the sender confirms cwnd
-        # reduction by setting CWR on a subsequent segment
-        # (RFC 3168 §6.1.3 - the "ECN-Echo flag is set in the
-        # ACKs of all subsequent segments until receipt of a
-        # segment with the CWR flag set"-style behaviour).
-        self._send_ece: bool = False
-
-        # RFC 3168 §6.1.2 sender-side state. '_ecn_send_cwr'
-        # is set after responding to an inbound ECE (cwnd /
-        # ssthresh halved); the next outbound data segment
-        # carries the CWR flag as the wire confirmation,
-        # then the flag clears. '_ecn_recovery_point' is the
-        # one-shot guard: SND.NXT at the moment of the ECE
-        # response; subsequent ECEs are ignored until SND.UNA
-        # crosses this point so a single congestion episode
-        # halves cwnd at most once per RTT.
-        self._ecn_send_cwr: bool = False
-        self._ecn_recovery_point: int = 0
+        # Classic ECN sender + receiver state moved to
+        # 'self._ecn' (ClassicEcnState) above.
 
         # RFC 2883 DSACK: when peer retransmits data we already
         # received (fully-duplicate segment OR overlap prefix of
@@ -1117,7 +1097,7 @@ class TcpSession:
         # to SND.UNA on the RTO/FR path. The 'lt32' modular
         # comparison handles the 32-bit seq wrap correctly.
         is_retransmit = bool(data) and lt32(seq, self._snd_seq.max)
-        ip__ecn = 2 if (self._ecn_enabled and data and not is_retransmit) else 0
+        ip__ecn = 2 if (self._ecn.enabled and data and not is_retransmit) else 0
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -1344,7 +1324,7 @@ class TcpSession:
             flag_ns = bool(cp & 0b10)
             flag_cwr = (cp & 0b10) == 0 or (cp & 0b01) != 0
             flag_ece = bool(cp & 0b01)
-        elif flag_syn and flag_ack and self._ecn_enabled:
+        elif flag_syn and flag_ack and self._ecn.enabled:
             flag_ece = True
         # RFC 9768 §3.2.2.1 ACE field encoding on non-SYN
         # segments of an AccECN-capable connection. The 3-bit
@@ -1374,7 +1354,7 @@ class TcpSession:
         # observed and is cleared once the sender confirms
         # cwnd reduction by setting CWR on a subsequent
         # segment.
-        elif self._ecn_enabled and self._send_ece and not flag_rst:
+        elif self._ecn.enabled and self._ecn.send_ece and not flag_rst:
             flag_ece = True
         # RFC 3168 §6.1.2 sender-side CWR confirmation. After
         # responding to an inbound ECE with cwnd reduction,
@@ -1382,9 +1362,8 @@ class TcpSession:
         # wire confirmation. The flag clears on emission so
         # subsequent segments stay unmarked unless a new ECN
         # response is triggered.
-        if self._ecn_enabled and self._ecn_send_cwr and data:
+        if self._ecn.enabled and data and self._ecn.consume_cwr():
             flag_cwr = True
-            self._ecn_send_cwr = False
         return flag_ece, flag_cwr, flag_ns
 
     def _phase2_build_accecn_counters(
@@ -4007,11 +3986,11 @@ class TcpSession:
             # state-handler-emitted ACK on this segment already
             # carries ECE, and the sender's CWR confirmation
             # observed on the same segment clears the flag.
-            if self._ecn_enabled and packet_rx_md is not None:
+            if self._ecn.enabled and packet_rx_md is not None:
                 if packet_rx_md.tcp__flag_cwr:
-                    self._send_ece = False
+                    self._ecn.send_ece = False
                 if packet_rx_md.ip__ecn == 3:
-                    self._send_ece = True
+                    self._ecn.send_ece = True
             # RFC 9768 §3.2.2 / §3.2.3 receiver-side counter
             # accumulation: r.cep packet counter on CE, plus
             # per-codepoint byte counters from the TCP payload.
@@ -4030,10 +4009,10 @@ class TcpSession:
             # ECEs within the same window of data are ignored
             # until SND.UNA crosses the recovery point.
             if (
-                self._ecn_enabled
+                self._ecn.enabled
                 and packet_rx_md is not None
                 and packet_rx_md.tcp__flag_ece
-                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una))
+                and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
             ):
                 flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                 # RFC 8511 ABE: ECN signals early-warning
@@ -4044,8 +4023,7 @@ class TcpSession:
                 self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                self._ecn_send_cwr = True
-                self._ecn_recovery_point = self._snd_seq.nxt
+                self._ecn.arm_cwr_response(snd_nxt=self._snd_seq.nxt)
             # RFC 9768 §3.4 sender-side response to AccECN
             # feedback. When the peer's inbound AccECN option
             # reports an r.CE byte counter higher than our
@@ -4064,7 +4042,7 @@ class TcpSession:
                 and packet_rx_md.tcp__accecn0_counters is not None
                 and packet_rx_md.tcp__accecn0_counters[1] is not None
                 and packet_rx_md.tcp__accecn0_counters[1] > self._accecn.s_ce_b
-                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una))
+                and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
             ):
                 flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                 # RFC 8511 ABE: same as the RFC 3168 ECN path
@@ -4075,7 +4053,7 @@ class TcpSession:
                 self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                self._ecn_recovery_point = self._snd_seq.nxt
+                self._ecn.recovery_point = self._snd_seq.nxt
             # RFC 9768 §3.2.1 sender-side counter mirrors. Update
             # s.e0b / s.ce_b / s.e1b from the inbound option's
             # populated slots (per-slot None per the §3.2.3
@@ -4116,13 +4094,13 @@ class TcpSession:
                 )
                 apparent_delta = self._accecn.apparent_ce_delta(incoming_ace)
                 if apparent_delta > 0 and (
-                    self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una)
+                    self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una)
                 ):
                     flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                     self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                     self._cc.cwnd = self._cc.ssthresh
                     self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                    self._ecn_recovery_point = self._snd_seq.nxt
+                    self._ecn.recovery_point = self._snd_seq.nxt
             # Route to the per-event-kind dispatcher.
             # 'tcp_fsm()' is invoked with exactly one of the
             # three kwargs set; pick the matching dispatcher.

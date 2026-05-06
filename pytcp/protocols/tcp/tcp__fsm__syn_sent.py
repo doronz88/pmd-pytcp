@@ -319,7 +319,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 if observed_ipecn != 0:
                     session._accecn.mangling_detected = True
             elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
-                session._ecn_enabled = True
+                session._ecn.enabled = True
             # RFC 7413 §3.1 client-side cookie cache update:
             # when peer's SYN+ACK carries a non-empty TFO
             # cookie, cache it against the peer IP via the

@@ -247,7 +247,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                 session._accecn.enabled = True
                 session._accecn.synack_codepoint = packet_rx_md.ip__ecn
             elif session._advertise_ecn and is_classic_ecn_syn:
-                session._ecn_enabled = True
+                session._ecn.enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie
             # issuance + validation, gated on the listening
             # socket's '_tcp_fastopen_qlen > 0' (the

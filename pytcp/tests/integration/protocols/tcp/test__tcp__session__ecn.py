@@ -221,13 +221,13 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
             ),
         )
         self.assertTrue(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "RFC 3168 §6.1.1: bilateral ECN negotiation "
                 "MUST set '_ecn_enabled = True' on the "
                 "session after the passive-open SYN+ACK "
                 "fires. Got "
-                f"_ecn_enabled={session._ecn_enabled}."
+                f"_ecn_enabled={session._ecn.enabled}."
             ),
         )
 
@@ -266,12 +266,12 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
             msg=("Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."),
         )
         self.assertTrue(
-            session._ecn_enabled,
+            session._ecn.enabled,
             msg=(
                 "RFC 3168 §6.1.1: when our active-open SYN carried "
                 "ECE+CWR and the peer's SYN+ACK echoes ECE, "
                 "'_ecn_enabled' MUST become True on the session. "
-                f"Got _ecn_enabled={session._ecn_enabled}."
+                f"Got _ecn_enabled={session._ecn.enabled}."
             ),
         )
 
@@ -305,10 +305,10 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         assert session.state is FsmState.ESTABLISHED, (
             "Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."
         )
-        assert session._ecn_enabled, (
+        assert session._ecn.enabled, (
             "Setup precondition: bilateral ECN negotiation must succeed "
             "(client SYN ECE+CWR, peer SYN+ACK ECE). Got "
-            f"_ecn_enabled={session._ecn_enabled}."
+            f"_ecn_enabled={session._ecn.enabled}."
         )
         return session
 
