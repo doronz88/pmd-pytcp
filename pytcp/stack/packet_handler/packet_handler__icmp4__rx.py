@@ -183,7 +183,12 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp4__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp4__dispatch_tcp(
+                packet_rx,
+                embedded,
+                icmp_code=int(message.code),
+                frag_needed_mtu=message.mtu if is_frag_needed else None,
+            )
             return
 
     def __phrx_icmp4__dispatch_udp(
@@ -236,12 +241,14 @@ class PacketHandlerIcmp4Rx(ABC):
         embedded: EmbeddedL4,
         *,
         icmp_code: int,
+        frag_needed_mtu: int | None,
     ) -> None:
         """
         Route an ICMPv4 Destination Unreachable carrying an embedded
         TCP segment to the matching TcpSession via TcpSocket. Applies
-        the RFC 5927 §4 sequence-in-window guard before calling
-        TcpSession.on_unreachable.
+        the RFC 5927 §4 sequence-in-window guard. Code-4 Frag-Needed
+        with a non-None mtu drives the PMTUD on_pmtu callback; every
+        other code drives on_unreachable.
         """
 
         socket_id = SocketId(
@@ -257,11 +264,19 @@ class PacketHandlerIcmp4Rx(ABC):
         if socket is None or socket._tcp_session is None:
             return
 
-        # RFC 5927 §4 sequence-in-window guard: an ICMP error whose
-        # embedded TCP seq does not lie in SND.UNA..SND.NXT is forged
-        # or stale and must be silently dropped.
+        # RFC 5927 §4 sequence-in-window guard.
         if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
             self._packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            return
+
+        if frag_needed_mtu is not None:
+            __debug__ and log(
+                "icmp4",
+                f"{packet_rx.tracker} - <INFO>Found matching TCP session "
+                f"for Frag-Needed from {packet_rx.ip4.src}, mtu={frag_needed_mtu}</>",
+            )
+            socket._tcp_session.on_pmtu(next_hop_mtu=frag_needed_mtu, ip_version=4)
+            self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
             return
 
         __debug__ and log(

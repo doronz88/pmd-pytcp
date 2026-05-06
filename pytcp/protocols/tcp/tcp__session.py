@@ -765,6 +765,37 @@ class TcpSession:
             return self._snd_seq.una <= seq <= self._snd_seq.nxt
         return seq >= self._snd_seq.una or seq <= self._snd_seq.nxt
 
+    def on_pmtu(self, *, next_hop_mtu: int, ip_version: int) -> None:
+        """
+        Handle an inbound ICMP Path-MTU update for this session.
+        Records the next-hop MTU into 'stack.pmtu_cache' for the
+        remote address and recomputes 'self._win.snd_mss' from the
+        new MTU minus IP+TCP fixed overhead.
+
+        Phase 6 deliberately stops at the MSS-recompute step. Active
+        retransmit walkback (RFC 1191 §6.5) for in-flight segments
+        that exceed the new MSS is left for a follow-up feature
+        commit alongside RFC 4821 / 8899 active probing.
+
+        Reference: RFC 1191 §6 (PMTUD on the host).
+        Reference: RFC 8201 §4 (IPv6 PMTUD MTU update rule).
+        Reference: RFC 9293 §3.7.5 (MSS option update on path-MTU change).
+        """
+
+        # Fixed-overhead floor: IPv4 = 20, IPv6 = 40; TCP = 20.
+        ip_overhead = 20 if ip_version == 4 else 40
+        new_mss = max(next_hop_mtu - ip_overhead - 20, 0)
+        # RFC 1191 §6.4 / RFC 791 §3.1 MIN_MTU floor: never let MSS
+        # drop below 536 / 1280 on v4 / v6 respectively. The remote
+        # peer's MSS option from the handshake is also a ceiling, so
+        # only shrink, never grow.
+        floor = 536 - 20 if ip_version == 4 else 1280 - 40 - 20
+        new_mss = max(new_mss, floor)
+        if new_mss < self._win.snd_mss:
+            self._win.snd_mss = new_mss
+
+        stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+
     def on_unreachable(self, *, icmp_type: int, icmp_code: int) -> None:
         """
         Handle an inbound ICMP Destination Unreachable that the RX

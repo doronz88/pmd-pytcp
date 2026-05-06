@@ -274,23 +274,64 @@ class PacketHandlerIcmp6Rx(ABC):
         if embedded is None:
             return
 
-        if embedded.proto is not IpProto.UDP:
+        if embedded.proto is IpProto.UDP:
+            packet = UdpMetadata(
+                ip__ver=IpVersion.IP6,
+                ip__local_address=cast(Ip6Address, embedded.local_ip),
+                ip__remote_address=cast(Ip6Address, embedded.remote_ip),
+                udp__local_port=embedded.local_port,
+                udp__remote_port=embedded.remote_port,
+            )
+
+            for socket_id in packet.socket_ids:
+                if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                    stack.pmtu_cache[cast(Ip6Address, embedded.remote_ip)] = message.mtu
+                    socket.notify_pmtu(next_hop_mtu=message.mtu)
+                    self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
+                    return
             return
 
-        packet = UdpMetadata(
-            ip__ver=IpVersion.IP6,
-            ip__local_address=cast(Ip6Address, embedded.local_ip),
-            ip__remote_address=cast(Ip6Address, embedded.remote_ip),
-            udp__local_port=embedded.local_port,
-            udp__remote_port=embedded.remote_port,
+        if embedded.proto is IpProto.TCP:
+            self.__phrx_icmp6__dispatch_tcp_pmtu(packet_rx, embedded, mtu=message.mtu)
+            return
+
+    def __phrx_icmp6__dispatch_tcp_pmtu(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        mtu: int,
+    ) -> None:
+        """
+        Route an ICMPv6 Packet Too Big carrying an embedded TCP
+        segment to the matching TcpSession.on_pmtu callback. Applies
+        the RFC 5927 §4 sequence-in-window guard.
+        """
+
+        socket_id = SocketId(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.STREAM,
+            local_address=cast(Ip6Address, embedded.local_ip),
+            local_port=embedded.local_port,
+            remote_address=cast(Ip6Address, embedded.remote_ip),
+            remote_port=embedded.remote_port,
         )
 
-        for socket_id in packet.socket_ids:
-            if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                stack.pmtu_cache[cast(Ip6Address, embedded.remote_ip)] = message.mtu
-                socket.notify_pmtu(next_hop_mtu=message.mtu)
-                self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
-                return
+        socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
+        if socket is None or socket._tcp_session is None:
+            return
+
+        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+            self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            return
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - <INFO>Found matching TCP session "
+            f"for Packet Too Big from {packet_rx.ip6.src}, mtu={mtu}</>",
+        )
+        socket._tcp_session.on_pmtu(next_hop_mtu=mtu, ip_version=6)
+        self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:
         """
