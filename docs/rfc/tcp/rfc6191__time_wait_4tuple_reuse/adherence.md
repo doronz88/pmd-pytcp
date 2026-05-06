@@ -100,28 +100,16 @@ behavioural defect.
 > connection request (creating a connection in the
 > SYN-RECEIVED state)."
 
-**Adherence:** not implemented. PyTCP's check uses
-`gt32(tsval, ts_recent_at_entry)` — strict greater-
-than. The boundary case `tsval == _ts_recent` falls
-through to the SYN-in-TIME-WAIT challenge-ACK path
-(line 161 of the FSM handler), per the inline comment
-at lines 112-115:
-
-> "The boundary case 'TSval == _ts_recent' passes PAWS
-> (strict '<') but fails this gate (strict '>') and
-> falls through to the RFC 1337 / RFC 9293 §3.10.7.4
-> challenge-ACK path below."
-
-Sub-case A.2 would be a small extension: if `tsval ==
-_ts_recent`, also check `gt32(seq, _last_seq_seen)`.
-PyTCP currently has no `_last_seq_seen` tracking on
-the TIME-WAIT session, so this sub-case requires
-additional state beyond what's currently kept. The
-omission is conservative — PyTCP rejects connections
-A.2 would accept, falling back to the safer
-challenge-ACK path. Not implementing this sub-case is
-permitted under §2's SHOULD; the strict reading is
-"may not honor" rather than "must honor".
+**Adherence:** met. PyTCP's TIME-WAIT FSM handler
+uses Linux's OR'd predicate `(gt32(seq, RCV.NXT) OR
+gt32(TSval, ts_recent))`, accepting reuse on either
+evidence axis. RCV.NXT serves as the "last sequence
+number seen" — it is the next-byte-expected from peer
+and equals one past the highest seq we ever ACKed.
+When `tsval == _ts_recent` (TSval evidence absent)
+but `seq > RCV.NXT`, the seq evidence path fires and
+the SYN is accepted as a fresh connection. Pinned by
+`test__rfc6191__equal_tsval_with_seq_evidence_accepts_reuse`.
 
 #### Sub-case A.3 — TSopt NOT enabled in new SYN BUT seq > last_seq
 
@@ -134,10 +122,11 @@ permitted under §2's SHOULD; the strict reading is
 > incoming connection request (creating a connection
 > in the SYN-RECEIVED state)."
 
-**Adherence:** not implemented. Same reason as A.2:
-no `_last_seq_seen` state on the TIME-WAIT session.
-Falls back to challenge-ACK. Conservative omission
-permitted under SHOULD.
+**Adherence:** met. Same OR'd predicate as A.2: when
+the new SYN omits TSopt (TSval-evidence path skipped)
+but `seq > RCV.NXT`, the seq evidence accepts reuse.
+Pinned by
+`test__rfc6191__syn_without_tsopt_with_seq_evidence_accepts_reuse`.
 
 #### Sub-case A.4 — Otherwise drop (default)
 
@@ -163,21 +152,14 @@ response is chosen).
 > connection request (creating a connection in the
 > SYN-RECEIVED state)."
 
-**Adherence:** not implemented. The RFC 6191 reuse
-gate at `tcp__fsm__time_wait.py:121` requires
-`session._send_ts` to be True — i.e., the PREVIOUS
-incarnation had bilateral Timestamps. When the
-previous incarnation did not, the gate fails even if
-the new SYN brings a TSopt. This sub-case would
-permit acceptance based solely on the new SYN's TSopt
-presence, regardless of what the previous incarnation
-did.
-
-PyTCP's omission is conservative: an incoming SYN
-without prior-TSopt context will fall back to the
-challenge-ACK path. The SHOULD permits this; the
-choice means PyTCP is more conservative than RFC 6191
-recommends but not unsafe.
+**Adherence:** met. The Linux-style OR'd predicate
+no longer gates on `session._send_ts` (the previous
+incarnation's TSopt history). When the new SYN brings
+a TSopt with `TSval > _ts_recent` (which equals 0 if
+no prior TSopt was seen), the TSval-fresh path
+accepts reuse. With `_ts_recent = 0`, any positive
+TSval qualifies — matching the §2 B.1 SHOULD that
+"any new TSopt-bearing SYN is sufficient evidence".
 
 #### Sub-case B.2 — TSopt NOT enabled BUT seq > last_seq
 
@@ -189,8 +171,9 @@ recommends but not unsafe.
 > direction of the data transfer), honor the incoming
 > connection request..."
 
-**Adherence:** not implemented. Same `_last_seq_seen`
-omission as sub-cases A.2 and A.3.
+**Adherence:** met. Same seq-evidence path as A.2 /
+A.3: `seq > RCV.NXT` accepts reuse regardless of
+TSopt history.
 
 #### Sub-case B.3 — Otherwise drop
 
@@ -249,28 +232,42 @@ strength of §2 permits this conservative subset.
 **Status:** locked in (negative coverage; positive
 case not implemented).
 
+### §2 sub-case A.2 — TSval == last + seq evidence
+
+- **Integration:**
+  `TestTcpClose__TimeWaitRfc6191::test__rfc6191__equal_tsval_with_seq_evidence_accepts_reuse`
+  pins acceptance via the seq-evidence path when
+  TSval is equal to `_ts_recent`.
+
+**Status:** locked in.
+
 ### §2 sub-case A.3 / B.1 / B.2 — Various non-A.1 acceptance branches
 
-- **Integration (negative coverage):**
-  `TestTcpClose__TimeWaitRfc6191::test__rfc6191__syn_without_tsopt_falls_back_to_challenge_ack`
-  drives a SYN without TSopt and asserts the response
-  is challenge-ACK.
+- **Integration:**
+  `TestTcpClose__TimeWaitRfc6191::test__rfc6191__syn_without_tsopt_with_seq_evidence_accepts_reuse`
+  pins A.3 / B.2 (no-TSopt + seq-evidence) acceptance.
+- **Integration:**
+  `TestTcpClose__TimeWaitRfc6191::test__rfc6191__no_evidence_falls_back_to_challenge_ack`
+  pins the A.4 / B.3 default-drop fallback (when
+  neither evidence axis fires).
+- **Integration:**
+  `TestTcpClose__TimeWaitRfc1337::test__rfc1337__no_evidence_syn_in_time_wait_elicits_challenge_ack`
+  cross-cut RFC 1337 hazard #3 coverage of the same
+  no-evidence path.
 
-**Status:** the omission of these branches is locked
-in by the negative test (any future addition would
-break this test, prompting an update).
+**Status:** locked in.
 
 ### Test coverage summary
 
 | Aspect                                          | Coverage                                       |
 |-------------------------------------------------|------------------------------------------------|
 | §2 A.1 fresh-TSval acceptance                   | locked in                                      |
-| §2 A.2 TSval-equal + seq-greater                | n/a (not implemented; negative test pinned)    |
-| §2 A.3 prev-TSopt no-new-TSopt + seq            | n/a (not implemented; negative test pinned)    |
-| §2 A.4 default drop                             | conservatively replaced with challenge-ACK     |
-| §2 B.1 no-prev-TSopt new-TSopt                  | n/a (not implemented; negative test pinned)    |
-| §2 B.2 no-prev-TSopt no-new-TSopt + seq         | n/a (not implemented)                          |
-| §2 B.3 default drop                             | conservatively replaced with challenge-ACK     |
+| §2 A.2 TSval-equal + seq-greater                | locked in (Linux-style OR'd predicate)         |
+| §2 A.3 prev-TSopt no-new-TSopt + seq            | locked in (Linux-style OR'd predicate)         |
+| §2 A.4 default drop                             | replaced by challenge-ACK (stricter)           |
+| §2 B.1 no-prev-TSopt new-TSopt                  | locked in (Linux-style OR'd predicate)         |
+| §2 B.2 no-prev-TSopt no-new-TSopt + seq         | locked in (Linux-style OR'd predicate)         |
+| §2 B.3 default drop                             | replaced by challenge-ACK (stricter)           |
 
 ---
 
@@ -278,49 +275,30 @@ break this test, prompting an update).
 
 | Aspect                                          | Status                                          |
 |-------------------------------------------------|-------------------------------------------------|
-| §2 A.1 (TSval > last_TSval)                     | met                                             |
-| §2 A.2 (TSval == last + seq > last_seq)         | not implemented (conservative)                  |
-| §2 A.3 (no-new-TSopt + seq > last_seq)          | not implemented (conservative)                  |
+| §2 A.1 (TSval > last_TSval)                     | met (Linux-style: TSval-fresh path)             |
+| §2 A.2 (TSval == last + seq > last_seq)         | met (Linux-style: seq-fresh path)               |
+| §2 A.3 (no-new-TSopt + seq > last_seq)          | met (Linux-style: seq-fresh path)               |
 | §2 A.4 (drop default)                           | replaced by challenge-ACK (stricter)            |
-| §2 B.1 (no-prev-TSopt + new-TSopt)              | not implemented (conservative)                  |
-| §2 B.2 (no-prev-TSopt no-new-TSopt + seq)       | not implemented (conservative)                  |
+| §2 B.1 (no-prev-TSopt + new-TSopt)              | met (Linux-style: TSval-fresh path)             |
+| §2 B.2 (no-prev-TSopt no-new-TSopt + seq)       | met (Linux-style: seq-fresh path)               |
 | §2 B.3 (drop default)                           | replaced by challenge-ACK (stricter)            |
 
-PyTCP implements the most-common-case (sub-case A.1)
-RFC 6191 §2 algorithm: a fresh-TSval SYN reusing a
-4-tuple in TIME-WAIT is accepted via the
-`_reinit_for_rfc6191_reuse` reset path. The other six
-sub-cases are not implemented; an incoming SYN that
-would have been accepted by sub-cases A.2 / A.3 / B.1
-/ B.2 instead falls through to the RFC 9293 §3.10.7.4
-challenge-ACK path. The §2 SHOULD-strength permits
-this conservative subset; the practical impact is that
-high-rate connection-reuse scenarios that don't match
-sub-case A.1 may experience longer TIME-WAIT-induced
-delays than a fully-conformant implementation would.
+PyTCP implements RFC 6191 §2 acceptance via Linux's
+OR'd-predicate pattern: a SYN to a TIME-WAIT 4-tuple
+is accepted as a fresh connection if EITHER its seq
+is strictly greater than RCV.NXT (the seq-evidence
+path covering A.2 / A.3 / B.2) OR its TSval is
+strictly greater than `_ts_recent` (the TSval-
+evidence path covering A.1 / B.1). This subsumes
+the RFC's tabular A-vs-B distinction in a single
+expression and matches `tcp_timewait_state_process`
+in `net/ipv4/tcp_minisocks.c`. RCV.NXT serves as the
+"last sequence number seen" — it is one past the
+highest seq we ever ACKed, equivalent to the §2
+"last seq seen on the previous incarnation".
 
-The two known polish items:
-
-1. The inline comment at
-   `tcp__fsm__time_wait.py:106` cites "RFC 6191 §3"
-   but the algorithm is in §2.
-2. The `_send_ts` gate semantically encodes "previous
-   incarnation had bilateral TSopt", which is the
-   correct hook for sub-case A.1; extending to B.1
-   would require relaxing this gate.
-
-Closing the gaps to fully cover all RFC 6191 §2
-sub-cases would require:
-
-- Recording `_last_seq_seen` (the FIN's seq from the
-  previous incarnation) on the TIME-WAIT session for
-  the seq-comparison branches.
-- Distinguishing "previous-TSopt" from "previous-
-  no-TSopt" at the gate so sub-case B.1 can be
-  honoured.
-
-The work is moderate in size (~3-4 commits) and would
-make PyTCP fully RFC 6191 §2 conformant. It is
-documented here as a known gap; whether to close it
-depends on whether high-rate connection reuse becomes
-a relevant use case for PyTCP deployments.
+A.4 / B.3 (no evidence on either axis) fall through
+to the RFC 9293 §3.10.7.4 / RFC 1337 §3 challenge-
+ACK path, which is stricter than the RFC's "silently
+drop" default — peers get an explicit signal to
+retry rather than a silent black hole.

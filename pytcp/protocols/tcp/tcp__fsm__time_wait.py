@@ -104,30 +104,42 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     if not session._check_paws_and_update_ts_recent(packet_rx_md):
         return
 
-    # RFC 6191 §3 TIME-WAIT 4-tuple reuse: a SYN whose TSval
-    # is strictly greater than the cached '_ts_recent' proves
-    # it cannot be a delayed segment from the previous
-    # incarnation (whose TS clock was monotonically lower at
-    # every send). Terminate this TIME-WAIT instance and
-    # accept the SYN as a fresh connection without waiting
-    # the full 2*MSL. The boundary case 'TSval ==
-    # _ts_recent' passes PAWS (strict '<') but fails this
-    # gate (strict '>') and falls through to the RFC 1337 /
-    # RFC 9293 §3.10.7.4 challenge-ACK path below.
+    # RFC 6191 §2 TIME-WAIT 4-tuple reuse, Linux-style OR'd
+    # predicate covering sub-cases A.1, A.2, A.3, B.1, B.2 in
+    # one expression: a SYN whose TSval is strictly greater
+    # than '_ts_recent' (TSval evidence — sub-cases A.1/B.1)
+    # OR whose seq is strictly greater than RCV.NXT (seq
+    # evidence — sub-cases A.2/A.3/B.2) proves it cannot be a
+    # delayed segment from the previous incarnation: either
+    # the TS clock has advanced past anything we ever ACKed,
+    # or the seq is past anything we ever expected. Terminate
+    # this TIME-WAIT instance and accept the SYN as a fresh
+    # connection without waiting the full 2*MSL. Linux's
+    # tcp_timewait_state_process uses the same OR'd predicate
+    # — accept on either axis independently rather than RFC
+    # 6191 §2's tabular A-vs-B distinction. Sub-cases A.4 and
+    # B.3 (no evidence on either axis) fall through to the
+    # RFC 1337 / RFC 9293 §3.10.7.4 challenge-ACK path below.
     if (
         packet_rx_md.tcp__flag_syn
         and not packet_rx_md.tcp__flag_ack
         and not packet_rx_md.tcp__flag_rst
-        and session._send_ts
-        and packet_rx_md.tcp__tsval is not None
-        and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry)
+        and (
+            gt32(packet_rx_md.tcp__seq, session._rcv_nxt)
+            or (
+                packet_rx_md.tcp__tsval is not None
+                and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry)
+            )
+        )
     ):
         __debug__ and log(
             "tcp-ss",
-            f"[{session}] - RFC 6191 §3 reuse: peer TSval "
-            f"{packet_rx_md.tcp__tsval} > cached "
-            f"_ts_recent {ts_recent_at_entry}; "
-            "terminating TIME_WAIT and accepting fresh SYN",
+            f"[{session}] - RFC 6191 §2 reuse: peer SYN "
+            f"seq={packet_rx_md.tcp__seq} (> RCV.NXT="
+            f"{session._rcv_nxt}) or TSval="
+            f"{packet_rx_md.tcp__tsval} (> _ts_recent="
+            f"{ts_recent_at_entry}); terminating TIME_WAIT and "
+            "accepting fresh SYN",
         )
         session._reinit_for_rfc6191_reuse(packet_rx_md)
         session._change_state(FsmState.SYN_RCVD)

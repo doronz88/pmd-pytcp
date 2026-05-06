@@ -496,22 +496,30 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
             msg=("The RST MUST be silently dropped; no " "outbound segment may fire in response."),
         )
 
-    def test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change(self) -> None:
+    def test__rfc1337__no_evidence_syn_in_time_wait_elicits_challenge_ack(self) -> None:
         """
-        Ensure a new SYN arriving at TIME_WAIT elicits a
-        challenge ACK with our current SND.NXT and RCV.NXT
-        and does NOT transition out of TIME_WAIT.
+        Ensure a SYN arriving at TIME_WAIT WITHOUT fresh
+        evidence on either RFC 6191 §2 axis (seq <= RCV.NXT
+        AND no TSopt / TSval <= ts_recent) elicits a challenge
+        ACK with our current SND.NXT and RCV.NXT and does NOT
+        transition out of TIME_WAIT. SYNs with fresh seq or
+        TSval evidence are accepted as fresh connections per
+        the Linux-style RFC 6191 §2 OR'd predicate; this test
+        pins the no-evidence fallback.
 
         Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
         Reference: RFC 1337 §3 (TIME-WAIT assassination mitigations).
+        Reference: RFC 6191 §2 A.4 / B.3 (no-evidence default).
         """
 
         session = self._drive_to_time_wait(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
+        # No evidence: seq == RCV.NXT - 1 (replay of last seq
+        # we ACKed); no TSopt on either side.
         peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=0x0000_5000,
+            seq=session._rcv_nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,
@@ -804,16 +812,18 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             ),
         )
 
-    def test__rfc6191__equal_tsval_syn_falls_back_to_challenge_ack(self) -> None:
+    def test__rfc6191__equal_tsval_with_seq_evidence_accepts_reuse(self) -> None:
         """
-        Ensure that when a peer SYN to our TIME_WAIT 4-tuple
-        carries a TSval EQUAL to the cached '_ts_recent'
-        (boundary case: passes PAWS strict-less-than but
-        fails RFC 6191's strict-greater-than), the response
-        falls back to the RFC 9293 §3.10.7.4 / RFC 1337 §3
-        challenge ACK and TIME_WAIT is preserved.
+        Ensure that a SYN to our TIME_WAIT 4-tuple carrying a
+        TSval EQUAL to '_ts_recent' but a SEQ strictly greater
+        than 'RCV.NXT' is accepted as a fresh connection (the
+        Linux-style OR'd predicate: TSval-fresh OR seq-fresh).
+        TSval=last alone is insufficient evidence (RFC 6191 §3
+        requires strict '>'), but seq>last_seq proves the SYN
+        cannot be a delayed segment from the previous
+        incarnation (its seq is past anything we ever ACKed).
 
-        Reference: RFC 6191 §3 (strict-greater-than TSval gate).
+        Reference: RFC 6191 §2 A.2 (TSval == last + seq > last_seq).
         """
 
         session = self._drive_to_time_wait_with_tsopt(
@@ -823,13 +833,136 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         )
         ts_recent_before = session._ts_recent
 
-        new_peer_iss = 0x0000_5000
-        # Boundary: TSval == _ts_recent. PAWS passes (strict '<'),
-        # RFC 6191 declines (needs strict '>') -> challenge ACK.
+        new_peer_iss = 0x0000_5000  # > peer_iss + 2 = 0x2002
         new_peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=new_peer_iss,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=ts_recent_before,  # equal — TSval evidence absent
+            tsecr=0,
+        )
+        reuse_tx = self._drive_rx(frame=new_peer_syn)
+
+        self.assertEqual(
+            len(reuse_tx),
+            1,
+            msg=(
+                "RFC 6191 A.2 (Linux-compatible): equal-TSval "
+                "SYN with seq evidence (seq > rcv_nxt) MUST be "
+                "accepted as a fresh connection. Got "
+                f"{len(reuse_tx)} frames."
+            ),
+        )
+        probe = self._parse_tx(reuse_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK", "SYN"}),
+            msg=(
+                "RFC 6191 A.2: equal-TSval + seq-evidence SYN MUST "
+                "elicit SYN+ACK (accept), NOT challenge-ACK. Got "
+                f"flags={probe.flags!r}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg=(
+                "RFC 6191 A.2: TIME_WAIT terminated and session "
+                f"transitioned to SYN_RCVD. Got state={session.state!r}."
+            ),
+        )
+
+    def test__rfc6191__syn_without_tsopt_with_seq_evidence_accepts_reuse(self) -> None:
+        """
+        Ensure that a SYN to our TIME_WAIT 4-tuple lacking
+        TSopt but carrying a SEQ strictly greater than
+        'RCV.NXT' is accepted as a fresh connection. The
+        seq-based evidence proves the SYN cannot be a delayed
+        segment from the previous incarnation regardless of
+        TSopt presence.
+
+        Reference: RFC 6191 §2 A.3 (no-new-TSopt + seq > last_seq).
+        Reference: RFC 6191 §2 B.2 (no-prev-TSopt + no-new-TSopt + seq > last_seq).
+        """
+
+        session = self._drive_to_time_wait_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval_initial=PEER__TSVAL_INITIAL,
+        )
+
+        new_peer_iss = 0x0000_5000  # > peer_iss + 2 = 0x2002
+        new_peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=new_peer_iss,
+            ack=0,
+            flags=("SYN",),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            # No tsval/tsecr -> SYN omits TSopt.
+        )
+        reuse_tx = self._drive_rx(frame=new_peer_syn)
+
+        self.assertEqual(
+            len(reuse_tx),
+            1,
+            msg=(
+                "RFC 6191 A.3 (Linux-compatible): no-TSopt SYN "
+                "with seq evidence (seq > rcv_nxt) MUST be "
+                "accepted as a fresh connection. Got "
+                f"{len(reuse_tx)} frames."
+            ),
+        )
+        probe = self._parse_tx(reuse_tx[0])
+        self.assertEqual(
+            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
+            frozenset({"ACK", "SYN"}),
+            msg=(
+                "RFC 6191 A.3: no-TSopt SYN with seq evidence MUST "
+                "elicit SYN+ACK (accept), NOT challenge-ACK. Got "
+                f"flags={probe.flags!r}."
+            ),
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_RCVD,
+            msg=(
+                "RFC 6191 A.3: TIME_WAIT terminated and session "
+                f"transitioned to SYN_RCVD. Got state={session.state!r}."
+            ),
+        )
+
+    def test__rfc6191__no_evidence_falls_back_to_challenge_ack(self) -> None:
+        """
+        Ensure that a SYN to our TIME_WAIT 4-tuple lacking
+        BOTH TSval evidence AND seq evidence falls back to
+        the RFC 9293 §3.10.7.4 / RFC 1337 §3 challenge-ACK
+        path. With seq <= rcv_nxt and TSval <= ts_recent, the
+        SYN cannot be distinguished from a delayed segment
+        from the previous incarnation, so TIME_WAIT must be
+        preserved.
+
+        Reference: RFC 6191 §2 A.4 / B.3 (no evidence default drop / challenge-ACK).
+        """
+
+        session = self._drive_to_time_wait_with_tsopt(
+            iss=LOCAL__ISS,
+            peer_iss=PEER__ISS,
+            peer_tsval_initial=PEER__TSVAL_INITIAL,
+        )
+        ts_recent_before = session._ts_recent
+
+        # No evidence on either axis: seq == rcv_nxt - 1
+        # (replay of last byte we ACKed) AND TSval == _ts_recent.
+        new_peer_syn = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=session._rcv_nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,
@@ -843,10 +976,8 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             len(challenge_tx),
             1,
             msg=(
-                "Boundary case (TSval == _ts_recent): RFC 6191 §3 "
-                "requires strict '>', so the SYN must fall through "
-                "to the RFC 9293 §3.10.7.4 challenge-ACK path. "
-                f"Got {len(challenge_tx)} frames."
+                "No-evidence SYN-on-TIME_WAIT MUST elicit a "
+                f"challenge ACK. Got {len(challenge_tx)} frames."
             ),
         )
         probe = self._parse_tx(challenge_tx[0])
@@ -854,72 +985,15 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
             frozenset({"ACK"}),
             msg=(
-                "Equal-TSval SYN-on-TIME_WAIT MUST elicit a "
-                "challenge ACK (ACK-only, no SYN/RST/FIN). Got "
-                f"flags={probe.flags!r}."
+                "No-evidence SYN MUST elicit ACK-only challenge ACK. "
+                f"Got flags={probe.flags!r}."
             ),
         )
         self.assertIs(
             session.state,
             FsmState.TIME_WAIT,
-            msg=("Equal-TSval SYN MUST NOT terminate TIME_WAIT. " f"Got state={session.state!r}."),
-        )
-
-    def test__rfc6191__syn_without_tsopt_falls_back_to_challenge_ack(self) -> None:
-        """
-        Ensure that when a peer SYN to our TIME_WAIT 4-tuple
-        omits the Timestamps option entirely, RFC 6191 §3
-        cannot apply (no TSval to compare) and the response
-        falls back to the RFC 9293 §3.10.7.4 / RFC 1337 §3
-        challenge ACK with TIME_WAIT preserved. This is the
-        asymmetric case: our TIME_WAIT session has TSopt
-        active ('_send_ts == True') but peer's new SYN
-        doesn't carry one.
-
-        Reference: RFC 6191 §3 (TSopt required on the SYN for reuse).
-        """
-
-        session = self._drive_to_time_wait_with_tsopt(
-            iss=LOCAL__ISS,
-            peer_iss=PEER__ISS,
-            peer_tsval_initial=PEER__TSVAL_INITIAL,
-        )
-
-        new_peer_iss = 0x0000_5000
-        new_peer_syn = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=new_peer_iss,
-            ack=0,
-            flags=("SYN",),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-            # No tsval/tsecr -> SYN omits TSopt.
-        )
-        challenge_tx = self._drive_rx(frame=new_peer_syn)
-
-        self.assertEqual(
-            len(challenge_tx),
-            1,
             msg=(
-                "RFC 6191 §3 requires TSopt on the SYN to apply; "
-                "without it, the response MUST fall back to the "
-                "RFC 9293 §3.10.7.4 challenge-ACK path. Got "
-                f"{len(challenge_tx)} frames."
+                "No-evidence SYN MUST NOT terminate TIME_WAIT. "
+                f"Got state={session.state!r}."
             ),
-        )
-        probe = self._parse_tx(challenge_tx[0])
-        self.assertEqual(
-            probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
-            frozenset({"ACK"}),
-            msg=(
-                "SYN-without-TSopt on TIME_WAIT MUST elicit a "
-                "challenge ACK (ACK-only). Got "
-                f"flags={probe.flags!r}."
-            ),
-        )
-        self.assertIs(
-            session.state,
-            FsmState.TIME_WAIT,
-            msg=("SYN-without-TSopt MUST NOT terminate TIME_WAIT. " f"Got state={session.state!r}."),
         )

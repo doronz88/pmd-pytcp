@@ -522,18 +522,20 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             msg="A SYN in LAST_ACK MUST NOT change state.",
         )
 
-    def test__robustness__syn_in_time_wait_must_elicit_challenge_ack(self) -> None:
+    def test__robustness__no_evidence_syn_in_time_wait_must_elicit_challenge_ack(self) -> None:
         """
-        Ensure a peer-issued SYN arriving while we are in
-        TIME_WAIT (active close completed; we are waiting out
-        the 2 MSL grace period) and carrying NO timestamp
-        option elicits a challenge ACK and does NOT change
-        state. The PAWS-based 4-tuple-recycle path is
-        unreachable so the default challenge-ACK behaviour
-        applies.
+        Ensure a peer-issued SYN arriving in TIME_WAIT WITHOUT
+        fresh evidence on either RFC 6191 §2 axis (seq <=
+        RCV.NXT AND no TSopt) elicits a challenge ACK and
+        does NOT change state. SYNs with fresh seq evidence
+        are accepted as fresh connections per the Linux-style
+        RFC 6191 §2 OR'd predicate; this test pins the no-
+        evidence challenge-ACK fallback path used as the blind
+        SYN-in-window mitigation.
 
         Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
         Reference: RFC 5961 §4 (blind SYN-in-window mitigation).
+        Reference: RFC 6191 §2 A.4 / B.3 (no-evidence default).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -566,10 +568,13 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             msg="Setup precondition: state must be TIME_WAIT.",
         )
 
+        # No-evidence SYN: seq == RCV.NXT - 1 (replay of last
+        # byte we ACKed) AND no TSopt — neither RFC 6191 §2
+        # acceptance axis fires, falls through to challenge-ACK.
         peer_syn = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
-            seq=0x4000_0000,
+            seq=session._rcv_nxt - 1,
             ack=0,
             flags=("SYN",),
             win=PEER__WIN,
@@ -580,11 +585,9 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             len(syn_inline),
             1,
             msg=(
-                "Peer's SYN in TIME_WAIT (without a Timestamp "
-                "option, since PyTCP does not support PAWS) MUST "
-                "elicit exactly one challenge ACK per RFC 9293 "
-                "§3.10.7.4 / RFC 5961 §4. Current code's "
-                "'_tcp_fsm_time_wait' has no SYN-matching branch."
+                "No-evidence SYN in TIME_WAIT MUST elicit "
+                "exactly one challenge ACK per RFC 9293 "
+                "§3.10.7.4 / RFC 5961 §4 / RFC 6191 §2 A.4."
             ),
         )
         challenge_ack = self._parse_tx(syn_inline[0])
