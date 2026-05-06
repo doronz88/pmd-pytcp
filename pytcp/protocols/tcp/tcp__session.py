@@ -1445,32 +1445,135 @@ class TcpSession:
                 tcp__tsval = None
                 tcp__tsecr = None
 
-        # RFC 7413 §3.1 Fast Open option emission, two paths:
-        #   - Passive-open SYN+ACK: when peer's SYN carried
-        #     the TFO option the LISTEN handler stashed a
-        #     cookie in '_fastopen_cookie_to_emit' that we
-        #     return here. The field is NOT cleared on emit
-        #     so SYN+ACK retransmits (RFC 7413 §3.1: peer
-        #     that lost the original SYN+ACK still expects
-        #     the cookie on the retransmit) carry the same
-        #     cookie. The field is cleared on transition to
-        #     ESTABLISHED via '_change_state' since no
-        #     subsequent SYN+ACK will fire from that state.
-        #   - Active-open SYN: by default advertise TFO with
-        #     the empty-cookie request form so the server
-        #     issues a cookie we can cache for a subsequent
-        #     fast-open. The 'b""' placeholder will be
-        #     replaced with a cached cookie value when the
-        #     client-side cookie cache lands.
-        # RFC 3168 §6.1.1 ECN flag emission on SYN segments.
-        # Active-open SYN: ECE+CWR (the canonical ECN-setup
-        # signal, gated on '_advertise_ecn'). Passive-open
-        # SYN+ACK: ECE only (ECN-Echo confirmation, gated
-        # on bilateral '_ecn_enabled' set when peer's
-        # active-open SYN was seen with ECE+CWR). Non-SYN
-        # segments handle ECE / CWR via the data-path
-        # echo / reduce mechanism (§6.1.2), wired in a
-        # subsequent phase.
+        flag_ece, flag_cwr, flag_ns = self._phase1_compose_ecn_flags(
+            flag_syn=flag_syn,
+            flag_ack=flag_ack,
+            flag_rst=flag_rst,
+            data=data,
+        )
+
+        tcp__fastopen_cookie = self._phase3_build_fastopen_cookie(flag_syn=flag_syn, flag_ack=flag_ack)
+
+        tcp__accecn0_counters, tcp__accecn1_counters = self._phase2_build_accecn_counters(
+            flag_syn=flag_syn,
+            flag_ack=flag_ack,
+            flag_rst=flag_rst,
+        )
+
+        # RFC 3168 §6.1.5: when bilateral ECN has been
+        # negotiated, every outbound data segment MUST set
+        # the IP ECN field to ECT(0) ('10' = 2) so routers
+        # along the path can mark it on congestion via the
+        # CE codepoint. §6.1.1 forbids ECT on SYNs and §6.1.6
+        # advises against ECT on pure ACKs / FIN-only / RST,
+        # so the marking is gated on the segment carrying a
+        # TCP payload. §6.1.5 also mandates "ECN-capable TCP
+        # implementations MUST NOT set either ECT codepoint
+        # (ECT(0) or ECT(1)) in the IP header for
+        # retransmitted data packets": a segment whose seq
+        # is strictly below the current SND.MAX (the high-
+        # water mark of seqs we've ever sent) is, by
+        # definition, a retransmit since SND.NXT was rewound
+        # to SND.UNA on the RTO/FR path. The 'lt32' modular
+        # comparison handles the 32-bit seq wrap correctly.
+        is_retransmit = bool(data) and lt32(seq, self._snd_max)
+        ip__ecn = 2 if (self._ecn_enabled and data and not is_retransmit) else 0
+        stack.packet_handler.send_tcp_packet(
+            ip__local_address=self._local_ip_address,
+            ip__remote_address=self._remote_ip_address,
+            ip__ecn=ip__ecn,
+            tcp__local_port=self._local_port,
+            tcp__remote_port=self._remote_port,
+            tcp__flag_syn=flag_syn,
+            tcp__flag_ack=flag_ack,
+            tcp__flag_fin=flag_fin,
+            tcp__flag_rst=flag_rst,
+            tcp__flag_psh=flag_psh,
+            tcp__flag_ece=flag_ece,
+            tcp__flag_cwr=flag_cwr,
+            tcp__flag_ns=flag_ns,
+            tcp__seq=seq,
+            tcp__ack=ack,
+            tcp__win=tcp__win,
+            # RFC 9293 §3.7.5 / RFC 2675 §5: the MSS option wire
+            # field is 16-bit, so '_rcv_mss > 65535' (e.g. on a
+            # mis-configured super-jumbo MTU) would otherwise
+            # overflow the assembler's uint16 assert. Cap at 65535
+            # which RFC 2675 reserves as the "use path-MTU-derived
+            # MSS" signal for jumbogram-capable IPv6 paths.
+            tcp__mss=min(self._rcv_mss, 0xFFFF) if flag_syn else None,
+            tcp__wscale=tcp__wscale,
+            tcp__sackperm=tcp__sackperm,
+            tcp__sack_blocks=tcp__sack_blocks,
+            tcp__tsval=tcp__tsval,
+            tcp__tsecr=tcp__tsecr,
+            tcp__fastopen_cookie=tcp__fastopen_cookie,
+            tcp__accecn0_counters=tcp__accecn0_counters,
+            tcp__accecn1_counters=tcp__accecn1_counters,
+            tcp__payload=data,
+        )
+        self._phase4_advance_send_state(
+            seq=seq,
+            flag_syn=flag_syn,
+            flag_ack=flag_ack,
+            flag_fin=flag_fin,
+            data=data,
+        )
+        self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
+            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
+            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
+            f"dlen {len(data)}",
+        )
+
+    def _phase1_compose_ecn_flags(
+        self,
+        *,
+        flag_syn: bool,
+        flag_ack: bool,
+        flag_rst: bool,
+        data: bytes,
+    ) -> tuple[bool, bool, bool]:
+        """
+        Phase 1 of the outbound-send pipeline. Compose the
+        (ECE, CWR, NS/AE) flag triple for the outbound segment.
+        Mutates '_ecn_send_cwr' (cleared on CWR emission) and
+        '_accecn_handshake_ack_pending' (consumed on the third-
+        leg ACK).
+
+        The branch ladder dispatches by segment kind and ECN
+        capability:
+
+          - Active-open SYN with AccECN advertised: AE+CWR+ECE
+            (RFC 9768 §3.1.1 Table 1).
+          - Active-open SYN with classic ECN advertised: ECE+CWR
+            (RFC 3168 §6.1.1).
+          - Passive-open SYN+ACK with AccECN enabled: encode the
+            IP-ECN codepoint of the received SYN per §3.1.1
+            Table 2.
+          - Passive-open SYN+ACK with classic ECN enabled: ECE
+            only.
+          - Non-SYN with AccECN enabled (not RST): encode the
+            'r.cep & 7' counter as ACE bits (§3.2.2.1), or the
+            Table-3 handshake form on the third-leg ACK.
+          - Non-SYN with classic ECN enabled (not RST): set ECE
+            while '_send_ece' is True (§6.1.2 / §6.1.3 echo).
+
+        Then unconditionally apply the §6.1.2 sender-side CWR
+        confirmation: on the first outbound data segment after
+        responding to an ECE, set CWR and clear '_ecn_send_cwr'
+        so subsequent segments stay unmarked.
+
+        Reference: RFC 3168 §6.1.1 (ECN-setup SYN flags).
+        Reference: RFC 3168 §6.1.2 (sender CWR confirmation).
+        Reference: RFC 3168 §6.1.3 (receiver CE-echo continuation).
+        Reference: RFC 9768 §3.1.1 (AccECN handshake codepoint).
+        Reference: RFC 9768 §3.2.2.1 (ACE field encoding non-SYN).
+        """
+
         flag_ece = False
         flag_cwr = False
         flag_ns = False
@@ -1551,83 +1654,7 @@ class TcpSession:
         if self._ecn_enabled and self._ecn_send_cwr and data:
             flag_cwr = True
             self._ecn_send_cwr = False
-
-        tcp__fastopen_cookie = self._phase3_build_fastopen_cookie(flag_syn=flag_syn, flag_ack=flag_ack)
-
-        tcp__accecn0_counters, tcp__accecn1_counters = self._phase2_build_accecn_counters(
-            flag_syn=flag_syn,
-            flag_ack=flag_ack,
-            flag_rst=flag_rst,
-        )
-
-        # RFC 3168 §6.1.5: when bilateral ECN has been
-        # negotiated, every outbound data segment MUST set
-        # the IP ECN field to ECT(0) ('10' = 2) so routers
-        # along the path can mark it on congestion via the
-        # CE codepoint. §6.1.1 forbids ECT on SYNs and §6.1.6
-        # advises against ECT on pure ACKs / FIN-only / RST,
-        # so the marking is gated on the segment carrying a
-        # TCP payload. §6.1.5 also mandates "ECN-capable TCP
-        # implementations MUST NOT set either ECT codepoint
-        # (ECT(0) or ECT(1)) in the IP header for
-        # retransmitted data packets": a segment whose seq
-        # is strictly below the current SND.MAX (the high-
-        # water mark of seqs we've ever sent) is, by
-        # definition, a retransmit since SND.NXT was rewound
-        # to SND.UNA on the RTO/FR path. The 'lt32' modular
-        # comparison handles the 32-bit seq wrap correctly.
-        is_retransmit = bool(data) and lt32(seq, self._snd_max)
-        ip__ecn = 2 if (self._ecn_enabled and data and not is_retransmit) else 0
-        stack.packet_handler.send_tcp_packet(
-            ip__local_address=self._local_ip_address,
-            ip__remote_address=self._remote_ip_address,
-            ip__ecn=ip__ecn,
-            tcp__local_port=self._local_port,
-            tcp__remote_port=self._remote_port,
-            tcp__flag_syn=flag_syn,
-            tcp__flag_ack=flag_ack,
-            tcp__flag_fin=flag_fin,
-            tcp__flag_rst=flag_rst,
-            tcp__flag_psh=flag_psh,
-            tcp__flag_ece=flag_ece,
-            tcp__flag_cwr=flag_cwr,
-            tcp__flag_ns=flag_ns,
-            tcp__seq=seq,
-            tcp__ack=ack,
-            tcp__win=tcp__win,
-            # RFC 9293 §3.7.5 / RFC 2675 §5: the MSS option wire
-            # field is 16-bit, so '_rcv_mss > 65535' (e.g. on a
-            # mis-configured super-jumbo MTU) would otherwise
-            # overflow the assembler's uint16 assert. Cap at 65535
-            # which RFC 2675 reserves as the "use path-MTU-derived
-            # MSS" signal for jumbogram-capable IPv6 paths.
-            tcp__mss=min(self._rcv_mss, 0xFFFF) if flag_syn else None,
-            tcp__wscale=tcp__wscale,
-            tcp__sackperm=tcp__sackperm,
-            tcp__sack_blocks=tcp__sack_blocks,
-            tcp__tsval=tcp__tsval,
-            tcp__tsecr=tcp__tsecr,
-            tcp__fastopen_cookie=tcp__fastopen_cookie,
-            tcp__accecn0_counters=tcp__accecn0_counters,
-            tcp__accecn1_counters=tcp__accecn1_counters,
-            tcp__payload=data,
-        )
-        self._phase4_advance_send_state(
-            seq=seq,
-            flag_syn=flag_syn,
-            flag_ack=flag_ack,
-            flag_fin=flag_fin,
-            data=data,
-        )
-        self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
-            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
-            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
-            f"dlen {len(data)}",
-        )
+        return flag_ece, flag_cwr, flag_ns
 
     def _phase2_build_accecn_counters(
         self,
