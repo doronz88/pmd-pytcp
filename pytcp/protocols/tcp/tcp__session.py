@@ -3827,6 +3827,36 @@ class TcpSession:
                         f"w_max={self._cc.cubic_w_max} "
                         f"K_ms={self._cc.cubic_K_ms}",
                     )
+        self._phase3_harvest_rtt_samples(packet_rx_md)
+        # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
+        # §3: prune any blocks now absorbed by the cumulative ACK,
+        # then ingest fresh blocks the peer reported on this
+        # segment. Both are no-ops when '_send_sack' is False.
+        self._prune_sack_scoreboard()
+        self._ingest_sack_info(packet_rx_md)
+        self._phase4_loss_detection_and_recovery_exit(packet_rx_md)
+        self._phase5_consume_segment_and_postprocess(packet_rx_md)
+
+    def _phase3_harvest_rtt_samples(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Phase 3 of the inbound-ACK pipeline. Harvest an RTT sample
+        from the inbound ACK via either the RFC 7323 §4 TSecr path
+        (preferred when bilateral TSopt is enabled — unambiguous
+        even on retransmissions, obviating Karn's algorithm) or
+        the RFC 6298 §4 sample-tracker path (Karn-gated). Either
+        path also folds the observed RTT into HyStart++ state
+        during slow-start so the per-round min-RTT trackers can
+        drive the SS->CSS / CSS->SS transitions.
+
+        Independent of cum-ACK advance: a dup-ACK that carries a
+        new TSecr can still produce a valid RTT measurement.
+
+        Reference: RFC 6298 §3 (Karn's algorithm).
+        Reference: RFC 6298 §4 (RTO RTT-sample update).
+        Reference: RFC 7323 §4 (TSecr-driven RTTM).
+        Reference: RFC 9406 §4.2 (HyStart++ RTT fold).
+        """
+
         # RFC 7323 §4 TSecr-driven RTTM: peer's TSecr identifies
         # the specific transmission it acknowledges, so the RTT
         # measurement is unambiguous even on retransmitted
@@ -3891,14 +3921,6 @@ class TcpSession:
             self._rtt_sample_seq = None
             self._rtt_sample_send_time_ms = None
             self._rtt_sample_retransmitted = False
-        # SACK scoreboard maintenance per RFC 6675 §3 / RFC 2018
-        # §3: prune any blocks now absorbed by the cumulative ACK,
-        # then ingest fresh blocks the peer reported on this
-        # segment. Both are no-ops when '_send_sack' is False.
-        self._prune_sack_scoreboard()
-        self._ingest_sack_info(packet_rx_md)
-        self._phase4_loss_detection_and_recovery_exit(packet_rx_md)
-        self._phase5_consume_segment_and_postprocess(packet_rx_md)
 
     def _phase4_loss_detection_and_recovery_exit(self, packet_rx_md: TcpMetadata) -> None:
         """
