@@ -315,7 +315,7 @@ class TcpSocket(socket):
             # touch the socket field; 'connect()' / 'listen()'
             # propagate at session-construction time.
             if self._tcp_session is not None:
-                self._tcp_session._cc_mode = mode
+                self._tcp_session._cc.cc_mode = mode
             return
         if level == IPPROTO_TCP and optname == TCP_NODELAY:
             flag = bool(value)
@@ -522,7 +522,7 @@ class TcpSocket(socket):
         # CcMode.CUBIC; opt-in to RENO via
         # 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
         # CcMode.RENO.value)' before 'connect()'.
-        self._tcp_session._cc_mode = self._cc_mode
+        self._tcp_session._cc.cc_mode = self._cc_mode
 
         # RFC 1122 §4.2.3.4: propagate the TCP_NODELAY flag.
         # Default False (Nagle enabled); opt-out for latency-
@@ -599,7 +599,7 @@ class TcpSocket(socket):
         # RFC 9438 §1: propagate the CC algorithm selector so
         # accepted children inherit through the listener-fork
         # pivot.
-        self._tcp_session._cc_mode = self._cc_mode
+        self._tcp_session._cc.cc_mode = self._cc_mode
 
         # RFC 1122 §4.2.3.4: propagate Nagle disable so
         # accepted children inherit through the listener-fork

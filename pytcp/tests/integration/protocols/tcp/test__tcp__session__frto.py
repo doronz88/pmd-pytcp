@@ -316,7 +316,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         # Force CUBIC mode (default may be RENO depending on
         # the surrounding test fixture).
-        session._cc_mode = CcMode.CUBIC
+        session._cc.cc_mode = CcMode.CUBIC
 
         # Drive 3 segments and snapshot CUBIC state pre-RTO.
         payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
@@ -325,10 +325,10 @@ class TestTcpSession__Frto(TcpSessionTestCase):
 
         cwnd_before_rto = session._cc.cwnd
         snd_max_at_rto = session._snd_max
-        cubic_w_max_before = session._cubic_w_max
-        cubic_K_ms_before = session._cubic_K_ms
-        cubic_epoch_before = session._cubic_epoch_start_ms
-        cubic_w_est_before = session._cubic_w_est
+        cubic_w_max_before = session._cc.cubic_w_max
+        cubic_K_ms_before = session._cc.cubic_K_ms
+        cubic_epoch_before = session._cc.cubic_epoch_start_ms
+        cubic_w_est_before = session._cc.cubic_w_est
 
         # Trigger RTO without peer ACK.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
@@ -354,40 +354,40 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         )
         # CUBIC state restored too.
         self.assertEqual(
-            session._cubic_w_max,
+            session._cc.cubic_w_max,
             cubic_w_max_before,
             msg=(
                 "RFC 9438 §4.9.1: spurious-timeout detection MUST "
                 "restore _cubic_w_max to the pre-RTO snapshot. Got "
-                f"{session._cubic_w_max}, expected {cubic_w_max_before}."
+                f"{session._cc.cubic_w_max}, expected {cubic_w_max_before}."
             ),
         )
         self.assertEqual(
-            session._cubic_K_ms,
+            session._cc.cubic_K_ms,
             cubic_K_ms_before,
             msg=(
                 "RFC 9438 §4.9.1: spurious-timeout detection MUST "
                 "restore _cubic_K_ms to the pre-RTO snapshot. Got "
-                f"{session._cubic_K_ms}, expected {cubic_K_ms_before}."
+                f"{session._cc.cubic_K_ms}, expected {cubic_K_ms_before}."
             ),
         )
         self.assertEqual(
-            session._cubic_epoch_start_ms,
+            session._cc.cubic_epoch_start_ms,
             cubic_epoch_before,
             msg=(
                 "RFC 9438 §4.9.1: spurious-timeout detection MUST "
                 "restore _cubic_epoch_start_ms to the pre-RTO snapshot. "
-                f"Got {session._cubic_epoch_start_ms}, expected "
+                f"Got {session._cc.cubic_epoch_start_ms}, expected "
                 f"{cubic_epoch_before}."
             ),
         )
         self.assertEqual(
-            session._cubic_w_est,
+            session._cc.cubic_w_est,
             cubic_w_est_before,
             msg=(
                 "RFC 9438 §4.9.1: spurious-timeout detection MUST "
                 "restore _cubic_w_est to the pre-RTO snapshot. Got "
-                f"{session._cubic_w_est}, expected {cubic_w_est_before}."
+                f"{session._cc.cubic_w_est}, expected {cubic_w_est_before}."
             ),
         )
 
@@ -405,7 +405,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         from pytcp.protocols.tcp.tcp__enums import CcMode
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._cc_mode = CcMode.CUBIC
+        session._cc.cc_mode = CcMode.CUBIC
         payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
         session.send(data=payload)
         self._advance(ms=10)
@@ -414,7 +414,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
 
         # Snapshot post-RTO CUBIC state.
-        cubic_w_max_after_rto = session._cubic_w_max
+        cubic_w_max_after_rto = session._cc.cubic_w_max
 
         # Peer ACK covers ONLY the retransmit (snd_una + 1
         # MSS), not all pre-RTO data.
@@ -430,12 +430,12 @@ class TestTcpSession__Frto(TcpSessionTestCase):
 
         # CUBIC state MUST NOT be restored on a genuine RTO.
         self.assertEqual(
-            session._cubic_w_max,
+            session._cc.cubic_w_max,
             cubic_w_max_after_rto,
             msg=(
                 "RFC 9438 §4.9.1: a genuine-RTO partial cum-ACK "
                 "MUST NOT trigger CUBIC state restore. Got "
-                f"_cubic_w_max={session._cubic_w_max}, "
+                f"_cubic_w_max={session._cc.cubic_w_max}, "
                 f"expected {cubic_w_max_after_rto}."
             ),
         )
@@ -548,12 +548,12 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         # F-RTO must NOT be cleared yet — we're in step 2
         # waiting for the second ACK.
         self.assertNotEqual(
-            session._frto_step,
+            session._cc.frto_step,
             0,
             msg=(
                 "RFC 5682 §2.1 step 2: partial first post-RTO "
                 "ACK MUST leave F-RTO in step 2 (waiting for "
-                f"second ACK). Got _frto_step={session._frto_step}."
+                f"second ACK). Got _frto_step={session._cc.frto_step}."
             ),
         )
         self.assertNotEqual(
@@ -600,9 +600,9 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._frto_step,
+            session._cc.frto_step,
             0,
-            msg=("F-RTO MUST clear after spurious declaration. " f"Got _frto_step={session._frto_step}."),
+            msg=("F-RTO MUST clear after spurious declaration. " f"Got _frto_step={session._cc.frto_step}."),
         )
 
     def test__frto__already_in_rto_gate__second_rto_skips_step2(self) -> None:
@@ -631,8 +631,8 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
 
         # First RTO: snapshot taken.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
-        first_pre_cwnd = session._frto_pre_cwnd
-        first_pre_ssthresh = session._frto_pre_ssthresh
+        first_pre_cwnd = session._cc.frto_pre_cwnd
+        first_pre_ssthresh = session._cc.frto_pre_ssthresh
 
         self.assertEqual(
             first_pre_cwnd,
@@ -640,7 +640,7 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
             msg="Setup precondition: first F-RTO snapshot captures pre-RTO cwnd.",
         )
         self.assertNotEqual(
-            session._frto_step,
+            session._cc.frto_step,
             0,
             msg="Setup precondition: F-RTO step != 0 after first RTO.",
         )
@@ -659,24 +659,24 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         #     with the post-first-RTO collapsed values which
         #     would lose pre-RTO knowledge entirely).
         self.assertEqual(
-            session._frto_pre_cwnd,
+            session._cc.frto_pre_cwnd,
             first_pre_cwnd,
             msg=(
                 "RFC 5682 §2.1 step 1 already-in-RTO gate: "
                 "second RTO MUST NOT overwrite the original "
                 "pre-RTO cwnd snapshot. Got "
-                f"_frto_pre_cwnd={session._frto_pre_cwnd}, "
+                f"_frto_pre_cwnd={session._cc.frto_pre_cwnd}, "
                 f"expected {first_pre_cwnd} (pre-first-RTO)."
             ),
         )
         self.assertEqual(
-            session._frto_pre_ssthresh,
+            session._cc.frto_pre_ssthresh,
             first_pre_ssthresh,
             msg=(
                 "RFC 5682 §2.1 step 1 already-in-RTO gate: "
                 "second RTO MUST NOT overwrite the original "
                 f"pre-RTO ssthresh snapshot. Got "
-                f"_frto_pre_ssthresh={session._frto_pre_ssthresh}, "
+                f"_frto_pre_ssthresh={session._cc.frto_pre_ssthresh}, "
                 f"expected {first_pre_ssthresh}."
             ),
         )

@@ -513,52 +513,10 @@ class TcpSession:
         # same cumulative count are idempotent.
         self._accecn_s_ce_b: int = 0
 
-        # RFC 5682 F-RTO (Forward RTO-Recovery) state. When an
-        # RTO fires, '_frto_active' is set True and the
-        # pre-RTO cwnd/ssthresh/SND.MAX are snapshotted before
-        # the conventional RFC 5681 §3.1 halving. When the
-        # first post-RTO ACK advances SND.UNA to cover the
-        # snapshotted SND.MAX (the spurious-RTO signature -
-        # all pre-RTO data was delivered), the snapshot is
-        # restored and '_frto_active' clears. When the first
-        # post-RTO ACK does not cover the snapshotted SND.MAX
-        # (genuine RTO - data really was lost),
-        # '_frto_active' clears without restoration.
-        self._frto_active: bool = False
-        self._frto_pre_cwnd: int = 0
-        self._frto_pre_ssthresh: int = 0
-        self._frto_pre_snd_max: int = 0
-        # RFC 5682 §2.1 step tracker. 0 = not in F-RTO; 1 =
-        # post-RTO step 1 done, waiting for first post-RTO ACK
-        # (step 2); 2 = step 2b entered (partial first ACK),
-        # waiting for second ACK (step 3). The step tracker
-        # supports the two-ACK spurious-detection sequence
-        # (partial-then-advancing) that the prior one-step
-        # simplification missed: PyTCP previously cleared
-        # '_frto_active' on the first ACK regardless of
-        # outcome, so a second ACK could not retroactively
-        # declare spurious. The step tracker also drives the
-        # already-in-RTO gate (§2.1 step 1's "if recover >=
-        # SND.UNA, skip step 2"): a second RTO firing while
-        # step != 0 only updates the recover marker without
-        # overwriting the original pre-RTO cwnd / ssthresh
-        # snapshot, so the eventual restoration sees the
-        # genuine pre-loss anchor.
-        self._frto_step: int = 0
-        # RFC 9438 §4.9.1 CUBIC spurious-timeout state
-        # snapshot. Captured alongside the cwnd / ssthresh /
-        # SND.MAX snapshot in '_retransmit_packet_timeout',
-        # restored alongside them in '_process_ack_packet'
-        # when the first post-RTO ACK covers the
-        # snapshotted SND.MAX (the spurious signature).
-        # Without restoring these the cubic curve would stay
-        # anchored at the artificially-reduced W_max even
-        # after cwnd is restored, degrading post-recovery
-        # throughput.
-        self._frto_pre_cubic_w_max: int = 0
-        self._frto_pre_cubic_K_ms: int = 0
-        self._frto_pre_cubic_epoch_start_ms: int = 0
-        self._frto_pre_cubic_w_est: int = 0
+        # F-RTO state, CUBIC F-RTO snapshot, and the FR-CUBIC
+        # snapshot all live on 'self._cc' (CongestionControlState).
+        # Defaults are RFC-anchored on the dataclass; no per-field
+        # init needed here.
 
         # RFC 9438 §4.9.2 spurious-fast-retransmit state restore.
         # When fast-retransmit fires, snapshot the CUBIC state so a
@@ -852,41 +810,11 @@ class TcpSession:
         self._cc.cwnd = self._snd_mss
         self._cc.snd_ewn = self._snd_mss
 
-        # RFC 9438 CUBIC state (active when '_cc_mode == CUBIC';
-        # in 'RENO' mode all fields stay at their initial values
-        # and the existing RFC 5681 cwnd helpers run unchanged).
-        # Default is CcMode.CUBIC, mirroring Linux's default
-        # since kernel 2.6.18. Override per-connection via
-        # 'setsockopt(IPPROTO_TCP, TCP_CONGESTION, CcMode.RENO.value)'.
-        self._cc_mode: CcMode = CcMode.CUBIC
-        # 'W_max' anchor for the cubic curve (bytes). Updated on
-        # every loss event (RFC 9438 §4.6); the cubic growth
-        # formula uses '_cubic_w_max' as the inflection point.
-        self._cubic_w_max: int = 0
-        # Prior 'W_max' kept for the §4.7 fast-convergence
-        # comparison: when the new W_max is smaller than this
-        # one, fast convergence reduces W_max further.
-        self._cubic_w_last_max: int = 0
-        # Curve inflection time (ms). Computed from the cubic
-        # cube-root formula on each loss event (RFC 9438 §4.2
-        # figure 2).
-        self._cubic_K_ms: int = 0
-        # Virtual-clock anchor for the cubic curve (ms). Reset
-        # on every loss event so 'W_cubic(t = now - epoch_start)'
-        # measures elapsed time since the start of the current
-        # CA stage (RFC 9438 §4.2).
-        self._cubic_epoch_start_ms: int = 0
-        # Reno-friendly W_est tracker (bytes). Updated per
-        # cum-ACK in CA when '_cc_mode == CUBIC'. Selected as
-        # the active cwnd value when the cubic formula yields a
-        # smaller cwnd than Reno would (RFC 9438 §4.3).
-        self._cubic_w_est: int = 0
-        # Whether the session is currently in the CA phase per
-        # RFC 9438 §4.6. True post-loss-event (or after the
-        # first cwnd >= ssthresh crossing); the CUBIC formula
-        # only fires when this is True. Slow-start exits via
-        # the existing Reno path until this flag flips.
-        self._cubic_in_ca: bool = False
+        # CUBIC curve state ('cubic_w_max', 'cubic_K_ms', etc.) and
+        # 'cc_mode' live on 'self._cc'. Override the algorithm per
+        # connection via 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
+        # CcMode.RENO.value)'; the dataclass default mirrors
+        # Linux's CUBIC-since-2.6.18.
 
         # RFC 9406 HyStart++ state. The algorithm is delay-
         # based slow-start exit: track per-round min RTT,
@@ -1946,7 +1874,7 @@ class TcpSession:
         # but in that regime PTO equals the initial RTO and
         # would race the RTO timer; PyTCP defers to the
         # RTO-only path until a real RTT sample arrives.
-        if data and self._cc.recovery_point == 0 and not self._frto_active and (self._rto_state.srtt_ms or 0) > 0:
+        if data and self._cc.recovery_point == 0 and not self._cc.frto_active and (self._rto_state.srtt_ms or 0) > 0:
             flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
             # Use the IN-FLIGHT RTO timer's actual remaining
             # time (when accessible) so the §7.2 'do not
@@ -2411,35 +2339,6 @@ class TcpSession:
             )
             resume_slow_start(self._hystart_state)
 
-    def _restore_frto_snapshot(self) -> None:
-        """
-        Restore the pre-RTO cwnd / ssthresh / CUBIC state on
-        an F-RTO spurious-RTO declaration. Called from the
-        spurious-detection branch in '_process_ack_packet'
-        when either step 2 (single-ACK strong-spurious) or
-        step 3b (second-ACK advancing) fires.
-
-        Reference: RFC 5682 §2.1 step 3b (declare spurious + restore).
-        Reference: RFC 9438 §4.9.1 (restore CUBIC state).
-        """
-
-        self._cc.cwnd = self._frto_pre_cwnd
-        self._cc.ssthresh = self._frto_pre_ssthresh
-        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-        self._cubic_w_max = self._frto_pre_cubic_w_max
-        self._cubic_K_ms = self._frto_pre_cubic_K_ms
-        self._cubic_epoch_start_ms = self._frto_pre_cubic_epoch_start_ms
-        self._cubic_w_est = self._frto_pre_cubic_w_est
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - RFC 5682 F-RTO: spurious RTO "
-            f"detected, restored cwnd={self._cc.cwnd} "
-            f"ssthresh={self._cc.ssthresh}; "
-            f"RFC 9438 §4.9.1: restored cubic "
-            f"w_max={self._cubic_w_max} "
-            f"K_ms={self._cubic_K_ms}",
-        )
-
     def _emit_challenge_ack(self) -> None:
         """
         RFC 5961 §3 / §4 rate-limited challenge-ACK emission.
@@ -2622,11 +2521,11 @@ class TcpSession:
             # epoch_start, W_est, cwnd, and ssthresh to their
             # pre-FR values so post-FR throughput is not
             # artificially anchored at the reduced W_max.
-            if self._cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
-                self._cubic_w_max = self._fr_pre_cubic_w_max
-                self._cubic_K_ms = self._fr_pre_cubic_K_ms
-                self._cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
-                self._cubic_w_est = self._fr_pre_cubic_w_est
+            if self._cc.cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
+                self._cc.cubic_w_max = self._fr_pre_cubic_w_max
+                self._cc.cubic_K_ms = self._fr_pre_cubic_K_ms
+                self._cc.cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
+                self._cc.cubic_w_est = self._fr_pre_cubic_w_est
                 self._cc.cwnd = self._fr_pre_cwnd
                 self._cc.ssthresh = self._fr_pre_ssthresh
                 self._fr_cubic_snapshot_valid = False
@@ -2635,7 +2534,7 @@ class TcpSession:
                     f"[{self}] - RFC 9438 §4.9.2 spurious-FR "
                     "restore: rolled back CUBIC state on DSACK "
                     f"(cwnd={self._cc.cwnd}, ssthresh={self._cc.ssthresh}, "
-                    f"W_max={self._cubic_w_max})",
+                    f"W_max={self._cc.cubic_w_max})",
                 )
             # RFC 8985 §6.2 step 4 DSACK-round handling. A
             # DSACK observed outside recovery indicates a
@@ -3143,30 +3042,18 @@ class TcpSession:
         # the eventual restoration anchors at the genuine
         # pre-loss values rather than the post-first-RTO
         # collapsed values.
-        already_in_frto = self._frto_step != 0 and not lt32(self._frto_pre_snd_max, self._snd_una)
+        already_in_frto = self._cc.frto_step != 0 and not lt32(self._cc.frto_pre_snd_max, self._snd_una)
         if already_in_frto:
             # Update recover only; preserve original snapshots.
-            self._frto_pre_snd_max = self._snd_max
+            self._cc.frto_pre_snd_max = self._snd_max
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 5682 §2.1 already-in-RTO gate: "
-                f"recover updated to {self._frto_pre_snd_max}; "
+                f"recover updated to {self._cc.frto_pre_snd_max}; "
                 "step 2 skipped (preserving original pre-RTO snapshot)",
             )
         else:
-            self._frto_active = True
-            self._frto_step = 1
-            self._frto_pre_cwnd = self._cc.cwnd
-            self._frto_pre_ssthresh = self._cc.ssthresh
-            self._frto_pre_snd_max = self._snd_max
-            # RFC 9438 §4.9.1: snapshot the CUBIC-specific
-            # state alongside the cwnd/ssthresh snapshot so a
-            # later spurious-detection event can roll back the
-            # full congestion-control state.
-            self._frto_pre_cubic_w_max = self._cubic_w_max
-            self._frto_pre_cubic_K_ms = self._cubic_K_ms
-            self._frto_pre_cubic_epoch_start_ms = self._cubic_epoch_start_ms
-            self._frto_pre_cubic_w_est = self._cubic_w_est
+            self._cc.save_frto_snapshot(snd_max=self._snd_max)
 
         # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
         # post-RTO slow-start exits at the previously-observed
@@ -3187,28 +3074,28 @@ class TcpSession:
         # active by default: when the new cwnd is smaller than
         # the W_max from the prior loss event, W_max is reduced
         # further to release bandwidth to new flows.
-        if self._cc_mode is CcMode.CUBIC:
-            prior_w_max = self._cubic_w_max
-            self._cc.ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+        if self._cc.cc_mode is CcMode.CUBIC:
+            prior_w_max = self._cc.cubic_w_max
+            self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=max(self._cc.cwnd, self._snd_mss),
                 smss=self._snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
             )
-            self._cubic_w_last_max = prior_w_max
+            self._cc.cubic_w_last_max = prior_w_max
             # Curve epoch reset: post-RTO cwnd = 1 SMSS, so
             # cwnd_epoch = SMSS for the cube-root computation.
-            self._cubic_K_ms = cubic_compute_K(
-                w_max=self._cubic_w_max,
+            self._cc.cubic_K_ms = cubic_compute_K(
+                w_max=self._cc.cubic_w_max,
                 cwnd_epoch=self._snd_mss,
                 smss=self._snd_mss,
             )
-            self._cubic_epoch_start_ms = stack.timer.now_ms
-            self._cubic_in_ca = False
+            self._cc.cubic_epoch_start_ms = stack.timer.now_ms
+            self._cc.cubic_in_ca = False
             # RFC 9438 §4.3: reset W_est so the next CA stage
             # bootstraps from cwnd_epoch (re-init on first CA
             # cum-ACK in '_process_ack_packet').
-            self._cubic_w_est = 0
+            self._cc.cubic_w_est = 0
         else:
             self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
@@ -3379,36 +3266,36 @@ class TcpSession:
         # cubic curve. Fast convergence (§4.7) reduces W_max
         # further when the new cwnd is smaller than the prior
         # W_max anchor.
-        if self._cc_mode is CcMode.CUBIC:
-            prior_w_max = self._cubic_w_max
+        if self._cc.cc_mode is CcMode.CUBIC:
+            prior_w_max = self._cc.cubic_w_max
             # RFC 9438 §4.9.2 spurious-fast-retransmit snapshot:
             # capture the pre-FR CUBIC state so a DSACK during
             # this recovery episode can roll back the
             # multiplicative decrease + curve re-anchor below.
-            self._fr_pre_cubic_w_max = self._cubic_w_max
-            self._fr_pre_cubic_K_ms = self._cubic_K_ms
-            self._fr_pre_cubic_epoch_start_ms = self._cubic_epoch_start_ms
-            self._fr_pre_cubic_w_est = self._cubic_w_est
+            self._fr_pre_cubic_w_max = self._cc.cubic_w_max
+            self._fr_pre_cubic_K_ms = self._cc.cubic_K_ms
+            self._fr_pre_cubic_epoch_start_ms = self._cc.cubic_epoch_start_ms
+            self._fr_pre_cubic_w_est = self._cc.cubic_w_est
             self._fr_pre_cwnd = self._cc.cwnd
             self._fr_pre_ssthresh = self._cc.ssthresh
             self._fr_cubic_snapshot_valid = True
-            self._cc.ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+            self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=self._cc.cwnd,
                 smss=self._snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
             )
-            self._cubic_w_last_max = prior_w_max
-            self._cubic_K_ms = cubic_compute_K(
-                w_max=self._cubic_w_max,
+            self._cc.cubic_w_last_max = prior_w_max
+            self._cc.cubic_K_ms = cubic_compute_K(
+                w_max=self._cc.cubic_w_max,
                 cwnd_epoch=self._cc.ssthresh,
                 smss=self._snd_mss,
             )
-            self._cubic_epoch_start_ms = stack.timer.now_ms
-            self._cubic_in_ca = True
+            self._cc.cubic_epoch_start_ms = stack.timer.now_ms
+            self._cc.cubic_in_ca = True
             # RFC 9438 §4.3: reset W_est so the next CA stage
             # bootstraps from the post-recovery cwnd anchor.
-            self._cubic_w_est = 0
+            self._cc.cubic_w_est = 0
         else:
             self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
 
@@ -3515,7 +3402,7 @@ class TcpSession:
         # underway, OR F-RTO is active), TLP yields. The
         # ongoing recovery machinery handles the loss already;
         # a TLP probe would race it and emit a duplicate.
-        if self._retransmit_count > 0 or self._cc.recovery_point != 0 or self._frto_active:
+        if self._retransmit_count > 0 or self._cc.recovery_point != 0 or self._cc.frto_active:
             return
 
         # New-data probe path: the TX buffer has bytes past
@@ -3805,15 +3692,15 @@ class TcpSession:
                 # Reno CA branch. Slow-start (cwnd < ssthresh)
                 # is handled inside both helpers and yields the
                 # same RFC 5681 §3.1 path either way.
-                if self._cc_mode is CcMode.CUBIC and self._cc.cwnd >= self._cc.ssthresh:
-                    self._cubic_in_ca = True
+                if self._cc.cc_mode is CcMode.CUBIC and self._cc.cwnd >= self._cc.ssthresh:
+                    self._cc.cubic_in_ca = True
                     now_ms = stack.timer.now_ms
                     cubic_cwnd = cubic_grow_per_ack(
                         cwnd=self._cc.cwnd,
                         ssthresh=self._cc.ssthresh,
-                        w_max=self._cubic_w_max,
-                        K_ms=self._cubic_K_ms,
-                        epoch_start_ms=self._cubic_epoch_start_ms,
+                        w_max=self._cc.cubic_w_max,
+                        K_ms=self._cc.cubic_K_ms,
+                        epoch_start_ms=self._cc.cubic_epoch_start_ms,
                         now_ms=now_ms,
                         bytes_acked=bytes_acked,
                         smss=self._snd_mss,
@@ -3826,15 +3713,15 @@ class TcpSession:
                     # under-performs Reno on small-BDP / short-
                     # RTT paths. Lazy-initialise on first CA
                     # entry from cwnd_epoch.
-                    if self._cubic_w_est == 0:
-                        self._cubic_w_est = self._cc.cwnd
-                    self._cubic_w_est = cubic_w_est(
-                        w_est_prev=self._cubic_w_est,
+                    if self._cc.cubic_w_est == 0:
+                        self._cc.cubic_w_est = self._cc.cwnd
+                    self._cc.cubic_w_est = cubic_w_est(
+                        w_est_prev=self._cc.cubic_w_est,
                         cwnd=self._cc.cwnd,
                         smss=self._snd_mss,
                         bytes_acked=bytes_acked,
                     )
-                    self._cc.cwnd = max(cubic_cwnd, self._cubic_w_est)
+                    self._cc.cwnd = max(cubic_cwnd, self._cc.cubic_w_est)
                 else:
                     # RFC 9406 §4.2 CSS phase override: when
                     # HyStart++ has detected delay-increase and
@@ -3936,26 +3823,35 @@ class TcpSession:
             # 'gt32(self._snd_una, snd_una_before_ack)' is True
             # for any cum-ACK that advances SND.UNA, which is
             # exactly the §2.1 "advances the window" signal.
-            if self._frto_active:
-                fully_covered = not lt32(self._snd_una, self._frto_pre_snd_max)
-                if self._frto_step == 1:
+            if self._cc.frto_active:
+                fully_covered = not lt32(self._snd_una, self._cc.frto_pre_snd_max)
+                if self._cc.frto_step == 1:
                     if fully_covered:
                         # Single-ACK strong-spurious — restore.
-                        self._frto_step = 0
-                        self._frto_active = False
-                        self._restore_frto_snapshot()
+                        self._cc.frto_step = 0
+                        self._cc.frto_active = False
+                        self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+                        __debug__ and log(
+                            "tcp-ss",
+                            f"[{self}] - RFC 5682 F-RTO: spurious RTO "
+                            f"detected, restored cwnd={self._cc.cwnd} "
+                            f"ssthresh={self._cc.ssthresh}; "
+                            f"RFC 9438 §4.9.1: restored cubic "
+                            f"w_max={self._cc.cubic_w_max} "
+                            f"K_ms={self._cc.cubic_K_ms}",
+                        )
                     else:
                         # Step 2b: partial advance, defer to step 3.
-                        self._frto_step = 2
+                        self._cc.frto_step = 2
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - RFC 5682 §2.1 step 2b: "
                             f"partial first post-RTO ACK "
                             f"(SND.UNA={self._snd_una} < recover="
-                            f"{self._frto_pre_snd_max}); waiting "
+                            f"{self._cc.frto_pre_snd_max}); waiting "
                             "for second ACK to declare spurious",
                         )
-                elif self._frto_step == 2:
+                elif self._cc.frto_step == 2:
                     # Second ACK that advances the window
                     # declares the timeout spurious per §2.1
                     # step 3b. We landed here because SND.UNA
@@ -3963,9 +3859,18 @@ class TcpSession:
                     # tcp__ack)' was True at the top of this
                     # block); that's the §2.1 "acknowledgment
                     # advances the window" condition.
-                    self._frto_step = 0
-                    self._frto_active = False
-                    self._restore_frto_snapshot()
+                    self._cc.frto_step = 0
+                    self._cc.frto_active = False
+                    self._cc.restore_frto_snapshot(snd_wnd=self._snd_wnd)
+                    __debug__ and log(
+                        "tcp-ss",
+                        f"[{self}] - RFC 5682 F-RTO: spurious RTO "
+                        f"detected, restored cwnd={self._cc.cwnd} "
+                        f"ssthresh={self._cc.ssthresh}; "
+                        f"RFC 9438 §4.9.1: restored cubic "
+                        f"w_max={self._cc.cubic_w_max} "
+                        f"K_ms={self._cc.cubic_K_ms}",
+                    )
         # RFC 7323 §4 TSecr-driven RTTM: peer's TSecr identifies
         # the specific transmission it acknowledges, so the RTT
         # measurement is unambiguous even on retransmitted

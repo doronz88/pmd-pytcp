@@ -124,7 +124,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
 
         return session
 
@@ -485,7 +485,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
 
         return session
 
@@ -634,7 +634,7 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
 
         return session
 
@@ -826,7 +826,7 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
         return session
 
     def _drive_handshake_to_established(self, *, iss: int, peer_iss: int, peer_win: int = PEER__WIN) -> TcpSession:
@@ -956,7 +956,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
         return session
 
     def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
@@ -1113,7 +1113,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
         return session
 
     def _drive_handshake(self, *, iss: int, peer_iss: int, sackperm: bool = False) -> TcpSession:
@@ -1416,7 +1416,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
         return session
 
     def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
@@ -1571,7 +1571,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         # Pin RENO so this RFC-5681-conformance test exercises
         # the Reno path even after Phase 7's default-to-CUBIC
         # flip.
-        session._cc_mode = CcMode.RENO
+        session._cc.cc_mode = CcMode.RENO
         return session
 
     def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:

@@ -142,7 +142,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             tcp_session._keepalive_max_count_override = listen_socket._tcp_keepcnt
             # RFC 9438 §1: inherit the CC algorithm selector
             # from the listening socket.
-            tcp_session._cc_mode = listen_socket._cc_mode
+            tcp_session._cc.cc_mode = listen_socket._cc_mode
             # RFC 1122 §4.2.3.4: inherit the Nagle disable
             # flag.
             tcp_session._tcp_nodelay = listen_socket._tcp_nodelay
@@ -173,7 +173,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # RFC 9438 §1: child socket and its session inherit
             # the CC mode from the listening parent.
             session._socket._cc_mode = listen_socket._cc_mode
-            session._cc_mode = listen_socket._cc_mode
+            session._cc.cc_mode = listen_socket._cc_mode
             # RFC 1122 §4.2.3.4: child socket / session inherit
             # the Nagle disable flag.
             session._socket._tcp_nodelay = listen_socket._tcp_nodelay
