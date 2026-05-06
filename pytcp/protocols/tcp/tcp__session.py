@@ -3897,6 +3897,25 @@ class TcpSession:
         # segment. Both are no-ops when '_send_sack' is False.
         self._prune_sack_scoreboard()
         self._ingest_sack_info(packet_rx_md)
+        self._phase4_loss_detection_and_recovery_exit(packet_rx_md)
+        self._phase5_consume_segment_and_postprocess(packet_rx_md)
+
+    def _phase4_loss_detection_and_recovery_exit(self, packet_rx_md: TcpMetadata) -> None:
+        """
+        Phase 4 of the inbound-ACK pipeline. Fold the inbound ACK
+        + SACK info into the RACK reorder-window state, prune the
+        per-segment dict for entries fully covered by SND.UNA,
+        and exit recovery if SND.UNA has reached or passed the
+        RecoveryPoint marker.
+
+        Reference: RFC 5681 §3.2 step 6 (cwnd = ssthresh on recovery exit).
+        Reference: RFC 6675 §5 (RecoveryPoint sentinel).
+        Reference: RFC 6937 §3.1 (PRR per-recovery state reset).
+        Reference: RFC 8985 §5.2 (RACK per-segment dict pruning).
+        Reference: RFC 8985 §6.2 (RACK fold + reo_wnd_persist decay).
+        Reference: RFC 9438 §4.9.2 (FR-CUBIC snapshot scope = one episode).
+        """
+
         # RFC 8985 §6.2 step 1-2 RACK fold + step 5 loss
         # detection. Run AFTER SACK ingest so the scoreboard
         # reflects the latest peer-reported state. Identical
@@ -3957,7 +3976,6 @@ class TcpSession:
             if self._rack_reo_wnd_persist == 0:
                 self._rack_reo_wnd_mult = 1
                 self._rack_reo_wnd_persist = 16
-        self._phase5_consume_segment_and_postprocess(packet_rx_md)
 
     def _phase5_consume_segment_and_postprocess(self, packet_rx_md: TcpMetadata) -> None:
         """
