@@ -141,18 +141,18 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # for the handshake encoding); a SACK-bearing
             # ACK falls through to the regular post-
             # handshake processing.
-            if session._accecn_enabled and not packet_rx_md.tcp__sack_blocks:
+            if session._accecn.enabled and not packet_rx_md.tcp__sack_blocks:
                 ace = (
                     (int(packet_rx_md.tcp__flag_ns) << 2)
                     | (int(packet_rx_md.tcp__flag_cwr) << 1)
                     | int(packet_rx_md.tcp__flag_ece)
                 )
                 if ace == 0b000:
-                    session._accecn_s_disabled = True
+                    session._accecn.s_disabled = True
                 elif ace == 0b110:
-                    session._accecn_s_cep = 6
+                    session._accecn.s_cep = 6
                 else:
-                    session._accecn_s_cep = 5
+                    session._accecn.s_cep = 5
                 # RFC 9768 §3.2.2.3 IP-ECN mangling test
                 # (server side). Each Table-4 ACE value
                 # encodes the IP-ECN codepoint client
@@ -171,7 +171,7 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 # canonical ACE values map to non-Not-ECT
                 # codepoints and trigger the flag.
                 if ace in (0b011, 0b100, 0b110):  # ECT(1), ECT(0), CE
-                    session._accecn_mangling_detected = True
+                    session._accecn.mangling_detected = True
             session._process_ack_packet(packet_rx_md)
             # RFC 6928 §2 Initial Window: post-handshake cwnd
             # = min(10*MSS, max(2*MSS, 14600)). Set after

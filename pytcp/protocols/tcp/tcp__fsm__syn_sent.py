@@ -285,7 +285,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             if is_broken_reflection:
                 pass  # neither _accecn_enabled nor _ecn_enabled set
             elif session._advertise_accecn and (packet_rx_md.tcp__flag_ns or packet_rx_md.tcp__flag_cwr):
-                session._accecn_enabled = True
+                session._accecn.enabled = True
                 # RFC 9768 §3.2.2.1: derive the Table-3 ACE value
                 # from the inbound SYN+ACK's IP-ECN codepoint so
                 # the third-leg ACK encodes it for the server's
@@ -295,13 +295,13 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 #   2 (ECT(0))  -> 0b100
                 #   3 (CE)      -> 0b110
                 _table3 = {0: 0b010, 1: 0b011, 2: 0b100, 3: 0b110}
-                session._accecn_handshake_ack_pending = _table3[packet_rx_md.ip__ecn]
+                session._accecn.handshake_ack_pending = _table3[packet_rx_md.ip__ecn]
                 # RFC 9768 §3.2.2.2: a CE-marked SYN+ACK MUST
                 # increment r.cep (one-shot from 5 to 6) so the
                 # marking is reliably delivered via the ACE
                 # field on subsequent post-handshake segments.
                 if packet_rx_md.ip__ecn == 3:
-                    session._accecn_r_cep = 6
+                    session._accecn.r_cep = 6
                 # RFC 9768 §3.2.2.3 IP-ECN mangling test
                 # (client side). The SYN/ACK's AE+ECE flag
                 # pair encodes the IP-ECN codepoint peer
@@ -317,7 +317,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 # branch above and never reaches this point.
                 observed_ipecn = (int(packet_rx_md.tcp__flag_ns) << 1) | int(packet_rx_md.tcp__flag_ece)
                 if observed_ipecn != 0:
-                    session._accecn_mangling_detected = True
+                    session._accecn.mangling_detected = True
             elif session._advertise_ecn and packet_rx_md.tcp__flag_ece and not packet_rx_md.tcp__flag_cwr:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 client-side cookie cache update:

@@ -215,13 +215,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.1: when our SYN advertised AccECN "
                 "and the peer's SYN+ACK carries one of the four "
                 "AccECN-capable codepoints (here: AE=0, CWR=1, "
                 "ECE=0 = saw Not-ECT), '_accecn_enabled' MUST "
-                f"become True. Got _accecn_enabled={session._accecn_enabled}."
+                f"become True. Got _accecn_enabled={session._accecn.enabled}."
             ),
         )
         self.assertFalse(
@@ -284,11 +284,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertFalse(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.2: classic RFC 3168 fallback "
                 "MUST leave '_accecn_enabled' False. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -477,8 +477,8 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         assert session.state is FsmState.ESTABLISHED, (
             "Setup precondition: handshake must reach ESTABLISHED. " f"Got state={session.state!r}."
         )
-        assert session._accecn_enabled, (
-            "Setup precondition: bilateral AccECN must succeed. " f"Got _accecn_enabled={session._accecn_enabled}."
+        assert session._accecn.enabled, (
+            "Setup precondition: bilateral AccECN must succeed. " f"Got _accecn_enabled={session._accecn.enabled}."
         )
         return session
 
@@ -598,13 +598,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._last_handshake_session
 
         self.assertEqual(
-            session._accecn_r_cep,
+            session._accecn.r_cep,
             6,
             msg=(
                 "RFC 9768 §3.2.2.2: a CE-marked SYN+ACK MUST "
                 "increment r.cep from 5 to 6 so the marking is "
                 "reliably delivered to the peer via the ACE "
-                f"field. Got _accecn_r_cep={session._accecn_r_cep}."
+                f"field. Got _accecn_r_cep={session._accecn.r_cep}."
             ),
         )
 
@@ -661,13 +661,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             msg=f"Regular ACE = 5 (binary 101) MUST set ECE = 1. Got flags={ack.flags!r}.",
         )
         self.assertEqual(
-            session._accecn_r_cep,
+            session._accecn.r_cep,
             5,
             msg=(
                 "Setup precondition: r.cep MUST stay at 5 after a "
                 "non-CE inbound segment (the inbound data is "
                 "Not-ECT). Got "
-                f"_accecn_r_cep={session._accecn_r_cep}."
+                f"_accecn_r_cep={session._accecn.r_cep}."
             ),
         )
 
@@ -716,12 +716,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         # ACE = 6 = binary 110 -> AE=1, CWR=1, ECE=0.
         self.assertEqual(
-            session._accecn_r_cep,
+            session._accecn.r_cep,
             6,
             msg=(
                 "RFC 9768 §3.2.2: r.cep MUST advance from 5 to 6 "
                 "on receipt of one CE-marked inbound segment. Got "
-                f"_accecn_r_cep={session._accecn_r_cep}."
+                f"_accecn_r_cep={session._accecn.r_cep}."
             ),
         )
         self.assertIn(
@@ -852,12 +852,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         ack = self._parse_tx(ack_tx[0])
 
         self.assertEqual(
-            session._accecn_r_ce_b,
+            session._accecn.r_ce_b,
             len(payload),
             msg=(
                 "RFC 9768 §3.2.3: r.CEB MUST advance by the "
                 f"TCP-payload byte length ({len(payload)}). Got "
-                f"_accecn_r_ce_b={session._accecn_r_ce_b}."
+                f"_accecn_r_ce_b={session._accecn.r_ce_b}."
             ),
         )
         self.assertIsNotNone(
@@ -952,13 +952,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._accecn_s_ce_b,
+            session._accecn.s_ce_b,
             1500,
             msg=(
                 "RFC 9768 §3.4: the sender-side r.CE tracker "
                 "MUST advance to the latest value reported by "
                 "the peer (1500). Got "
-                f"_accecn_s_ce_b={session._accecn_s_ce_b}."
+                f"_accecn_s_ce_b={session._accecn.s_ce_b}."
             ),
         )
 
@@ -1056,11 +1056,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("NS",))
 
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,0,0) "
                 "MUST enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1076,11 +1076,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("NS", "CWR"))
 
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,1,0) "
                 "MUST enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1096,11 +1096,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("CWR",))
 
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(0,1,0) "
                 "MUST enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1116,11 +1116,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("NS", "ECE"))
 
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(1,0,1) "
                 "MUST enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1139,11 +1139,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("ECE",))
 
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: SYN with (AE,CWR,ECE)=(0,0,1) "
                 "MUST enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1162,11 +1162,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_syn_flags(syn_flags=("CWR", "ECE"))
 
         self.assertFalse(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "Classic ECN-setup SYN (0,1,1) MUST NOT enter "
                 "AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
         self.assertTrue(
@@ -1213,11 +1213,11 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             msg="Setup precondition: handshake reaches ESTABLISHED.",
         )
         self.assertTrue(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.3: a SYN/ACK with reserved "
                 "(AE,CWR,ECE)=(1,0,1) MUST enter AccECN mode. "
-                f"Got _accecn_enabled={session._accecn_enabled}."
+                f"Got _accecn_enabled={session._accecn.enabled}."
             ),
         )
 
@@ -1359,19 +1359,19 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         if ack.accecn[0] is not None:
             self.assertEqual(
                 ack.accecn[0],
-                session._accecn_r_ect0_b,
+                session._accecn.r_ect0_b,
                 msg="AccECN option r.ECT(0) byte counter MUST match session state when present.",
             )
         if ack.accecn[1] is not None:
             self.assertEqual(
                 ack.accecn[1],
-                session._accecn_r_ce_b,
+                session._accecn.r_ce_b,
                 msg="AccECN option r.CE byte counter MUST match session state when present.",
             )
         if ack.accecn[2] is not None:
             self.assertEqual(
                 ack.accecn[2],
-                session._accecn_r_ect1_b,
+                session._accecn.r_ect1_b,
                 msg="AccECN option r.ECT(1) byte counter MUST match session state when present.",
             )
 
@@ -1440,20 +1440,20 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_third_leg_ace(ace=0b010)
 
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
             msg=(
                 "RFC 9768 §3.2.2.1 Table 4: ACE=010 on the "
                 "first inbound ACK in SYN-RCVD MUST set "
-                f"s.cep = 5. Got s.cep={session._accecn_s_cep}."
+                f"s.cep = 5. Got s.cep={session._accecn.s_cep}."
             ),
         )
         self.assertFalse(
-            session._accecn_s_disabled,
+            session._accecn.s_disabled,
             msg=(
                 "ACE=010 is a normal AccECN handshake ACK; "
                 "MUST NOT disable sender-side AccECN. Got "
-                f"s_disabled={session._accecn_s_disabled}."
+                f"s_disabled={session._accecn.s_disabled}."
             ),
         )
 
@@ -1470,9 +1470,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_third_leg_ace(ace=0b011)
 
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
-            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=011 -> s.cep=5. Got {session._accecn_s_cep}.",
+            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=011 -> s.cep=5. Got {session._accecn.s_cep}.",
         )
 
     def test__accecn__server_table_4_inference__ace_100_sets_s_cep_5_ect0(self) -> None:
@@ -1488,9 +1488,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_third_leg_ace(ace=0b100)
 
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
-            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=100 -> s.cep=5. Got {session._accecn_s_cep}.",
+            msg=f"RFC 9768 §3.2.2.1 Table 4: ACE=100 -> s.cep=5. Got {session._accecn.s_cep}.",
         )
 
     def test__accecn__server_table_4_inference__ace_110_sets_s_cep_6_ce(self) -> None:
@@ -1509,12 +1509,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_third_leg_ace(ace=0b110)
 
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             6,
             msg=(
                 "RFC 9768 §3.2.2.1 Table 4: ACE=110 (CE on "
                 "SYN/ACK) MUST set s.cep = 6. Got "
-                f"{session._accecn_s_cep}."
+                f"{session._accecn.s_cep}."
             ),
         )
 
@@ -1535,12 +1535,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session = self._drive_passive_open_with_third_leg_ace(ace=0b000)
 
         self.assertTrue(
-            session._accecn_s_disabled,
+            session._accecn.s_disabled,
             msg=(
                 "RFC 9768 §3.2.2.1 Note 1: ACE=000 on the "
                 "first inbound ACK in SYN-RCVD MUST disable "
                 "sender-side AccECN. Got "
-                f"s_disabled={session._accecn_s_disabled}."
+                f"s_disabled={session._accecn.s_disabled}."
             ),
         )
 
@@ -1556,9 +1556,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b001)
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
-            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=001 -> s.cep=5. Got {session._accecn_s_cep}.",
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=001 -> s.cep=5. Got {session._accecn.s_cep}.",
         )
 
     def test__accecn__server_table_4_inference__ace_101_unused_defaults_to_5(self) -> None:
@@ -1571,9 +1571,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b101)
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
-            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=101 -> s.cep=5. Got {session._accecn_s_cep}.",
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=101 -> s.cep=5. Got {session._accecn.s_cep}.",
         )
 
     def test__accecn__server_table_4_inference__ace_111_unused_defaults_to_5(self) -> None:
@@ -1586,9 +1586,9 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b111)
         self.assertEqual(
-            session._accecn_s_cep,
+            session._accecn.s_cep,
             5,
-            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=111 -> s.cep=5. Got {session._accecn_s_cep}.",
+            msg=f"RFC 9768 §3.2.2.1 Note 2: ACE=111 -> s.cep=5. Got {session._accecn.s_cep}.",
         )
 
     def test__accecn__ace_only_response__delta_triggers_cwnd_reduction(self) -> None:
@@ -1859,12 +1859,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             msg="Setup precondition: handshake reaches ESTABLISHED.",
         )
         self.assertFalse(
-            session._accecn_enabled,
+            session._accecn.enabled,
             msg=(
                 "RFC 9768 §3.1.2 fourth block: a (1,1,1) SYN/ACK "
                 "MUST be treated as broken-server reflection and "
                 "MUST NOT enter AccECN mode. Got "
-                f"_accecn_enabled={session._accecn_enabled}."
+                f"_accecn_enabled={session._accecn.enabled}."
             ),
         )
         self.assertFalse(
@@ -1920,12 +1920,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         assert ack.accecn is not None, "AccECN option MUST be present."
         self.assertEqual(
             ack.accecn[0],
-            session._accecn_r_ect0_b,
+            session._accecn.r_ect0_b,
             msg=f"ee0b slot MUST carry r.ECT(0). Got {ack.accecn[0]!r}.",
         )
         self.assertEqual(
             ack.accecn[1],
-            session._accecn_r_ce_b,
+            session._accecn.r_ce_b,
             msg=f"eceb slot MUST carry r.CE. Got {ack.accecn[1]!r}.",
         )
         self.assertIsNone(
@@ -1974,7 +1974,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         assert ack.accecn is not None, "AccECN option MUST be present."
         self.assertEqual(
             ack.accecn[0],
-            session._accecn_r_ect0_b,
+            session._accecn.r_ect0_b,
             msg=f"ee0b slot MUST carry r.ECT(0). Got {ack.accecn[0]!r}.",
         )
         self.assertIsNone(
@@ -2039,13 +2039,13 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         # Table-2 'Not-ECT observed' codepoint: (AE=0, CWR=1, ECE=0)
         session = self._drive_active_open_with_synack_table2_flags(synack_flags=("CWR",))
-        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertTrue(session._accecn.enabled, msg="Setup: AccECN must be enabled.")
         self.assertFalse(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-reported Not-ECT on SYN "
                 "matches our actual Not-ECT send -> NO mangling. "
-                f"Got _accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"Got _accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )
 
@@ -2063,14 +2063,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         # Table-2 'ECT(0) observed' codepoint: (AE=1, CWR=0, ECE=0)
         session = self._drive_active_open_with_synack_table2_flags(synack_flags=("NS",))
-        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertTrue(session._accecn.enabled, msg="Setup: AccECN must be enabled.")
         self.assertTrue(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-observed ECT(0) on a SYN "
                 "we sent as Not-ECT MUST be detected as IP-ECN "
                 "mangling. Got "
-                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"_accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )
 
@@ -2086,14 +2086,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         # Table-2 'ECT(1) observed' codepoint: (AE=0, CWR=1, ECE=1)
         session = self._drive_active_open_with_synack_table2_flags(synack_flags=("CWR", "ECE"))
-        self.assertTrue(session._accecn_enabled, msg="Setup: AccECN must be enabled.")
+        self.assertTrue(session._accecn.enabled, msg="Setup: AccECN must be enabled.")
         self.assertTrue(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-observed ECT(1) on a SYN "
                 "we sent as Not-ECT MUST be detected as IP-ECN "
                 "mangling. Got "
-                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"_accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )
 
@@ -2109,12 +2109,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b010)
         self.assertFalse(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-reported Not-ECT (ACE=010) "
                 "on our SYN/ACK matches our actual Not-ECT send -> "
                 "NO mangling. Got "
-                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"_accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )
 
@@ -2130,12 +2130,12 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b100)
         self.assertTrue(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-observed ECT(0) (ACE=100) "
                 "on our Not-ECT SYN/ACK MUST be detected as "
                 f"mangling. Got "
-                f"_accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"_accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )
 
@@ -2155,10 +2155,10 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
 
         session = self._drive_passive_open_with_third_leg_ace(ace=0b110)
         self.assertTrue(
-            session._accecn_mangling_detected,
+            session._accecn.mangling_detected,
             msg=(
                 "RFC 9768 §3.2.2.3: peer-observed CE (ACE=110) on "
                 "our Not-ECT SYN/ACK MUST be detected as mangling. "
-                f"Got _accecn_mangling_detected={session._accecn_mangling_detected}."
+                f"Got _accecn_mangling_detected={session._accecn.mangling_detected}."
             ),
         )

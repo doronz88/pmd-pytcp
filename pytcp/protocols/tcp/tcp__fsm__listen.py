@@ -244,8 +244,8 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             is_classic_ecn_syn = (not ns) and cwr and ece
             any_ecn_bit = ns or cwr or ece
             if session._advertise_accecn and any_ecn_bit and not is_classic_ecn_syn:
-                session._accecn_enabled = True
-                session._accecn_synack_codepoint = packet_rx_md.ip__ecn
+                session._accecn.enabled = True
+                session._accecn.synack_codepoint = packet_rx_md.ip__ecn
             elif session._advertise_ecn and is_classic_ecn_syn:
                 session._ecn_enabled = True
             # RFC 7413 §3.1 Fast Open server-side cookie

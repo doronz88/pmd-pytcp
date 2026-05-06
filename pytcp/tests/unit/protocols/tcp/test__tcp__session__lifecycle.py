@@ -278,7 +278,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_r_cep,
+            session._accecn.r_cep,
             5,
             msg="TcpSession._accecn_r_cep must initialise to 5 (RFC 9768 §3.2.1).",
         )
@@ -295,7 +295,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_r_ect0_b,
+            session._accecn.r_ect0_b,
             1,
             msg="TcpSession._accecn_r_ect0_b must initialise to 1 (RFC 9768 §3.2.1).",
         )
@@ -311,7 +311,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_r_ect1_b,
+            session._accecn.r_ect1_b,
             1,
             msg="TcpSession._accecn_r_ect1_b must initialise to 1 (RFC 9768 §3.2.1).",
         )
@@ -328,7 +328,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_r_ce_b,
+            session._accecn.r_ce_b,
             0,
             msg="TcpSession._accecn_r_ce_b must initialise to 0 (RFC 9768 §3.2.1).",
         )
@@ -421,7 +421,7 @@ class TestTcpSessionStr(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_s_ect0_b,
+            session._accecn.s_ect0_b,
             1,
             msg="TcpSession._accecn_s_ect0_b must initialise to 1 (RFC 9768 §3.2.1).",
         )
@@ -437,7 +437,7 @@ class TestTcpSessionStr(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._accecn_s_ect1_b,
+            session._accecn.s_ect1_b,
             1,
             msg="TcpSession._accecn_s_ect1_b must initialise to 1 (RFC 9768 §3.2.1).",
         )
