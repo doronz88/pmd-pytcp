@@ -98,29 +98,6 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
     Phase 1 active-open bilateral-negotiation invariants.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
     def test__ts__active_open_syn_carries_tsopt(self) -> None:
         """
         Ensure an active-open SYN includes the Timestamps
@@ -307,29 +284,6 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
     segment + '_ts_recent' tracking on accepted inbound segments.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """
         Drive the active-open three-way handshake with bilateral
@@ -512,26 +466,6 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
     it acknowledges, so RTT can be measured cleanly.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""
 
@@ -708,26 +642,6 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
     space.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""
 
@@ -861,26 +775,6 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
     paths can leak old-incarnation segments into recovery
     machinery.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""
@@ -1246,26 +1140,6 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
     "current at transmission", not "current at queue time".
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""
 
@@ -1594,26 +1468,6 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
        PyTCP's strict PAWS check + cum-ACK left-edge advance
        satisfies this without an extra Last.ACK.sent variable.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int, peer_tsval: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""

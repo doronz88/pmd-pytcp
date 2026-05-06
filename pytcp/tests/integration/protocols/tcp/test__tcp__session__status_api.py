@@ -73,47 +73,6 @@ class TestTcpStatusApi(TcpSessionTestCase):
     §3.9.1 STATUS user/TCP interface.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> tuple[TcpSocket, TcpSession]:
-        """Drive the active-open handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        sock = session._socket
-        assert isinstance(sock, TcpSocket)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return sock, session
-
     def test__status__fresh_socket_returns_state_closed(self) -> None:
         """
         Ensure a fresh TcpSocket with no associated session
@@ -144,7 +103,11 @@ class TestTcpStatusApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.4 (SND/RCV state).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         status = sock.status()
 
         self.assertIs(status.state, FsmState.ESTABLISHED)
@@ -191,7 +154,11 @@ class TestTcpStatusApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (STATUS reports current state).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -268,7 +235,11 @@ class TestTcpStatusApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.10.4 (CLOSE call processing).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         self.assertIs(sock.status().state, FsmState.ESTABLISHED)
 
         session.close()
@@ -329,7 +300,11 @@ class TestTcpStatusApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (STATUS on CLOSED endpoint).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         # Force-transition to CLOSED (simpler than driving the
         # full TIME_WAIT timeout).
         session._change_state(FsmState.CLOSED)

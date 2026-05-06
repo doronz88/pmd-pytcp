@@ -95,26 +95,6 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
     cwnd response paths.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
     def test__accecn__active_open_syn_advertises_ae_cwr_ece(self) -> None:
         """
         Ensure the active-open SYN sets all three of AE, CWR,

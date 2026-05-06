@@ -49,9 +49,28 @@ from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__enums import CcMode
+from pytcp.protocols.tcp.tcp__session import FsmState, SysCall, TcpSession
 from pytcp.protocols.tcp.tcp__stack import TcpStack
+from pytcp.socket import AddressFamily
+from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.fake_timer import FakeTimer
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    HOST_A__IP6_ADDRESS,
+    STACK__IP4_HOST,
+    STACK__IP6_HOST,
+    NetworkTestCase,
+)
+from pytcp.tests.lib.tcp_segment_factory import build_tcp4, build_tcp6
+
+# Canonical 4-tuple defaults used by 95%+ of TCP integration tests.
+# Tests with non-default addressing pass overrides as kwargs to
+# '_make_active_session' / '_drive_handshake_to_established'.
+_DEFAULT_LOCAL_PORT = 12345
+_DEFAULT_REMOTE_PORT = 80
+_DEFAULT_PEER_WIN = 64240
+_DEFAULT_PEER_MSS = 1460
 
 TCP_FLAG_NAMES: tuple[str, ...] = (
     "SYN",
@@ -129,6 +148,13 @@ class TcpSessionTestCase(NetworkTestCase):
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
     _pmtu_cache_prior: dict[Any, Any]
+
+    # Per-test-class congestion-control override pinned by
+    # '_make_active_session'. None means "use the codebase default"
+    # (currently CcMode.CUBIC after the Phase 7 RFC 9438 flip).
+    # RFC 5681-only conformance tests set this to CcMode.RENO at the
+    # class level so every session built via the harness pins Reno.
+    _DEFAULT_CC_MODE: CcMode | None = None
 
     def setUp(self) -> None:
         """
@@ -228,6 +254,133 @@ class TcpSessionTestCase(NetworkTestCase):
             "pytcp.protocols.tcp.tcp__session.compute_iss",
             lambda *_args, **_kwargs: value,
         )
+
+    def _make_active_session(
+        self,
+        *,
+        iss: int,
+        family: AddressFamily = AddressFamily.INET4,
+        local_ip: Ip4Address | Ip6Address | None = None,
+        local_port: int = _DEFAULT_LOCAL_PORT,
+        remote_ip: Ip4Address | Ip6Address | None = None,
+        remote_port: int = _DEFAULT_REMOTE_PORT,
+    ) -> TcpSession:
+        """
+        Build a 'TcpSocket' / 'TcpSession' pair on the canonical
+        4-tuple. Defaults match the addressing in
+        'pytcp/tests/lib/network_testcase.py' (STACK
+        10.0.1.7:12345 ↔ host A 10.0.1.91:80 for IPv4; the
+        equivalent IPv6 pair when 'family' is INET6). Supply
+        'local_ip' / 'remote_ip' / 'local_port' / 'remote_port' to
+        override.
+
+        The 'iss' argument is forced via '_force_iss' so the session
+        constructed by this call uses 'iss' as its initial sequence
+        number (RFC 6528 ISS is otherwise hash-derived). The newly
+        created socket is registered in 'stack.sockets' and the
+        session is returned.
+        """
+
+        if local_ip is None:
+            local_ip = STACK__IP4_HOST.address if family is AddressFamily.INET4 else STACK__IP6_HOST.address
+        if remote_ip is None:
+            remote_ip = HOST_A__IP4_ADDRESS if family is AddressFamily.INET4 else HOST_A__IP6_ADDRESS
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=family)
+        sock._local_ip_address = local_ip
+        sock._local_port = local_port
+        sock._remote_ip_address = remote_ip
+        sock._remote_port = remote_port
+        session = TcpSession(
+            local_ip_address=local_ip,
+            local_port=local_port,
+            remote_ip_address=remote_ip,
+            remote_port=remote_port,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        if self._DEFAULT_CC_MODE is not None:
+            session._cc.cc_mode = self._DEFAULT_CC_MODE
+        return session
+
+    def _drive_handshake_to_established(
+        self,
+        *,
+        iss: int,
+        peer_iss: int,
+        family: AddressFamily = AddressFamily.INET4,
+        local_ip: Ip4Address | Ip6Address | None = None,
+        local_port: int = _DEFAULT_LOCAL_PORT,
+        remote_ip: Ip4Address | Ip6Address | None = None,
+        remote_port: int = _DEFAULT_REMOTE_PORT,
+        peer_win: int = _DEFAULT_PEER_WIN,
+        peer_mss: int = _DEFAULT_PEER_MSS,
+        peer_sackperm: bool = False,
+        peer_wscale: int | None = None,
+        peer_tsval: int | None = None,
+        peer_tsecr: int | None = None,
+    ) -> TcpSession:
+        """
+        Build an active-open session and drive it to ESTABLISHED by
+        emitting the local SYN, advancing the timer one tick, then
+        injecting the peer's synthetic SYN-ACK. Returns the session
+        in ESTABLISHED state. The local 'TcpSocket' is reachable
+        via 'session._socket' if a caller needs to invoke socket-API
+        methods (abort, close, shutdown, status).
+
+        Reference: RFC 9293 §3.5 (Connection Establishment).
+        """
+
+        session = self._make_active_session(
+            iss=iss,
+            family=family,
+            local_ip=local_ip,
+            local_port=local_port,
+            remote_ip=remote_ip,
+            remote_port=remote_port,
+        )
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        if family is AddressFamily.INET6:
+            peer_syn_ack = build_tcp6(
+                src_ip=cast(Ip6Address, session._remote_ip_address),
+                dst_ip=cast(Ip6Address, session._local_ip_address),
+                sport=session._remote_port,
+                dport=session._local_port,
+                seq=peer_iss,
+                ack=iss + 1,
+                flags=("SYN", "ACK"),
+                win=peer_win,
+                mss=peer_mss,
+                sackperm=peer_sackperm,
+                wscale=peer_wscale,
+                tsval=peer_tsval,
+                tsecr=peer_tsecr,
+            )
+        else:
+            peer_syn_ack = build_tcp4(
+                src_ip=cast(Ip4Address, session._remote_ip_address),
+                dst_ip=cast(Ip4Address, session._local_ip_address),
+                sport=session._remote_port,
+                dport=session._local_port,
+                seq=peer_iss,
+                ack=iss + 1,
+                flags=("SYN", "ACK"),
+                win=peer_win,
+                mss=peer_mss,
+                sackperm=peer_sackperm,
+                wscale=peer_wscale,
+                tsval=peer_tsval,
+                tsecr=peer_tsecr,
+            )
+        self._drive_rx(frame=peer_syn_ack)
+        assert (
+            session.state is FsmState.ESTABLISHED
+        ), f"_drive_handshake_to_established: session did not reach ESTABLISHED; got {session.state!r}"
+        return session
 
     def _drive_rx(self, *, frame: bytes) -> list[bytes]:
         """

@@ -399,28 +399,22 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
             ),
         )
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
+    def _make_active_session(  # type: ignore[override]
+        self,
+        *,
+        iss: int,
+    ) -> TcpSession:
         """
-        Build a 'TcpSocket' / 'TcpSession' pair the way
-        'connect()' would, returning the session in CLOSED.
+        TFO addressing override — uses PEER__PORT_FOR_FASTOPEN as the
+        local client port and LISTEN__PORT as the remote server port
+        instead of the canonical 12345 / 80 defaults.
         """
 
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = PEER__PORT_FOR_FASTOPEN  # arbitrary client port
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = LISTEN__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
+        return super()._make_active_session(
+            iss=iss,
             local_port=PEER__PORT_FOR_FASTOPEN,
-            remote_ip_address=PEER__IP,
             remote_port=LISTEN__PORT,
-            socket=sock,
         )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def test__fastopen__active_open_syn_advertises_tfo_cookie_request(self) -> None:
         """

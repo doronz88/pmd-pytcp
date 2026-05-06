@@ -39,7 +39,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
-from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
+from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import (
     IPPROTO_TCP,
@@ -77,26 +77,6 @@ class TestTcpCubicPhase2(TcpSessionTestCase):
     substrate field declarations on TcpSession defaulting
     '_cc_mode' to RENO so behaviour is unchanged.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def test__cubic__fresh_session_defaults_to_cubic(self) -> None:
         """
@@ -143,44 +123,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
     growth using the cubic curve when '_cc_mode == CUBIC'.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def test__cubic__ca_growth_uses_cubic_curve_when_cc_mode_is_cubic(self) -> None:
         """

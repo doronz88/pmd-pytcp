@@ -58,15 +58,11 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__constants import PACKET_RETRANSMIT_TIMEOUT
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
-    TcpSession,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -96,56 +92,6 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
     32-bit ceiling, drive data, and verify the on-the-wire seq
     numbers wrap modularly (i.e. 0xFFFF_FFFF + 1 == 0, not 2**32).
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__seq_wraparound__outbound_data_seq_wraps_modularly(self) -> None:
         """
@@ -264,53 +210,6 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
     in-window.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
-
     def test__seq_wraparound__inbound_ack_across_wrap_advances_snd_una(self) -> None:
         """
         Ensure that a peer ACK whose value is modularly
@@ -401,53 +300,6 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
     raw integer arithmetic that escapes the 32-bit modular space.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
-
     def test__seq_wraparound__inbound_data_seq_wrap_advances_rcv_nxt_modularly(self) -> None:
         """
         Ensure that when peer's send-sequence range
@@ -516,52 +368,6 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
     extended to the half-close family; this test is the forcing
     function for that extension.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__seq_wraparound__close_wait_inbound_ack_across_wrap_advances_snd_una(self) -> None:
         """
@@ -634,52 +440,6 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
     2**32 even though they are modularly inside the window.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
-
     def test__seq_wraparound__receive_window_right_edge_across_wrap_accepts_segment(self) -> None:
         """
         Ensure that a peer data segment whose seq lies
@@ -750,52 +510,6 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
     covers our FIN is treated as not-yet-cum-acked and the FSM
     fails to transition out of FIN_WAIT_1.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__seq_wraparound__fin_wait_1_fin_ack_across_wrap_transitions_to_fin_wait_2(self) -> None:
         """
@@ -868,29 +582,6 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
     interoperability failure when it does fire (peer sees a
     legitimate active-open's SYN+ACK rejected with RST).
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def test__seq_wraparound__syn_sent_inbound_syn_ack_with_wrapped_ack_accepted(self) -> None:
         """
@@ -974,56 +665,6 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
     fires its FIN branch on the sentinel value, and the
     walk-back silently corrupts the offset translation.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__seq_wraparound__rto_after_snd_una_wraps_to_zero_does_not_corrupt_tx_buffer_offset(self) -> None:
         """
@@ -1164,56 +805,6 @@ class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
     '_rcv_nxt' stays at the sentinel value despite peer having
     been contacted - the RST is silently suppressed.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=(iss + 1) % SEQ32__MOD,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__seq_wraparound__r2_abort_with_peer_isn_at_seq_max_emits_rst(self) -> None:
         """

@@ -63,14 +63,9 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
-    SysCall,
-    TcpSession,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -102,57 +97,6 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
     mitigation (FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, CLOSING,
     LAST_ACK, TIME_WAIT).
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__robustness__syn_in_fin_wait_1_must_elicit_challenge_ack(self) -> None:
         """
@@ -686,48 +630,6 @@ class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
     Reference RFC:
         RFC 5961 §5 Mitigating Blind Data Injection
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Drive the active-open handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return session
 
     def test__ack__below_snd_una_minus_max_window_emits_challenge_ack(self) -> None:
         """

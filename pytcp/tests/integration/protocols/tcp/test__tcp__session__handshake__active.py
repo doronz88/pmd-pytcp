@@ -58,9 +58,7 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from pytcp import stack
-from pytcp.protocols.tcp.tcp__session import ConnError, FsmState, SysCall, TcpSession
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
+from pytcp.protocols.tcp.tcp__session import ConnError, FsmState, SysCall
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -96,40 +94,6 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
     Integration tests for the client-side three-way handshake driven
     out of 'TcpSession' in the active-open path.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair wired up the way
-        'TcpSocket.connect()' would wire them - addressing on the
-        socket already populated to match the 4-tuple used by the
-        peer-side fixtures, ISS deterministically pinned via
-        '_force_iss', socket registered in 'stack.sockets' so the
-        packet handler's RX dispatch can find it.
-
-        The session is returned in 'CLOSED' state; callers issue
-        'tcp_fsm(syscall=SysCall.CONNECT)' to transition into
-        'SYN_SENT' before driving the handshake.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
 
     def test__active_open__three_way_handshake_completes_to_established(self) -> None:
         """

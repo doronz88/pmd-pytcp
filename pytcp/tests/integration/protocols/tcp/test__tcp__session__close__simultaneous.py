@@ -52,10 +52,7 @@ from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
-    TcpSession,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -85,57 +82,6 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
     Integration tests for the simultaneous-close path where both
     peers send FIN before either acknowledges the other's FIN.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
 
     def test__close_simultaneous__both_sides_fin_walks_through_fin_wait_1_closing_time_wait(self) -> None:
         """

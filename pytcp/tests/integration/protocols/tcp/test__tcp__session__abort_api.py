@@ -40,12 +40,10 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__enums import ConnError
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
-    TcpSession,
 )
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
@@ -72,47 +70,6 @@ class TestTcpAbortApi(TcpSessionTestCase):
     Integration tests for 'TcpSocket.abort()' per RFC 9293 §3.9.1.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> tuple[TcpSocket, TcpSession]:
-        """Drive the active-open handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        sock = session._socket
-        assert isinstance(sock, TcpSocket)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return sock, session
-
     def test__abort__in_established_emits_rst_and_transitions_to_closed(self) -> None:
         """
         Ensure ABORT in ESTABLISHED emits a RST + ACK at
@@ -122,7 +79,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT user call).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
 
         before = len(self._frames_tx)
         sock.abort()
@@ -154,7 +115,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT user call, synchronized states).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         # Drive into FIN_WAIT_1.
         session.close()
         self._advance(ms=1)
@@ -182,7 +147,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT in TIME_WAIT does not signal peer).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         session.close()
         self._advance(ms=1)
         self._advance(ms=1)
@@ -247,7 +216,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT user call, synchronized states).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         # Drive into CLOSE_WAIT: peer FIN.
         peer_fin = build_tcp4(
             sport=PEER__PORT,
@@ -317,7 +290,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT signals "connection reset" to user).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
 
         sock.abort()
 
@@ -339,7 +316,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT releases pending RECEIVE).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         # Pre-clear the event to verify abort() sets it.
         session._event__rx_buffer.clear()
 
@@ -360,7 +341,11 @@ class TestTcpAbortApi(TcpSessionTestCase):
         Reference: RFC 9293 §3.9.1 (ABORT abandons pending SENDs).
         """
 
-        sock, session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        sock = session._socket
+
+        assert isinstance(sock, TcpSocket)
         # Queue some bytes that haven't been sent yet.
         session.send(data=b"unsent payload")
 

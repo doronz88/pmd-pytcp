@@ -64,8 +64,6 @@ from pytcp.protocols.tcp.tcp__session import (
     SysCall,
     TcpSession,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -97,63 +95,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
     vs congestion-avoidance growth-rate distinction.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        Does NOT bypass slow-start - tests that need a different
-        cwnd/ssthresh starting point set the fields explicitly.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def test__cwnd__fields_exist_post_handshake(self) -> None:
         """
@@ -458,61 +400,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
     runs unbounded until peer's win clamps it.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair. Returns the
-        session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def test__cwnd__rto_sets_ssthresh_to_half_flight_size(self) -> None:
         """
@@ -608,60 +496,7 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         Step 6: cwnd = ssthresh (deflation on recovery exit)
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def _send_n_segments_and_drain_dupacks(
         self,
@@ -805,51 +640,7 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
     connections (HTTP requests, RPC calls).
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int, peer_win: int = PEER__WIN) -> TcpSession:
-        """Drive the active-open three-way handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=peer_win,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def test__cwnd__post_handshake_initialises_cwnd_to_iw_10(self) -> None:
         """
@@ -935,53 +726,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
     already marked.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Drive the handshake and disable SACK + TSopt for the NewReno path."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-
-        # Confirm non-SACK / non-TSopt peer scenario.
-        assert not session._advertise.send_sack, "Setup invariant: peer's SYN+ACK had no SACK-Permitted."
-        assert not session._ts.send_ts, "Setup invariant: peer's SYN+ACK had no TSopt."
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def _setup_multi_loss_recovery(
         self,
@@ -1092,29 +837,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         recovery_point check).
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def _drive_handshake(self, *, iss: int, peer_iss: int, sackperm: bool = False) -> TcpSession:
         """Drive handshake; optionally negotiate SACK."""
@@ -1396,48 +1119,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         re-entry, not a continuation.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Handshake without SACK so NewReno is the canonical recovery path."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def test__cwnd__rto_during_fast_recovery_clears_recovery_point_and_resets_cwnd(self) -> None:
         """
@@ -1551,49 +1233,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
     pass.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        # Pin RENO so this RFC-5681-conformance test exercises
-        # the Reno path even after Phase 7's default-to-CUBIC
-        # flip.
-        session._cc.cc_mode = CcMode.RENO
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Drive the active-open three-way handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return session
+    _DEFAULT_CC_MODE = CcMode.RENO
 
     def _send_n_segments_and_enter_recovery(
         self,
@@ -2097,46 +1737,6 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
     not blast a stale-cwnd burst into a network whose capacity
     estimate has decayed.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Drive the active-open handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        session._cc.snd_ewn = PEER__WIN
-        return session
 
     def test__cwnd__rfc5681_restart_window_reduces_cwnd_after_idle(self) -> None:
         """

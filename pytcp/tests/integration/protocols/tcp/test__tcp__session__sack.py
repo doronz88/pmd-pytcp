@@ -91,33 +91,6 @@ class TestTcpSession__Sack(TcpSessionTestCase):
     queued.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair wired up the way
-        'TcpSocket.connect()' would wire them. Returns the session
-        in CLOSED state ready for the caller to drive CONNECT.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
     def _make_listen_session(self, *, iss: int) -> TcpSession:
         """
         Build a wildcard-bound listening 'TcpSocket' / 'TcpSession'
@@ -145,41 +118,6 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         stack.sockets[sock.socket_id] = sock
 
         session.tcp_fsm(syscall=SysCall.LISTEN)
-        return session
-
-    def _drive_handshake_to_established(
-        self,
-        *,
-        iss: int,
-        peer_iss: int,
-        peer_sackperm: bool = False,
-    ) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED and
-        return the session. 'peer_sackperm' controls whether the
-        peer's SYN+ACK carries the SACK-Permitted option; pass True
-        when the test needs bilateral SACK negotiation to succeed.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-            sackperm=peer_sackperm,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
         return session
 
     def test__sack__inbound_sack_option_does_not_crash_parser(self) -> None:

@@ -131,70 +131,6 @@ class TestTcpRtoSampling(TcpSessionTestCase):
     cadence, harvest-on-ACK, Karn-tainted-on-retransmit.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED.
-
-        The SYN itself is sampled by 'fix_phase_2': sample_seq=iss,
-        send_time=0. Peer's SYN+ACK arrives at virtual time t=1 ms
-        and harvests the sample (RTT ~ 1 ms), leaving '_rto_state'
-        at 'update(initial_state(), 1)' and '_rtt_sample_seq' back
-        to 'None'.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-
-        # Bypass slow-start so the data tests can fire immediately
-        # without entangling with the RFC 5681 §3.1 cwnd doubling
-        # cadence. Tests of the cwnd interaction are out of scope
-        # for Phase 2 (and properly belong to a future RFC 5681
-        # cwnd-rework project).
-        session._cc.snd_ewn = PEER__WIN
-        return session
-
     def test__rto__outbound_data_segment_records_pending_sample(self) -> None:
         """
         Ensure that an outbound data segment in ESTABLISHED
@@ -590,60 +526,6 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
     cadence assertions stay green via the 'MIN_RTO_MS' clamp).
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED
-        and bypass slow-start so the data tests can fire at the
-        full advertised window.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._cc.snd_ewn = PEER__WIN
-        return session
-
     def test__rto__data_transmit_arms_session_level_retransmit_timer(self) -> None:
         """
         Ensure that when a data segment is sent and no
@@ -836,59 +718,6 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
     that drives subsequent retransmit timing.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake to ESTABLISHED
-        and bypass slow-start.
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._cc.snd_ewn = PEER__WIN
-        return session
-
     def _send_one_payload_and_ack(self, *, session: TcpSession, seq_offset: int, payload: bytes) -> None:
         """
         Send 'payload', drive the data segment out on the next
@@ -1080,26 +909,6 @@ class TestTcpRtoSynFloor(TcpSessionTestCase):
     retransmit fires, no floor applies - the canonical RTT
     measurement (typically clamped to MIN_RTO_MS) stands.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def test__rto__post_syn_retransmit_handshake_floors_rto_at_3000ms(self) -> None:
         """

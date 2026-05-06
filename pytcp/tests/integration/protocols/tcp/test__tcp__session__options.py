@@ -49,14 +49,10 @@ ver 3.0.4
 
 from net_addr import Ip4Address
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
-    TcpSession,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -83,32 +79,6 @@ class TestTcpSession__Options(TcpSessionTestCase):
     Integration tests for TCP options handling: MSS clamping,
     unknown options, SACK-permitted, etc.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair the way 'connect()'
-        would. Returns the session in CLOSED state.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
 
     def test__options__peer_mss_zero_clamped_to_tcp_min_mss(self) -> None:
         """

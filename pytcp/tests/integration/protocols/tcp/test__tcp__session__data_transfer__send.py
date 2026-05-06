@@ -63,8 +63,6 @@ from pytcp.protocols.tcp.tcp__session import (
     TcpSession,
     TcpSessionError,
 )
-from pytcp.socket import AddressFamily
-from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -95,76 +93,6 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
     covering segment shape, segmentation, window management, and
     flow-control behaviours.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """
-        Build a 'TcpSocket' / 'TcpSession' pair wired up the way
-        'TcpSocket.connect()' would wire them. Returns the session
-        in CLOSED state ready for the caller to drive CONNECT.
-        """
-
-        self._force_iss(iss)
-
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """
-        Drive the active-open three-way handshake all the way to
-        ESTABLISHED and return the session ready for data transfer.
-
-        After this returns:
-            session.state == FsmState.ESTABLISHED
-            session._snd_seq.nxt == iss + 1
-            session._snd_seq.una == iss + 1
-            session._rcv_seq.nxt == peer_iss + 1
-        """
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-
-        # Initial SYN fires on the first tick.
-        self._advance(ms=1)
-
-        # Peer's SYN+ACK carries our ISS+1 as ack and its own ISN as seq.
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-
-        # Sanity: handshake completed.
-        assert (
-            session.state is FsmState.ESTABLISHED
-        ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        assert (
-            session._snd_seq.nxt == iss + 1
-        ), f"Handshake setup failed: '_snd_nxt' is {session._snd_seq.nxt:#x}, expected {iss + 1:#x}."
-        assert (
-            session._rcv_seq.nxt == peer_iss + 1
-        ), f"Handshake setup failed: '_rcv_nxt' is {session._rcv_seq.nxt:#x}, expected {peer_iss + 1:#x}."
-
-        return session
 
     def test__data_transfer_send__single_segment_fits_in_mss_emits_psh_ack(self) -> None:
         """
@@ -954,45 +882,6 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
     tests pin the doubling cadence and the 60-second cap.
     """
 
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
-
-    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
-        """Drive the active-open handshake to ESTABLISHED."""
-
-        session = self._make_active_session(iss=iss)
-        session.tcp_fsm(syscall=SysCall.CONNECT)
-        self._advance(ms=1)
-        peer_syn_ack = build_tcp4(
-            sport=PEER__PORT,
-            dport=STACK__PORT,
-            seq=peer_iss,
-            ack=iss + 1,
-            flags=("SYN", "ACK"),
-            win=PEER__WIN,
-            mss=PEER__MSS,
-        )
-        self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
-        return session
-
     def _drive_into_persist_with_data_pending(self, *, iss: int, peer_iss: int) -> TcpSession:
         """
         Drive the session into persist state with data pending:
@@ -1234,26 +1123,6 @@ class TestTcpDataTransferRfc6691ReqB(TcpSessionTestCase):
     (data) which exceeds the MTU by exactly options_len bytes
     and fragments at the IP layer.
     """
-
-    def _make_active_session(self, *, iss: int) -> TcpSession:
-        """Build a 'TcpSocket' / 'TcpSession' pair."""
-
-        self._force_iss(iss)
-        sock = TcpSocket(family=AddressFamily.INET4)
-        sock._local_ip_address = STACK__IP
-        sock._local_port = STACK__PORT
-        sock._remote_ip_address = PEER__IP
-        sock._remote_port = PEER__PORT
-        session = TcpSession(
-            local_ip_address=STACK__IP,
-            local_port=STACK__PORT,
-            remote_ip_address=PEER__IP,
-            remote_port=PEER__PORT,
-            socket=sock,
-        )
-        sock._tcp_session = session
-        stack.sockets[sock.socket_id] = sock
-        return session
 
     def _drive_handshake_with_tsopt(self, *, iss: int, peer_iss: int) -> TcpSession:
         """Drive the active-open handshake with bilateral TSopt."""
