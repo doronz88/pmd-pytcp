@@ -85,6 +85,7 @@ from pytcp.protocols.tcp.tcp__rack import (
     tlp_calc_pto,
     tlp_process_ack,
 )
+from pytcp.protocols.tcp.tcp__rack_tlp_state import RackTlpState
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
@@ -426,113 +427,13 @@ class TcpSession:
         # does not yet wire it into RTO / cwnd.
         self._dsack_received: int = 0
 
-        # RFC 8985 §5.2 RACK per-segment xmit_ts dict, keyed by
-        # the segment's starting seq. Populated by
-        # '_transmit_packet' for every outbound segment that
-        # consumes sequence space (data / SYN / FIN); pruned by
-        # '_process_ack_packet' on cum-ACK that covers the
-        # entry's 'end_seq'. Phase 1 of the RACK-TLP project
-        # ships only the storage substrate; subsequent phases
-        # consume it for time-based loss detection (§6.2 step
-        # 5), reorder-window adaptation (§6.2 steps 3-4), and
-        # TLP probe-segment selection (§7.3).
-        self._rack_segments: dict[Seq32, RackSegment] = {}
-
-        # RFC 8985 §5.3 / §6.2 step 1-2 RACK per-connection
-        # scalars. Updated by 'rack_update' on every accepted
-        # ACK whose cumulative-ACK boundary newly covers
-        # segments in '_rack_segments'. Phase 2 of the RACK-TLP
-        # project wires the update; subsequent phases consume:
-        #   - '_rack_min_rtt_ms' as the lower bound for the
-        #     RFC 8985 §6.2 step 2 spurious-retransmit
-        #     heuristic and as a floor for the §6.2 step 4
-        #     reordering-window calculation.
-        #   - '_rack_rtt_ms' as the freshest accepted-sample
-        #     RTT, used in §6.2 step 5's loss-detection
-        #     timeout formula.
-        #   - '_rack_xmit_ts' / '_rack_end_seq' as the latest
-        #     'sent_after' lexicographic-key pair, used to
-        #     test whether each in-flight segment's xmit_ts is
-        #     'before' the most recent successful delivery
-        #     (the §6.2 step 5 'rack_sent_after' branch).
-        # All four are 0 on a fresh session - the
-        # uninitialized sentinel - and remain 0 until the
-        # first newly-acked segment is observed.
-        self._rack_min_rtt_ms: int = 0
-        self._rack_rtt_ms: int = 0
-        self._rack_xmit_ts: int = 0
-        self._rack_end_seq: Seq32 = 0
-        # RFC 8985 §6.2 step 1-2 'newly acknowledged' guard.
-        # rack_update only takes RTT samples from segments that
-        # have not been folded yet on a prior ACK; an entry is
-        # added to '_rack_acked_seqs' once it has contributed
-        # to the rack_update scalars and removed when the
-        # entry is pruned from '_rack_segments' on cum-ACK.
-        # Distinct from cumulative-ACK pruning so SACK-acked
-        # segments (covered by the SACK scoreboard but not yet
-        # by SND.UNA) are tracked here even while their dict
-        # entry stays alive.
-        self._rack_acked_seqs: set[Seq32] = set()
-        # RFC 8985 §6.2 step 3 reordering detection state.
-        # 'reordering_seen' becomes True the first time an ACK
-        # delivers a segment whose 'end_seq' is strictly below
-        # 'fack' (the highest end_seq cumulatively or
-        # selectively acked so far) - that out-of-order
-        # delivery is the signal that the network has
-        # reordered. Once seen, it stays True for the lifetime
-        # of the connection: the §6.2 step 4 reo_wnd
-        # computation switches from 0 (use dup-ACK trigger)
-        # to 'min_RTT / 4 * reo_wnd_mult' (use time-based
-        # trigger with reordering tolerance).
-        self._rack_reordering_seen: bool = False
-        self._rack_fack: Seq32 = 0
-        # RFC 8985 §6.2 step 4 reo_wnd_mult / persist counter.
-        # The multiplier scales the 'min_RTT / 4' base when
-        # DSACK indicates spurious retransmits (the peer
-        # received a segment we thought was lost). The
-        # persist counter decrements on each recovery exit
-        # and resets the multiplier to 1 after 16 consecutive
-        # recoveries without DSACK, so the connection
-        # eventually decays back to the canonical reordering
-        # tolerance.
-        self._rack_reo_wnd_mult: int = 1
-        self._rack_reo_wnd_persist: int = 16
-        # RFC 8985 §6.2 step 4 DSACK-round marker. Holds the
-        # SND.MAX value at the moment a DSACK was observed; the
-        # next ACK that advances SND.UNA past this marker
-        # closes the round and increments 'reo_wnd_mult'.
-        # 'None' means no DSACK round is in progress.
-        self._rack_dsack_round: Seq32 | None = None
-        # RFC 8985 §7 Tail Loss Probe state. The TLP timer
-        # 'f"{self}-tlp"' is armed on every outbound data
-        # segment send when no recovery is in progress, and
-        # cancelled on cum-ACK that drains all in-flight
-        # bytes. When the timer fires, the §7.3 probe-emission
-        # path sends a probe (new data preferred, retransmit
-        # of highest-seq fallback) to elicit an ACK that lets
-        # RACK detect tail-of-flow losses much faster than
-        # the RTO timer.
-        #
-        # '_tlp_is_retrans' marks whether the most recent
-        # probe was a retransmit (rather than new data); the
-        # §7.4 loss-detection path uses this to decide
-        # whether to invoke the CC response.
-        # '_tlp_end_seq' is the SND.MAX value at the moment
-        # the probe was sent; cleared by the §7.4 detection
-        # logic once the probe outcome is determined.
-        # '_tlp_max_ack_delay_ms' is the receiver's delayed-
-        # ACK upper bound, used by the §7.2 PTO inflation
-        # path. Linux defaults to 25 ms.
-        self._tlp_is_retrans: bool = False
-        self._tlp_end_seq: Seq32 | None = None
-        self._tlp_max_ack_delay_ms: int = 25
-        # Gate the _tlp_pto_tick firing on actual arming. Set
-        # True when '_transmit_packet' registers an
-        # 'f"{self}-tlp"' timer; reset False once the probe
-        # fires or the timer is cancelled. Distinct from
-        # 'stack.timer.is_expired' which conflates "expired"
-        # with "never registered".
-        self._tlp_armed: bool = False
+        # RFC 8985 RACK + TLP per-session state (per-segment
+        # scoreboard, RACK scalars, fold-tracker set, reorder-
+        # window state, DSACK round marker, TLP arming state).
+        # Defaults are RFC-anchored on the dataclass — see
+        # 'tcp__rack_tlp_state.py' for the full per-field
+        # rationale.
+        self._rack_tlp: RackTlpState = RackTlpState()
 
         # RFC 6298 §2 RTO estimator state plus the single-pending-
         # sample tracker that drives '_rto_state' updates per
@@ -1700,10 +1601,10 @@ class TcpSession:
         # only ships the storage; Phase 2 onward consumes it.
         if data or flag_syn or flag_fin:
             seg_end_seq = add32(seq, len(data), flag_syn, flag_fin)
-            self._rack_segments[seq] = RackSegment(
+            self._rack_tlp.rack_segments[seq] = RackSegment(
                 end_seq=seg_end_seq,
                 xmit_ts=stack.timer.now_ms,
-                retransmitted=seq in self._rack_segments,
+                retransmitted=seq in self._rack_tlp.rack_segments,
                 lost=False,
             )
         # Mark RCV.UNA = RCV.NXT: the segment we just emitted
@@ -1844,13 +1745,13 @@ class TcpSession:
                 srtt_ms=self._rto_state.srtt_ms,
                 flight_size=flight_size,
                 smss=self._snd_mss,
-                max_ack_delay_ms=self._tlp_max_ack_delay_ms,
+                max_ack_delay_ms=self._rack_tlp.tlp_max_ack_delay_ms,
                 rto_expiration_ms=rto_expiration_ms,
                 now_ms=stack.timer.now_ms,
             )
             if pto_ms > 0:
                 stack.timer.register_timer(name=f"{self}-tlp", timeout=pto_ms)
-                self._tlp_armed = True
+                self._rack_tlp.tlp_armed = True
 
     def _build_sack_blocks(self) -> list[tuple[int, int]]:
         """
@@ -2492,10 +2393,10 @@ class TcpSession:
             # same round boundary doesn't multiply the
             # multiplier away.
             if self._cc.recovery_point == 0 and (
-                self._rack_dsack_round is None or not lt32(self._snd_una, self._rack_dsack_round)
+                self._rack_tlp.rack_dsack_round is None or not lt32(self._snd_una, self._rack_tlp.rack_dsack_round)
             ):
-                self._rack_reo_wnd_mult += 1
-                self._rack_dsack_round = self._snd_max
+                self._rack_tlp.rack_reo_wnd_mult += 1
+                self._rack_tlp.rack_dsack_round = self._snd_max
             blocks = blocks[1:]
 
         # RFC 6937 §3.1 SACK delta tracking: when in recovery,
@@ -2919,14 +2820,14 @@ class TcpSession:
         # RFC 8985 §5.2.
         from pytcp.protocols.tcp.tcp__rack import INFINITE_TS
 
-        self._rack_segments = {
+        self._rack_tlp.rack_segments = {
             seq: RackSegment(
                 end_seq=seg.end_seq,
                 xmit_ts=INFINITE_TS,
                 retransmitted=seg.retransmitted,
                 lost=True,
             )
-            for seq, seg in self._rack_segments.items()
+            for seq, seg in self._rack_tlp.rack_segments.items()
         }
 
         # RFC 6298 §5.5 binary backoff and §5.6 re-arm with the
@@ -3318,7 +3219,7 @@ class TcpSession:
         # for any session that never armed a TLP (the timer
         # is absent from the dict), and _tlp_pto_tick would
         # spuriously fire a retransmit on every FSM tick.
-        if not self._tlp_armed:
+        if not self._rack_tlp.tlp_armed:
             return
         if not stack.timer.is_expired(f"{self}-tlp"):
             return
@@ -3331,7 +3232,7 @@ class TcpSession:
         # logic (Phase 8) once the probe outcome is determined,
         # OR by '_process_ack_packet' when a cum-ACK drains all
         # in-flight bytes (no tail left).
-        if self._tlp_end_seq is not None:
+        if self._rack_tlp.tlp_end_seq is not None:
             return
         # RFC 8985 §8 timer arbitration: if RTO recovery is in
         # progress (this tick's _retransmit_packet_timeout
@@ -3355,7 +3256,7 @@ class TcpSession:
             # Force '_transmit_data' to start at SND.MAX (the
             # bytes immediately past the highest-seq sent).
             self._snd_nxt = self._snd_max
-            self._tlp_is_retrans = False
+            self._rack_tlp.tlp_is_retrans = False
         else:
             # Retransmit-style probe: walk SND.NXT back by one
             # MSS (or less if in-flight is shorter) so
@@ -3363,15 +3264,15 @@ class TcpSession:
             flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
             walk_back = min(self._snd_mss, flight_size)
             self._snd_nxt = sub32(self._snd_max, walk_back)
-            self._tlp_is_retrans = True
+            self._rack_tlp.tlp_is_retrans = True
 
         self._transmit_data()
-        self._tlp_end_seq = self._snd_max
+        self._rack_tlp.tlp_end_seq = self._snd_max
         # Probe is in flight; clear armed flag so the next
         # tick's _tlp_pto_tick early-returns. The flag is
         # re-set by '_transmit_packet' when a fresh TLP timer
         # arms, e.g. on a subsequent data send.
-        self._tlp_armed = False
+        self._rack_tlp.tlp_armed = False
 
         # RFC 8985 §7.3: re-arm the RTO timer after probe so
         # the connection retains its timeout fallback.
@@ -3392,17 +3293,17 @@ class TcpSession:
 
         if not stack.timer.is_expired(f"{self}-rack"):
             return
-        if self._rack_xmit_ts == 0:
+        if self._rack_tlp.rack_xmit_ts == 0:
             return
         reo_wnd_ms = rack_compute_reo_wnd(
-            reordering_seen=self._rack_reordering_seen,
-            reo_wnd_mult=self._rack_reo_wnd_mult,
-            min_rtt_ms=self._rack_min_rtt_ms,
+            reordering_seen=self._rack_tlp.rack_reordering_seen,
+            reo_wnd_mult=self._rack_tlp.rack_reo_wnd_mult,
+            min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
         )
-        self._rack_segments, rack_timeout_ms = rack_detect_loss(
-            segments=self._rack_segments,
-            rack_xmit_ts=self._rack_xmit_ts,
-            rack_end_seq=self._rack_end_seq,
+        self._rack_tlp.rack_segments, rack_timeout_ms = rack_detect_loss(
+            segments=self._rack_tlp.rack_segments,
+            rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
+            rack_end_seq=self._rack_tlp.rack_end_seq,
             reo_wnd_ms=reo_wnd_ms,
             now_ms=stack.timer.now_ms,
         )
@@ -3434,14 +3335,14 @@ class TcpSession:
         """
 
         newly_acked: list[RackSegment] = []
-        for seq, seg in self._rack_segments.items():
-            if seq in self._rack_acked_seqs:
+        for seq, seg in self._rack_tlp.rack_segments.items():
+            if seq in self._rack_tlp.rack_acked_seqs:
                 continue
             cum_acked = le32(seg.end_seq, self._snd_una)
             sack_acked = self._send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
             if cum_acked or sack_acked:
                 newly_acked.append(seg)
-                self._rack_acked_seqs.add(seq)
+                self._rack_tlp.rack_acked_seqs.add(seq)
         if newly_acked:
             # RFC 8985 §6.2 step 3 reordering detection. For
             # each newly-acked segment, compare its 'end_seq'
@@ -3455,39 +3356,39 @@ class TcpSession:
             # trigger (reo_wnd=0) to the time-based trigger
             # (reo_wnd = min_RTT / 4 * reo_wnd_mult).
             for seg in newly_acked:
-                if self._rack_fack != 0 and lt32(seg.end_seq, self._rack_fack):
-                    self._rack_reordering_seen = True
-                if gt32(seg.end_seq, self._rack_fack):
-                    self._rack_fack = seg.end_seq
+                if self._rack_tlp.rack_fack != 0 and lt32(seg.end_seq, self._rack_tlp.rack_fack):
+                    self._rack_tlp.rack_reordering_seen = True
+                if gt32(seg.end_seq, self._rack_tlp.rack_fack):
+                    self._rack_tlp.rack_fack = seg.end_seq
             (
-                self._rack_min_rtt_ms,
-                self._rack_rtt_ms,
-                self._rack_xmit_ts,
-                self._rack_end_seq,
+                self._rack_tlp.rack_min_rtt_ms,
+                self._rack_tlp.rack_rtt_ms,
+                self._rack_tlp.rack_xmit_ts,
+                self._rack_tlp.rack_end_seq,
             ) = rack_update(
                 newly_acked_segments=newly_acked,
                 now_ms=stack.timer.now_ms,
                 ts_recent_echo_ms=(packet_rx_md.tcp__tsecr if packet_rx_md.tcp__tsecr else None),
-                prior_min_rtt_ms=self._rack_min_rtt_ms,
-                prior_rack_rtt_ms=self._rack_rtt_ms,
-                prior_rack_xmit_ts=self._rack_xmit_ts,
-                prior_rack_end_seq=self._rack_end_seq,
+                prior_min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
+                prior_rack_rtt_ms=self._rack_tlp.rack_rtt_ms,
+                prior_rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
+                prior_rack_end_seq=self._rack_tlp.rack_end_seq,
             )
 
-        if self._rack_xmit_ts > 0:
+        if self._rack_tlp.rack_xmit_ts > 0:
             # RFC 8985 §6.2 step 4 dynamic reo_wnd via
             # rack_compute_reo_wnd. Phase 3 used 0; Phase 4
             # adapts based on observed reordering and DSACK
             # rounds.
             reo_wnd_ms = rack_compute_reo_wnd(
-                reordering_seen=self._rack_reordering_seen,
-                reo_wnd_mult=self._rack_reo_wnd_mult,
-                min_rtt_ms=self._rack_min_rtt_ms,
+                reordering_seen=self._rack_tlp.rack_reordering_seen,
+                reo_wnd_mult=self._rack_tlp.rack_reo_wnd_mult,
+                min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
             )
-            self._rack_segments, rack_timeout_ms = rack_detect_loss(
-                segments=self._rack_segments,
-                rack_xmit_ts=self._rack_xmit_ts,
-                rack_end_seq=self._rack_end_seq,
+            self._rack_tlp.rack_segments, rack_timeout_ms = rack_detect_loss(
+                segments=self._rack_tlp.rack_segments,
+                rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
+                rack_end_seq=self._rack_tlp.rack_end_seq,
                 reo_wnd_ms=reo_wnd_ms,
                 now_ms=stack.timer.now_ms,
             )
@@ -3744,13 +3645,13 @@ class TcpSession:
         # determined; preserved otherwise) and a flag
         # indicating whether to halve cwnd / ssthresh.
         new_tlp_end_seq, invoke_cc = tlp_process_ack(
-            tlp_end_seq=self._tlp_end_seq,
-            tlp_is_retrans=self._tlp_is_retrans,
+            tlp_end_seq=self._rack_tlp.tlp_end_seq,
+            tlp_is_retrans=self._rack_tlp.tlp_is_retrans,
             ack_seq=packet_rx_md.tcp__ack,
             has_dsack_for_probe=(self._dsack_received > 0),
             has_sack_blocks=bool(self._sack_scoreboard.blocks()),
         )
-        self._tlp_end_seq = new_tlp_end_seq
+        self._rack_tlp.tlp_end_seq = new_tlp_end_seq
         if invoke_cc:
             # RFC 8985 §7.4.2: probe repaired a single
             # tail loss; the network signalled a real
@@ -3777,9 +3678,9 @@ class TcpSession:
             # Also clear the once-per-tail state so the
             # next tail can fire its own probe.
             stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
-            self._tlp_end_seq = None
-            self._tlp_is_retrans = False
-            self._tlp_armed = False
+            self._rack_tlp.tlp_end_seq = None
+            self._rack_tlp.tlp_is_retrans = False
+            self._rack_tlp.tlp_armed = False
         else:
             stack.timer.register_timer(
                 name=f"{self}-retransmit",
@@ -3985,9 +3886,9 @@ class TcpSession:
         # parallel '_rack_acked_seqs' set is pruned alongside so
         # a future segment that lands at the same seq (post-
         # wrap) is not falsely treated as already-acked.
-        for entry_seq in [s for s, e in self._rack_segments.items() if le32(e.end_seq, self._snd_una)]:
-            del self._rack_segments[entry_seq]
-            self._rack_acked_seqs.discard(entry_seq)
+        for entry_seq in [s for s, e in self._rack_tlp.rack_segments.items() if le32(e.end_seq, self._snd_una)]:
+            del self._rack_tlp.rack_segments[entry_seq]
+            self._rack_tlp.rack_acked_seqs.discard(entry_seq)
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
@@ -4023,10 +3924,10 @@ class TcpSession:
             # eventually decays back to the canonical
             # reordering tolerance after a long stretch of
             # recoveries without DSACK.
-            self._rack_reo_wnd_persist -= 1
-            if self._rack_reo_wnd_persist == 0:
-                self._rack_reo_wnd_mult = 1
-                self._rack_reo_wnd_persist = 16
+            self._rack_tlp.rack_reo_wnd_persist -= 1
+            if self._rack_tlp.rack_reo_wnd_persist == 0:
+                self._rack_tlp.rack_reo_wnd_mult = 1
+                self._rack_tlp.rack_reo_wnd_persist = 16
 
     def _phase5_consume_segment_and_postprocess(self, packet_rx_md: TcpMetadata) -> None:
         """

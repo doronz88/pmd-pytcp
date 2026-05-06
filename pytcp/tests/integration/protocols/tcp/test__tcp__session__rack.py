@@ -162,7 +162,7 @@ class TestTcpRackPhase1(TcpSessionTestCase):
     def test__rack__outbound_data_segment_records_rack_segment(self) -> None:
         """
         Ensure that an outbound data segment in ESTABLISHED
-        records a 'RackSegment' in 'session._rack_segments'
+        records a 'RackSegment' in 'session._rack_tlp.rack_segments'
         keyed by the segment's starting seq, with 'end_seq'
         equal to seq + payload length and 'xmit_ts' equal to
         the virtual clock at the moment the segment fired.
@@ -181,15 +181,15 @@ class TestTcpRackPhase1(TcpSessionTestCase):
 
         self.assertIn(
             send_seq,
-            session._rack_segments,
+            session._rack_tlp.rack_segments,
             msg=(
                 "An outbound data segment MUST record a 'RackSegment' "
                 "entry keyed by the segment's starting seq. Got dict keys: "
-                f"{sorted(session._rack_segments)!r}."
+                f"{sorted(session._rack_tlp.rack_segments)!r}."
             ),
         )
 
-        seg = session._rack_segments[send_seq]
+        seg = session._rack_tlp.rack_segments[send_seq]
         self.assertIsInstance(
             seg,
             RackSegment,
@@ -244,20 +244,20 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         # full MSS segments on three consecutive ticks (one
         # segment per ms tick is the FSM cadence post-handshake
         # with the wide '_snd_ewn'). Distinct seqs keep
-        # 'session._rack_segments' populated with three entries.
+        # 'session._rack_tlp.rack_segments' populated with three entries.
         total_payload_len = 3 * PEER__MSS
         session.send(data=b"x" * total_payload_len)
         self._advance(ms=3)
 
         # Setup invariant: three segments in the dict.
         self.assertEqual(
-            len(session._rack_segments),
+            len(session._rack_tlp.rack_segments),
             3,
             msg=(
                 "Setup invariant: three outbound data segments must "
                 "produce three 'RackSegment' entries. Got "
-                f"{len(session._rack_segments)} entries: "
-                f"{sorted(session._rack_segments)!r}."
+                f"{len(session._rack_tlp.rack_segments)} entries: "
+                f"{sorted(session._rack_tlp.rack_segments)!r}."
             ),
         )
 
@@ -273,12 +273,12 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._rack_segments,
+            session._rack_tlp.rack_segments,
             {},
             msg=(
                 "A cum-ACK that covers all in-flight segments MUST "
                 "prune their entries from '_rack_segments'. Got "
-                f"surviving entries: {sorted(session._rack_segments)!r}."
+                f"surviving entries: {sorted(session._rack_tlp.rack_segments)!r}."
             ),
         )
 
@@ -379,29 +379,29 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         observed_rtt_ms = self._timer.now_ms - send_tick_now_ms
 
         self.assertEqual(
-            session._rack_xmit_ts,
+            session._rack_tlp.rack_xmit_ts,
             send_tick_now_ms,
             msg=(
                 "'_rack_xmit_ts' MUST advance to the acked "
                 f"segment's xmit_ts. Expected {send_tick_now_ms}, "
-                f"got {session._rack_xmit_ts}."
+                f"got {session._rack_tlp.rack_xmit_ts}."
             ),
         )
         self.assertEqual(
-            session._rack_end_seq,
+            session._rack_tlp.rack_end_seq,
             send_seq + len(payload),
             msg=(
                 "'_rack_end_seq' MUST equal the acked segment's "
                 f"end_seq. Expected {send_seq + len(payload)}, "
-                f"got {session._rack_end_seq}."
+                f"got {session._rack_tlp.rack_end_seq}."
             ),
         )
         self.assertEqual(
-            session._rack_rtt_ms,
+            session._rack_tlp.rack_rtt_ms,
             observed_rtt_ms,
             msg=(
                 "'_rack_rtt_ms' MUST equal the observed RTT. "
-                f"Expected {observed_rtt_ms}, got {session._rack_rtt_ms}."
+                f"Expected {observed_rtt_ms}, got {session._rack_tlp.rack_rtt_ms}."
             ),
         )
 
@@ -434,8 +434,8 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         )
         self._drive_rx(frame=first_ack)
 
-        prior_min_rtt = session._rack_min_rtt_ms
-        prior_rack_rtt = session._rack_rtt_ms
+        prior_min_rtt = session._rack_tlp.rack_min_rtt_ms
+        prior_rack_rtt = session._rack_tlp.rack_rtt_ms
         self.assertGreater(
             prior_min_rtt,
             0,
@@ -454,7 +454,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         # only tests the update logic.
         rt_seq = session._snd_nxt
         rt_xmit_ts = self._timer.now_ms - (prior_min_rtt // 2)  # rtt = prior_min_rtt//2 < prior_min_rtt
-        session._rack_segments[rt_seq] = RackSegment(
+        session._rack_tlp.rack_segments[rt_seq] = RackSegment(
             end_seq=rt_seq + 5,
             xmit_ts=rt_xmit_ts,
             retransmitted=True,
@@ -477,7 +477,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         # The retransmit's rtt was below min_rtt, so RACK
         # scalars must be unchanged.
         self.assertEqual(
-            session._rack_min_rtt_ms,
+            session._rack_tlp.rack_min_rtt_ms,
             prior_min_rtt,
             msg=(
                 "RFC 8985 §6.2 step 2 condition 2: a retransmit "
@@ -486,7 +486,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rack_rtt_ms,
+            session._rack_tlp.rack_rtt_ms,
             prior_rack_rtt,
             msg=("RFC 8985 §6.2 step 2 condition 2: a skipped " "retransmit MUST NOT update '_rack_rtt_ms'."),
         )
@@ -516,7 +516,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=first_ack)
-        first_min_rtt = session._rack_min_rtt_ms
+        first_min_rtt = session._rack_tlp.rack_min_rtt_ms
 
         # Second send + faster ACK -> lower RTT.
         second_payload = b"fast!"
@@ -534,12 +534,12 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         self._drive_rx(frame=second_ack)
 
         self.assertLess(
-            session._rack_min_rtt_ms,
+            session._rack_tlp.rack_min_rtt_ms,
             first_min_rtt,
             msg=(
                 "'_rack_min_rtt_ms' MUST drop when a smaller RTT "
                 f"is observed. Was {first_min_rtt}, expected "
-                f"smaller; got {session._rack_min_rtt_ms}."
+                f"smaller; got {session._rack_tlp.rack_min_rtt_ms}."
             ),
         )
 
@@ -636,9 +636,9 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         session.send(data=b"x" * (2 * PEER__MSS))
         self._advance(ms=2)
         self.assertEqual(
-            len(session._rack_segments),
+            len(session._rack_tlp.rack_segments),
             2,
-            msg=f"Setup invariant: two segments in flight. Got: {sorted(session._rack_segments)}.",
+            msg=f"Setup invariant: two segments in flight. Got: {sorted(session._rack_tlp.rack_segments)}.",
         )
 
         first_seg_seq = LOCAL__ISS + 1
@@ -658,7 +658,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_ack)
 
-        first_seg = session._rack_segments.get(first_seg_seq)
+        first_seg = session._rack_tlp.rack_segments.get(first_seg_seq)
         self.assertIsNotNone(
             first_seg,
             msg="Setup invariant: first segment must remain in dict (not cum-ACKed).",
@@ -738,9 +738,9 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         session.send(data=b"x" * (3 * PEER__MSS))
         self._advance(ms=3)
         self.assertEqual(
-            len(session._rack_segments),
+            len(session._rack_tlp.rack_segments),
             3,
-            msg=f"Setup invariant: three segments in flight. Got: {sorted(session._rack_segments)}.",
+            msg=f"Setup invariant: three segments in flight. Got: {sorted(session._rack_tlp.rack_segments)}.",
         )
 
         seg2_seq = LOCAL__ISS + 1 + PEER__MSS
@@ -760,15 +760,15 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack_1)
 
         self.assertGreaterEqual(
-            session._rack_fack,
+            session._rack_tlp.rack_fack,
             seg3_end,
             msg=(
                 "After SACK delivery of seg3, '_rack_fack' MUST advance "
-                f"to at least {seg3_end}. Got {session._rack_fack}."
+                f"to at least {seg3_end}. Got {session._rack_tlp.rack_fack}."
             ),
         )
         self.assertFalse(
-            session._rack_reordering_seen,
+            session._rack_tlp.rack_reordering_seen,
             msg="Reordering not yet observed (only one segment delivered).",
         )
 
@@ -785,7 +785,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack_2)
 
         self.assertTrue(
-            session._rack_reordering_seen,
+            session._rack_tlp.rack_reordering_seen,
             msg=(
                 "When a segment whose end_seq is strictly below "
                 "'_rack_fack' is delivered, '_rack_reordering_seen' "
@@ -803,7 +803,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        prior_mult = session._rack_reo_wnd_mult
+        prior_mult = session._rack_tlp.rack_reo_wnd_mult
 
         # Send a segment + simulate a DSACK observation by
         # incrementing the existing '_dsack_received' counter
@@ -835,12 +835,12 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertGreater(
-            session._rack_reo_wnd_mult,
+            session._rack_tlp.rack_reo_wnd_mult,
             prior_mult,
             msg=(
                 "Inbound DSACK MUST increment '_rack_reo_wnd_mult' so "
                 "subsequent loss detection tolerates more reordering. "
-                f"Was {prior_mult}, got {session._rack_reo_wnd_mult}."
+                f"Was {prior_mult}, got {session._rack_tlp.rack_reo_wnd_mult}."
             ),
         )
 
@@ -859,8 +859,8 @@ class TestTcpRackPhase4(TcpSessionTestCase):
 
         # Inject a non-default state: reo_wnd_mult=4 (from prior
         # DSACK rounds), persist=1 (one recovery away from reset).
-        session._rack_reo_wnd_mult = 4
-        session._rack_reo_wnd_persist = 1
+        session._rack_tlp.rack_reo_wnd_mult = 4
+        session._rack_tlp.rack_reo_wnd_persist = 1
         # Fake an in-progress recovery so the exit path fires.
         session._cc.recovery_point = LOCAL__ISS + 1 + 5
 
@@ -879,7 +879,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._rack_reo_wnd_mult,
+            session._rack_tlp.rack_reo_wnd_mult,
             1,
             msg=(
                 "Recovery exit with persist=1 MUST decay persist to 0 "
@@ -887,7 +887,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._rack_reo_wnd_persist,
+            session._rack_tlp.rack_reo_wnd_persist,
             16,
             msg="reo_wnd_persist MUST reset to 16 after the decay fires.",
         )
@@ -970,11 +970,11 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         # the small observed RTT). seg2's xmit_ts seeds the
         # 'sent_after' lexicographic key; the large min_rtt is
         # held externally so reo_wnd stays > 10 ms.
-        session._rack_reordering_seen = True
-        session._rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
-        session._rack_acked_seqs.add(seg2_seq)
-        session._rack_xmit_ts = session._rack_segments[seg2_seq].xmit_ts
-        session._rack_end_seq = seg2_end
+        session._rack_tlp.rack_reordering_seen = True
+        session._rack_tlp.rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
+        session._rack_tlp.rack_acked_seqs.add(seg2_seq)
+        session._rack_tlp.rack_xmit_ts = session._rack_tlp.rack_segments[seg2_seq].xmit_ts
+        session._rack_tlp.rack_end_seq = seg2_end
 
         # 10 ms before SACK -> seg1 is 10 ms old, well within reo_wnd=250.
         self._advance(ms=10)
@@ -992,7 +992,7 @@ class TestTcpRackPhase5(TcpSessionTestCase):
 
         # seg1 must remain in flight (not marked lost) and the
         # reorder timer must be armed.
-        seg1 = session._rack_segments.get(seg1_seq)
+        seg1 = session._rack_tlp.rack_segments.get(seg1_seq)
         self.assertIsNotNone(seg1, msg="Setup invariant: seg1 must remain in dict.")
         assert seg1 is not None
         self.assertFalse(
@@ -1028,11 +1028,11 @@ class TestTcpRackPhase5(TcpSessionTestCase):
 
         # Pre-seed RACK state as in the prior test so a timer
         # arms rather than firing inline.
-        session._rack_reordering_seen = True
-        session._rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
-        session._rack_acked_seqs.add(seg2_seq)
-        session._rack_xmit_ts = session._rack_segments[seg2_seq].xmit_ts
-        session._rack_end_seq = seg2_end
+        session._rack_tlp.rack_reordering_seen = True
+        session._rack_tlp.rack_min_rtt_ms = 1000  # reo_wnd = 250 ms.
+        session._rack_tlp.rack_acked_seqs.add(seg2_seq)
+        session._rack_tlp.rack_xmit_ts = session._rack_tlp.rack_segments[seg2_seq].xmit_ts
+        session._rack_tlp.rack_end_seq = seg2_end
 
         self._advance(ms=10)
 
@@ -1059,7 +1059,7 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         # FSM tick fires past expiry.
         self._advance(ms=300)
 
-        first_seg = session._rack_segments.get(seg1_seq)
+        first_seg = session._rack_tlp.rack_segments.get(seg1_seq)
         self.assertIsNotNone(first_seg, msg="Setup invariant: seg1 still in dict pre-mark.")
         assert first_seg is not None
         self.assertTrue(
@@ -1307,20 +1307,20 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
             ),
         )
         self.assertTrue(
-            session._tlp_is_retrans,
+            session._rack_tlp.tlp_is_retrans,
             msg=(
                 "When no new data is available, the TLP probe MUST be "
                 "marked as a retransmit ('_tlp_is_retrans = True'). "
-                f"Got {session._tlp_is_retrans}."
+                f"Got {session._rack_tlp.tlp_is_retrans}."
             ),
         )
         self.assertEqual(
-            session._tlp_end_seq,
+            session._rack_tlp.tlp_end_seq,
             snd_max_pre_probe,
             msg=(
                 "After a retransmit-style probe, '_tlp_end_seq' MUST "
                 "equal the SND.MAX at the moment of probe emission. "
-                f"Expected {snd_max_pre_probe}, got {session._tlp_end_seq}."
+                f"Expected {snd_max_pre_probe}, got {session._rack_tlp.tlp_end_seq}."
             ),
         )
 
@@ -1355,15 +1355,15 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         session._tlp_pto_tick()
 
         self.assertIsNotNone(
-            session._tlp_end_seq,
+            session._rack_tlp.tlp_end_seq,
             msg="TLP probe MUST set '_tlp_end_seq' on emission.",
         )
         self.assertFalse(
-            session._tlp_is_retrans,
+            session._rack_tlp.tlp_is_retrans,
             msg=(
                 "When new data is available, the TLP probe MUST send "
                 "new bytes ('_tlp_is_retrans = False'). Got "
-                f"{session._tlp_is_retrans}."
+                f"{session._rack_tlp.tlp_is_retrans}."
             ),
         )
         self.assertGreater(
@@ -1395,7 +1395,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
 
         # TLP probe emission must set '_tlp_end_seq' AND re-arm RTO.
         self.assertIsNotNone(
-            session._tlp_end_seq,
+            session._rack_tlp.tlp_end_seq,
             msg="TLP probe MUST set '_tlp_end_seq' on emission.",
         )
         self.assertIn(
@@ -1464,8 +1464,8 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         session = self._drive_handshake_with_sack(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         # Inject a TLP-outstanding state.
-        session._tlp_end_seq = LOCAL__ISS + 100
-        session._tlp_is_retrans = False
+        session._rack_tlp.tlp_end_seq = LOCAL__ISS + 100
+        session._rack_tlp.tlp_is_retrans = False
         prior_ssthresh = session._cc.ssthresh
 
         # Simulate a sub-segment that the cum-ACK covers.
@@ -1482,7 +1482,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertIsNone(
-            session._tlp_end_seq,
+            session._rack_tlp.tlp_end_seq,
             msg="cum-ACK covering probe MUST clear '_tlp_end_seq'.",
         )
         # CC response: ssthresh halved means new-data probe
@@ -1512,8 +1512,8 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
 
         # Inject a TLP-outstanding retransmit state at a
         # midpoint so the cum-ACK can advance past it.
-        session._tlp_end_seq = LOCAL__ISS + 1 + 100
-        session._tlp_is_retrans = True
+        session._rack_tlp.tlp_end_seq = LOCAL__ISS + 1 + 100
+        session._rack_tlp.tlp_is_retrans = True
         prior_ssthresh = session._cc.ssthresh
 
         peer_ack = build_tcp4(
@@ -1527,7 +1527,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertIsNone(
-            session._tlp_end_seq,
+            session._rack_tlp.tlp_end_seq,
             msg="Probe-repair Case 3 MUST clear '_tlp_end_seq'.",
         )
         self.assertLess(
@@ -1600,7 +1600,7 @@ class TestTcpRackPhase9(TcpSessionTestCase):
         session.send(data=b"x" * (3 * PEER__MSS))
         self._advance(ms=3)
         self.assertEqual(
-            len(session._rack_segments),
+            len(session._rack_tlp.rack_segments),
             3,
             msg="Setup invariant: three segments tracked.",
         )
@@ -1614,10 +1614,10 @@ class TestTcpRackPhase9(TcpSessionTestCase):
 
         # All in-flight segments should now be marked lost.
         self.assertTrue(
-            session._rack_segments,
+            session._rack_tlp.rack_segments,
             msg="Setup invariant: dict still tracks segments after RTO.",
         )
-        for seq, seg in session._rack_segments.items():
+        for seq, seg in session._rack_tlp.rack_segments.items():
             self.assertTrue(
                 seg.lost,
                 msg=(
