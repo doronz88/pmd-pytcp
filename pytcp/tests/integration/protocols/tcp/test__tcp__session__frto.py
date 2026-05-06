@@ -439,3 +439,249 @@ class TestTcpSession__Frto(TcpSessionTestCase):
                 f"expected {cubic_w_max_after_rto}."
             ),
         )
+
+
+class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
+    """
+    RFC 5682 §2.1 step 2 / step 3 / already-in-RTO gate.
+    Pins behaviours that go beyond PyTCP's prior one-step
+    simplification (which only declared spurious when the
+    FIRST post-RTO ACK covered all pre-RTO data):
+
+    - Step 2 → step 3 path: a partial first cum-ACK (advances
+      window but does NOT cover 'recover') sets the F-RTO
+      step to 2 waiting for the second ACK.
+    - Step 3 spurious declaration: if the second ACK advances
+      the window further (acknowledges data that was NOT
+      retransmitted post-RTO), declare spurious and restore
+      pre-RTO state.
+    - Already-in-RTO gate (step 1's "if already in F-RTO and
+      recover >= SND.UNA, skip step 2"): a second RTO firing
+      while the first F-RTO is still pending must not
+      overwrite the original snapshot in a way that loses
+      pre-RTO state.
+    """
+
+    def _make_active_session(self, *, iss: int) -> TcpSession:
+        """Build a 'TcpSocket' / 'TcpSession' pair."""
+
+        self._force_iss(iss)
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock._local_ip_address = STACK__IP
+        sock._local_port = STACK__PORT
+        sock._remote_ip_address = PEER__IP
+        sock._remote_port = PEER__PORT
+        session = TcpSession(
+            local_ip_address=STACK__IP,
+            local_port=STACK__PORT,
+            remote_ip_address=PEER__IP,
+            remote_port=PEER__PORT,
+            socket=sock,
+        )
+        sock._tcp_session = session
+        stack.sockets[sock.socket_id] = sock
+        return session
+
+    def _drive_handshake_to_established(self, *, iss: int, peer_iss: int) -> TcpSession:
+        """Drive the active-open handshake."""
+
+        session = self._make_active_session(iss=iss)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss,
+            ack=iss + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        session._snd_ewn = PEER__WIN
+        return session
+
+    def test__frto__step2_step3__partial_then_advancing_ack_declares_spurious(self) -> None:
+        """
+        Ensure that when the first post-RTO ACK partially
+        advances the window (but does NOT cover the pre-RTO
+        SND.MAX), F-RTO enters step 2 (waiting for second
+        ACK) rather than clearing state. When the second ACK
+        further advances the window, RFC 5682 §2.1 step 3b
+        declares the timeout spurious and pre-RTO cwnd /
+        ssthresh are restored.
+
+        Reference: RFC 5682 §2.1 step 2 (partial-ACK -> wait for second ACK).
+        Reference: RFC 5682 §2.1 step 3b (second-ACK-advances declares spurious).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        payload = b"A" * PEER__MSS + b"B" * PEER__MSS + b"C" * PEER__MSS
+        session.send(data=payload)
+        self._advance(ms=10)
+
+        cwnd_before_rto = session._cwnd
+        ssthresh_before_rto = session._ssthresh
+        snd_max_at_rto = session._snd_max
+        peer_iss_after_handshake = PEER__ISS + 1
+
+        # Force RTO.
+        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        assert session._cwnd != cwnd_before_rto, "Setup precondition: cwnd must collapse on RTO."
+
+        # First post-RTO ACK: partial — covers ONE segment past
+        # SND.UNA, well below pre-RTO SND.MAX. RFC §2.1 step 2b:
+        # this advances window but doesn't cover recover, so we
+        # transmit up to two new segments and enter step 3.
+        partial_ack_value = LOCAL__ISS + 1 + PEER__MSS  # one segment past SYN
+        partial_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss_after_handshake,
+            ack=partial_ack_value,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=partial_ack)
+
+        # F-RTO must NOT be cleared yet — we're in step 2
+        # waiting for the second ACK.
+        self.assertNotEqual(
+            session._frto_step,
+            0,
+            msg=(
+                "RFC 5682 §2.1 step 2: partial first post-RTO "
+                "ACK MUST leave F-RTO in step 2 (waiting for "
+                f"second ACK). Got _frto_step={session._frto_step}."
+            ),
+        )
+        self.assertNotEqual(
+            session._cwnd,
+            cwnd_before_rto,
+            msg=(
+                "Setup invariant: pre-RTO cwnd MUST NOT be "
+                "restored on partial first ACK (step 2 defers "
+                f"restoration). Got cwnd={session._cwnd}."
+            ),
+        )
+
+        # Second post-RTO ACK: advances further to cover
+        # snd_max_at_rto. Per §2.1 step 3b, this declares
+        # spurious and restores pre-RTO state.
+        advancing_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=peer_iss_after_handshake,
+            ack=snd_max_at_rto,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=advancing_ack)
+
+        self.assertEqual(
+            session._cwnd,
+            cwnd_before_rto,
+            msg=(
+                "RFC 5682 §2.1 step 3b: second post-RTO ACK "
+                "advancing past pre-RTO SND.MAX MUST declare "
+                "spurious and restore cwnd to pre-RTO value. "
+                f"Got cwnd={session._cwnd}, expected "
+                f"{cwnd_before_rto}."
+            ),
+        )
+        self.assertEqual(
+            session._ssthresh,
+            ssthresh_before_rto,
+            msg=(
+                "RFC 5682 §2.1 step 3b: second-ACK spurious "
+                f"detection MUST restore ssthresh. Got "
+                f"{session._ssthresh}, expected {ssthresh_before_rto}."
+            ),
+        )
+        self.assertEqual(
+            session._frto_step,
+            0,
+            msg=(
+                "F-RTO MUST clear after spurious declaration. "
+                f"Got _frto_step={session._frto_step}."
+            ),
+        )
+
+    def test__frto__already_in_rto_gate__second_rto_skips_step2(self) -> None:
+        """
+        Ensure that when an RTO fires while F-RTO is already
+        active and 'recover' (= the first RTO's snapshotted
+        SND.MAX) is at-or-below SND.UNA — the marker the
+        first F-RTO was waiting on has been surpassed —
+        the second RTO MUST NOT enter step 2 again. Per §2.1
+        step 1's already-in-RTO gate, this prevents the F-RTO
+        algorithm from looping during sustained loss.
+
+        The session-level expectation: the second RTO updates
+        the recover marker to the new SND.MAX but does not
+        re-snapshot pre-RTO cwnd / ssthresh.
+
+        Reference: RFC 5682 §2.1 step 1 (already-in-RTO gate).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        payload = b"A" * PEER__MSS * 3
+        session.send(data=payload)
+        self._advance(ms=10)
+
+        first_pre_rto_cwnd = session._cwnd
+        first_pre_rto_ssthresh = session._ssthresh
+
+        # First RTO: snapshot taken.
+        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        first_pre_snd_max = session._frto_pre_snd_max
+        first_pre_cwnd = session._frto_pre_cwnd
+        first_pre_ssthresh = session._frto_pre_ssthresh
+
+        self.assertEqual(
+            first_pre_cwnd,
+            first_pre_rto_cwnd,
+            msg="Setup precondition: first F-RTO snapshot captures pre-RTO cwnd.",
+        )
+        self.assertNotEqual(
+            session._frto_step,
+            0,
+            msg="Setup precondition: F-RTO step != 0 after first RTO.",
+        )
+
+        # Second RTO without intervening ACK. PyTCP's retransmit
+        # back-off doubles RTO; advance enough to fire it.
+        self._advance(ms=session._rto_state.rto_ms + 100)
+
+        # The already-in-RTO gate condition: recover (=
+        # first_pre_snd_max) >= SND.UNA. SND.UNA hasn't moved
+        # since first RTO (peer never ACKed), so recover ==
+        # SND.UNA + flight, which is >= SND.UNA. Gate fires.
+        # Expected behaviour:
+        #   - _frto_pre_cwnd / _frto_pre_ssthresh stay at the
+        #     ORIGINAL pre-first-RTO values (NOT overwritten
+        #     with the post-first-RTO collapsed values which
+        #     would lose pre-RTO knowledge entirely).
+        self.assertEqual(
+            session._frto_pre_cwnd,
+            first_pre_cwnd,
+            msg=(
+                "RFC 5682 §2.1 step 1 already-in-RTO gate: "
+                "second RTO MUST NOT overwrite the original "
+                "pre-RTO cwnd snapshot. Got "
+                f"_frto_pre_cwnd={session._frto_pre_cwnd}, "
+                f"expected {first_pre_cwnd} (pre-first-RTO)."
+            ),
+        )
+        self.assertEqual(
+            session._frto_pre_ssthresh,
+            first_pre_ssthresh,
+            msg=(
+                "RFC 5682 §2.1 step 1 already-in-RTO gate: "
+                "second RTO MUST NOT overwrite the original "
+                f"pre-RTO ssthresh snapshot. Got "
+                f"_frto_pre_ssthresh={session._frto_pre_ssthresh}, "
+                f"expected {first_pre_ssthresh}."
+            ),
+        )

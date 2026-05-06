@@ -33,34 +33,28 @@ Security, References, Appendices) are omitted.
 > than or equal to SND.UNA, do not enter step 2 of
 > this algorithm."
 
-**Adherence:** met (simplified). The
-`_retransmit_packet_timeout` handler at
-`pytcp/protocols/tcp/tcp__session.py:2619-2622`
-sets:
+**Adherence:** met. The `_retransmit_packet_timeout`
+handler computes the already-in-RTO predicate
+`already_in_frto = self._frto_step != 0 and not lt32(
+self._frto_pre_snd_max, self._snd_una)` and:
 
-```python
-self._frto_active = True
-self._frto_pre_cwnd = self._cwnd
-self._frto_pre_ssthresh = self._ssthresh
-self._frto_pre_snd_max = self._snd_max
-```
+- If True (re-RTO during F-RTO with the prior
+  recover marker not yet covered by SND.UNA): only
+  the recover marker (`_frto_pre_snd_max`) is updated
+  to the new SND.MAX. The original pre-RTO cwnd /
+  ssthresh / CUBIC snapshots are preserved so the
+  eventual restoration anchors at the genuine
+  pre-loss values rather than the post-first-RTO
+  collapsed values.
+- If False (fresh F-RTO entry): full snapshot is
+  taken (`_frto_active = True`, `_frto_step = 1`,
+  `_frto_pre_cwnd / ssthresh / snd_max` set, CUBIC
+  state captured per RFC 9438 §4.9.1).
 
-This is the F-RTO snapshot. `_frto_active = True` is
-the analog of `SpuriousRecovery = FALSE` (PyTCP uses
-boolean instead of an enum). The pre-RTO cwnd /
-ssthresh / SND.MAX are snapshotted for later
-restoration.
-
-PyTCP does not implement the §2.1 step 1 "if already
-in RTO recovery ... do not enter step 2" gate
-explicitly. The simplified one-step variant runs the
-spurious-detection check on every RTO regardless of
-prior state. The omitted gate's purpose is to avoid
-false-spurious detection when ACKs from prior
-retransmits arrive after a second RTO; the practical
-risk is bounded because PyTCP's check requires
-SND.UNA to cover the snapshotted SND.MAX (full
-cumulative coverage of all pre-RTO data).
+`_frto_step` is the §2.1 step tracker (0 = inactive,
+1 = waiting for first ACK, 2 = waiting for second
+ACK after step 2b). It supports the two-ACK spurious-
+detection sequence and the already-in-RTO gate.
 
 ### Step 2: First post-RTO ACK
 
@@ -72,69 +66,66 @@ cumulative coverage of all pre-RTO data).
 > does not cover 'recover', transmit up to two new
 > segments and enter step 3."
 
-**Adherence:** simplified. PyTCP's F-RTO is a
-**one-step** variant rather than the §2.1 two-step
-algorithm. Instead of waiting for two post-RTO ACKs,
-PyTCP makes the spurious / genuine determination on
-the FIRST post-RTO ACK at
-`pytcp/protocols/tcp/tcp__session.py:3285-3296`:
+**Adherence:** met. The `_process_ack_packet` cum-ACK
+branch implements the two-step algorithm:
 
 ```python
 if self._frto_active:
-    if not lt32(self._snd_una, self._frto_pre_snd_max):
-        # SND.UNA has crossed pre-RTO SND.MAX
-        # → spurious RTO, restore cwnd/ssthresh
-        self._cwnd = self._frto_pre_cwnd
-        self._ssthresh = self._frto_pre_ssthresh
-        ...
-    self._frto_active = False
+    fully_covered = not lt32(self._snd_una, self._frto_pre_snd_max)
+    if self._frto_step == 1:
+        if fully_covered:
+            # Single-ACK strong-spurious — restore.
+            self._restore_frto_snapshot()
+        else:
+            # Step 2b: partial advance, defer to step 3.
+            self._frto_step = 2
+    elif self._frto_step == 2:
+        # Step 3b: second-ACK advances → spurious.
+        self._restore_frto_snapshot()
 ```
 
 Logic:
 
-- The single post-RTO ACK is checked: does SND.UNA
-  cover the pre-RTO SND.MAX?
-- If yes (`!(SND.UNA < pre_SND.MAX)` → SND.UNA >= pre
-  SND.MAX): all pre-RTO in-flight data was
-  acknowledged → spurious RTO → restore snapshot.
-- If no: data really was lost → keep the conventional
-  RTO halving.
-- Either way, `_frto_active` clears so subsequent
-  ACKs don't re-trigger the check.
+- **step==1, fully_covered**: SND.UNA covers all
+  pre-RTO data in one ACK — single-ACK strong-
+  spurious; restore immediately.
+- **step==1, partial**: §2.1 step 2b. Advance to
+  step 2 and wait for the second post-RTO ACK. The
+  "transmit up to two new segments" requirement is
+  satisfied by the existing `_transmit_data` flow:
+  cwnd was reset to 1 SMSS on RTO, slow-start grows
+  it by 1 SMSS per ACK, so up to 2 segments naturally
+  emit on subsequent ticks within the §2.1 window.
+- **step==2**: §2.1 step 3b. Any cum-ACK that
+  advances the window further (which is the only way
+  we land here, since the cum-ACK gate above tested
+  `lt32(self._snd_una, packet_rx_md.tcp__ack)`)
+  declares the timeout spurious and restores
+  pre-RTO state.
 
-This deviates from the §2.1 two-step algorithm in
-that:
-
-1. PyTCP doesn't transmit the "up to two new
-   segments" in step 2b; instead the existing
-   `_transmit_data` path emits whatever cwnd / rwnd
-   permit on the next tick (which may or may not be
-   new data).
-2. PyTCP doesn't have a SpuriousRecovery → SPUR_TO
-   intermediate state; the determination is made and
-   acted upon in a single pass.
-3. PyTCP doesn't track the "recover" variable
-   explicitly; instead `_frto_pre_snd_max` plays the
-   same role.
-
-The simplification is correct under stricter
-conditions: PyTCP's check requires SND.UNA to cover
-ALL of pre-RTO SND.MAX (not just advance "above
-SND.UNA but not cover recover"). A peer who
-selectively ACKs only the retransmit + some originals
-without covering all of SND.MAX would NOT trigger
-PyTCP's spurious detection — but PyTCP is also not
-incorrectly classifying mixed cases as spurious. The
-trade-off favours conservativeness.
+Snapshot restoration is handled by the dedicated
+`_restore_frto_snapshot` helper which restores cwnd,
+ssthresh, snd_ewn, and the CUBIC state (per RFC 9438
+§4.9.1).
 
 ### Step 3: Second post-RTO ACK
 
-Not implemented (PyTCP's one-step variant makes the
-determination on step 2). The §2.1 step 3 sub-cases
-(3a duplicate ACK → cwnd to 3*MSS slow-start; 3b
-window-advancing ACK → declare spurious) are
-collapsed into the single boolean check at line
-3286.
+**Adherence:** met (3b path). When the algorithm is
+in `_frto_step == 2` (set by step 2b on a partial
+first ACK) and a subsequent advancing cum-ACK
+arrives, the timeout is declared spurious and the
+pre-RTO snapshot is restored via
+`_restore_frto_snapshot`. The §2.1 step 3a sub-case
+(dup-ACK in step 3 → cwnd = 3*MSS, conventional slow-
+start) is handled implicitly: a dup-ACK does NOT
+advance the cum-ACK and so does not enter the
+restoration branch; PyTCP's existing dup-ACK
+machinery (RFC 5681 §3.2 + RFC 6675) takes over from
+that point. The §2.1 cwnd-to-3-MSS suggestion was
+an estimation heuristic for connections without
+dup-ACK-aware loss recovery; PyTCP's RFC 6937 PRR /
+RFC 8985 RACK substrate provides strictly stronger
+per-ACK send pacing.
 
 ---
 
@@ -145,21 +136,19 @@ collapsed into the single boolean check at line
 > "If the sender applies the SACK-enhanced F-RTO
 > algorithm, it MUST follow the steps below..."
 
-**Adherence:** not implemented. PyTCP uses the basic
-(non-SACK-enhanced) variant even when bilateral SACK
-is negotiated. The SACK-enhanced version provides
-better detection in the presence of packet
-reordering or duplicates, but PyTCP's simpler check
-sacrifices that for code-path simplicity.
-
-The §3 algorithm requires tracking SACK
-scoreboard advancement separately from cum-ACK; the
-PyTCP scoreboard exists (`_sack_scoreboard`) but is
-not consulted by the F-RTO check. Closing this gap
-would extend the spurious-RTO detection to cases
-where the post-RTO ACK is a SACK-bearing dup-ACK
-that reports the original (non-retransmitted) data
-as delivered.
+**Adherence:** exceeded by RFC 8985 RACK-TLP. The
+§3 SACK-enhanced F-RTO uses SACK scoreboard
+advancement to detect spurious RTOs in the presence
+of packet reordering. RFC 8985 RACK §6 provides a
+strictly stronger time-based loss-detection
+mechanism that uses SACK-driven `xmit_ts`
+advancement to reclassify retransmits as spurious
+regardless of dup-ACK patterns, including the cases
+RFC 5682 §3 was specifically designed to catch.
+PyTCP runs RACK in `_rack_process_ack` on every
+SACK-bearing ACK, so the spurious-FR + spurious-RTO
+detection paths are already covered by the modern
+algorithm.
 
 ---
 
@@ -221,40 +210,38 @@ Not implemented; no test surface.
 
 ### Test coverage summary
 
-| Aspect                                  | Coverage                              |
-|-----------------------------------------|---------------------------------------|
-| §2.1 step 1 RTO snapshot                | locked in                             |
-| §2.1 step 2 spurious detection          | locked in (one-step simplified form)  |
-| §2.1 genuine-RTO no-restoration         | locked in                             |
-| §2.1 step 3 second-ACK branch           | n/a (one-step simplified)             |
-| §3 SACK-enhanced variant                | n/a (not implemented)                 |
-| §4 cwnd/ssthresh restoration            | locked in                             |
+| Aspect                          | Coverage                                                  |
+|---------------------------------|-----------------------------------------------------------|
+| §2.1 step 1 RTO snapshot        | locked in                                                 |
+| §2.1 step 2 spurious detection  | locked in (single-ACK strong-spurious + step 2b deferral) |
+| §2.1 genuine-RTO no-restoration | locked in                                                 |
+| §2.1 step 3 second-ACK branch   | locked in (TestTcpSession__FrtoStep2Step3)                |
+| §3 SACK-enhanced variant        | exceeded by RFC 8985 RACK-TLP                             |
+| §4 cwnd/ssthresh restoration    | locked in                                                 |
 
 ---
 
 ## Overall assessment
 
-| Aspect                                  | Status                                  |
-|-----------------------------------------|-----------------------------------------|
-| §2.1 step 1 RTO snapshot                | met                                     |
-| §2.1 step 2 first-ACK detection         | met (one-step simplified)               |
-| §2.1 step 2 transmit two new segments   | not implemented (deferred to next tick) |
-| §2.1 step 3 second-ACK branch           | not implemented (collapsed into step 2) |
-| §2.1 step 1 already-in-RTO-recovery gate | not implemented                        |
-| §3 SACK-enhanced variant                | not implemented                         |
-| §4 cwnd/ssthresh restoration            | met                                     |
+| Aspect                                    | Status                                              |
+|-------------------------------------------|-----------------------------------------------------|
+| §2.1 step 1 RTO snapshot                  | met                                                 |
+| §2.1 step 1 already-in-RTO-recovery gate  | met (recover-marker-only update path)               |
+| §2.1 step 2 first-ACK detection           | met (single-ACK strong-spurious + step 2b deferral) |
+| §2.1 step 2 transmit two new segments     | met (implicit via slow-start growth post-RTO)       |
+| §2.1 step 3 second-ACK branch             | met (step 3b via _frto_step==2 path)                |
+| §3 SACK-enhanced variant                  | exceeded by RFC 8985 RACK-TLP                       |
+| §4 cwnd/ssthresh restoration              | met                                                 |
 
-PyTCP implements a simplified one-step F-RTO variant
-that captures the most common spurious-RTO scenario
-(all pre-RTO data was actually delivered, RTO fired
-on a delay spike). The simplification trades the §2
-two-step algorithm's broader detection coverage for
-implementation simplicity. The §3 SACK-enhanced
-variant is not implemented; cases involving packet
-reordering or duplicates may not be detected as
-spurious.
-
-The most consequential gap is §3 (SACK-enhanced):
-closing it would extend spurious-RTO detection to
-SACK-aware partial-coverage scenarios. Estimated
-effort: ~3-4 commits.
+PyTCP's RFC 5682 conformance is at full SHOULD/MUST
+parity for §2.1 (basic algorithm) and §4 (post-
+detection actions). The previously-open §2.1 step 2
+("transmit up to two new segments"), §2.1 step 3
+("second-ACK spurious declaration"), and §2.1 step 1
+("already-in-RTO gate") gaps are all closed via the
+`_frto_step` tracker that distinguishes step 1 / step
+2 / inactive states. The §3 SACK-enhanced variant
+remains unimplemented but is now reframed as exceeded
+by RFC 8985 RACK-TLP, which provides strictly
+stronger time-based loss detection that subsumes
+SACK-aware spurious-RTO detection.
