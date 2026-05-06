@@ -44,6 +44,7 @@ from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
+from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
@@ -237,53 +238,13 @@ class TcpSession:
         # non-zero baseline before it can fire).
         self._ts_recent_updated_at_ms: int = 0
 
-        # RFC 1122 §4.2.3.6 keep-alive opt-in flag. Defaults False
-        # per the RFC's MUST: "If keep-alive are included, the
-        # application MUST be able to turn them on or off for
-        # each TCP connection, and they MUST default to off."
-        # Set via 'TcpSocket.setsockopt(SOL_SOCKET, SO_KEEPALIVE,
-        # 1)'; the socket layer propagates the flag onto this
-        # field at TcpSession construction time (see
-        # 'TcpSocket.connect()' / 'TcpSocket.listen()' and the
-        # listener-fork pivot in 'tcp__fsm__listen.py'). The
-        # session-internal keep-alive machinery
-        # ('_keepalive_arm_idle' / '_keepalive_tick') is gated
-        # on this flag throughout.
-        self._keepalive_enabled: bool = False
-
-        # Counter of consecutive unanswered keep-alive probes per
-        # RFC 1122 §4.2.3.6. Reset to 0 by '_keepalive_arm_idle'
-        # on any peer-acknowledged activity; incremented by
-        # '_keepalive_tick' on each probe emission. When the
-        # counter reaches 'tcp__constants.KEEPALIVE_PROBE_MAX_COUNT'
-        # the connection is declared dead (state -> CLOSED with
-        # ConnError.TIMEOUT).
-        self._keepalive_probes_unacked: int = 0
-
-        # Linux-style per-connection keep-alive overrides for the
-        # idle / probe-interval / max-count parameters. 'None'
-        # means "use the global 'tcp__constants.KEEPALIVE_*'
-        # default at runtime"; an int value (passed in via
-        # 'TcpSocket.setsockopt(IPPROTO_TCP, TCP_KEEP*, ...)' and
-        # propagated by 'TcpSocket.connect()' / 'TcpSocket.listen()')
-        # overrides for this connection only. Units match the
-        # constants: ms for the two timer values, count for the
-        # max probes.
-        self._keepalive_idle_override: int | None = None
-        self._keepalive_interval_override: int | None = None
-        self._keepalive_max_count_override: int | None = None
-
-        # Whether the keep-alive timer is currently armed. We need
-        # this in addition to 'stack.timer._timers'-membership
-        # because production 'Timer.is_expired' returns True both
-        # when a timer has not been registered yet AND when its
-        # countdown has reached zero - 'is_expired' alone cannot
-        # distinguish "never armed" from "fired and pending
-        # service". Without this flag, a session that opts in to
-        # keep-alive after handshake completion would have
-        # '_keepalive_tick' immediately treat the absent timer as
-        # expired and fire a probe burst.
-        self._keepalive_active: bool = False
+        # RFC 9293 §3.8.4 / RFC 1122 §4.2.3.6 keep-alive state
+        # (enabled flag, unanswered-probe counter, three
+        # setsockopt-equivalent override knobs, lazy-arm gate).
+        # See 'state/tcp__state__keepalive.py' for the full
+        # per-field rationale. Defaults to disabled per the
+        # RFC's MUST.
+        self._keepalive: KeepaliveState = KeepaliveState()
 
         # SACK scoreboard tracking peer-SACKed-but-not-yet-
         # cumulatively-acked send-side ranges per RFC 2018 §3 /
@@ -2230,17 +2191,12 @@ class TcpSession:
         fresh idle window starts from zero.
         """
 
-        if not self._keepalive_enabled:
+        if not self._keepalive.enabled:
             return
-        self._keepalive_probes_unacked = 0
-        self._keepalive_active = True
+        self._keepalive.reset_for_idle()
         stack.timer.register_timer(
             name=f"{self}-keepalive",
-            timeout=(
-                self._keepalive_idle_override
-                if self._keepalive_idle_override is not None
-                else tcp__constants.KEEPALIVE_IDLE_TIME
-            ),
+            timeout=self._keepalive.idle_timeout(default=tcp__constants.KEEPALIVE_IDLE_TIME),
         )
 
     def _keepalive_tick(self) -> None:
@@ -2269,22 +2225,18 @@ class TcpSession:
         return so the next tick begins the regular idle countdown.
         """
 
-        if not self._keepalive_enabled:
+        if not self._keepalive.enabled:
             return
-        if not self._keepalive_active:
+        if not self._keepalive.active:
             self._keepalive_arm_idle()
             return
         if not stack.timer.is_expired(f"{self}-keepalive"):
             return
-        max_count = (
-            self._keepalive_max_count_override
-            if self._keepalive_max_count_override is not None
-            else tcp__constants.KEEPALIVE_PROBE_MAX_COUNT
-        )
-        if self._keepalive_probes_unacked >= max_count:
+        max_count = self._keepalive.max_probes(default=tcp__constants.KEEPALIVE_PROBE_MAX_COUNT)
+        if self._keepalive.probes_unacked >= max_count:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Keep-alive: {self._keepalive_probes_unacked} probes "
+                f"[{self}] - Keep-alive: {self._keepalive.probes_unacked} probes "
                 "unacked, tearing down connection (RFC 1122 §4.2.3.6)",
             )
             self._connection_error = ConnError.TIMEOUT
@@ -2302,19 +2254,15 @@ class TcpSession:
             tcp__ack=self._rcv_nxt,
             tcp__win=self._rcv_wnd >> self._rcv_wsc,
         )
-        self._keepalive_probes_unacked += 1
+        self._keepalive.probes_unacked += 1
         stack.timer.register_timer(
             name=f"{self}-keepalive",
-            timeout=(
-                self._keepalive_interval_override
-                if self._keepalive_interval_override is not None
-                else tcp__constants.KEEPALIVE_PROBE_INTERVAL
-            ),
+            timeout=self._keepalive.interval_timeout(default=tcp__constants.KEEPALIVE_PROBE_INTERVAL),
         )
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Keep-alive: emitted probe "
-            f"{self._keepalive_probes_unacked}/{max_count} "
+            f"{self._keepalive.probes_unacked}/{max_count} "
             f"at seq={sub32(self._snd_nxt, 1)} ack={self._rcv_nxt}",
         )
 

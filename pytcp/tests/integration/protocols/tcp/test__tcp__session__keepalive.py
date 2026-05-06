@@ -191,7 +191,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         self.assertFalse(
-            session._keepalive_enabled,
+            session._keepalive.enabled,
             msg="RFC 1122 §4.2.3.6: '_keepalive_enabled' MUST default to False.",
         )
 
@@ -223,7 +223,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
 
         # Pre-boundary advance: the idle timer should NOT yet fire.
         pre_boundary_tx = self._advance(ms=TEST__KEEPALIVE_IDLE_TIME_MS - 1)
@@ -264,7 +264,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
 
         snd_nxt_before = session._snd_nxt
         rcv_nxt_before = session._rcv_nxt
@@ -315,7 +315,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
 
         # First probe.
         first_tx = self._advance(ms=TEST__KEEPALIVE_IDLE_TIME_MS + 1)
@@ -373,7 +373,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
 
         # Run the full idle + probe-retransmit window. Total virtual
         # time: KEEPALIVE_IDLE_TIME (initial wait) +
@@ -416,7 +416,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
 
         margin_ms = 30
         # Advance to just before the original idle boundary.
@@ -585,11 +585,11 @@ class TestTcpKeepaliveOverrides(TcpSessionTestCase):
 
         self._patch_keepalive_constants()
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
         # Override: half the patched default, so probe should fire
         # at 50 ms (override) NOT 100 ms (constant).
         override_ms = TEST__KEEPALIVE_IDLE_TIME_MS // 2
-        session._keepalive_idle_override = override_ms
+        session._keepalive.idle_override = override_ms
 
         # Pre-boundary advance: no probe yet.
         pre_boundary_tx = self._advance(ms=override_ms - 1)
@@ -675,12 +675,12 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
         listen_socket._tcp_session = listen_session
         # Mirror what TcpSocket.listen() does post-construction:
         # propagate SO_KEEPALIVE before driving the FSM into LISTEN.
-        listen_session._keepalive_enabled = listen_socket._so_keepalive
+        listen_session._keepalive.enabled = listen_socket._so_keepalive
         stack.sockets[listen_socket.socket_id] = listen_socket
         listen_session.tcp_fsm(syscall=SysCall.LISTEN)
 
         self.assertIs(
-            listen_session._keepalive_enabled,
+            listen_session._keepalive.enabled,
             True,
             msg=(
                 "Setup precondition: the listening session must have "
@@ -719,7 +719,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
         fresh_listen_session = listen_socket._tcp_session
 
         self.assertIs(
-            child_session._keepalive_enabled,
+            child_session._keepalive.enabled,
             True,
             msg=(
                 "Listener-fork must preserve '_keepalive_enabled' on the "
@@ -736,7 +736,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
             ),
         )
         self.assertIs(
-            fresh_listen_session._keepalive_enabled,
+            fresh_listen_session._keepalive.enabled,
             True,
             msg=(
                 "The fresh listening session created during the fork must "
@@ -882,7 +882,7 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
         # Fire a keep-alive probe directly. '_keepalive_tick'
         # synthesizes the wire-shape probe (ACK at SND.NXT - 1)
         # without touching '_recovery_point' or cwnd.
-        session._keepalive_enabled = True
+        session._keepalive.enabled = True
         session._keepalive_tick()
 
         self.assertEqual(

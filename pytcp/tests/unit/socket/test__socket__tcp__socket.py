@@ -861,7 +861,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             s.connect(("10.0.0.5", 80))
 
         self.assertIs(
-            self._session_cls.return_value._keepalive_enabled,
+            self._session_cls.return_value._keepalive.enabled,
             True,
             msg=(
                 "connect() must propagate '_so_keepalive' to the new TcpSession's "
@@ -888,7 +888,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             s.connect(("10.0.0.5", 80))
 
         self.assertIs(
-            self._session_cls.return_value._keepalive_enabled,
+            self._session_cls.return_value._keepalive.enabled,
             False,
             msg=(
                 "connect() without setsockopt(SO_KEEPALIVE, 1) must explicitly "
@@ -913,7 +913,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         s.listen()
 
         self.assertIs(
-            self._session_cls.return_value._keepalive_enabled,
+            self._session_cls.return_value._keepalive.enabled,
             True,
             msg=(
                 "listen() must propagate '_so_keepalive' to the new listening "
@@ -1001,17 +1001,17 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             s.connect(("10.0.0.5", 80))
 
         self.assertEqual(
-            self._session_cls.return_value._keepalive_idle_override,
+            self._session_cls.return_value._keepalive.idle_override,
             600,
             msg="connect() must propagate TCP_KEEPIDLE override to session.",
         )
         self.assertEqual(
-            self._session_cls.return_value._keepalive_interval_override,
+            self._session_cls.return_value._keepalive.interval_override,
             75,
             msg="connect() must propagate TCP_KEEPINTVL override to session.",
         )
         self.assertEqual(
-            self._session_cls.return_value._keepalive_max_count_override,
+            self._session_cls.return_value._keepalive.max_count_override,
             5,
             msg="connect() must propagate TCP_KEEPCNT override to session.",
         )

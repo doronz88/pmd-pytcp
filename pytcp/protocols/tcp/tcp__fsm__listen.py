@@ -135,11 +135,11 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             tcp_session.listen()
             # Inherit SO_KEEPALIVE on the fresh listening session
             # so each subsequent accept fork carries the flag too.
-            tcp_session._keepalive_enabled = listen_socket._so_keepalive
+            tcp_session._keepalive.enabled = listen_socket._so_keepalive
             # Inherit per-connection keep-alive overrides too.
-            tcp_session._keepalive_idle_override = listen_socket._tcp_keepidle
-            tcp_session._keepalive_interval_override = listen_socket._tcp_keepintvl
-            tcp_session._keepalive_max_count_override = listen_socket._tcp_keepcnt
+            tcp_session._keepalive.idle_override = listen_socket._tcp_keepidle
+            tcp_session._keepalive.interval_override = listen_socket._tcp_keepintvl
+            tcp_session._keepalive.max_count_override = listen_socket._tcp_keepcnt
             # RFC 9438 §1: inherit the CC algorithm selector
             # from the listening socket.
             tcp_session._cc.cc_mode = listen_socket._cc_mode

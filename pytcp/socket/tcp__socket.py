@@ -509,13 +509,13 @@ class TcpSocket(socket):
         # machinery is gated on '_keepalive_enabled'; without
         # this hook, 'setsockopt(SO_KEEPALIVE, 1)' would have no
         # effect.
-        self._tcp_session._keepalive_enabled = self._so_keepalive
+        self._tcp_session._keepalive.enabled = self._so_keepalive
         # Linux-style per-connection keep-alive overrides: copy
         # over so the session reads the override (or falls back
         # to the global constant) when arming probes.
-        self._tcp_session._keepalive_idle_override = self._tcp_keepidle
-        self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
-        self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
+        self._tcp_session._keepalive.idle_override = self._tcp_keepidle
+        self._tcp_session._keepalive.interval_override = self._tcp_keepintvl
+        self._tcp_session._keepalive.max_count_override = self._tcp_keepcnt
 
         # RFC 9438 §1: propagate the CC algorithm selector to
         # the freshly-constructed TcpSession. Default is
@@ -588,13 +588,13 @@ class TcpSocket(socket):
         # through the listener-fork pivot in
         # 'pytcp/protocols/tcp/tcp__fsm__listen.py' (which
         # mutates this session in-place into the child).
-        self._tcp_session._keepalive_enabled = self._so_keepalive
+        self._tcp_session._keepalive.enabled = self._so_keepalive
         # Per-connection keep-alive overrides also propagate to
         # the listening session so each listener-fork child
         # inherits them from the same source.
-        self._tcp_session._keepalive_idle_override = self._tcp_keepidle
-        self._tcp_session._keepalive_interval_override = self._tcp_keepintvl
-        self._tcp_session._keepalive_max_count_override = self._tcp_keepcnt
+        self._tcp_session._keepalive.idle_override = self._tcp_keepidle
+        self._tcp_session._keepalive.interval_override = self._tcp_keepintvl
+        self._tcp_session._keepalive.max_count_override = self._tcp_keepcnt
 
         # RFC 9438 §1: propagate the CC algorithm selector so
         # accepted children inherit through the listener-fork
