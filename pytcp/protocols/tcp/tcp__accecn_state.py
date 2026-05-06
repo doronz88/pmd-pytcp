@@ -161,3 +161,159 @@ class AccEcnState:
     # for a congestion event and triggers RFC 5681 §3.1
     # cwnd-halving.
     s_ce_b: int = ACCECN__INITIAL_CE_BYTE_COUNTER
+
+    def record_received_codepoint(self, ip_ecn: int, payload_len: int) -> None:
+        """
+        Accumulate the receiver-side r.* counters from one inbound
+        segment's IP-ECN codepoint. Increments r.cep by 1 and
+        r.ce_b by the payload length on CE; otherwise increments
+        the per-codepoint byte counter (r.ect0_b for ECT(0),
+        r.ect1_b for ECT(1)). Counters wrap modulo 2^24 per the
+        AccECN option width.
+
+        Reference: RFC 9768 §3.2.2 (r.cep increment on CE).
+        Reference: RFC 9768 §3.2.3 (per-codepoint byte counters).
+        """
+
+        if ip_ecn == 3:
+            self.r_cep = (self.r_cep + 1) & ACCECN__COUNTER_MASK
+            self.r_ce_b = (self.r_ce_b + payload_len) & ACCECN__COUNTER_MASK
+        elif ip_ecn == 2:
+            self.r_ect0_b = (self.r_ect0_b + payload_len) & ACCECN__COUNTER_MASK
+        elif ip_ecn == 1:
+            self.r_ect1_b = (self.r_ect1_b + payload_len) & ACCECN__COUNTER_MASK
+
+    def update_sender_counters_from_option(
+        self,
+        accecn0_counters: tuple[int | None, int | None, int | None],
+    ) -> None:
+        """
+        Apply the inbound AccECN option's byte counters to the
+        sender-side mirrors (s.ect0_b, s.ce_b, s.ect1_b). Each
+        slot is updated only when the inbound option included
+        the counter (per the §3.2.3 abbreviation rule, an omitted
+        slot is None).
+
+        Reference: RFC 9768 §3.2.1 (sender mirror state).
+        Reference: RFC 9768 §3.2.3 (abbreviation rule slot omission).
+        """
+
+        if accecn0_counters[0] is not None:
+            self.s_ect0_b = accecn0_counters[0]
+        if accecn0_counters[1] is not None:
+            self.s_ce_b = accecn0_counters[1]
+        if accecn0_counters[2] is not None:
+            self.s_ect1_b = accecn0_counters[2]
+
+    def next_ace_field(self) -> int:
+        """
+        Return the 3-bit ACE field value to encode into AE+CWR+ECE
+        on the next outbound non-SYN segment. Consumes
+        handshake_ack_pending if set (the §3.2.2.1 Table-3 form on
+        the active-open client's third-leg ACK); otherwise returns
+        'r_cep & 0b111' (the §3.2.2.1 regular form).
+
+        Reference: RFC 9768 §3.2.2.1 (ACE encoding regular + handshake forms).
+        """
+
+        if self.handshake_ack_pending is not None:
+            ace = self.handshake_ack_pending
+            self.handshake_ack_pending = None
+            return ace
+        return self.r_cep & 0b111
+
+    def next_emit_counters(
+        self,
+    ) -> tuple[
+        tuple[int | None, int | None, int | None] | None,
+        tuple[int | None, int | None, int | None] | None,
+    ]:
+        """
+        Compute the (accecn0_counters, accecn1_counters) tuple to
+        attach to the next outbound non-SYN segment, then advance
+        the last-emit trackers. Caller is responsible for the
+        wire-eligibility gate (non-SYN, non-RST, AccECN-enabled);
+        this method always emits a counter tuple.
+
+        Order choice between AccECN0 (Kind 172, ECT(0) first)
+        and AccECN1 (Kind 174, ECT(1) first) per §3.2.3 'whichever
+        order is more efficient': pick AccECN1 when r.ECT(1)
+        advanced since the last emission and r.ECT(0) did not
+        (the L4S-style workload pattern — putting the changed
+        counter first minimises bytes under the abbreviation
+        rule). Otherwise pick AccECN0.
+
+        Length choice per §3.2.3 / §3.2.3.3 abbreviation rule:
+        include any counter that changed since the last emission;
+        once included, the ordering rule forces all preceding
+        (less-trailing) counters in the natural wire order to
+        also be included. Lengths 11/8/5/2 correspond to including
+        3/2/1/0 counters respectively.
+
+        Returns exactly one populated tuple and one None — never
+        both populated, never both None.
+
+        Reference: RFC 9768 §3.2.3 (option emission + ordering).
+        Reference: RFC 9768 §3.2.3.3 (abbreviation rule / wire lengths).
+        """
+
+        e0b_changed = self.r_ect0_b != self.r_last_emit_e0b
+        ceb_changed = self.r_ce_b != self.r_last_emit_ceb
+        e1b_changed = self.r_ect1_b != self.r_last_emit_e1b
+        accecn0_counters: tuple[int | None, int | None, int | None] | None = None
+        accecn1_counters: tuple[int | None, int | None, int | None] | None = None
+        if e1b_changed and not e0b_changed:
+            # AccECN1 (wire order: e1b, ceb, e0b).
+            if e0b_changed:
+                # Length 11: all three on wire.
+                accecn1_counters = (self.r_ect0_b, self.r_ce_b, self.r_ect1_b)
+            elif ceb_changed:
+                # Length 8: drop trailing e0b.
+                accecn1_counters = (None, self.r_ce_b, self.r_ect1_b)
+            else:
+                # Length 5: only e1b on wire (the gating outer
+                # condition guarantees e1b_changed=True).
+                accecn1_counters = (None, None, self.r_ect1_b)
+        else:
+            # AccECN0 (wire order: e0b, ceb, e1b).
+            if e1b_changed:
+                # Length 11: all three on wire.
+                accecn0_counters = (self.r_ect0_b, self.r_ce_b, self.r_ect1_b)
+            elif ceb_changed:
+                # Length 8: drop trailing e1b.
+                accecn0_counters = (self.r_ect0_b, self.r_ce_b, None)
+            elif e0b_changed:
+                # Length 5: only e0b on wire.
+                accecn0_counters = (self.r_ect0_b, None, None)
+            else:
+                # Length 2: empty option (no counters changed
+                # since last emission).
+                accecn0_counters = (None, None, None)
+        self.r_last_emit_e0b = self.r_ect0_b
+        self.r_last_emit_ceb = self.r_ce_b
+        self.r_last_emit_e1b = self.r_ect1_b
+        return accecn0_counters, accecn1_counters
+
+    def apparent_ce_delta(self, incoming_ace: int) -> int:
+        """
+        Compute the §3.2.2.5 ACE-based fallback CE-delta for an
+        inbound non-SYN ACK that arrived without an AccECN option
+        (e.g. a middlebox stripped it). Returns the apparent
+        increment in r.cep since the last seen ACE, then advances
+        s.cep by that delta so subsequent ACKs reporting the same
+        ACE are idempotent. Caller decides whether a positive
+        delta drives the CC-side congestion response.
+
+        The §3.2.2.5.2 safest-likely-case wrap correction is
+        omitted — for typical Internet workloads the AccECN
+        option is rarely stripped, so the apparent delta is
+        almost always the true delta; the simpler 3-bit-modular
+        subtraction captures the common case without the
+        over-aggressive wrap-correction risk.
+
+        Reference: RFC 9768 §3.2.2.5 (ACE-based fallback).
+        """
+
+        apparent_delta = (incoming_ace - (self.s_cep & 0b111)) & 0b111
+        self.s_cep = (self.s_cep + apparent_delta) & ACCECN__COUNTER_MASK
+        return apparent_delta

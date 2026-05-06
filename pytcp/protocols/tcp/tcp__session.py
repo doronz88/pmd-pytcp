@@ -1527,11 +1527,7 @@ class TcpSession:
         # post-handshake segments fall back to the regular
         # encoding.
         elif self._accecn.enabled and not flag_rst:
-            if self._accecn.handshake_ack_pending is not None:
-                ace = self._accecn.handshake_ack_pending
-                self._accecn.handshake_ack_pending = None
-            else:
-                ace = self._accecn.r_cep & 0b111
+            ace = self._accecn.next_ace_field()
             flag_ns = bool(ace & 0b100)
             flag_cwr = bool(ace & 0b010)
             flag_ece = bool(ace & 0b001)
@@ -1609,68 +1605,7 @@ class TcpSession:
 
         if not self._accecn.enabled or flag_rst or (flag_syn and not flag_ack):
             return None, None
-        e0b_changed = self._accecn.r_ect0_b != self._accecn.r_last_emit_e0b
-        ceb_changed = self._accecn.r_ce_b != self._accecn.r_last_emit_ceb
-        e1b_changed = self._accecn.r_ect1_b != self._accecn.r_last_emit_e1b
-        accecn0_counters: tuple[int | None, int | None, int | None] | None = None
-        accecn1_counters: tuple[int | None, int | None, int | None] | None = None
-        if e1b_changed and not e0b_changed:
-            # AccECN1 (wire order: e1b, ceb, e0b).
-            if e0b_changed:
-                # Length 11: all three on wire.
-                accecn1_counters = (
-                    self._accecn.r_ect0_b,
-                    self._accecn.r_ce_b,
-                    self._accecn.r_ect1_b,
-                )
-            elif ceb_changed:
-                # Length 8: drop trailing e0b.
-                accecn1_counters = (
-                    None,
-                    self._accecn.r_ce_b,
-                    self._accecn.r_ect1_b,
-                )
-            else:
-                # Length 5: only e1b on wire (the
-                # gating outer condition guarantees
-                # e1b_changed=True).
-                accecn1_counters = (
-                    None,
-                    None,
-                    self._accecn.r_ect1_b,
-                )
-        else:
-            # AccECN0 (wire order: e0b, ceb, e1b).
-            if e1b_changed:
-                # Length 11: all three on wire.
-                accecn0_counters = (
-                    self._accecn.r_ect0_b,
-                    self._accecn.r_ce_b,
-                    self._accecn.r_ect1_b,
-                )
-            elif ceb_changed:
-                # Length 8: ee0b + eceb on wire, drop
-                # trailing ee1b.
-                accecn0_counters = (
-                    self._accecn.r_ect0_b,
-                    self._accecn.r_ce_b,
-                    None,
-                )
-            elif e0b_changed:
-                # Length 5: only ee0b on wire.
-                accecn0_counters = (
-                    self._accecn.r_ect0_b,
-                    None,
-                    None,
-                )
-            else:
-                # Length 2: empty option (no counters
-                # changed since last emission).
-                accecn0_counters = (None, None, None)
-        self._accecn.r_last_emit_e0b = self._accecn.r_ect0_b
-        self._accecn.r_last_emit_ceb = self._accecn.r_ce_b
-        self._accecn.r_last_emit_e1b = self._accecn.r_ect1_b
-        return accecn0_counters, accecn1_counters
+        return self._accecn.next_emit_counters()
 
     def _phase3_build_fastopen_cookie(self, *, flag_syn: bool, flag_ack: bool) -> bytes | None:
         """
@@ -4271,23 +4206,14 @@ class TcpSession:
                 if packet_rx_md.ip__ecn == 3:
                     self._send_ece = True
             # RFC 9768 §3.2.2 / §3.2.3 receiver-side counter
-            # accumulation. On AccECN-enabled connections,
-            # count inbound segments per IP-ECN codepoint: the
-            # r.cep packet counter increments on CE only (low
-            # 3 bits feed the ACE field); the three byte
-            # counters increment by the TCP-payload length on
-            # every codepoint (the option carries them on
-            # outbound segments). Counters wrap at 2^24 per
-            # the AccECN option width.
+            # accumulation: r.cep packet counter on CE, plus
+            # per-codepoint byte counters from the TCP payload.
+            # All counters wrap modulo 2^24 per the option width.
             if self._accecn.enabled and packet_rx_md is not None:
-                payload_len = len(packet_rx_md.tcp__data)
-                if packet_rx_md.ip__ecn == 3:
-                    self._accecn.r_cep = (self._accecn.r_cep + 1) & 0xFF_FFFF
-                    self._accecn.r_ce_b = (self._accecn.r_ce_b + payload_len) & 0xFF_FFFF
-                elif packet_rx_md.ip__ecn == 2:
-                    self._accecn.r_ect0_b = (self._accecn.r_ect0_b + payload_len) & 0xFF_FFFF
-                elif packet_rx_md.ip__ecn == 1:
-                    self._accecn.r_ect1_b = (self._accecn.r_ect1_b + payload_len) & 0xFF_FFFF
+                self._accecn.record_received_codepoint(
+                    ip_ecn=packet_rx_md.ip__ecn,
+                    payload_len=len(packet_rx_md.tcp__data),
+                )
             # RFC 3168 §6.1.2 sender-side response to inbound
             # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
             # cwnd to ssthresh, and arm '_ecn_send_cwr' so the
@@ -4343,32 +4269,14 @@ class TcpSession:
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                 self._ecn_recovery_point = self._snd_nxt
-            # Always update '_accecn_s_ce_b' to the latest
-            # peer-reported value so subsequent ACKs reporting
-            # the same cumulative count do not fire the
-            # response branch redundantly. Done outside the
-            # 'if' so the tracker advances even when the
-            # recovery-point guard suppresses the response
-            # itself.
-            if (
-                self._accecn.enabled
-                and packet_rx_md is not None
-                and packet_rx_md.tcp__accecn0_counters is not None
-                and packet_rx_md.tcp__accecn0_counters[1] is not None
-            ):
-                self._accecn.s_ce_b = packet_rx_md.tcp__accecn0_counters[1]
-            # RFC 9768 §3.2.1 sender-side ECT(0) / ECT(1) byte
-            # counter trackers. Updated alongside s.ce_b so the
-            # sender's view stays synchronised with the
-            # receiver's r.e0b / r.e1b. Skipped per-slot when
-            # the inbound option's abbreviated form omitted
-            # the counter (None) - per §3.2.3 'unchanged from
-            # prior emission' semantics.
+            # RFC 9768 §3.2.1 sender-side counter mirrors. Update
+            # s.e0b / s.ce_b / s.e1b from the inbound option's
+            # populated slots (per-slot None per the §3.2.3
+            # abbreviation rule). Done outside the cwnd-response
+            # gate above so the trackers advance even when the
+            # recovery-point guard suppresses the response.
             if self._accecn.enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
-                if packet_rx_md.tcp__accecn0_counters[0] is not None:
-                    self._accecn.s_ect0_b = packet_rx_md.tcp__accecn0_counters[0]
-                if packet_rx_md.tcp__accecn0_counters[2] is not None:
-                    self._accecn.s_ect1_b = packet_rx_md.tcp__accecn0_counters[2]
+                self._accecn.update_sender_counters_from_option(packet_rx_md.tcp__accecn0_counters)
             # RFC 9768 §3.2.2.5 ACE-based fallback. When an
             # AccECN-mode inbound ACK arrives WITHOUT the
             # AccECN option (e.g. a middlebox stripped it),
@@ -4399,7 +4307,7 @@ class TcpSession:
                     | (int(packet_rx_md.tcp__flag_cwr) << 1)
                     | int(packet_rx_md.tcp__flag_ece)
                 )
-                apparent_delta = (incoming_ace - (self._accecn.s_cep & 0b111)) & 0b111
+                apparent_delta = self._accecn.apparent_ce_delta(incoming_ace)
                 if apparent_delta > 0 and (
                     self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una)
                 ):
@@ -4408,9 +4316,6 @@ class TcpSession:
                     self._cc.cwnd = self._cc.ssthresh
                     self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                     self._ecn_recovery_point = self._snd_nxt
-                # Always advance s.cep so subsequent ACKs
-                # reporting the same ACE value are idempotent.
-                self._accecn.s_cep = (self._accecn.s_cep + apparent_delta) & 0xFF_FFFF
             # Route to the per-event-kind dispatcher.
             # 'tcp_fsm()' is invoked with exactly one of the
             # three kwargs set; pick the matching dispatcher.
