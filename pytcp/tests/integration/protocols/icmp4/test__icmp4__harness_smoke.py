@@ -35,8 +35,8 @@ pytcp/tests/integration/protocols/icmp4/test__icmp4__harness_smoke.py
 ver 3.0.4
 """
 
-from net_addr import Ip4Address
-from net_proto import Icmp4Type
+from net_addr import Ip4Address, MacAddress
+from net_proto import Icmp4MessageEchoReply, Icmp4Type
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 # Echo data payload pinned by the long-standing canonical Echo
@@ -111,3 +111,127 @@ class TestIcmp4HarnessSmoke(IcmpTestCase):
             ip_src=Ip4Address("10.0.1.7"),
             ip_dst=Ip4Address("10.0.1.91"),
         )
+
+    def test__icmp4__harness__echo_reply_decodes_ip_layer_fields(self) -> None:
+        """
+        Ensure the probe captures the full IPv4 header observable
+        surface (TTL, Identification, DSCP, ECN, fragmentation
+        flags) so migrated tests can pin every field that the
+        legacy byte-equality matrix used to cover.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp4(frames_tx[0])
+
+        self._assert_icmp4_message(
+            probe,
+            ip_ttl=64,
+            ip_id=0,
+            ip_dscp=0,
+            ip_ecn=0,
+            ip_df=False,
+            ip_mf=False,
+            ip_offset=0,
+        )
+
+    def test__icmp4__harness__echo_reply_decodes_ethernet_addresses(self) -> None:
+        """
+        Ensure the probe captures the Ethernet source and destination
+        the stack actually emitted, so migrated tests can pin link-
+        layer addressing without comparing whole frames.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp4(frames_tx[0])
+
+        self._assert_icmp4_message(
+            probe,
+            eth_src=MacAddress("02:00:00:00:00:07"),
+            eth_dst=MacAddress("02:00:00:00:00:91"),
+        )
+
+    def test__icmp4__harness__echo_reply_exposes_parsed_message(self) -> None:
+        """
+        Ensure '_parse_tx_icmp4' attaches the decoded 'Icmp4Message'
+        object so tests can read message-type-specific fields without
+        forcing the probe to enumerate every variant.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp4(frames_tx[0])
+
+        self.assertIsInstance(
+            probe.message,
+            Icmp4MessageEchoReply,
+            msg=f"probe.message must be an Icmp4MessageEchoReply for an Echo path: {probe!r}",
+        )
+
+    def test__icmp4__harness__packet_stats_rx_strict_match(self) -> None:
+        """
+        Ensure '_assert_packet_stats_rx' enforces strict equality by
+        default: every counter not named in the helper call must be
+        zero. This is the regression-net contract migrated tests
+        depend on.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        self._assert_packet_stats_rx(
+            ethernet__pre_parse=1,
+            ethernet__dst_unicast=1,
+            ip4__pre_parse=1,
+            ip4__dst_unicast=1,
+            icmp4__pre_parse=1,
+            icmp4__echo_request__respond_echo_reply=1,
+        )
+
+    def test__icmp4__harness__packet_stats_tx_strict_match(self) -> None:
+        """
+        Ensure '_assert_packet_stats_tx' enforces strict equality by
+        default: every counter not named in the helper call must be
+        zero, mirroring the byte-equality regression net of the
+        legacy parametrized integration tests.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        self._assert_packet_stats_tx(
+            icmp4__pre_assemble=1,
+            icmp4__echo_reply__send=1,
+            ip4__pre_assemble=1,
+            ip4__mtu_ok__send=1,
+            ethernet__pre_assemble=1,
+            ethernet__src_unspec__fill=1,
+            ethernet__dst_unspec__ip4_lookup=1,
+            ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+        )
+
+    def test__icmp4__harness__packet_stats_strict_mode_rejects_extras(self) -> None:
+        """
+        Ensure '_assert_packet_stats_rx' fails when the live state has
+        a counter set that the helper call did not name — so a
+        regression that bumps an unrelated counter cannot slip
+        through silently.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        with self.assertRaises(
+            AssertionError,
+            msg="strict-mode _assert_packet_stats_rx must reject unspecified non-zero counters",
+        ):
+            self._assert_packet_stats_rx(
+                ethernet__pre_parse=1,
+            )

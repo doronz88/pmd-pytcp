@@ -43,19 +43,19 @@ from dataclasses import dataclass
 from typing import Any, cast
 from unittest.mock import _patch, patch
 
-from net_addr import Ip4Address, Ip6Address
+from net_addr import Ip4Address, Ip6Address, MacAddress
 from net_proto import (
+    Icmp4Message,
     Icmp4MessageDestinationUnreachable,
     Icmp4MessageEchoReply,
     Icmp4MessageEchoRequest,
     Icmp4Parser,
+    Icmp6Message,
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
-    Icmp6NdMessageRouterAdvertisement,
-    Icmp6NdMessageRouterSolicitation,
     Icmp6Parser,
 )
 from net_proto.lib.enums import EtherType
@@ -64,6 +64,7 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from pytcp import stack
+from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.tests.lib.fake_timer import FakeTimer
 from pytcp.tests.lib.network_testcase import NetworkTestCase
@@ -84,8 +85,14 @@ class Icmp4Probe:
     the stack under test, used by 'IcmpTestCase' assertions.
     """
 
+    eth_src: MacAddress
+    eth_dst: MacAddress
     ip_src: Ip4Address
     ip_dst: Ip4Address
+    ip_ttl: int
+    ip_id: int
+    ip_dscp: int
+    ip_ecn: int
     # RFC 791 IPv4 flags / fragment offset. 'ip_df' becomes the
     # canonical observable for the upcoming "DF=1 default on outbound
     # IPv4" change (see icmp_demux_pmtud_plan.md Phase 8).
@@ -104,6 +111,11 @@ class Icmp4Probe:
     # Echo data payload OR the embedded "data" field of an error
     # message (original IP header + first 8 octets of L4 per RFC 792).
     icmp_data: bytes
+    # Parsed message object — exposes message-type-specific fields
+    # (e.g. NA flag_r/flag_s/flag_o, RA options, MLD2 records) without
+    # forcing the probe to enumerate every variant. Tests pull
+    # whatever fields they need.
+    message: Icmp4Message
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,9 +125,14 @@ class Icmp6Probe:
     the stack under test, used by 'IcmpTestCase' assertions.
     """
 
+    eth_src: MacAddress
+    eth_dst: MacAddress
     ip_src: Ip6Address
     ip_dst: Ip6Address
     ip_hop: int
+    ip_dscp: int
+    ip_ecn: int
+    ip_flow: int
     icmp_type: int
     icmp_code: int
     icmp_id: int | None
@@ -130,6 +147,11 @@ class Icmp6Probe:
     # message (original IPv6 header + first octets of payload per
     # RFC 4443 §3).
     icmp_data: bytes
+    # Parsed message object — exposes message-type-specific fields
+    # (e.g. NA flag_r/flag_s/flag_o, RA flag_m/flag_o/options/lifetime,
+    # MLD2 records) without forcing the probe to enumerate every
+    # variant. Tests pull whatever fields they need.
+    message: Icmp6Message
 
 
 class IcmpTestCase(NetworkTestCase):
@@ -294,8 +316,14 @@ class IcmpTestCase(NetworkTestCase):
             icmp_data = bytes(message.data)
 
         return Icmp4Probe(
+            eth_src=packet_rx.ethernet.src,
+            eth_dst=packet_rx.ethernet.dst,
             ip_src=packet_rx.ip4.src,
             ip_dst=packet_rx.ip4.dst,
+            ip_ttl=packet_rx.ip4.ttl,
+            ip_id=packet_rx.ip4.id,
+            ip_dscp=packet_rx.ip4.dscp,
+            ip_ecn=packet_rx.ip4.ecn,
             ip_df=packet_rx.ip4.flag_df,
             ip_mf=packet_rx.ip4.flag_mf,
             ip_offset=packet_rx.ip4.offset,
@@ -305,6 +333,7 @@ class IcmpTestCase(NetworkTestCase):
             icmp_seq=icmp_seq,
             icmp_mtu=icmp_mtu,
             icmp_data=icmp_data,
+            message=message,
         )
 
     def _parse_tx_icmp6(self, frame: bytes, /) -> Icmp6Probe:
@@ -345,19 +374,16 @@ class IcmpTestCase(NetworkTestCase):
             ),
         ):
             icmp_target = message.target_address
-        elif isinstance(
-            message,
-            (
-                Icmp6NdMessageRouterSolicitation,
-                Icmp6NdMessageRouterAdvertisement,
-            ),
-        ):
-            pass
 
         return Icmp6Probe(
+            eth_src=packet_rx.ethernet.src,
+            eth_dst=packet_rx.ethernet.dst,
             ip_src=packet_rx.ip6.src,
             ip_dst=packet_rx.ip6.dst,
             ip_hop=packet_rx.ip6.hop,
+            ip_dscp=packet_rx.ip6.dscp,
+            ip_ecn=packet_rx.ip6.ecn,
+            ip_flow=packet_rx.ip6.flow,
             icmp_type=int(message.type),
             icmp_code=int(message.code),
             icmp_id=icmp_id,
@@ -365,6 +391,7 @@ class IcmpTestCase(NetworkTestCase):
             icmp_mtu=icmp_mtu,
             icmp_target=icmp_target,
             icmp_data=icmp_data,
+            message=message,
         )
 
     def _assert_icmp4_message(
@@ -379,7 +406,15 @@ class IcmpTestCase(NetworkTestCase):
         data: object = _UNSET,
         ip_src: object = _UNSET,
         ip_dst: object = _UNSET,
+        ip_ttl: object = _UNSET,
+        ip_id: object = _UNSET,
+        ip_dscp: object = _UNSET,
+        ip_ecn: object = _UNSET,
         ip_df: object = _UNSET,
+        ip_mf: object = _UNSET,
+        ip_offset: object = _UNSET,
+        eth_src: object = _UNSET,
+        eth_dst: object = _UNSET,
     ) -> None:
         """
         Assert that the given 'Icmp4Probe' matches every supplied
@@ -437,11 +472,59 @@ class IcmpTestCase(NetworkTestCase):
                 ip_dst,
                 msg=f"Unexpected IPv4 destination on outbound ICMPv4: {probe!r}",
             )
+        if ip_ttl is not _UNSET:
+            self.assertEqual(
+                probe.ip_ttl,
+                ip_ttl,
+                msg=f"Unexpected IPv4 TTL on outbound ICMPv4: {probe!r}",
+            )
+        if ip_id is not _UNSET:
+            self.assertEqual(
+                probe.ip_id,
+                ip_id,
+                msg=f"Unexpected IPv4 Identification on outbound ICMPv4: {probe!r}",
+            )
+        if ip_dscp is not _UNSET:
+            self.assertEqual(
+                probe.ip_dscp,
+                ip_dscp,
+                msg=f"Unexpected IPv4 DSCP on outbound ICMPv4: {probe!r}",
+            )
+        if ip_ecn is not _UNSET:
+            self.assertEqual(
+                probe.ip_ecn,
+                ip_ecn,
+                msg=f"Unexpected IPv4 ECN on outbound ICMPv4: {probe!r}",
+            )
         if ip_df is not _UNSET:
             self.assertEqual(
                 probe.ip_df,
                 ip_df,
                 msg=f"Unexpected IPv4 DF flag on outbound ICMPv4: {probe!r}",
+            )
+        if ip_mf is not _UNSET:
+            self.assertEqual(
+                probe.ip_mf,
+                ip_mf,
+                msg=f"Unexpected IPv4 MF flag on outbound ICMPv4: {probe!r}",
+            )
+        if ip_offset is not _UNSET:
+            self.assertEqual(
+                probe.ip_offset,
+                ip_offset,
+                msg=f"Unexpected IPv4 fragment offset on outbound ICMPv4: {probe!r}",
+            )
+        if eth_src is not _UNSET:
+            self.assertEqual(
+                probe.eth_src,
+                eth_src,
+                msg=f"Unexpected Ethernet source on outbound ICMPv4: {probe!r}",
+            )
+        if eth_dst is not _UNSET:
+            self.assertEqual(
+                probe.eth_dst,
+                eth_dst,
+                msg=f"Unexpected Ethernet destination on outbound ICMPv4: {probe!r}",
             )
 
     def _assert_icmp6_message(
@@ -458,6 +541,11 @@ class IcmpTestCase(NetworkTestCase):
         ip_src: object = _UNSET,
         ip_dst: object = _UNSET,
         ip_hop: object = _UNSET,
+        ip_dscp: object = _UNSET,
+        ip_ecn: object = _UNSET,
+        ip_flow: object = _UNSET,
+        eth_src: object = _UNSET,
+        eth_dst: object = _UNSET,
     ) -> None:
         """
         Assert that the given 'Icmp6Probe' matches every supplied
@@ -526,6 +614,102 @@ class IcmpTestCase(NetworkTestCase):
                 probe.ip_hop,
                 ip_hop,
                 msg=f"Unexpected IPv6 hop limit on outbound ICMPv6: {probe!r}",
+            )
+        if ip_dscp is not _UNSET:
+            self.assertEqual(
+                probe.ip_dscp,
+                ip_dscp,
+                msg=f"Unexpected IPv6 DSCP on outbound ICMPv6: {probe!r}",
+            )
+        if ip_ecn is not _UNSET:
+            self.assertEqual(
+                probe.ip_ecn,
+                ip_ecn,
+                msg=f"Unexpected IPv6 ECN on outbound ICMPv6: {probe!r}",
+            )
+        if ip_flow is not _UNSET:
+            self.assertEqual(
+                probe.ip_flow,
+                ip_flow,
+                msg=f"Unexpected IPv6 flow label on outbound ICMPv6: {probe!r}",
+            )
+        if eth_src is not _UNSET:
+            self.assertEqual(
+                probe.eth_src,
+                eth_src,
+                msg=f"Unexpected Ethernet source on outbound ICMPv6: {probe!r}",
+            )
+        if eth_dst is not _UNSET:
+            self.assertEqual(
+                probe.eth_dst,
+                eth_dst,
+                msg=f"Unexpected Ethernet destination on outbound ICMPv6: {probe!r}",
+            )
+
+    def _assert_packet_stats_rx(self, *, exact: bool = True, **fields: int) -> None:
+        """
+        Assert that the live 'packet_handler.packet_stats_rx' state
+        matches the supplied 'fields'.
+
+        When 'exact' is True (default), every counter not in 'fields'
+        must be zero — i.e. the test pins both the counters that
+        SHOULD have incremented and the absence of any unrelated
+        side-effect counters. When 'exact' is False, only the named
+        counters are checked; other counters are allowed to be any
+        value. The strict default mirrors the byte-equality behaviour
+        of the legacy parametrized integration tests, so migrating
+        cases onto this helper does not silently lose coverage.
+        """
+
+        actual = self._packet_handler.packet_stats_rx
+        if exact:
+            expected = PacketStatsRx(**fields)
+            self.assertEqual(
+                actual,
+                expected,
+                msg=(
+                    f"Unexpected packet_stats_rx (exact match required, "
+                    f"unspecified counters must be zero). Expected: {expected!r} "
+                    f"Got: {actual!r}"
+                ),
+            )
+            return
+
+        for name, value in fields.items():
+            self.assertEqual(
+                getattr(actual, name),
+                value,
+                msg=f"Unexpected packet_stats_rx.{name}: expected {value!r}, got {getattr(actual, name)!r}",
+            )
+
+    def _assert_packet_stats_tx(self, *, exact: bool = True, **fields: int) -> None:
+        """
+        Assert that the live 'packet_handler.packet_stats_tx' state
+        matches the supplied 'fields'. See '_assert_packet_stats_rx'
+        for the 'exact' semantics — the strict default likewise
+        mirrors the byte-equality regression net of the legacy
+        parametrized integration tests.
+        """
+
+        actual = self._packet_handler.packet_stats_tx
+        if exact:
+            expected = PacketStatsTx(**fields)
+            self.assertEqual(
+                actual,
+                expected,
+                msg=(
+                    f"Unexpected packet_stats_tx (exact match required, "
+                    f"unspecified counters must be zero). Expected: {expected!r} "
+                    f"Got: {actual!r}"
+                ),
+            )
+            return
+
+        for name, value in fields.items():
+            self.assertEqual(
+                getattr(actual, name),
+                value,
+                msg=f"Unexpected packet_stats_tx.{name}: expected {value!r}, got {getattr(actual, name)!r}",
             )
 
     def _assert_no_tx(self) -> None:

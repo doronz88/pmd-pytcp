@@ -34,8 +34,8 @@ pytcp/tests/integration/protocols/icmp6/test__icmp6__harness_smoke.py
 ver 3.0.4
 """
 
-from net_addr import Ip6Address
-from net_proto import Icmp6Type
+from net_addr import Ip6Address, MacAddress
+from net_proto import Icmp6MessageEchoReply, Icmp6Type
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 # Echo data payload pinned by the long-standing canonical Echo
@@ -113,4 +113,120 @@ class TestIcmp6HarnessSmoke(IcmpTestCase):
             ip_src=Ip6Address("2001:db8:0:1::7"),
             ip_dst=Ip6Address("2001:db8:0:1::91"),
             ip_hop=255,
+        )
+
+    def test__icmp6__harness__echo_reply_decodes_ip_layer_fields(self) -> None:
+        """
+        Ensure the probe captures the full IPv6 header observable
+        surface (DSCP, ECN, flow label) so migrated tests can pin
+        every field that the legacy byte-equality matrix used to
+        cover.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp6(frames_tx[0])
+
+        self._assert_icmp6_message(
+            probe,
+            ip_dscp=0,
+            ip_ecn=0,
+            ip_flow=0,
+        )
+
+    def test__icmp6__harness__echo_reply_decodes_ethernet_addresses(self) -> None:
+        """
+        Ensure the probe captures the Ethernet source and destination
+        the stack actually emitted, so migrated tests can pin link-
+        layer addressing without comparing whole frames.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp6(frames_tx[0])
+
+        self._assert_icmp6_message(
+            probe,
+            eth_src=MacAddress("02:00:00:00:00:07"),
+            eth_dst=MacAddress("02:00:00:00:00:91"),
+        )
+
+    def test__icmp6__harness__echo_reply_exposes_parsed_message(self) -> None:
+        """
+        Ensure '_parse_tx_icmp6' attaches the decoded 'Icmp6Message'
+        object so tests can read message-type-specific fields (NA
+        flags, RA options, MLD2 records) without forcing the probe
+        to enumerate every variant.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frames_tx = self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+        probe = self._parse_tx_icmp6(frames_tx[0])
+
+        self.assertIsInstance(
+            probe.message,
+            Icmp6MessageEchoReply,
+            msg=f"probe.message must be an Icmp6MessageEchoReply for an Echo path: {probe!r}",
+        )
+
+    def test__icmp6__harness__packet_stats_rx_strict_match(self) -> None:
+        """
+        Ensure '_assert_packet_stats_rx' enforces strict equality by
+        default on the IPv6 path: every counter not named in the
+        helper call must be zero.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        self._assert_packet_stats_rx(
+            ethernet__pre_parse=1,
+            ethernet__dst_unicast=1,
+            ip6__pre_parse=1,
+            ip6__dst_unicast=1,
+            icmp6__pre_parse=1,
+            icmp6__echo_request__respond_echo_reply=1,
+        )
+
+    def test__icmp6__harness__packet_stats_tx_strict_match(self) -> None:
+        """
+        Ensure '_assert_packet_stats_tx' enforces strict equality by
+        default on the IPv6 path, mirroring the byte-equality
+        regression net of the legacy parametrized integration tests.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        self._assert_packet_stats_tx(
+            icmp6__pre_assemble=1,
+            icmp6__echo_reply__send=1,
+            ip6__pre_assemble=1,
+            ip6__mtu_ok__send=1,
+            ethernet__pre_assemble=1,
+            ethernet__src_unspec__fill=1,
+            ethernet__dst_unspec__ip6_lookup=1,
+            ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+        )
+
+    def test__icmp6__harness__packet_stats_loose_mode_ignores_extras(self) -> None:
+        """
+        Ensure '_assert_packet_stats_rx' with exact=False checks only
+        the named counters and does not fail when other counters are
+        non-zero — escape hatch for tests that intentionally only
+        pin a subset.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._drive_rx(frame=_ECHO_REQUEST_FRAME_RX)
+
+        self._assert_packet_stats_rx(
+            exact=False,
+            icmp6__pre_parse=1,
         )
