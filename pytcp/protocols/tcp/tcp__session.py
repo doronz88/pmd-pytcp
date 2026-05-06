@@ -1554,103 +1554,11 @@ class TcpSession:
 
         tcp__fastopen_cookie = self._phase3_build_fastopen_cookie(flag_syn=flag_syn, flag_ack=flag_ack)
 
-        # RFC 9768 §3.2.3 receiver-side AccECN option emission.
-        # On every outbound non-SYN segment of an AccECN-
-        # enabled connection, attach an AccECN option with
-        # the cumulative byte counters so the sender can
-        # compute precise per-codepoint feedback deltas
-        # across ACKs. Skipped on SYN-only segments (where
-        # the codepoint encoding in AE/CWR/ECE handles
-        # negotiation) and RST.
-        #
-        # Order choice between AccECN0 (Kind 172, ECT(0)
-        # first) and AccECN1 (Kind 174, ECT(1) first) per
-        # §3.2.3 'whichever order is more efficient': pick
-        # AccECN1 when r.ECT(1) advanced since the last
-        # emission and r.ECT(0) did not (the L4S-style
-        # workload pattern - putting the changed counter
-        # first minimises bytes under the abbreviation
-        # rule). Otherwise pick AccECN0 (the classic-ECN
-        # default and most common case).
-        #
-        # Length choice per §3.2.3 / §3.2.3.3 abbreviation
-        # rule: include any counter that changed since the
-        # last emission; once a counter is included, the
-        # ordering rule forces all preceding (less-trailing)
-        # counters in the natural order to also be included.
-        # AccECN0 wire order is e0b, ceb, e1b - so e1b is
-        # the most-trailing field and is dropped first when
-        # unchanged. AccECN1 wire order is e1b, ceb, e0b -
-        # so e0b is the most-trailing field and is dropped
-        # first when unchanged. Lengths 11/8/5/2 correspond
-        # to including 3/2/1/0 counters respectively.
-        #
-        # Trackers initialise to -1 (outside the uint24
-        # range) so the first emission always picks Length
-        # 11 - seeding the peer with the full §3.2.1
-        # initial state on the third-leg ACK.
-        tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None
-        tcp__accecn1_counters: tuple[int | None, int | None, int | None] | None = None
-        if self._accecn_enabled and not flag_rst and not (flag_syn and not flag_ack):
-            e0b_changed = self._accecn_r_ect0_b != self._accecn_r_last_emit_e0b
-            ceb_changed = self._accecn_r_ce_b != self._accecn_r_last_emit_ceb
-            e1b_changed = self._accecn_r_ect1_b != self._accecn_r_last_emit_e1b
-            if e1b_changed and not e0b_changed:
-                # AccECN1 (wire order: e1b, ceb, e0b).
-                if e0b_changed:
-                    # Length 11: all three on wire.
-                    tcp__accecn1_counters = (
-                        self._accecn_r_ect0_b,
-                        self._accecn_r_ce_b,
-                        self._accecn_r_ect1_b,
-                    )
-                elif ceb_changed:
-                    # Length 8: drop trailing e0b.
-                    tcp__accecn1_counters = (
-                        None,
-                        self._accecn_r_ce_b,
-                        self._accecn_r_ect1_b,
-                    )
-                else:
-                    # Length 5: only e1b on wire (the
-                    # gating outer condition guarantees
-                    # e1b_changed=True).
-                    tcp__accecn1_counters = (
-                        None,
-                        None,
-                        self._accecn_r_ect1_b,
-                    )
-            else:
-                # AccECN0 (wire order: e0b, ceb, e1b).
-                if e1b_changed:
-                    # Length 11: all three on wire.
-                    tcp__accecn0_counters = (
-                        self._accecn_r_ect0_b,
-                        self._accecn_r_ce_b,
-                        self._accecn_r_ect1_b,
-                    )
-                elif ceb_changed:
-                    # Length 8: ee0b + eceb on wire, drop
-                    # trailing ee1b.
-                    tcp__accecn0_counters = (
-                        self._accecn_r_ect0_b,
-                        self._accecn_r_ce_b,
-                        None,
-                    )
-                elif e0b_changed:
-                    # Length 5: only ee0b on wire.
-                    tcp__accecn0_counters = (
-                        self._accecn_r_ect0_b,
-                        None,
-                        None,
-                    )
-                else:
-                    # Length 2: empty option (no counters
-                    # changed since last emission).
-                    tcp__accecn0_counters = (None, None, None)
-            self._accecn_r_last_emit_e0b = self._accecn_r_ect0_b
-            self._accecn_r_last_emit_ceb = self._accecn_r_ce_b
-            self._accecn_r_last_emit_e1b = self._accecn_r_ect1_b
+        tcp__accecn0_counters, tcp__accecn1_counters = self._phase2_build_accecn_counters(
+            flag_syn=flag_syn,
+            flag_ack=flag_ack,
+            flag_rst=flag_rst,
+        )
 
         # RFC 3168 §6.1.5: when bilateral ECN has been
         # negotiated, every outbound data segment MUST set
@@ -1720,6 +1628,123 @@ class TcpSession:
             f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
             f"dlen {len(data)}",
         )
+
+    def _phase2_build_accecn_counters(
+        self,
+        *,
+        flag_syn: bool,
+        flag_ack: bool,
+        flag_rst: bool,
+    ) -> tuple[
+        tuple[int | None, int | None, int | None] | None,
+        tuple[int | None, int | None, int | None] | None,
+    ]:
+        """
+        Phase 2 of the outbound-send pipeline. Build the RFC 9768
+        §3.2.3 receiver-side AccECN option counter tuples for the
+        outbound segment.
+
+        On every outbound non-SYN segment of an AccECN-enabled
+        connection, attach an AccECN option with the cumulative
+        byte counters so the sender can compute precise per-
+        codepoint feedback deltas across ACKs. Skipped on SYN-
+        only segments (where the codepoint encoding in
+        AE/CWR/ECE handles negotiation) and RST.
+
+        Order choice between AccECN0 (Kind 172, ECT(0) first)
+        and AccECN1 (Kind 174, ECT(1) first) per §3.2.3 'whichever
+        order is more efficient': pick AccECN1 when r.ECT(1)
+        advanced since the last emission and r.ECT(0) did not
+        (the L4S-style workload pattern — putting the changed
+        counter first minimises bytes under the abbreviation
+        rule). Otherwise pick AccECN0 (the classic-ECN default
+        and most common case).
+
+        Length choice per §3.2.3 / §3.2.3.3 abbreviation rule:
+        include any counter that changed since the last
+        emission; once a counter is included, the ordering rule
+        forces all preceding (less-trailing) counters in the
+        natural order to also be included. Lengths 11/8/5/2
+        correspond to including 3/2/1/0 counters respectively.
+
+        Trackers initialise to -1 (outside the uint24 range) so
+        the first emission always picks Length 11 — seeding the
+        peer with the full §3.2.1 initial state on the third-leg
+        ACK.
+
+        Returns (accecn0_counters, accecn1_counters); exactly one
+        is populated when AccECN is enabled and the segment is
+        eligible, both are None otherwise.
+
+        Reference: RFC 9768 §3.2.1 (initial counter state).
+        Reference: RFC 9768 §3.2.3 (AccECN option emission + ordering).
+        Reference: RFC 9768 §3.2.3.3 (abbreviation rule / wire lengths).
+        """
+
+        if not self._accecn_enabled or flag_rst or (flag_syn and not flag_ack):
+            return None, None
+        e0b_changed = self._accecn_r_ect0_b != self._accecn_r_last_emit_e0b
+        ceb_changed = self._accecn_r_ce_b != self._accecn_r_last_emit_ceb
+        e1b_changed = self._accecn_r_ect1_b != self._accecn_r_last_emit_e1b
+        accecn0_counters: tuple[int | None, int | None, int | None] | None = None
+        accecn1_counters: tuple[int | None, int | None, int | None] | None = None
+        if e1b_changed and not e0b_changed:
+            # AccECN1 (wire order: e1b, ceb, e0b).
+            if e0b_changed:
+                # Length 11: all three on wire.
+                accecn1_counters = (
+                    self._accecn_r_ect0_b,
+                    self._accecn_r_ce_b,
+                    self._accecn_r_ect1_b,
+                )
+            elif ceb_changed:
+                # Length 8: drop trailing e0b.
+                accecn1_counters = (
+                    None,
+                    self._accecn_r_ce_b,
+                    self._accecn_r_ect1_b,
+                )
+            else:
+                # Length 5: only e1b on wire (the
+                # gating outer condition guarantees
+                # e1b_changed=True).
+                accecn1_counters = (
+                    None,
+                    None,
+                    self._accecn_r_ect1_b,
+                )
+        else:
+            # AccECN0 (wire order: e0b, ceb, e1b).
+            if e1b_changed:
+                # Length 11: all three on wire.
+                accecn0_counters = (
+                    self._accecn_r_ect0_b,
+                    self._accecn_r_ce_b,
+                    self._accecn_r_ect1_b,
+                )
+            elif ceb_changed:
+                # Length 8: ee0b + eceb on wire, drop
+                # trailing ee1b.
+                accecn0_counters = (
+                    self._accecn_r_ect0_b,
+                    self._accecn_r_ce_b,
+                    None,
+                )
+            elif e0b_changed:
+                # Length 5: only ee0b on wire.
+                accecn0_counters = (
+                    self._accecn_r_ect0_b,
+                    None,
+                    None,
+                )
+            else:
+                # Length 2: empty option (no counters
+                # changed since last emission).
+                accecn0_counters = (None, None, None)
+        self._accecn_r_last_emit_e0b = self._accecn_r_ect0_b
+        self._accecn_r_last_emit_ceb = self._accecn_r_ce_b
+        self._accecn_r_last_emit_e1b = self._accecn_r_ect1_b
+        return accecn0_counters, accecn1_counters
 
     def _phase3_build_fastopen_cookie(self, *, flag_syn: bool, flag_ack: bool) -> bytes | None:
         """
