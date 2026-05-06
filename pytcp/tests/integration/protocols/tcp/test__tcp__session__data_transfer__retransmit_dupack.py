@@ -151,7 +151,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -313,7 +313,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -433,7 +433,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -547,7 +547,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Send 1 MSS and drain so the original segment is on the
         # wire and its RTO timer is armed.
@@ -569,7 +569,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
             self._drive_rx(frame=dup_ack)
 
         self.assertNotEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "Setup precondition: the third dup-ACK MUST trigger "
@@ -589,7 +589,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         self._advance(ms=3000)
 
         self.assertEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "After RTO fires, '_recovery_point' MUST be cleared "
@@ -600,7 +600,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "set; the next dup-ACK skips fast-retransmit via the "
                 "one-shot guard at the top of "
                 "'_retransmit_packet_request'. Fix: clear "
-                "'self._recovery_point = 0' inside "
+                "'self._cc.recovery_point = 0' inside "
                 "'_retransmit_packet_timeout'."
             ),
         )
@@ -615,7 +615,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_ewn,
+            session._cc.snd_ewn,
             session._snd_mss,
             msg=(
                 "Sanity: RTO MUST collapse '_snd_ewn' to one SMSS "
@@ -639,7 +639,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
 
         # Send 4 MSS and drain so SND.MAX is well past SND.UNA.
@@ -665,7 +665,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
             self._drive_rx(frame=dup_ack)
 
         self.assertNotEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "Setup precondition: the third dup-ACK MUST trigger "
@@ -673,7 +673,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "non-zero marker."
             ),
         )
-        recovery_point_at_entry = session._recovery_point
+        recovery_point_at_entry = session._cc.recovery_point
 
         # Drain the fast-retransmit segment.
         self._advance(ms=1)
@@ -710,7 +710,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "Leaving ESTABLISHED MUST clear '_recovery_point' "
@@ -721,7 +721,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
                 "the next dup-ACK in CLOSE_WAIT or any state "
                 "transitioned to from here would skip fast-"
                 "retransmit via the one-shot guard. Fix: clear "
-                "'self._recovery_point = 0' in '_change_state' "
+                "'self._cc.recovery_point = 0' in '_change_state' "
                 "when leaving ESTABLISHED, or equivalently in the "
                 "ESTABLISHED handlers' transitions out."
             ),
@@ -753,8 +753,8 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         # exceeds it. With cwnd=4*SMSS we'll send 4
         # segments and have 4 more queued in '_tx_buffer'
         # for Limited Transmit to inject.
-        session._cwnd = 4 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = 4 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
         # Queue 8 segments worth of data; only 4 will fit
         # in cwnd.
         session.send(data=b"x" * (8 * PEER__MSS))

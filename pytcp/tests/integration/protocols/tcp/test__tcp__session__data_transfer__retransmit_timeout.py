@@ -157,7 +157,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -269,7 +269,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -320,7 +320,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             LOCAL__ISS + 1,
             msg="Pre-ACK precondition: SND.UNA must still be at the initial ISS+1.",
         )
-        snd_ewn_before_ack = session._snd_ewn
+        snd_ewn_before_ack = session._cc.snd_ewn
         self.assertEqual(
             snd_ewn_before_ack,
             session._snd_mss,
@@ -366,7 +366,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             msg=("'SND.UNA' must advance past the acknowledged data " "after the peer ACK is processed."),
         )
         self.assertGreater(
-            session._snd_ewn,
+            session._cc.snd_ewn,
             snd_ewn_before_ack,
             msg=(
                 "'_snd_ewn' must grow on a successful ACK "
@@ -414,7 +414,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 1460
         session.send(data=payload)
@@ -571,7 +571,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         # Bypass slow-start so the partial fires on the first tick.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Step 2: send a 100-byte sub-MSS partial.
         partial_payload = b"X" * 100
@@ -643,7 +643,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         # Bypass slow-start so the initial send fires at full MSS.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Step 2: send 100 bytes. One segment fires.
         payload = b"X" * 100
@@ -662,7 +662,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         # having processed a fresh ACK that advances SND.UNA AND
         # advertises win=0.
         session._snd_wnd = 0
-        session._snd_ewn = 0
+        session._cc.snd_ewn = 0
 
         # Step 4: advance past PACKET_RETRANSMIT_TIMEOUT so the
         # RTO timer for the unacked segment fires.
@@ -670,7 +670,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
         # Spec: post-RTO '_snd_ewn' must reflect peer's 0-window.
         self.assertEqual(
-            session._snd_ewn,
+            session._cc.snd_ewn,
             0,
             msg=(
                 "After RTO with peer's 0-window, '_snd_ewn' MUST "
@@ -827,7 +827,7 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rfc6582__recover_seq_initialised_zero(self) -> None:
@@ -841,12 +841,12 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
 
         session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         self.assertEqual(
-            session._recover_seq,
+            session._cc.recover_seq,
             0,
             msg=(
                 "RFC 6582 §3.2 step 4 sentinel: _recover_seq MUST "
                 "initialise to 0 so the first loss event is not "
-                f"gated. Got _recover_seq={session._recover_seq}."
+                f"gated. Got _recover_seq={session._cc.recover_seq}."
             ),
         )
 
@@ -868,12 +868,12 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         self._advance(ms=session._rto_state.rto_ms + 10)
 
         self.assertEqual(
-            session._recover_seq,
+            session._cc.recover_seq,
             snd_max_at_rto,
             msg=(
                 "RFC 6582 §3.2 step 4: post-RTO _recover_seq MUST "
                 f"equal the pre-RTO SND.MAX ({snd_max_at_rto}). "
-                f"Got _recover_seq={session._recover_seq}."
+                f"Got _recover_seq={session._cc.recover_seq}."
             ),
         )
 
@@ -892,7 +892,7 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         self._advance(ms=1)
         snd_max_at_rto = session._snd_max
         self._advance(ms=session._rto_state.rto_ms + 10)
-        assert session._recover_seq == snd_max_at_rto
+        assert session._cc.recover_seq == snd_max_at_rto
 
         # Peer ACKs all bytes up to (and including) the marker
         # (snd_max_at_rto is one past the last data byte sent;
@@ -909,12 +909,12 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         self._drive_rx(frame=peer_full_ack)
 
         self.assertEqual(
-            session._recover_seq,
+            session._cc.recover_seq,
             0,
             msg=(
                 "RFC 6582 §3.2 step 4 decay: _recover_seq MUST "
                 "clear once SND.UNA passes the marker. Got "
-                f"_recover_seq={session._recover_seq}."
+                f"_recover_seq={session._cc.recover_seq}."
             ),
         )
 
@@ -967,7 +967,7 @@ class TestTcpRfc6675SackRetainedOnRto(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
         assert session._send_sack
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rfc6675__rto_retains_sack_scoreboard(self) -> None:

@@ -487,7 +487,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Application enqueues 2 * MSS of data.
         payload_a = b"A" * 1460
@@ -806,7 +806,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         # to potentially (incorrectly) advance SND.UNA against;
         # per RFC the ACK info MUST be ignored because the
         # segment fails the acceptability check.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         session.send(data=b"OUT!")
         self._advance(ms=1)
 

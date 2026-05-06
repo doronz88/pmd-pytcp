@@ -162,7 +162,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
         )
         # Bypass slow-start so two back-to-back segments fire on
         # consecutive ticks.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         self.assertEqual(
             session._snd_nxt,
@@ -1041,7 +1041,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
             peer_iss=0x0000_2000,
         )
         # Bypass slow-start so the 1-byte sends fire immediately.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Step 3: send 1 byte at SND.NXT = 0xFFFF_FFFF.
         session.send(data=b"A")
@@ -1243,7 +1243,7 @@ class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
         )
 
         # Bypass slow-start so the first send fires immediately.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Send a byte. Peer stays silent. RTO machinery starts.
         session.send(data=b"X")

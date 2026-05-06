@@ -310,8 +310,8 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             accept_syn_data = (not tfo_option_relevant) or tfo_cookie_valid
             syn_data = packet_rx_md.tcp__data if accept_syn_data else memoryview(b"")
             session._rcv_ini = packet_rx_md.tcp__seq
-            session._cwnd = session._snd_mss
-            session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            session._cc.cwnd = session._snd_mss
+            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # Make note of the remote SEQ number, advancing past the
             # SYN's one byte AND every byte of any piggybacked payload
             # so the SYN+ACK we emit acknowledges the data and the

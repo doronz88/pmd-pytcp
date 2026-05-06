@@ -242,7 +242,7 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
             mss=PEER__MSS,
         )
         self._drive_rx(frame=peer_syn_ack)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Application send.
         outbound_payload = b"ipv6-hello"

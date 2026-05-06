@@ -196,12 +196,12 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # Pin CA regime + CUBIC mode + a cubic-state setup
         # where W(t) > cwnd so growth fires.
         session._cc_mode = CcMode.CUBIC
-        session._cwnd = 100 * PEER__MSS
-        session._ssthresh = 50 * PEER__MSS
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.ssthresh = 50 * PEER__MSS
         session._cubic_w_max = 100 * PEER__MSS
         session._cubic_K_ms = 0
         session._cubic_epoch_start_ms = 0
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         # Send 1 MSS, advance, and have peer ACK it.
         session.send(data=b"x" * PEER__MSS)
@@ -222,7 +222,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
             msg="Phase 3: cubic CA growth must set '_cubic_in_ca = True'.",
         )
         self.assertGreater(
-            session._cwnd,
+            session._cc.cwnd,
             100 * PEER__MSS,
             msg="Phase 3: cubic CA growth must increment cwnd above pre-ACK value.",
         )
@@ -240,9 +240,9 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         session._cc_mode = CcMode.CUBIC
-        session._cwnd = 2 * PEER__MSS
-        session._ssthresh = 100 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = 2 * PEER__MSS
+        session._cc.ssthresh = 100 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         session.send(data=b"x" * PEER__MSS)
         self._advance(ms=1)
@@ -258,7 +258,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             3 * PEER__MSS,
             msg=("Slow-start must add SMSS regardless of CUBIC mode " "when cwnd < ssthresh."),
         )
@@ -276,9 +276,9 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc_mode = CcMode.CUBIC
-        session._cwnd = cwnd
-        session._ssthresh = cwnd  # CA regime; ssthresh tracks cwnd.
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = cwnd
+        session._cc.ssthresh = cwnd  # CA regime; ssthresh tracks cwnd.
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         # Transmit one segment so dup-ACKs ack a real seq.
         payload = b"x" * PEER__MSS
@@ -313,11 +313,11 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # ssthresh should be cwnd * 7/10, not cwnd * 1/2.
         expected = cwnd * 7 // 10
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             expected,
             msg=(
                 f"CUBIC fast retransmit must set ssthresh to "
-                f"cwnd * beta_cubic ({expected}); got {session._ssthresh}."
+                f"cwnd * beta_cubic ({expected}); got {session._cc.ssthresh}."
             ),
         )
 
@@ -360,9 +360,9 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._cc_mode = CcMode.CUBIC
-        session._cwnd = 100 * PEER__MSS
-        session._ssthresh = 200 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.ssthresh = 200 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         # Send some data so flight_size > 0; advance past the
         # RTO timer (clamped to 1000 ms by MIN_RTO_MS) to fire
@@ -373,12 +373,12 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         expected = max((100 * PEER__MSS) * 7 // 10, 2 * PEER__MSS)
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             expected,
             msg=(
                 f"CUBIC RTO must set ssthresh to "
                 f"cwnd * beta_cubic floor 2*SMSS ({expected}); "
-                f"got {session._ssthresh}."
+                f"got {session._cc.ssthresh}."
             ),
         )
 
@@ -408,11 +408,11 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # fast-retransmit trigger fires on the next batch of
         # dup-ACKs. Set cwnd to cwnd_2 (< prior W_max) so fast
         # convergence kicks in.
-        session._recovery_point = 0
+        session._cc.recovery_point = 0
         session._tx_retransmit_request_counter = {}
-        session._cwnd = cwnd_2
-        session._ssthresh = cwnd_2
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = cwnd_2
+        session._cc.ssthresh = cwnd_2
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         # Send a fresh segment then drive 3 dup-ACKs with the
         # current snd_una as the ack value (canonical dup-ACK).
@@ -460,11 +460,11 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         session = self._drive_fast_retransmit_in_cubic_mode(cwnd=cwnd_1)
 
         # Reset state for second loss event.
-        session._recovery_point = 0
+        session._cc.recovery_point = 0
         session._tx_retransmit_request_counter = {}
-        session._cwnd = cwnd_2
-        session._ssthresh = cwnd_2
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = cwnd_2
+        session._cc.ssthresh = cwnd_2
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         session.send(data=b"y" * PEER__MSS)
         self._advance(ms=1)
@@ -501,13 +501,13 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         session._cc_mode = CcMode.CUBIC
-        session._cwnd = 100 * PEER__MSS
-        session._ssthresh = 50 * PEER__MSS
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.ssthresh = 50 * PEER__MSS
         session._cubic_w_max = 100 * PEER__MSS
         session._cubic_K_ms = 0
         session._cubic_epoch_start_ms = 0
         session._cubic_w_est = 0  # Lazy-init on first CA cum-ACK
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         session.send(data=b"x" * PEER__MSS)
         self._advance(ms=1000)
@@ -546,15 +546,15 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # Set up a scenario where W_cubic(t=0) is at cwnd_epoch
         # (small) and W_est is large - the max() should pick
         # W_est.
-        session._cwnd = 50 * PEER__MSS
-        session._ssthresh = 10 * PEER__MSS
+        session._cc.cwnd = 50 * PEER__MSS
+        session._cc.ssthresh = 10 * PEER__MSS
         session._cubic_w_max = 100 * PEER__MSS
         session._cubic_K_ms = 4217  # canonical
         session._cubic_epoch_start_ms = 0
         # Pre-set W_est above the cubic-target band ceiling
         # (1.5 * cwnd = 75 * MSS) to force Reno-friendly pick.
         session._cubic_w_est = 200 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         session.send(data=b"x" * PEER__MSS)
         self._advance(ms=1)
@@ -571,7 +571,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         # cwnd should track W_est, not the cubic curve.
         self.assertGreaterEqual(
-            session._cwnd,
+            session._cc.cwnd,
             200 * PEER__MSS,
             msg="cwnd must follow W_est when in Reno-friendly region.",
         )
@@ -593,10 +593,10 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         # Pin CA regime, set CUBIC state fields - they must
         # not affect growth in RENO mode.
-        session._cwnd = 100 * PEER__MSS
-        session._ssthresh = 50 * PEER__MSS
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.ssthresh = 50 * PEER__MSS
         session._cubic_w_max = 200 * PEER__MSS  # would suggest big growth
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         session.send(data=b"x" * PEER__MSS)
         self._advance(ms=1)
@@ -615,7 +615,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # max(1, 1460^2 // 146000) ≈ 14 bytes.
         expected_growth = max(1, PEER__MSS * PEER__MSS // (100 * PEER__MSS))
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             100 * PEER__MSS + expected_growth,
             msg="RENO mode must use Reno CA growth, not CUBIC.",
         )

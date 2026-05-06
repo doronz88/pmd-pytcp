@@ -262,7 +262,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         # bypassing slow-start so the window edge is the only constraint.
         snd_wnd_limit = 3 * 1460
         session._snd_wnd = snd_wnd_limit
-        session._snd_ewn = snd_wnd_limit
+        session._cc.snd_ewn = snd_wnd_limit
 
         payload = b"X" * 8000
         session.send(data=payload)
@@ -828,7 +828,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         # Bypass slow-start so all three segments can fly without
         # waiting for peer ACKs - this test is about segmentation and
         # PSH placement, not congestion control.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 4000
         bytes_sent = session.send(data=payload)
@@ -1275,7 +1275,7 @@ class TestTcpDataTransferRfc6691ReqB(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__data_transfer__rfc6691_req_b__tsopt_segment_data_capped(self) -> None:

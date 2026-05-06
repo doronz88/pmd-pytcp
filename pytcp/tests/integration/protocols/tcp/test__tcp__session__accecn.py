@@ -929,7 +929,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._drive_rx(frame=ack_with_ce)
 
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             expected_ssthresh,
             msg=(
                 "RFC 8511 §3 ABE: on AccECN feedback with positive "
@@ -937,18 +937,18 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
                 "ABE backoff multiplier (0.85) instead of RFC 5681 "
                 "§3.1's 0.5 used for loss events. Expected "
                 "'max(flight_size * 17 // 20, 2*SMSS)' = "
-                f"{expected_ssthresh}, got {session._ssthresh}. "
+                f"{expected_ssthresh}, got {session._cc.ssthresh}. "
                 f"Pre-event flight_size was {flight_size_before}."
             ),
         )
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             expected_ssthresh,
             msg=(
                 "RFC 9768 §3.4: on AccECN feedback with positive "
                 "r.CE delta the sender MUST collapse cwnd to "
-                f"ssthresh. Got cwnd={session._cwnd}, "
-                f"ssthresh={session._ssthresh}."
+                f"ssthresh. Got cwnd={session._cc.cwnd}, "
+                f"ssthresh={session._cc.ssthresh}."
             ),
         )
         self.assertEqual(
@@ -979,8 +979,8 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session.send(data=b"x" * 4000)
         self._advance(ms=1)
 
-        cwnd_before = session._cwnd
-        ssthresh_before = session._ssthresh
+        cwnd_before = session._cc.cwnd
+        ssthresh_before = session._cc.ssthresh
 
         # Peer's ACK with r.CE=0 (no congestion observed).
         clean_ack = build_tcp4(
@@ -995,25 +995,25 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._drive_rx(frame=clean_ack)
 
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before,
             msg=(
                 "RFC 9768 §3.4: a peer's AccECN option with "
                 "r.CE unchanged from the prior tracker value "
                 "MUST NOT trigger ssthresh reduction. Got "
                 f"ssthresh_before={ssthresh_before}, "
-                f"ssthresh={session._ssthresh}."
+                f"ssthresh={session._cc.ssthresh}."
             ),
         )
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before,
             msg=(
                 "RFC 9768 §3.4: a peer's AccECN option with "
                 "r.CE unchanged from the prior tracker value "
                 "MUST NOT trigger cwnd reduction. Got "
                 f"cwnd_before={cwnd_before}, "
-                f"cwnd={session._cwnd}."
+                f"cwnd={session._cc.cwnd}."
             ),
         )
 
@@ -1609,7 +1609,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session.send(data=b"x" * 6000)
         self._advance(ms=10)
 
-        ssthresh_before = session._ssthresh
+        ssthresh_before = session._cc.ssthresh
 
         # Peer's ACK with no AccECN option but ACE field
         # encoding a +1 delta (s.cep was 5 = 0b101; new ACE
@@ -1626,14 +1626,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._drive_rx(frame=ack_with_ace)
 
         self.assertLess(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before,
             msg=(
                 "RFC 9768 §3.2.2.5: an inbound ACK with no "
                 "AccECN option but a positive ACE delta MUST "
                 "trigger a congestion response. Got "
                 f"ssthresh_before={ssthresh_before}, "
-                f"ssthresh={session._ssthresh}."
+                f"ssthresh={session._cc.ssthresh}."
             ),
         )
 
@@ -1654,7 +1654,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session.send(data=b"x" * 4000)
         self._advance(ms=10)
 
-        ssthresh_before = session._ssthresh
+        ssthresh_before = session._cc.ssthresh
 
         # Peer's ACK with no AccECN option and ACE field
         # = 5 = 0b101 (the initial s.cep value, no delta).
@@ -1669,14 +1669,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._drive_rx(frame=clean_ack)
 
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before,
             msg=(
                 "RFC 9768 §3.2.2.5: an inbound ACK with no "
                 "AccECN option and ACE unchanged MUST NOT "
                 "trigger a spurious congestion response. Got "
                 f"ssthresh_before={ssthresh_before}, "
-                f"ssthresh={session._ssthresh}."
+                f"ssthresh={session._cc.ssthresh}."
             ),
         )
 
@@ -1697,7 +1697,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         session.send(data=b"x" * 6000)
         self._advance(ms=10)
 
-        ssthresh_before = session._ssthresh
+        ssthresh_before = session._cc.ssthresh
 
         # Peer's ACK with the AccECN option present (clean
         # byte counters) AND ACE flags that would otherwise
@@ -1716,14 +1716,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._drive_rx(frame=ack)
 
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before,
             msg=(
                 "RFC 9768 §3.2.2.5: when the AccECN option "
                 "is present the byte counter takes precedence "
                 "over ACE decoding; ssthresh MUST NOT change. "
                 f"Got ssthresh_before={ssthresh_before}, "
-                f"ssthresh={session._ssthresh}."
+                f"ssthresh={session._cc.ssthresh}."
             ),
         )
 
@@ -1743,8 +1743,8 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established_with_accecn()
-        cwnd_before = session._cwnd
-        ssthresh_before = session._ssthresh
+        cwnd_before = session._cc.cwnd
+        ssthresh_before = session._cc.ssthresh
 
         # Peer's Length=8 ACK: r.e0b and r.eceb on the wire,
         # r.e1b absent (None). The 'accecn0_counters' tuple
@@ -1770,18 +1770,18 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
             msg=f"Length=8 AccECN0 parse MUST NOT corrupt FSM state. Got state={session.state!r}.",
         )
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before,
             msg=(
                 "Length=8 AccECN0 with no eceb advance MUST NOT "
                 f"reduce ssthresh. Got before={ssthresh_before}, "
-                f"after={session._ssthresh}."
+                f"after={session._cc.ssthresh}."
             ),
         )
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before,
-            msg=f"cwnd MUST be unchanged. Got before={cwnd_before}, after={session._cwnd}.",
+            msg=f"cwnd MUST be unchanged. Got before={cwnd_before}, after={session._cc.cwnd}.",
         )
 
     def test__accecn__abbreviated_form__length_2_empty_peer_option_accepted(self) -> None:

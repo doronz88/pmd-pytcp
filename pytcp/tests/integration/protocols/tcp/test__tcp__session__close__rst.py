@@ -1147,7 +1147,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         # Send 100 bytes so a per-seq retransmit timer is armed.
         session.send(data=b"X" * 100)

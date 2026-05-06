@@ -264,7 +264,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
         )
 
         # Application sends data so we emit a post-handshake segment.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         session.send(data=b"X")
         data_tx = self._advance(ms=1)
         self.assertEqual(

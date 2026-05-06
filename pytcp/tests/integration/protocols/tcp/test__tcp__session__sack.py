@@ -243,7 +243,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         # Bypass slow-start so the application's send drains in one
         # outbound segment - we want a clean post-data state to
         # contrast with after the SACK-bearing dup-ACK arrives.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         payload = b"X" * 200
         session.send(data=payload)
@@ -688,7 +688,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
         # Bypass slow-start so the application's send drains in
         # one outbound segment.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         session.send(data=b"X" * 200)
         self._advance(ms=1)
 
@@ -726,7 +726,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         session.send(data=b"X" * 200)
         self._advance(ms=1)
 
@@ -792,7 +792,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         session.send(data=b"X" * 200)
         self._advance(ms=1)
 
@@ -834,7 +834,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (4 * mss))
         # '_transmit_data' sends one MSS-sized segment per timer
@@ -916,7 +916,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
@@ -975,7 +975,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
@@ -1008,7 +1008,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
         # Byte-rule fired; we entered recovery.
         self.assertNotEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "The IsLost byte-rule MUST fire fast retransmit on "
@@ -1041,7 +1041,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         # outbound data may still flow through '_transmit_data'
         # past SND.NXT - that is normal sliding-window
         # operation, not a re-fire of the retransmit.)
-        recovery_point_after_first = session._recovery_point
+        recovery_point_after_first = session._cc.recovery_point
         second_dup_sack = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1053,7 +1053,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         )
         self._drive_rx(frame=second_dup_sack)
         self.assertEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             recovery_point_after_first,
             msg=(
                 "A second dup-SACK during recovery MUST NOT re-enter "
@@ -1079,7 +1079,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):
@@ -1110,7 +1110,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             self._drive_rx(frame=dup_ack)
 
         self.assertNotEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg="Setup precondition: 3 dup-ACKs must enter recovery via count rule.",
         )
@@ -1244,7 +1244,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (2 * mss))
         for _ in range(2):
@@ -1303,7 +1303,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             peer_sackperm=True,
         )
 
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         mss = session._snd_mss
         session.send(data=b"X" * (4 * mss))
         for _ in range(4):

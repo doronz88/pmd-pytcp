@@ -192,7 +192,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         # cadence. Tests of the cwnd interaction are out of scope
         # for Phase 2 (and properly belong to a future RFC 5681
         # cwnd-rework project).
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rto__outbound_data_segment_records_pending_sample(self) -> None:
@@ -641,7 +641,7 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rto__data_transmit_arms_session_level_retransmit_timer(self) -> None:
@@ -886,7 +886,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def _send_one_payload_and_ack(self, *, session: TcpSession, seq_offset: int, payload: bytes) -> None:

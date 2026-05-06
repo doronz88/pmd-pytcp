@@ -387,7 +387,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # peer's SYN+ACK 'win' (= PEER__WIN = 64240) and '_snd_ewn'
         # to MSS; we want both at the 3-MSS pre-shrink value.
         session._snd_wnd = peer_initial_win
-        session._snd_ewn = peer_initial_win
+        session._cc.snd_ewn = peer_initial_win
 
         # Application sends 3 * MSS. All three segments fire on the
         # next tick. SND.NXT advances to LOCAL__ISS + 1 + 4380.
@@ -672,7 +672,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # Bypass slow-start so the data segment fires immediately
         # and SND.MAX advances past SND.UNA - giving fast-retransmit
         # something to fire on.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         session.send(data=b"X" * 1460)
         self._advance(ms=1)
@@ -719,12 +719,12 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             0,
             msg=(
                 "Three peer wnd-update ACKs MUST NOT enter "
                 "fast-retransmit recovery. Got "
-                f"'_recovery_point' = {session._recovery_point:#x}."
+                f"'_recovery_point' = {session._cc.recovery_point:#x}."
             ),
         )
 

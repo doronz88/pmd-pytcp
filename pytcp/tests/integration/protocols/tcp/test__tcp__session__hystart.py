@@ -122,7 +122,7 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__hystart__initial_state_is_slow_start(self) -> None:
@@ -173,8 +173,8 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
             peer_tsval=PEER__TSVAL_INITIAL,
         )
         self.assertLess(
-            session._cwnd,
-            session._ssthresh,
+            session._cc.cwnd,
+            session._cc.ssthresh,
             msg="Setup invariant: post-handshake cwnd < ssthresh (slow-start).",
         )
 
@@ -341,8 +341,8 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval=PEER__TSVAL_INITIAL,
         )
-        session._cwnd = 100 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
         peer_tsval = PEER__TSVAL_INITIAL
 
         # Drive 3 rounds with stable 50 ms RTT (24 ACKs).

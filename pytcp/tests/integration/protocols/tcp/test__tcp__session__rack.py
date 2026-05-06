@@ -156,7 +156,7 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__outbound_data_segment_records_rack_segment(self) -> None:
@@ -341,7 +341,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__cum_ack_updates_rack_xmit_ts_and_rtt(self) -> None:
@@ -587,7 +587,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def _drive_handshake_with_sack(self, *, iss: int, peer_iss: int) -> TcpSession:
@@ -615,7 +615,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
         assert session._send_sack, "Setup invariant: bilateral SACK must be negotiated."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__time_based_loss_detection_marks_old_segment_lost(self) -> None:
@@ -720,7 +720,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__reordering_detected_when_below_fack_segment_acked(self) -> None:
@@ -862,7 +862,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         session._rack_reo_wnd_mult = 4
         session._rack_reo_wnd_persist = 1
         # Fake an in-progress recovery so the exit path fires.
-        session._recovery_point = LOCAL__ISS + 1 + 5
+        session._cc.recovery_point = LOCAL__ISS + 1 + 5
 
         # Send 5 bytes; peer cum-ACKs them, advancing SND.UNA
         # past _recovery_point and triggering recovery exit.
@@ -942,7 +942,7 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__reorder_timer_arms_when_segment_below_threshold(self) -> None:
@@ -1118,7 +1118,7 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__tlp__pto_timer_armed_after_data_send(self) -> None:
@@ -1268,7 +1268,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         assert (
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__tlp__probe_retransmits_highest_seq_when_no_new_data(self) -> None:
@@ -1448,7 +1448,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__tlp__cum_ack_clears_tlp_end_seq_no_cc_response(self) -> None:
@@ -1466,7 +1466,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         # Inject a TLP-outstanding state.
         session._tlp_end_seq = LOCAL__ISS + 100
         session._tlp_is_retrans = False
-        prior_ssthresh = session._ssthresh
+        prior_ssthresh = session._cc.ssthresh
 
         # Simulate a sub-segment that the cum-ACK covers.
         session.send(data=b"x" * 100)
@@ -1488,7 +1488,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         # CC response: ssthresh halved means new-data probe
         # delivered (case 'no CC response') -> ssthresh stays.
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             prior_ssthresh,
             msg="New-data probe delivery MUST NOT invoke CC response (ssthresh unchanged).",
         )
@@ -1514,7 +1514,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         # midpoint so the cum-ACK can advance past it.
         session._tlp_end_seq = LOCAL__ISS + 1 + 100
         session._tlp_is_retrans = True
-        prior_ssthresh = session._ssthresh
+        prior_ssthresh = session._cc.ssthresh
 
         peer_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1531,12 +1531,12 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
             msg="Probe-repair Case 3 MUST clear '_tlp_end_seq'.",
         )
         self.assertLess(
-            session._ssthresh,
+            session._cc.ssthresh,
             prior_ssthresh,
             msg=(
                 "Case 3 probe repair MUST invoke CC response "
                 "(ssthresh halved). Was "
-                f"{prior_ssthresh}, got {session._ssthresh}."
+                f"{prior_ssthresh}, got {session._cc.ssthresh}."
             ),
         )
 
@@ -1581,7 +1581,7 @@ class TestTcpRackPhase9(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rack__rto_marks_all_in_flight_segments_lost(self) -> None:

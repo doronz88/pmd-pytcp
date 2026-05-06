@@ -42,6 +42,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.tcp__cc_state import CongestionControlState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
@@ -293,28 +294,14 @@ class TcpSession:
         # Pipe.
         self._sack_scoreboard: SackScoreboard = SackScoreboard()
 
-        # RFC 6675 §5 RecoveryPoint - the SND.MAX value at the
-        # moment the most recent fast-retransmit fired. Zero
-        # means "not currently in recovery"; while non-zero it
-        # gates further fast-retransmit triggers (the one-shot
-        # rule from RFC 5681 §3.2). Cleared by
-        # '_process_ack_packet' once 'SND.UNA' advances past
-        # 'recovery_point' - the loss event is fully recovered
-        # and a new round of dup-ACKs can re-enter recovery.
-        self._recovery_point: Seq32 = 0
-
-        # RFC 6582 §3.2 step 4: the highest SND.MAX recorded at
-        # the most recent RTO boundary. The fast-retransmit
-        # entry gate in '_retransmit_packet_request' refuses to
-        # enter recovery while 'SND.UNA <= _recover_seq', so
-        # post-RTO dup-ACKs from the retransmit storm cannot
-        # spuriously re-trigger fast retransmit before the
-        # cum-ACK has progressed past the marker. Cleared (back
-        # to the sentinel 0) once SND.UNA advances past it; the
-        # 0 sentinel disables the gate entirely on a fresh
-        # connection so the very first loss event can enter FR
-        # without an artificial barrier.
-        self._recover_seq: Seq32 = 0
+        # Per-session congestion-control variables (cwnd, ssthresh,
+        # snd_ewn, recovery_point, recover_seq, PRR counters, F-RTO
+        # snapshot, CUBIC curve, HyStart++ state). Lives as one
+        # coherent object on 'tcp__cc_state.py'. Primary CC fields
+        # (cwnd / snd_ewn) are initialised below once 'snd_mss' is
+        # known; everything else uses the dataclass's RFC-anchored
+        # defaults.
+        self._cc: CongestionControlState = CongestionControlState()
 
         # RFC 7413 §3.1 Fast Open server-side state. When peer's
         # passive-open SYN carries the TFO option, the LISTEN
@@ -612,25 +599,6 @@ class TcpSession:
         self._ecn_send_cwr: bool = False
         self._ecn_recovery_point: int = 0
 
-        # RFC 6937 PRR per-recovery state. Declared with
-        # canonical defaults so the [FLAGS BUG] tests-first
-        # suite can exercise the attribute access; the actual
-        # send-pacing logic (replacing RFC 5681 §3.2 step 4
-        # 'cwnd += SMSS per dup-ACK') is wired by the PRR
-        # implementation commit.
-        #   _recover_fs:    snapshot of pipe (FlightSize) at
-        #                   recovery entry; zero outside recovery.
-        #   _prr_delivered: cumulative bytes ACK'd / SACK'd
-        #                   during the current recovery episode.
-        #   _prr_out:       cumulative bytes sent during the
-        #                   current recovery episode.
-        # All three reset to zero on recovery exit (when SND.UNA
-        # crosses '_recovery_point') so the next loss event
-        # snapshots a fresh value.
-        self._recover_fs: int = 0
-        self._prr_delivered: int = 0
-        self._prr_out: int = 0
-
         # RFC 2883 DSACK: when peer retransmits data we already
         # received (fully-duplicate segment OR overlap prefix of
         # a partially-duplicate segment) we record the duplicate
@@ -873,31 +841,16 @@ class TcpSession:
         # '_snd_wnd' in '_process_ack_packet'.
         self._max_window: int = self._snd_mss
 
-        # Effective send window - PyTCP's simplified congestion-
-        # control variable that conflates RFC 5681 cwnd and
-        # ssthresh. Doubles on each cum-ACK in
-        # '_process_ack_packet' (slow-start reuse, no congestion-
-        # avoidance phase) and is reset to one SMSS on RTO in
-        # '_retransmit_packet_timeout'. The min() clamp against
-        # '_snd_wnd' enforces the receiver-imposed flow-control
-        # ceiling.
-        self._snd_ewn: int = self._snd_mss
-
-        # RFC 5681 cwnd / ssthresh (see
-        # 'docs/rfc/tcp/rfc5681__reno_cwnd/adherence.md' for
-        # the per-clause spec audit). Slow-start vs CA growth
-        # in '_process_ack_packet'; RTO ssthresh halving in
-        # '_retransmit_packet_timeout'; fast-recovery
-        # inflation / deflation in '_retransmit_packet_request'
-        # and the recovery exit path.
-        self._cwnd: int = self._snd_mss
-        # RFC 5681 §3.1: "ssthresh SHOULD be set arbitrarily high
-        # (e.g., to the size of the largest possible advertised
-        # window)". 'INT32_MAX' (0x7FFFFFFF) is the canonical
-        # large-constant choice (mirrors Linux's 'int_max'); it
-        # is well above any realistic peer-advertised window so
-        # the session enters slow-start cleanly post-handshake.
-        self._ssthresh: int = 0x7FFF_FFFF
+        # Initialise the RFC 5681 cwnd and 'snd_ewn' (PyTCP's
+        # simplified pacing variable that clamps cwnd to the
+        # receiver-advertised window) from 'snd_mss' now that
+        # 'snd_mss' is known. 'ssthresh' keeps the dataclass
+        # default 'CC_STATE__SSTHRESH_INF' (0x7FFF_FFFF) per
+        # RFC 5681 §3.1. See 'tcp__cc_state.py' for the full
+        # CC-variable surface and 'docs/rfc/tcp/rfc5681__reno_cwnd
+        # /adherence.md' for the per-clause spec audit.
+        self._cc.cwnd = self._snd_mss
+        self._cc.snd_ewn = self._snd_mss
 
         # RFC 9438 CUBIC state (active when '_cc_mode == CUBIC';
         # in 'RENO' mode all fields stay at their initial values
@@ -1355,14 +1308,14 @@ class TcpSession:
         # cum-ACK far enough (e.g. peer FIN with no cum-ACK
         # progress).
         if old_state is FsmState.ESTABLISHED and state is not FsmState.ESTABLISHED:
-            self._recovery_point = 0
+            self._cc.recovery_point = 0
             # RFC 6937 §3.1 PRR per-recovery state lives only
             # while a recovery episode is active in ESTABLISHED.
             # Clear alongside RecoveryPoint so half-close and
             # subsequent re-entries start clean.
-            self._recover_fs = 0
-            self._prr_delivered = 0
-            self._prr_out = 0
+            self._cc.recover_fs = 0
+            self._cc.prr_delivered = 0
+            self._cc.prr_out = 0
 
         # RFC 7413 §3.1 Fast Open server-side cookie state is
         # only meaningful while the session is in SYN_RCVD
@@ -1466,16 +1419,16 @@ class TcpSession:
             # already the post-handshake IW) and on FIN-only
             # (no data to pace).
             if data:
-                rw = min(initial_window(self._snd_mss), self._cwnd)
-                if rw < self._cwnd:
+                rw = min(initial_window(self._snd_mss), self._cc.cwnd)
+                if rw < self._cc.cwnd:
                     __debug__ and log(
                         "tcp-ss",
                         f"[{self}] - RFC 5681 §4.1 Restart Window: "
-                        f"cwnd {self._cwnd} -> {rw} (IW="
+                        f"cwnd {self._cc.cwnd} -> {rw} (IW="
                         f"{initial_window(self._snd_mss)})",
                     )
-                    self._cwnd = rw
-                    self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                    self._cc.cwnd = rw
+                    self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
 
         # RFC 6298 §4 sample collection: record one in-flight RTT
         # sample at a time. The covering ACK harvest hook in
@@ -1929,8 +1882,8 @@ class TcpSession:
         # that fires from the recovery-entry path consumes one
         # SMSS of 'prr_out'; subsequent retransmits or new
         # data sent during recovery accumulate here too.
-        if self._recovery_point != 0 and (data or flag_syn or flag_fin):
-            self._prr_out += len(data) + flag_syn + flag_fin
+        if self._cc.recovery_point != 0 and (data or flag_syn or flag_fin):
+            self._cc.prr_out += len(data) + flag_syn + flag_fin
 
         # Whenever we send an ACK-bearing segment (which may also carry
         # data) the peer's pending sequence space is implicitly
@@ -1993,7 +1946,7 @@ class TcpSession:
         # but in that regime PTO equals the initial RTO and
         # would race the RTO timer; PyTCP defers to the
         # RTO-only path until a real RTT sample arrives.
-        if data and self._recovery_point == 0 and not self._frto_active and (self._rto_state.srtt_ms or 0) > 0:
+        if data and self._cc.recovery_point == 0 and not self._frto_active and (self._rto_state.srtt_ms or 0) > 0:
             flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
             # Use the IN-FLIGHT RTO timer's actual remaining
             # time (when accessible) so the §7.2 'do not
@@ -2369,9 +2322,9 @@ class TcpSession:
         # actual IW assignment happens at the SYN_RCVD -> ESTABLISHED
         # transition; here we set the SYN-RCVD-phase value
         # (one SMSS) so the outbound SYN+ACK is emitted correctly.
-        self._cwnd = self._snd_mss
-        self._ssthresh = 0x7FFF_FFFF
-        self._snd_ewn = min(self._cwnd, self._snd_wnd)
+        self._cc.cwnd = self._snd_mss
+        self._cc.ssthresh = 0x7FFF_FFFF
+        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
 
         # Receive-side state from the new SYN.
         self._rcv_ini = packet_rx_md.tcp__seq
@@ -2394,10 +2347,10 @@ class TcpSession:
 
         # Clear SACK + DSACK + recovery state from the prior incarnation.
         self._sack_scoreboard = SackScoreboard()
-        self._recovery_point = 0
-        self._recover_fs = 0
-        self._prr_delivered = 0
-        self._prr_out = 0
+        self._cc.recovery_point = 0
+        self._cc.recover_fs = 0
+        self._cc.prr_delivered = 0
+        self._cc.prr_out = 0
         self._pending_dsack = None
         self._dsack_received = 0
 
@@ -2470,9 +2423,9 @@ class TcpSession:
         Reference: RFC 9438 §4.9.1 (restore CUBIC state).
         """
 
-        self._cwnd = self._frto_pre_cwnd
-        self._ssthresh = self._frto_pre_ssthresh
-        self._snd_ewn = min(self._cwnd, self._snd_wnd)
+        self._cc.cwnd = self._frto_pre_cwnd
+        self._cc.ssthresh = self._frto_pre_ssthresh
+        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
         self._cubic_w_max = self._frto_pre_cubic_w_max
         self._cubic_K_ms = self._frto_pre_cubic_K_ms
         self._cubic_epoch_start_ms = self._frto_pre_cubic_epoch_start_ms
@@ -2480,8 +2433,8 @@ class TcpSession:
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - RFC 5682 F-RTO: spurious RTO "
-            f"detected, restored cwnd={self._cwnd} "
-            f"ssthresh={self._ssthresh}; "
+            f"detected, restored cwnd={self._cc.cwnd} "
+            f"ssthresh={self._cc.ssthresh}; "
             f"RFC 9438 §4.9.1: restored cubic "
             f"w_max={self._cubic_w_max} "
             f"K_ms={self._cubic_K_ms}",
@@ -2669,19 +2622,19 @@ class TcpSession:
             # epoch_start, W_est, cwnd, and ssthresh to their
             # pre-FR values so post-FR throughput is not
             # artificially anchored at the reduced W_max.
-            if self._cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._recovery_point != 0:
+            if self._cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
                 self._cubic_w_max = self._fr_pre_cubic_w_max
                 self._cubic_K_ms = self._fr_pre_cubic_K_ms
                 self._cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
                 self._cubic_w_est = self._fr_pre_cubic_w_est
-                self._cwnd = self._fr_pre_cwnd
-                self._ssthresh = self._fr_pre_ssthresh
+                self._cc.cwnd = self._fr_pre_cwnd
+                self._cc.ssthresh = self._fr_pre_ssthresh
                 self._fr_cubic_snapshot_valid = False
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - RFC 9438 §4.9.2 spurious-FR "
                     "restore: rolled back CUBIC state on DSACK "
-                    f"(cwnd={self._cwnd}, ssthresh={self._ssthresh}, "
+                    f"(cwnd={self._cc.cwnd}, ssthresh={self._cc.ssthresh}, "
                     f"W_max={self._cubic_w_max})",
                 )
             # RFC 8985 §6.2 step 4 DSACK-round handling. A
@@ -2696,7 +2649,7 @@ class TcpSession:
             # the next increment, so a burst of DSACKs at the
             # same round boundary doesn't multiply the
             # multiplier away.
-            if self._recovery_point == 0 and (
+            if self._cc.recovery_point == 0 and (
                 self._rack_dsack_round is None or not lt32(self._snd_una, self._rack_dsack_round)
             ):
                 self._rack_reo_wnd_mult += 1
@@ -2714,14 +2667,14 @@ class TcpSession:
         # exact). DSACK blocks are excluded above (the slice
         # 'blocks[1:]') so they do not double-count peer's
         # report of bytes we already knew about.
-        bytes_before = self._sack_scoreboard.total_sacked_bytes() if self._recovery_point != 0 else 0
+        bytes_before = self._sack_scoreboard.total_sacked_bytes() if self._cc.recovery_point != 0 else 0
 
         for left, right in blocks:
             if le32(self._snd_una, left) and le32(right, self._snd_max) and lt32(left, right):
                 self._sack_scoreboard.add_block(left, right)
 
-        if self._recovery_point != 0:
-            self._prr_delivered += self._sack_scoreboard.total_sacked_bytes() - bytes_before
+        if self._cc.recovery_point != 0:
+            self._cc.prr_delivered += self._sack_scoreboard.total_sacked_bytes() - bytes_before
 
     def _prune_sack_scoreboard(self) -> None:
         """
@@ -2750,7 +2703,7 @@ class TcpSession:
         intended to send has been sent).
         """
 
-        if self._recovery_point == 0 or not self._send_sack:
+        if self._cc.recovery_point == 0 or not self._send_sack:
             return
 
         for left, right in sorted(
@@ -2803,7 +2756,7 @@ class TcpSession:
         # in modular 32-bit space. Plain '<=' chained comparison
         # would wrongly reject a SND.NXT that has wrapped past
         # SND.UNA but is still in-window.
-        right_edge = add32(self._snd_una, self._snd_ewn)
+        right_edge = add32(self._snd_una, self._cc.snd_ewn)
         if not in_range32(self._snd_nxt, self._snd_una, right_edge):
             __debug__ and log(
                 "tcp-ss",
@@ -2865,7 +2818,7 @@ class TcpSession:
             # cannot SACK bytes we never sent).
             self._advance_snd_nxt_past_sacked()
             remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
-            usable_window = self._snd_ewn - self._tx_buffer_nxt
+            usable_window = self._cc.snd_ewn - self._tx_buffer_nxt
             # RFC 6691 §2 Req B: "the sender MUST reduce the
             # TCP data length to account for any IP or TCP
             # options that it is including in the packets that
@@ -2901,7 +2854,7 @@ class TcpSession:
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Sliding window <y>[{self._snd_una}|"
-                    f"{self._snd_nxt}|{add32(self._snd_una, self._snd_ewn)}]</>",
+                    f"{self._snd_nxt}|{add32(self._snd_una, self._cc.snd_ewn)}]</>",
                 )
                 __debug__ and log(
                     "tcp-ss",
@@ -3203,8 +3156,8 @@ class TcpSession:
         else:
             self._frto_active = True
             self._frto_step = 1
-            self._frto_pre_cwnd = self._cwnd
-            self._frto_pre_ssthresh = self._ssthresh
+            self._frto_pre_cwnd = self._cc.cwnd
+            self._frto_pre_ssthresh = self._cc.ssthresh
             self._frto_pre_snd_max = self._snd_max
             # RFC 9438 §4.9.1: snapshot the CUBIC-specific
             # state alongside the cwnd/ssthresh snapshot so a
@@ -3236,8 +3189,8 @@ class TcpSession:
         # further to release bandwidth to new flows.
         if self._cc_mode is CcMode.CUBIC:
             prior_w_max = self._cubic_w_max
-            self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
-                cwnd=max(self._cwnd, self._snd_mss),
+            self._cc.ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+                cwnd=max(self._cc.cwnd, self._snd_mss),
                 smss=self._snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
@@ -3257,14 +3210,14 @@ class TcpSession:
             # cum-ACK in '_process_ack_packet').
             self._cubic_w_est = 0
         else:
-            self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
         # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
         # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
         # §4.2.2.16 still require respecting peer's advertised
         # window: a 0-window peer means '_snd_ewn = 0' so
         # '_transmit_data' falls through to the persist branch.
-        self._cwnd = self._snd_mss
-        self._snd_ewn = min(self._cwnd, self._snd_wnd)
+        self._cc.cwnd = self._snd_mss
+        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
         self._snd_nxt = self._snd_una
         # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
         # event, distinct from the dup-ACK-driven fast-
@@ -3274,7 +3227,7 @@ class TcpSession:
         # SND.UNA above; leaving it set would inhibit the
         # next dup-ACK from re-entering recovery via the
         # one-shot guard in '_retransmit_packet_request'.
-        self._recovery_point = 0
+        self._cc.recovery_point = 0
         # RFC 6675 §5.1: "A SACK TCP sender SHOULD utilize all
         # SACK information made available during the loss
         # recovery following an RTO." PyTCP retains the SACK
@@ -3294,7 +3247,7 @@ class TcpSession:
         # '_retransmit_packet_request' entry gate keys on the
         # recover marker rather than the now-cleared
         # recovery point.
-        self._recover_seq = self._snd_max
+        self._cc.recover_seq = self._snd_max
         # SYN and FIN consume one byte of sequence space but do
         # not occupy a slot in the TX buffer. After
         # '_transmit_packet' fired the original SYN/FIN it
@@ -3318,7 +3271,7 @@ class TcpSession:
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Got retransmit timeout, sending segment "
-            f"{self._snd_nxt}, resetting snd_ewn to {self._snd_ewn}",
+            f"{self._snd_nxt}, resetting snd_ewn to {self._cc.snd_ewn}",
         )
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
@@ -3361,7 +3314,7 @@ class TcpSession:
         # 'prr_delivered' inside '_ingest_sack_info' and the
         # cwnd recompute on cum-ACK in '_process_ack_packet'
         # picks them up.
-        if self._recovery_point != 0:
+        if self._cc.recovery_point != 0:
             return
 
         # RFC 6582 §3.2 step 4 / step 2 post-RTO gate. After an
@@ -3374,7 +3327,7 @@ class TcpSession:
         # RTO recovery. The 0 sentinel means "no recover marker
         # set" so a fresh connection's first loss event still
         # enters FR.
-        if self._recover_seq != 0 and lt32(self._snd_una, self._recover_seq):
+        if self._cc.recover_seq != 0 and lt32(self._snd_una, self._cc.recover_seq):
             return
 
         # Two independent triggers, either of which enters
@@ -3408,10 +3361,10 @@ class TcpSession:
         # and runs RFC 5681 §3.2 fast retransmit instead.
         count = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack]
         if count in (1, 2) and len(self._tx_buffer) > 0:
-            saved_ewn = self._snd_ewn
-            self._snd_ewn = min(self._cwnd + count * self._snd_mss, self._snd_wnd)
+            saved_ewn = self._cc.snd_ewn
+            self._cc.snd_ewn = min(self._cc.cwnd + count * self._snd_mss, self._snd_wnd)
             self._transmit_data()
-            self._snd_ewn = saved_ewn
+            self._cc.snd_ewn = saved_ewn
 
         if not (count_trigger or sack_trigger):
             return
@@ -3436,11 +3389,11 @@ class TcpSession:
             self._fr_pre_cubic_K_ms = self._cubic_K_ms
             self._fr_pre_cubic_epoch_start_ms = self._cubic_epoch_start_ms
             self._fr_pre_cubic_w_est = self._cubic_w_est
-            self._fr_pre_cwnd = self._cwnd
-            self._fr_pre_ssthresh = self._ssthresh
+            self._fr_pre_cwnd = self._cc.cwnd
+            self._fr_pre_ssthresh = self._cc.ssthresh
             self._fr_cubic_snapshot_valid = True
-            self._ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
-                cwnd=self._cwnd,
+            self._cc.ssthresh, self._cubic_w_max = cubic_loss_event_ssthresh(
+                cwnd=self._cc.cwnd,
                 smss=self._snd_mss,
                 fast_conv_active=True,
                 prior_w_max=prior_w_max,
@@ -3448,7 +3401,7 @@ class TcpSession:
             self._cubic_w_last_max = prior_w_max
             self._cubic_K_ms = cubic_compute_K(
                 w_max=self._cubic_w_max,
-                cwnd_epoch=self._ssthresh,
+                cwnd_epoch=self._cc.ssthresh,
                 smss=self._snd_mss,
             )
             self._cubic_epoch_start_ms = stack.timer.now_ms
@@ -3457,7 +3410,7 @@ class TcpSession:
             # bootstraps from the post-recovery cwnd anchor.
             self._cubic_w_est = 0
         else:
-            self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
 
         # RFC 6937 §3.1 PRR per-recovery state initialisation:
         # snapshot pipe at entry as 'RecoverFS' so the per-ACK
@@ -3465,9 +3418,9 @@ class TcpSession:
         # 'prr_delivered * ssthresh / RecoverFS' ratio. Reset
         # the prr_delivered / prr_out counters to zero so the
         # accumulators only cover this recovery episode.
-        self._recover_fs = flight_size
-        self._prr_delivered = 0
-        self._prr_out = 0
+        self._cc.recover_fs = flight_size
+        self._cc.prr_delivered = 0
+        self._cc.prr_out = 0
 
         # RFC 6937 §3.1: at entry 'prr_delivered = 0' and
         # 'prr_out = 0' so the per-ACK formula yields
@@ -3478,8 +3431,8 @@ class TcpSession:
         # with PRR's data-driven per-ACK pacing - subsequent
         # ACKs recompute cwnd via the proportional ratio in
         # '_process_ack_packet'.
-        self._cwnd = flight_size
-        self._snd_ewn = min(self._cwnd, self._snd_wnd)
+        self._cc.cwnd = flight_size
+        self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
 
         # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
         # within the loss event do not re-trigger; '_process_ack_packet'
@@ -3487,7 +3440,7 @@ class TcpSession:
         # Setting to 'max(SND.MAX, 1)' guarantees the marker is
         # non-zero even when SND.MAX wraps to 0; the actual
         # comparison is modular.
-        self._recovery_point = self._snd_max if self._snd_max != 0 else 1
+        self._cc.recovery_point = self._snd_max if self._snd_max != 0 else 1
 
         # RFC 6675 §3 NextSeg() chooses the smallest unsacked
         # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
@@ -3512,8 +3465,8 @@ class TcpSession:
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Got retransmit request, sending segment "
-            f"{self._snd_nxt}, keeping snd_ewn at {self._snd_ewn}, "
-            f"recovery_point {self._recovery_point}",
+            f"{self._snd_nxt}, keeping snd_ewn at {self._cc.snd_ewn}, "
+            f"recovery_point {self._cc.recovery_point}",
         )
 
     def _tlp_pto_tick(self) -> None:
@@ -3562,7 +3515,7 @@ class TcpSession:
         # underway, OR F-RTO is active), TLP yields. The
         # ongoing recovery machinery handles the loss already;
         # a TLP probe would race it and emit a duplicate.
-        if self._retransmit_count > 0 or self._recovery_point != 0 or self._frto_active:
+        if self._retransmit_count > 0 or self._cc.recovery_point != 0 or self._frto_active:
             return
 
         # New-data probe path: the TX buffer has bytes past
@@ -3573,7 +3526,7 @@ class TcpSession:
         # buffer offset of SND.MAX modularly so a wrapped
         # session is handled correctly.
         tx_buffer_max = sub32(self._snd_max, self._tx_buffer_seq_mod)
-        new_data_available = tx_buffer_max < len(self._tx_buffer) and self._snd_ewn > tx_buffer_max
+        new_data_available = tx_buffer_max < len(self._tx_buffer) and self._cc.snd_ewn > tx_buffer_max
         if new_data_available:
             # Force '_transmit_data' to start at SND.MAX (the
             # bytes immediately past the highest-seq sent).
@@ -3767,7 +3720,7 @@ class TcpSession:
             # is signalled by 'css_rounds_remaining == 0' after
             # rotate_round; that triggers the §4.2 "set
             # ssthresh = cwnd" entry into congestion avoidance.
-            if self._cwnd < self._ssthresh:
+            if self._cc.cwnd < self._cc.ssthresh:
                 if self._hystart_state.window_end_seq == 0:
                     # Bootstrap: first round of slow-start.
                     self._hystart_state.window_end_seq = self._snd_nxt
@@ -3776,13 +3729,13 @@ class TcpSession:
                     if self._hystart_state.in_css and self._hystart_state.css_rounds_remaining == 0:
                         # CSS_ROUNDS exhausted -> ssthresh =
                         # cwnd, enter CA. Clear CSS state.
-                        self._ssthresh = self._cwnd
+                        self._cc.ssthresh = self._cc.cwnd
                         resume_slow_start(self._hystart_state)
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - RFC 9406 HyStart++ "
                             "CSS_ROUNDS exhausted; ssthresh = "
-                            f"cwnd = {self._cwnd}, entering CA",
+                            f"cwnd = {self._cc.cwnd}, entering CA",
                         )
             # RFC 6582 §3.2 step 4 marker decay: clear the
             # recover marker once SND.UNA has reached or passed
@@ -3794,14 +3747,14 @@ class TcpSession:
             # can then drive fast retransmit normally without
             # the post-RTO gate suppressing legitimate loss
             # recovery.
-            if self._recover_seq != 0 and ge32(self._snd_una, self._recover_seq):
-                self._recover_seq = 0
+            if self._cc.recover_seq != 0 and ge32(self._snd_una, self._cc.recover_seq):
+                self._cc.recover_seq = 0
             # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
             # recovery feed 'prr_delivered'. Out-of-recovery
             # cum-ACKs do not - the accumulator is scoped to a
             # single recovery episode.
-            if self._recovery_point != 0:
-                self._prr_delivered += bytes_acked
+            if self._cc.recovery_point != 0:
+                self._cc.prr_delivered += bytes_acked
             # Cwnd update on cum-ACK that advances SND.UNA.
             # Three branches gated on recovery state:
             #   - in recovery, partial cum-ACK (snd_una hasn't
@@ -3820,18 +3773,18 @@ class TcpSession:
             #     recovery-exit branch below.
             #   - not in recovery: RFC 5681 §3.1 slow-start vs
             #     congestion-avoidance growth.
-            if self._recovery_point != 0 and lt32(self._snd_una, self._recovery_point):
+            if self._cc.recovery_point != 0 and lt32(self._snd_una, self._cc.recovery_point):
                 current_pipe = pipe(
                     scoreboard=self._sack_scoreboard,
                     snd_una=self._snd_una,
                     snd_max=self._snd_max,
                 )
-                if current_pipe > self._ssthresh:
+                if current_pipe > self._cc.ssthresh:
                     # PRR proper: aim for ssthresh/RecoverFS
                     # ratio. Integer CEIL via the standard
                     # '-(-a // b)' trick to avoid float math.
-                    target = -(-self._prr_delivered * self._ssthresh // self._recover_fs)
-                    sndcnt = target - self._prr_out
+                    target = -(-self._cc.prr_delivered * self._cc.ssthresh // self._cc.recover_fs)
+                    sndcnt = target - self._cc.prr_out
                 else:
                     # PRR-CRB / PRR-SSRB: pipe has dropped at
                     # or below ssthresh; allow conservative
@@ -3840,11 +3793,11 @@ class TcpSession:
                     # SMSS per ACK; CRB (no SACK or no new
                     # data) caps at the unsent prr_delivered.
                     if self._send_sack and bytes_acked > 0:
-                        limit = max(self._prr_delivered - self._prr_out, bytes_acked) + self._snd_mss
+                        limit = max(self._cc.prr_delivered - self._cc.prr_out, bytes_acked) + self._snd_mss
                     else:
-                        limit = self._prr_delivered - self._prr_out
-                    sndcnt = min(self._ssthresh - current_pipe, limit)
-                self._cwnd = current_pipe + max(0, sndcnt)
+                        limit = self._cc.prr_delivered - self._cc.prr_out
+                    sndcnt = min(self._cc.ssthresh - current_pipe, limit)
+                self._cc.cwnd = current_pipe + max(0, sndcnt)
             else:
                 # RFC 9438 §4.4 / §4.5: when '_cc_mode == CUBIC'
                 # AND we are in CA (cwnd >= ssthresh), use the
@@ -3852,12 +3805,12 @@ class TcpSession:
                 # Reno CA branch. Slow-start (cwnd < ssthresh)
                 # is handled inside both helpers and yields the
                 # same RFC 5681 §3.1 path either way.
-                if self._cc_mode is CcMode.CUBIC and self._cwnd >= self._ssthresh:
+                if self._cc_mode is CcMode.CUBIC and self._cc.cwnd >= self._cc.ssthresh:
                     self._cubic_in_ca = True
                     now_ms = stack.timer.now_ms
                     cubic_cwnd = cubic_grow_per_ack(
-                        cwnd=self._cwnd,
-                        ssthresh=self._ssthresh,
+                        cwnd=self._cc.cwnd,
+                        ssthresh=self._cc.ssthresh,
                         w_max=self._cubic_w_max,
                         K_ms=self._cubic_K_ms,
                         epoch_start_ms=self._cubic_epoch_start_ms,
@@ -3874,14 +3827,14 @@ class TcpSession:
                     # RTT paths. Lazy-initialise on first CA
                     # entry from cwnd_epoch.
                     if self._cubic_w_est == 0:
-                        self._cubic_w_est = self._cwnd
+                        self._cubic_w_est = self._cc.cwnd
                     self._cubic_w_est = cubic_w_est(
                         w_est_prev=self._cubic_w_est,
-                        cwnd=self._cwnd,
+                        cwnd=self._cc.cwnd,
                         smss=self._snd_mss,
                         bytes_acked=bytes_acked,
                     )
-                    self._cwnd = max(cubic_cwnd, self._cubic_w_est)
+                    self._cc.cwnd = max(cubic_cwnd, self._cubic_w_est)
                 else:
                     # RFC 9406 §4.2 CSS phase override: when
                     # HyStart++ has detected delay-increase and
@@ -3891,15 +3844,15 @@ class TcpSession:
                     # RFC 5681 / RFC 6928 slow-start or RFC
                     # 5681 §3.1 congestion-avoidance growth via
                     # 'cwnd_grow_per_ack'.
-                    if self._cwnd < self._ssthresh and self._hystart_state.in_css:
-                        self._cwnd += css_growth_increment(bytes_acked, self._snd_mss)
+                    if self._cc.cwnd < self._cc.ssthresh and self._hystart_state.in_css:
+                        self._cc.cwnd += css_growth_increment(bytes_acked, self._snd_mss)
                     else:
-                        self._cwnd = cwnd_grow_per_ack(self._cwnd, self._ssthresh, bytes_acked, self._snd_mss)
+                        self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._snd_mss)
             # RFC 9293 §3.8.4: the effective send window is
             # 'min(cwnd, snd_wnd)'. Recompute now so
             # '_transmit_data' sees the new value on the same
             # FSM tick.
-            self._snd_ewn = min(self._cwnd, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
             # RFC 6298 §5.2 / §5.3: peer has acknowledged new
             # data, fresh evidence of liveness. Reset the R2
             # abort counter and manage the retransmit timer:
@@ -3936,12 +3889,13 @@ class TcpSession:
                 from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
 
                 flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
-                self._ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
-                self._cwnd = self._ssthresh
-                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
+                self._cc.cwnd = self._cc.ssthresh
+                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair " f"CC: ssthresh={self._ssthresh} cwnd={self._cwnd}",
+                    f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair "
+                    f"CC: ssthresh={self._cc.ssthresh} cwnd={self._cc.cwnd}",
                 )
             if self._snd_una == self._snd_max:
                 stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
@@ -4032,7 +3986,7 @@ class TcpSession:
             # transitions. Skipped after slow-start exits
             # (cwnd >= ssthresh AND not in_css) — HyStart++ is a
             # slow-start-only mechanism.
-            if self._cwnd < self._ssthresh or self._hystart_state.in_css:
+            if self._cc.cwnd < self._cc.ssthresh or self._hystart_state.in_css:
                 fold_rtt_sample(self._hystart_state, ts_rtt_ms)
                 self._hystart_check_phase_transition()
             __debug__ and log(
@@ -4061,7 +4015,7 @@ class TcpSession:
                 self._rto_state = update(self._rto_state, observed_rtt_ms)
                 # RFC 9406 §4.2: see TSecr-fold note above; same
                 # HyStart++ feed in the Karn-tracker harvest path.
-                if self._cwnd < self._ssthresh or self._hystart_state.in_css:
+                if self._cc.cwnd < self._cc.ssthresh or self._hystart_state.in_css:
                     fold_rtt_sample(self._hystart_state, observed_rtt_ms)
                     self._hystart_check_phase_transition()
                 __debug__ and log(
@@ -4111,15 +4065,15 @@ class TcpSession:
         # exit so the inflation from steps 3+4 is undone and
         # subsequent §3.1 growth resumes from the previously-
         # observed loss boundary.
-        if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
+        if self._cc.recovery_point != 0 and le32(self._cc.recovery_point, self._snd_una):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Exiting recovery: SND.UNA={self._snd_una} "
-                f"reached RecoveryPoint={self._recovery_point}",
+                f"reached RecoveryPoint={self._cc.recovery_point}",
             )
-            self._cwnd = self._ssthresh
-            self._snd_ewn = min(self._cwnd, self._snd_wnd)
-            self._recovery_point = 0
+            self._cc.cwnd = self._cc.ssthresh
+            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
+            self._cc.recovery_point = 0
             # RFC 9438 §4.9.2 snapshot is scoped to a single
             # recovery episode; clear on exit so a stray DSACK
             # post-recovery does not roll back unrelated state.
@@ -4128,9 +4082,9 @@ class TcpSession:
             # to a single recovery episode. Reset on exit so
             # the next loss event snapshots a fresh
             # 'RecoverFS' and re-accumulates from zero.
-            self._recover_fs = 0
-            self._prr_delivered = 0
-            self._prr_out = 0
+            self._cc.recover_fs = 0
+            self._cc.prr_delivered = 0
+            self._cc.prr_out = 0
             # RFC 8985 §6.2 step 4 reo_wnd_persist decay. Each
             # recovery exit decrements the persist counter; on
             # reaching zero, reset 'reo_wnd_mult' back to 1
@@ -4243,7 +4197,7 @@ class TcpSession:
             # the wire-level transmit gate sees a coherent
             # min(cwnd, snd_wnd) regardless of which side just
             # moved.
-            self._snd_ewn = min(self._cwnd, self._snd_wnd)
+            self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
         # RFC 5961 §5 'MAX.SND.WND': running maximum of peer's
         # advertised window. Used as the lower-bound tolerance
         # for ACK acceptability ('SND.UNA - MAX.SND.WND <=
@@ -4260,7 +4214,7 @@ class TcpSession:
             self._persist_timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - cwnd={self._cwnd} ssthresh={self._ssthresh} snd_ewn={self._snd_ewn}",
+            f"[{self}] - cwnd={self._cc.cwnd} ssthresh={self._cc.ssthresh} snd_ewn={self._cc.snd_ewn}",
         )
         # Purge expired tx packet retransmit requests. Modular '<'
         # via 'lt32' so entries near the 32-bit wrap are dropped
@@ -4339,9 +4293,9 @@ class TcpSession:
                 # ssthresh by the less-aggressive 0.85
                 # multiplier instead of the 0.5 used for
                 # genuine packet-loss events.
-                self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
-                self._cwnd = self._ssthresh
-                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                self._cc.cwnd = self._cc.ssthresh
+                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                 self._ecn_send_cwr = True
                 self._ecn_recovery_point = self._snd_nxt
             # RFC 9768 §3.4 sender-side response to AccECN
@@ -4370,9 +4324,9 @@ class TcpSession:
                 # the less-aggressive 0.85 multiplier rather
                 # than the 0.5 reserved for genuine packet
                 # loss events.
-                self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
-                self._cwnd = self._ssthresh
-                self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                self._cc.cwnd = self._cc.ssthresh
+                self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                 self._ecn_recovery_point = self._snd_nxt
             # Always update '_accecn_s_ce_b' to the latest
             # peer-reported value so subsequent ACKs reporting
@@ -4435,9 +4389,9 @@ class TcpSession:
                     self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una)
                 ):
                     flight_size = sub32(self._snd_max, self._snd_una)
-                    self._ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
-                    self._cwnd = self._ssthresh
-                    self._snd_ewn = min(self._cwnd, self._snd_wnd)
+                    self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
+                    self._cc.cwnd = self._cc.ssthresh
+                    self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                     self._ecn_recovery_point = self._snd_nxt
                 # Always advance s.cep so subsequent ACKs
                 # reporting the same ACE value are idempotent.

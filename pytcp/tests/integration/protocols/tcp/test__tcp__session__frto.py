@@ -141,7 +141,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         # Bypass slow-start: tests of F-RTO restoration need
         # a deterministic non-slow-start cwnd/ssthresh state
         # that the spurious-event path can revert to.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__frto__spurious_rto_restores_pre_rto_cwnd_and_ssthresh(self) -> None:
@@ -168,8 +168,8 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        cwnd_before_rto = session._cwnd
-        ssthresh_before_rto = session._ssthresh
+        cwnd_before_rto = session._cc.cwnd
+        ssthresh_before_rto = session._cc.ssthresh
         snd_max_at_rto = session._snd_max
 
         # Don't ACK; advance past PACKET_RETRANSMIT_TIMEOUT
@@ -178,12 +178,12 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
 
         self.assertNotEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg=(
                 "Setup precondition: RTO MUST collapse cwnd "
                 "below the pre-RTO value before F-RTO can "
-                f"restore it. Got cwnd={session._cwnd}, "
+                f"restore it. Got cwnd={session._cc.cwnd}, "
                 f"cwnd_before_rto={cwnd_before_rto}."
             ),
         )
@@ -204,23 +204,23 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg=(
                 "RFC 5682 §3.1: when the first post-RTO ACK "
                 "covers all pre-RTO outstanding data, the RTO "
                 "is spurious and cwnd MUST be restored to its "
-                f"pre-RTO value. Got cwnd={session._cwnd}, "
+                f"pre-RTO value. Got cwnd={session._cc.cwnd}, "
                 f"expected {cwnd_before_rto}."
             ),
         )
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before_rto,
             msg=(
                 "RFC 5682 §3.1: spurious-RTO detection MUST "
                 "restore ssthresh to the pre-RTO value. Got "
-                f"ssthresh={session._ssthresh}, expected "
+                f"ssthresh={session._cc.ssthresh}, expected "
                 f"{ssthresh_before_rto}."
             ),
         )
@@ -247,13 +247,13 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        cwnd_before_rto = session._cwnd
-        ssthresh_before_rto = session._ssthresh
+        cwnd_before_rto = session._cc.cwnd
+        ssthresh_before_rto = session._cc.ssthresh
 
         # Don't ACK; trigger RTO.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
 
-        ssthresh_after_rto = session._ssthresh
+        ssthresh_after_rto = session._cc.ssthresh
 
         # Peer's ACK covers only the FIRST segment (the
         # retransmit) - segments B and C were genuinely
@@ -269,7 +269,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         self._drive_rx(frame=peer_partial_ack)
 
         self.assertLess(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg=(
                 "RFC 5682 §3.1: when the first post-RTO ACK "
@@ -279,17 +279,17 @@ class TestTcpSession__Frto(TcpSessionTestCase):
                 "Slow-start growth on the partial cum-ACK is "
                 "expected, but cwnd should stay well below "
                 f"the pre-RTO {cwnd_before_rto}. Got "
-                f"cwnd={session._cwnd}."
+                f"cwnd={session._cc.cwnd}."
             ),
         )
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_after_rto,
             msg=(
                 "RFC 5682 §3.1: genuine-RTO recovery MUST "
                 "leave ssthresh at its halved post-RTO value "
                 "(F-RTO restoration MUST NOT fire). Got "
-                f"ssthresh={session._ssthresh}, expected "
+                f"ssthresh={session._cc.ssthresh}, expected "
                 f"{ssthresh_after_rto} (which is < pre-RTO "
                 f"{ssthresh_before_rto})."
             ),
@@ -323,7 +323,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        cwnd_before_rto = session._cwnd
+        cwnd_before_rto = session._cc.cwnd
         snd_max_at_rto = session._snd_max
         cubic_w_max_before = session._cubic_w_max
         cubic_K_ms_before = session._cubic_K_ms
@@ -348,7 +348,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         # cwnd restored (already covered by the parent F-RTO
         # test) - assert here as a setup invariant.
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg="Setup invariant: F-RTO restores cwnd on spurious detection.",
         )
@@ -499,7 +499,7 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__frto__step2_step3__partial_then_advancing_ack_declares_spurious(self) -> None:
@@ -521,14 +521,14 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        cwnd_before_rto = session._cwnd
-        ssthresh_before_rto = session._ssthresh
+        cwnd_before_rto = session._cc.cwnd
+        ssthresh_before_rto = session._cc.ssthresh
         snd_max_at_rto = session._snd_max
         peer_iss_after_handshake = PEER__ISS + 1
 
         # Force RTO.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
-        assert session._cwnd != cwnd_before_rto, "Setup precondition: cwnd must collapse on RTO."
+        assert session._cc.cwnd != cwnd_before_rto, "Setup precondition: cwnd must collapse on RTO."
 
         # First post-RTO ACK: partial — covers ONE segment past
         # SND.UNA, well below pre-RTO SND.MAX. RFC §2.1 step 2b:
@@ -557,12 +557,12 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
             ),
         )
         self.assertNotEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg=(
                 "Setup invariant: pre-RTO cwnd MUST NOT be "
                 "restored on partial first ACK (step 2 defers "
-                f"restoration). Got cwnd={session._cwnd}."
+                f"restoration). Got cwnd={session._cc.cwnd}."
             ),
         )
 
@@ -580,23 +580,23 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         self._drive_rx(frame=advancing_ack)
 
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_before_rto,
             msg=(
                 "RFC 5682 §2.1 step 3b: second post-RTO ACK "
                 "advancing past pre-RTO SND.MAX MUST declare "
                 "spurious and restore cwnd to pre-RTO value. "
-                f"Got cwnd={session._cwnd}, expected "
+                f"Got cwnd={session._cc.cwnd}, expected "
                 f"{cwnd_before_rto}."
             ),
         )
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_before_rto,
             msg=(
                 "RFC 5682 §2.1 step 3b: second-ACK spurious "
                 f"detection MUST restore ssthresh. Got "
-                f"{session._ssthresh}, expected {ssthresh_before_rto}."
+                f"{session._cc.ssthresh}, expected {ssthresh_before_rto}."
             ),
         )
         self.assertEqual(
@@ -627,7 +627,7 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        first_pre_rto_cwnd = session._cwnd
+        first_pre_rto_cwnd = session._cc.cwnd
 
         # First RTO: snapshot taken.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)

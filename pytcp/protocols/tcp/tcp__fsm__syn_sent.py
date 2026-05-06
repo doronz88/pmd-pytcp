@@ -182,8 +182,8 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # the RST even when 'RCV.NXT' happens to equal
             # 0 (peer's ISN was 0xFFFF_FFFF, modular wrap).
             session._peer_contacted = True
-            session._cwnd = session._snd_mss
-            session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            session._cc.cwnd = session._snd_mss
+            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # Enqueue any piggybacked SYN+ACK data per RFC 9293
             # §3.10.7.4 step 7 BEFORE '_process_ack_packet'
             # runs: the helper's overlap-prefix calculation
@@ -214,8 +214,8 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # '_process_ack_packet' has fired §3.1 growth on
             # the SYN+ACK ack-advance so the IW value is the
             # exact post-handshake cwnd, not IW + 1.
-            session._cwnd = initial_window(session._snd_mss)
-            session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            session._cc.cwnd = initial_window(session._snd_mss)
+            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # RFC 6298 §5.7 second clause: when the SYN was
             # retransmitted at least once before the handshake
             # completed, RTO MUST be re-initialized to >= 3 s
@@ -400,8 +400,8 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             session._peer_contacted = True
             # Reset slow-start to one MSS now that we know peer's
             # MSS for real.
-            session._cwnd = session._snd_mss
-            session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            session._cc.cwnd = session._snd_mss
+            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # Send SYN + ACK at our original SYN's seq so peer
             # accepts it as the simultaneous-open response. RFC
             # 9293 §3.5.1 figure 8: the simultaneous-open SYN+ACK

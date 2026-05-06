@@ -848,8 +848,8 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        session._cwnd = 100 * PEER__MSS
-        session._snd_ewn = min(session._cwnd, session._snd_wnd)
+        session._cc.cwnd = 100 * PEER__MSS
+        session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
 
         # Get N segments in flight then enter recovery.
         n_segments = 5
@@ -870,9 +870,9 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
             self._drive_rx(frame=dup_ack)
         self._advance(ms=1)
 
-        recovery_point_pre = session._recovery_point
-        cwnd_pre = session._cwnd
-        ssthresh_pre = session._ssthresh
+        recovery_point_pre = session._cc.recovery_point
+        cwnd_pre = session._cc.cwnd
+        ssthresh_pre = session._cc.ssthresh
         self.assertNotEqual(
             recovery_point_pre,
             0,
@@ -886,7 +886,7 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
         session._keepalive_tick()
 
         self.assertEqual(
-            session._recovery_point,
+            session._cc.recovery_point,
             recovery_point_pre,
             msg=(
                 "Cross-RFC: a keep-alive probe MUST NOT clear "
@@ -895,12 +895,12 @@ class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_pre,
             msg="Cross-RFC: a keep-alive probe MUST NOT change cwnd.",
         )
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             ssthresh_pre,
             msg="Cross-RFC: a keep-alive probe MUST NOT change ssthresh.",
         )

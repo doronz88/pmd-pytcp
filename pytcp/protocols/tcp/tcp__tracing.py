@@ -73,7 +73,7 @@ def trace_win(self: TcpSession) -> None:
     # pylint: disable=protected-access
 
     remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
-    usable_window = self._tx_buffer_una + self._snd_ewn - self._tx_buffer_nxt
+    usable_window = self._tx_buffer_una + self._cc.snd_ewn - self._tx_buffer_nxt
     transmit_data_len = min(self._snd_mss, usable_window, remaining_data_len)
 
     print("unsent_data:", remaining_data_len)

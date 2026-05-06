@@ -182,8 +182,8 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # peer's third-leg ACK) and the simultaneous-open
             # path (both sides SYN, both SYN+ACK, third-leg
             # ACK).
-            session._cwnd = initial_window(session._snd_mss)
-            session._snd_ewn = min(session._cwnd, session._snd_wnd)
+            session._cc.cwnd = initial_window(session._snd_mss)
+            session._cc.snd_ewn = min(session._cc.cwnd, session._snd_wnd)
             # RFC 6298 §5.7 second clause (passive- and
             # simultaneous-open shape): if our SYN+ACK was
             # retransmitted at least once before peer's

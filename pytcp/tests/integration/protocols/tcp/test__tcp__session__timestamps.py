@@ -355,7 +355,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts, "Setup invariant: bilateral TSopt negotiation must succeed."
         # Bypass slow-start.
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__ts__post_handshake_data_segment_carries_tsopt(self) -> None:
@@ -552,7 +552,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
 
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rttm__karn_tainted_retransmit_measures_rtt_via_tsecr(self) -> None:
@@ -661,7 +661,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         self.assertFalse(session._send_ts, msg="Peer did not advertise TSopt.")
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
 
         pre_ack_state = session._rto_state
         payload = b"hello"
@@ -748,7 +748,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
 
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__paws__stale_tsval_segment_dropped(self) -> None:
@@ -902,7 +902,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
 
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__paws__dup_ack_with_stale_tsval_dropped(self) -> None:
@@ -925,7 +925,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         self._advance(ms=1)
 
         snd_una_pre = session._snd_una
-        cwnd_pre = session._cwnd
+        cwnd_pre = session._cc.cwnd
         retransmit_request_count_pre = session._tx_retransmit_request_counter.get(snd_una_pre, 0)
 
         stale_tsval = PEER__TSVAL_INITIAL - 100
@@ -943,7 +943,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             self._drive_rx(frame=stale_dup_ack)
 
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             cwnd_pre,
             msg=(
                 "Stale-TSval dup-ACKs MUST be dropped "
@@ -1284,7 +1284,7 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__retransmit__tsval_reflects_current_now_ms_not_queue_time(self) -> None:
@@ -1633,7 +1633,7 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
         assert session._send_ts
-        session._snd_ewn = PEER__WIN
+        session._cc.snd_ewn = PEER__WIN
         return session
 
     def test__rfc7323__rst_in_synchronized_state_carries_tsopt(self) -> None:

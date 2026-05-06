@@ -474,7 +474,7 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         self._drive_rx(frame=ece_ack)
 
         self.assertEqual(
-            session._ssthresh,
+            session._cc.ssthresh,
             expected_ssthresh,
             msg=(
                 "RFC 8511 §3 ABE: on inbound ECE the sender uses "
@@ -482,17 +482,17 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
                 "instead of the RFC 5681 §3.1 0.5 used for loss "
                 "events. Expected 'max(flight_size * 17 // 20, "
                 f"2*SMSS)' = {expected_ssthresh}, got "
-                f"{session._ssthresh}. Pre-ECE flight_size was "
+                f"{session._cc.ssthresh}. Pre-ECE flight_size was "
                 f"{flight_size_before}."
             ),
         )
         self.assertEqual(
-            session._cwnd,
+            session._cc.cwnd,
             expected_ssthresh,
             msg=(
                 "RFC 3168 §6.1.2: on inbound ECE the sender MUST "
                 "collapse cwnd to ssthresh. Got "
-                f"cwnd={session._cwnd}, ssthresh={session._ssthresh}."
+                f"cwnd={session._cc.cwnd}, ssthresh={session._cc.ssthresh}."
             ),
         )
 
