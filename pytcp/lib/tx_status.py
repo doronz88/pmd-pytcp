@@ -65,6 +65,7 @@ class TxStatus(NameEnum):
     DROPPED__IP4__SRC_NETWORK_BROADCAST = auto()
     DROPPED__IP4__SRC_UNSPECIFIED = auto()
     DROPPED__IP4__DST_UNSPECIFIED = auto()
+    DROPPED__IP4__MTU_EXCEED_DF = auto()
     DROPPED__IP4__UNKNOWN = auto()
 
     PASSED__IP6__TO_TX_RING = auto()

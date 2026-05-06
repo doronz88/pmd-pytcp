@@ -210,6 +210,7 @@ class PacketStatsTx(PacketStats):
     ip4__mtu_ok__send: int = 0
     ip4__mtu_exceed__frag: int = 0
     ip4__mtu_exceed__frag__send: int = 0
+    ip4__mtu_exceed__df_set__drop: int = 0
 
     ip6__pre_assemble: int = 0
     ip6__no_proto_support__drop: int = 0

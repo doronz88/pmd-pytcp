@@ -155,6 +155,19 @@ class PacketHandlerIp4Tx(ABC):
                     self.__send_out_packet(ip4_packet_tx)
                     return TxStatus.PASSED__IP4__TO_TX_RING
 
+        # RFC 791 §3.1: a datagram with DF=1 that exceeds the link
+        # MTU MUST be discarded. Fragmenting it locally would emit
+        # MF=1 fragments that contradict the DF=1 contract the upper
+        # layer asked for.
+        if ip4__flag_df:
+            self._packet_stats_tx.ip4__mtu_exceed__df_set__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{ip4_packet_tx.tracker} - <CRIT>IPv4 packet len {len(ip4_packet_tx)} "
+                f"bytes exceeds MTU and DF=1; dropping</>",
+            )
+            return TxStatus.DROPPED__IP4__MTU_EXCEED_DF
+
         # Fragment packet and send out.
         self._packet_stats_tx.ip4__mtu_exceed__frag += 1
         __debug__ and log(

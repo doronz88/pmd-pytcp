@@ -62,6 +62,7 @@ _EXPECTED_MEMBERS: tuple[str, ...] = (
     "DROPPED__IP4__SRC_NETWORK_BROADCAST",
     "DROPPED__IP4__SRC_UNSPECIFIED",
     "DROPPED__IP4__DST_UNSPECIFIED",
+    "DROPPED__IP4__MTU_EXCEED_DF",
     "DROPPED__IP4__UNKNOWN",
     "PASSED__IP6__TO_TX_RING",
     "DROPPED__IP6__NO_PROTOCOL_SUPPORT",
@@ -157,7 +158,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__IP4__UNKNOWN,
             "_results": {
                 "name": "DROPPED__IP4__UNKNOWN",
-                "value": 20,
+                "value": 21,
                 "__str__": "DROPPED__IP4__UNKNOWN",
             },
         },
@@ -166,7 +167,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__ICMP6__UNKNOWN,
             "_results": {
                 "name": "DROPPED__ICMP6__UNKNOWN",
-                "value": 34,
+                "value": 35,
                 "__str__": "DROPPED__ICMP6__UNKNOWN",
             },
         },
@@ -184,7 +185,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__IP6__EXT_FRAG_UNKNOWN,
             "_results": {
                 "name": "DROPPED__IP6__EXT_FRAG_UNKNOWN",
-                "value": 30,
+                "value": 31,
                 "__str__": "DROPPED__IP6__EXT_FRAG_UNKNOWN",
             },
         },

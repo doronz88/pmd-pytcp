@@ -38,7 +38,11 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_proto import IpProto
+from net_proto import (
+    Icmp4Assembler,
+    Icmp4MessageEchoRequest,
+    IpProto,
+)
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -1022,6 +1026,89 @@ class TestPacketHandlerIp4TxErrors(NetworkTestCase):
             error.exception,
             type(self._expected__error),
             msg=f"Unexpected exception type for case: {self._description}",
+        )
+
+
+class TestPacketHandlerIp4TxMtuExceedDf(NetworkTestCase):
+    """
+    Test the Packet Handler IPv4 TX path's RFC 791 §3.1 DF
+    enforcement: an IPv4 packet whose size exceeds the link MTU and
+    whose DF=1 must be dropped — not fragmented.
+    """
+
+    def test__packet_handler__ip4__tx__mtu_exceed_df__drops(self) -> None:
+        """
+        Ensure '_phtx_ip4' returns DROPPED__IP4__MTU_EXCEED_DF and
+        emits no frame when the assembled packet exceeds the
+        interface MTU and the caller asked for DF=1.
+
+        Reference: RFC 791 §3.1 (Don't Fragment flag semantics).
+        """
+
+        big_payload = bytes(2000)
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__flag_df=True,
+            ip4__payload=Icmp4Assembler(
+                icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=big_payload),
+            ),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__MTU_EXCEED_DF,
+            msg="_phtx_ip4 with DF=1 + len > MTU must return DROPPED__IP4__MTU_EXCEED_DF.",
+        )
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="No frame must be emitted when DF=1 + len > MTU.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ip4__mtu_exceed__df_set__drop,
+            1,
+            msg="ip4__mtu_exceed__df_set__drop counter must bump.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ip4__mtu_exceed__frag,
+            0,
+            msg="With DF=1, the fragment-path counter must NOT bump.",
+        )
+
+    def test__packet_handler__ip4__tx__mtu_exceed_no_df__fragments(self) -> None:
+        """
+        Ensure '_phtx_ip4' still fragments when the packet exceeds
+        the MTU and DF=0 — the legacy default. Verifies the DF
+        gate is the sole guardrail and the legacy fragmentation
+        path is intact.
+
+        Reference: RFC 791 §2.3 (in-network fragmentation).
+        """
+
+        big_payload = bytes(2000)
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=Icmp4Assembler(
+                icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=big_payload),
+            ),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="_phtx_ip4 with DF=0 + len > MTU must fragment and forward.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ip4__mtu_exceed__frag,
+            1,
+            msg="ip4__mtu_exceed__frag must bump on the DF=0 oversized path.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ip4__mtu_exceed__df_set__drop,
+            0,
+            msg="With DF=0, the DF-drop counter must NOT bump.",
         )
 
 
