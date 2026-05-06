@@ -678,7 +678,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts, "Bilateral TSopt must be active for RFC 6191 to apply."
+        assert session._ts.send_ts, "Bilateral TSopt must be active for RFC 6191 to apply."
 
         # Active close.
         session.close()
@@ -712,9 +712,9 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_fin)
         assert session.state is FsmState.TIME_WAIT
-        assert session._ts_recent == peer_tsval_initial + 2, (
+        assert session._ts.ts_recent == peer_tsval_initial + 2, (
             "Setup invariant: post-TIME_WAIT '_ts_recent' must equal "
-            f"peer's last TSval. Got {session._ts_recent}, expected "
+            f"peer's last TSval. Got {session._ts.ts_recent}, expected "
             f"{peer_tsval_initial + 2}."
         )
         return session
@@ -738,7 +738,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval_initial=PEER__TSVAL_INITIAL,
         )
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
 
         # Peer's NEW SYN: fresh ISS, source port matches the
         # original 4-tuple, TSval strictly greater than our
@@ -831,7 +831,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval_initial=PEER__TSVAL_INITIAL,
         )
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
 
         new_peer_iss = 0x0000_5000  # > peer_iss + 2 = 0x2002
         new_peer_syn = build_tcp4(
@@ -955,7 +955,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval_initial=PEER__TSVAL_INITIAL,
         )
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
 
         # No evidence on either axis: seq == rcv_nxt - 1
         # (replay of last byte we ACKed) AND TSval == _ts_recent.

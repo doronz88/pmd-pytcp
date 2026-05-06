@@ -216,13 +216,13 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # peer's TSval as '_ts_recent' so the SYN+ACK we
             # emit next echoes it via TSecr.
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
-                session._send_ts = True
-                session._ts_recent = packet_rx_md.tcp__tsval
+                session._ts.send_ts = True
+                session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:
                 # stamp the local clock at every TS.Recent
                 # update so the helper can detect 24-day idle
                 # later. Initial seed at handshake bootstrap.
-                session._ts_recent_updated_at_ms = stack.timer.now_ms
+                session._ts.ts_recent_updated_at_ms = stack.timer.now_ms
             # RFC 9768 §3.1.1 / §3.1.3 / RFC 3168 §6.1.1
             # bilateral ECN/AccECN negotiation. The canonical
             # AccECN-setup SYN carries (AE,CWR,ECE)=(1,1,1);

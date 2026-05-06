@@ -1578,8 +1578,8 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         # helper doesn't drive TSopt; flip the flags directly so
         # the post-handshake test focus is on the PAWS+DSACK
         # interaction, not on the negotiation.
-        session._send_ts = True
-        session._ts_recent = 0x1234_5678
+        session._ts.send_ts = True
+        session._ts.ts_recent = 0x1234_5678
 
         # Drive an in-order data segment so RCV.NXT advances,
         # creating the precondition for a "fully duplicate" segment.

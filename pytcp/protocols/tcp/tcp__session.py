@@ -51,6 +51,7 @@ from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
 from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
+from pytcp.protocols.tcp.state.tcp__state__timestamps import TimestampsState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
@@ -219,22 +220,11 @@ class TcpSession:
         # 'docs/rfc/tcp/rfc7323__timestamps_wscale_paws/adherence.md'
         # for the per-clause spec audit.
         self._advertise_ts: bool = True
-        self._send_ts: bool = False
-        self._ts_recent: int = 0
-
-        # RFC 7323 §5.5 outdated-timestamps mitigation.
-        # Stamps the local monotonic clock value (ms) at
-        # which '_ts_recent' was last updated. Used by the
-        # PAWS check to detect when the connection has been
-        # idle long enough that a strict 'lt32' comparison
-        # would freeze a recovering session: per §5.5 the
-        # 'TS.Recent' value MUST be invalidated when more
-        # than 24 days have elapsed without an update so a
-        # stale-but-actually-fresh TSval can be accepted.
-        # Initialised to 0 (which the §5.5 helper treats as
-        # 'never updated' - the outdated check requires a
-        # non-zero baseline before it can fire).
-        self._ts_recent_updated_at_ms: int = 0
+        # RFC 7323 §2 / §4.3 / §5.5 Timestamps state (send_ts
+        # bilateral-success flag, ts_recent peer-TSval tracker,
+        # ts_recent_updated_at_ms staleness clock). See
+        # 'state/tcp__state__timestamps.py'.
+        self._ts: TimestampsState = TimestampsState()
 
         # RFC 9293 §3.8.4 / RFC 1122 §4.2.3.6 keep-alive state
         # (enabled flag, unanswered-probe counter, three
@@ -1027,16 +1017,16 @@ class TcpSession:
                 tcp__tsval = None
                 tcp__tsecr = None
         elif flag_syn and flag_ack:
-            if self._send_ts:
+            if self._ts.send_ts:
                 tcp__tsval = stack.timer.now_ms
-                tcp__tsecr = self._ts_recent
+                tcp__tsecr = self._ts.ts_recent
             else:
                 tcp__tsval = None
                 tcp__tsecr = None
         else:
-            if self._send_ts:
+            if self._ts.send_ts:
                 tcp__tsval = stack.timer.now_ms
-                tcp__tsecr = self._ts_recent
+                tcp__tsecr = self._ts.ts_recent
             else:
                 tcp__tsval = None
                 tcp__tsecr = None
@@ -1651,7 +1641,7 @@ class TcpSession:
         # blocks because 10 + 2 + 4*8 = 44 > 40 byte options
         # cap. The §3 examples explicitly enumerate the 3-block
         # cap as the TSopt-coexistence form.
-        block_cap = 3 if self._send_ts else 4
+        block_cap = 3 if self._ts.send_ts else 4
         blocks: list[tuple[int, int]] = []
         if self._pending_dsack is not None:
             blocks.append(self._pending_dsack)
@@ -1775,7 +1765,7 @@ class TcpSession:
         granularity).
         """
 
-        if not self._send_ts:
+        if not self._ts.send_ts:
             return True
         # RFC 7323 §3.2: "If a non-<RST> segment is received
         # without a TSopt, a TCP SHOULD silently drop the
@@ -1810,7 +1800,7 @@ class TcpSession:
         # assumes a stable seq-space relationship that has not
         # yet been negotiated for the new incarnation.
         ts_recent_refresh_gate_ok = packet_rx_md.tcp__flag_syn or le32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
-        if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
+        if lt32(packet_rx_md.tcp__tsval, self._ts.ts_recent):
             # RFC 7323 §5.5 outdated-timestamps mitigation:
             # if the connection has been idle longer than the
             # 24-day threshold, 'TS.Recent' MUST be treated as
@@ -1825,8 +1815,9 @@ class TcpSession:
             # sessions (initialised to 0) cannot trigger
             # the mitigation spuriously.
             if (
-                self._ts_recent_updated_at_ms != 0
-                and stack.timer.now_ms - self._ts_recent_updated_at_ms > tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS
+                self._ts.ts_recent_updated_at_ms != 0
+                and stack.timer.now_ms - self._ts.ts_recent_updated_at_ms
+                > tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS
             ):
                 __debug__ and log(
                     "tcp-ss",
@@ -1834,16 +1825,15 @@ class TcpSession:
                     f"{tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS} ms idle threshold, "
                     "accepting segment per RFC 7323 §5.5 mitigation "
                     f"(tsval={packet_rx_md.tcp__tsval}, "
-                    f"_ts_recent={self._ts_recent})",
+                    f"_ts_recent={self._ts.ts_recent})",
                 )
-                self._ts_recent = packet_rx_md.tcp__tsval
-                self._ts_recent_updated_at_ms = stack.timer.now_ms
+                self._ts.update(tsval=packet_rx_md.tcp__tsval, now_ms=stack.timer.now_ms)
                 return True
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - PAWS: dropping stale-TSval segment "
                 f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
-                f"{self._ts_recent})",
+                f"{self._ts.ts_recent})",
             )
             # RFC 7323 §5.3 R1: "Send an acknowledgment in
             # reply" on the PAWS-stale drop so the peer can
@@ -1854,8 +1844,7 @@ class TcpSession:
             self._emit_challenge_ack()
             return False
         if ts_recent_refresh_gate_ok:
-            self._ts_recent = packet_rx_md.tcp__tsval
-            self._ts_recent_updated_at_ms = stack.timer.now_ms
+            self._ts.update(tsval=packet_rx_md.tcp__tsval, now_ms=stack.timer.now_ms)
         return True
 
     def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
@@ -1971,7 +1960,7 @@ class TcpSession:
             self._rcv_wsc = 0
             self._snd_wsc = 0
         self._send_sack = self._advertise_sack and packet_rx_md.tcp__sackperm
-        self._send_ts = self._advertise_ts and packet_rx_md.tcp__tsval is not None
+        self._ts.send_ts = self._advertise_ts and packet_rx_md.tcp__tsval is not None
         # '_ts_recent' was already refreshed to peer's new TSval
         # by the PAWS helper in the FSM handler before this point.
 
@@ -2438,7 +2427,7 @@ class TcpSession:
             # so the data-segment + option-block + fixed
             # headers stay within MTU.
             options_overhead = 0
-            if self._send_ts:
+            if self._ts.send_ts:
                 options_overhead += 12  # TSopt 10 bytes + 2 NOPs
             if self._send_sack and (self._ooo_packet_queue or self._pending_dsack is not None):
                 # Worst-case SACK option size when we'd emit
@@ -2446,7 +2435,7 @@ class TcpSession:
                 # cap is 3 blocks (= 2 + 24 = 26, padded to 28);
                 # without TSopt it's 4 blocks (= 2 + 32 = 34,
                 # padded to 36).
-                sack_blocks_cap = 3 if self._send_ts else 4
+                sack_blocks_cap = 3 if self._ts.send_ts else 4
                 options_overhead += ((2 + 8 * sack_blocks_cap + 3) // 4) * 4
             if self._accecn.enabled:
                 # AccECN Length 11 (the largest variant)
@@ -3660,7 +3649,7 @@ class TcpSession:
         # which would otherwise skip the harvest on Karn-
         # tainted samples. Clear the tracker after to prevent
         # double-folding.
-        if self._send_ts and packet_rx_md.tcp__tsecr is not None and packet_rx_md.tcp__tsecr != 0:
+        if self._ts.send_ts and packet_rx_md.tcp__tsecr is not None and packet_rx_md.tcp__tsecr != 0:
             ts_rtt_ms = (stack.timer.now_ms - packet_rx_md.tcp__tsecr) & 0xFFFF_FFFF
             self._rto_state = update(self._rto_state, ts_rtt_ms)
             # RFC 9406 §4.2: fold the RTT sample into HyStart

@@ -980,7 +980,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
 
         # Confirm non-SACK / non-TSopt peer scenario.
         assert not session._send_sack, "Setup invariant: peer's SYN+ACK had no SACK-Permitted."
-        assert not session._send_ts, "Setup invariant: peer's SYN+ACK had no TSopt."
+        assert not session._ts.send_ts, "Setup invariant: peer's SYN+ACK had no TSopt."
         return session
 
     def _setup_multi_loss_recovery(

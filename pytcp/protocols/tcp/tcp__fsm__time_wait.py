@@ -93,7 +93,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     # the RFC 6191 §3 strict-greater comparison below must be
     # against the value cached AT ENTRY (not the just-updated
     # one, which would always compare equal).
-    ts_recent_at_entry = session._ts_recent
+    ts_recent_at_entry = session._ts.ts_recent
 
     # RFC 7323 §5 PAWS: a delayed segment from a previous
     # incarnation, with stale TSval, MUST be dropped before

@@ -201,7 +201,7 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
             msg="Setup invariant: handshake must complete with peer's TSopt.",
         )
         self.assertTrue(
-            session._send_ts,
+            session._ts.send_ts,
             msg=("Bilateral negotiation success - both sides " "advertised TSopt - MUST set '_send_ts = True'."),
         )
 
@@ -236,8 +236,10 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
             msg="Setup invariant: handshake must complete even without TSopt.",
         )
         self.assertFalse(
-            session._send_ts,
-            msg=("Peer did not advertise TSopt - '_send_ts' " "MUST stay False. Got " f"_send_ts={session._send_ts}."),
+            session._ts.send_ts,
+            msg=(
+                "Peer did not advertise TSopt - '_send_ts' " "MUST stay False. Got " f"_send_ts={session._ts.send_ts}."
+            ),
         )
 
     def test__ts__advertise_opt_out_disables_outbound_tsopt(self) -> None:
@@ -280,12 +282,12 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
 
         self.assertFalse(
-            session._send_ts,
+            session._ts.send_ts,
             msg=(
                 "Asymmetric-guard: even if peer advertises "
                 "TSopt, we MUST NOT enable '_send_ts' when "
                 "our side opted out. Got "
-                f"_send_ts={session._send_ts}."
+                f"_send_ts={session._ts.send_ts}."
             ),
         )
 
@@ -353,7 +355,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
 
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts, "Setup invariant: bilateral TSopt negotiation must succeed."
+        assert session._ts.send_ts, "Setup invariant: bilateral TSopt negotiation must succeed."
         # Bypass slow-start.
         session._cc.snd_ewn = PEER__WIN
         return session
@@ -435,12 +437,12 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         self._drive_rx(frame=peer_data)
 
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             new_tsval,
             msg=(
                 "An accepted inbound segment's TSval MUST "
                 "update '_ts_recent'. Expected "
-                f"{new_tsval:#x}, got {session._ts_recent:#x}."
+                f"{new_tsval:#x}, got {session._ts.ts_recent:#x}."
             ),
         )
 
@@ -551,7 +553,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
 
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 
@@ -660,7 +662,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
             # No tsval/tsecr.
         )
         self._drive_rx(frame=peer_syn_ack)
-        self.assertFalse(session._send_ts, msg="Peer did not advertise TSopt.")
+        self.assertFalse(session._ts.send_ts, msg="Peer did not advertise TSopt.")
         session._cc.snd_ewn = PEER__WIN
 
         pre_ack_state = session._rto_state
@@ -747,7 +749,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
 
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 
@@ -901,7 +903,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         self._drive_rx(frame=peer_syn_ack)
 
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 
@@ -990,12 +992,12 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         self._drive_rx(frame=dup_ack)
 
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             fresh_tsval,
             msg=(
                 "RFC 7323 §4.3: '_ts_recent' MUST refresh on an "
                 f"accepted dup-ACK carrying TSval={fresh_tsval}. "
-                f"Got _ts_recent={session._ts_recent}."
+                f"Got _ts_recent={session._ts.ts_recent}."
             ),
         )
 
@@ -1052,7 +1054,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
                 "the test's CLOSE driver doesn't model this branch on every release."
             )
 
-        ts_recent_pre = session._ts_recent
+        ts_recent_pre = session._ts.ts_recent
         stale_late_fin = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1072,7 +1074,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         # only legal outbound is the §5.3 R1 challenge-ACK
         # reply (a no-data, no-FIN ACK at SND.NXT/RCV.NXT).
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             ts_recent_pre,
             msg=("PAWS-rejected segment MUST NOT update " "'_ts_recent'."),
         )
@@ -1283,7 +1285,7 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 
@@ -1410,12 +1412,12 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_wnd_update)
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             fresh_peer_tsval,
             msg=(
                 "Setup invariant: peer's wnd-update TSval MUST refresh "
                 f"_ts_recent to {fresh_peer_tsval}. Got "
-                f"_ts_recent={session._ts_recent}."
+                f"_ts_recent={session._ts.ts_recent}."
             ),
         )
 
@@ -1467,9 +1469,9 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
         )
         # Snapshot current state and make TS.Recent look as
         # if it was last updated 25 days ago.
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
         twenty_five_days_ms = 25 * 24 * 3600 * 1000
-        session._ts_recent_updated_at_ms -= twenty_five_days_ms
+        session._ts.ts_recent_updated_at_ms -= twenty_five_days_ms
 
         # Inbound segment with TSval one tick older than
         # _ts_recent. Under strict PAWS this would be
@@ -1503,13 +1505,13 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             (ts_recent_before - 1) & 0xFFFF_FFFF,
             msg=(
                 "RFC 7323 §5.5: after accepting a stale-TSval "
                 "segment via the outdated-mitigation path, "
                 "TS.Recent MUST be refreshed to the segment's "
-                f"TSval. Got _ts_recent={session._ts_recent}."
+                f"TSval. Got _ts_recent={session._ts.ts_recent}."
             ),
         )
 
@@ -1530,11 +1532,11 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval=PEER__TSVAL_INITIAL,
         )
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
         # Pretend TS.Recent is 1 hour old - well within the
         # 24-day idle window. Strict PAWS must still apply.
         one_hour_ms = 3600 * 1000
-        session._ts_recent_updated_at_ms -= one_hour_ms
+        session._ts.ts_recent_updated_at_ms -= one_hour_ms
 
         peer_data = build_tcp4(
             sport=PEER__PORT,
@@ -1560,12 +1562,12 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             ts_recent_before,
             msg=(
                 "RFC 7323 §5: TS.Recent MUST NOT advance on a "
                 "stale-TSval segment dropped by strict PAWS. "
-                f"Got _ts_recent={session._ts_recent}."
+                f"Got _ts_recent={session._ts.ts_recent}."
             ),
         )
 
@@ -1632,7 +1634,7 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 
@@ -1799,7 +1801,7 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
             peer_iss=PEER__ISS,
             peer_tsval=PEER__TSVAL_INITIAL,
         )
-        ts_recent_before = session._ts_recent
+        ts_recent_before = session._ts.ts_recent
 
         # OOO data segment: SEQ jumps past RCV.NXT by 1000 bytes,
         # leaving a hole. Fresh-TSval so PAWS lets it through.
@@ -1817,12 +1819,12 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         self._drive_rx(frame=ooo_data)
 
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             ts_recent_before,
             msg=(
                 "RFC 7323 §4.3 rule (2): OOO segment's TSval "
                 "MUST NOT refresh TS.Recent. Got "
-                f"_ts_recent={session._ts_recent}, expected "
+                f"_ts_recent={session._ts.ts_recent}, expected "
                 f"{ts_recent_before}."
             ),
         )
@@ -1857,11 +1859,11 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         self._drive_rx(frame=in_order_data)
 
         self.assertEqual(
-            session._ts_recent,
+            session._ts.ts_recent,
             PEER__TSVAL_INITIAL + 100,
             msg=(
                 "RFC 7323 §4.3 rule (2): in-order segment's "
                 "TSval MUST refresh TS.Recent. Got "
-                f"_ts_recent={session._ts_recent}."
+                f"_ts_recent={session._ts.ts_recent}."
             ),
         )

@@ -1274,7 +1274,7 @@ class TestTcpDataTransferRfc6691ReqB(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_syn_ack)
         assert session.state is FsmState.ESTABLISHED
-        assert session._send_ts
+        assert session._ts.send_ts
         session._cc.snd_ewn = PEER__WIN
         return session
 

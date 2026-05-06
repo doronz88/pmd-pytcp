@@ -257,11 +257,11 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # as '_ts_recent' so the third-leg ACK and all
             # subsequent segments echo it via TSecr.
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
-                session._send_ts = True
-                session._ts_recent = packet_rx_md.tcp__tsval
+                session._ts.send_ts = True
+                session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:
                 # seed the last-update clock at handshake.
-                session._ts_recent_updated_at_ms = stack.timer.now_ms
+                session._ts.ts_recent_updated_at_ms = stack.timer.now_ms
             # RFC 9768 §3.1.1 / §3.1.2 active-side bilateral
             # ECN/AccECN confirmation. The peer's SYN+ACK
             # codepoint disambiguates which protocol it
@@ -386,11 +386,11 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # RFC 7323 §3 bilateral negotiation (simultaneous-
             # open path): same shape as the SYN+ACK case above.
             if session._advertise_ts and packet_rx_md.tcp__tsval is not None:
-                session._send_ts = True
-                session._ts_recent = packet_rx_md.tcp__tsval
+                session._ts.send_ts = True
+                session._ts.ts_recent = packet_rx_md.tcp__tsval
                 # RFC 7323 §5.5 outdated-timestamps mitigation:
                 # seed the last-update clock at handshake.
-                session._ts_recent_updated_at_ms = stack.timer.now_ms
+                session._ts.ts_recent_updated_at_ms = stack.timer.now_ms
             # Receive sequence space: advance past peer's SYN.
             session._rcv_seq.ini = packet_rx_md.tcp__seq
             session._rcv_seq.nxt = add32(packet_rx_md.tcp__seq, packet_rx_md.tcp__flag_syn)
