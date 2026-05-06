@@ -1721,6 +1721,60 @@ class TcpSession:
             tcp__accecn1_counters=tcp__accecn1_counters,
             tcp__payload=data,
         )
+        self._phase4_advance_send_state(
+            seq=seq,
+            flag_syn=flag_syn,
+            flag_ack=flag_ack,
+            flag_fin=flag_fin,
+            data=data,
+        )
+        self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
+            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
+            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
+            f"dlen {len(data)}",
+        )
+
+    def _phase4_advance_send_state(
+        self,
+        *,
+        seq: int,
+        flag_syn: bool,
+        flag_ack: bool,
+        flag_fin: bool,
+        data: bytes,
+    ) -> None:
+        """
+        Phase 4 of the outbound-send pipeline. Advance per-session
+        send-side state to reflect the segment that was just
+        dispatched:
+
+          - Insert a RACK per-segment record for the segment.
+          - Reset RCV.UNA = RCV.NXT (the piggybacked ACK field
+            covers everything up to RCV.NXT, so the delayed-ACK
+            gate is now disarmed).
+          - Advance SND.NXT modularly past the consumed seq
+            range (RFC 9293 §3.4).
+          - Bump SND.MAX iff SND.NXT is now ahead of it (modular
+            max).
+          - Bump '_tx_buffer_seq_mod' modularly for any consumed
+            SYN / FIN seq (data bytes are accounted for via the
+            TX-buffer drain in the inbound-ACK path).
+          - Stash SND.NXT and set '_fin_sent' on FIN emission.
+          - Accumulate 'prr_out' during a recovery episode for
+            the per-ACK PRR send-pacing computation.
+          - Reset the every-other-segment delayed-ACK counter
+            when the outbound segment carries an ACK.
+
+        Reference: RFC 6937 §3.1 (PRR per-recovery prr_out).
+        Reference: RFC 8985 §5.2 (RACK per-segment record).
+        Reference: RFC 8985 §6.1 (RACK retransmit-tag).
+        Reference: RFC 9293 §3.4 (modular SND.NXT / SND.MAX).
+        """
+
         # RFC 8985 §5.2 / §6.1 RACK per-segment record: insert a
         # 'RackSegment' for every outbound segment that consumes
         # sequence space (data / SYN / FIN). Keyed by the
@@ -1787,16 +1841,6 @@ class TcpSession:
         # every-other-segment counter resets to zero.
         if flag_ack:
             self._delayed_ack_segments_pending = 0
-
-        self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
-            f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
-            f"{'A' if flag_ack else ''}, seq {seq}, ack {ack}, "
-            f"dlen {len(data)}",
-        )
 
     def _phase5_post_send_timers(self, *, flag_syn: bool, flag_fin: bool, data: bytes) -> None:
         """
