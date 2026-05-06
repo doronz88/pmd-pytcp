@@ -154,7 +154,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # the wnd-update.
         if (
             packet_rx_md.tcp__seq == session._rcv_nxt
-            and packet_rx_md.tcp__ack == session._snd_una
+            and packet_rx_md.tcp__ack == session._snd_seq.una
             and not packet_rx_md.tcp__data
         ):
             # RFC 1122 §4.2.3.6: any peer ACK at SND.UNA - whether
@@ -188,7 +188,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
             # ACK fast-retransmit count (there is nothing to
             # retransmit anyway, and three such probe-acks would
             # otherwise spuriously enter recovery).
-            if session._snd_una == session._snd_nxt:
+            if session._snd_seq.una == session._snd_seq.nxt:
                 return
             # Window unchanged AND data is in flight -> true
             # duplicate ACK per RFC 5681 §2(e). Hand off to the
@@ -200,8 +200,8 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # Modular comparators per RFC 9293 §3.4.
         if (
             gt32(packet_rx_md.tcp__seq, session._rcv_nxt)
-            and le32(session._snd_una, packet_rx_md.tcp__ack)
-            and le32(packet_rx_md.tcp__ack, session._snd_max)
+            and le32(session._snd_seq.una, packet_rx_md.tcp__ack)
+            and le32(packet_rx_md.tcp__ack, session._snd_seq.max)
         ):
             # RFC 2883 DSACK case 2: detect overlap of the
             # inbound segment with any existing OOO-queue
@@ -261,8 +261,8 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         overlap_with_new = lt32(seg_seq, session._rcv_nxt) and lt32(session._rcv_nxt, seg_end)
         if (
             (in_order or overlap_with_new)
-            and le32(session._snd_una, packet_rx_md.tcp__ack)
-            and le32(packet_rx_md.tcp__ack, session._snd_max)
+            and le32(session._snd_seq.una, packet_rx_md.tcp__ack)
+            and le32(packet_rx_md.tcp__ack, session._snd_seq.max)
         ):
             session._process_ack_packet(packet_rx_md)
             return
@@ -275,12 +275,12 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # branches above match. (ACK < SND.UNA is a stale
         # duplicate per RFC §3.10.7.4 and is silently discarded
         # - the existing fall-through handles that path.)
-        if gt32(packet_rx_md.tcp__ack, session._snd_max):
+        if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
             __debug__ and log(
                 "tcp-ss",
                 f"[{session}] - Sent empty ACK reply for unacceptable "
-                f"ACK={packet_rx_md.tcp__ack} > SND.MAX={session._snd_max}",
+                f"ACK={packet_rx_md.tcp__ack} > SND.MAX={session._snd_seq.max}",
             )
             return
         # RFC 5961 §5 lower-bound ACK acceptability: an ACK
@@ -289,7 +289,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # Emit a rate-limited challenge ACK so the legitimate
         # peer can re-sync; without this gate, very-stale ACKs
         # would be silently dropped.
-        ack_lower_bound = sub32(session._snd_una, session._max_window)
+        ack_lower_bound = sub32(session._snd_seq.una, session._max_window)
         if lt32(packet_rx_md.tcp__ack, ack_lower_bound):
             session._emit_challenge_ack()
             __debug__ and log(
@@ -308,7 +308,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # Immediately acknowledge the received data if any.

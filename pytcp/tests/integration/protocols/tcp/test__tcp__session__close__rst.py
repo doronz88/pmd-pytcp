@@ -250,7 +250,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_1 after the FIN-emit tick.",
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 2,
             msg=("Setup precondition: 'SND.MAX' must reflect the " "post-FIN sequence number (LOCAL__ISS + 2)."),
         )
@@ -336,7 +336,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_2 after peer ACKs our FIN.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 2,
             msg="Setup precondition: 'SND.UNA' must have advanced past our FIN.",
         )
@@ -504,7 +504,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: LAST_ACK's first tick must emit our FIN+ACK.",
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 2,
             msg=("Setup precondition: 'SND.MAX' must reflect the " "post-FIN sequence number (LOCAL__ISS + 2)."),
         )
@@ -903,7 +903,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             FsmState.FIN_WAIT_1,
             msg="Setup precondition: state must be FIN_WAIT_1.",
         )
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_rst_off_seq = build_tcp4(
@@ -970,7 +970,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             FsmState.FIN_WAIT_2,
             msg="Setup precondition: state must be FIN_WAIT_2.",
         )
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_rst_off_seq = build_tcp4(
@@ -1033,7 +1033,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             FsmState.CLOSE_WAIT,
             msg="Setup precondition: state must be CLOSE_WAIT.",
         )
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_rst_off_seq = build_tcp4(
@@ -1099,7 +1099,7 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             FsmState.LAST_ACK,
             msg="Setup precondition: state must be LAST_ACK.",
         )
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_rst_off_seq = build_tcp4(

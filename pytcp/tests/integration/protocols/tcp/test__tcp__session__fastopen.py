@@ -688,13 +688,13 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
             msg=("Successful TFO completion MUST land in " f"ESTABLISHED. Got state={session.state!r}."),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + len(early_data),
             msg=(
                 "RFC 7413 §3.1: SND.UNA MUST advance past "
                 f"SYN + data = {LOCAL__ISS + 1 + len(early_data)} "
                 "after the server's SYN+ACK ack covers the "
-                f"data. Got {session._snd_una}."
+                f"data. Got {session._snd_seq.una}."
             ),
         )
         self.assertEqual(

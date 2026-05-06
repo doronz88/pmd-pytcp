@@ -105,7 +105,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
     # acceptability test correctly regardless of where in
     # the seq space the ISS happens to fall.
     if packet_rx_md.tcp__flag_ack and not (
-        lt32(session._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_max)
+        lt32(session._snd_seq.una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_seq.max)
     ):
         if not packet_rx_md.tcp__flag_rst:
             stack.packet_handler.send_tcp_packet(
@@ -146,7 +146,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         # rejects SYN-data; SYN+ACK acks only the SYN, ack <
         # SND.NXT) the equality check would refuse the
         # SYN+ACK and the handshake would stall.
-        if lt32(session._snd_una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_nxt):
+        if lt32(session._snd_seq.una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_seq.nxt):
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
             # bounds: at most 'mtu - 40' (so we never fragment on
             # the local link), at least 'TCP__MIN_MSS = 536' (the
@@ -207,8 +207,8 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # the rewind the data would sit unacked until
             # the RTO retransmit timer fires - a one-RTO
             # latency penalty for every TFO failure.
-            if lt32(session._snd_una, session._snd_nxt):
-                session._snd_nxt = session._snd_una
+            if lt32(session._snd_seq.una, session._snd_seq.nxt):
+                session._snd_seq.nxt = session._snd_seq.una
             # RFC 6928 §2 Initial Window: post-handshake cwnd
             # = min(10*MSS, max(2*MSS, 14600)). Set after
             # '_process_ack_packet' has fired §3.1 growth on
@@ -407,7 +407,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # 9293 §3.5.1 figure 8: the simultaneous-open SYN+ACK
             # is functionally a retransmit of our SYN with peer's
             # ACK piggybacked.
-            session._transmit_packet(flag_syn=True, flag_ack=True, seq=session._snd_ini)
+            session._transmit_packet(flag_syn=True, flag_ack=True, seq=session._snd_seq.ini)
             # Change state to SYN_RCVD.
             session._change_state(FsmState.SYN_RCVD)
             return
@@ -417,7 +417,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         {packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}
     ):
         # Packet sanity check.
-        if packet_rx_md.tcp__seq == 0 and packet_rx_md.tcp__ack == session._snd_nxt:
+        if packet_rx_md.tcp__seq == 0 and packet_rx_md.tcp__ack == session._snd_seq.nxt:
             # Change state to CLOSED.
             session._change_state(FsmState.CLOSED)
             # Inform connect syscall that connection related event happened.

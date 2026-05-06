@@ -78,7 +78,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # Immediately acknowledge the received data if any.
@@ -88,7 +88,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # RFC 9293 §3.10.7.4 step 5 empty-ACK reply on
         # 'ack > SND.MAX'. Same gap as fixed in CLOSING /
         # FIN_WAIT_1.
-        if gt32(packet_rx_md.tcp__ack, session._snd_max):
+        if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
         return
 
@@ -98,7 +98,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # Send out final ACK packet.

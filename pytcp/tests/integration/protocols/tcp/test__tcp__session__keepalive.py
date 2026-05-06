@@ -266,7 +266,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session._keepalive.enabled = True
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         boundary_tx = self._advance(ms=TEST__KEEPALIVE_IDLE_TIME_MS + 1)
@@ -330,7 +330,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=session._rcv_nxt,
-            ack=session._snd_nxt,
+            ack=session._snd_seq.nxt,
             flags=("ACK",),
             win=PEER__WIN,
         )
@@ -434,13 +434,13 @@ class TestTcpKeepalive(TcpSessionTestCase):
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=session._rcv_nxt,
-            ack=session._snd_nxt,
+            ack=session._snd_seq.nxt,
             flags=("ACK",),
             win=PEER__WIN,
             payload=b"X",
         )
         ack_tx = self._drive_rx(frame=peer_data)
-        snd_nxt_after_data = session._snd_nxt
+        snd_nxt_after_data = session._snd_seq.nxt
 
         def _is_probe(frame: bytes) -> bool:
             """A probe is the ACK with seq=SND.NXT-1; data-ACKs use seq=SND.NXT."""
@@ -755,7 +755,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=0x4001,
-            ack=child_session._snd_nxt,
+            ack=child_session._snd_seq.nxt,
             flags=("ACK",),
             win=64240,
         )
@@ -768,7 +768,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
 
         # Advance past the keep-alive idle boundary. Filter probes
         # (seq=SND.NXT-1) from any incidental data-acks (seq=SND.NXT).
-        snd_nxt_when_idle = child_session._snd_nxt
+        snd_nxt_when_idle = child_session._snd_seq.nxt
 
         def _is_probe(frame: bytes) -> bool:
             return self._parse_tx(frame).seq != snd_nxt_when_idle

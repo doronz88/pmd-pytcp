@@ -419,7 +419,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         session.send(data=b"y" * PEER__MSS)
         self._advance(ms=1)
 
-        ack_value = session._snd_una
+        ack_value = session._snd_seq.una
         for _ in range(3):
             dup = build_tcp4(
                 sport=PEER__PORT,
@@ -469,7 +469,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         session.send(data=b"y" * PEER__MSS)
         self._advance(ms=1)
 
-        ack_value = session._snd_una
+        ack_value = session._snd_seq.una
         for _ in range(3):
             dup = build_tcp4(
                 sport=PEER__PORT,

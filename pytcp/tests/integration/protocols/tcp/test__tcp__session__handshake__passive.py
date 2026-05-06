@@ -301,7 +301,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._snd_ini,
+            child_session._snd_seq.ini,
             LOCAL__ISS,
             msg=(
                 "The child session must inherit the deterministic ISS "
@@ -310,7 +310,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._snd_nxt,
+            child_session._snd_seq.nxt,
             LOCAL__ISS,
             msg=(
                 "Before the SYN+ACK fires on the next timer tick, "
@@ -353,7 +353,7 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            child_session._snd_nxt,
+            child_session._snd_seq.nxt,
             LOCAL__ISS + 1,
             msg=(
                 "After the SYN+ACK is transmitted, '_snd_nxt' must "
@@ -1019,8 +1019,8 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
         assert isinstance(child_socket, TcpSocket)
         child_session_before = child_socket._tcp_session
         assert child_session_before is not None
-        snd_nxt_before = child_session_before._snd_nxt
-        snd_una_before = child_session_before._snd_una
+        snd_nxt_before = child_session_before._snd_seq.nxt
+        snd_una_before = child_session_before._snd_seq.una
         rcv_nxt_before = child_session_before._rcv_nxt
         sockets_before = set(stack.sockets)
 
@@ -1098,12 +1098,12 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session_after._snd_nxt,
+            child_session_after._snd_seq.nxt,
             snd_nxt_before,
             msg="Challenge ACK consumes no sequence space - '_snd_nxt' must be unchanged.",
         )
         self.assertEqual(
-            child_session_after._snd_una,
+            child_session_after._snd_seq.una,
             snd_una_before,
             msg="Challenge ACK does not affect '_snd_una' - the original SYN+ACK is still unacknowledged.",
         )
@@ -1189,8 +1189,8 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
 
-        snd_nxt_before = child_session._snd_nxt
-        snd_una_before = child_session._snd_una
+        snd_nxt_before = child_session._snd_seq.nxt
+        snd_una_before = child_session._snd_seq.una
         rcv_nxt_before = child_session._rcv_nxt
         sockets_before = set(stack.sockets)
 
@@ -1242,12 +1242,12 @@ class TestTcpPassiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            child_session._snd_nxt,
+            child_session._snd_seq.nxt,
             snd_nxt_before,
             msg="Challenge ACK consumes no sequence space; '_snd_nxt' must be unchanged.",
         )
         self.assertEqual(
-            child_session._snd_una,
+            child_session._snd_seq.una,
             snd_una_before,
             msg=("Rogue SYN's ACK was 0 - it acknowledges nothing - so '_snd_una' must be unchanged."),
         )

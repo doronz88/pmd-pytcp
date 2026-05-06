@@ -157,7 +157,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         rcv_una_before = session._rcv_una
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
 
         # Peer sends 5 bytes of in-order data.
         payload = b"hello"
@@ -387,8 +387,8 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
         rcv_una_before = session._rcv_una
 
@@ -431,7 +431,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             msg="'_rcv_una' must be unchanged after a bare ACK that elicits no outbound ACK.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=(
                 "'_snd_una' must be unchanged - the bare ACK "
@@ -440,7 +440,7 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before,
             msg="'_snd_nxt' must be unchanged - we have transmitted nothing since the handshake.",
         )
@@ -478,8 +478,8 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         # Peer sends a segment with an ACK that acknowledges data we
@@ -522,12 +522,12 @@ class TestTcpDataTransfer__Recv(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("An ACK that exceeds SND.MAX must NOT advance " "'_snd_una' - it acknowledged data we never sent."),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before,
             msg="'_snd_nxt' must be unchanged - we have transmitted nothing new.",
         )

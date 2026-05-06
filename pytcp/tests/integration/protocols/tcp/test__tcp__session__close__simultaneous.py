@@ -183,7 +183,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             payload=b"",
         )
         self.assertEqual(
-            session._snd_fin,
+            session._snd_seq.fin,
             LOCAL__ISS + 2,
             msg="'_snd_fin' must equal post-FIN 'SND.NXT' (LOCAL__ISS + 2).",
         )
@@ -271,7 +271,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 2,
             msg=("'SND.UNA' must advance to LOCAL__ISS+2 after CLOSING's " "ACK handler runs (line 1672)."),
         )
@@ -301,7 +301,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             msg="Setup precondition: close() must transition to FIN_WAIT_1.",
         )
         self.assertEqual(
-            session._snd_fin,
+            session._snd_seq.fin,
             LOCAL__ISS + 2,
             msg="Setup precondition: our FIN must have fired (SND.FIN = LOCAL__ISS + 2).",
         )
@@ -323,8 +323,8 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             msg="Setup precondition: simultaneous FIN must transition to CLOSING.",
         )
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         # Peer sends a bare ACK with ack acknowledging unsent
@@ -358,7 +358,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             payload=b"",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("The unacceptable ACK is dropped after the " "empty-ACK reply; SND.UNA must NOT advance."),
         )
@@ -423,7 +423,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             msg="Setup precondition: simultaneous FIN must transition to CLOSING.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         # Peer retransmits the original 50-byte data segment - seq
@@ -487,7 +487,7 @@ class TestTcpClose__Simultaneous(TcpSessionTestCase):
             FsmState.CLOSING,
             msg="Setup precondition: state must be CLOSING.",
         )
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_rst_off_seq = build_tcp4(

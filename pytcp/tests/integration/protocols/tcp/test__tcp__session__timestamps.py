@@ -924,7 +924,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         session._tx_buffer.extend(b"X" * 100)
         self._advance(ms=1)
 
-        snd_una_pre = session._snd_una
+        snd_una_pre = session._snd_seq.una
         cwnd_pre = session._cc.cwnd
         retransmit_request_count_pre = session._tx_retransmit_request_counter.get(snd_una_pre, 0)
 
@@ -975,7 +975,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         session._tx_buffer.extend(b"X" * 100)
         self._advance(ms=1)
 
-        snd_una_pre = session._snd_una
+        snd_una_pre = session._snd_seq.una
         fresh_tsval = PEER__TSVAL_INITIAL + 500
         dup_ack = build_tcp4(
             sport=PEER__PORT,
@@ -1483,7 +1483,7 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             flags=("ACK",),
             win=PEER__WIN,
             tsval=(ts_recent_before - 1) & 0xFFFF_FFFF,
-            tsecr=session._snd_ini,
+            tsecr=session._snd_seq.ini,
             payload=b"hello",
         )
         self._drive_rx(frame=peer_data)
@@ -1544,7 +1544,7 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
             flags=("ACK",),
             win=PEER__WIN,
             tsval=(ts_recent_before - 1) & 0xFFFF_FFFF,
-            tsecr=session._snd_ini,
+            tsecr=session._snd_seq.ini,
             payload=b"world",
         )
         self._drive_rx(frame=peer_data)

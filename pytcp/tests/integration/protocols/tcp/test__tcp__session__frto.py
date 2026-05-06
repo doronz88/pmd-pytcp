@@ -170,7 +170,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
 
         cwnd_before_rto = session._cc.cwnd
         ssthresh_before_rto = session._cc.ssthresh
-        snd_max_at_rto = session._snd_max
+        snd_max_at_rto = session._snd_seq.max
 
         # Don't ACK; advance past PACKET_RETRANSMIT_TIMEOUT
         # so the RTO fires. After RTO, cwnd is collapsed to
@@ -324,7 +324,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         self._advance(ms=10)
 
         cwnd_before_rto = session._cc.cwnd
-        snd_max_at_rto = session._snd_max
+        snd_max_at_rto = session._snd_seq.max
         cubic_w_max_before = session._cc.cubic_w_max
         cubic_K_ms_before = session._cc.cubic_K_ms
         cubic_epoch_before = session._cc.cubic_epoch_start_ms
@@ -410,7 +410,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=10)
 
-        snd_una_at_rto = session._snd_una
+        snd_una_at_rto = session._snd_seq.una
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
 
         # Snapshot post-RTO CUBIC state.
@@ -523,7 +523,7 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
 
         cwnd_before_rto = session._cc.cwnd
         ssthresh_before_rto = session._cc.ssthresh
-        snd_max_at_rto = session._snd_max
+        snd_max_at_rto = session._snd_seq.max
         peer_iss_after_handshake = PEER__ISS + 1
 
         # Force RTO.

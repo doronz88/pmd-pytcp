@@ -46,6 +46,7 @@ from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
 from pytcp.protocols.tcp.state.tcp__state__keepalive import KeepaliveState
 from pytcp.protocols.tcp.state.tcp__state__rack_tlp import RackTlpState
+from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
     cubic_grow_per_ack,
@@ -448,7 +449,13 @@ class TcpSession:
         # an attacker who learns one ISN cannot infer ISNs for
         # other connections; the time-driven M component prevents
         # replay of stale ISNs against fresh connections.
-        self._snd_ini: Seq32 = compute_iss(
+        # RFC 9293 §3.4 send-side seq state (ISS / SND.UNA /
+        # SND.NXT / SND.MAX) plus RFC 9293 §3.10.7.4 FIN seq +
+        # 'fin_sent' gate plus the RFC 1122 §4.2.3.4 Nagle/Minshall
+        # partial-segment seq. Anchored to the freshly-computed
+        # ISS via 'reset_to'; see 'state/tcp__state__send_seq.py'
+        # for the full per-field rationale.
+        iss = compute_iss(
             local_address=local_ip_address,
             local_port=local_port,
             remote_address=remote_ip_address,
@@ -456,30 +463,8 @@ class TcpSession:
             secret=stack.TCP__ISS_SECRET,
             clock_us=time.monotonic_ns() // 1000,
         )
-
-        # Next sequence number to be sent.
-        self._snd_nxt: Seq32 = self._snd_ini
-
-        # Maximum sequence number ever sent.
-        self._snd_max: Seq32 = self._snd_ini
-
-        # Sequence number not yet acknowledged by peer.
-        self._snd_una: Seq32 = self._snd_ini
-
-        # Sequence number of the FIN packet we sent. Only valid
-        # when '_fin_sent' is True; until then '_snd_fin' carries
-        # the sentinel '0' value and MUST NOT be compared to live
-        # 'SND.NXT' / 'SND.UNA' values lest a post-wrap 'SND.NXT
-        # == 0' collide with the sentinel and trigger code paths
-        # gated on a real FIN seq match.
-        self._snd_fin: Seq32 = 0
-
-        # 'True' once '_transmit_packet' has emitted a FIN
-        # segment (sets '_snd_fin' to the FIN's seq alongside
-        # this flag). Used as the gate on '_snd_fin' reads so
-        # the sentinel '0' value cannot be confused for a real
-        # post-wrap FIN seq. See the comment on '_snd_fin' above.
-        self._fin_sent: bool = False
+        self._snd_seq: SendSeqState = SendSeqState()
+        self._snd_seq.reset_to(iss=iss)
 
         # 'True' once any segment has been processed from peer
         # (peer's SYN in the passive-open path, peer's SYN+ACK
@@ -535,13 +520,8 @@ class TcpSession:
         # don't use wscale for backward compatibility.
         self._snd_wsc: int = 0
 
-        # Sequence number of the byte after the most recent sub-MSS ("partial")
-        # segment we transmitted. Used by Nagle's algorithm with the Minshall
-        # modification (RFC 1122 §4.2.3.4) to defer a subsequent partial segment
-        # while a previous partial is still unacknowledged. Initialized to
-        # '_snd_ini' so it is strictly less than 'SND.UNA' after the handshake
-        # completes, which means "no partial in flight yet".
-        self._snd_sml: Seq32 = self._snd_ini
+        # Nagle/Minshall partial-segment seq lives on the SendSeqState
+        # dataclass; reset_to(iss=...) above already anchored it.
 
         # RFC 1122 §4.2.3.4 Nagle disable. When True, the
         # Nagle defer in '_transmit_data' is skipped and
@@ -591,7 +571,7 @@ class TcpSession:
 
         # Used to help translate local_seq_send and snd_una numbers to
         # the TX buffer pointers.
-        self._tx_buffer_seq_mod: Seq32 = self._snd_ini
+        self._tx_buffer_seq_mod: Seq32 = self._snd_seq.ini
 
         # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED
@@ -714,7 +694,7 @@ class TcpSession:
         try to re-send the already-sent prefix.
         """
 
-        return (self._snd_nxt - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
+        return (self._snd_seq.nxt - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
 
     @property
     def _tx_buffer_una(self) -> int:
@@ -722,7 +702,7 @@ class TcpSession:
         Get the 'snd_una' number relative to TX buffer.
         """
 
-        return (self._snd_una - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
+        return (self._snd_seq.una - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
 
     def listen(self) -> None:
         """
@@ -906,7 +886,7 @@ class TcpSession:
         }:
             # RFC 9293 §3.9.1 ABORT in synchronized states: emit
             # RST + ACK at SND.NXT, RCV.NXT.
-            self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_nxt)
+            self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_seq.nxt)
         # Mark connection as aborted so any blocked recv() raises.
         self._connection_error = ConnError.CANCELED
         self._event__rx_buffer.set()
@@ -1012,7 +992,7 @@ class TcpSession:
         Send out the TCP packet.
         """
 
-        seq = seq if seq is not None else self._snd_nxt
+        seq = seq if seq is not None else self._snd_seq.nxt
         ack = self._rcv_nxt if flag_ack else 0
 
         self._phase0_pre_send_hygiene(seq=seq, flag_syn=flag_syn, flag_fin=flag_fin, data=data)
@@ -1142,7 +1122,7 @@ class TcpSession:
         # definition, a retransmit since SND.NXT was rewound
         # to SND.UNA on the RTO/FR path. The 'lt32' modular
         # comparison handles the 32-bit seq wrap correctly.
-        is_retransmit = bool(data) and lt32(seq, self._snd_max)
+        is_retransmit = bool(data) and lt32(seq, self._snd_seq.max)
         ip__ecn = 2 if (self._ecn_enabled and data and not is_retransmit) else 0
         stack.packet_handler.send_tcp_packet(
             ip__local_address=self._local_ip_address,
@@ -1575,25 +1555,17 @@ class TcpSession:
         # next delayed ACK; resetting them to equal here disarms
         # that gate until the next inbound data segment.
         self._rcv_una = self._rcv_nxt
-        # Per RFC 9293 §3.4 sequence numbers are 32-bit modular -
-        # use 'add32' (variadic) for the post-segment SND.NXT
-        # update so the value remains within the 32-bit unsigned
-        # range past the wrap.
-        self._snd_nxt = add32(seq, len(data), flag_syn, flag_fin)
-        # Modular 'max': SND.MAX advances iff SND.NXT is "ahead"
-        # of it in the modular 32-bit sense. Plain 'max()' would
-        # use numerical order, which is wrong across the wrap.
-        if lt32(self._snd_max, self._snd_nxt):
-            self._snd_max = self._snd_nxt
+        # RFC 9293 §3.4: modular SND.NXT advance + SND.MAX bump.
+        self._snd_seq.advance_nxt(seq=seq, data_len=len(data), flag_syn=flag_syn, flag_fin=flag_fin)
+        self._snd_seq.bump_max_to_nxt()
         # Modular '+=' on '_tx_buffer_seq_mod' (a Seq32 anchor):
         # raw '+=' would let the value escape the 32-bit range
         # past the wrap; 'add32' clamps to UINT32__MAX.
         self._tx_buffer_seq_mod = add32(self._tx_buffer_seq_mod, flag_syn, flag_fin)
 
-        # In case packet caries FIN flag make note of its SEQ number.
+        # RFC 9293 §3.10.7.4: stamp the FIN seq + idempotent gate.
         if flag_fin:
-            self._snd_fin = self._snd_nxt
-            self._fin_sent = True
+            self._snd_seq.record_fin()
 
         # RFC 6937 §3.1 PRR: track 'prr_out' across every
         # outbound segment that consumes sequence space while
@@ -1692,7 +1664,7 @@ class TcpSession:
         # would race the RTO timer; PyTCP defers to the
         # RTO-only path until a real RTT sample arrives.
         if data and self._cc.recovery_point == 0 and not self._cc.frto_active and (self._rto_state.srtt_ms or 0) > 0:
-            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
             # Use the IN-FLIGHT RTO timer's actual remaining
             # time (when accessible) so the §7.2 'do not
             # outlast RTO' clamp respects the real expiration.
@@ -1968,7 +1940,7 @@ class TcpSession:
         # case-1 reset path remains reachable for peer TCPs that
         # send bare RST instead of the more common RST+ACK.
         ack_acceptable = (not packet_rx_md.tcp__flag_ack) or in_range32(
-            packet_rx_md.tcp__ack, self._snd_una, self._snd_max
+            packet_rx_md.tcp__ack, self._snd_seq.una, self._snd_seq.max
         )
         if seq == self._rcv_nxt and ack_acceptable:
             return True
@@ -2022,13 +1994,13 @@ class TcpSession:
             secret=stack.TCP__ISS_SECRET,
             clock_us=time.monotonic_ns() // 1000,
         )
-        self._snd_ini = new_iss
-        self._snd_una = new_iss
-        self._snd_nxt = new_iss
-        self._snd_max = new_iss
-        self._snd_sml = new_iss
-        self._snd_fin = 0
-        self._fin_sent = False
+        self._snd_seq.ini = new_iss
+        self._snd_seq.una = new_iss
+        self._snd_seq.nxt = new_iss
+        self._snd_seq.max = new_iss
+        self._snd_seq.sml = new_iss
+        self._snd_seq.fin = 0
+        self._snd_seq.fin_sent = False
         self._tx_buffer_seq_mod = new_iss
 
         # Adopt peer's new SYN parameters. MSS is clamped to the
@@ -2250,7 +2222,7 @@ class TcpSession:
             tcp__local_port=self._local_port,
             tcp__remote_port=self._remote_port,
             tcp__flag_ack=True,
-            tcp__seq=sub32(self._snd_nxt, 1),
+            tcp__seq=sub32(self._snd_seq.nxt, 1),
             tcp__ack=self._rcv_nxt,
             tcp__win=self._rcv_wnd >> self._rcv_wsc,
         )
@@ -2263,7 +2235,7 @@ class TcpSession:
             "tcp-ss",
             f"[{self}] - Keep-alive: emitted probe "
             f"{self._keepalive.probes_unacked}/{max_count} "
-            f"at seq={sub32(self._snd_nxt, 1)} ack={self._rcv_nxt}",
+            f"at seq={sub32(self._snd_seq.nxt, 1)} ack={self._rcv_nxt}",
         )
 
     def _ingest_sack_info(self, packet_rx_md: TcpMetadata) -> None:
@@ -2302,7 +2274,7 @@ class TcpSession:
 
         # RFC 2883 DSACK detection on the first block.
         first_left, first_right = blocks[0]
-        is_dsack = le32(first_right, self._snd_una)
+        is_dsack = le32(first_right, self._snd_seq.una)
         if not is_dsack:
             for outer_left, outer_right in blocks[1:]:
                 if le32(outer_left, first_left) and le32(first_right, outer_right):
@@ -2339,7 +2311,7 @@ class TcpSession:
             # same round boundary doesn't multiply the
             # multiplier away.
             if self._cc.recovery_point == 0:
-                self._rack_tlp.maybe_close_dsack_round(snd_una=self._snd_una, snd_max=self._snd_max)
+                self._rack_tlp.maybe_close_dsack_round(snd_una=self._snd_seq.una, snd_max=self._snd_seq.max)
             blocks = blocks[1:]
 
         # RFC 6937 §3.1 SACK delta tracking: when in recovery,
@@ -2356,7 +2328,7 @@ class TcpSession:
         bytes_before = self._sack_scoreboard.total_sacked_bytes() if self._cc.recovery_point != 0 else 0
 
         for left, right in blocks:
-            if le32(self._snd_una, left) and le32(right, self._snd_max) and lt32(left, right):
+            if le32(self._snd_seq.una, left) and le32(right, self._snd_seq.max) and lt32(left, right):
                 self._sack_scoreboard.add_block(left, right)
 
         if self._cc.recovery_point != 0:
@@ -2372,7 +2344,7 @@ class TcpSession:
         """
 
         if self._send_sack:
-            self._sack_scoreboard.prune_below(self._snd_una)
+            self._sack_scoreboard.prune_below(self._snd_seq.una)
 
     def _advance_snd_nxt_past_sacked(self) -> None:
         """
@@ -2394,10 +2366,10 @@ class TcpSession:
 
         for left, right in sorted(
             self._sack_scoreboard.blocks(),
-            key=lambda b: (b[0] - self._snd_una) & 0xFFFF_FFFF,
+            key=lambda b: (b[0] - self._snd_seq.una) & 0xFFFF_FFFF,
         ):
-            if le32(left, self._snd_nxt) and lt32(self._snd_nxt, right):
-                self._snd_nxt = right
+            if le32(left, self._snd_seq.nxt) and lt32(self._snd_seq.nxt, right):
+                self._snd_seq.nxt = right
 
     def _enqueue_rx_buffer(self, data: memoryview) -> None:
         """
@@ -2442,18 +2414,18 @@ class TcpSession:
         # in modular 32-bit space. Plain '<=' chained comparison
         # would wrongly reject a SND.NXT that has wrapped past
         # SND.UNA but is still in-window.
-        right_edge = add32(self._snd_una, self._cc.snd_ewn)
-        if not in_range32(self._snd_nxt, self._snd_una, right_edge):
+        right_edge = add32(self._snd_seq.una, self._cc.snd_ewn)
+        if not in_range32(self._snd_seq.nxt, self._snd_seq.una, right_edge):
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Peer-shrunk usable window: SND.NXT={self._snd_nxt} "
-                f"is outside [{self._snd_una}, {right_edge}]; "
+                f"[{self}] - Peer-shrunk usable window: SND.NXT={self._snd_seq.nxt} "
+                f"is outside [{self._snd_seq.una}, {right_edge}]; "
                 "deferring further transmission until peer reopens or RTO fires",
             )
             return
 
         # Check if we need to (re)transmit initial SYN packet.
-        if self._state is FsmState.SYN_SENT and self._snd_nxt == self._snd_ini:
+        if self._state is FsmState.SYN_SENT and self._snd_seq.nxt == self._snd_seq.ini:
             # RFC 7413 §3.1 SYN-with-data: when the active-open
             # SYN is the first transmit AND we have a cached
             # cookie for the peer AND the application has
@@ -2475,17 +2447,17 @@ class TcpSession:
                     tfo_data = bytes(self._tx_buffer[:slice_len])
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_nxt}"
+                f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_seq.nxt}"
                 + (f", carrying {len(tfo_data)} bytes of TFO SYN-data" if tfo_data else ""),
             )
             self._transmit_packet(flag_syn=True, data=tfo_data)
             return
 
         # Check if we need to (re)transmit initial SYN + ACK packet.
-        if self._state is FsmState.SYN_RCVD and self._snd_nxt == self._snd_ini:
+        if self._state is FsmState.SYN_RCVD and self._snd_seq.nxt == self._snd_seq.ini:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting initial SYN + ACK packet_rx_md: seq {self._snd_nxt}",
+                f"[{self}] - Transmitting initial SYN + ACK packet_rx_md: seq {self._snd_seq.nxt}",
             )
             self._transmit_packet(flag_syn=True, flag_ack=True)
             return
@@ -2539,8 +2511,8 @@ class TcpSession:
             if remaining_data_len:
                 __debug__ and log(
                     "tcp-ss",
-                    f"[{self}] - Sliding window <y>[{self._snd_una}|"
-                    f"{self._snd_nxt}|{add32(self._snd_una, self._cc.snd_ewn)}]</>",
+                    f"[{self}] - Sliding window <y>[{self._snd_seq.una}|"
+                    f"{self._snd_seq.nxt}|{add32(self._snd_seq.una, self._cc.snd_ewn)}]</>",
                 )
                 __debug__ and log(
                     "tcp-ss",
@@ -2578,9 +2550,9 @@ class TcpSession:
                     # '_transmit_packet', so deferring here also
                     # disables R2-based connection-abort progression,
                     # silently hanging the connection.
-                    is_retransmit = lt32(self._snd_nxt, self._snd_max)
+                    is_retransmit = lt32(self._snd_seq.nxt, self._snd_seq.max)
                     is_partial = transmit_data_len < self._snd_mss
-                    prev_partial_in_flight = gt32(self._snd_sml, self._snd_una)
+                    prev_partial_in_flight = gt32(self._snd_seq.sml, self._snd_seq.una)
                     # RFC 1122 §4.2.3.4: TCP_NODELAY disables
                     # Nagle for latency-sensitive applications;
                     # when set, partial segments fire even with
@@ -2589,8 +2561,8 @@ class TcpSession:
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - Nagle: deferring {transmit_data_len}-byte "
-                            f"partial segment - previous partial at seq {self._snd_sml} "
-                            f"still unacked (SND.UNA={self._snd_una})",
+                            f"partial segment - previous partial at seq {self._snd_seq.sml} "
+                            f"still unacked (SND.UNA={self._snd_seq.una})",
                         )
                         return
                     with self._lock__tx_buffer:
@@ -2603,7 +2575,7 @@ class TcpSession:
                     is_last_segment_of_write = transmit_data_len == remaining_data_len
                     __debug__ and log(
                         "tcp-ss",
-                        f"[{self}] - Transmitting data segment: seq {self._snd_nxt} len {len(transmit_data)}",
+                        f"[{self}] - Transmitting data segment: seq {self._snd_seq.nxt} len {len(transmit_data)}",
                     )
                     self._transmit_packet(
                         flag_ack=True,
@@ -2614,7 +2586,7 @@ class TcpSession:
                     # seq so the Minshall check can defer subsequent
                     # partials until this one is ACK'd.
                     if is_partial:
-                        self._snd_sml = self._snd_nxt
+                        self._snd_seq.sml = self._snd_seq.nxt
                 else:
                     # Zero-window state: peer has buffered no receive
                     # space but we have data ready to send. Manage the
@@ -2640,21 +2612,21 @@ class TcpSession:
                             probe_data = bytes(self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + 1])
                         __debug__ and log(
                             "tcp-ss",
-                            f"[{self}] - Persist: emitting 1-byte probe at seq {self._snd_nxt}",
+                            f"[{self}] - Persist: emitting 1-byte probe at seq {self._snd_seq.nxt}",
                         )
                         self._transmit_packet(flag_ack=True, data=probe_data)
                         # The probe is by definition a partial; track
                         # it for Nagle so subsequent partials defer.
-                        self._snd_sml = self._snd_nxt
+                        self._snd_seq.sml = self._snd_seq.nxt
                         self._persist_timeout = min(self._persist_timeout * 2, tcp__constants.PERSIST_TIMEOUT_MAX)
                         stack.timer.register_timer(name=persist_timer, timeout=self._persist_timeout)
                 return
 
         # Check if we need to (re)transmit final FIN packet.
-        if self._state in {FsmState.FIN_WAIT_1, FsmState.LAST_ACK} and self._snd_nxt != self._snd_fin:
+        if self._state in {FsmState.FIN_WAIT_1, FsmState.LAST_ACK} and self._snd_seq.nxt != self._snd_seq.fin:
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Transmitting final FIN packet_rx_md: seq {self._snd_nxt}",
+                f"[{self}] - Transmitting final FIN packet_rx_md: seq {self._snd_seq.nxt}",
             )
             self._transmit_packet(flag_fin=True, flag_ack=True)
             return
@@ -2695,7 +2667,7 @@ class TcpSession:
         # running.
         if not stack.timer.is_expired(f"{self}-retransmit"):
             return
-        if self._snd_una == self._snd_max:
+        if self._snd_seq.una == self._snd_seq.max:
             return
 
         # RFC 1122 §4.2.3.5 R2: after PACKET_RETRANSMIT_MAX_COUNT
@@ -2714,7 +2686,7 @@ class TcpSession:
             # raw '> 0' comparison would suppress the RST in
             # that case.
             if self._peer_contacted:
-                self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_una)
+                self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_seq.una)
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Packet retransmit counter expired, resetting session",
@@ -2751,7 +2723,7 @@ class TcpSession:
         # The pending sample's send-time and seq remain set
         # so the harvest path can recognise the covering
         # ACK; only the "skip update" flag flips.
-        if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_una:
+        if self._rtt_sample_seq is not None and self._rtt_sample_seq == self._snd_seq.una:
             self._rtt_sample_retransmitted = True
 
         # RFC 8985 §6.3: on RTO, mark all in-flight segments
@@ -2829,10 +2801,10 @@ class TcpSession:
         # the eventual restoration anchors at the genuine
         # pre-loss values rather than the post-first-RTO
         # collapsed values.
-        already_in_frto = self._cc.frto_step != 0 and not lt32(self._cc.frto_pre_snd_max, self._snd_una)
+        already_in_frto = self._cc.frto_step != 0 and not lt32(self._cc.frto_pre_snd_max, self._snd_seq.una)
         if already_in_frto:
             # Update recover only; preserve original snapshots.
-            self._cc.frto_pre_snd_max = self._snd_max
+            self._cc.frto_pre_snd_max = self._snd_seq.max
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 5682 §2.1 already-in-RTO gate: "
@@ -2840,7 +2812,7 @@ class TcpSession:
                 "step 2 skipped (preserving original pre-RTO snapshot)",
             )
         else:
-            self._cc.save_frto_snapshot(snd_max=self._snd_max)
+            self._cc.save_frto_snapshot(snd_max=self._snd_seq.max)
 
         # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
         # post-RTO slow-start exits at the previously-observed
@@ -2852,7 +2824,7 @@ class TcpSession:
         # reflects the unacked-bytes count at the moment of
         # loss detection. Modular subtraction per RFC 9293 §3.4
         # so the value is correct across the 32-bit wrap.
-        flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+        flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
         # RFC 9438 §4.6 + §4.7: in CUBIC mode, replace the RFC
         # 5681 §3.1 0.5 halving with beta_cubic = 0.7 and
         # update '_cubic_w_max' / '_cubic_K_ms' /
@@ -2892,7 +2864,7 @@ class TcpSession:
         # '_transmit_data' falls through to the persist branch.
         self._cc.cwnd = self._snd_mss
         self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-        self._snd_nxt = self._snd_una
+        self._snd_seq.nxt = self._snd_seq.una
         # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
         # event, distinct from the dup-ACK-driven fast-
         # retransmit recovery. The RFC 6675 §5 RecoveryPoint
@@ -2921,7 +2893,7 @@ class TcpSession:
         # '_retransmit_packet_request' entry gate keys on the
         # recover marker rather than the now-cleared
         # recovery point.
-        self._cc.recover_seq = self._snd_max
+        self._cc.recover_seq = self._snd_seq.max
         # SYN and FIN consume one byte of sequence space but do
         # not occupy a slot in the TX buffer. After
         # '_transmit_packet' fired the original SYN/FIN it
@@ -2940,12 +2912,14 @@ class TcpSession:
         # post-wrap 'SND.NXT == 0xFFFF_FFFF' (which would
         # otherwise walk '_tx_buffer_seq_mod' back spuriously
         # and silently corrupt subsequent transmissions).
-        if self._snd_nxt == self._snd_ini or (self._fin_sent and self._snd_nxt == sub32(self._snd_fin, 1)):
+        if self._snd_seq.nxt == self._snd_seq.ini or (
+            self._snd_seq.fin_sent and self._snd_seq.nxt == sub32(self._snd_seq.fin, 1)
+        ):
             self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Got retransmit timeout, sending segment "
-            f"{self._snd_nxt}, resetting snd_ewn to {self._cc.snd_ewn}",
+            f"{self._snd_seq.nxt}, resetting snd_ewn to {self._cc.snd_ewn}",
         )
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
@@ -3001,7 +2975,7 @@ class TcpSession:
         # RTO recovery. The 0 sentinel means "no recover marker
         # set" so a fresh connection's first loss event still
         # enters FR.
-        if self._cc.recover_seq != 0 and lt32(self._snd_una, self._cc.recover_seq):
+        if self._cc.recover_seq != 0 and lt32(self._snd_seq.una, self._cc.recover_seq):
             return
 
         # Two independent triggers, either of which enters
@@ -3017,9 +2991,9 @@ class TcpSession:
         #     loss patterns.
         count_trigger = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3
         sack_trigger = self._send_sack and is_lost(
-            self._snd_una,
+            self._snd_seq.una,
             scoreboard=self._sack_scoreboard,
-            snd_una=self._snd_una,
+            snd_una=self._snd_seq.una,
             mss=self._snd_mss,
         )
         # RFC 3042 Limited Transmit: on the first two
@@ -3046,7 +3020,7 @@ class TcpSession:
         # RFC 5681 §3.2 step 2: ssthresh = max(FlightSize/2,
         # 2*SMSS). Captures the just-observed loss point so
         # the post-recovery slow-start exits at this boundary.
-        flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+        flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
         # RFC 9438 §4.6 + §4.7: in CUBIC mode, ssthresh halves
         # by beta_cubic = 0.7 (vs RFC 5681's 0.5). Records
         # '_cubic_w_max' = cwnd-at-loss for the post-recovery
@@ -3108,7 +3082,7 @@ class TcpSession:
         # Setting to 'max(SND.MAX, 1)' guarantees the marker is
         # non-zero even when SND.MAX wraps to 0; the actual
         # comparison is modular.
-        self._cc.recovery_point = self._snd_max if self._snd_max != 0 else 1
+        self._cc.recovery_point = self._snd_seq.max if self._snd_seq.max != 0 else 1
 
         # RFC 6675 §3 NextSeg() chooses the smallest unsacked
         # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
@@ -3122,18 +3096,18 @@ class TcpSession:
         ns = (
             next_seg(
                 scoreboard=self._sack_scoreboard,
-                snd_una=self._snd_una,
-                snd_max=self._snd_max,
+                snd_una=self._snd_seq.una,
+                snd_max=self._snd_seq.max,
                 mss=self._snd_mss,
             )
             if self._send_sack
             else None
         )
-        self._snd_nxt = ns if ns is not None else self._snd_una
+        self._snd_seq.nxt = ns if ns is not None else self._snd_seq.una
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Got retransmit request, sending segment "
-            f"{self._snd_nxt}, keeping snd_ewn at {self._cc.snd_ewn}, "
+            f"{self._snd_seq.nxt}, keeping snd_ewn at {self._cc.snd_ewn}, "
             f"recovery_point {self._cc.recovery_point}",
         )
 
@@ -3166,7 +3140,7 @@ class TcpSession:
             return
         if not stack.timer.is_expired(f"{self}-tlp"):
             return
-        if self._snd_una == self._snd_max:
+        if self._snd_seq.una == self._snd_seq.max:
             # Nothing in flight - no tail to probe.
             return
         # RFC 8985 §7 once-per-tail gate: TLP fires at most one
@@ -3193,24 +3167,24 @@ class TcpSession:
         # retransmitting an already-sent one. Compute the
         # buffer offset of SND.MAX modularly so a wrapped
         # session is handled correctly.
-        tx_buffer_max = sub32(self._snd_max, self._tx_buffer_seq_mod)
+        tx_buffer_max = sub32(self._snd_seq.max, self._tx_buffer_seq_mod)
         new_data_available = tx_buffer_max < len(self._tx_buffer) and self._cc.snd_ewn > tx_buffer_max
         if new_data_available:
             # Force '_transmit_data' to start at SND.MAX (the
             # bytes immediately past the highest-seq sent).
-            self._snd_nxt = self._snd_max
+            self._snd_seq.nxt = self._snd_seq.max
             self._rack_tlp.tlp_is_retrans = False
         else:
             # Retransmit-style probe: walk SND.NXT back by one
             # MSS (or less if in-flight is shorter) so
             # _transmit_data re-sends the highest-seq segment.
-            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
             walk_back = min(self._snd_mss, flight_size)
-            self._snd_nxt = sub32(self._snd_max, walk_back)
+            self._snd_seq.nxt = sub32(self._snd_seq.max, walk_back)
             self._rack_tlp.tlp_is_retrans = True
 
         self._transmit_data()
-        self._rack_tlp.tlp_end_seq = self._snd_max
+        self._rack_tlp.tlp_end_seq = self._snd_seq.max
         # Probe is in flight; clear armed flag so the next
         # tick's _tlp_pto_tick early-returns. The flag is
         # re-set by '_transmit_packet' when a fresh TLP timer
@@ -3281,7 +3255,7 @@ class TcpSession:
         for seq, seg in self._rack_tlp.rack_segments.items():
             if seq in self._rack_tlp.rack_acked_seqs:
                 continue
-            cum_acked = le32(seg.end_seq, self._snd_una)
+            cum_acked = le32(seg.end_seq, self._snd_seq.una)
             sack_acked = self._send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
             if cum_acked or sack_acked:
                 newly_acked.append(seg)
@@ -3417,13 +3391,13 @@ class TcpSession:
         # Modular 'max': SND.UNA advances iff peer's ack is
         # "ahead" of it in the 32-bit modular sense. Plain 'max()'
         # uses numerical order, which is wrong across the wrap.
-        if not lt32(self._snd_una, packet_rx_md.tcp__ack):
+        if not lt32(self._snd_seq.una, packet_rx_md.tcp__ack):
             return
         # Modular bytes-acked computation per RFC 9293 §3.4
         # so the §3.1 cwnd growth formula gets the correct
         # delta when the cum-ACK straddles the 32-bit wrap.
-        bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
-        self._snd_una = packet_rx_md.tcp__ack
+        bytes_acked = (packet_rx_md.tcp__ack - self._snd_seq.una) & 0xFFFF_FFFF
+        self._snd_seq.una = packet_rx_md.tcp__ack
         # RFC 9406 §4.2 round-boundary detection: if SND.UNA
         # has reached or passed the round's window_end_seq,
         # rotate the per-round minRTT trackers. The first
@@ -3438,9 +3412,9 @@ class TcpSession:
         if self._cc.cwnd < self._cc.ssthresh:
             if self._cc.hystart_state.window_end_seq == 0:
                 # Bootstrap: first round of slow-start.
-                self._cc.hystart_state.window_end_seq = self._snd_nxt
-            elif not lt32(self._snd_una, self._cc.hystart_state.window_end_seq):
-                rotate_round(self._cc.hystart_state, new_window_end_seq=self._snd_nxt)
+                self._cc.hystart_state.window_end_seq = self._snd_seq.nxt
+            elif not lt32(self._snd_seq.una, self._cc.hystart_state.window_end_seq):
+                rotate_round(self._cc.hystart_state, new_window_end_seq=self._snd_seq.nxt)
                 if self._cc.hystart_state.in_css and self._cc.hystart_state.css_rounds_remaining == 0:
                     # CSS_ROUNDS exhausted -> ssthresh =
                     # cwnd, enter CA. Clear CSS state.
@@ -3462,7 +3436,7 @@ class TcpSession:
         # can then drive fast retransmit normally without
         # the post-RTO gate suppressing legitimate loss
         # recovery.
-        if self._cc.recover_seq != 0 and ge32(self._snd_una, self._cc.recover_seq):
+        if self._cc.recover_seq != 0 and ge32(self._snd_seq.una, self._cc.recover_seq):
             self._cc.recover_seq = 0
         # RFC 6937 §3.1 PRR: cumulative bytes ACK'd during
         # recovery feed 'prr_delivered'. Out-of-recovery
@@ -3488,11 +3462,11 @@ class TcpSession:
         #     recovery-exit branch below.
         #   - not in recovery: RFC 5681 §3.1 slow-start vs
         #     congestion-avoidance growth.
-        if self._cc.recovery_point != 0 and lt32(self._snd_una, self._cc.recovery_point):
+        if self._cc.recovery_point != 0 and lt32(self._snd_seq.una, self._cc.recovery_point):
             current_pipe = pipe(
                 scoreboard=self._sack_scoreboard,
-                snd_una=self._snd_una,
-                snd_max=self._snd_max,
+                snd_una=self._snd_seq.una,
+                snd_max=self._snd_seq.max,
             )
             if current_pipe > self._cc.ssthresh:
                 # PRR proper: aim for ssthresh/RecoverFS
@@ -3603,7 +3577,7 @@ class TcpSession:
             # 2*SMSS); cwnd = ssthresh).
             from pytcp.protocols.tcp.tcp__cwnd import compute_loss_event_ssthresh
 
-            flight_size = (self._snd_max - self._snd_una) & 0xFFFF_FFFF
+            flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
             self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._snd_mss)
             self._cc.cwnd = self._cc.ssthresh
             self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
@@ -3612,7 +3586,7 @@ class TcpSession:
                 f"[{self}] - RFC 8985 §7.4.2 TLP probe-repair "
                 f"CC: ssthresh={self._cc.ssthresh} cwnd={self._cc.cwnd}",
             )
-        if self._snd_una == self._snd_max:
+        if self._snd_seq.una == self._snd_seq.max:
             stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
             # RFC 8985 §7.2 TLP cancellation: when a
             # cum-ACK drains all in-flight bytes, there is
@@ -3651,7 +3625,7 @@ class TcpSession:
             - (dup-ACK paths are handled in the dup-ACK branch.)
 
         Caller MUST guard the invocation on cum-ACK advance
-        (lt32(self._snd_una, packet_rx_md.tcp__ack) was True at
+        (lt32(self._snd_seq.una, packet_rx_md.tcp__ack) was True at
         the top of phase 1) — F-RTO step transitions assume the
         ACK advances the window.
 
@@ -3662,7 +3636,7 @@ class TcpSession:
 
         if not self._cc.frto_active:
             return
-        fully_covered = not lt32(self._snd_una, self._cc.frto_pre_snd_max)
+        fully_covered = not lt32(self._snd_seq.una, self._cc.frto_pre_snd_max)
         if self._cc.frto_step == 1:
             if fully_covered:
                 # Single-ACK strong-spurious — restore.
@@ -3685,7 +3659,7 @@ class TcpSession:
                     "tcp-ss",
                     f"[{self}] - RFC 5682 §2.1 step 2b: "
                     f"partial first post-RTO ACK "
-                    f"(SND.UNA={self._snd_una} < recover="
+                    f"(SND.UNA={self._snd_seq.una} < recover="
                     f"{self._cc.frto_pre_snd_max}); waiting "
                     "for second ACK to declare spurious",
                 )
@@ -3827,7 +3801,7 @@ class TcpSession:
         # parallel '_rack_acked_seqs' set is pruned alongside so
         # a future segment that lands at the same seq (post-
         # wrap) is not falsely treated as already-acked.
-        self._rack_tlp.prune_segments(snd_una=self._snd_una)
+        self._rack_tlp.prune_segments(snd_una=self._snd_seq.una)
         # Exit recovery once SND.UNA has advanced to or past the
         # RecoveryPoint marker (RFC 6675 §5). The loss event is
         # now fully recovered; subsequent dup-ACKs are eligible
@@ -3836,10 +3810,10 @@ class TcpSession:
         # exit so the inflation from steps 3+4 is undone and
         # subsequent §3.1 growth resumes from the previously-
         # observed loss boundary.
-        if self._cc.recovery_point != 0 and le32(self._cc.recovery_point, self._snd_una):
+        if self._cc.recovery_point != 0 and le32(self._cc.recovery_point, self._snd_seq.una):
             __debug__ and log(
                 "tcp-ss",
-                f"[{self}] - Exiting recovery: SND.UNA={self._snd_una} "
+                f"[{self}] - Exiting recovery: SND.UNA={self._snd_seq.una} "
                 f"reached RecoveryPoint={self._cc.recovery_point}",
             )
             self._cc.cwnd = self._cc.ssthresh
@@ -3885,8 +3859,8 @@ class TcpSession:
 
         # Adjust local SEQ accordingly to what peer acked (needed after the
         # retransmit happens and peer is jumping to previously received SEQ).
-        if lt32(self._snd_nxt, self._snd_una) and le32(self._snd_una, self._snd_max):
-            self._snd_nxt = self._snd_una
+        if lt32(self._snd_seq.nxt, self._snd_seq.una) and le32(self._snd_seq.una, self._snd_seq.max):
+            self._snd_seq.nxt = self._snd_seq.una
         # Update the next-expected receive sequence number, with two
         # protections drawn from RFC 9293 §3.4 / §3.10.7.4:
         #   1. Use 'max(...)' so a stale-duplicate segment whose tail
@@ -3970,7 +3944,7 @@ class TcpSession:
         self._tx_buffer_seq_mod = add32(self._tx_buffer_seq_mod, self._tx_buffer_una)
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - Purged TX buffer up to SEQ {self._snd_una}",
+            f"[{self}] - Purged TX buffer up to SEQ {self._snd_seq.una}",
         )
         # Update remote window size.
         if self._snd_wnd != packet_rx_md.tcp__win << self._snd_wsc:
@@ -4063,9 +4037,9 @@ class TcpSession:
                 self._ecn_enabled
                 and packet_rx_md is not None
                 and packet_rx_md.tcp__flag_ece
-                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
+                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una))
             ):
-                flight_size = sub32(self._snd_max, self._snd_una)
+                flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                 # RFC 8511 ABE: ECN signals early-warning
                 # congestion (no actual loss yet); reduce
                 # ssthresh by the less-aggressive 0.85
@@ -4075,7 +4049,7 @@ class TcpSession:
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
                 self._ecn_send_cwr = True
-                self._ecn_recovery_point = self._snd_nxt
+                self._ecn_recovery_point = self._snd_seq.nxt
             # RFC 9768 §3.4 sender-side response to AccECN
             # feedback. When the peer's inbound AccECN option
             # reports an r.CE byte counter higher than our
@@ -4094,9 +4068,9 @@ class TcpSession:
                 and packet_rx_md.tcp__accecn0_counters is not None
                 and packet_rx_md.tcp__accecn0_counters[1] is not None
                 and packet_rx_md.tcp__accecn0_counters[1] > self._accecn.s_ce_b
-                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una))
+                and (self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una))
             ):
-                flight_size = sub32(self._snd_max, self._snd_una)
+                flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                 # RFC 8511 ABE: same as the RFC 3168 ECN path
                 # above - on ECN-class events the sender uses
                 # the less-aggressive 0.85 multiplier rather
@@ -4105,7 +4079,7 @@ class TcpSession:
                 self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                self._ecn_recovery_point = self._snd_nxt
+                self._ecn_recovery_point = self._snd_seq.nxt
             # RFC 9768 §3.2.1 sender-side counter mirrors. Update
             # s.e0b / s.ce_b / s.e1b from the inbound option's
             # populated slots (per-slot None per the §3.2.3
@@ -4146,13 +4120,13 @@ class TcpSession:
                 )
                 apparent_delta = self._accecn.apparent_ce_delta(incoming_ace)
                 if apparent_delta > 0 and (
-                    self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_una)
+                    self._ecn_recovery_point == 0 or le32(self._ecn_recovery_point, self._snd_seq.una)
                 ):
-                    flight_size = sub32(self._snd_max, self._snd_una)
+                    flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
                     self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._snd_mss)
                     self._cc.cwnd = self._cc.ssthresh
                     self._cc.snd_ewn = min(self._cc.cwnd, self._snd_wnd)
-                    self._ecn_recovery_point = self._snd_nxt
+                    self._ecn_recovery_point = self._snd_seq.nxt
             # Route to the per-event-kind dispatcher.
             # 'tcp_fsm()' is invoked with exactly one of the
             # three kwargs set; pick the matching dispatcher.

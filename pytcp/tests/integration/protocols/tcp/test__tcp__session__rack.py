@@ -174,7 +174,7 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         payload = b"hello, world!"
-        send_seq = session._snd_nxt
+        send_seq = session._snd_seq.nxt
         session.send(data=payload)
         send_tick_now_ms = self._timer.now_ms + 1
         self._advance(ms=1)
@@ -357,7 +357,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
         payload = b"hello, world!"
-        send_seq = session._snd_nxt
+        send_seq = session._snd_seq.nxt
         session.send(data=payload)
         send_tick_now_ms = self._timer.now_ms + 1
         self._advance(ms=1)
@@ -452,7 +452,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         # guard fires. We simulate via direct-injection rather
         # than driving an actual retransmit path, since Phase 2
         # only tests the update logic.
-        rt_seq = session._snd_nxt
+        rt_seq = session._snd_seq.nxt
         rt_xmit_ts = self._timer.now_ms - (prior_min_rtt // 2)  # rtt = prior_min_rtt//2 < prior_min_rtt
         session._rack_tlp.rack_segments[rt_seq] = RackSegment(
             end_seq=rt_seq + 5,
@@ -460,8 +460,8 @@ class TestTcpRackPhase2(TcpSessionTestCase):
             retransmitted=True,
             lost=False,
         )
-        session._snd_nxt = rt_seq + 5
-        session._snd_max = rt_seq + 5
+        session._snd_seq.nxt = rt_seq + 5
+        session._snd_seq.max = rt_seq + 5
 
         # ACK that covers the retransmit.
         peer_ack = build_tcp4(
@@ -1289,7 +1289,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
 
         # Frames sent so far: handshake SYN + 1 data segment.
         pre_probe_tx_count = len(self._frames_tx)
-        snd_max_pre_probe = session._snd_max
+        snd_max_pre_probe = session._snd_seq.max
 
         # Advance past TLP PTO. With INITIAL_RTO=1000, no SRTT
         # sample yet so PTO=1000 ms; clamped by RTO remaining
@@ -1350,7 +1350,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         with session._lock__tx_buffer:
             session._tx_buffer.extend(b"new data tail")
 
-        snd_max_pre_probe = session._snd_max
+        snd_max_pre_probe = session._snd_seq.max
         stack.timer._timers.pop(f"{session}-tlp", None)
         session._tlp_pto_tick()
 
@@ -1367,11 +1367,11 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
             ),
         )
         self.assertGreater(
-            session._snd_max,
+            session._snd_seq.max,
             snd_max_pre_probe,
             msg=(
                 "A new-data TLP probe MUST advance SND.MAX past "
-                f"{snd_max_pre_probe}. Got SND.MAX={session._snd_max}."
+                f"{snd_max_pre_probe}. Got SND.MAX={session._snd_seq.max}."
             ),
         )
 

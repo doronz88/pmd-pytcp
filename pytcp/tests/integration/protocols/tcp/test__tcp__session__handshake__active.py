@@ -157,12 +157,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             msg="CONNECT from CLOSED must transition the session to SYN_SENT.",
         )
         self.assertEqual(
-            session._snd_ini,
+            session._snd_seq.ini,
             LOCAL__ISS,
             msg="'_force_iss' must pin '_snd_ini' to the value supplied to '_make_active_session'.",
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS,
             msg="'_snd_nxt' must equal '_snd_ini' immediately after CONNECT - no SYN sent yet.",
         )
@@ -195,7 +195,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             win=65535,  # SYN's own win is unshifted per RFC 7323 §2.2.
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS + 1,
             msg=(
                 "After the SYN goes out, '_snd_nxt' must be ISS+1 to "
@@ -203,7 +203,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1,
             msg="'_snd_max' must track the highest seq we have ever emitted, set to ISS+1 after the initial SYN.",
         )
@@ -250,7 +250,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg="'_snd_una' must equal ISS+1 after peer ACKs our SYN.",
         )
@@ -708,7 +708,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
                 "Setup precondition: handshake must have reached " "ESTABLISHED before driving the lost-ACK scenario."
             ),
         )
-        snd_una_before = session._snd_una
+        snd_una_before = session._snd_seq.una
         rcv_nxt_before = session._rcv_nxt
 
         # Peer's third-leg ACK was lost in flight; their RTO fires and
@@ -757,7 +757,7 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=(
                 "A challenge ACK does not consume sequence space - "
@@ -801,8 +801,8 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
 
         # Peer sends a bare ACK with an unacceptable ACK number. ack=0
         # is clearly outside (SND.UNA=ISS, SND.NXT=ISS+1] so RFC 9293
@@ -853,12 +853,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("A bogus bare ACK must not advance '_snd_una' - it " "acknowledged nothing we sent."),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before,
             msg=(
                 "Sending the RST in response to a bogus ACK must not "
@@ -891,8 +891,8 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         # Peer sends SYN+ACK with a clearly unacceptable ACK number.
@@ -947,12 +947,12 @@ class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("A bogus SYN+ACK must not advance '_snd_una' - the " "rejected ACK acknowledged nothing."),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before,
             msg=(
                 "Sending the RST must not advance '_snd_nxt' - the " "RST consumes no sequence space (RFC 9293 §3.4)."

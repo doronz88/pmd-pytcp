@@ -88,15 +88,15 @@ def fsm__last_ack__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         }
     ):
         # Packet sanity check.
-        if packet_rx_md.tcp__ack == session._snd_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+        if packet_rx_md.tcp__ack == session._snd_seq.nxt and in_range32(
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._change_state(FsmState.CLOSED)
             return
         # RFC 9293 §3.10.7.4 step 5 empty-ACK reply on
         # 'ack > SND.MAX'. Same gap as fixed in CLOSING /
         # FIN_WAIT_1 / FIN_WAIT_2.
-        if gt32(packet_rx_md.tcp__ack, session._snd_max):
+        if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
         return
 

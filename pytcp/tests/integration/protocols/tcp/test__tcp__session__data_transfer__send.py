@@ -130,8 +130,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
         After this returns:
             session.state == FsmState.ESTABLISHED
-            session._snd_nxt == iss + 1
-            session._snd_una == iss + 1
+            session._snd_seq.nxt == iss + 1
+            session._snd_seq.una == iss + 1
             session._rcv_nxt == peer_iss + 1
         """
 
@@ -158,8 +158,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             session.state is FsmState.ESTABLISHED
         ), f"Handshake setup failed: state is {session.state!r}, expected ESTABLISHED."
         assert (
-            session._snd_nxt == iss + 1
-        ), f"Handshake setup failed: '_snd_nxt' is {session._snd_nxt:#x}, expected {iss + 1:#x}."
+            session._snd_seq.nxt == iss + 1
+        ), f"Handshake setup failed: '_snd_nxt' is {session._snd_seq.nxt:#x}, expected {iss + 1:#x}."
         assert (
             session._rcv_nxt == peer_iss + 1
         ), f"Handshake setup failed: '_rcv_nxt' is {session._rcv_nxt:#x}, expected {peer_iss + 1:#x}."
@@ -220,7 +220,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS + 1 + len(payload),
             msg=(
                 "'_snd_nxt' must advance by len(payload) after "
@@ -230,7 +230,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "'_snd_una' must be unchanged - the peer has not yet "
@@ -355,7 +355,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             ),
         )
 
-        in_flight = session._snd_nxt - session._snd_una
+        in_flight = session._snd_seq.nxt - session._snd_seq.una
         self.assertEqual(
             in_flight,
             snd_wnd_limit,
@@ -366,12 +366,12 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS + 1 + snd_wnd_limit,
             msg="'_snd_nxt' must equal ISS + 1 + SND.WND after the window fills.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg="'_snd_una' must be unchanged - the peer has not ACKed any data.",
         )
@@ -427,7 +427,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Setup precondition: peer's zero-window ACK must have set '_snd_wnd' to 0.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + len(first_payload),
             msg="Setup precondition: peer ACK'd the first 5 bytes - SND.UNA must have advanced.",
         )
@@ -438,8 +438,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         second_payload = b"world"
         session.send(data=second_payload)
 
-        snd_una_before_probe = session._snd_una
-        snd_nxt_before_probe = session._snd_nxt
+        snd_una_before_probe = session._snd_seq.una
+        snd_nxt_before_probe = session._snd_seq.nxt
 
         # Tick most of the way through the persist timeout. No
         # segment may fire yet - the RFC requires waiting at least
@@ -486,12 +486,12 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         # acknowledged the probe (and may not, if their window is
         # still genuinely zero).
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before_probe + 1,
             msg="The persist probe consumes exactly one byte of sequence space.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before_probe,
             msg=(
                 "SND.UNA must NOT advance during the probe - the probe "
@@ -541,8 +541,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         )
 
         # Snapshot state before the second send.
-        snd_nxt_after_first = session._snd_nxt
-        snd_una_after_first = session._snd_una
+        snd_nxt_after_first = session._snd_seq.nxt
+        snd_una_after_first = session._snd_seq.una
         self.assertGreater(
             snd_nxt_after_first,
             snd_una_after_first,
@@ -574,7 +574,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
 
         # State invariants after the suppressed second send.
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_after_first,
             msg=(
                 "'_snd_nxt' must NOT advance during the Nagle-suppressed "
@@ -582,7 +582,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_after_first,
             msg="'_snd_una' must be unchanged - the peer has not ACKed anything.",
         )
@@ -624,10 +624,10 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Setup precondition: first 1-byte send fires on next tick.",
         )
 
-        snd_nxt_after_first = session._snd_nxt
+        snd_nxt_after_first = session._snd_seq.nxt
         self.assertGreater(
             snd_nxt_after_first,
-            session._snd_una,
+            session._snd_seq.una,
             msg=("Setup precondition: SND.NXT > SND.UNA - " "outstanding data must be in flight for Nagle to apply."),
         )
 
@@ -653,7 +653,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="Second segment must carry the b'b' byte.",
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_after_first + 1,
             msg="SND.NXT must advance by 1 byte after the partial fires.",
         )
@@ -713,8 +713,8 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             ),
         )
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
 
         tx_frames = self._advance(ms=1)
         self.assertEqual(
@@ -742,12 +742,12 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         )
 
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before + len(payload),
             msg=("'_snd_nxt' must advance by len(payload) after " "transmitting the data segment in CLOSE_WAIT."),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("'_snd_una' must be unchanged - the peer has not yet " "ACK'd the new data."),
         )
@@ -911,12 +911,12 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         # SND.UNA still at the post-handshake value (peer has not
         # ACKed yet), state stays ESTABLISHED.
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS + 1 + len(payload),
             msg=("After three segments totalling len(payload) bytes, " "'_snd_nxt' must equal ISS + 1 + len(payload)."),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=("'_snd_una' must be unchanged - the peer has not yet " "acknowledged any of the data we sent."),
         )

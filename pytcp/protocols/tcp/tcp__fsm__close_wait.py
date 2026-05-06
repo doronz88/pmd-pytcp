@@ -127,7 +127,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # the wnd-update.
         if (
             packet_rx_md.tcp__seq == session._rcv_nxt
-            and packet_rx_md.tcp__ack == session._snd_una
+            and packet_rx_md.tcp__ack == session._snd_seq.una
             and not packet_rx_md.tcp__data
         ):
             new_wnd = packet_rx_md.tcp__win << session._snd_wsc
@@ -164,7 +164,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # detection (commit 'b69e8b1') because RCV.NXT in
         # ESTABLISHED can still advance to fill the gap.
         if gt32(packet_rx_md.tcp__seq, session._rcv_nxt) and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
             __debug__ and log(
@@ -176,7 +176,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # Regular ACK packet (no data) -> ACK-field processing.
         if (
             packet_rx_md.tcp__seq == session._rcv_nxt
-            and in_range32(packet_rx_md.tcp__ack, session._snd_una, session._snd_max)
+            and in_range32(packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max)
             and not packet_rx_md.tcp__data
         ):
             session._process_ack_packet(packet_rx_md)
@@ -194,7 +194,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # + 1, unchanged), which signals peer "we acknowledge
         # receipt but cannot consume past your FIN".
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
             __debug__ and log(

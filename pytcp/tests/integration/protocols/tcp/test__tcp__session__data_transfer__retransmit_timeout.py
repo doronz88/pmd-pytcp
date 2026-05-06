@@ -246,7 +246,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "'_snd_una' must be unchanged - the peer has not ACK'd "
@@ -316,7 +316,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg="Pre-ACK precondition: SND.UNA must still be at the initial ISS+1.",
         )
@@ -361,7 +361,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + len(payload),
             msg=("'SND.UNA' must advance past the acknowledged data " "after the peer ACK is processed."),
         )
@@ -434,7 +434,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + len(payload),
             msg="Setup precondition: peer's ACK must have advanced SND.UNA past the data.",
         )
@@ -863,7 +863,7 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session.send(data=b"X" * 100)
         self._advance(ms=1)
-        snd_max_at_rto = session._snd_max
+        snd_max_at_rto = session._snd_seq.max
         # Force RTO firing by advancing past current RTO.
         self._advance(ms=session._rto_state.rto_ms + 10)
 
@@ -890,7 +890,7 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         session.send(data=b"X" * 100)
         self._advance(ms=1)
-        snd_max_at_rto = session._snd_max
+        snd_max_at_rto = session._snd_seq.max
         self._advance(ms=session._rto_state.rto_ms + 10)
         assert session._cc.recover_seq == snd_max_at_rto
 

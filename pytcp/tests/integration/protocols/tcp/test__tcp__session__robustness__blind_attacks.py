@@ -185,7 +185,7 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_1 after the FIN-emit tick.",
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             LOCAL__ISS + 2,
             msg=("Setup precondition: 'SND.NXT' must reflect the " "post-FIN sequence number (LOCAL__ISS + 2)."),
         )
@@ -744,7 +744,7 @@ class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
         # observe only this segment's response.
         self._advance(ms=1100)
 
-        snd_una_pre = session._snd_una
+        snd_una_pre = session._snd_seq.una
         max_snd_wnd = PEER__WIN
         stale_ack = (snd_una_pre - 2 * max_snd_wnd) & 0xFFFF_FFFF
         stale_ack_seg = build_tcp4(
@@ -785,7 +785,7 @@ class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
         self._advance(ms=1100)
 
-        snd_una_pre = session._snd_una
+        snd_una_pre = session._snd_seq.una
         almost_stale_ack = (snd_una_pre - PEER__WIN // 2) & 0xFFFF_FFFF
         almost_stale_seg = build_tcp4(
             sport=PEER__PORT,

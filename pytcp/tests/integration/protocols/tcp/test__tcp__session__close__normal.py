@@ -595,7 +595,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="'_tx_buffer' must be drained after the peer's cumulative ACK.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + 2 * 1460,
             msg="'SND.UNA' must advance to cover all ACKed data.",
         )
@@ -643,7 +643,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             payload=b"",
         )
         self.assertEqual(
-            session._snd_fin,
+            session._snd_seq.fin,
             LOCAL__ISS + 1 + 2 * 1460 + 1,
             msg=(
                 "After emitting the FIN, '_snd_fin' must equal the "
@@ -810,8 +810,8 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         session.send(data=b"OUT!")
         self._advance(ms=1)
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
         rx_buffer_before = bytes(session._rx_buffer)
 
@@ -854,7 +854,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             payload=b"",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=(
                 "An unacceptable segment is dropped before "
@@ -921,13 +921,13 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: close() must transition to FIN_WAIT_1.",
         )
         self.assertEqual(
-            session._snd_fin,
+            session._snd_seq.fin,
             LOCAL__ISS + 2,
             msg="Setup precondition: our FIN must have fired (SND.FIN = LOCAL__ISS + 2).",
         )
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         # Peer retransmits the original 50-byte data segment - seq
@@ -965,7 +965,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             payload=b"",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=("An unacceptable segment is dropped after " "the ACK reply; SND.UNA must NOT advance."),
         )
@@ -1017,7 +1017,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: peer's ACK of our FIN must transition to FIN_WAIT_2.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         retransmit = build_tcp4(
@@ -1101,7 +1101,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: close() in CLOSE_WAIT must transition to LAST_ACK.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         retransmit = build_tcp4(
@@ -1158,7 +1158,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_1.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_unacceptable_ack = build_tcp4(
@@ -1224,7 +1224,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: state must be FIN_WAIT_2.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_unacceptable_ack = build_tcp4(
@@ -1295,7 +1295,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg="Setup precondition: state must be LAST_ACK.",
         )
 
-        snd_nxt_before = session._snd_nxt
+        snd_nxt_before = session._snd_seq.nxt
         rcv_nxt_before = session._rcv_nxt
 
         peer_unacceptable_ack = build_tcp4(
@@ -1629,8 +1629,8 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
         """
 
         session = self._drive_to_fin_wait_1(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-        snd_nxt_pre = session._snd_nxt
-        snd_max_pre = session._snd_max
+        snd_nxt_pre = session._snd_seq.nxt
+        snd_max_pre = session._snd_seq.max
 
         session.close()
         idempotent_tx = self._advance(ms=1)
@@ -1649,12 +1649,12 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 ),
             )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre,
             msg="Idempotent close() in FIN_WAIT_1 MUST NOT advance SND.NXT.",
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             snd_max_pre,
             msg="Idempotent close() in FIN_WAIT_1 MUST NOT advance SND.MAX.",
         )
@@ -1685,7 +1685,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack_of_fin)
         assert session.state is FsmState.FIN_WAIT_2, f"Setup: state={session.state}"
 
-        snd_nxt_pre = session._snd_nxt
+        snd_nxt_pre = session._snd_seq.nxt
         session.close()
         idempotent_tx = self._advance(ms=1)
 
@@ -1700,7 +1700,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre,
             msg="Idempotent close() in FIN_WAIT_2 MUST NOT advance SND.NXT.",
         )
@@ -1738,7 +1738,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 f"{session.state}); skipping CLOSING-idempotency check."
             )
 
-        snd_nxt_pre = session._snd_nxt
+        snd_nxt_pre = session._snd_seq.nxt
         session.close()
         idempotent_tx = self._advance(ms=1)
 
@@ -1752,7 +1752,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 ),
             )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre,
             msg="Idempotent close() in CLOSING MUST NOT advance SND.NXT.",
         )
@@ -1792,7 +1792,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             f"Setup invariant: state must be LAST_ACK after CLOSE in " f"CLOSE_WAIT, got {session.state}"
         )
 
-        snd_nxt_pre = session._snd_nxt
+        snd_nxt_pre = session._snd_seq.nxt
         session.close()  # the redundant call under test
         idempotent_tx = self._advance(ms=1)
 
@@ -1808,7 +1808,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
                 ),
             )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre,
             msg="Idempotent close() in LAST_ACK MUST NOT advance SND.NXT.",
         )

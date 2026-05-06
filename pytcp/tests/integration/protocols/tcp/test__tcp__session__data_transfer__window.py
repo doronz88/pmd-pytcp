@@ -409,7 +409,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             ),
         )
 
-        snd_nxt_pre_shrink = session._snd_nxt
+        snd_nxt_pre_shrink = session._snd_seq.nxt
         self.assertEqual(
             snd_nxt_pre_shrink,
             LOCAL__ISS + 1 + 4380,
@@ -437,7 +437,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         # Verify the shrink took effect on the session's send-side
         # state.
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + len(payload_a),
             msg="The shrink ACK must advance 'SND.UNA' past payload_a.",
         )
@@ -450,7 +450,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre_shrink,
             msg=(
                 "The shrink ACK is purely informational about peer's "
@@ -505,7 +505,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
 
         # Sanity: state and frontier unchanged.
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_pre_shrink,
             msg=(
                 "'SND.NXT' must not advance during the silent post-shrink "
@@ -677,7 +677,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         session.send(data=b"X" * 1460)
         self._advance(ms=1)
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1 + 1460,
             msg=("Setup precondition: SND.MAX must have advanced past SND.UNA " "after the initial data send."),
         )

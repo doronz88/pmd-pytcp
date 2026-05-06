@@ -93,14 +93,14 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # Immediately acknowledge the received data if any.
             if packet_rx_md.tcp__data:
                 session._transmit_packet(flag_ack=True)
             # Check if packet acks our FIN.
-            if ge32(packet_rx_md.tcp__ack, session._snd_fin):
+            if ge32(packet_rx_md.tcp__ack, session._snd_seq.fin):
                 # Change state to FIN_WAIT_2.
                 session._change_state(FsmState.FIN_WAIT_2)
             return
@@ -109,7 +109,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         # an empty-ACK reply carrying our current SND.NXT and
         # RCV.NXT. Same gap class as the CLOSING handler's
         # fix in commit '95a2a4e'.
-        if gt32(packet_rx_md.tcp__ack, session._snd_max):
+        if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
         return
 
@@ -120,7 +120,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     ):
         # Packet sanity check.
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # Send out final ACK packet.
@@ -130,7 +130,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
                 f"[{session}] - Sent final ACK ({session._rcv_nxt}) packet",
             )
             # Check if packet acks our FIN.
-            if ge32(packet_rx_md.tcp__ack, session._snd_fin):
+            if ge32(packet_rx_md.tcp__ack, session._snd_seq.fin):
                 # Change state to TIME_WAIT
                 session._change_state(FsmState.TIME_WAIT)
                 # Initialize TIME_WAIT delay.

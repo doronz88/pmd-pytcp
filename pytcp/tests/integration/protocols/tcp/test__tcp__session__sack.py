@@ -249,9 +249,9 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         session.send(data=payload)
         self._advance(ms=1)
 
-        snd_una_before = session._snd_una
-        snd_nxt_before = session._snd_nxt
-        snd_max_before = session._snd_max
+        snd_una_before = session._snd_seq.una
+        snd_nxt_before = session._snd_seq.nxt
+        snd_max_before = session._snd_seq.max
 
         self.assertFalse(
             session._send_sack,
@@ -306,14 +306,14 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg=(
                 "A dup-ACK with SACK info must not advance SND.UNA - " "the cumulative ACK in the segment is unchanged."
             ),
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_before,
             msg=(
                 "SND.NXT must not be perturbed by a SACK-bearing "
@@ -322,7 +322,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             snd_max_before,
             msg=(
                 "SND.MAX must not be perturbed by a SACK-bearing "
@@ -761,7 +761,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         self._drive_rx(frame=second_ack)
 
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + 200,
             msg="Setup precondition: cumulative-ACK must advance SND.UNA past the sacked range.",
         )
@@ -845,7 +845,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         for _ in range(4):
             self._advance(ms=1)
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1 + 4 * mss,
             msg="Setup precondition: all 4 MSS-sized segments must drain before the dup-ACK matrix runs.",
         )
@@ -944,8 +944,8 @@ class TestTcpSession__Sack(TcpSessionTestCase):
 
         in_flight = pipe(
             scoreboard=session._sack_scoreboard,
-            snd_una=session._snd_una,
-            snd_max=session._snd_max,
+            snd_una=session._snd_seq.una,
+            snd_max=session._snd_seq.max,
         )
         self.assertEqual(
             in_flight,
@@ -981,7 +981,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         for _ in range(4):
             self._advance(ms=1)
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1 + 4 * mss,
             msg="Setup precondition: all 4 MSS-sized segments must drain.",
         )
@@ -1085,7 +1085,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
         for _ in range(4):
             self._advance(ms=1)
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1 + 4 * mss,
             msg="Setup precondition: all 4 MSS-sized segments must drain.",
         )
@@ -1280,7 +1280,7 @@ class TestTcpSession__Sack(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1 + 2 * mss,
             msg="Cumulative-ACK advancement must proceed normally despite the DSACK report.",
         )

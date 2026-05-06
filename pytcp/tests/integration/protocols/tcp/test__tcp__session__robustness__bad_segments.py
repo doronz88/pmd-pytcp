@@ -151,7 +151,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        snd_una_before = session._snd_una
+        snd_una_before = session._snd_seq.una
         rcv_nxt_before = session._rcv_nxt
 
         # Peer sends FIN+RST+ACK - the malformed flag combination.
@@ -181,7 +181,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
             msg=("State must remain ESTABLISHED after a FIN+RST drop - " "neither the FIN nor the RST is processed."),
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg="'SND.UNA' must not advance on a dropped FIN+RST segment.",
         )
@@ -211,7 +211,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        snd_una_before = session._snd_una
+        snd_una_before = session._snd_seq.una
         rcv_nxt_before = session._rcv_nxt
 
         # Peer sends a flag-less segment.
@@ -241,7 +241,7 @@ class TestTcpRobustness__BadSegments(TcpSessionTestCase):
             msg="State must remain ESTABLISHED after a no-flags drop.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             snd_una_before,
             msg="'SND.UNA' must not advance on a dropped no-flags segment.",
         )

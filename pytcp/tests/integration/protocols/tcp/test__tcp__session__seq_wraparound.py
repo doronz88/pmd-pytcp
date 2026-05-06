@@ -165,7 +165,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
         session._cc.snd_ewn = PEER__WIN
 
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             0xFFFF_FFFF,
             msg=(
                 "Setup precondition: post-handshake 'SND.NXT' must "
@@ -191,7 +191,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
 
         # The spec encoding: post-segment-1 'SND.NXT' wraps modularly.
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             (0xFFFF_FFFF + 4) % SEQ32__MOD,
             msg=(
                 "After sending 4 bytes from seq=0xFFFF_FFFF, "
@@ -334,9 +334,9 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
         # wrap. The 18-byte in-flight range (0xFFFF_FFFE through
         # 0x10 modularly) is what makes ack = 0x05 a legal
         # in-window value the legacy '<=' check rejects.
-        session._snd_una = 0xFFFF_FFFE
-        session._snd_nxt = 0x0000_0010
-        session._snd_max = 0x0000_0010
+        session._snd_seq.una = 0xFFFF_FFFE
+        session._snd_seq.nxt = 0x0000_0010
+        session._snd_seq.max = 0x0000_0010
         # Keep '_tx_buffer_una = max(_snd_una - _tx_buffer_seq_mod, 0)'
         # bounded to zero so the eventual buffer-purge inside
         # '_process_ack_packet' does not blow up on the modular
@@ -357,7 +357,7 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
 
         # The spec encoding: SND.UNA advances modularly.
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             0x0000_0005,
             msg=(
                 "Peer's ACK at ack=0x05 with SND.UNA=0xFFFF_FFFE "
@@ -510,7 +510,7 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
     Tests for ACK acceptability across the 32-bit wrap in the
     half-close FSM states (CLOSE_WAIT, FIN_WAIT_1, FIN_WAIT_2,
     CLOSING, LAST_ACK). Each handler uses the chained Python
-    comparator 'self._snd_una <= ack <= self._snd_max', which
+    comparator 'self._snd_seq.una <= ack <= self._snd_seq.max', which
     fails across the wrap exactly as the ESTABLISHED handler did
     before commit '91abbc4' migrated it. The migration was not
     extended to the half-close family; this test is the forcing
@@ -591,9 +591,9 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
         assert session.state is FsmState.CLOSE_WAIT, f"Setup failed: expected CLOSE_WAIT, got {session.state!r}."
 
         # Pre-position send-sequence state to straddle the wrap.
-        session._snd_una = 0xFFFF_FFFE
-        session._snd_nxt = 0x0000_0010
-        session._snd_max = 0x0000_0010
+        session._snd_seq.una = 0xFFFF_FFFE
+        session._snd_seq.nxt = 0x0000_0010
+        session._snd_seq.max = 0x0000_0010
         session._tx_buffer_seq_mod = 0xFFFF_FFFE
 
         # Peer sends the in-window ACK. Note seq advances past
@@ -609,7 +609,7 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             0x0000_0005,
             msg=(
                 "Peer's in-window ACK at ack=0x05 with "
@@ -743,8 +743,8 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
 class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
     """
     Tests for the FIN-ack '>=' check in the half-close states.
-    'self._snd_fin' is the seq number of the FIN segment we sent;
-    the handler tests 'tcp__ack >= self._snd_fin' to detect that
+    'self._snd_seq.fin' is the seq number of the FIN segment we sent;
+    the handler tests 'tcp__ack >= self._snd_seq.fin' to detect that
     peer has cumulatively acked our FIN. The raw '>=' fails
     across the wrap, so a wrap-spanning peer ACK that legitimately
     covers our FIN is treated as not-yet-cum-acked and the FSM
@@ -820,10 +820,10 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
         # Pre-position state so SND.FIN straddles the wrap. The
         # FIN occupies 1 byte of seq space at SND.FIN; peer's
         # expected ACK is SND.FIN + 1.
-        session._snd_fin = 0xFFFF_FFFF
-        session._snd_una = 0xFFFF_FFFE
-        session._snd_nxt = 0x0000_0000
-        session._snd_max = 0x0000_0000
+        session._snd_seq.fin = 0xFFFF_FFFF
+        session._snd_seq.una = 0xFFFF_FFFE
+        session._snd_seq.nxt = 0x0000_0000
+        session._snd_seq.max = 0x0000_0000
         session._tx_buffer_seq_mod = 0xFFFF_FFFE
 
         # Peer ACK covers our FIN (and one byte past, modularly
@@ -857,7 +857,7 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
     '(SND.UNA, SND.MAX]' must elicit '<SEQ=SEG.ACK><CTL=RST>' and
     the segment be discarded. The check is implemented at
     'tcp__session.py' line 1706 with a chained Python comparator
-    'self._snd_una < ack <= self._snd_max' that fails across the
+    'self._snd_seq.una < ack <= self._snd_seq.max' that fails across the
     32-bit wrap. The site escaped the modular-arithmetic
     migration ('91abbc4' / '352199d'); this test is the forcing
     function for the spot fix.
@@ -919,7 +919,7 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
             msg="Setup precondition: outbound SYN must carry seq=ISS=0xFFFF_FFFF.",
         )
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             0x0000_0000,
             msg=(
                 "Setup precondition: post-SYN-emit 'SND.MAX' must be "
@@ -965,7 +965,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
     Tests the '_snd_fin = 0' sentinel collision in
     '_retransmit_packet_timeout's TX-buffer offset rewind. The
     rewind walks 'self._tx_buffer_seq_mod' back by one when
-    'self._snd_nxt in {self._snd_ini, self._snd_fin}', the
+    'self._snd_seq.nxt in {self._snd_seq.ini, self._snd_seq.fin}', the
     rationale being that SYN and FIN consume one byte of seq
     space without a TX-buffer slot. But when no FIN has been
     sent, '_snd_fin' is the literal value 0 used as a sentinel;
@@ -1052,7 +1052,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
             msg="Setup precondition: first send must produce one outbound segment.",
         )
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             0,
             msg=("Setup precondition: post-send-1 SND.NXT must wrap " "modulo 2**32 to 0."),
         )
@@ -1068,7 +1068,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_ack_seg1)
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             0,
             msg=(
                 "Setup precondition: post-ACK SND.UNA must equal 0 - "
@@ -1293,7 +1293,7 @@ class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
         self._assert_segment(
             rst_segments[0],
             flags=frozenset({"RST", "ACK"}),
-            seq=session._snd_una,
+            seq=session._snd_seq.una,
         )
         self.assertIs(
             session.state,

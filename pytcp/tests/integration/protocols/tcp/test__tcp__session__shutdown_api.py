@@ -222,17 +222,17 @@ class TestTcpShutdownApi(TcpSessionTestCase):
         sock.shutdown(SHUT_WR)
         self._advance(ms=1)
         self._advance(ms=1)
-        snd_nxt_after_first = session._snd_nxt
+        snd_nxt_after_first = session._snd_seq.nxt
 
         sock.shutdown(SHUT_WR)
         self._advance(ms=1)
 
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             snd_nxt_after_first,
             msg=(
                 "Idempotent shutdown(SHUT_WR) MUST NOT re-advance "
-                f"SND.NXT. Pre={snd_nxt_after_first}, post={session._snd_nxt}."
+                f"SND.NXT. Pre={snd_nxt_after_first}, post={session._snd_seq.nxt}."
             ),
         )
 

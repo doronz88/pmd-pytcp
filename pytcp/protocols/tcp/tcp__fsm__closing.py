@@ -77,7 +77,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
     # handles SND.UNA advance, scoreboard prune, retransmit-
     # counter purge, and persist-timer reset; the FIN-acked
     # check uses 'ge32(snd_una, snd_fin)' on the post-update
-    # SND.UNA. The strict 'tcp__ack == self._snd_nxt' check
+    # SND.UNA. The strict 'tcp__ack == self._snd_seq.nxt' check
     # used previously was equivalent in the canonical
     # simultaneous-close flow but silently dropped 'ack >
     # snd_max' cases that RFC §3.10.7.4 step 5 mandates an
@@ -91,11 +91,11 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
         }
     ):
         if packet_rx_md.tcp__seq == session._rcv_nxt and in_range32(
-            packet_rx_md.tcp__ack, session._snd_una, session._snd_max
+            packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._process_ack_packet(packet_rx_md)
             # If our FIN is now acked, enter TIME_WAIT.
-            if ge32(session._snd_una, session._snd_fin):
+            if ge32(session._snd_seq.una, session._snd_seq.fin):
                 session._change_state(FsmState.TIME_WAIT)
                 stack.timer.register_timer(name=f"{session}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
             return
@@ -104,7 +104,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
         # an empty-ACK reply carrying our current SND.NXT and
         # RCV.NXT. The strict-equality predecessor of this
         # branch silently dropped these.
-        if gt32(packet_rx_md.tcp__ack, session._snd_max):
+        if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
         return
 

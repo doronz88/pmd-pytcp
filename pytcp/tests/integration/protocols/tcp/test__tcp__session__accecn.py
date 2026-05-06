@@ -908,7 +908,7 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         self._advance(ms=10)
 
         snd_mss = session._snd_mss
-        flight_size_before = (session._snd_max - session._snd_una) & 0xFFFF_FFFF
+        flight_size_before = (session._snd_seq.max - session._snd_seq.una) & 0xFFFF_FFFF
         # RFC 8511 ABE: on ECN-class events the sender uses a
         # less aggressive multiplier (0.85) than the RFC 5681
         # §3.1 0.5 used for loss events. The 17/20 integer

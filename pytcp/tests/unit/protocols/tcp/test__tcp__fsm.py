@@ -307,12 +307,12 @@ class TestTcpFsmSynSent(_TcpSessionFsmFixture):
             msg="A bare SYN in SYN_SENT must transition to SYN_RCVD (simultaneous open).",
         )
         # Post-Bug-C fix: simultaneous-open emits SYN+ACK with
-        # seq=self._snd_ini (reuses original SYN's seq) rather
-        # than letting it default to self._snd_nxt (which would
+        # seq=self._snd_seq.ini (reuses original SYN's seq) rather
+        # than letting it default to self._snd_seq.nxt (which would
         # have advanced past LOCAL__ISS to LOCAL__ISS+1 from the
         # initial SYN). The fix bootstraps peer state and emits
         # SYN+ACK at the original SYN's seq so peer accepts it.
-        mock_transmit.assert_called_once_with(flag_syn=True, flag_ack=True, seq=session._snd_ini)
+        mock_transmit.assert_called_once_with(flag_syn=True, flag_ack=True, seq=session._snd_seq.ini)
 
 
 class TestTcpFsmEstablished(_TcpSessionFsmFixture):
@@ -542,11 +542,11 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
             create=True,
         ):
             session = self._make_session()
-            initial_nxt = session._snd_nxt
+            initial_nxt = session._snd_seq.nxt
             session._transmit_packet(flag_syn=True, data=b"abc")
 
         self.assertEqual(
-            session._snd_nxt,
+            session._snd_seq.nxt,
             initial_nxt + len(b"abc") + 1,
             msg="_transmit_packet must advance _snd_nxt by len(data) + flag_syn + flag_fin.",
         )
@@ -570,8 +570,8 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
             session._transmit_packet(flag_fin=True, flag_ack=True)
 
         self.assertEqual(
-            session._snd_fin,
-            session._snd_nxt,
+            session._snd_seq.fin,
+            session._snd_seq.nxt,
             msg="_transmit_packet with flag_fin=True must record _snd_fin = _snd_nxt.",
         )
 

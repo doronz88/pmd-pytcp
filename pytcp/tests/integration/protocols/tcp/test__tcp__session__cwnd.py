@@ -537,7 +537,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
 
         # Verify all 6 segments hit the wire.
         self.assertEqual(
-            (session._snd_max - session._snd_una) & 0xFFFF_FFFF,
+            (session._snd_seq.max - session._snd_seq.una) & 0xFFFF_FFFF,
             6 * PEER__MSS,
             msg="Setup invariant: 6 MSS must be in flight before RTO fires.",
         )
@@ -2172,7 +2172,7 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
             sport=PEER__PORT,
             dport=STACK__PORT,
             seq=PEER__ISS + 1,
-            ack=session._snd_max,
+            ack=session._snd_seq.max,
             flags=("ACK",),
             win=PEER__WIN,
         )

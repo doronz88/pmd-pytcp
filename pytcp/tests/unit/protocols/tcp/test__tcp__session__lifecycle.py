@@ -214,23 +214,23 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         session = self._make_session()
         self.assertEqual(
-            session._snd_nxt,
-            session._snd_ini,
+            session._snd_seq.nxt,
+            session._snd_seq.ini,
             msg="_snd_nxt must start equal to _snd_ini.",
         )
         self.assertEqual(
-            session._snd_max,
-            session._snd_ini,
+            session._snd_seq.max,
+            session._snd_seq.ini,
             msg="_snd_max must start equal to _snd_ini.",
         )
         self.assertEqual(
-            session._snd_una,
-            session._snd_ini,
+            session._snd_seq.una,
+            session._snd_seq.ini,
             msg="_snd_una must start equal to _snd_ini.",
         )
         self.assertEqual(
             session._tx_buffer_seq_mod,
-            session._snd_ini,
+            session._snd_seq.ini,
             msg="_tx_buffer_seq_mod must start equal to _snd_ini.",
         )
 

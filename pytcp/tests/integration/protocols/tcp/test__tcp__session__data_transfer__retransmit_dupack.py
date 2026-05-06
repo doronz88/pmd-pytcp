@@ -287,7 +287,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         # State assertions: peer never advanced our ack, session
         # remains alive throughout the dup-ACK sequence.
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "'SND.UNA' must be unchanged - dup-ACKs by definition "
@@ -408,7 +408,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
         # Send-side state and FSM unchanged.
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "'SND.UNA' must be unchanged - the peer's ACK never "
@@ -514,7 +514,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
         # Send-side state and FSM unchanged across the sequence.
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "'SND.UNA' must be unchanged - dup-ACKs by definition "
@@ -647,7 +647,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         for _ in range(4):
             self._advance(ms=1)
         self.assertEqual(
-            session._snd_max,
+            session._snd_seq.max,
             LOCAL__ISS + 1 + 4 * mss,
             msg="Setup precondition: all 4 MSS segments must drain.",
         )
@@ -699,7 +699,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
             msg="Setup precondition: peer's FIN must transition session to CLOSE_WAIT.",
         )
         self.assertEqual(
-            session._snd_una,
+            session._snd_seq.una,
             LOCAL__ISS + 1,
             msg=(
                 "Setup precondition: peer's FIN had cum-ACK = "
@@ -760,7 +760,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         session.send(data=b"x" * (8 * PEER__MSS))
         for _ in range(4):
             self._advance(ms=1)
-        snd_max_pre_dup = session._snd_max
+        snd_max_pre_dup = session._snd_seq.max
         self.assertEqual(
             (snd_max_pre_dup - LOCAL__ISS - 1) & 0xFFFF_FFFF,
             4 * PEER__MSS,

@@ -51,12 +51,12 @@ def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:
     @functools.wraps(function)
     def wrapper(self: TcpSession, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
         print(
-            f"[ >>> ] snd_nxt {self._snd_nxt}, snd_una {self._snd_una},",
+            f"[ >>> ] snd_nxt {self._snd_seq.nxt}, snd_una {self._snd_seq.una},",
             f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
         )
         retval = function(self, *args, **kwargs)
         print(
-            f"[ <<< ] snd_nxt {self._snd_nxt}, snd_una {self._snd_una},",
+            f"[ <<< ] snd_nxt {self._snd_seq.nxt}, snd_una {self._snd_seq.una},",
             f"rcv_nxt {self._rcv_nxt}, rcv_una {self._rcv_una}",
         )
         return retval
@@ -79,8 +79,8 @@ def trace_win(self: TcpSession) -> None:
     print("unsent_data:", remaining_data_len)
     print("usable_window:", usable_window)
     print("transmit_data_len:", transmit_data_len)
-    print("self._snd_nxt:", self._snd_nxt)
-    print("self._snd_una:", self._snd_una)
+    print("self._snd_seq.nxt:", self._snd_seq.nxt)
+    print("self._snd_seq.una:", self._snd_seq.una)
     print("self._tx_buffer_seq_mod:", self._tx_buffer_seq_mod)
     print("self._tx_buffer_nxt:", self._tx_buffer_nxt)
     print("self._tx_buffer_una:", self._tx_buffer_una)
