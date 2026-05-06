@@ -47,11 +47,14 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
+from pytcp.socket.socket_id import SocketId
+from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
-from pytcp.stack.packet_handler._icmp_error_demux import parse_embedded_l4
+from pytcp.stack.packet_handler._icmp_error_demux import EmbeddedL4, parse_embedded_l4
 
 
 class PacketHandlerIcmp4Rx(ABC):
@@ -175,10 +178,29 @@ class PacketHandlerIcmp4Rx(ABC):
             )
             return
 
-        if embedded.proto is not IpProto.UDP:
+        if embedded.proto is IpProto.UDP:
+            self.__phrx_icmp4__dispatch_udp(packet_rx, embedded, message, is_frag_needed=is_frag_needed)
             return
 
-        # Create UdpMetadata object and try to find matching UDP socket.
+        if embedded.proto is IpProto.TCP:
+            self.__phrx_icmp4__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+    def __phrx_icmp4__dispatch_udp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        message: Icmp4MessageDestinationUnreachable,
+        *,
+        is_frag_needed: bool,
+    ) -> None:
+        """
+        Route an ICMPv4 Destination Unreachable carrying an embedded
+        UDP segment to the matching UdpSocket. Code-4 Frag-Needed
+        triggers notify_pmtu; every other code triggers
+        notify_unreachable.
+        """
+
         packet = UdpMetadata(
             ip__ver=IpVersion.IP4,
             ip__local_address=cast(Ip4Address, embedded.local_ip),
@@ -192,7 +214,7 @@ class PacketHandlerIcmp4Rx(ABC):
                 __debug__ and log(
                     "icmp4",
                     f"{packet_rx.tracker} - <INFO>Found matching "
-                    f"listening socket {socket}, for Unreachable "
+                    f"listening UDP socket {socket}, for Unreachable "
                     f"packet from {packet_rx.ip4.src}</>",
                 )
                 if is_frag_needed and message.mtu is not None:
@@ -207,6 +229,48 @@ class PacketHandlerIcmp4Rx(ABC):
             "icmp4",
             f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
+
+    def __phrx_icmp4__dispatch_tcp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv4 Destination Unreachable carrying an embedded
+        TCP segment to the matching TcpSession via TcpSocket. Applies
+        the RFC 5927 §4 sequence-in-window guard before calling
+        TcpSession.on_unreachable.
+        """
+
+        socket_id = SocketId(
+            address_family=AddressFamily.INET4,
+            socket_type=SocketType.STREAM,
+            local_address=cast(Ip4Address, embedded.local_ip),
+            local_port=embedded.local_port,
+            remote_address=cast(Ip4Address, embedded.remote_ip),
+            remote_port=embedded.remote_port,
+        )
+
+        socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
+        if socket is None or socket._tcp_session is None:
+            return
+
+        # RFC 5927 §4 sequence-in-window guard: an ICMP error whose
+        # embedded TCP seq does not lie in SND.UNA..SND.NXT is forged
+        # or stale and must be silently dropped.
+        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+            self._packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            return
+
+        __debug__ and log(
+            "icmp4",
+            f"{packet_rx.tracker} - <INFO>Found matching TCP session "
+            f"for Unreachable packet from {packet_rx.ip4.src}</>",
+        )
+        socket._tcp_session.on_unreachable(icmp_type=3, icmp_code=icmp_code)
+        self._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
         """

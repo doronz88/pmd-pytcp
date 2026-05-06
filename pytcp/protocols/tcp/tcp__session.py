@@ -743,6 +743,77 @@ class TcpSession:
         self._event__connect.release()
         self._change_state(FsmState.CLOSED)
 
+    def is_seq_in_window(self, seq: int) -> bool:
+        """
+        Return True when 'seq' falls in the SND.UNA..SND.NXT range —
+        the RFC 5927 §4 acceptability check for an ICMP error
+        targeting an embedded TCP segment. ICMP RX handlers call this
+        before notifying the session so an off-path attacker cannot
+        forge an error for an arbitrary 4-tuple.
+
+        For unsynchronized states (no SND.NXT yet) the check accepts
+        anything since no flight is outstanding to validate against.
+
+        Reference: RFC 5927 §4 (ICMP attacks against TCP).
+        """
+
+        if self._snd_seq.nxt == 0 and self._snd_seq.una == 0:
+            return True
+
+        # Modular comparison via Seq32 wrap-aware arithmetic.
+        if self._snd_seq.una <= self._snd_seq.nxt:
+            return self._snd_seq.una <= seq <= self._snd_seq.nxt
+        return seq >= self._snd_seq.una or seq <= self._snd_seq.nxt
+
+    def on_unreachable(self, *, icmp_type: int, icmp_code: int) -> None:
+        """
+        Handle an inbound ICMP Destination Unreachable that the RX
+        handler has matched against this session. Routes by code:
+        Host / Net Unreachable mark the session with the appropriate
+        ConnError and release blocked syscalls; Port Unreachable in
+        SYN_SENT aborts the connection with REFUSED.
+
+        Per RFC 1122 §4.2.3.9, ICMP errors during synchronized states
+        are advisory — the session does not transition to CLOSED on
+        Host / Net Unreachable, only the connection error is recorded
+        for the user/TCP interface to surface. Synchronized-state
+        Port Unreachable is ignored entirely.
+
+        Reference: RFC 792 (Destination Unreachable Message).
+        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
+        Reference: RFC 4443 §3.1 (ICMPv6 Destination Unreachable).
+        """
+
+        # Resolve the cross-version code into a normalized intent.
+        # ICMPv4 Type 3 codes: 0=Net, 1=Host, 3=Port.
+        # ICMPv6 Type 1 codes: 0=NoRoute, 3=Address, 4=Port.
+        is_host = (icmp_type == 3 and icmp_code == 1) or (icmp_type == 1 and icmp_code == 3)
+        is_net = (icmp_type == 3 and icmp_code == 0) or (icmp_type == 1 and icmp_code == 0)
+        is_port = (icmp_type == 3 and icmp_code == 3) or (icmp_type == 1 and icmp_code == 4)
+
+        if is_port and self._state is FsmState.SYN_SENT:
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - <ly>[{self._state}]</> - got Port Unreachable, refusing",
+            )
+            self._connection_error = ConnError.REFUSED
+            self._event__rx_buffer.set()
+            self._event__connect.release()
+            self._change_state(FsmState.CLOSED)
+            return
+
+        if is_host:
+            self._connection_error = ConnError.HOST_UNREACHABLE
+            self._event__rx_buffer.set()
+            self._event__connect.release()
+            return
+
+        if is_net:
+            self._connection_error = ConnError.NET_UNREACHABLE
+            self._event__rx_buffer.set()
+            self._event__connect.release()
+            return
+
     def _change_state(self, state: FsmState) -> None:
         """
         Change the state of TCP finite state machine.

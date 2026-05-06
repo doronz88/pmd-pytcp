@@ -73,6 +73,8 @@ class ConnError(NameEnum):
     REFUSED = auto()
     TIMEOUT = auto()
     CANCELED = auto()
+    HOST_UNREACHABLE = auto()
+    NET_UNREACHABLE = auto()
 
 
 class CcMode(NameEnum):

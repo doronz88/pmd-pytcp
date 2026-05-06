@@ -219,8 +219,11 @@ class TestConnError(TestCase):
 
         self.assertEqual(
             {member.name for member in ConnError},
-            {"NONE", "REFUSED", "TIMEOUT", "CANCELED"},
-            msg="ConnError must expose exactly NONE, REFUSED, TIMEOUT, CANCELED.",
+            {"NONE", "REFUSED", "TIMEOUT", "CANCELED", "HOST_UNREACHABLE", "NET_UNREACHABLE"},
+            msg=(
+                "ConnError must expose the six canonical connection-fail reasons "
+                "(NONE, REFUSED, TIMEOUT, CANCELED, HOST_UNREACHABLE, NET_UNREACHABLE)."
+            ),
         )
 
 

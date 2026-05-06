@@ -53,11 +53,14 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
+from pytcp.socket.socket_id import SocketId
+from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
-from pytcp.stack.packet_handler._icmp_error_demux import parse_embedded_l4
+from pytcp.stack.packet_handler._icmp_error_demux import EmbeddedL4, parse_embedded_l4
 
 
 class PacketHandlerIcmp6Rx(ABC):
@@ -165,12 +168,22 @@ class PacketHandlerIcmp6Rx(ABC):
             )
             return
 
-        if embedded.proto is not IpProto.UDP:
-            # TODO: TCP demux is wired up in Phase 5 of the ICMP demux
-            # + PMTUD refactor (see docs/refactor/icmp_demux_pmtud_plan.md).
+        message = packet_rx.icmp6.message
+
+        if embedded.proto is IpProto.UDP:
+            self.__phrx_icmp6__dispatch_udp_unreachable(packet_rx, embedded)
             return
 
-        # Create UdpMetadata object and try to find matching UDP socket.
+        if embedded.proto is IpProto.TCP:
+            self.__phrx_icmp6__dispatch_tcp_unreachable(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+    def __phrx_icmp6__dispatch_udp_unreachable(self, packet_rx: PacketRx, embedded: EmbeddedL4) -> None:
+        """
+        Route an ICMPv6 Destination Unreachable carrying an embedded
+        UDP segment to the matching UdpSocket.notify_unreachable.
+        """
+
         packet = UdpMetadata(
             ip__ver=IpVersion.IP6,
             ip__local_address=cast(Ip6Address, embedded.local_ip),
@@ -187,7 +200,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 __debug__ and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <INFO>Found matching "
-                    f"listening socket {socket} for Unreachable "
+                    f"listening UDP socket {socket} for Unreachable "
                     f"packet from {packet_rx.ip6.src}</>",
                 )
                 socket.notify_unreachable()
@@ -197,6 +210,44 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
+
+    def __phrx_icmp6__dispatch_tcp_unreachable(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv6 Destination Unreachable carrying an embedded
+        TCP segment to the matching TcpSession via TcpSocket. Applies
+        the RFC 5927 §4 sequence-in-window guard.
+        """
+
+        socket_id = SocketId(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.STREAM,
+            local_address=cast(Ip6Address, embedded.local_ip),
+            local_port=embedded.local_port,
+            remote_address=cast(Ip6Address, embedded.remote_ip),
+            remote_port=embedded.remote_port,
+        )
+
+        socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
+        if socket is None or socket._tcp_session is None:
+            return
+
+        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+            self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            return
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - <INFO>Found matching TCP session "
+            f"for Unreachable packet from {packet_rx.ip6.src}</>",
+        )
+        socket._tcp_session.on_unreachable(icmp_type=1, icmp_code=icmp_code)
+        self._packet_stats_rx.icmp6__destination_unreachable__tcp__notify += 1
 
     def __phrx_icmp6__packet_too_big(self, packet_rx: PacketRx) -> None:
         """
