@@ -66,7 +66,6 @@ from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_pac
 from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
 from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.tcp__hystart import (
-    HyStartState,
     css_growth_increment,
     enter_css,
     fold_rtt_sample,
@@ -518,22 +517,6 @@ class TcpSession:
         # Defaults are RFC-anchored on the dataclass; no per-field
         # init needed here.
 
-        # RFC 9438 §4.9.2 spurious-fast-retransmit state restore.
-        # When fast-retransmit fires, snapshot the CUBIC state so a
-        # subsequent DSACK observation in the same recovery
-        # episode (proving the retransmit was spurious) can roll
-        # back W_max / K / epoch_start / W_est to their pre-FR
-        # values. Mirrors the F-RTO snapshot pattern; the snapshot
-        # is gated by '_fr_cubic_snapshot_valid' so a DSACK
-        # outside a recovery episode does not spuriously restore.
-        self._fr_pre_cubic_w_max: int = 0
-        self._fr_pre_cubic_K_ms: int = 0
-        self._fr_pre_cubic_epoch_start_ms: int = 0
-        self._fr_pre_cubic_w_est: int = 0
-        self._fr_pre_cwnd: int = 0
-        self._fr_pre_ssthresh: int = 0
-        self._fr_cubic_snapshot_valid: bool = False
-
         # RFC 3168 §6.1.2 receiver-side CE-echo flag. Set True
         # when an inbound segment arrives with the IP CE
         # codepoint ('11' = 3); every subsequent outbound TCP
@@ -815,21 +798,6 @@ class TcpSession:
         # connection via 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
         # CcMode.RENO.value)'; the dataclass default mirrors
         # Linux's CUBIC-since-2.6.18.
-
-        # RFC 9406 HyStart++ state. The algorithm is delay-
-        # based slow-start exit: track per-round min RTT,
-        # detect bandwidth saturation BEFORE loss occurs by
-        # comparing the current round's min RTT to the
-        # previous round's. On detection, enter Conservative
-        # Slow Start (CSS) which grows cwnd at 1/4 the normal
-        # rate; if RTT recovers, resume slow-start (the early
-        # exit was spurious); if not, after CSS_ROUNDS rounds
-        # set ssthresh = cwnd and enter congestion avoidance.
-        # Always-on (no opt-out flag); the algorithm is a
-        # no-op until N_RTT_SAMPLE samples accumulate in a
-        # single round, so handshake-only sessions never see
-        # any HyStart-driven behaviour.
-        self._hystart_state: HyStartState = HyStartState()
 
         # Window scale, initialized to 0 because initial SYN / SYN + ACK packets
         # don't use wscale for backward compatibility.
@@ -2316,28 +2284,28 @@ class TcpSession:
         Reference: RFC 9406 §4.2 (delay-increase trigger / spurious-exit recovery).
         """
 
-        if should_exit_slow_start_to_css(self._hystart_state):
-            enter_css(self._hystart_state)
+        if should_exit_slow_start_to_css(self._cc.hystart_state):
+            enter_css(self._cc.hystart_state)
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 9406 §4.2 HyStart++ SS->CSS: "
                 f"currentRoundMinRTT="
-                f"{self._hystart_state.current_round_min_rtt_ms} >= "
+                f"{self._cc.hystart_state.current_round_min_rtt_ms} >= "
                 f"lastRoundMinRTT="
-                f"{self._hystart_state.last_round_min_rtt_ms} + RttThresh; "
-                f"baseline={self._hystart_state.css_baseline_min_rtt_ms}",
+                f"{self._cc.hystart_state.last_round_min_rtt_ms} + RttThresh; "
+                f"baseline={self._cc.hystart_state.css_baseline_min_rtt_ms}",
             )
-        elif should_resume_slow_start_from_css(self._hystart_state):
+        elif should_resume_slow_start_from_css(self._cc.hystart_state):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - RFC 9406 §4.2 HyStart++ CSS->SS: "
                 f"currentRoundMinRTT="
-                f"{self._hystart_state.current_round_min_rtt_ms} < "
+                f"{self._cc.hystart_state.current_round_min_rtt_ms} < "
                 f"cssBaselineMinRtt="
-                f"{self._hystart_state.css_baseline_min_rtt_ms}; "
+                f"{self._cc.hystart_state.css_baseline_min_rtt_ms}; "
                 "early CSS exit was spurious, resuming slow-start",
             )
-            resume_slow_start(self._hystart_state)
+            resume_slow_start(self._cc.hystart_state)
 
     def _emit_challenge_ack(self) -> None:
         """
@@ -2521,14 +2489,8 @@ class TcpSession:
             # epoch_start, W_est, cwnd, and ssthresh to their
             # pre-FR values so post-FR throughput is not
             # artificially anchored at the reduced W_max.
-            if self._cc.cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
-                self._cc.cubic_w_max = self._fr_pre_cubic_w_max
-                self._cc.cubic_K_ms = self._fr_pre_cubic_K_ms
-                self._cc.cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
-                self._cc.cubic_w_est = self._fr_pre_cubic_w_est
-                self._cc.cwnd = self._fr_pre_cwnd
-                self._cc.ssthresh = self._fr_pre_ssthresh
-                self._fr_cubic_snapshot_valid = False
+            if self._cc.cc_mode is CcMode.CUBIC and self._cc.fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
+                self._cc.restore_fr_cubic_snapshot()
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - RFC 9438 §4.9.2 spurious-FR "
@@ -3272,13 +3234,7 @@ class TcpSession:
             # capture the pre-FR CUBIC state so a DSACK during
             # this recovery episode can roll back the
             # multiplicative decrease + curve re-anchor below.
-            self._fr_pre_cubic_w_max = self._cc.cubic_w_max
-            self._fr_pre_cubic_K_ms = self._cc.cubic_K_ms
-            self._fr_pre_cubic_epoch_start_ms = self._cc.cubic_epoch_start_ms
-            self._fr_pre_cubic_w_est = self._cc.cubic_w_est
-            self._fr_pre_cwnd = self._cc.cwnd
-            self._fr_pre_ssthresh = self._cc.ssthresh
-            self._fr_cubic_snapshot_valid = True
+            self._cc.save_fr_cubic_snapshot()
             self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
                 cwnd=self._cc.cwnd,
                 smss=self._snd_mss,
@@ -3608,16 +3564,16 @@ class TcpSession:
             # rotate_round; that triggers the §4.2 "set
             # ssthresh = cwnd" entry into congestion avoidance.
             if self._cc.cwnd < self._cc.ssthresh:
-                if self._hystart_state.window_end_seq == 0:
+                if self._cc.hystart_state.window_end_seq == 0:
                     # Bootstrap: first round of slow-start.
-                    self._hystart_state.window_end_seq = self._snd_nxt
-                elif not lt32(self._snd_una, self._hystart_state.window_end_seq):
-                    rotate_round(self._hystart_state, new_window_end_seq=self._snd_nxt)
-                    if self._hystart_state.in_css and self._hystart_state.css_rounds_remaining == 0:
+                    self._cc.hystart_state.window_end_seq = self._snd_nxt
+                elif not lt32(self._snd_una, self._cc.hystart_state.window_end_seq):
+                    rotate_round(self._cc.hystart_state, new_window_end_seq=self._snd_nxt)
+                    if self._cc.hystart_state.in_css and self._cc.hystart_state.css_rounds_remaining == 0:
                         # CSS_ROUNDS exhausted -> ssthresh =
                         # cwnd, enter CA. Clear CSS state.
                         self._cc.ssthresh = self._cc.cwnd
-                        resume_slow_start(self._hystart_state)
+                        resume_slow_start(self._cc.hystart_state)
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - RFC 9406 HyStart++ "
@@ -3731,7 +3687,7 @@ class TcpSession:
                     # RFC 5681 / RFC 6928 slow-start or RFC
                     # 5681 §3.1 congestion-avoidance growth via
                     # 'cwnd_grow_per_ack'.
-                    if self._cc.cwnd < self._cc.ssthresh and self._hystart_state.in_css:
+                    if self._cc.cwnd < self._cc.ssthresh and self._cc.hystart_state.in_css:
                         self._cc.cwnd += css_growth_increment(bytes_acked, self._snd_mss)
                     else:
                         self._cc.cwnd = cwnd_grow_per_ack(self._cc.cwnd, self._cc.ssthresh, bytes_acked, self._snd_mss)
@@ -3891,8 +3847,8 @@ class TcpSession:
             # transitions. Skipped after slow-start exits
             # (cwnd >= ssthresh AND not in_css) — HyStart++ is a
             # slow-start-only mechanism.
-            if self._cc.cwnd < self._cc.ssthresh or self._hystart_state.in_css:
-                fold_rtt_sample(self._hystart_state, ts_rtt_ms)
+            if self._cc.cwnd < self._cc.ssthresh or self._cc.hystart_state.in_css:
+                fold_rtt_sample(self._cc.hystart_state, ts_rtt_ms)
                 self._hystart_check_phase_transition()
             __debug__ and log(
                 "tcp-ss",
@@ -3920,8 +3876,8 @@ class TcpSession:
                 self._rto_state = update(self._rto_state, observed_rtt_ms)
                 # RFC 9406 §4.2: see TSecr-fold note above; same
                 # HyStart++ feed in the Karn-tracker harvest path.
-                if self._cc.cwnd < self._cc.ssthresh or self._hystart_state.in_css:
-                    fold_rtt_sample(self._hystart_state, observed_rtt_ms)
+                if self._cc.cwnd < self._cc.ssthresh or self._cc.hystart_state.in_css:
+                    fold_rtt_sample(self._cc.hystart_state, observed_rtt_ms)
                     self._hystart_check_phase_transition()
                 __debug__ and log(
                     "tcp-ss",
@@ -3982,7 +3938,7 @@ class TcpSession:
             # RFC 9438 §4.9.2 snapshot is scoped to a single
             # recovery episode; clear on exit so a stray DSACK
             # post-recovery does not roll back unrelated state.
-            self._fr_cubic_snapshot_valid = False
+            self._cc.clear_fr_cubic_snapshot()
             # RFC 6937 §3.1 PRR: per-recovery state is scoped
             # to a single recovery episode. Reset on exit so
             # the next loss event snapshots a fresh

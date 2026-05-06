@@ -144,16 +144,16 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         )
 
         self.assertFalse(
-            session._hystart_state.in_css,
+            session._cc.hystart_state.in_css,
             msg="in_css MUST be False post-handshake (start in slow-start).",
         )
         self.assertEqual(
-            session._hystart_state.css_rounds_remaining,
+            session._cc.hystart_state.css_rounds_remaining,
             0,
             msg="css_rounds_remaining MUST be 0 outside CSS.",
         )
         self.assertEqual(
-            session._hystart_state.last_round_min_rtt_ms,
+            session._cc.hystart_state.last_round_min_rtt_ms,
             HYSTART__RTT_INFINITY,
             msg=("lastRoundMinRTT MUST still be infinity sentinel " "post-handshake — no round boundary has rotated."),
         )
@@ -201,22 +201,22 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         self._drive_rx(frame=peer_ack)
 
         self.assertEqual(
-            session._hystart_state.current_round_min_rtt_ms,
+            session._cc.hystart_state.current_round_min_rtt_ms,
             20,
             msg=(
                 "RFC 9406 §4.2: TSecr-driven RTT sample MUST "
                 "fold into currentRoundMinRTT during slow-start. "
-                f"Got {session._hystart_state.current_round_min_rtt_ms}, "
+                f"Got {session._cc.hystart_state.current_round_min_rtt_ms}, "
                 "expected 20."
             ),
         )
         self.assertGreaterEqual(
-            session._hystart_state.rtt_sample_count,
+            session._cc.hystart_state.rtt_sample_count,
             1,
             msg=(
                 "rttSampleCount MUST be >= 1 after a fold (post-"
                 "rotation it is 0; this fold increments it). Got "
-                f"{session._hystart_state.rtt_sample_count}."
+                f"{session._cc.hystart_state.rtt_sample_count}."
             ),
         )
 
@@ -244,12 +244,12 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         # Pre-populate state with: round 1 baseline minRTT 50,
         # round 2 inflated minRTT 80 (delta 30 ms >> RttThresh
         # of 4 ms), N_RTT_SAMPLE samples accumulated.
-        session._hystart_state.last_round_min_rtt_ms = 50
-        session._hystart_state.current_round_min_rtt_ms = 80
-        session._hystart_state.rtt_sample_count = 8
-        session._hystart_state.in_css = False
+        session._cc.hystart_state.last_round_min_rtt_ms = 50
+        session._cc.hystart_state.current_round_min_rtt_ms = 80
+        session._cc.hystart_state.rtt_sample_count = 8
+        session._cc.hystart_state.in_css = False
         self.assertFalse(
-            session._hystart_state.in_css,
+            session._cc.hystart_state.in_css,
             msg="Setup precondition: not yet in CSS.",
         )
 
@@ -257,29 +257,29 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         session._hystart_check_phase_transition()
 
         self.assertTrue(
-            session._hystart_state.in_css,
+            session._cc.hystart_state.in_css,
             msg=(
                 "RFC 9406 §4.2 SS->CSS: with current_min=80, "
                 "last_min=50, samples=8, the trigger MUST fire. "
-                f"Got in_css={session._hystart_state.in_css}."
+                f"Got in_css={session._cc.hystart_state.in_css}."
             ),
         )
         self.assertEqual(
-            session._hystart_state.css_baseline_min_rtt_ms,
+            session._cc.hystart_state.css_baseline_min_rtt_ms,
             80,
             msg=(
                 "CSS entry MUST record currentRoundMinRTT (80) "
                 "as the baseline. Got "
-                f"{session._hystart_state.css_baseline_min_rtt_ms}."
+                f"{session._cc.hystart_state.css_baseline_min_rtt_ms}."
             ),
         )
         self.assertEqual(
-            session._hystart_state.css_rounds_remaining,
+            session._cc.hystart_state.css_rounds_remaining,
             HYSTART__CSS_ROUNDS,
             msg=(
                 "CSS entry MUST initialise css_rounds_remaining "
                 f"to CSS_ROUNDS={HYSTART__CSS_ROUNDS}; got "
-                f"{session._hystart_state.css_rounds_remaining}."
+                f"{session._cc.hystart_state.css_rounds_remaining}."
             ),
         )
 
@@ -303,26 +303,28 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         # Pre-populate: in CSS with baseline 80 ms; current
         # round saw a fold at 60 ms (below baseline) with
         # enough samples.
-        session._hystart_state.in_css = True
-        session._hystart_state.css_baseline_min_rtt_ms = 80
-        session._hystart_state.css_rounds_remaining = 3
-        session._hystart_state.current_round_min_rtt_ms = 60
-        session._hystart_state.rtt_sample_count = 8
+        session._cc.hystart_state.in_css = True
+        session._cc.hystart_state.css_baseline_min_rtt_ms = 80
+        session._cc.hystart_state.css_rounds_remaining = 3
+        session._cc.hystart_state.current_round_min_rtt_ms = 60
+        session._cc.hystart_state.rtt_sample_count = 8
 
         session._hystart_check_phase_transition()
 
         self.assertFalse(
-            session._hystart_state.in_css,
+            session._cc.hystart_state.in_css,
             msg=(
                 "RFC 9406 §4.2 CSS->SS resume: current=60 < "
                 "baseline=80 with samples=8 MUST clear in_css. "
-                f"Got in_css={session._hystart_state.in_css}."
+                f"Got in_css={session._cc.hystart_state.in_css}."
             ),
         )
         self.assertEqual(
-            session._hystart_state.css_rounds_remaining,
+            session._cc.hystart_state.css_rounds_remaining,
             0,
-            msg=("CSS resume MUST zero css_rounds_remaining; got " f"{session._hystart_state.css_rounds_remaining}."),
+            msg=(
+                "CSS resume MUST zero css_rounds_remaining; got " f"{session._cc.hystart_state.css_rounds_remaining}."
+            ),
         )
 
     def test__hystart__stable_rtt_does_not_trigger_css(self) -> None:
@@ -366,11 +368,11 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
                 self._drive_rx(frame=peer_ack)
 
         self.assertFalse(
-            session._hystart_state.in_css,
+            session._cc.hystart_state.in_css,
             msg=(
                 "RFC 9406 §4.2 negative control: stable RTT "
                 "across multiple rounds MUST NOT trigger "
                 "SS->CSS. Got "
-                f"in_css={session._hystart_state.in_css}."
+                f"in_css={session._cc.hystart_state.in_css}."
             ),
         )
