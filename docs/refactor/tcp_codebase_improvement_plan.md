@@ -71,14 +71,34 @@ grows.
 
 **Severity:** Medium. **Effort:** Small (one-time refactor).
 
-### Concern #5 — ICMP→TCP error demux is missing
+### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing)
 
-ICMP error messages are received at the IP layer but not
-propagated to TCP sessions. RFC 1122 §4.2.3.9 is a MUST that
-PyTCP currently treats as "satisfied at the fault-tolerance
-minimum" via R2 abort fallback. PMTUD (RFC 1191/4821) is blocked
-on this. The audit reclassifications acknowledge this is a
-structural gap, not a per-RFC clause gap.
+The ICMP RX handlers
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:147` and
+`packet_handler__icmp6__rx.py:142`) **already** demux Destination-
+Unreachable to UDP: they parse the embedded IP+UDP header out of
+the ICMP error payload, build a `UdpMetadata`, look up the
+matching socket, and call `socket.notify_unreachable()`. So the
+infrastructure exists for one protocol/error combination.
+
+What is missing:
+
+| ICMP error path                                   | UDP                                | TCP                            |
+|---------------------------------------------------|------------------------------------|--------------------------------|
+| ICMPv4 Type 3 (Dest-Unreachable, all codes)       | Wired (`notify_unreachable`)       | **Missing**                    |
+| ICMPv4 Type 3 Code 4 (Frag-Needed) — PMTUD        | **Missing** (`# TODO` line 152)    | **Missing**                    |
+| ICMPv6 Type 1 (Dest-Unreachable)                  | Wired (`notify_unreachable`)       | **Missing** (TODO lines 185-187) |
+| ICMPv6 Type 2 (Packet-Too-Big) — PMTUD            | **Missing**                        | **Missing**                    |
+| ICMPv4 Type 11, ICMPv6 Type 3 (Time Exceeded)     | Not wired (log only)               | Not wired                      |
+
+RFC 1122 §4.2.3.9 (TCP MUST react to ICMP) is currently treated
+as "satisfied at the fault-tolerance minimum" via R2 abort
+fallback. PMTUD (RFC 1191 / RFC 8201 / RFC 4821 / RFC 8899) is
+blocked on the missing Frag-Needed / Packet-Too-Big handling for
+both UDP and TCP. The embedded-header parsing is duplicated
+inline in each Dest-Unreachable handler today; a refactor lifts
+it into a shared helper used by both Dest-Unreachable and the
+new Packet-Too-Big handlers.
 
 **Severity:** High. **Effort:** Medium-Large.
 
@@ -177,35 +197,74 @@ the per-RFC-7413-§4.1.3.1 / §4.2 setUp/tearDown snapshot+clear
 in `TcpSessionTestCase` with a single `stack.tcp_stack =
 TcpStack()` reset.
 
-### Refactor #4 — ICMP→TCP error demux + per-destination MTU cache
+### Refactor #4 — Generalise ICMP error demux + per-destination MTU cache
 
 **Effort:** 4–6 commits. **Risk:** Medium. **Closes:** Concern #5
-+ unblocks PMTUD work (RFC 1191 / RFC 4821 / RFC 8201).
++ unblocks PMTUD work (RFC 1191 / RFC 8201 / RFC 4821 / RFC 8899).
+
+This is **not** an ICMP→TCP refactor. The codebase already has
+working ICMP→UDP demux for Destination-Unreachable on both v4
+and v6 (see Concern #5 table). What's missing is the TCP path
+entirely + the Packet-Too-Big / Frag-Needed path for both UDP
+and TCP. The work is to **extend** the existing demux, not
+build it from scratch.
 
 Steps:
 
-1. Refactor `pytcp/stack/packet_handler/packet_handler__icmp4__rx.py`
-   and `packet_handler__icmp6__rx.py` to surface ICMP error
-   payloads with the embedded IP+TCP header parsed out.
-2. Add a TCP-error-demux: 4-tuple lookup against
-   `(local_ip, local_port, remote_ip, remote_port)` extracted
-   from the ICMP error payload, route to the matching
-   `TcpSession`.
-3. Add per-`TcpSession` callback (`session.on_icmp_error(error_type,
-   next_hop_mtu)`) that dispatches based on error type:
-   - ICMPv4 Type 3 Code 4 (Frag-Needed) / ICMPv6 Type 2 (PTB):
-     update per-destination MTU cache, recompute MSS.
-   - ICMPv4 Type 3 Codes 0-1 (Net/Host Unreachable): mark session
-     for soft error.
-   - ICMPv4 Type 11 (Time Exceeded): log only.
-4. Add per-destination MTU cache as a stack-level structure
-   (under the new `TcpStack` from Refactor #3 if done first).
-5. Wire DF=1 on outbound TCP-bearing IPv4 packets.
-6. Wire MSS recompute on per-destination MTU update.
+1. **Lift the embedded-header parser into a shared helper.** The
+   parsing logic currently inlined in
+   `__phrx_icmp4__destination_unreachable` (lines 163-181) and
+   its v6 counterpart moves to
+   `pytcp/stack/packet_handler/_icmp_error_demux.py` returning
+   `(IpProto.UDP | IpProto.TCP, four_tuple)` or `None`. Reused
+   by all four error handlers (v4/v6 × Dest-Unreachable/PTB).
 
-This refactor is the prerequisite for RFC 1191 + RFC 4821 PMTUD
-implementation. The audit records for those RFCs already
-reference "cross-cut with ICMP refactor" as the blocker.
+2. **Add the missing protocol/error combinations:**
+   - ICMPv4 Type 3 (any code) → TCP demux: 4-tuple lookup in
+     `stack.sockets` (or session table), route to matching
+     `TcpSession`.
+   - ICMPv6 Type 1 → TCP demux (closes the existing TODO at
+     `packet_handler__icmp6__rx.py:185-187`).
+   - ICMPv4 Type 3 Code 4 (Frag-Needed) → UDP and TCP demux,
+     extracts next-hop MTU from ICMP `unused`/`mtu` field.
+   - ICMPv6 Type 2 (Packet-Too-Big) → UDP and TCP demux,
+     extracts next-hop MTU from ICMP MTU field.
+
+3. **Add receiver callbacks on the matched session/socket:**
+   - `UdpSocket.notify_pmtu(next_hop_mtu)` — analogous to
+     existing `notify_unreachable()`.
+   - `TcpSession.on_unreachable(icmp_type, icmp_code)` — dispatches
+     by code: Net/Host Unreachable → mark session for soft error;
+     Port Unreachable on a SYN-SENT session → abort.
+   - `TcpSession.on_pmtu(next_hop_mtu)` — update per-destination
+     MTU cache, recompute MSS, possibly retransmit smaller.
+
+4. **RFC 5927 hardening (TCP only).** Before acting on an
+   ICMP-error-for-TCP, validate that the embedded TCP sequence
+   number falls within `SND.UNA..SND.NXT` of the matched session.
+   Otherwise an attacker can forge ICMP errors for arbitrary
+   4-tuples to abort or PMTU-poison sessions. UDP has no
+   equivalent state to validate against.
+
+5. **Per-destination MTU cache at the IP/stack layer.** Lives at
+   `stack.pmtu_cache: dict[Ip4Address | Ip6Address, int]`, **not**
+   under `TcpStack` — UDP needs to consult it too (so applications
+   sending UDP datagrams over a low-MTU path get told their
+   datagrams are too big). If Refactor #3 lands first, it goes on
+   the unified stack object alongside `TcpStack`.
+
+6. **Wire DF=1 on outbound IPv4 packets** carrying TCP **and**
+   UDP. Required for RFC 1191 to work at all (without DF, routers
+   silently fragment instead of returning Frag-Needed). RFC 8899
+   PLPMTUD also assumes DF=1.
+
+7. **MSS recompute on MTU update** for TCP. Couples with the
+   existing `tcp__mss.py` helper.
+
+This refactor is the prerequisite for RFC 1191 + RFC 8201 + RFC
+4821 + RFC 8899 PMTUD implementation. The audit records for
+those RFCs already reference "cross-cut with ICMP refactor" as
+the blocker.
 
 ### Refactor #5 — Split `_transmit_packet` into option-builder + send pipeline
 
