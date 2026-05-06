@@ -1043,7 +1043,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         ):
             s.connect(("10.0.0.5", 80), data=early_data)
 
-        self._session_cls.return_value._tx_buffer.extend.assert_called_with(early_data)
+        self._session_cls.return_value._tx.buffer.extend.assert_called_with(early_data)
 
     def test__tcp_socket__getsockopt__tcp_fastopen_default_zero(self) -> None:
         """

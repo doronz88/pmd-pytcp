@@ -267,7 +267,7 @@ class TcpSocket(socket):
             rcv_mss=session._win.rcv_mss,
             snd_wsc=session._win.snd_wsc,
             rcv_wsc=session._win.rcv_wsc,
-            tx_buffer_len=len(session._tx_buffer),
+            tx_buffer_len=len(session._tx.buffer),
             rx_buffer_len=len(session._rx_buffer),
         )
 
@@ -540,7 +540,7 @@ class TcpSocket(socket):
         # send sequence. Empty 'data' (the default) is a
         # no-op; the standard 3WHS path runs unchanged.
         if data:
-            self._tcp_session._tx_buffer.extend(data)
+            self._tcp_session._tx.buffer.extend(data)
 
         __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 

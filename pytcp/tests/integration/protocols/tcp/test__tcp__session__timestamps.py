@@ -923,12 +923,12 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             peer_tsval=PEER__TSVAL_INITIAL,
         )
 
-        session._tx_buffer.extend(b"X" * 100)
+        session._tx.buffer.extend(b"X" * 100)
         self._advance(ms=1)
 
         snd_una_pre = session._snd_seq.una
         cwnd_pre = session._cc.cwnd
-        retransmit_request_count_pre = session._tx_retransmit_request_counter.get(snd_una_pre, 0)
+        retransmit_request_count_pre = session._tx.retransmit_request_counter.get(snd_una_pre, 0)
 
         stale_tsval = PEER__TSVAL_INITIAL - 100
         for _ in range(3):
@@ -954,7 +954,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._tx_retransmit_request_counter.get(snd_una_pre, 0),
+            session._tx.retransmit_request_counter.get(snd_una_pre, 0),
             retransmit_request_count_pre,
             msg="Stale-TSval dup-ACKs MUST NOT increment the per-seq dup-ACK counter.",
         )
@@ -974,7 +974,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             peer_tsval=PEER__TSVAL_INITIAL,
         )
 
-        session._tx_buffer.extend(b"X" * 100)
+        session._tx.buffer.extend(b"X" * 100)
         self._advance(ms=1)
 
         snd_una_pre = session._snd_seq.una

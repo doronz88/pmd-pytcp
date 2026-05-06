@@ -357,7 +357,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
         # The dup-ACK counter must NEVER have been touched.
         self.assertNotIn(
             LOCAL__ISS + 1,
-            session._tx_retransmit_request_counter,
+            session._tx.retransmit_request_counter,
             msg=(
                 "'_tx_retransmit_request_counter' must contain no "
                 "entry for SND.UNA after three data-bearing same-ACK "

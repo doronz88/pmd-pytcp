@@ -605,7 +605,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
         # so the TFO-aware SYN emit can slice it onto the
         # wire.
         early_data = b"GET / HTTP/1.1\r\n"
-        session._tx_buffer.extend(early_data)
+        session._tx.buffer.extend(early_data)
 
         session.tcp_fsm(syscall=SysCall.CONNECT)
         syn_tx = self._advance(ms=1)
@@ -661,7 +661,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
         session = self._make_active_session(iss=LOCAL__ISS)
         early_data = b"hello-tfo"
-        session._tx_buffer.extend(early_data)
+        session._tx.buffer.extend(early_data)
         session.tcp_fsm(syscall=SysCall.CONNECT)
         # Tick so the SYN-with-data fires.
         self._advance(ms=1)
@@ -698,14 +698,14 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            bytes(session._tx_buffer),
+            bytes(session._tx.buffer),
             b"",
             msg=(
                 "RFC 7413 §3.1: server-acked TFO data MUST "
                 "be drained from the client's TX buffer; a "
                 "residue would cause the post-handshake "
                 "transmit to spuriously re-send the bytes. "
-                f"Got {bytes(session._tx_buffer)!r}."
+                f"Got {bytes(session._tx.buffer)!r}."
             ),
         )
 
@@ -814,7 +814,7 @@ class TestTcpSession__FastOpen(TcpSessionTestCase):
 
         session = self._make_active_session(iss=LOCAL__ISS)
         early_data = b"reject-me"
-        session._tx_buffer.extend(early_data)
+        session._tx.buffer.extend(early_data)
         session.tcp_fsm(syscall=SysCall.CONNECT)
         # Tick so the SYN-with-data fires.
         self._advance(ms=1)

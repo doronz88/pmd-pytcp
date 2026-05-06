@@ -341,7 +341,7 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
         # bounded to zero so the eventual buffer-purge inside
         # '_process_ack_packet' does not blow up on the modular
         # input.
-        session._tx_buffer_seq_mod = 0xFFFF_FFFE
+        session._tx.seq_mod = 0xFFFF_FFFE
 
         # Peer sends an in-order ACK at the modularly-acceptable
         # ack = 0x05.
@@ -594,7 +594,7 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
         session._snd_seq.una = 0xFFFF_FFFE
         session._snd_seq.nxt = 0x0000_0010
         session._snd_seq.max = 0x0000_0010
-        session._tx_buffer_seq_mod = 0xFFFF_FFFE
+        session._tx.seq_mod = 0xFFFF_FFFE
 
         # Peer sends the in-window ACK. Note seq advances past
         # peer's FIN to keep RCV.NXT consistent.
@@ -824,7 +824,7 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
         session._snd_seq.una = 0xFFFF_FFFE
         session._snd_seq.nxt = 0x0000_0000
         session._snd_seq.max = 0x0000_0000
-        session._tx_buffer_seq_mod = 0xFFFF_FFFE
+        session._tx.seq_mod = 0xFFFF_FFFE
 
         # Peer ACK covers our FIN (and one byte past, modularly
         # making the cum-ACK 0x01).
@@ -964,7 +964,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
     """
     Tests the '_snd_fin = 0' sentinel collision in
     '_retransmit_packet_timeout's TX-buffer offset rewind. The
-    rewind walks 'self._tx_buffer_seq_mod' back by one when
+    rewind walks 'self._tx.seq_mod' back by one when
     'self._snd_seq.nxt in {self._snd_seq.ini, self._snd_seq.fin}', the
     rationale being that SYN and FIN consume one byte of seq
     space without a TX-buffer slot. But when no FIN has been
@@ -1076,7 +1076,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            session._tx_buffer_seq_mod,
+            session._tx.seq_mod,
             0,
             msg=(
                 "Setup precondition: '_tx_buffer_seq_mod' must "
@@ -1140,7 +1140,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
         # decremented by the buggy rewind. The fix preserves the
         # value at 0; the bug subtracts 1 to 0xFFFF_FFFF.
         self.assertEqual(
-            session._tx_buffer_seq_mod,
+            session._tx.seq_mod,
             0,
             msg=(
                 "After the RTO, '_tx_buffer_seq_mod' MUST be "

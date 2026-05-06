@@ -376,7 +376,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="'_snd_una' must be unchanged - the peer has not ACKed any data.",
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             len(payload),
             msg=("TX buffer must still contain all 8000 bytes - none " "have been ACKed and purged yet."),
         )
@@ -587,7 +587,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
             msg="'_snd_una' must be unchanged - the peer has not ACKed anything.",
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             2,
             msg=(
                 "Both bytes must still be in the TX buffer - the b'a' "

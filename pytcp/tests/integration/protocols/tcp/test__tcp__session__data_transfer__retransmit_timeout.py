@@ -376,7 +376,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             0,
             msg=("The TX buffer must be empty after the peer ACKs all " "outstanding data."),
         )
@@ -439,7 +439,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             msg="Setup precondition: peer's ACK must have advanced SND.UNA past the data.",
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             0,
             msg="Setup precondition: TX buffer must be empty after the data is acknowledged.",
         )
@@ -738,7 +738,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
         # Snapshot the post-original-FIN anchor. This is the value
         # every subsequent retransmit MUST preserve.
-        baseline_seq_mod = session._tx_buffer_seq_mod
+        baseline_seq_mod = session._tx.seq_mod
 
         # Drive three RTO cycles with the peer silent. Cumulative
         # delays: 1 s, 1+2=3 s, 1+2+4=7 s. We advance a small
@@ -769,14 +769,14 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
                 ),
             )
             self.assertEqual(
-                session._tx_buffer_seq_mod,
+                session._tx.seq_mod,
                 baseline_seq_mod,
                 msg=(
                     f"RTO cycle #{cycle}: '_tx_buffer_seq_mod' "
                     f"MUST equal its post-original-FIN value "
                     f"(0x{baseline_seq_mod:08x}). Got "
-                    f"0x{session._tx_buffer_seq_mod:08x} (drift "
-                    f"+{(session._tx_buffer_seq_mod - baseline_seq_mod) & 0xFFFFFFFF})."
+                    f"0x{session._tx.seq_mod:08x} (drift "
+                    f"+{(session._tx.seq_mod - baseline_seq_mod) & 0xFFFFFFFF})."
                 ),
             )
 

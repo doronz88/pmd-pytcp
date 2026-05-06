@@ -72,7 +72,7 @@ def fsm__established__timer(session: TcpSession) -> None:
     # buffer). The new-data branch fires only when fresh
     # bytes arrive between TLP arming and PTO expiry.
     session._tlp_pto_tick()
-    if session._closing and not session._tx_buffer:
+    if session._closing and not session._tx.buffer:
         session._change_state(FsmState.FIN_WAIT_1)
 
 
@@ -86,7 +86,7 @@ def fsm__established__syscall(session: TcpSession, syscall: SysCall) -> None:
     drains, per RFC 9293 §3.10.4 ("a CLOSE call should ...
     cause outstanding SENDs to be transmitted"). The
     ESTABLISHED timer branch checks 'self._closing and not
-    self._tx_buffer' to fire the state change.
+    self._tx.buffer' to fire the state change.
     """
 
     if syscall is SysCall.CLOSE:

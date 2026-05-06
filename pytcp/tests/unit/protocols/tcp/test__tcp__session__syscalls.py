@@ -269,7 +269,7 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
             msg="send() must return the length of the supplied data.",
         )
         self.assertEqual(
-            bytes(session._tx_buffer),
+            bytes(session._tx.buffer),
             b"hello",
             msg="send() must append the data to _tx_buffer.",
         )
@@ -293,7 +293,7 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
             msg="send() must return len(data) in CLOSE_WAIT.",
         )
         self.assertEqual(
-            bytes(session._tx_buffer),
+            bytes(session._tx.buffer),
             b"world",
             msg="send() must append the data to _tx_buffer in CLOSE_WAIT.",
         )

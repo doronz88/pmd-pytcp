@@ -53,6 +53,7 @@ from pytcp.protocols.tcp.state.tcp__state__recv_seq import RecvSeqState
 from pytcp.protocols.tcp.state.tcp__state__rtt_sample import RttSampleState
 from pytcp.protocols.tcp.state.tcp__state__send_seq import SendSeqState
 from pytcp.protocols.tcp.state.tcp__state__timestamps import TimestampsState
+from pytcp.protocols.tcp.state.tcp__state__tx_buffer import TxBufferState
 from pytcp.protocols.tcp.state.tcp__state__window import WindowState
 from pytcp.protocols.tcp.tcp__cubic import (
     cubic_compute_K,
@@ -144,8 +145,10 @@ class TcpSession:
         # Keeps data received from peer and not received by application yet.
         self._rx_buffer: bytearray = bytearray()
 
-        # Keeps data sent by application but not acknowledged by peer yet.
-        self._tx_buffer: bytearray = bytearray()
+        # TX-side buffer state (raw byte buffer, seq-anchor for
+        # buffer-index ↔ sequence-number mapping, fast-retransmit
+        # dup-ACK request counter). See 'state/tcp__state__tx_buffer.py'.
+        self._tx: TxBufferState = TxBufferState()
 
         # RFC 9293 §3.4 receive-side seq state (IRS / RCV.NXT /
         # RCV.UNA). Anchored at handshake time via
@@ -476,13 +479,10 @@ class TcpSession:
         # Other variables.
         ###
 
-        # Keeps track of number of DUP packets sent by peer to determine if any
-        # is a retransmit request.
-        self._tx_retransmit_request_counter: dict[int, int] = {}
-
-        # Used to help translate local_seq_send and snd_una numbers to
-        # the TX buffer pointers.
-        self._tx_buffer_seq_mod: Seq32 = self._snd_seq.ini
+        # tx_retransmit_request_counter and tx_buffer_seq_mod
+        # both moved onto self._tx (TxBufferState) above. Anchor
+        # the seq_mod baseline at the freshly-computed ISS.
+        self._tx.seq_mod = self._snd_seq.ini
 
         # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED
@@ -605,7 +605,7 @@ class TcpSession:
         try to re-send the already-sent prefix.
         """
 
-        return (self._snd_seq.nxt - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
+        return (self._snd_seq.nxt - self._tx.seq_mod) & 0xFFFF_FFFF
 
     @property
     def _tx_buffer_una(self) -> int:
@@ -613,7 +613,7 @@ class TcpSession:
         Get the 'snd_una' number relative to TX buffer.
         """
 
-        return (self._snd_seq.una - self._tx_buffer_seq_mod) & 0xFFFF_FFFF
+        return (self._snd_seq.una - self._tx.seq_mod) & 0xFFFF_FFFF
 
     def listen(self) -> None:
         """
@@ -664,7 +664,7 @@ class TcpSession:
 
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
             with self._lock__tx_buffer:
-                self._tx_buffer.extend(data)
+                self._tx.buffer.extend(data)
                 return len(data)
 
         # This error should be raised when session is locally or fully closed.
@@ -719,7 +719,7 @@ class TcpSession:
 
         __debug__ and log(
             "tcp-ss",
-            f"[{self}] - <ly>[{self._state}]</> - got <r>CLOSE</> syscall, {len(self._tx_buffer)} bytes in TX buffer",
+            f"[{self}] - <ly>[{self._state}]</> - got <r>CLOSE</> syscall, {len(self._tx.buffer)} bytes in TX buffer",
         )
 
         self.tcp_fsm(syscall=SysCall.CLOSE)
@@ -1469,7 +1469,7 @@ class TcpSession:
         # Modular '+=' on '_tx_buffer_seq_mod' (a Seq32 anchor):
         # raw '+=' would let the value escape the 32-bit range
         # past the wrap; 'add32' clamps to UINT32__MAX.
-        self._tx_buffer_seq_mod = add32(self._tx_buffer_seq_mod, flag_syn, flag_fin)
+        self._tx.bump_seq_mod_for_flags(flag_syn=flag_syn, flag_fin=flag_fin)
 
         # RFC 9293 §3.10.7.4: stamp the FIN seq + idempotent gate.
         if flag_fin:
@@ -1910,7 +1910,7 @@ class TcpSession:
         self._snd_seq.sml = new_iss
         self._snd_seq.fin = 0
         self._snd_seq.fin_sent = False
-        self._tx_buffer_seq_mod = new_iss
+        self._tx.seq_mod = new_iss
 
         # Adopt peer's new SYN parameters. MSS is clamped to the
         # RFC 879 / RFC 6691 bounds; an explicit floor at TCP__MIN_MSS
@@ -1974,7 +1974,7 @@ class TcpSession:
         # them empty, but be defensive against state that an earlier
         # bug or a spurious-FIN-retransmit path may have left).
         self._ooo_packet_queue.clear()
-        self._tx_buffer.clear()
+        self._tx.buffer.clear()
         self._rx_buffer.clear()
 
         # Queue any data the new SYN piggybacked (RFC 9293 §3.10.7.2
@@ -2348,10 +2348,10 @@ class TcpSession:
             # acceptance per §4.1.2.
             tfo_data: bytes = b""
             cached = stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address)
-            if cached and self._advertise_fastopen and self._tx_buffer:
+            if cached and self._advertise_fastopen and self._tx.buffer:
                 with self._lock__tx_buffer:
-                    slice_len = min(self._win.snd_mss, len(self._tx_buffer))
-                    tfo_data = bytes(self._tx_buffer[:slice_len])
+                    slice_len = min(self._win.snd_mss, len(self._tx.buffer))
+                    tfo_data = bytes(self._tx.buffer[:slice_len])
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Transmitting initial SYN packet_rx_md: seq {self._snd_seq.nxt}"
@@ -2382,7 +2382,7 @@ class TcpSession:
             # 'is_sacked(SND.MAX)' is always False since peer
             # cannot SACK bytes we never sent).
             self._advance_snd_nxt_past_sacked()
-            remaining_data_len = len(self._tx_buffer) - self._tx_buffer_nxt
+            remaining_data_len = len(self._tx.buffer) - self._tx_buffer_nxt
             usable_window = self._cc.snd_ewn - self._tx_buffer_nxt
             # RFC 6691 §2 Req B: "the sender MUST reduce the
             # TCP data length to account for any IP or TCP
@@ -2473,7 +2473,7 @@ class TcpSession:
                         )
                         return
                     with self._lock__tx_buffer:
-                        transmit_data = self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + transmit_data_len]
+                        transmit_data = self._tx.buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + transmit_data_len]
                     # RFC 1122 §4.2.2.2: PSH MUST be set on the last
                     # segment of a write. The current segment drains
                     # the buffer iff 'transmit_data_len ==
@@ -2516,7 +2516,7 @@ class TcpSession:
                         )
                     elif stack.timer.is_expired(persist_timer):
                         with self._lock__tx_buffer:
-                            probe_data = bytes(self._tx_buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + 1])
+                            probe_data = bytes(self._tx.buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + 1])
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - Persist: emitting 1-byte probe at seq {self._snd_seq.nxt}",
@@ -2822,7 +2822,7 @@ class TcpSession:
         if self._snd_seq.nxt == self._snd_seq.ini or (
             self._snd_seq.fin_sent and self._snd_seq.nxt == sub32(self._snd_seq.fin, 1)
         ):
-            self._tx_buffer_seq_mod = sub32(self._tx_buffer_seq_mod, 1)
+            self._tx.seq_mod = sub32(self._tx.seq_mod, 1)
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Got retransmit timeout, sending segment "
@@ -2849,8 +2849,8 @@ class TcpSession:
         # time-based loss detection per RFC 8985 §6.2.
         self._rack_process_ack(packet_rx_md)
 
-        self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] = (
-            self._tx_retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
+        self._tx.retransmit_request_counter[packet_rx_md.tcp__ack] = (
+            self._tx.retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
         )
 
         # RFC 5681 §3.2 / RFC 6675 §5: enter recovery exactly
@@ -2896,7 +2896,7 @@ class TcpSession:
         #     reports a single large SACK block, recovering
         #     faster than the count-based threshold on bursty
         #     loss patterns.
-        count_trigger = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3
+        count_trigger = self._tx.retransmit_request_counter[packet_rx_md.tcp__ack] == 3
         sack_trigger = self._send_sack and is_lost(
             self._snd_seq.una,
             scoreboard=self._sack_scoreboard,
@@ -2914,8 +2914,8 @@ class TcpSession:
         # rather than waiting for an RTO. The third dup-ACK
         # falls through to the count_trigger path below
         # and runs RFC 5681 §3.2 fast retransmit instead.
-        count = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack]
-        if count in (1, 2) and len(self._tx_buffer) > 0:
+        count = self._tx.retransmit_request_counter[packet_rx_md.tcp__ack]
+        if count in (1, 2) and len(self._tx.buffer) > 0:
             saved_ewn = self._cc.snd_ewn
             self._cc.snd_ewn = min(self._cc.cwnd + count * self._win.snd_mss, self._win.snd_wnd)
             self._transmit_data()
@@ -3074,8 +3074,8 @@ class TcpSession:
         # retransmitting an already-sent one. Compute the
         # buffer offset of SND.MAX modularly so a wrapped
         # session is handled correctly.
-        tx_buffer_max = sub32(self._snd_seq.max, self._tx_buffer_seq_mod)
-        new_data_available = tx_buffer_max < len(self._tx_buffer) and self._cc.snd_ewn > tx_buffer_max
+        tx_buffer_max = sub32(self._snd_seq.max, self._tx.seq_mod)
+        new_data_available = tx_buffer_max < len(self._tx.buffer) and self._cc.snd_ewn > tx_buffer_max
         if new_data_available:
             # Force '_transmit_data' to start at SND.MAX (the
             # bytes immediately past the highest-seq sent).
@@ -3843,8 +3843,7 @@ class TcpSession:
                 stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
         # Purge acked data from TX buffer.
         with self._lock__tx_buffer:
-            del self._tx_buffer[: self._tx_buffer_una]
-        self._tx_buffer_seq_mod = add32(self._tx_buffer_seq_mod, self._tx_buffer_una)
+            self._tx.drain(bytes_count=self._tx_buffer_una)
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - Purged TX buffer up to SEQ {self._snd_seq.una}",
@@ -3882,9 +3881,9 @@ class TcpSession:
         # Purge expired tx packet retransmit requests. Modular '<'
         # via 'lt32' so entries near the 32-bit wrap are dropped
         # correctly when SND.UNA advances past them.
-        for seq in list(self._tx_retransmit_request_counter):
+        for seq in list(self._tx.retransmit_request_counter):
             if lt32(seq, packet_rx_md.tcp__ack):
-                self._tx_retransmit_request_counter.pop(seq)
+                self._tx.retransmit_request_counter.pop(seq)
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Purged expired TX packet retransmit request counter for {seq}",

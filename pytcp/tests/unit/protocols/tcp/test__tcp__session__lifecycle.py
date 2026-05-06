@@ -161,7 +161,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
             msg="TcpSession._rx_buffer must start empty.",
         )
         self.assertEqual(
-            bytes(session._tx_buffer),
+            bytes(session._tx.buffer),
             b"",
             msg="TcpSession._tx_buffer must start empty.",
         )
@@ -229,7 +229,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
             msg="_snd_una must start equal to _snd_ini.",
         )
         self.assertEqual(
-            session._tx_buffer_seq_mod,
+            session._tx.seq_mod,
             session._snd_seq.ini,
             msg="_tx_buffer_seq_mod must start equal to _snd_ini.",
         )

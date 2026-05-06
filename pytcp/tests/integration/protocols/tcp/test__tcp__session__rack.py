@@ -1348,7 +1348,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         # the tick handler directly. The probe path's choice
         # between new-data and retransmit is then deterministic.
         with session._lock__tx_buffer:
-            session._tx_buffer.extend(b"new data tail")
+            session._tx.buffer.extend(b"new data tail")
 
         snd_max_pre_probe = session._snd_seq.max
         stack.timer._timers.pop(f"{session}-tlp", None)

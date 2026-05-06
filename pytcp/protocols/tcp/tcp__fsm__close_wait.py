@@ -58,7 +58,7 @@ def fsm__close_wait__timer(session: TcpSession) -> None:
     session._retransmit_packet_timeout()
     session._transmit_data()
     session._delayed_ack()
-    if session._closing and not session._tx_buffer:
+    if session._closing and not session._tx.buffer:
         session._change_state(FsmState.LAST_ACK)
 
 
@@ -71,7 +71,7 @@ def fsm__close_wait__syscall(session: TcpSession, syscall: SysCall) -> None:
     from LAST_ACK once the TX buffer drains, per RFC 9293
     §3.10.4. The actual transition to LAST_ACK is deferred
     via the timer-branch 'self._closing and not
-    self._tx_buffer' check (mirrors the ESTABLISHED CLOSE
+    self._tx.buffer' check (mirrors the ESTABLISHED CLOSE
     handler above).
     """
 

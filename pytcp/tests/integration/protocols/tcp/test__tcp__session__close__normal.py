@@ -154,7 +154,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
 
         # Setup precondition: idle ESTABLISHED, no in-flight data.
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             0,
             msg="Setup precondition: TX buffer must be empty before close().",
         )
@@ -509,7 +509,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             2 * 1460,
             msg="Setup precondition: '_tx_buffer' must hold 2 MSS of unsent data.",
         )
@@ -590,7 +590,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             ),
         )
         self.assertEqual(
-            len(session._tx_buffer),
+            len(session._tx.buffer),
             0,
             msg="'_tx_buffer' must be drained after the peer's cumulative ACK.",
         )

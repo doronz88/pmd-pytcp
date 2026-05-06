@@ -409,7 +409,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         # dup-ACKs. Set cwnd to cwnd_2 (< prior W_max) so fast
         # convergence kicks in.
         session._cc.recovery_point = 0
-        session._tx_retransmit_request_counter = {}
+        session._tx.retransmit_request_counter = {}
         session._cc.cwnd = cwnd_2
         session._cc.ssthresh = cwnd_2
         session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
@@ -461,7 +461,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
 
         # Reset state for second loss event.
         session._cc.recovery_point = 0
-        session._tx_retransmit_request_counter = {}
+        session._tx.retransmit_request_counter = {}
         session._cc.cwnd = cwnd_2
         session._cc.ssthresh = cwnd_2
         session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
