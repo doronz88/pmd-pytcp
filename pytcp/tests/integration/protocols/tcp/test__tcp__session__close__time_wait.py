@@ -975,25 +975,16 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         self.assertEqual(
             len(challenge_tx),
             1,
-            msg=(
-                "No-evidence SYN-on-TIME_WAIT MUST elicit a "
-                f"challenge ACK. Got {len(challenge_tx)} frames."
-            ),
+            msg=("No-evidence SYN-on-TIME_WAIT MUST elicit a " f"challenge ACK. Got {len(challenge_tx)} frames."),
         )
         probe = self._parse_tx(challenge_tx[0])
         self.assertEqual(
             probe.flags & frozenset({"ACK", "RST", "SYN", "FIN"}),
             frozenset({"ACK"}),
-            msg=(
-                "No-evidence SYN MUST elicit ACK-only challenge ACK. "
-                f"Got flags={probe.flags!r}."
-            ),
+            msg=("No-evidence SYN MUST elicit ACK-only challenge ACK. " f"Got flags={probe.flags!r}."),
         )
         self.assertIs(
             session.state,
             FsmState.TIME_WAIT,
-            msg=(
-                "No-evidence SYN MUST NOT terminate TIME_WAIT. "
-                f"Got state={session.state!r}."
-            ),
+            msg=("No-evidence SYN MUST NOT terminate TIME_WAIT. " f"Got state={session.state!r}."),
         )

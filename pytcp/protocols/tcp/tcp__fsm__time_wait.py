@@ -22,7 +22,7 @@
 ################################################################################
 
 # pylint: disable=protected-access
-# pyright: reportPrivateUsage=false
+# pyright: reportPrivateUsage=false, reportUnusedExpression=false
 
 """
 This module contains the TCP FSM TIME_WAIT state handler.
@@ -126,10 +126,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
         and not packet_rx_md.tcp__flag_rst
         and (
             gt32(packet_rx_md.tcp__seq, session._rcv_nxt)
-            or (
-                packet_rx_md.tcp__tsval is not None
-                and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry)
-            )
+            or (packet_rx_md.tcp__tsval is not None and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry))
         )
     ):
         __debug__ and log(

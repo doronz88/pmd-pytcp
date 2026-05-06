@@ -602,10 +602,7 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         self.assertEqual(
             session._frto_step,
             0,
-            msg=(
-                "F-RTO MUST clear after spurious declaration. "
-                f"Got _frto_step={session._frto_step}."
-            ),
+            msg=("F-RTO MUST clear after spurious declaration. " f"Got _frto_step={session._frto_step}."),
         )
 
     def test__frto__already_in_rto_gate__second_rto_skips_step2(self) -> None:
@@ -631,11 +628,9 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         self._advance(ms=10)
 
         first_pre_rto_cwnd = session._cwnd
-        first_pre_rto_ssthresh = session._ssthresh
 
         # First RTO: snapshot taken.
         self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
-        first_pre_snd_max = session._frto_pre_snd_max
         first_pre_cwnd = session._frto_pre_cwnd
         first_pre_ssthresh = session._frto_pre_ssthresh
 

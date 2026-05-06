@@ -21,7 +21,8 @@
 ##                                                                            ##
 ################################################################################
 
-# pyright: reportPrivateUsage=false
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false, reportUnusedExpression=false
 
 """
 This module contains the TCP FSM LISTEN state handler.
@@ -153,7 +154,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             session._local_port = packet_rx_md.tcp__local_port
             session._remote_ip_address = packet_rx_md.ip__remote_address
             session._remote_port = packet_rx_md.tcp__remote_port
-            session._socket = TcpSocket(
+            session._socket = TcpSocket(  # pyright: ignore[reportAttributeAccessIssue]
                 family=(
                     AddressFamily.INET6 if session._local_ip_address.version == IpVersion.IP6 else AddressFamily.INET4
                 ),

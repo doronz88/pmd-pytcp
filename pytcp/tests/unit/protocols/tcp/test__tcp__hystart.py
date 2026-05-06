@@ -31,7 +31,6 @@ pytcp/tests/unit/protocols/tcp/test__tcp__hystart.py
 ver 3.0.4
 """
 
-
 from unittest import TestCase
 
 from pytcp.protocols.tcp.tcp__hystart import (
@@ -120,10 +119,7 @@ class TestRttThreshMs(TestCase):
         self.assertEqual(
             rtt_thresh_ms(8),
             4,
-            msg=(
-                "Small lastRoundMinRTT (8 ms) MUST clamp the "
-                "RttThresh up to MIN_RTT_THRESH = 4 ms."
-            ),
+            msg=("Small lastRoundMinRTT (8 ms) MUST clamp the " "RttThresh up to MIN_RTT_THRESH = 4 ms."),
         )
 
     def test__rtt_thresh_ms__large_rtt_clamps_to_max(self) -> None:
@@ -139,10 +135,7 @@ class TestRttThreshMs(TestCase):
         self.assertEqual(
             rtt_thresh_ms(1000),
             16,
-            msg=(
-                "Large lastRoundMinRTT (1000 ms) MUST clamp "
-                "the RttThresh down to MAX_RTT_THRESH = 16 ms."
-            ),
+            msg=("Large lastRoundMinRTT (1000 ms) MUST clamp " "the RttThresh down to MAX_RTT_THRESH = 16 ms."),
         )
 
     def test__rtt_thresh_ms__mid_rtt_uses_division_directly(self) -> None:

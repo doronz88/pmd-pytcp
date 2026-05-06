@@ -585,10 +585,7 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
 
         # Drive past the RTO to force a retransmit. Peer is silent.
         retransmit_tx = self._advance(ms=session._rto_state.rto_ms + 10)
-        retransmit_segments = [
-            self._parse_tx(frame) for frame in retransmit_tx
-            if self._parse_tx(frame).payload
-        ]
+        retransmit_segments = [self._parse_tx(frame) for frame in retransmit_tx if self._parse_tx(frame).payload]
         self.assertGreaterEqual(
             len(retransmit_segments),
             1,

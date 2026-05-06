@@ -21,7 +21,8 @@
 ##                                                                            ##
 ################################################################################
 
-# pyright: reportPrivateUsage=false
+# pylint: disable=protected-access
+# pyright: reportPrivateUsage=false, reportUnusedExpression=false
 
 """
 This module contains the TCP FSM SYN_RCVD state handler.

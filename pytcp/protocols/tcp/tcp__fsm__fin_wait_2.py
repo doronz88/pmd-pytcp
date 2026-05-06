@@ -22,7 +22,7 @@
 ################################################################################
 
 # pylint: disable=protected-access
-# pyright: reportPrivateUsage=false
+# pyright: reportPrivateUsage=false, reportUnusedExpression=false
 
 """
 This module contains the TCP FSM FIN_WAIT_2 state handler.

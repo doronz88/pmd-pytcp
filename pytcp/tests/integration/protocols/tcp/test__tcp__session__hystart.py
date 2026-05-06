@@ -39,7 +39,6 @@ pytcp/tests/integration/protocols/tcp/test__tcp__session__hystart.py
 ver 3.0.4
 """
 
-
 from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.protocols.tcp.tcp__hystart import (
@@ -59,7 +58,6 @@ from pytcp.tests.lib.network_testcase import (
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
-
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -157,10 +155,7 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         self.assertEqual(
             session._hystart_state.last_round_min_rtt_ms,
             HYSTART__RTT_INFINITY,
-            msg=(
-                "lastRoundMinRTT MUST still be infinity sentinel "
-                "post-handshake — no round boundary has rotated."
-            ),
+            msg=("lastRoundMinRTT MUST still be infinity sentinel " "post-handshake — no round boundary has rotated."),
         )
 
     def test__hystart__rtt_sample_folded_during_slow_start(self) -> None:
@@ -327,10 +322,7 @@ class TestTcpSessionHyStartPP(TcpSessionTestCase):
         self.assertEqual(
             session._hystart_state.css_rounds_remaining,
             0,
-            msg=(
-                "CSS resume MUST zero css_rounds_remaining; got "
-                f"{session._hystart_state.css_rounds_remaining}."
-            ),
+            msg=("CSS resume MUST zero css_rounds_remaining; got " f"{session._hystart_state.css_rounds_remaining}."),
         )
 
     def test__hystart__stable_rtt_does_not_trigger_css(self) -> None:

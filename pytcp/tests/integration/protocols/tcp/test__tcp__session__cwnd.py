@@ -2194,6 +2194,7 @@ class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
         # and IW = min(10*MSS, max(2*MSS, 14600)) = 14600 =
         # 10*MSS, RW = min(14600, 100*1460) = 14600.
         from pytcp.protocols.tcp.tcp__cwnd import initial_window
+
         expected_rw = min(initial_window(session._snd_mss), 100 * PEER__MSS)
         self.assertEqual(
             session._cwnd,

@@ -61,6 +61,9 @@ from pytcp.protocols.tcp.tcp__enums import (
     SysCall,
 )
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
+from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
+from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
+from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.tcp__hystart import (
     HyStartState,
     css_growth_increment,
@@ -71,9 +74,6 @@ from pytcp.protocols.tcp.tcp__hystart import (
     should_exit_slow_start_to_css,
     should_resume_slow_start_from_css,
 )
-from pytcp.protocols.tcp.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
-from pytcp.protocols.tcp.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
-from pytcp.protocols.tcp.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
 from pytcp.protocols.tcp.tcp__rack import (
@@ -1380,9 +1380,7 @@ class TcpSession:
             # guard ensures we only decrement for sessions that
             # were actually counted at TFO acceptance time.
             if self._fastopen_pending_counted:
-                stack.tcp__fastopen_pending_count = max(
-                    0, stack.tcp__fastopen_pending_count - 1
-                )
+                stack.tcp__fastopen_pending_count = max(0, stack.tcp__fastopen_pending_count - 1)
                 self._fastopen_pending_counted = False
 
         # Unregister session.
@@ -1719,10 +1717,7 @@ class TcpSession:
             # so the second attempt is plain 3WHS. Otherwise
             # emit TFO with the cached cookie if known, else
             # the empty cookie-request form.
-            if (
-                self._remote_ip_address in stack.tcp__fastopen_negative
-                or self._fastopen_syn_retransmitted
-            ):
+            if self._remote_ip_address in stack.tcp__fastopen_negative or self._fastopen_syn_retransmitted:
                 tcp__fastopen_cookie = None
             else:
                 tcp__fastopen_cookie = stack.tcp__fastopen_cookies.get(self._remote_ip_address, b"")
@@ -2203,10 +2198,7 @@ class TcpSession:
         # the connection's TS.Recent and the §4.3 algorithm
         # assumes a stable seq-space relationship that has not
         # yet been negotiated for the new incarnation.
-        ts_recent_refresh_gate_ok = (
-            packet_rx_md.tcp__flag_syn
-            or le32(packet_rx_md.tcp__seq, self._rcv_nxt)
-        )
+        ts_recent_refresh_gate_ok = packet_rx_md.tcp__flag_syn or le32(packet_rx_md.tcp__seq, self._rcv_nxt)
         if lt32(packet_rx_md.tcp__tsval, self._ts_recent):
             # RFC 7323 §5.5 outdated-timestamps mitigation:
             # if the connection has been idle longer than the
@@ -2677,11 +2669,7 @@ class TcpSession:
             # epoch_start, W_est, cwnd, and ssthresh to their
             # pre-FR values so post-FR throughput is not
             # artificially anchored at the reduced W_max.
-            if (
-                self._cc_mode is CcMode.CUBIC
-                and self._fr_cubic_snapshot_valid
-                and self._recovery_point != 0
-            ):
+            if self._cc_mode is CcMode.CUBIC and self._fr_cubic_snapshot_valid and self._recovery_point != 0:
                 self._cubic_w_max = self._fr_pre_cubic_w_max
                 self._cubic_K_ms = self._fr_pre_cubic_K_ms
                 self._cubic_epoch_start_ms = self._fr_pre_cubic_epoch_start_ms
@@ -3202,9 +3190,7 @@ class TcpSession:
         # the eventual restoration anchors at the genuine
         # pre-loss values rather than the post-first-RTO
         # collapsed values.
-        already_in_frto = self._frto_step != 0 and not lt32(
-            self._frto_pre_snd_max, self._snd_una
-        )
+        already_in_frto = self._frto_step != 0 and not lt32(self._frto_pre_snd_max, self._snd_una)
         if already_in_frto:
             # Update recover only; preserve original snapshots.
             self._frto_pre_snd_max = self._snd_max

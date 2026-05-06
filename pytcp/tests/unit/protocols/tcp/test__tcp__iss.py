@@ -518,10 +518,7 @@ class TestTcpIssSecret(TestCase):
         self.assertEqual(
             len(TCP__ISS_SECRET),
             16,
-            msg=(
-                "RFC 6528 §3: the ISS secret MUST be 128 bits "
-                f"(16 bytes). Got: {len(TCP__ISS_SECRET)} bytes."
-            ),
+            msg=("RFC 6528 §3: the ISS secret MUST be 128 bits " f"(16 bytes). Got: {len(TCP__ISS_SECRET)} bytes."),
         )
 
     def test__tcp__iss__secret_is_bytes(self) -> None:
@@ -536,7 +533,6 @@ class TestTcpIssSecret(TestCase):
             TCP__ISS_SECRET,
             bytes,
             msg=(
-                "RFC 6528 §3: the ISS secret MUST be opaque keying "
-                f"material. Got: {type(TCP__ISS_SECRET).__name__}."
+                "RFC 6528 §3: the ISS secret MUST be opaque keying " f"material. Got: {type(TCP__ISS_SECRET).__name__}."
             ),
         )

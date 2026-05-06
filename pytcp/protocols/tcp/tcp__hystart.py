@@ -51,7 +51,6 @@ pytcp/protocols/tcp/tcp__hystart.py
 ver 3.0.4
 """
 
-
 from dataclasses import dataclass
 
 # RFC 9406 §4.3 tuning constants. These RECOMMENDED values were

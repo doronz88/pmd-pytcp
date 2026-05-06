@@ -1090,10 +1090,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             self.assertEqual(
                 probe.payload,
                 b"",
-                msg=(
-                    "Only legal post-PAWS-drop emit is an empty "
-                    f"R1 ACK; got payload={probe.payload!r}."
-                ),
+                msg=("Only legal post-PAWS-drop emit is an empty " f"R1 ACK; got payload={probe.payload!r}."),
             )
 
 
@@ -1683,10 +1680,7 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         self.assertEqual(
             probe.tsval,
             send_now_ms,
-            msg=(
-                "RST TSval MUST equal current TS clock. Got "
-                f"tsval={probe.tsval}, expected {send_now_ms}."
-            ),
+            msg=("RST TSval MUST equal current TS clock. Got " f"tsval={probe.tsval}, expected {send_now_ms}."),
         )
         self.assertEqual(
             probe.tsecr,
