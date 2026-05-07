@@ -110,22 +110,21 @@ def _packet_rx_with_ip6(frame: bytes) -> PacketRx:
             },
         },
         {
-            "_description": "ICMPv6 unknown message (type 3, code 0), 65531-byte data (IPv6 payload maximum).",
+            "_description": "ICMPv6 unknown message (type 100, code 0), 65531-byte data (IPv6 payload maximum).",
             "_frame_rx": (
                 # ICMPv6 Unknown Message (at IPv6 payload maximum)
-                #   Type     : 3 (Unknown in ICMPv6 — 3 is Time Exceeded but
-                #              it is not among the parser's known types)
+                #   Type     : 100 (unassigned, not in Icmp6Type enum)
                 #   Code     : 0
-                #   Checksum : 0x81dc
+                #   Checksum : 0x20dc
                 #   Data     : b"X" * 65531 (IP6__PAYLOAD__MAX_LEN - ICMP6__HEADER__LEN)
-                b"\x03\x00\x81\xdc"
+                b"\x64\x00\x20\xdc"
                 + b"X" * 65531
             ),
             "_results": {
                 "message": Icmp6MessageUnknown(
-                    type=Icmp6Type.from_int(3),
+                    type=Icmp6Type.from_int(100),
                     code=Icmp6Code.from_int(0),
-                    cksum=0x81DC,
+                    cksum=0x20DC,
                     data=b"X" * 65531,
                 ),
             },

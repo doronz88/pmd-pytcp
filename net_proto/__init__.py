@@ -225,6 +225,11 @@ from net_proto.protocols.icmp6.message.icmp6__message__packet_too_big import (
     Icmp6MessagePacketTooBig,
     Icmp6PacketTooBigCode,
 )
+from net_proto.protocols.icmp6.message.icmp6__message__time_exceeded import (
+    ICMP6__TIME_EXCEEDED__LEN,
+    Icmp6MessageTimeExceeded,
+    Icmp6TimeExceededCode,
+)
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
@@ -532,6 +537,9 @@ __all__ = [
     "Icmp6MessageEchoRequest",
     "Icmp6PacketTooBigCode",
     "Icmp6MessagePacketTooBig",
+    "Icmp6MessageTimeExceeded",
+    "Icmp6TimeExceededCode",
+    "ICMP6__TIME_EXCEEDED__LEN",
     "Icmp6IntegrityError",
     "Icmp6Message",
     "Icmp6Mld2MulticastAddressRecord",

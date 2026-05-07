@@ -22,7 +22,7 @@ host-requirements work:
 |---------|-------------------------|------------------------------------------|
 | 1       | Destination Unreachable | met (parser + emitter; demux to TCP/UDP) |
 | 2       | Packet Too Big          | met (parser + PMTUD demux)               |
-| 3       | Time Exceeded           | NOT MET — silently dropped (Phase β gap) |
+| 3       | Time Exceeded           | met (parser + soft-error plumbing)       |
 | 4       | Parameter Problem       | NOT MET — silently dropped (Phase β gap) |
 | 128     | Echo Request            | met (replies unconditionally per §4.2)   |
 | 129     | Echo Reply              | met (RX dispatch + RAW socket delivery)  |
