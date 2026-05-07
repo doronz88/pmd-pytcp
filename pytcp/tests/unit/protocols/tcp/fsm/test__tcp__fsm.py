@@ -470,6 +470,173 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
                 mock_handler.assert_called_once_with(session)
 
 
+class TestTcpFsmIcmpDispatch(_TcpSessionFsmFixture):
+    """
+    The 'tcp_fsm(icmp=...)' Phase-1 translation-shim tests.
+    """
+
+    def test__tcp_session__fsm_icmp_dest_unreachable_routes_to_on_unreachable(self) -> None:
+        """
+        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=DEST_UNREACHABLE, ...))'
+        forwards the icmp_type / icmp_code pair to the legacy
+        'on_unreachable' hook unchanged. Phase 1 is a pure translation
+        shim; behavior must match the direct-call path bit-for-bit so
+        the existing ICMP integration tests stay green.
+
+        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
+        Reference: RFC 5927 §3 (ICMP-to-TCP error categories).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+
+        with patch.object(session, "on_unreachable") as mock_hook:
+            session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.DEST_UNREACHABLE,
+                    icmp_type=3,
+                    icmp_code=3,
+                    ip_version=4,
+                ),
+            )
+
+        mock_hook.assert_called_once_with(icmp_type=3, icmp_code=3)
+
+    def test__tcp_session__fsm_icmp_time_exceeded_routes_to_on_time_exceeded(self) -> None:
+        """
+        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=TIME_EXCEEDED, ...))'
+        forwards to 'on_time_exceeded'. The shim only delivers the
+        type/code pair; soft-vs-hard semantics are deferred to Phase 2.
+
+        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
+        the transport layer).
+        Reference: RFC 5927 §6 (Time Exceeded is a soft error).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+
+        with patch.object(session, "on_time_exceeded") as mock_hook:
+            session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.TIME_EXCEEDED,
+                    icmp_type=11,
+                    icmp_code=0,
+                    ip_version=4,
+                ),
+            )
+
+        mock_hook.assert_called_once_with(icmp_type=11, icmp_code=0)
+
+    def test__tcp_session__fsm_icmp_param_problem_routes_to_on_parameter_problem(self) -> None:
+        """
+        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=PARAM_PROBLEM, ...))'
+        forwards to 'on_parameter_problem'. The pointer field is
+        carried in the metadata for Phase 2's per-state handlers but
+        Phase 1's shim only forwards the type/code pair (matching the
+        legacy 'on_parameter_problem' signature).
+
+        Reference: RFC 1122 §3.2.2.5 (Parameter Problem MUST be passed
+        to the transport layer).
+        Reference: RFC 4443 §3.4 (ICMPv6 Parameter Problem).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+
+        with patch.object(session, "on_parameter_problem") as mock_hook:
+            session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.PARAM_PROBLEM,
+                    icmp_type=4,
+                    icmp_code=1,
+                    pointer=42,
+                    ip_version=6,
+                ),
+            )
+
+        mock_hook.assert_called_once_with(icmp_type=4, icmp_code=1)
+
+    def test__tcp_session__fsm_icmp_pmtu_routes_to_on_pmtu(self) -> None:
+        """
+        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=PMTU, ...))'
+        forwards 'next_hop_mtu' / 'ip_version' to the legacy 'on_pmtu'
+        hook. The shim's contract is "translate, don't reinterpret" —
+        identical kwargs the demux path uses today.
+
+        Reference: RFC 1191 §6 (PMTUD on the host).
+        Reference: RFC 8201 §4 (IPv6 PMTUD MTU update rule).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+
+        with patch.object(session, "on_pmtu") as mock_hook:
+            session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.PMTU,
+                    icmp_type=3,
+                    icmp_code=4,
+                    next_hop_mtu=1280,
+                    ip_version=4,
+                ),
+            )
+
+        mock_hook.assert_called_once_with(next_hop_mtu=1280, ip_version=4)
+
+    def test__tcp_session__fsm_icmp_does_not_invoke_packet_or_syscall_or_timer(self) -> None:
+        """
+        Ensure 'tcp_fsm(icmp=...)' does NOT also route through the
+        packet, syscall, or timer dispatchers. The four event sources
+        are mutually exclusive at the dispatch level; a stray fan-out
+        would silently double-process events.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+
+        with (
+            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_packet") as mock_packet,
+            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_syscall") as mock_syscall,
+            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_timer") as mock_timer,
+            patch.object(session, "on_unreachable"),
+        ):
+            session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.DEST_UNREACHABLE,
+                    icmp_type=3,
+                    icmp_code=3,
+                    ip_version=4,
+                ),
+            )
+
+        mock_packet.assert_not_called()
+        mock_syscall.assert_not_called()
+        mock_timer.assert_not_called()
+
+
 class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
     """
     The '_transmit_packet' helper tests.
