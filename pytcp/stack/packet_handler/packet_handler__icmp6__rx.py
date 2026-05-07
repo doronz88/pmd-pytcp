@@ -242,10 +242,10 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
-        if socket is None or socket._tcp_session is None:
+        if socket is None or (session := socket.tcp_session) is None:
             return
 
-        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+        if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
             self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
@@ -254,7 +254,7 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Unreachable packet from {packet_rx.ip6.src}</>",
         )
-        socket._tcp_session.tcp_fsm(
+        session.tcp_fsm(
             icmp=IcmpMetadata(
                 category=IcmpCategory.DEST_UNREACHABLE,
                 icmp_type=1,
@@ -358,10 +358,10 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
-        if socket is None or socket._tcp_session is None:
+        if socket is None or (session := socket.tcp_session) is None:
             return
 
-        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+        if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
             self._packet_stats_rx.icmp6__time_exceeded__tcp__seq_out_of_window__drop += 1
             return
 
@@ -369,7 +369,7 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session " f"for Time Exceeded from {packet_rx.ip6.src}</>",
         )
-        socket._tcp_session.tcp_fsm(
+        session.tcp_fsm(
             icmp=IcmpMetadata(
                 category=IcmpCategory.TIME_EXCEEDED,
                 icmp_type=3,
@@ -472,10 +472,10 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
-        if socket is None or socket._tcp_session is None:
+        if socket is None or (session := socket.tcp_session) is None:
             return
 
-        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+        if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
             self._packet_stats_rx.icmp6__parameter_problem__tcp__seq_out_of_window__drop += 1
             return
 
@@ -484,7 +484,7 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Parameter Problem from {packet_rx.ip6.src}</>",
         )
-        socket._tcp_session.tcp_fsm(
+        session.tcp_fsm(
             icmp=IcmpMetadata(
                 category=IcmpCategory.PARAM_PROBLEM,
                 icmp_type=4,
@@ -563,10 +563,10 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
-        if socket is None or socket._tcp_session is None:
+        if socket is None or (session := socket.tcp_session) is None:
             return
 
-        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+        if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
             self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
@@ -575,7 +575,7 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Packet Too Big from {packet_rx.ip6.src}, mtu={mtu}</>",
         )
-        socket._tcp_session.tcp_fsm(
+        session.tcp_fsm(
             icmp=IcmpMetadata(
                 category=IcmpCategory.PMTU,
                 icmp_type=2,
