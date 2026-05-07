@@ -49,7 +49,7 @@ relaxation via two mechanisms:
    the cwnd reduction on ECE event uses a 17/20
    multiplier instead of RFC 3168's strict 1/2.
    Implemented in `compute_ecn_event_ssthresh` at
-   `pytcp/protocols/tcp/tcp__cwnd.py:144-173`. The
+   `pytcp/protocols/tcp/tcp__cwnd.py:145-175`. The
    inline citation explicitly references RFC 8511.
 
 2. **RFC 9341 AccECN (Accurate ECN)**: PyTCP

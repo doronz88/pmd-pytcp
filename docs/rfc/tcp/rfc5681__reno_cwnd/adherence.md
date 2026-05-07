@@ -132,7 +132,7 @@ TCP_CONGESTION, "reno")`.)
 >     ssthresh = max (FlightSize / 2, 2*SMSS)            (4)"
 
 **Adherence:** met. `compute_loss_event_ssthresh` at
-`pytcp/protocols/tcp/tcp__cwnd.py:116-141`:
+`pytcp/protocols/tcp/tcp__cwnd.py:117-142`:
 
 ```python
 return max(flight_size // 2, 2 * smss)

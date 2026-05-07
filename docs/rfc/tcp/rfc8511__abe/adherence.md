@@ -38,7 +38,7 @@ omitted.
 see §3.1 below). The `_process_ack_packet` ECE branch
 at `pytcp/protocols/tcp/tcp__session.py:3594-3610`
 calls `compute_ecn_event_ssthresh()` from
-`pytcp/protocols/tcp/tcp__cwnd.py:144-173`, which
+`pytcp/protocols/tcp/tcp__cwnd.py:145-175`, which
 computes:
 
 ```python

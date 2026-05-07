@@ -71,8 +71,8 @@ from `_cubic_w_last_max` directly.
 > "K = cubicroot((W_max - cwnd_epoch) / C)"
 
 **Adherence:** met. `cubic_w` at
-`pytcp/protocols/tcp/tcp__cubic.py:107-145` and
-`cubic_compute_K` at line 67-104 implement the
+`pytcp/protocols/tcp/tcp__cubic.py:151-189` and
+`cubic_compute_K` at line 103-148 implement the
 formulas. The cube-root uses Python's
 `pow(x, 1/3.0)` then `int(round(...))` (the one
 documented float-cast exception in PyTCP's CUBIC

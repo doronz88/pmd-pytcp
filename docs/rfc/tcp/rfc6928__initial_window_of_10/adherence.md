@@ -33,7 +33,7 @@ Acknowledgments, References, Appendix A) are omitted.
 
 **Adherence:** met. The formula is implemented exactly in
 the helper at
-`pytcp/protocols/tcp/tcp__cwnd.py:176-196`:
+`pytcp/protocols/tcp/tcp__cwnd.py:177-197`:
 
 ```python
 def initial_window(smss: int) -> int:

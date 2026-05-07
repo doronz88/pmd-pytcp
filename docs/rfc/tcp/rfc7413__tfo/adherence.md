@@ -62,7 +62,7 @@ established-state segments.
 
 **Adherence:** met. PyTCP's
 `generate_cookie` at
-`pytcp/protocols/tcp/tcp__fastopen.py:46-66`:
+`pytcp/protocols/tcp/tcp__fastopen.py:45-65`:
 
 ```python
 digest = hmac.new(secret, bytes(peer_address), "sha256").digest()
