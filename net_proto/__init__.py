@@ -180,6 +180,11 @@ from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
     Icmp4EchoRequestCode,
     Icmp4MessageEchoRequest,
 )
+from net_proto.protocols.icmp4.message.icmp4__message__time_exceeded import (
+    ICMP4__TIME_EXCEEDED__LEN,
+    Icmp4MessageTimeExceeded,
+    Icmp4TimeExceededCode,
+)
 from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
     Icmp4MessageUnknown,
 )
@@ -501,10 +506,13 @@ __all__ = [
     "Icmp4MessageEchoRequest",
     "Icmp4IntegrityError",
     "Icmp4Message",
+    "Icmp4MessageTimeExceeded",
     "Icmp4Parser",
     "Icmp4SanityError",
+    "Icmp4TimeExceededCode",
     "Icmp4Type",
     "Icmp4MessageUnknown",
+    "ICMP4__TIME_EXCEEDED__LEN",
     "Icmp6",
     "Icmp6Assembler",
     "Icmp6Code",

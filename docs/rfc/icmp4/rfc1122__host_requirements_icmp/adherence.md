@@ -230,14 +230,18 @@ gap.
 > "An incoming Time Exceeded message MUST be passed to the transport
 > layer."
 
-**Adherence:** **not met**. ICMPv4 type 11 (Time Exceeded) is not
-declared in `Icmp4Type`
-(`net_proto/protocols/icmp4/message/icmp4__message.py:50-57`);
-inbound Time Exceeded routes to `Icmp4MessageUnknown` and is
-silently dropped. TCP and UDP never receive the transport-layer
-notification this clause requires. This is the canonical example
-of a SILENT-DROP gap and is the primary target of the upcoming
-Phase β work.
+**Adherence:** **partial** (post Phase β.1 — parser only). ICMPv4
+type 11 is now declared in `Icmp4Type` and routes to
+`Icmp4MessageTimeExceeded`
+(`net_proto/protocols/icmp4/message/icmp4__message__time_exceeded.py`),
+parsed cleanly with integrity / sanity / round-trip tests. The
+remaining gap is the MUST-pass-to-transport-layer wire-up: the
+`packet_handler__icmp4__rx.py` dispatch still has no
+`__phrx_icmp4__time_exceeded` arm, so a successfully-parsed Time
+Exceeded message is currently dropped after parsing. Phase β.2
+adds the dispatch arm + `TcpSession.on_time_exceeded` /
+`UdpSocket.notify_time_exceeded` plumbing, after which this clause
+flips to **met**.
 
 ---
 
@@ -496,7 +500,7 @@ support.
 | §3.2.2.2 SHOULD NOT generate Redirect               | met (deliberate)      |
 | §3.2.2.2 MUST process inbound Redirect              | not implemented       |
 | §3.2.2.3 Source Quench                              | deliberate (RFC 6633) |
-| §3.2.2.4 MUST pass Time Exceeded to transport       | not met (Phase β)     |
+| §3.2.2.4 MUST pass Time Exceeded to transport       | partial (β.1 parsed)  |
 | §3.2.2.5 MUST pass Param Problem to transport       | not met (Phase β)     |
 | §3.2.2.5 SHOULD generate Param Problem              | not implemented       |
 | §3.2.2.6 MUST implement Echo server                 | met                   |

@@ -23,7 +23,7 @@ host-requirements work:
 | 4     | Source Quench           | deliberate non-implementation (RFC 6633)       |
 | 5     | Redirect                | not implemented (parsed as Unknown)            |
 | 8     | Echo Request            | met (Smurf gate at v4 echo handler)            |
-| 11    | Time Exceeded           | NOT MET — silently dropped (Phase β gap)       |
+| 11    | Time Exceeded           | parsed (β.1); transport plumbing pending β.2   |
 | 12    | Parameter Problem       | NOT MET — silently dropped (Phase β gap)       |
 | 13/14 | Timestamp / Reply       | deliberate non-implementation (RFC 6633)       |
 | 15/16 | Information Req/Reply   | deliberate non-implementation (obsolete)       |
