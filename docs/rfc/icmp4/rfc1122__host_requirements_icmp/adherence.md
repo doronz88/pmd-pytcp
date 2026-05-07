@@ -411,6 +411,9 @@ otherwise widen. Counter:
 **Adherence:** **deliberate non-implementation**. PyTCP does not
 implement Information Request/Reply (ICMPv4 types 15/16). Inbound
 messages route to `Icmp4MessageUnknown` and are silently dropped.
+Both types were also formally deprecated en bloc by RFC 6918
+§2.2/§2.3 — see
+[`../rfc6918__deprecate_icmp_types/adherence.md`](../rfc6918__deprecate_icmp_types/adherence.md).
 
 ---
 
@@ -418,10 +421,17 @@ messages route to `Icmp4MessageUnknown` and are silently dropped.
 
 > "A host MAY implement Timestamp and Timestamp Reply."
 
-**Adherence:** **deliberate non-implementation**. RFC 6633 §3
-deprecated Timestamp messages. PyTCP does not implement types
-13/14; inbound messages route to `Icmp4MessageUnknown` and are
-silently dropped.
+**Adherence:** **deliberate non-implementation**. RFC 1122 §3.2.2.8
+makes Timestamp / Timestamp Reply a MAY (not a MUST), and PyTCP
+chooses not to implement types 13/14. Inbound messages route to
+`Icmp4MessageUnknown` and are silently dropped. Note: ICMPv4
+Timestamp is NOT formally deprecated by either RFC 6633 (which
+covers only Source Quench, Type 4) or RFC 6918 (which covers
+Types 6, 15-18, 30-39). The non-implementation is purely a scope
+choice — in particular, Linux historically had a sysctl
+(`net.ipv4.icmp_echo_ignore_broadcasts` adjacent) controlling
+this, and modern Linux defaults to dropping inbound Timestamps
+silently as well.
 
 ---
 
@@ -431,11 +441,15 @@ silently dropped.
 > following methods for determining the address mask(s) [...]"
 
 **Adherence:** **deliberate non-implementation** for ICMP-based
-mask discovery (types 17/18). RFC 6633 §4 deprecated Address Mask
-Request/Reply. PyTCP obtains its address configuration via DHCPv4
-(the "first method" in the RFC 1122 list — static / boot-server
-configuration) and does not implement the ICMP-based mask
-discovery alternative.
+mask discovery (types 17/18). RFC 6918 §2.4/§2.5 formally
+deprecated Address Mask Request and Address Mask Reply,
+superseding the optional clause in RFC 1122 §3.2.2.9. PyTCP
+obtains its address configuration via DHCPv4 (the "first method"
+in the RFC 1122 list — static / boot-server configuration) and
+does not implement the ICMP-based mask discovery alternative.
+See
+[`../rfc6918__deprecate_icmp_types/adherence.md`](../rfc6918__deprecate_icmp_types/adherence.md)
+for the deprecation audit.
 
 ---
 
@@ -620,28 +634,32 @@ support.
 | §3.2.2.1 SHOULD generate Code 3 (Port Unreach.)     | met                   |
 | §3.2.2.1 MUST report to transport                   | met                   |
 | §3.2.2.1 TCP MUST accept Port Unreachable           | met                   |
-| §3.2.2.1 Code 0/1/5 hint-not-proof                  | partial               |
+| §3.2.2.1 Code 0/1/5 hint-not-proof                  | met                   |
 | §3.2.2.2 SHOULD NOT generate Redirect               | met (deliberate)      |
 | §3.2.2.2 MUST process inbound Redirect              | not implemented       |
 | §3.2.2.3 Source Quench                              | deliberate (RFC 6633) |
 | §3.2.2.4 MUST pass Time Exceeded to transport       | met                   |
 | §3.2.2.5 MUST pass Param Problem to transport       | met                   |
-| §3.2.2.5 SHOULD generate Param Problem              | not implemented       |
+| §3.2.2.5 SHOULD generate Param Problem              | shipped               |
 | §3.2.2.6 MUST implement Echo server                 | met                   |
 | §3.2.2.6 MAY discard Echo to bcast/mcast            | met (Smurf drop)      |
 | §3.2.2.6 src-address selection                      | met                   |
 | §3.2.2.6 Data echoed verbatim                       | met                   |
-| §3.2.2.6 IP options echoed                          | partial (data only)   |
-| §3.2.2.7 Information Req/Reply                      | deliberate (obsolete) |
-| §3.2.2.8 Timestamp                                  | deliberate (RFC 6633) |
-| §3.2.2.9 Address Mask                               | deliberate (RFC 6633) |
+| §3.2.2.6 IP options echoed                          | shipped               |
+| §3.2.2.7 Information Req/Reply                      | deliberate (RFC 6918) |
+| §3.2.2.8 Timestamp                                  | deliberate (MAY-skip) |
+| §3.2.2.9 Address Mask                               | deliberate (RFC 6918) |
 
-The principal compliance gap is §3.2.2.4 / §3.2.2.5 — Time Exceeded
-and Parameter Problem inbound are silently dropped because the
-message types are not declared in `Icmp4Type`. Phase β closes both
-in lockstep, with the demux plumbing inheriting the
-`parse_embedded_l4` infrastructure already used by Destination
-Unreachable. Secondary gaps are §3.2.2.1 Code 2 (Protocol
-Unreachable) generation, §3.2.2.2 inbound Redirect handling
-(architecturally tied to the single-gateway routing model), and
-§3.2.2.6 IPv4 option echoing.
+The single remaining Phase-1 gap is §3.2.2.2 inbound Redirect
+handling, deferred indefinitely as an architectural blocker
+(PyTCP's single-gateway routing model — see
+`docs/refactor/icmp_remaining_issues.md`). Every other §3.2.2
+clause is now either shipped, deliberate non-implementation
+with documented rationale, or vacuous. The §3.2.2.4 / §3.2.2.5
+inbound demux landed during the FSM-dispatch refactor; §3.2.2.5
+outbound Param Problem generation landed in commits `dd68e3ac`
++ `ebbb41f8`; §3.2.2.6 IPv4 option echo (incl. LSRR/SSRR
+reversal) landed in commits `00a0ee7b` + `388e035b` +
+`19c169de`; §3.2.2.1 Code 0/1/5 hint-not-proof handling landed
+with the per-state ICMP handlers' RFC 5927 §5.2 hard-vs-soft
+taxonomy.
