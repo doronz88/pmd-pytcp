@@ -48,6 +48,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from pytcp.lib.logger import log
 from pytcp.protocols.tcp.fsm.tcp__fsm__close_wait import (
     fsm__close_wait__packet,
     fsm__close_wait__syscall,
@@ -70,6 +71,7 @@ from pytcp.protocols.tcp.fsm.tcp__fsm__last_ack import (
     fsm__last_ack__timer,
 )
 from pytcp.protocols.tcp.fsm.tcp__fsm__listen import (
+    fsm__listen__icmp,
     fsm__listen__packet,
     fsm__listen__syscall,
 )
@@ -79,6 +81,7 @@ from pytcp.protocols.tcp.fsm.tcp__fsm__syn_rcvd import (
     fsm__syn_rcvd__timer,
 )
 from pytcp.protocols.tcp.fsm.tcp__fsm__syn_sent import (
+    fsm__syn_sent__icmp,
     fsm__syn_sent__packet,
     fsm__syn_sent__syscall,
     fsm__syn_sent__timer,
@@ -90,8 +93,38 @@ from pytcp.protocols.tcp.fsm.tcp__fsm__time_wait import (
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
     from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
+
+
+def fsm__icmp__synchronized(session: TcpSession, metadata: IcmpMetadata) -> None:
+    """
+    Default ICMP-error handler shared across all synchronized states
+    (SYN_RCVD, ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT,
+    CLOSING, LAST_ACK, TIME_WAIT). RFC 5927 §5.2 prescribes treating
+    all ICMP errors as soft once a connection is synchronized — this
+    is the canonical counter-measure for the blind connection-reset
+    attack. PMTU is the one exception: it updates 'snd_mss' without
+    touching FSM state.
+    """
+
+    from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory
+
+    if metadata.category is IcmpCategory.PMTU:
+        assert metadata.next_hop_mtu is not None, "IcmpMetadata.next_hop_mtu must be set for PMTU events."
+        session.on_pmtu(
+            next_hop_mtu=metadata.next_hop_mtu,
+            ip_version=metadata.ip_version,
+        )
+        return
+
+    __debug__ and log(
+        "tcp-ss",
+        f"[{session}] - <ly>[{session._state}]</> - got ICMP "
+        f"category={metadata.category.name} type={metadata.icmp_type} "
+        f"code={metadata.icmp_code} (soft, advisory only)",
+    )
 
 
 # Per-event-kind dispatch tables. Absence of a state from a
@@ -130,6 +163,27 @@ FSM_TIMER_HANDLERS: dict[FsmState, Callable[..., None]] = {
     FsmState.TIME_WAIT: fsm__time_wait__timer,
 }
 
+# RFC 5927 §5.2 per-state ICMP-error dispatch. SYN_SENT is the
+# only state allowed to abort on hard errors; all synchronized
+# states share the 'synchronized' default that downgrades hard
+# errors to soft (the counter-measure for the blind
+# connection-reset attack). LISTEN is a no-op since a passive
+# listener has no per-flow flight to abort. CLOSED is absent
+# from the table — closed sessions are unregistered before any
+# ICMP event can route to them.
+FSM_ICMP_HANDLERS: dict[FsmState, Callable[..., None]] = {
+    FsmState.LISTEN: fsm__listen__icmp,
+    FsmState.SYN_SENT: fsm__syn_sent__icmp,
+    FsmState.SYN_RCVD: fsm__icmp__synchronized,
+    FsmState.ESTABLISHED: fsm__icmp__synchronized,
+    FsmState.FIN_WAIT_1: fsm__icmp__synchronized,
+    FsmState.FIN_WAIT_2: fsm__icmp__synchronized,
+    FsmState.CLOSE_WAIT: fsm__icmp__synchronized,
+    FsmState.CLOSING: fsm__icmp__synchronized,
+    FsmState.LAST_ACK: fsm__icmp__synchronized,
+    FsmState.TIME_WAIT: fsm__icmp__synchronized,
+}
+
 
 def dispatch_packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """
@@ -165,3 +219,16 @@ def dispatch_timer(session: TcpSession) -> None:
     handler = FSM_TIMER_HANDLERS.get(session._state)
     if handler is not None:
         handler(session)
+
+
+def dispatch_icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
+    """
+    Dispatch an inbound ICMP-error event to the per-state ICMP
+    handler for the session's current state. CLOSED sessions are
+    absent from the dispatch table and silently no-op (closed
+    sessions are unregistered before ICMP can route to them).
+    """
+
+    handler = FSM_ICMP_HANDLERS.get(session._state)
+    if handler is not None:
+        handler(session, metadata)

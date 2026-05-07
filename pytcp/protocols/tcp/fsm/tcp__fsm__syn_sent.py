@@ -45,8 +45,104 @@ from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__seq import add32, le32, lt32
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
     from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
+
+
+# RFC 5927 §5.2 hard-error code set: ICMPv4 Type 3 codes
+# 2 (Protocol Unreachable) / 3 (Port Unreachable), and ICMPv6
+# Type 1 codes 1 (admin prohibited) / 4 (Port Unreachable).
+# Code 4 (Frag Needed) is excluded — PMTUD treats it as soft and
+# routes via the PMTU category instead.
+_SYN_SENT__HARD_DEST_UNREACHABLE_CODES: frozenset[tuple[int, int]] = frozenset(
+    {
+        (3, 2),  # ICMPv4 Protocol Unreachable
+        (3, 3),  # ICMPv4 Port Unreachable
+        (1, 1),  # ICMPv6 Communication with destination admin prohibited
+        (1, 4),  # ICMPv6 Port Unreachable
+    }
+)
+
+# RFC 1122 §4.2.3.9 / RFC 5927 §6 soft-host-unreachable codes:
+# ICMPv4 Type 3 Code 1 (Host Unreachable) and ICMPv6 Type 1 Code
+# 3 (Address Unreachable). RFC 5927 §6 classes these as
+# hint-not-proof advisory errors.
+_SYN_SENT__SOFT_HOST_CODES: frozenset[tuple[int, int]] = frozenset(
+    {
+        (3, 1),  # ICMPv4 Host Unreachable
+        (1, 3),  # ICMPv6 Address Unreachable
+    }
+)
+
+# RFC 1122 §4.2.3.9 / RFC 5927 §6 soft-net-unreachable codes:
+# ICMPv4 Type 3 Code 0 (Net Unreachable) and ICMPv6 Type 1 Code
+# 0 (No Route to Destination).
+_SYN_SENT__SOFT_NET_CODES: frozenset[tuple[int, int]] = frozenset(
+    {
+        (3, 0),  # ICMPv4 Net Unreachable
+        (1, 0),  # ICMPv6 No Route to Destination
+    }
+)
+
+
+def fsm__syn_sent__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
+    """
+    TCP FSM SYN_SENT state ICMP-error handler.
+
+    SYN_SENT is the only state where TCP applies the RFC 1122 §4.2.3.9
+    'SHOULD abort on hard error' rule (RFC 5927 §5.2 narrows it to
+    pre-synchronized state). Hard codes -> ConnError.REFUSED + CLOSED;
+    Net/Host Unreachable record the diagnostic and release the blocked
+    CONNECT but do not abort; everything else is purely advisory.
+    """
+
+    # Avoid runtime import of IcmpCategory by referring to its enum
+    # values via an isolated import — the dispatch table guarantees
+    # 'metadata.category' is one of the four canonical values.
+    from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory
+
+    if metadata.category is IcmpCategory.DEST_UNREACHABLE:
+        type_code = (metadata.icmp_type, metadata.icmp_code)
+        if type_code in _SYN_SENT__HARD_DEST_UNREACHABLE_CODES:
+            __debug__ and log(
+                "tcp-ss",
+                f"[{session}] - <ly>[{session._state}]</> - got ICMP "
+                f"hard error type={metadata.icmp_type} "
+                f"code={metadata.icmp_code}, refusing",
+            )
+            session._connection_error = ConnError.REFUSED
+            session._event__rx_buffer.set()
+            session._event__connect.release()
+            session._change_state(FsmState.CLOSED)
+            return
+        if type_code in _SYN_SENT__SOFT_HOST_CODES:
+            session._connection_error = ConnError.HOST_UNREACHABLE
+            session._event__rx_buffer.set()
+            session._event__connect.release()
+            return
+        if type_code in _SYN_SENT__SOFT_NET_CODES:
+            session._connection_error = ConnError.NET_UNREACHABLE
+            session._event__rx_buffer.set()
+            session._event__connect.release()
+            return
+        return
+
+    if metadata.category is IcmpCategory.PMTU:
+        assert metadata.next_hop_mtu is not None, "IcmpMetadata.next_hop_mtu must be set for PMTU events."
+        session.on_pmtu(
+            next_hop_mtu=metadata.next_hop_mtu,
+            ip_version=metadata.ip_version,
+        )
+        return
+
+    # TIME_EXCEEDED / PARAM_PROBLEM are soft per RFC 5927 §6 — log only.
+    __debug__ and log(
+        "tcp-ss",
+        f"[{session}] - <ly>[{session._state}]</> - got ICMP "
+        f"category={metadata.category.name} type={metadata.icmp_type} "
+        f"code={metadata.icmp_code} (soft, advisory only)",
+    )
 
 
 def fsm__syn_sent__timer(session: TcpSession) -> None:

@@ -44,8 +44,26 @@ from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.protocols.tcp.tcp__seq import add32
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
     from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
+
+
+def fsm__listen__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
+    """
+    TCP FSM LISTEN state ICMP-error handler.
+
+    A passive listener has no per-flow flight to abort and no blocked
+    CONNECT to wake on; ICMP errors received against a LISTEN session
+    are purely informational. Log only.
+    """
+
+    __debug__ and log(
+        "tcp-ss",
+        f"[{session}] - <ly>[{session._state}]</> - got ICMP "
+        f"category={metadata.category.name} type={metadata.icmp_type} "
+        f"code={metadata.icmp_code} (LISTEN no-op)",
+    )
 
 
 def fsm__listen__syscall(session: TcpSession, syscall: SysCall) -> None:

@@ -472,133 +472,41 @@ class TestTcpFsmDispatch(_TcpSessionFsmFixture):
 
 class TestTcpFsmIcmpDispatch(_TcpSessionFsmFixture):
     """
-    The 'tcp_fsm(icmp=...)' Phase-1 translation-shim tests.
+    The top-level 'tcp_fsm(icmp=...)' dispatch tests.
     """
 
-    def test__tcp_session__fsm_icmp_dest_unreachable_routes_to_on_unreachable(self) -> None:
+    def test__tcp_session__fsm_dispatches_icmp_by_current_state(self) -> None:
         """
-        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=DEST_UNREACHABLE, ...))'
-        forwards the icmp_type / icmp_code pair to the legacy
-        'on_unreachable' hook unchanged. Phase 1 is a pure translation
-        shim; behavior must match the direct-call path bit-for-bit so
-        the existing ICMP integration tests stay green.
+        Ensure 'tcp_fsm' routes an inbound-ICMP event to the
+        per-state ICMP handler matching the current '_state' via
+        FSM_ICMP_HANDLERS, mirroring the packet / syscall / timer
+        dispatch tables. The dispatch table is the routing layer;
+        per-state handlers carry the hard-vs-soft semantics.
 
-        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
-        Reference: RFC 5927 §3 (ICMP-to-TCP error categories).
+        Reference: RFC 9293 §3.3.2 (state machine dispatch).
+        Reference: RFC 5927 §5.2 (per-state ICMP-error handling).
         """
 
+        from pytcp.protocols.tcp.fsm.tcp__fsm import FSM_ICMP_HANDLERS
         from pytcp.protocols.tcp.tcp__icmp_metadata import (
             IcmpCategory,
             IcmpMetadata,
         )
 
-        session = self._make_session()
-
-        with patch.object(session, "on_unreachable") as mock_hook:
-            session.tcp_fsm(
-                icmp=IcmpMetadata(
-                    category=IcmpCategory.DEST_UNREACHABLE,
-                    icmp_type=3,
-                    icmp_code=3,
-                    ip_version=4,
-                ),
-            )
-
-        mock_hook.assert_called_once_with(icmp_type=3, icmp_code=3)
-
-    def test__tcp_session__fsm_icmp_time_exceeded_routes_to_on_time_exceeded(self) -> None:
-        """
-        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=TIME_EXCEEDED, ...))'
-        forwards to 'on_time_exceeded'. The shim only delivers the
-        type/code pair; soft-vs-hard semantics are deferred to Phase 2.
-
-        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
-        the transport layer).
-        Reference: RFC 5927 §6 (Time Exceeded is a soft error).
-        """
-
-        from pytcp.protocols.tcp.tcp__icmp_metadata import (
-            IcmpCategory,
-            IcmpMetadata,
+        metadata = IcmpMetadata(
+            category=IcmpCategory.DEST_UNREACHABLE,
+            icmp_type=3,
+            icmp_code=3,
+            ip_version=4,
         )
-
-        session = self._make_session()
-
-        with patch.object(session, "on_time_exceeded") as mock_hook:
-            session.tcp_fsm(
-                icmp=IcmpMetadata(
-                    category=IcmpCategory.TIME_EXCEEDED,
-                    icmp_type=11,
-                    icmp_code=0,
-                    ip_version=4,
-                ),
-            )
-
-        mock_hook.assert_called_once_with(icmp_type=11, icmp_code=0)
-
-    def test__tcp_session__fsm_icmp_param_problem_routes_to_on_parameter_problem(self) -> None:
-        """
-        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=PARAM_PROBLEM, ...))'
-        forwards to 'on_parameter_problem'. The pointer field is
-        carried in the metadata for Phase 2's per-state handlers but
-        Phase 1's shim only forwards the type/code pair (matching the
-        legacy 'on_parameter_problem' signature).
-
-        Reference: RFC 1122 §3.2.2.5 (Parameter Problem MUST be passed
-        to the transport layer).
-        Reference: RFC 4443 §3.4 (ICMPv6 Parameter Problem).
-        """
-
-        from pytcp.protocols.tcp.tcp__icmp_metadata import (
-            IcmpCategory,
-            IcmpMetadata,
-        )
-
-        session = self._make_session()
-
-        with patch.object(session, "on_parameter_problem") as mock_hook:
-            session.tcp_fsm(
-                icmp=IcmpMetadata(
-                    category=IcmpCategory.PARAM_PROBLEM,
-                    icmp_type=4,
-                    icmp_code=1,
-                    pointer=42,
-                    ip_version=6,
-                ),
-            )
-
-        mock_hook.assert_called_once_with(icmp_type=4, icmp_code=1)
-
-    def test__tcp_session__fsm_icmp_pmtu_routes_to_on_pmtu(self) -> None:
-        """
-        Ensure 'tcp_fsm(icmp=IcmpMetadata(category=PMTU, ...))'
-        forwards 'next_hop_mtu' / 'ip_version' to the legacy 'on_pmtu'
-        hook. The shim's contract is "translate, don't reinterpret" —
-        identical kwargs the demux path uses today.
-
-        Reference: RFC 1191 §6 (PMTUD on the host).
-        Reference: RFC 8201 §4 (IPv6 PMTUD MTU update rule).
-        """
-
-        from pytcp.protocols.tcp.tcp__icmp_metadata import (
-            IcmpCategory,
-            IcmpMetadata,
-        )
-
-        session = self._make_session()
-
-        with patch.object(session, "on_pmtu") as mock_hook:
-            session.tcp_fsm(
-                icmp=IcmpMetadata(
-                    category=IcmpCategory.PMTU,
-                    icmp_type=3,
-                    icmp_code=4,
-                    next_hop_mtu=1280,
-                    ip_version=4,
-                ),
-            )
-
-        mock_hook.assert_called_once_with(next_hop_mtu=1280, ip_version=4)
+        for state in FSM_ICMP_HANDLERS:
+            with self.subTest(state=state):
+                session = self._make_session()
+                session._state = state
+                mock_handler = MagicMock()
+                with patch.dict(FSM_ICMP_HANDLERS, {state: mock_handler}):
+                    session.tcp_fsm(icmp=metadata)
+                mock_handler.assert_called_once_with(session, metadata)
 
     def test__tcp_session__fsm_icmp_does_not_invoke_packet_or_syscall_or_timer(self) -> None:
         """
@@ -621,13 +529,13 @@ class TestTcpFsmIcmpDispatch(_TcpSessionFsmFixture):
             patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_packet") as mock_packet,
             patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_syscall") as mock_syscall,
             patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_timer") as mock_timer,
-            patch.object(session, "on_unreachable"),
         ):
+            session._state = FsmState.ESTABLISHED  # any synchronized state
             session.tcp_fsm(
                 icmp=IcmpMetadata(
-                    category=IcmpCategory.DEST_UNREACHABLE,
-                    icmp_type=3,
-                    icmp_code=3,
+                    category=IcmpCategory.TIME_EXCEEDED,
+                    icmp_type=11,
+                    icmp_code=0,
                     ip_version=4,
                 ),
             )
@@ -635,6 +543,408 @@ class TestTcpFsmIcmpDispatch(_TcpSessionFsmFixture):
         mock_packet.assert_not_called()
         mock_syscall.assert_not_called()
         mock_timer.assert_not_called()
+
+
+class TestTcpFsmListenHandleIcmp(_TcpSessionFsmFixture):
+    """
+    The 'fsm__listen__icmp' state-handler tests.
+    """
+
+    def test__tcp_session__listen_icmp_is_no_op(self) -> None:
+        """
+        Ensure ICMP errors received against a LISTEN session do not
+        mutate FSM state, set a connection error, or release the
+        accept-blocked syscall. A passive listener has no per-flow
+        flight to abort and no blocked CONNECT to wake; the ICMP error
+        is purely informational and must be a no-op.
+
+        Reference: RFC 5927 §5.2 (synchronized-state ICMP errors are
+        advisory; the LISTEN equivalent is a no-op since there is no
+        connection at risk).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+        session._state = FsmState.LISTEN
+
+        session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.DEST_UNREACHABLE,
+                icmp_type=3,
+                icmp_code=3,
+                ip_version=4,
+            ),
+        )
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        self.assertIs(
+            session.state,
+            FsmState.LISTEN,
+            msg="LISTEN session must stay in LISTEN on ICMP error.",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.NONE,
+            msg="LISTEN session must not record a connection error on ICMP.",
+        )
+
+
+class TestTcpFsmSynSentHandleIcmp(_TcpSessionFsmFixture):
+    """
+    The 'fsm__syn_sent__icmp' state-handler tests covering the RFC
+    5927 §6 hard-vs-soft taxonomy.
+    """
+
+    def _drive_icmp(self, *, icmp_type: int, icmp_code: int) -> "TcpSession":
+        """
+        Build a SYN_SENT session and drive a Dest-Unreachable ICMP
+        event of the given type/code through the FSM. Returns the
+        post-event session for assertion.
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+        session._state = FsmState.SYN_SENT
+        session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.DEST_UNREACHABLE,
+                icmp_type=icmp_type,
+                icmp_code=icmp_code,
+                ip_version=4 if icmp_type == 3 else 6,
+            ),
+        )
+        return session
+
+    def test__tcp_session__syn_sent_icmp_v4_port_unreachable_aborts(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 3 (Port
+        Unreachable) aborts the connection: state -> CLOSED, error ->
+        REFUSED.
+
+        Reference: RFC 1122 §3.2.2.1 (ICMP Port Unreachable in
+        SYN_SENT MUST abort).
+        Reference: RFC 5927 §5.2 (ICMPv4 Code 3 Port Unreachable is a
+        hard error).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=3, icmp_code=3)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="SYN_SENT + Port Unreachable must transition to CLOSED.",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg="SYN_SENT + Port Unreachable must record ConnError.REFUSED.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_v4_protocol_unreachable_aborts(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 2 (Protocol
+        Unreachable) aborts with REFUSED. The legacy on_unreachable
+        path silently ignored Code 2; the per-state handler closes
+        the gap by treating it as a hard error matching RFC 5927's
+        canonical hard-error list.
+
+        Reference: RFC 5927 §5.2 (ICMPv4 Code 2 Protocol Unreachable
+        is a hard error).
+        Reference: RFC 1122 §4.2.3.9 (TCP SHOULD abort on hard error).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=3, icmp_code=2)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="SYN_SENT + Protocol Unreachable must transition to CLOSED.",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg="SYN_SENT + Protocol Unreachable must record ConnError.REFUSED.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_v6_admin_prohibited_aborts(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv6 Type 1 / Code 1 (admin
+        prohibited) aborts with REFUSED. The §5.2 extrapolation of
+        hard errors to ICMPv6 explicitly enumerates Code 1 alongside
+        Code 4 (port unreachable).
+
+        Reference: RFC 5927 §5.2 (ICMPv6 Code 1 admin-prohibited is a
+        hard error).
+        Reference: RFC 4443 §3.1 (ICMPv6 Destination Unreachable).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=1, icmp_code=1)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="SYN_SENT + ICMPv6 Admin-Prohibited must transition to CLOSED.",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg="SYN_SENT + ICMPv6 Admin-Prohibited must record ConnError.REFUSED.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_v6_port_unreachable_aborts(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv6 Type 1 / Code 4 (port
+        unreachable) aborts with REFUSED.
+
+        Reference: RFC 5927 §5.2 (ICMPv6 Code 4 Port Unreachable is a
+        hard error).
+        Reference: RFC 4443 §3.1 (ICMPv6 Destination Unreachable).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=1, icmp_code=4)
+
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="SYN_SENT + ICMPv6 Port Unreachable must transition to CLOSED.",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg="SYN_SENT + ICMPv6 Port Unreachable must record ConnError.REFUSED.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_v4_host_unreachable_is_advisory(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 1 (Host
+        Unreachable) records HOST_UNREACHABLE and releases the blocked
+        CONNECT but does NOT abort the FSM — Net/Host Unreachable are
+        hint-not-proof soft errors.
+
+        Reference: RFC 5927 §6 (Net/Host Unreachable are hint-not-proof
+        soft errors).
+        Reference: RFC 1122 §4.2.3.9 (Net/Host Unreachable SHOULD merely
+        be informed to the user, not used to abort).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=3, icmp_code=1)
+
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="SYN_SENT + Host Unreachable must remain in SYN_SENT (advisory).",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.HOST_UNREACHABLE,
+            msg="SYN_SENT + Host Unreachable must record ConnError.HOST_UNREACHABLE.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_v4_net_unreachable_is_advisory(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 0 (Net
+        Unreachable) records NET_UNREACHABLE and releases the blocked
+        CONNECT but does NOT abort.
+
+        Reference: RFC 5927 §6 (Net/Host Unreachable are hint-not-proof
+        soft errors).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+
+        session = self._drive_icmp(icmp_type=3, icmp_code=0)
+
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="SYN_SENT + Net Unreachable must remain in SYN_SENT (advisory).",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.NET_UNREACHABLE,
+            msg="SYN_SENT + Net Unreachable must record ConnError.NET_UNREACHABLE.",
+        )
+
+    def test__tcp_session__syn_sent_icmp_time_exceeded_is_soft(self) -> None:
+        """
+        Ensure SYN_SENT receiving ICMP Time Exceeded does NOT abort
+        the connection — Time Exceeded is always a soft error.
+
+        Reference: RFC 5927 §6 (Time Exceeded is a soft error).
+        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
+        the transport layer).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        session = self._make_session()
+        session._state = FsmState.SYN_SENT
+        session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.TIME_EXCEEDED,
+                icmp_type=11,
+                icmp_code=0,
+                ip_version=4,
+            ),
+        )
+
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="SYN_SENT + Time Exceeded must remain in SYN_SENT (soft error).",
+        )
+        self.assertIs(
+            session._connection_error,
+            ConnError.NONE,
+            msg="SYN_SENT + Time Exceeded must NOT record a connection error.",
+        )
+
+
+class TestTcpFsmSynchronizedHandleIcmp(_TcpSessionFsmFixture):
+    """
+    The synchronized-state ICMP-handler tests covering RFC 5927 §5.2's
+    counter-measure: hard errors are downgraded to soft once the
+    connection has reached a synchronized state.
+    """
+
+    _SYNCHRONIZED_STATES = (
+        FsmState.SYN_RCVD,
+        FsmState.ESTABLISHED,
+        FsmState.FIN_WAIT_1,
+        FsmState.FIN_WAIT_2,
+        FsmState.CLOSE_WAIT,
+        FsmState.CLOSING,
+        FsmState.LAST_ACK,
+        FsmState.TIME_WAIT,
+    )
+
+    def test__tcp_session__synchronized_icmp_hard_codes_are_soft(self) -> None:
+        """
+        Ensure hard-error Dest-Unreachable codes (v4 Code 2/3, v6 Code
+        1/4) received in any synchronized state are downgraded to soft
+        — no FSM transition, no connection error. This is the
+        counter-measure for the blind connection-reset attack.
+
+        Reference: RFC 5927 §5.2 (synchronized-state hard errors are
+        treated as soft).
+        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
+        """
+
+        from pytcp.protocols.tcp.tcp__enums import ConnError
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        for state in self._SYNCHRONIZED_STATES:
+            for icmp_type, icmp_code in (
+                (3, 2),  # ICMPv4 Protocol Unreachable
+                (3, 3),  # ICMPv4 Port Unreachable
+                (1, 1),  # ICMPv6 Admin Prohibited
+                (1, 4),  # ICMPv6 Port Unreachable
+            ):
+                with self.subTest(state=state, icmp_type=icmp_type, icmp_code=icmp_code):
+                    session = self._make_session()
+                    session._state = state
+
+                    session.tcp_fsm(
+                        icmp=IcmpMetadata(
+                            category=IcmpCategory.DEST_UNREACHABLE,
+                            icmp_type=icmp_type,
+                            icmp_code=icmp_code,
+                            ip_version=4 if icmp_type == 3 else 6,
+                        ),
+                    )
+
+                    self.assertIs(
+                        session.state,
+                        state,
+                        msg=(
+                            f"{state} + ICMP type={icmp_type} code={icmp_code} must NOT "
+                            "transition (hard-as-soft per RFC 5927 §5.2)."
+                        ),
+                    )
+                    self.assertIs(
+                        session._connection_error,
+                        ConnError.NONE,
+                        msg=(
+                            f"{state} + ICMP type={icmp_type} code={icmp_code} must NOT "
+                            "set a connection error (hard-as-soft per RFC 5927 §5.2)."
+                        ),
+                    )
+
+    def test__tcp_session__synchronized_icmp_pmtu_updates_snd_mss(self) -> None:
+        """
+        Ensure a PMTU event in any synchronized state shrinks
+        '_win.snd_mss' to (next_hop_mtu - 40) and writes the
+        next-hop MTU into 'stack.pmtu_cache' so future segments and
+        the loss-recovery path see the new ceiling.
+
+        Reference: RFC 1191 §6 (PMTUD on the host).
+        Reference: RFC 9293 §3.7.5 (MSS option update on path-MTU
+        change).
+        """
+
+        from pytcp.protocols.tcp.tcp__icmp_metadata import (
+            IcmpCategory,
+            IcmpMetadata,
+        )
+
+        for state in self._SYNCHRONIZED_STATES:
+            with self.subTest(state=state):
+                session = self._make_session()
+                session._state = state
+                session._win.snd_mss = 1460
+
+                cache: dict[object, int] = {}
+                with patch(
+                    "pytcp.protocols.tcp.tcp__session.stack.pmtu_cache",
+                    cache,
+                    create=True,
+                ):
+                    session.tcp_fsm(
+                        icmp=IcmpMetadata(
+                            category=IcmpCategory.PMTU,
+                            icmp_type=3,
+                            icmp_code=4,
+                            next_hop_mtu=1280,
+                            ip_version=4,
+                        ),
+                    )
+
+                self.assertEqual(
+                    session._win.snd_mss,
+                    1280 - 20 - 20,
+                    msg=(f"{state} + PMTU=1280 must shrink snd_mss to " "1280 - IP(20) - TCP(20) = 1240."),
+                )
+                self.assertEqual(
+                    cache.get(session._remote_ip_address),
+                    1280,
+                    msg=f"{state} + PMTU must write 1280 into pmtu_cache.",
+                )
 
 
 class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):

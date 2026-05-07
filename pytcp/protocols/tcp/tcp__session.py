@@ -42,6 +42,7 @@ from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
+from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
@@ -88,7 +89,7 @@ from pytcp.protocols.tcp.tcp__hystart import (
     should_exit_slow_start_to_css,
     should_resume_slow_start_from_css,
 )
-from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
+from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
 from pytcp.protocols.tcp.tcp__rack import (
@@ -765,42 +766,6 @@ class TcpSession:
         if self._snd_seq.una <= self._snd_seq.nxt:
             return self._snd_seq.una <= seq <= self._snd_seq.nxt
         return seq >= self._snd_seq.una or seq <= self._snd_seq.nxt
-
-    def _dispatch_icmp(self, metadata: IcmpMetadata) -> None:
-        """
-        Phase-1 translation shim from 'tcp_fsm(icmp=metadata)' to the
-        legacy 'on_*' hooks. Routes by 'metadata.category' and forwards
-        the same kwargs the existing call sites use today, so behavior
-        is identical to a direct call. Phase 2 will replace this shim
-        with per-state 'handle_icmp' modules carrying the RFC 5927 §6
-        hard-vs-soft semantics.
-
-        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
-        Reference: RFC 5927 §3 (ICMP-to-TCP error categories).
-        """
-
-        match metadata.category:
-            case IcmpCategory.DEST_UNREACHABLE:
-                self.on_unreachable(
-                    icmp_type=metadata.icmp_type,
-                    icmp_code=metadata.icmp_code,
-                )
-            case IcmpCategory.TIME_EXCEEDED:
-                self.on_time_exceeded(
-                    icmp_type=metadata.icmp_type,
-                    icmp_code=metadata.icmp_code,
-                )
-            case IcmpCategory.PARAM_PROBLEM:
-                self.on_parameter_problem(
-                    icmp_type=metadata.icmp_type,
-                    icmp_code=metadata.icmp_code,
-                )
-            case IcmpCategory.PMTU:
-                assert metadata.next_hop_mtu is not None, "IcmpMetadata.next_hop_mtu must be set for PMTU events."
-                self.on_pmtu(
-                    next_hop_mtu=metadata.next_hop_mtu,
-                    ip_version=metadata.ip_version,
-                )
 
     def on_pmtu(self, *, next_hop_mtu: int, ip_version: int) -> None:
         """
@@ -4026,15 +3991,16 @@ class TcpSession:
         Run TCP finite state machine.
         """
 
-        # Phase 1 of the ICMP-into-FSM refactor: 'icmp' is dispatched
-        # through a translation shim to the legacy 'on_*' methods so
-        # the additive contract holds (both old and new APIs work).
-        # Phase 2 will replace the shim with per-state handlers.
-        if icmp is not None:
-            self._dispatch_icmp(icmp)
-            return
-
         with self._lock__fsm:
+            # Phase 2 of the ICMP-into-FSM refactor: 'icmp' is
+            # dispatched through 'FSM_ICMP_HANDLERS' to the per-state
+            # handler carrying RFC 5927 §5.2 hard-vs-soft semantics
+            # (synchronized states downgrade hard errors to soft;
+            # SYN_SENT is the only state allowed to abort).
+            if icmp is not None:
+                tcp_fsm_dispatch_icmp(self, icmp)
+                return
+
             # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo
             # tracking. Run BEFORE the FSM dispatch so the
             # state-handler-emitted ACK on this segment already
