@@ -39,6 +39,7 @@ from net_proto import (
     Icmp4MessageDestinationUnreachable,
     Icmp4MessageEchoReply,
     Icmp4MessageEchoRequest,
+    Icmp4MessageTimeExceeded,
     Icmp4Parser,
     Icmp4Type,
     IpProto,
@@ -108,6 +109,8 @@ class PacketHandlerIcmp4Rx(ABC):
                 self.__phrx_icmp4__destination_unreachable(packet_rx)
             case Icmp4Type.ECHO_REQUEST:
                 self.__phrx_icmp4__echo_request(packet_rx)
+            case Icmp4Type.TIME_EXCEEDED:
+                self.__phrx_icmp4__time_exceeded(packet_rx)
             case _:
                 self.__phrx_icmp4__unknown(packet_rx)
 
@@ -287,6 +290,115 @@ class PacketHandlerIcmp4Rx(ABC):
         )
         socket._tcp_session.on_unreachable(icmp_type=3, icmp_code=icmp_code)
         self._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
+
+    def __phrx_icmp4__time_exceeded(self, packet_rx: PacketRx) -> None:
+        """
+        Handle inbound ICMPv4 Time Exceeded packets. Routes the
+        embedded L4 segment to the matching TCP / UDP socket as a
+        soft-error notification per RFC 1122 §3.2.2.4 and RFC 5927
+        §6. TCP demux applies the RFC 5927 §4 sequence-in-window
+        guard to mitigate forged off-path errors.
+        """
+
+        assert isinstance(packet_rx.icmp4.message, Icmp4MessageTimeExceeded)
+
+        message = packet_rx.icmp4.message
+
+        __debug__ and log(
+            "icmp4",
+            f"{packet_rx.tracker} - Received ICMPv4 Time Exceeded packet "
+            f"from {packet_rx.ip4.src}, code={message.code}",
+        )
+        self._packet_stats_rx.icmp4__time_exceeded += 1
+
+        embedded = parse_embedded_l4(message.data, IpVersion.IP4)
+        if embedded is None:
+            __debug__ and log(
+                "icmp4",
+                f"{packet_rx.tracker} - Time Exceeded data doesn't pass basic IPv4/L4 integrity check",
+            )
+            return
+
+        if embedded.proto is IpProto.UDP:
+            self.__phrx_icmp4__time_exceeded__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+        if embedded.proto is IpProto.TCP:
+            self.__phrx_icmp4__time_exceeded__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+    def __phrx_icmp4__time_exceeded__dispatch_udp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv4 Time Exceeded carrying an embedded UDP segment
+        to the matching UdpSocket via notify_time_exceeded().
+        """
+
+        packet = UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=cast(Ip4Address, embedded.local_ip),
+            ip__remote_address=cast(Ip4Address, embedded.remote_ip),
+            udp__local_port=embedded.local_port,
+            udp__remote_port=embedded.remote_port,
+        )
+
+        for socket_id in packet.socket_ids:
+            if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                __debug__ and log(
+                    "icmp4",
+                    f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
+                    f"{socket} for Time Exceeded from {packet_rx.ip4.src}</>",
+                )
+                socket.notify_time_exceeded(icmp_type=11, icmp_code=icmp_code)
+                self._packet_stats_rx.icmp4__time_exceeded__udp__notify += 1
+                return
+
+        __debug__ and log(
+            "icmp4",
+            f"{packet_rx.tracker} - Time Exceeded data doesn't match any UDP socket",
+        )
+
+    def __phrx_icmp4__time_exceeded__dispatch_tcp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv4 Time Exceeded carrying an embedded TCP segment
+        to the matching TcpSession via TcpSocket. Applies the RFC 5927
+        §4 sequence-in-window guard before notifying the session.
+        """
+
+        socket_id = SocketId(
+            address_family=AddressFamily.INET4,
+            socket_type=SocketType.STREAM,
+            local_address=cast(Ip4Address, embedded.local_ip),
+            local_port=embedded.local_port,
+            remote_address=cast(Ip4Address, embedded.remote_ip),
+            remote_port=embedded.remote_port,
+        )
+
+        socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
+        if socket is None or socket._tcp_session is None:
+            return
+
+        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+            self._packet_stats_rx.icmp4__time_exceeded__tcp__seq_out_of_window__drop += 1
+            return
+
+        __debug__ and log(
+            "icmp4",
+            f"{packet_rx.tracker} - <INFO>Found matching TCP session " f"for Time Exceeded from {packet_rx.ip4.src}</>",
+        )
+        socket._tcp_session.on_time_exceeded(icmp_type=11, icmp_code=icmp_code)
+        self._packet_stats_rx.icmp4__time_exceeded__tcp__notify += 1
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
         """

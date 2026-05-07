@@ -114,6 +114,10 @@ class PacketStatsRx(PacketStats):
     icmp4__destination_unreachable__tcp__seq_out_of_window__drop: int = 0
     icmp4__echo_request__respond_echo_reply: int = 0
     icmp4__echo_request__bcast_or_mcast__drop: int = 0
+    icmp4__time_exceeded: int = 0
+    icmp4__time_exceeded__tcp__notify: int = 0
+    icmp4__time_exceeded__tcp__seq_out_of_window__drop: int = 0
+    icmp4__time_exceeded__udp__notify: int = 0
     icmp4__unknown: int = 0
 
     icmp6__pre_parse: int = 0

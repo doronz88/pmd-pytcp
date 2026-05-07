@@ -230,18 +230,22 @@ gap.
 > "An incoming Time Exceeded message MUST be passed to the transport
 > layer."
 
-**Adherence:** **partial** (post Phase β.1 — parser only). ICMPv4
-type 11 is now declared in `Icmp4Type` and routes to
-`Icmp4MessageTimeExceeded`
+**Adherence:** **met** (post Phase β.2). ICMPv4 type 11 routes
+through `Icmp4MessageTimeExceeded` parsing
 (`net_proto/protocols/icmp4/message/icmp4__message__time_exceeded.py`),
-parsed cleanly with integrity / sanity / round-trip tests. The
-remaining gap is the MUST-pass-to-transport-layer wire-up: the
-`packet_handler__icmp4__rx.py` dispatch still has no
-`__phrx_icmp4__time_exceeded` arm, so a successfully-parsed Time
-Exceeded message is currently dropped after parsing. Phase β.2
-adds the dispatch arm + `TcpSession.on_time_exceeded` /
-`UdpSocket.notify_time_exceeded` plumbing, after which this clause
-flips to **met**.
+and the `__phrx_icmp4__time_exceeded` packet-handler arm
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:290+`)
+runs `parse_embedded_l4` on the carried original-datagram bytes
+and dispatches to either `TcpSession.on_time_exceeded` or
+`UdpSocket.notify_time_exceeded` based on the embedded L4
+protocol. The TCP demux applies the RFC 5927 §4 sequence-in-window
+guard before notifying the session.
+
+Per RFC 5927 §6, Time Exceeded is a soft error: the session
+receives the diagnostic but does NOT mutate FSM state or
+ConnError. The existing retransmission machinery handles the
+actual loss reported by the message; the notification's value is
+purely observability + future MSG_ERRQUEUE delivery.
 
 ---
 
@@ -445,19 +449,36 @@ test, but the surrounding parser dispatch is fully exercised).
 
 **Status:** **locked in**.
 
-### §3.2.2.4 / §3.2.2.5 — gaps not yet closed
+### §3.2.2.4 — Time Exceeded inbound (closed in β.2)
+
+- **Unit (parser):**
+  `net_proto/tests/unit/protocols/icmp4/test__icmp4__message__time_exceeded__parser.py`
+  — pins that type-11 frames route to `Icmp4MessageTimeExceeded`
+  rather than `Icmp4MessageUnknown`, with code 0/1 round-tripping
+  cleanly.
+- **Integration (TCP demux):**
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py::TestTcpOnTimeExceeded`
+  — pins that a Time Exceeded carrying an in-window embedded TCP
+  SYN reaches `TcpSession.on_time_exceeded`, bumps the
+  `tcp__notify` counter, and does NOT mutate the FSM or
+  ConnError. Out-of-window embedded seq drops at the seq-in-window
+  guard.
+
+**Status:** **locked in** (parser + TCP demux). UDP demux is
+covered by direct exercise of the `__phrx_icmp4__time_exceeded__dispatch_udp`
+arm; a dedicated UDP integration test is a future polish.
+
+### §3.2.2.5 — gap not yet closed
 
 **No test surface — gap not yet closed.** When Phase β closes
-TIME_EXCEEDED (type 11) and PARAMETER_PROBLEM (type 12), the
-natural tests are:
+PARAMETER_PROBLEM (type 12), the natural tests are:
 
-1. A unit test for the new `Icmp4MessageTimeExceeded` /
-   `Icmp4MessageParameterProblem` parser dispatch (verifies the
-   type byte routes away from `Icmp4MessageUnknown`).
-2. An integration test that drives an inbound Time Exceeded carrying
-   an embedded TCP segment matching an active session and asserts
-   `TcpSession.on_time_exceeded` (or equivalent generalized
-   `on_icmp_error`) is invoked.
+1. A unit test for the new `Icmp4MessageParameterProblem` parser
+   dispatch (verifies the type byte routes away from
+   `Icmp4MessageUnknown`).
+2. An integration test that drives an inbound Parameter Problem
+   carrying an embedded TCP segment matching an active session and
+   asserts the soft-error notify path runs.
 
 ### §3.2.2.2 Redirect inbound — gap not yet closed
 
@@ -477,7 +498,7 @@ support.
 | §3.2.2.1 TCP MUST accept Port Unreachable | locked in |
 | §3.2.2.6 Echo server (unicast)            | locked in |
 | §3.2.2.6 Echo Smurf-mitigation drop       | locked in |
-| §3.2.2.4 Time Exceeded inbound            | n/a (gap) |
+| §3.2.2.4 Time Exceeded inbound            | locked in |
 | §3.2.2.5 Parameter Problem inbound        | n/a (gap) |
 | §3.2.2.2 Redirect inbound                 | n/a (gap) |
 
@@ -500,7 +521,7 @@ support.
 | §3.2.2.2 SHOULD NOT generate Redirect               | met (deliberate)      |
 | §3.2.2.2 MUST process inbound Redirect              | not implemented       |
 | §3.2.2.3 Source Quench                              | deliberate (RFC 6633) |
-| §3.2.2.4 MUST pass Time Exceeded to transport       | partial (β.1 parsed)  |
+| §3.2.2.4 MUST pass Time Exceeded to transport       | met                   |
 | §3.2.2.5 MUST pass Param Problem to transport       | not met (Phase β)     |
 | §3.2.2.5 SHOULD generate Param Problem              | not implemented       |
 | §3.2.2.6 MUST implement Echo server                 | met                   |

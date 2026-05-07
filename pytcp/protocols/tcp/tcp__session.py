@@ -796,6 +796,28 @@ class TcpSession:
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
 
+    def on_time_exceeded(self, *, icmp_type: int, icmp_code: int) -> None:
+        """
+        Handle an inbound ICMP Time Exceeded that the RX handler has
+        matched against this session. Time Exceeded is a soft error
+        per RFC 5927 §6 — purely diagnostic. The session deliberately
+        does NOT mutate any FSM state, ConnError, or event flag; the
+        existing retransmission machinery handles whatever loss the
+        Time Exceeded reports.
+
+        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
+        the transport layer).
+        Reference: RFC 5927 §6 (Time Exceeded is a soft error and
+        MUST NOT cause connection abort).
+        """
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - <ly>[{self._state}]</> - got Time Exceeded "
+            f"type={icmp_type} code={icmp_code} "
+            "(soft error per RFC 5927 §6 — diagnostic only)",
+        )
+
     def on_unreachable(self, *, icmp_type: int, icmp_code: int) -> None:
         """
         Handle an inbound ICMP Destination Unreachable that the RX

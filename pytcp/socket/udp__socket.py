@@ -402,6 +402,20 @@ class UdpSocket(socket):
 
         self._unreachable = True
 
+    def notify_time_exceeded(self, *, icmp_type: int, icmp_code: int) -> None:
+        """
+        Pass an inbound ICMP Time Exceeded notification that the RX
+        handler has matched against this socket. RFC 1122 §3.2.2.4
+        mandates the transport layer be informed; current behaviour
+        is purely a hook (counter bumps in the packet handler) so a
+        future MSG_ERRQUEUE / IP_RECVERR feature can deliver this to
+        the application without a separate plumbing pass.
+        """
+
+        # Accept arguments to keep the future MSG_ERRQUEUE handler's
+        # signature stable; the body is intentionally minimal today.
+        del icmp_type, icmp_code
+
     def notify_pmtu(self, *, next_hop_mtu: int) -> None:
         """
         Receive a Path-MTU update for this socket's remote peer. The
