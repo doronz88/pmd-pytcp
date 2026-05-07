@@ -37,10 +37,10 @@ PyTCP currently models.
 
 **Adherence:** **met**. `Icmp4Parser._message_class()` resolves
 unknown type bytes to `Icmp4MessageUnknown`
-(`net_proto/protocols/icmp4/icmp4__parser.py:79-93`); the RX
+(`net_proto/protocols/icmp4/icmp4__parser.py:85-103`); the RX
 handler routes to `__phrx_icmp4__unknown` which logs and bumps the
 `icmp4__unknown` counter
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:111,315-324`).
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:121,590-599`).
 No reply is emitted.
 
 > "Every ICMP error message includes the Internet header and at
@@ -81,7 +81,7 @@ hard-vs-soft semantics in
 
 **Adherence:** **vacuous**. PyTCP does not model TOS variation on
 outbound ICMP errors; the IPv4 TX path emits TOS=0 by default
-(`pytcp/stack/packet_handler/packet_handler__icmp4__tx.py:108-112`,
+(`pytcp/stack/packet_handler/packet_handler__icmp4__tx.py:126-131`,
 delegating to `_phtx_ip4` without a non-zero `ip4__ecn` /
 `ip4__dscp`).
 
@@ -253,7 +253,7 @@ gap.
 through `Icmp4MessageTimeExceeded` parsing
 (`net_proto/protocols/icmp4/message/icmp4__message__time_exceeded.py`),
 and the `__phrx_icmp4__time_exceeded` packet-handler arm
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:290+`)
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:315`)
 runs `parse_embedded_l4` on the carried original-datagram bytes
 and dispatches to either
 `TcpSession.tcp_fsm(icmp=IcmpMetadata(category=TIME_EXCEEDED, ...))`
@@ -325,7 +325,7 @@ packet_stats counter and log line.
 
 **Adherence:** **met**.
 `__phrx_icmp4__echo_request`
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:290-323`)
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:548-588`)
 emits an `Icmp4MessageEchoReply` for every accepted Echo Request.
 
 > "An ICMP Echo Request destined to an IP broadcast or IP multicast
@@ -333,7 +333,7 @@ emits an `Icmp4MessageEchoReply` for every accepted Echo Request.
 
 **Adherence:** **met** (we exercise the MAY as a drop). The Smurf-
 mitigation gate at
-`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:300-310`
+`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:558-569`
 calls
 `pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`
 with the destination's broadcast/multicast flags. The MUST form of
@@ -347,7 +347,7 @@ host, because the same Smurf-amplification attack vector applies.
 
 **Adherence:** **met**. The TX call uses
 `ip4__src=packet_rx.ip4.dst`
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:317-318`),
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:579-580`),
 reflecting the Echo Request destination back as the Reply source.
 
 > "Data received in an ICMP Echo Request MUST be entirely included
@@ -355,7 +355,7 @@ reflecting the Echo Request destination back as the Reply source.
 
 **Adherence:** **met**. The Reply construction copies
 `packet_rx.icmp4.message.data` verbatim
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:320-324`).
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:582-586`).
 
 > "However, if sending the Echo Reply requires intentional
 > fragmentation that is not implemented, the datagram MUST be
