@@ -35,15 +35,22 @@ ver 3.0.4
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
+    IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+    IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
     EthernetAssembler,
     Icmp4Assembler,
     Icmp4MessageEchoRequest,
     Ip4Assembler,
     Ip4OptionEol,
     Ip4OptionLsrr,
+    Ip4OptionNop,
+    Ip4OptionRouterAlert,
+    Ip4OptionRr,
     Ip4Options,
     Ip4OptionSsrr,
+    Ip4OptionTimestamp,
     Ip4Parser,
+    Ip4TimestampEntry,
     PacketRx,
 )
 from pytcp import stack
@@ -111,6 +118,36 @@ class TestIcmp4EchoOptions(IcmpTestCase):
         packet_rx = PacketRx(reply_frame[14:])  # strip Ethernet header
         Ip4Parser(packet_rx)
         return packet_rx.ip4.ssrr
+
+    def _parse_reply_rr(self, reply_frame: bytes) -> Ip4OptionRr | None:
+        """
+        Re-parse the outbound Echo Reply frame and return its Record
+        Route option (or None).
+        """
+
+        packet_rx = PacketRx(reply_frame[14:])  # strip Ethernet header
+        Ip4Parser(packet_rx)
+        return packet_rx.ip4.rr
+
+    def _parse_reply_timestamp(self, reply_frame: bytes) -> Ip4OptionTimestamp | None:
+        """
+        Re-parse the outbound Echo Reply frame and return its Timestamp
+        option (or None).
+        """
+
+        packet_rx = PacketRx(reply_frame[14:])  # strip Ethernet header
+        Ip4Parser(packet_rx)
+        return packet_rx.ip4.timestamp
+
+    def _parse_reply_router_alert(self, reply_frame: bytes) -> Ip4OptionRouterAlert | None:
+        """
+        Re-parse the outbound Echo Reply frame and return its Router
+        Alert option (or None).
+        """
+
+        packet_rx = PacketRx(reply_frame[14:])  # strip Ethernet header
+        Ip4Parser(packet_rx)
+        return packet_rx.ip4.router_alert
 
     def _parse_reply_options_count(self, reply_frame: bytes) -> int:
         """
@@ -225,4 +262,179 @@ class TestIcmp4EchoOptions(IcmpTestCase):
             self._parse_reply_options_count(frames_tx[0]),
             0,
             msg="Echo Reply must carry no options when the request had none.",
+        )
+
+    def test__icmp4__echo_options__rr__echoed_verbatim(self) -> None:
+        """
+        Ensure an inbound Echo Request carrying a Record Route option
+        produces an Echo Reply whose Record Route option is identical
+        — same recorded route, same pointer. Echo Reply is not a
+        forwarded packet, so RR slots are preserved as-is rather than
+        appended to.
+
+        Reference: RFC 1122 §3.2.2.6 (Echo Reply MUST echo all options).
+        Reference: RFC 791 §3.1 (Record Route wire format).
+        """
+
+        inbound_options = Ip4Options(
+            Ip4OptionRr(
+                pointer=12,
+                route=[Ip4Address("10.0.1.10"), Ip4Address("10.0.1.20")],
+            ),
+            Ip4OptionEol(),
+        )
+
+        frames_tx = self._drive_rx(frame=_build_echo_request(options=inbound_options))
+        reply_rr = self._parse_reply_rr(frames_tx[0])
+
+        self.assertIsNotNone(
+            reply_rr,
+            msg="Echo Reply must carry a Record Route option matching the request.",
+        )
+        assert reply_rr is not None  # for the type-checker
+        self.assertEqual(
+            reply_rr.route,
+            [Ip4Address("10.0.1.10"), Ip4Address("10.0.1.20")],
+            msg="Echo Reply RR route must match the inbound RR route exactly.",
+        )
+        self.assertEqual(
+            reply_rr.pointer,
+            12,
+            msg="Echo Reply RR pointer must match the inbound RR pointer.",
+        )
+
+    def test__icmp4__echo_options__timestamp_flag_0__echoed_verbatim(self) -> None:
+        """
+        Ensure an inbound Echo Request carrying a Timestamp option
+        with flag=0 (timestamp-only entries) produces an Echo Reply
+        whose Timestamp option is identical — same entries, pointer,
+        overflow, flag.
+
+        Reference: RFC 1122 §3.2.2.6 (Echo Reply MUST echo all options).
+        Reference: RFC 791 §3.1 (Timestamp wire format).
+        """
+
+        # 12 (TS) + 3 NOPs + 1 EOL = 16 bytes (4-byte aligned).
+        inbound_options = Ip4Options(
+            Ip4OptionTimestamp(
+                pointer=13,
+                overflow=2,
+                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                entries=[
+                    Ip4TimestampEntry(timestamp=1234),
+                    Ip4TimestampEntry(timestamp=5678),
+                ],
+            ),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionEol(),
+        )
+
+        frames_tx = self._drive_rx(frame=_build_echo_request(options=inbound_options))
+        reply_ts = self._parse_reply_timestamp(frames_tx[0])
+
+        self.assertIsNotNone(
+            reply_ts,
+            msg="Echo Reply must carry a Timestamp option matching the request.",
+        )
+        assert reply_ts is not None  # for the type-checker
+        self.assertEqual(
+            reply_ts.flag,
+            IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+            msg="Echo Reply Timestamp flag must match the inbound flag.",
+        )
+        self.assertEqual(
+            reply_ts.overflow,
+            2,
+            msg="Echo Reply Timestamp overflow must match the inbound overflow.",
+        )
+        self.assertEqual(
+            reply_ts.pointer,
+            13,
+            msg="Echo Reply Timestamp pointer must match the inbound pointer.",
+        )
+        self.assertEqual(
+            [entry.timestamp for entry in reply_ts.entries],
+            [1234, 5678],
+            msg="Echo Reply Timestamp entries must match the inbound entries.",
+        )
+
+    def test__icmp4__echo_options__timestamp_flag_1__echoed_verbatim(self) -> None:
+        """
+        Ensure an inbound Echo Request carrying a Timestamp option
+        with flag=1 (addr+timestamp entries) is also echoed verbatim —
+        the per-flag entry shape preserves through the verbatim path
+        with no special handling.
+
+        Reference: RFC 1122 §3.2.2.6 (Echo Reply MUST echo all options).
+        Reference: RFC 791 §3.1 (Timestamp wire format, flag=1).
+        """
+
+        # 20 (TS flag=1, 2 addr+ts entries) + 3 NOPs + 1 EOL = 24 (aligned).
+        inbound_options = Ip4Options(
+            Ip4OptionTimestamp(
+                pointer=21,
+                overflow=0,
+                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+                entries=[
+                    Ip4TimestampEntry(timestamp=1234, address=Ip4Address("10.0.1.10")),
+                    Ip4TimestampEntry(timestamp=5678, address=Ip4Address("10.0.1.20")),
+                ],
+            ),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionEol(),
+        )
+
+        frames_tx = self._drive_rx(frame=_build_echo_request(options=inbound_options))
+        reply_ts = self._parse_reply_timestamp(frames_tx[0])
+
+        self.assertIsNotNone(
+            reply_ts,
+            msg="Echo Reply must carry a Timestamp option matching the request.",
+        )
+        assert reply_ts is not None  # for the type-checker
+        self.assertEqual(
+            [(entry.address, entry.timestamp) for entry in reply_ts.entries],
+            [
+                (Ip4Address("10.0.1.10"), 1234),
+                (Ip4Address("10.0.1.20"), 5678),
+            ],
+            msg="Echo Reply Timestamp addr+timestamp pairs must match the request.",
+        )
+
+    def test__icmp4__echo_options__router_alert__echoed_verbatim(self) -> None:
+        """
+        Ensure an inbound Echo Request carrying a Router Alert option
+        is echoed verbatim — the value field round-trips unchanged.
+        Router Alert has no host-side semantic on Echo Reply; it just
+        rides along.
+
+        Reference: RFC 1122 §3.2.2.6 (Echo Reply MUST echo all options).
+        Reference: RFC 2113 (Router Alert wire format).
+        """
+
+        # 4 (RouterAlert) + 3 NOPs + 1 EOL = 8 bytes (aligned).
+        inbound_options = Ip4Options(
+            Ip4OptionRouterAlert(value=0),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+            Ip4OptionEol(),
+        )
+
+        frames_tx = self._drive_rx(frame=_build_echo_request(options=inbound_options))
+        reply_ra = self._parse_reply_router_alert(frames_tx[0])
+
+        self.assertIsNotNone(
+            reply_ra,
+            msg="Echo Reply must carry a Router Alert option matching the request.",
+        )
+        assert reply_ra is not None  # for the type-checker
+        self.assertEqual(
+            reply_ra.value,
+            0,
+            msg="Echo Reply Router Alert value must match the inbound value.",
         )
