@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket.socket_id import SocketId
 from pytcp.stack.arp_cache import ArpCache
@@ -194,6 +195,13 @@ arp_probe_unicast_conflict: set[Ip4Address] = set()
 # UDP and TCP TX paths for fragment-or-fail / MSS-recompute
 # decisions. Process-lifetime only — entries do not expire.
 pmtu_cache: dict[Ip4Address | Ip6Address, int] = {}
+
+# RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) outbound ICMP error rate
+# limiters. One per L3 version so a flood of v4 errors cannot
+# starve legitimate v6 error generation (and vice versa). Consumed
+# by every ICMP error generator via try_emit_icmp_error().
+icmp4_error_rate_limiter: IcmpErrorRateLimiter = IcmpErrorRateLimiter()
+icmp6_error_rate_limiter: IcmpErrorRateLimiter = IcmpErrorRateLimiter()
 
 
 def initialize_interface__tap(interface_name: str, *, mac_address: MacAddress | None = None) -> dict[str, Any]:

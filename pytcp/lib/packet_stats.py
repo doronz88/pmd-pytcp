@@ -144,6 +144,8 @@ class PacketStatsRx(PacketStats):
     udp__echo_native__respond_udp: int = 0
     udp__no_socket_match__respond_icmp4_unreachable: int = 0
     udp__no_socket_match__respond_icmp6_unreachable: int = 0
+    udp__no_socket_match__icmp4_unreachable_suppressed: int = 0
+    udp__no_socket_match__icmp6_unreachable_suppressed: int = 0
 
     tcp__pre_parse: int = 0
     tcp__failed_parse__drop: int = 0

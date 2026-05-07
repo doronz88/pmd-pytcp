@@ -30,6 +30,7 @@ pytcp/subsystems/packet_handler/packet_handler__udp__rx.py
 ver 3.0.3
 """
 
+import time
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
@@ -46,6 +47,8 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
+from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
@@ -170,8 +173,29 @@ class PacketHandlerUdpRx(ABC):
             )
             return
 
-        # Respond with ICMPv4 Port Unreachable message if no matching
-        # socket has been found.
+        # Respond with ICMP Port Unreachable message if no matching
+        # socket has been found, subject to the host-requirements
+        # gates and the outbound rate limit.
+        rate_limiter = (
+            stack.icmp4_error_rate_limiter if packet_rx.ip.ver is IpVersion.IP4 else stack.icmp6_error_rate_limiter
+        )
+        verdict = try_emit_icmp_error(
+            classify_inbound(packet_rx),
+            rate_limiter=rate_limiter,
+            now=time.monotonic(),
+        )
+        if verdict is not None:
+            if packet_rx.ip.ver is IpVersion.IP4:
+                self._packet_stats_rx.udp__no_socket_match__icmp4_unreachable_suppressed += 1
+            else:
+                self._packet_stats_rx.udp__no_socket_match__icmp6_unreachable_suppressed += 1
+            __debug__ and log(
+                "udp",
+                f"{packet_rx_md.tracker} - <WARN>Suppressing ICMP Port-Unreachable "
+                f"to {packet_rx.ip.src}: {verdict}</>",
+            )
+            return
+
         __debug__ and log(
             "udp",
             f"{packet_rx_md.tracker} - Received UDP packet from "

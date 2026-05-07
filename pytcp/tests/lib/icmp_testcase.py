@@ -65,6 +65,7 @@ from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.tests.lib.fake_timer import FakeTimer
 from pytcp.tests.lib.network_testcase import NetworkTestCase
@@ -178,6 +179,8 @@ class IcmpTestCase(NetworkTestCase):
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
     _pmtu_cache_prior: dict[Any, Any]
+    _icmp4_error_rate_limiter_prior: IcmpErrorRateLimiter
+    _icmp6_error_rate_limiter_prior: IcmpErrorRateLimiter
 
     def setUp(self) -> None:
         """
@@ -218,6 +221,15 @@ class IcmpTestCase(NetworkTestCase):
         self._pmtu_cache_prior = dict(stack.pmtu_cache)
         stack.pmtu_cache.clear()
 
+        # ICMP error rate limiters: snapshot the prior instances and
+        # install fresh ones so each test starts with a full burst
+        # quota and tests that exhaust the bucket cannot leak state
+        # into unrelated tests.
+        self._icmp4_error_rate_limiter_prior = stack.icmp4_error_rate_limiter
+        stack.icmp4_error_rate_limiter = IcmpErrorRateLimiter()
+        self._icmp6_error_rate_limiter_prior = stack.icmp6_error_rate_limiter
+        stack.icmp6_error_rate_limiter = IcmpErrorRateLimiter()
+
         self._patches = []
 
     def tearDown(self) -> None:
@@ -243,6 +255,9 @@ class IcmpTestCase(NetworkTestCase):
 
         stack.pmtu_cache.clear()
         stack.pmtu_cache.update(self._pmtu_cache_prior)
+
+        stack.icmp4_error_rate_limiter = self._icmp4_error_rate_limiter_prior
+        stack.icmp6_error_rate_limiter = self._icmp6_error_rate_limiter_prior
 
         super().tearDown()
 

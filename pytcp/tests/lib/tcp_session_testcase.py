@@ -49,6 +49,7 @@ from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
 from pytcp import stack
+from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import FsmState, SysCall, TcpSession
 from pytcp.protocols.tcp.tcp__stack import TcpStack
@@ -148,6 +149,8 @@ class TcpSessionTestCase(NetworkTestCase):
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
     _pmtu_cache_prior: dict[Any, Any]
+    _icmp4_error_rate_limiter_prior: IcmpErrorRateLimiter
+    _icmp6_error_rate_limiter_prior: IcmpErrorRateLimiter
 
     # Per-test-class congestion-control override pinned by
     # '_make_active_session'. None means "use the codebase default"
@@ -201,6 +204,15 @@ class TcpSessionTestCase(NetworkTestCase):
         self._pmtu_cache_prior = dict(stack.pmtu_cache)
         stack.pmtu_cache.clear()
 
+        # ICMP error rate limiters: snapshot+replace with fresh
+        # instances so a TCP test that triggers ICMP error suppression
+        # (e.g. via the UDP closed-port emitter from a peer probe)
+        # starts each case with a full burst quota.
+        self._icmp4_error_rate_limiter_prior = stack.icmp4_error_rate_limiter
+        stack.icmp4_error_rate_limiter = IcmpErrorRateLimiter()
+        self._icmp6_error_rate_limiter_prior = stack.icmp6_error_rate_limiter
+        stack.icmp6_error_rate_limiter = IcmpErrorRateLimiter()
+
         self._patches = []
 
     def tearDown(self) -> None:
@@ -226,6 +238,9 @@ class TcpSessionTestCase(NetworkTestCase):
 
         stack.pmtu_cache.clear()
         stack.pmtu_cache.update(self._pmtu_cache_prior)
+
+        stack.icmp4_error_rate_limiter = self._icmp4_error_rate_limiter_prior
+        stack.icmp6_error_rate_limiter = self._icmp6_error_rate_limiter_prior
 
         super().tearDown()
 
