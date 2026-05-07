@@ -38,6 +38,7 @@ from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
 from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
+from net_proto.protocols.ip4.options.ip4__option__cipso import Ip4OptionCipso
 from net_proto.protocols.ip4.options.ip4__option__eol import Ip4OptionEol
 from net_proto.protocols.ip4.options.ip4__option__lsrr import Ip4OptionLsrr
 from net_proto.protocols.ip4.options.ip4__option__nop import (
@@ -122,6 +123,8 @@ class Ip4Options(ProtoOptions):
                     options.append(Ip4OptionRr.from_buffer(buffer[offset:]))
                 case Ip4OptionType.TIMESTAMP:
                     options.append(Ip4OptionTimestamp.from_buffer(buffer[offset:]))
+                case Ip4OptionType.CIPSO:
+                    options.append(Ip4OptionCipso.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
@@ -191,5 +194,17 @@ class Ip4OptionsProperties(ABC):
 
         for option in self._options:
             if isinstance(option, Ip4OptionTimestamp):
+                return option
+        return None
+
+    @property
+    def cipso(self) -> Ip4OptionCipso | None:
+        """
+        Get the IPv4 'cipso' option (FIPS-188 Commercial IP Security
+        Option / Linux NetLabel), if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionCipso):
                 return option
         return None

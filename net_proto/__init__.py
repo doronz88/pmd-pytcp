@@ -315,6 +315,13 @@ from net_proto.protocols.ip4.options.ip4__option import (
     Ip4Option,
     Ip4OptionType,
 )
+from net_proto.protocols.ip4.options.ip4__option__cipso import (  # noqa: F401
+    IP4__OPTION__CIPSO__DOI_LEN,
+    IP4__OPTION__CIPSO__HDR_LEN,
+    IP4__OPTION__CIPSO__MIN_LEN,
+    IP4__OPTION__CIPSO__TAG_HDR_LEN,
+    Ip4OptionCipso,
+)
 from net_proto.protocols.ip4.options.ip4__option__eol import (
     IP4__OPTION__EOL__LEN,
     Ip4OptionEol,
@@ -616,6 +623,7 @@ __all__ = [
     "Ip4Header",
     "Ip4IntegrityError",
     "Ip4Option",
+    "Ip4OptionCipso",
     "Ip4OptionEol",
     "Ip4OptionLsrr",
     "Ip4OptionNop",
