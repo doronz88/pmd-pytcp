@@ -49,6 +49,9 @@ from net_proto.protocols.ip4.options.ip4__option__router_alert import (
 )
 from net_proto.protocols.ip4.options.ip4__option__rr import Ip4OptionRr
 from net_proto.protocols.ip4.options.ip4__option__ssrr import Ip4OptionSsrr
+from net_proto.protocols.ip4.options.ip4__option__timestamp import (
+    Ip4OptionTimestamp,
+)
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
     Ip4OptionUnknown,
 )
@@ -117,6 +120,8 @@ class Ip4Options(ProtoOptions):
                     options.append(Ip4OptionRouterAlert.from_buffer(buffer[offset:]))
                 case Ip4OptionType.RR:
                     options.append(Ip4OptionRr.from_buffer(buffer[offset:]))
+                case Ip4OptionType.TIMESTAMP:
+                    options.append(Ip4OptionTimestamp.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
@@ -175,5 +180,16 @@ class Ip4OptionsProperties(ABC):
 
         for option in self._options:
             if isinstance(option, Ip4OptionRr):
+                return option
+        return None
+
+    @property
+    def timestamp(self) -> Ip4OptionTimestamp | None:
+        """
+        Get the IPv4 'timestamp' option (RFC 791 Timestamp), if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionTimestamp):
                 return option
         return None
