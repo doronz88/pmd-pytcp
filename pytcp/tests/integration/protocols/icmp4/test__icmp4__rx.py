@@ -76,6 +76,18 @@ _FRAME_RX__UNKNOWN_TYPE: bytes = (
     b"\x01\x07\x63\x00\x9c\xff"
 )
 
+# ICMPv4 Source Quench (Type 4) — deprecated by RFC 6633.
+#   IPv4     : total_len=24
+#   ICMPv4   : type=4, code=0, cksum=0xfbff, no payload
+# RFC 6633 §3 mandates silent discard. PyTCP's Icmp4Type enum has
+# no SOURCE_QUENCH member, so Type 4 falls through to the unknown
+# handler — which is exactly the spec-required behaviour.
+_FRAME_RX__SOURCE_QUENCH: bytes = (
+    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+    b"\x00\x18\x00\x00\x00\x00\x40\x01\x64\x84\x0a\x00\x01\x5b\x0a\x00"
+    b"\x01\x07\x04\x00\xfb\xff"
+)
+
 # ICMPv4 Destination Unreachable carrying a valid embedded IPv4+UDP
 # header but no UDP socket matches the resulting metadata.
 #   IPv4     : total_len=56
@@ -327,6 +339,69 @@ class TestIcmp4Rx__UnknownType(IcmpTestCase):
         """
 
         self._drive_rx(frame=_FRAME_RX__UNKNOWN_TYPE)
+
+        self._assert_packet_stats_tx()
+
+
+class TestIcmp4Rx__SourceQuench__Rfc6633(IcmpTestCase):
+    """
+    Inbound ICMPv4 Source Quench (Type 4) — formally deprecated by
+    RFC 6633. PyTCP's Icmp4Type enum has no SOURCE_QUENCH member,
+    so Type 4 falls through to the unknown-type handler, which
+    silently discards the message. These tests pin that behaviour
+    so a future enum addition cannot regress spec compliance.
+    """
+
+    def test__icmp4__rx__source_quench__no_tx(self) -> None:
+        """
+        Ensure an inbound Source Quench (Type 4) produces no TX
+        frames — neither a transport-layer reaction nor an ICMP
+        error.
+
+        Reference: RFC 6633 §3 (host MUST NOT react to Source
+        Quench; IP layer MAY silently discard).
+        Reference: RFC 6633 §5 (UDP MUST silently discard).
+        Reference: RFC 6633 §6 (other transports MUST silently
+        ignore).
+        """
+
+        self._drive_rx(frame=_FRAME_RX__SOURCE_QUENCH)
+
+        self._assert_no_tx()
+
+    def test__icmp4__rx__source_quench__packet_stats_rx(self) -> None:
+        """
+        Ensure an inbound Source Quench bumps the
+        'icmp4__unknown' counter — proof the message is being
+        silently discarded through the unknown-type path rather
+        than dispatched to a Source-Quench-specific handler.
+
+        Reference: RFC 6633 §9 (Type 4 marked Deprecated in IANA
+        ICMP Parameters registry).
+        """
+
+        self._drive_rx(frame=_FRAME_RX__SOURCE_QUENCH)
+
+        self._assert_packet_stats_rx(
+            ethernet__pre_parse=1,
+            ethernet__dst_unicast=1,
+            ip4__pre_parse=1,
+            ip4__dst_unicast=1,
+            icmp4__pre_parse=1,
+            icmp4__unknown=1,
+        )
+
+    def test__icmp4__rx__source_quench__packet_stats_tx(self) -> None:
+        """
+        Ensure no TX counters are bumped when a Source Quench is
+        received — the host neither generates an ICMP error in
+        response nor signals a transport-layer reaction.
+
+        Reference: RFC 6633 §3 (host MUST NOT send ICMP Source
+        Quench, MUST NOT react to received Source Quench).
+        """
+
+        self._drive_rx(frame=_FRAME_RX__SOURCE_QUENCH)
 
         self._assert_packet_stats_tx()
 
