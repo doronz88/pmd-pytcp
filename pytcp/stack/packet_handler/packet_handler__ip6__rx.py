@@ -39,6 +39,7 @@ from net_proto import (
     Icmp6MessageParameterProblem,
     Icmp6ParameterProblemCode,
     Ip6Parser,
+    Ip6SanityError,
     IpProto,
     PacketRx,
     PacketValidationError,
@@ -96,6 +97,13 @@ class PacketHandlerIp6Rx(ABC):
 
         try:
             Ip6Parser(packet_rx)
+
+        except Ip6SanityError as error:
+            self._packet_stats_rx.ip6__failed_parse__drop += 1
+            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            if error.pointer is not None:
+                self.__phrx_ip6__emit_parameter_problem(packet_rx, error.pointer)
+            return
 
         except PacketValidationError as error:
             self._packet_stats_rx.ip6__failed_parse__drop += 1
@@ -203,6 +211,50 @@ class PacketHandlerIp6Rx(ABC):
             icmp6__message=Icmp6MessageParameterProblem(
                 code=Icmp6ParameterProblemCode.UNRECOGNIZED_NEXT_HEADER,
                 pointer=6,
+                data=packet_rx.ip.packet_bytes,
+            ),
+            echo_tracker=packet_rx.tracker,
+        )
+
+    def __phrx_ip6__emit_parameter_problem(self, packet_rx: PacketRx, pointer: int) -> None:
+        """
+        Emit ICMPv6 Parameter Problem (Code 0, erroneous header field
+        encountered) in response to an inbound IPv6 datagram whose
+        header field at byte offset 'pointer' fails sanity validation,
+        subject to the host-requirements gates and rate limit.
+
+        Reference: RFC 1122 §3.2.2.5 (host SHOULD generate Param Problem).
+        Reference: RFC 4443 §3.4 (Parameter Problem code 0 wire format).
+        Reference: RFC 4443 §2.4(e/f) (gate + rate-limit requirements).
+        """
+
+        # No configured unicast IPv6 address: cannot emit because the
+        # source-IP reflection from packet_rx.ip6.dst would not be a
+        # valid stack address.
+        if not self._ip6_unicast:
+            return
+
+        verdict = try_emit_icmp_error(
+            classify_inbound(packet_rx),
+            rate_limiter=stack.icmp6_error_rate_limiter,
+            now=time_module.monotonic(),
+        )
+        if verdict is not None:
+            self._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
+            __debug__ and log(
+                "ip6",
+                f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Parameter Problem "
+                f"to {packet_rx.ip6.src}: {verdict}</>",
+            )
+            return
+
+        self._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
+        self._phtx_icmp6(
+            ip6__src=packet_rx.ip6.dst,
+            ip6__dst=packet_rx.ip6.src,
+            icmp6__message=Icmp6MessageParameterProblem(
+                code=Icmp6ParameterProblemCode.ERRONEOUS_HEADER_FIELD,
+                pointer=pointer,
                 data=packet_rx.ip.packet_bytes,
             ),
             echo_tracker=packet_rx.tracker,

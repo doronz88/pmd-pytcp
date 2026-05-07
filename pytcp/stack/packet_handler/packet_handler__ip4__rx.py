@@ -41,7 +41,10 @@ from net_proto import (
     Icmp4DestinationUnreachableCode,
     Icmp4Message,
     Icmp4MessageDestinationUnreachable,
+    Icmp4MessageParameterProblem,
+    Icmp4ParameterProblemCode,
     Ip4Parser,
+    Ip4SanityError,
     IpProto,
     PacketRx,
     PacketValidationError,
@@ -103,6 +106,16 @@ class PacketHandlerIp4Rx(ABC):
 
         try:
             Ip4Parser(packet_rx)
+
+        except Ip4SanityError as error:
+            self._packet_stats_rx.ip4__failed_parse__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <CRIT>{error}</>",
+            )
+            if error.pointer is not None:
+                self.__phrx_ip4__emit_parameter_problem(packet_rx, error.pointer)
+            return
 
         except PacketValidationError as error:
             self._packet_stats_rx.ip4__failed_parse__drop += 1
@@ -221,6 +234,50 @@ class PacketHandlerIp4Rx(ABC):
             ip4__dst=packet_rx.ip4.src,
             icmp4__message=Icmp4MessageDestinationUnreachable(
                 code=Icmp4DestinationUnreachableCode.PROTOCOL,
+                data=packet_rx.ip.packet_bytes,
+            ),
+            echo_tracker=packet_rx.tracker,
+        )
+
+    def __phrx_ip4__emit_parameter_problem(self, packet_rx: PacketRx, pointer: int) -> None:
+        """
+        Emit ICMPv4 Parameter Problem (Code 0) in response to an
+        inbound IPv4 datagram whose header field at byte offset
+        'pointer' fails sanity validation, subject to the host-
+        requirements gates and rate limit.
+
+        Reference: RFC 1122 §3.2.2.5 (host SHOULD generate Param Problem).
+        Reference: RFC 792 (Parameter Problem pointer).
+        Reference: RFC 1812 §4.3.2.8 (rate-limit ICMP error generation).
+        """
+
+        # DHCP-client mode: no configured unicast IPv4 address. Cannot
+        # emit ICMP errors because the source-IP reflection from
+        # packet_rx.ip4.dst would not be a valid stack address.
+        if not self._ip4_unicast:
+            return
+
+        verdict = try_emit_icmp_error(
+            classify_inbound(packet_rx),
+            rate_limiter=stack.icmp4_error_rate_limiter,
+            now=time_module.monotonic(),
+        )
+        if verdict is not None:
+            self._packet_stats_rx.ip4__sanity_error__icmp4_param_problem_suppressed += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Parameter Problem "
+                f"to {packet_rx.ip4.src}: {verdict}</>",
+            )
+            return
+
+        self._packet_stats_rx.ip4__sanity_error__respond_icmp4_param_problem += 1
+        self._phtx_icmp4(
+            ip4__src=packet_rx.ip4.dst,
+            ip4__dst=packet_rx.ip4.src,
+            icmp4__message=Icmp4MessageParameterProblem(
+                code=Icmp4ParameterProblemCode.POINTER_INDICATES_ERROR,
+                pointer=pointer,
                 data=packet_rx.ip.packet_bytes,
             ),
             echo_tracker=packet_rx.tracker,

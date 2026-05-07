@@ -64,9 +64,16 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
 
         self._validate_integrity()
         self._parse()
-        self._validate_sanity()
-
+        # Install on 'packet_rx' BEFORE the sanity stage so the
+        # IPv6 RX handler can read 'packet_rx.ip6' from inside its
+        # 'except Ip6SanityError' catch and emit an ICMPv6
+        # Parameter Problem with the offending field's pointer
+        # (RFC 1122 §3.2.2.5 / RFC 4443 §3.4). Frame advancement
+        # stays AFTER sanity so the catch path leaves
+        # 'packet_rx.frame' pointing at the original IPv6 packet
+        # bytes.
         packet_rx.ip = packet_rx.ip6 = self
+        self._validate_sanity()
         packet_rx.frame = self._payload
 
     @override

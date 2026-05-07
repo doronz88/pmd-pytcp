@@ -23,12 +23,31 @@ host-requirements work:
 | 1       | Destination Unreachable | met (parser + emitter; demux to TCP/UDP) |
 | 2       | Packet Too Big          | met (parser + PMTUD demux)               |
 | 3       | Time Exceeded           | met (parser + soft-error plumbing)       |
-| 4       | Parameter Problem       | met (parser + soft-error plumbing)       |
+| 4       | Parameter Problem       | met (parser + soft-error plumbing + outbound) |
 | 128     | Echo Request            | met (replies unconditionally per §4.2)   |
 | 129     | Echo Reply              | met (RX dispatch + RAW socket delivery)  |
 | 133-136 | ND (RS / RA / NS / NA)  | met (RFC 4861 implementation)            |
 | 137     | Redirect                | not implemented                          |
 | 143     | MLDv2 Report            | met (RFC 3810 implementation)            |
+
+§3.4 — Parameter Problem outbound generation — met. The IPv6
+parser carries the offending field's byte offset on
+`Ip6SanityError.pointer`; `PacketHandlerIp6Rx._phrx_ip6` catches
+`Ip6SanityError` and (when `pointer` is set) calls
+`__phrx_ip6__emit_parameter_problem`, which routes through
+`try_emit_icmp_error` and emits ICMPv6 Type 4 Code 0 (erroneous
+header field encountered) with the canonical pointer. Pointers
+per `net_proto/protocols/ip6/ip6__header.py`:
+
+| Sanity branch       | Pointer |
+| ------------------- | :-----: |
+| hop == 0            |    7    |
+| src is multicast    |    8    |
+
+The existing Code 1 (Unrecognized Next Header) emit on the
+unsupported-proto path stays unchanged. Counters:
+`ip6__sanity_error__respond_icmp6_param_problem` and
+`ip6__sanity_error__icmp6_param_problem_suppressed`.
 
 §2.4(e) — "ICMPv6 error MUST NOT be originated as a result of
 receiving" — the five rules (error message, redirect, multicast

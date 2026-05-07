@@ -109,6 +109,13 @@ class PacketStatsRx(PacketStats):
     ip6__no_proto_support__respond_icmp6_param_problem: int = 0
     ip6__no_proto_support__icmp6_param_problem_suppressed: int = 0
 
+    # SHOULD #2 - Parameter Problem outbound generation on a
+    # sanity-failed inbound IPv4 / IPv6 packet (RFC 1122 §3.2.2.5).
+    ip4__sanity_error__respond_icmp4_param_problem: int = 0
+    ip4__sanity_error__icmp4_param_problem_suppressed: int = 0
+    ip6__sanity_error__respond_icmp6_param_problem: int = 0
+    ip6__sanity_error__icmp6_param_problem_suppressed: int = 0
+
     icmp4__pre_parse: int = 0
     icmp4__failed_parse__drop: int = 0
     icmp4__echo_reply: int = 0
@@ -257,6 +264,7 @@ class PacketStatsTx(PacketStats):
     icmp4__echo_request__send: int = 0
     icmp4__destination_unreachable__port__send: int = 0
     icmp4__destination_unreachable__protocol__send: int = 0
+    icmp4__parameter_problem__send: int = 0
     icmp4__unknown__drop: int = 0
 
     icmp6__pre_assemble: int = 0

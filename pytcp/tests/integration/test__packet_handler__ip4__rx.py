@@ -945,6 +945,51 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
+            "_description": "Ethernet/IPv4 - TTL=0 sanity error triggers Parameter Problem (pointer=8)",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
+                # IPv4: ttl=0 (byte 8) — sanity violation. Other fields valid:
+                #   src=10.0.1.91, dst=10.0.1.7 (our unicast), proto=255 (RAW),
+                #   total length=20 (header-only), checksum recomputed (0xa389).
+                #
+                # Summary: Bumps 'ip4__failed_parse__drop' and emits ICMPv4
+                #          Parameter Problem (Code 0, pointer=8) per RFC 1122
+                #          §3.2.2.5 / RFC 792.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x14\x00\x01\x00\x00\x00\xff\xa3\x89\x0a\x00\x01\x5b\x0a\x00"
+                b"\x01\x07",
+            ],
+            "_expected__frames_tx": [
+                # Outbound ICMPv4 Parameter Problem:
+                #   Ethernet: dst=peer MAC, src=our MAC, type=IPv4
+                #   IPv4: src=10.0.1.7, dst=10.0.1.91, proto=ICMP, ttl=64
+                #   ICMPv4: type=12 (Param Problem), code=0 (pointer indicates),
+                #           pointer=8 (TTL byte), data=embedded original 20-byte
+                #           IPv4 header.
+                bytes.fromhex(
+                    "020000000091020000000007080045000030000000004001646c0a0001070a"
+                    "00015b0c00ebff08000000450000140001000000ffa3890a00015b0a000107"
+                ),
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip4__pre_parse=1,
+                ip4__failed_parse__drop=1,
+                ip4__sanity_error__respond_icmp4_param_problem=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp4__pre_assemble=1,
+                icmp4__parameter_problem__send=1,
+                ip4__pre_assemble=1,
+                ip4__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip4_lookup=1,
+                ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send=1,
+            ),
+        },
+        {
             "_description": "Ethernet/IPv4 - dst is limited broadcast (255.255.255.255), unsupported proto (99), drop",
             "_frames_rx": [
                 # Ethernet II: dst=ff:ff:ff:ff:ff:ff (broadcast), src=02:00:00:00:00:91

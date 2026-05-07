@@ -103,6 +103,8 @@ class PacketHandlerIcmp4Tx(ABC):
                 Icmp4DestinationUnreachableCode.PROTOCOL,
             ):
                 self._packet_stats_tx.icmp4__destination_unreachable__protocol__send += 1
+            case Icmp4Type.PARAMETER_PROBLEM, _:
+                self._packet_stats_tx.icmp4__parameter_problem__send += 1
             case Icmp4Type.ECHO_REQUEST, _:
                 self._packet_stats_tx.icmp4__echo_request__send += 1
             case _:

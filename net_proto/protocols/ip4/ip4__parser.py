@@ -67,9 +67,16 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
 
         self._validate_integrity()
         self._parse()
+        # Install on 'packet_rx' BEFORE the sanity stage so the
+        # IPv4 RX handler can read 'packet_rx.ip4' from inside its
+        # 'except Ip4SanityError' catch and emit an ICMPv4
+        # Parameter Problem with the offending field's pointer
+        # (RFC 1122 §3.2.2.5 / RFC 792). Frame advancement stays
+        # AFTER sanity so the catch path leaves 'packet_rx.frame'
+        # pointing at the original IPv4 packet bytes.
+        packet_rx.ip = packet_rx.ip4 = self
         self._validate_sanity()
 
-        packet_rx.ip = packet_rx.ip4 = self
         packet_rx.frame = self._payload
 
     @override

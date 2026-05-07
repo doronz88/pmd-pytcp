@@ -29,6 +29,10 @@ All MUSTs across both v4 and v6 inbound paths are met:
 
 - #1 — Protocol Unreachable / Param Problem code 1 generation on
   unsupported proto / next-header ✅ (`6f44091e`)
+- #2 — Parameter Problem outbound generation on inbound IP-header
+  sanity errors ✅ (commits `dd68e3ac` + this commit)
+- #3 — RFC 5927 §6 hard-vs-soft refactor ✅ (FSM-dispatch refactor
+  Phases 1-4: `cdcb1808 → b6948c68`)
 
 ---
 

@@ -264,10 +264,26 @@ purely observability + future MSG_ERRQUEUE delivery.
 
 > "A host SHOULD generate Parameter Problem messages."
 
-**Adherence:** **not implemented**. PyTCP does not generate ICMPv4
-Parameter Problem messages. Generation requires the IPv4 parser to
-surface the offending field's offset to the packet handler, which
-is a separate enhancement deliberately deferred.
+**Adherence:** **shipped** (SHOULD #2). The IPv4 parser carries
+the offending field's byte offset on `Ip4SanityError.pointer`;
+`PacketHandlerIp4Rx._phrx_ip4` catches `Ip4SanityError` separately
+from other validation errors and (when `pointer` is set) calls
+`__phrx_ip4__emit_parameter_problem`, which routes through
+`try_emit_icmp_error` (host-requirements gates + RFC 1812 §4.3.2.8
+rate limiter) and emits ICMPv4 Type 12 Code 0 (pointer indicates
+error) with the canonical pointer value. Pointers per
+`net_proto/protocols/ip4/ip4__header.py`:
+
+| Sanity branch                          | Pointer |
+| -------------------------------------- | :-----: |
+| TTL == 0                               |    8    |
+| src is multicast / reserved / limited-broadcast | 12      |
+| DF + MF set simultaneously             |    6    |
+| DF + non-zero fragment offset          |    6    |
+
+DHCP-client mode (no configured unicast IPv4) suppresses emit.
+Counters: `ip4__sanity_error__respond_icmp4_param_problem` and
+`ip4__sanity_error__icmp4_param_problem_suppressed`.
 
 > "An incoming Parameter Problem message MUST be passed to the
 > transport layer, and it MAY be reported to the user."

@@ -98,6 +98,54 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
+            "_description": "Ethernet/IPv6 - hop=0 sanity error triggers Parameter Problem (pointer=7)",
+            "_frames_rx": [
+                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91
+                # IPv6: hop=0 (byte 7) — sanity violation. Other fields valid:
+                #   src=2001:db8:0:1::91, dst=2001:db8:0:1::7 (our unicast),
+                #   next=99 (RAW), payload_len=0.
+                #
+                # Summary: Bumps 'ip6__failed_parse__drop' and emits ICMPv6
+                #          Parameter Problem (Code 0, pointer=7) per RFC 1122
+                #          §3.2.2.5 / RFC 4443 §3.4.
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x00\x63\x00\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07",
+            ],
+            "_expected__frames_tx": [
+                # Outbound ICMPv6 Parameter Problem:
+                #   Ethernet: dst=peer MAC, src=our MAC, type=IPv6
+                #   IPv6: src=2001:db8:0:1::7, dst=2001:db8:0:1::91, next=58 (ICMP6), hop=64
+                #   ICMPv6: type=4 (Param Problem), code=0 (erroneous header field),
+                #           pointer=7 (Hop Limit byte), data=embedded original 40-byte
+                #           IPv6 header.
+                bytes.fromhex(
+                    "02000000009102000000000786dd6000000000303a4020010db8000000010000"
+                    "00000000000720010db80000000100000000000000910400807500000007"
+                    "600000000000630020010db8000000010000000000000091"
+                    "20010db8000000010000000000000007"
+                ),
+            ],
+            "_expected__packet_stats_rx": PacketStatsRx(
+                ethernet__pre_parse=1,
+                ethernet__dst_unicast=1,
+                ip6__pre_parse=1,
+                ip6__failed_parse__drop=1,
+                ip6__sanity_error__respond_icmp6_param_problem=1,
+            ),
+            "_expected__packet_stats_tx": PacketStatsTx(
+                icmp6__pre_assemble=1,
+                icmp6__parameter_problem__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
+            ),
+        },
+        {
             "_description": ("Ethernet/IPv6 - dst is our solicited-node multicast, unsupported next header (99), drop"),
             "_frames_rx": [
                 # Ethernet II: dst=33:33:ff:00:00:07 (solicited-node MAC for ::7), src=02:00:00:00:00:91
