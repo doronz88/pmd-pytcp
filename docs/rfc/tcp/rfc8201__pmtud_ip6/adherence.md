@@ -23,7 +23,7 @@ PyTCP **partially implements** RFC 8201:
 - UDP records the new MTU on the socket via
   `notify_pmtu`.
 - The 1280-byte IPv6 minimum MTU floor is enforced
-  in `TcpSession.on_pmtu`.
+  in `TcpSession._apply_pmtu_update`.
 
 What still **does not happen**:
 
@@ -50,7 +50,7 @@ includes `__phrx_icmp6__packet_too_big` which
 parses the embedded IPv6+L4 4-tuple via the shared
 `parse_embedded_l4` helper, demuxes to UDP via
 `UdpSocket.notify_pmtu` or to TCP via
-`TcpSession.on_pmtu`. RFC 5927 §4 sequence-in-window
+`TcpSession._apply_pmtu_update`. RFC 5927 §4 sequence-in-window
 guard applies on the TCP path.
 
 ### §4 Minimum MTU = 1280 bytes
@@ -59,7 +59,7 @@ guard applies on the TCP path.
 > of the Path MTU below the IPv6 minimum link MTU
 > [RFC 8200 §5]."
 
-**Adherence:** **shipped**. `TcpSession.on_pmtu`
+**Adherence:** **shipped**. `TcpSession._apply_pmtu_update`
 applies the floor: `floor = 1280 - 40 - 20` for
 IPv6, where 40 is the IPv6 header and 20 is the
 TCP header. `snd_mss` never drops below the floor.
@@ -70,7 +70,7 @@ TCP header. `snd_mss` never drops below the floor.
 > estimate of the Path MTU in response to a
 > Packet Too Big message."
 
-**Adherence:** **shipped**. `TcpSession.on_pmtu`
+**Adherence:** **shipped**. `TcpSession._apply_pmtu_update`
 contains an explicit `if new_mss < self._win.snd_mss`
 guard so MSS only shrinks on a Packet Too Big.
 
@@ -92,9 +92,9 @@ follow-up.
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
 | §4 ICMPv6 Packet Too Big MTU update for UDP         | shipped — `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` |
-| §4 ICMPv6 Packet Too Big MTU update for TCP         | shipped (substrate) — TCP path goes through the same `TcpSession.on_pmtu` covered by `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py` (the v4 Frag-Needed test exercises the shared callback) |
-| §4 1280-byte minimum MTU floor                      | shipped — `TcpSession.on_pmtu` floor logic |
-| §4 PMTU only shrinks                                | shipped — `test__tcp__session__on_pmtu.py::test__icmp4__frag_needed__never_grows_snd_mss` |
+| §4 ICMPv6 Packet Too Big MTU update for TCP         | shipped (substrate) — TCP path goes through the same `TcpSession._apply_pmtu_update` covered by `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` (the v4 Frag-Needed test exercises the shared callback) |
+| §4 1280-byte minimum MTU floor                      | shipped — `TcpSession._apply_pmtu_update` floor logic |
+| §4 PMTU only shrinks                                | shipped — `test__tcp__session__icmp__pmtu.py::test__icmp4__frag_needed__never_grows_snd_mss` |
 | §4 Path MTU Aging                                   | n/a (gap) |
 
 ---
@@ -110,6 +110,6 @@ follow-up.
 
 The substrate (`stack.pmtu_cache`, embedded-header
 demux, ICMPv6 PacketTooBig message class, TCP/UDP
-on_pmtu callbacks) makes the remaining aging gap
+_apply_pmtu_update callbacks) makes the remaining aging gap
 addressable as a focused feature commit alongside
 RFC 8899 DPLPMTUD probing.

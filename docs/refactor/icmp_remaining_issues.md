@@ -49,181 +49,92 @@ All MUSTs across both v4 and v6 inbound paths are met:
 
 ---
 
-## Open SHOULDs (in suggested order)
+## Deliberately skipped (rationale recorded)
 
-### #3 — RFC 5927 §6 hard-vs-soft refactor (RECOMMENDED FIRST — folds into FSM-dispatch refactor)
-
-**Spec:** RFC 5927 §6 distinguishes "hard" errors (must abort
-SYN_SENT, advisory in synchronized states) from "soft" errors
-(transient, never abort connection).
-
-**Current:** `TcpSession.on_unreachable` treats all Destination-
-Unreachable codes uniformly via the seq-in-window guard. Codes 0
-(Net), 1 (Host), 5 (Bad Source Route) are "soft per RFC 5927 §6"
-but currently flagged with `ConnError.HOST_UNREACHABLE` /
-`NET_UNREACHABLE`, releasing the blocked syscall. This is a
-partial — the connection isn't truly aborted, just notified.
-
-**The fix:** per-state `handle_icmp` semantics. Each FSM state
-decides what's hard for it:
-- SYN_SENT: Port Unreachable → ConnError.REFUSED + CLOSED. Other
-  codes → diagnostic only (don't release blocked CONNECT).
-- Synchronized states: all ICMP errors are advisory (RFC 1122
-  §4.2.3.9) — log + return.
-
-**Cost:** medium — couples with the FSM-dispatch refactor (see
-`docs/refactor/icmp_into_tcp_fsm_plan.md`). The refactor's Phase 2
-naturally produces this hard/soft taxonomy.
-
-**Recommendation:** ship as part of the FSM-dispatch refactor,
-not separately.
-
-### #2 — Parameter Problem outbound generation
-
-**Spec:** RFC 1122 §3.2.2.5 SHOULD-generate; RFC 4443 §3.4 same.
-
-**Trigger:** inbound IP datagram with malformed header or
-unsupported option that the parser detects with a precise byte
-offset.
-
-**Current:** IPv4 / IPv6 parsers raise `Ip4SanityError` /
-`Ip6SanityError` with a string message → packet drops. No ICMP
-emission.
-
-**The fix:**
-1. Extend `Ip4SanityError` / `Ip6SanityError` to carry an
-   optional `pointer: int | None` field (offset of offending
-   field).
-2. Each sanity check sets the pointer when raising.
-3. Packet handler catches the sanity error in addition to dropping
-   and emits Parameter Problem with the pointer.
-
-**Files affected:**
-- `net_proto/protocols/ip4/ip4__parser.py` — extend `_validate_sanity` to set pointer
-- `net_proto/protocols/ip4/ip4__errors.py` — extend `Ip4SanityError`
-- `net_proto/protocols/ip6/ip6__parser.py` — same
-- `net_proto/protocols/ip6/ip6__errors.py` — same
-- `pytcp/stack/packet_handler/packet_handler__ip4__rx.py` — catch+emit
-- `pytcp/stack/packet_handler/packet_handler__ip6__rx.py` — same
-- `pytcp/lib/packet_stats.py` — new emit/suppression counters per protocol
-
-**Cost:** medium-high — most of the work is identifying *which*
-sanity branches fire from *which* offsets. Currently the parsers
-just say "field X is bad"; they need to surface offsets.
-
-**Value:** medium-high — diagnostic clarity for misconfigured
-peers; closes another SHOULD.
-
-**Recommendation:** ship after the FSM-dispatch refactor and #3.
-The new emit sites will go through `try_emit_icmp_error` —
-already in place.
-
-### #4 — IP options echo on Echo Reply (v4 only)
-
-**Spec:** RFC 1122 §3.2.2.6 — "An ICMP Echo Reply SHOULD echo all
-options received in the Echo Request."
-
-**Current:** Echo Reply construction at
-`packet_handler__icmp4__rx.py:317-323` copies only the data
-field; IPv4 options are not threaded.
-
-**The fix:** thread `packet_rx.ip4.options` through to
-`_phtx_icmp4` and into the IP4 TX path's Echo Reply construction.
-
-**Cost:** low — ~30 LOC change + 1 integration test.
-
-**Value:** low — IPv4 options are rare in modern traffic.
-
-**Recommendation:** polish commit; can ship anytime.
-
-### #5 — Inbound Redirect handling (v4)
-
-**Spec:** RFC 1122 §3.2.2.2 — host MUST accept and apply Redirect
-to update routing.
-
-**Current:** ICMPv4 type 5 (Redirect) is not declared in
-`Icmp4Type`; routes to Unknown and is silently dropped.
-
-**The fix (high cost):**
-- New `Icmp4MessageRedirect` dataclass (RFC 792 wire format with
-  `gateway_address` field)
-- Parser dispatch + tests
-- Routing-table mutability infrastructure (`stack` doesn't
-  currently track per-destination gateway routes — single
-  gateway per host)
-- Validation per RFC 1122 §3.2.2.2 (gateway on same subnet,
-  source is current first-hop)
-
-**Cost:** high — requires routing-table refactor that PyTCP
-doesn't have today.
-
-**Value:** low — modern networks commonly disable Redirects for
-security (Linux `accept_redirects=0` is default for hosts).
-PyTCP's single-gateway model means architectural value is
-marginal.
-
-**Recommendation:** defer indefinitely unless multi-gateway
-routing lands first. Document in audit as deliberate.
-
----
-
-## Out-of-scope SHOULDs / future work (not blocking)
-
-### MSG_ERRQUEUE / IP_RECVERR
-
-Today, `UdpSocket.notify_unreachable` /
-`UdpSocket.notify_time_exceeded` /
-`UdpSocket.notify_parameter_problem` are thin shims (counter +
-log). Application-level delivery (POSIX `recv(MSG_ERRQUEUE)` +
-`SO_ERROR`) would require:
-- New `socket.errqueue: deque[ErrorEvent]` per UdpSocket
-- Wire `IP_RECVERR` / `IPV6_RECVERR` setsockopt
-- Extend `recv()` to support the `MSG_ERRQUEUE` flag
-
-Future feature — not a SHOULD violation today.
+These items were considered during the post-walkback session
+and explicitly rejected with reasoning. Each is documented in
+the corresponding per-RFC adherence record so a future reader
+sees the deliberate-non-implementation rather than an oversight.
 
 ### RFC 4884 extended ICMP
 
-We don't honor the `length` field in extended ICMP error
-messages. Most peers don't emit extension structures; this is a
-low-priority interop polish, not a SHOULD.
+Length-field-aware split of ICMP error message bytes into
+"original packet" + "extension structures". Used by RFC 4950
+MPLS Label Stack info (visible in some `traceroute` output),
+RFC 5837 Interface Information, RFC 8335 PROBE.
 
-### TCP retransmission walkback after MSS shrink (RFC 1191 §6.5)
+**Why skipped:** RFC 4884 §4.2 mandates that receivers MUST
+ignore extensions they don't understand and treat the message
+as if length=full. PyTCP's current "ignore-extensions" path is
+spec-compliant. Implementing it would mean ~600-800 LOC across
+3 ICMPv4 + 3 ICMPv6 message types for round-trip preservation
+of data PyTCP has no consumer for. Linux's kernel handling is
+also shallow — actual MPLS-label decoding lives in user-space
+`traceroute`.
 
-Phase 6 of the original ICMP demux+PMTUD refactor stopped at the
-`on_pmtu` MSS-recompute step. Active retransmit walkback for
-already-sent in-flight segments that exceed the new MSS is left
-for a follow-up. Not strictly an ICMP issue — it's TCP
-retransmission machinery.
+### RFC 4821 / 8899 PLPMTUD active probing
+
+ICMP-independent path-MTU discovery via probe segments. Closes
+the "PMTUD black hole" failure mode where ICMP Frag-Needed is
+filtered out entirely.
+
+**Why skipped:** Substantial TCP feature (~800-1200 LOC source
++ extensive tests) — comparable to the FSM-dispatch refactor in
+scale. Real value when PyTCP is deployed on networks with
+filtered ICMP, low value for educational / lab use. Linux's
+`net.ipv4.tcp_mtu_probing` defaults to 0 on most distros even
+where the implementation is available. If PyTCP's deployment
+profile shifts to production-host or VPN-endpoint, this becomes
+top priority — at which point it deserves its own multi-commit
+project rather than being slipped into a polish session.
+
+### MSG_ERRQUEUE / IP_RECVERR / SO_ERROR
+
+POSIX + Linux extension socket-API surface for observing ICMP
+errors from user space. Used by traceroute (sending UDP probes,
+expecting ICMPTime Exceeded back) and by UDP applications that
+care about `ECONNREFUSED` on send.
+
+**Why skipped:** PyTCP has no consumer that would use this. No
+traceroute-style example, no UDP-based app that needs error
+visibility, and TCP error reporting already works via
+`ConnError` + Python exceptions on blocked syscalls. Adding it
+for "Linux parity" without a consumer would be ~600-900 LOC of
+code that nothing in the codebase exercises. Per the scope rule
+("Don't add features beyond what the test pins"), this fails
+the bar. Becomes valuable if PyTCP grows a UDP-based diagnostic
+or application stack — at that point the consumer pulls the
+implementation along.
+
+### Inbound IPv4 Redirect handling (Type 5)
+
+RFC 1122 §3.2.2.2 — host accepts a Redirect to update routing
+to use a different first-hop gateway for some destination.
+
+**Why skipped:** Architectural blocker. PyTCP has a
+single-gateway routing model (`Ip4Host.gateway` is one address
+per host); acting on a Redirect requires per-destination route
+overrides that PyTCP doesn't have. Implementing the feature
+means the routing-table refactor (~1500 LOC) plus the
+Icmp4MessageRedirect parser/handler (~400 LOC) — ~2000 LOC
+total. Linux's `accept_redirects=0` for hosts is the default
+since the late 90s anyway (forged-Redirect MITM attacks), so
+even if shipped the feature would be off-by-default and the
+code would never run. Defer indefinitely unless a multi-gateway
+use case lands first.
 
 ---
 
-## Suggested order
+## Out-of-scope (still true, recorded for completeness)
 
-1. **FSM-dispatch refactor** (per
-   `docs/refactor/icmp_into_tcp_fsm_plan.md`) — closes SHOULD #3
-   naturally as part of Phase 2.
-2. **#2 Parameter Problem outbound generation** — uses the new
-   FSM dispatch from step 1; clean addition.
-3. **#4 IP options echo** — small polish.
-4. **#5 Redirect** — defer unless routing model changes.
+### Inbound IPv4 Source-Route forwarding semantics
 
----
-
-## Resume prompt (after compaction)
-
-> I want to continue closing the open ICMP SHOULDs per
-> `docs/refactor/icmp_remaining_issues.md`. The current order is:
-> first the FSM-dispatch refactor (which closes SHOULD #3 as a
-> natural side effect — see
-> `docs/refactor/icmp_into_tcp_fsm_plan.md`), then SHOULD #2
-> (Parameter Problem outbound generation), then #4 / #5 if we
-> want to keep going.
->
-> Last commit: `6f44091e`. Suite: 8825 passing / 4 skipped, lint
-> clean. RFC 1122 §3.2.2 ICMP MUSTs are all met for both v4 and
-> v6; SHOULD #1 (Protocol Unreachable / Param Problem code 1
-> generation) is closed.
->
-> Tell me which item you want to start next and what I should
-> review before kicking off.
+LSRR/SSRR options are now first-class option types
+(`00a0ee7b`) and the Echo Reply path reverses them per RFC 1122
+§3.2.2.6 (`388e035b`). What's NOT implemented: routing decisions
+that consume the LSRR/SSRR pointer (i.e., "next hop is the IP
+at the slot indicated by pointer, then write our egress IP into
+that slot"). PyTCP isn't a router and doesn't forward, so this
+is a non-issue. The default-on `STACK__IP4__ACCEPT_SOURCE_ROUTE
+= False` gate (`65b7e5cd`) drops source-routed inbound packets
+before they would reach any forwarding logic.

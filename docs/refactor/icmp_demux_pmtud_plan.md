@@ -352,8 +352,8 @@ and (for the test commits) in test docstring `Reference:` lines.
 | `pytcp/tests/unit/stack/packet_handler/test___icmp_error_demux.py` | `parse_embedded_l4` happy path + every rejection branch |
 | `pytcp/tests/unit/stack/test__pmtu_cache.py` | Module-level dict exists + isolation hook works |
 | `pytcp/tests/unit/socket/test__udp__socket__pmtu.py` | `UdpSocket.notify_pmtu` updates the cache |
-| `pytcp/tests/unit/protocols/tcp/test__tcp__session__on_unreachable.py` | `on_unreachable` per-code routing |
-| `pytcp/tests/unit/protocols/tcp/test__tcp__session__on_pmtu.py` | `on_pmtu` MSS recompute + retransmit walkback |
+| `pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | `on_unreachable` per-code routing |
+| `pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__pmtu.py` | `on_pmtu` MSS recompute + retransmit walkback |
 | `pytcp/tests/unit/protocols/tcp/test__tcp__session__is_seq_in_window.py` | RFC 5927 seq guard predicate |
 
 ### 5.2 New integration tests
@@ -367,7 +367,7 @@ All built on top of the new `IcmpTestCase` harness from Phase 0.
 | `pytcp/tests/integration/protocols/icmp6/test__icmp6__error_demux.py` | ICMPv6 Type 1 + Type 2 + Type 3 RX paths |
 | `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` | ICMPv6 Type 2 (Packet Too Big) → `pmtu_cache` update + UDP/TCP callbacks |
 | `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py` | End-to-end PMTUD signal for TCP — outbound segment, ICMP Frag-Needed inbound, MSS recompute, smaller retransmit observable on the mock TAP |
-| `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` | End-to-end SYN_SENT ICMP-Port-Unreachable → ConnectionRefused abort |
+| `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | End-to-end SYN_SENT ICMP-Port-Unreachable → ConnectionRefused abort |
 
 ### 5.3 Existing tests that may need updates
 

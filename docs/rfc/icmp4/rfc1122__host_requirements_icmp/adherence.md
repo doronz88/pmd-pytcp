@@ -64,15 +64,17 @@ verbatim, so the bytes are unchanged
 > MUST be extracted from the original header and used to select the
 > appropriate transport protocol entity to handle the error."
 
-**Adherence:** **met** for Destination Unreachable. The shared
-embedded-L4 demux at
+**Adherence:** **met** for all three carrier message types
+(Destination Unreachable, Time Exceeded, Parameter Problem) on
+both v4 and v6. The shared embedded-L4 demux at
 `pytcp/stack/packet_handler/_icmp_error_demux.py::parse_embedded_l4`
 extracts the L4 protocol from the embedded IP header and routes
-UDP to `UdpSocket.notify_*` and TCP to `TcpSession.on_unreachable`
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:181-192`).
-Time Exceeded and Parameter Problem are not yet routed because
-those message types are not yet parsed (see §3.2.2.4 / §3.2.2.5
-below).
+UDP to `UdpSocket.notify_*` and TCP via
+`TcpSession.tcp_fsm(icmp=IcmpMetadata(...))`, which dispatches
+through `FSM_ICMP_HANDLERS` to the per-state ICMP handlers in
+`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` (see RFC 5927 §6
+hard-vs-soft semantics in
+`docs/rfc/tcp/rfc5927__icmp_tcp_attacks/adherence.md`).
 
 > "An ICMP error message SHOULD be sent with normal (i.e., zero)
 > TOS bits."
@@ -161,19 +163,21 @@ matches, subject to the §3.2.2 gates above.
 **Adherence:** **met**.
 `__phrx_icmp4__destination_unreachable` parses the embedded L4 and
 routes to either `UdpSocket.notify_*` or
-`TcpSession.on_unreachable`
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:149-192`).
+`TcpSession.tcp_fsm(icmp=IcmpMetadata(category=DEST_UNREACHABLE,
+...))`
+(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py`).
 
 > "A transport protocol that has its own mechanism for notifying
 > the sender that a port is unreachable (e.g., TCP, which sends RST
 > segments) MUST nevertheless accept an ICMP Port Unreachable for
 > the same purpose."
 
-**Adherence:** **met**.
-`TcpSession.on_unreachable(icmp_type=3, icmp_code=3)` surfaces
-`ConnError.REFUSED` to the socket layer
-(`pytcp/protocols/tcp/tcp__session.py`); the
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py`
+**Adherence:** **met**. ICMPv4 Type 3 Code 3 (Port Unreachable)
+in SYN_SENT routes through `tcp_fsm(icmp=...)` →
+`fsm__syn_sent__icmp` (RFC 5927 §5.2 hard-error path), which
+surfaces `ConnError.REFUSED` to the socket layer
+(`pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py`); the
+`pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
 suite pins this behaviour.
 
 > "A Destination Unreachable message that is received with code
@@ -181,13 +185,17 @@ suite pins this behaviour.
 > routing transient and MUST therefore be interpreted as only a
 > hint, not proof, that the specified destination is unreachable."
 
-**Adherence:** **partial**. We accept and report these codes to
-the transport layer the same way as 3 (Port). We do not
-specifically distinguish "hint" vs "proof" semantics — TCP treats
-all Destination Unreachable codes uniformly via
-`on_unreachable(icmp_type, icmp_code)`. The "MUST NOT be used as
-proof of a dead gateway" sub-rule is moot because PyTCP does not
-implement gateway-deadness tracking (see §3.3.1).
+**Adherence:** **met** (post FSM-dispatch refactor). The per-state
+ICMP handlers explicitly distinguish hard codes (v4 Code 2/3, v6
+Code 1/4) from soft codes (v4 Code 0=Net / 1=Host / 5=BadSrcRoute,
+v6 Code 0/3) per RFC 5927 §5.2. In SYN_SENT, soft codes set
+`HOST_UNREACHABLE` / `NET_UNREACHABLE` and release the blocked
+CONNECT but do NOT abort the FSM. In synchronized states all
+codes are downgraded to advisory (log only). The "MUST NOT be
+used as proof of a dead gateway" sub-rule is moot because PyTCP
+does not implement gateway-deadness tracking (see §3.3.1). See
+`docs/rfc/tcp/rfc5927__icmp_tcp_attacks/adherence.md` §5.2 for
+the full per-state taxonomy.
 
 ---
 
@@ -247,16 +255,19 @@ through `Icmp4MessageTimeExceeded` parsing
 and the `__phrx_icmp4__time_exceeded` packet-handler arm
 (`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:290+`)
 runs `parse_embedded_l4` on the carried original-datagram bytes
-and dispatches to either `TcpSession.on_time_exceeded` or
-`UdpSocket.notify_time_exceeded` based on the embedded L4
+and dispatches to either
+`TcpSession.tcp_fsm(icmp=IcmpMetadata(category=TIME_EXCEEDED, ...))`
+or `UdpSocket.notify_time_exceeded` based on the embedded L4
 protocol. The TCP demux applies the RFC 5927 §4 sequence-in-window
 guard before notifying the session.
 
-Per RFC 5927 §6, Time Exceeded is a soft error: the session
-receives the diagnostic but does NOT mutate FSM state or
-ConnError. The existing retransmission machinery handles the
-actual loss reported by the message; the notification's value is
-purely observability + future MSG_ERRQUEUE delivery.
+Per RFC 5927 §6, Time Exceeded is a soft error: the per-state
+ICMP handlers (in
+`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`) log the
+diagnostic and return without mutating FSM state or ConnError.
+The existing retransmission machinery handles the actual loss
+reported by the message; the notification's value is purely
+observability + future MSG_ERRQUEUE delivery.
 
 ---
 
@@ -293,8 +304,9 @@ through `Icmp4MessageParameterProblem` parsing
 (`net_proto/protocols/icmp4/message/icmp4__message__parameter_problem.py`),
 and the `__phrx_icmp4__parameter_problem` packet-handler arm runs
 `parse_embedded_l4` on the carried original-datagram bytes and
-dispatches to either `TcpSession.on_parameter_problem` or
-`UdpSocket.notify_parameter_problem` based on the embedded L4
+dispatches to either
+`TcpSession.tcp_fsm(icmp=IcmpMetadata(category=PARAM_PROBLEM, ...))`
+or `UdpSocket.notify_parameter_problem` based on the embedded L4
 protocol. The TCP demux applies the RFC 5927 §4 sequence-in-window
 guard before notifying the session.
 
@@ -488,7 +500,7 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.1 Destination Unreachable — TCP MUST accept
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py`
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
   — drives an ICMPv4 Port Unreachable matching a SYN_SENT and pins
   `ConnError.REFUSED`.
 
@@ -542,12 +554,12 @@ test, but the surrounding parser dispatch is fully exercised).
   rather than `Icmp4MessageUnknown`, with code 0/1 round-tripping
   cleanly.
 - **Integration (TCP demux):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py::TestTcpOnTimeExceeded`
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__time_exceeded.py::TestTcpOnTimeExceeded`
   — pins that a Time Exceeded carrying an in-window embedded TCP
-  SYN reaches `TcpSession.on_time_exceeded`, bumps the
-  `tcp__notify` counter, and does NOT mutate the FSM or
-  ConnError. Out-of-window embedded seq drops at the seq-in-window
-  guard.
+  SYN dispatches via `tcp_fsm(icmp=...)` to the per-state ICMP
+  handler, bumps the `tcp__notify` counter, and does NOT mutate
+  the FSM or ConnError. Out-of-window embedded seq drops at the
+  seq-in-window guard.
 
 **Status:** **locked in** (parser + TCP demux). UDP demux is
 covered by direct exercise of the `__phrx_icmp4__time_exceeded__dispatch_udp`
@@ -561,11 +573,12 @@ arm; a dedicated UDP integration test is a future polish.
   `Icmp4MessageParameterProblem`, with codes 0/1 and pointer field
   round-tripping cleanly.
 - **Integration (TCP demux):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem.py::TestTcpOnParameterProblem`
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__param_problem.py::TestTcpOnParameterProblem`
   — pins that a Parameter Problem carrying an in-window embedded
-  TCP SYN reaches `TcpSession.on_parameter_problem`, bumps the
-  `tcp__notify` counter, and does NOT mutate FSM/ConnError. Out-
-  of-window embedded seq drops at the seq-in-window guard.
+  TCP SYN dispatches via `tcp_fsm(icmp=...)` to the per-state
+  ICMP handler, bumps the `tcp__notify` counter, and does NOT
+  mutate FSM/ConnError. Out-of-window embedded seq drops at the
+  seq-in-window guard.
 
 **Status:** **locked in** (parser + TCP demux).
 

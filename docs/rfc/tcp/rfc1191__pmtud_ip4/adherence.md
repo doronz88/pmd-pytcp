@@ -64,17 +64,22 @@ inbound DF semantics.
 > its estimate of the path MTU to the value indicated
 > in the Next-Hop MTU field (RFC 1191 §4)."
 
-**Adherence:** **shipped** (Phases 4 + 6). The
-ICMPv4 RX handler at
+**Adherence:** **shipped**. The ICMPv4 RX handler at
 `pytcp/stack/packet_handler/packet_handler__icmp4__rx.py`
 demuxes Type 3 Code 4 (Frag-Needed) on the embedded
 4-tuple. UDP sockets see the update via
 `UdpSocket.notify_pmtu`; TCP sessions see it via
-`TcpSession.on_pmtu` which records the Next-Hop MTU
-into `stack.pmtu_cache` keyed by remote address and
-shrinks `self._win.snd_mss` accordingly. The RFC 5927
-§4 sequence-in-window guard is applied before
-notifying TCP.
+`TcpSession.tcp_fsm(icmp=IcmpMetadata(category=PMTU,
+...))`, which routes through the per-state ICMP
+handlers in
+`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` to the
+session's private `_apply_pmtu_update` helper. The
+helper records the Next-Hop MTU into `stack.pmtu_cache`
+keyed by remote address, shrinks `self._win.snd_mss`,
+and (per RFC 1191 §6.5 below) walks back any in-flight
+oversized segments. The RFC 5927 §4
+sequence-in-window guard is applied before notifying
+TCP.
 
 ### §6.5 TCP retransmit walkback on PMTU shrink
 

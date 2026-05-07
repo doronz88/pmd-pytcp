@@ -22,8 +22,10 @@ What is **in place**:
   — per-destination Path-MTU cache (Phase 3).
 - `UdpSocket.notify_pmtu(next_hop_mtu)` — UDP-side
   callback (Phase 4).
-- `TcpSession.on_pmtu(next_hop_mtu, ip_version)` —
-  TCP-side callback (Phase 6).
+- `TcpSession._apply_pmtu_update(next_hop_mtu,
+  ip_version)` — TCP-side callback, invoked from the
+  per-state ICMP handlers via `tcp_fsm(icmp=...)`
+  (Phase 6 + ICMP-into-FSM-dispatch refactor).
 - ICMPv4 Frag-Needed and ICMPv6 Packet-Too-Big
   demux feed those callbacks with the embedded-
   4-tuple matching (Phases 4 + 6).
@@ -61,7 +63,7 @@ coverage is provided by:
 - `pytcp/tests/unit/stack/test__pmtu_cache.py`
 - `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py`
 - `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py`
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py`
+- `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py`
 
 ---
 
