@@ -128,7 +128,17 @@ class PacketHandlerIcmp6Tx(ABC):
             case Icmp6Type.MLD2__REPORT, _:
                 self._packet_stats_tx.icmp6__mld2__report__send += 1
             case _:
-                raise ValueError(f"Unsupported ICMPv6 type {icmp6__message.type}, " f"code {icmp6__message.code}.")
+                # Defensive drop: unsupported ICMPv6 type/code shouldn't
+                # reach the TX path (the call sites enumerate their
+                # message types), but if one does, count + drop is
+                # robust where 'raise' would crash the calling thread.
+                self._packet_stats_tx.icmp6__unknown__drop += 1
+                __debug__ and log(
+                    "icmp6",
+                    f"{icmp6_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv6 "
+                    f"type {icmp6__message.type}, code {icmp6__message.code}</>",
+                )
+                return TxStatus.DROPPED__ICMP6__UNKNOWN
 
         return self._phtx_ip6(
             ip6__src=ip6__src,

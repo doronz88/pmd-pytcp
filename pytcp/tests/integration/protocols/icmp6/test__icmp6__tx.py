@@ -803,28 +803,36 @@ class TestIcmp6Tx__DestUnreachableUnsupportedCode(IcmpTestCase):
     Outbound ICMPv6 Destination Unreachable with a non-PORT code.
     """
 
-    def test__icmp6__tx__dst_unreach_non_port__raises(self) -> None:
+    def test__icmp6__tx__dst_unreach_non_port__drops(self) -> None:
         """
-        Ensure '_phtx_icmp6' raises ValueError when asked to emit a
-        Destination Unreachable with a code other than PORT — the TX
-        path only supports the PORT subcase today.
+        Ensure '_phtx_icmp6' drops with TxStatus.DROPPED__ICMP6__UNKNOWN
+        when asked to emit a Destination Unreachable with a code other
+        than PORT — the TX path only supports the PORT subcase today,
+        and the fall-through is a defensive drop with a counter bump
+        rather than an exception.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError) as error:
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS,
-                icmp6__message=Icmp6MessageDestinationUnreachable(
-                    code=Icmp6DestinationUnreachableCode.NO_ROUTE,
-                ),
-            )
+        before = self._packet_handler._packet_stats_tx.icmp6__unknown__drop
 
+        status = self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            icmp6__message=Icmp6MessageDestinationUnreachable(
+                code=Icmp6DestinationUnreachableCode.NO_ROUTE,
+            ),
+        )
+
+        self.assertIs(
+            status,
+            TxStatus.DROPPED__ICMP6__UNKNOWN,
+            msg="Unsupported code must return DROPPED__ICMP6__UNKNOWN.",
+        )
         self.assertEqual(
-            str(error.exception),
-            "Unsupported ICMPv6 type Destination Unreachable, code No Route.",
-            msg="Unexpected ValueError message for non-PORT Destination Unreachable.",
+            self._packet_handler._packet_stats_tx.icmp6__unknown__drop,
+            before + 1,
+            msg="Unsupported code must bump 'icmp6__unknown__drop'.",
         )
 
 

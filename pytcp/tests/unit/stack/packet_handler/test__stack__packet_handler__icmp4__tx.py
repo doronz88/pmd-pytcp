@@ -100,6 +100,8 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         """
         Ensure an Echo Reply is counted in 'icmp4__echo_reply__send'
         and forwarded to '_phtx_ip4' with the assembled ICMPv4 payload.
+
+        Reference: RFC 792 (Echo Reply).
         """
 
         status = self._handler._phtx_icmp4(
@@ -120,6 +122,8 @@ class TestPacketHandlerIcmp4Tx(TestCase):
     def test__stack__packet_handler__icmp4__tx__echo_request_counted(self) -> None:
         """
         Ensure an Echo Request is counted in 'icmp4__echo_request__send'.
+
+        Reference: RFC 792 (Echo).
         """
 
         self._handler._phtx_icmp4(
@@ -134,6 +138,8 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         """
         Ensure a Destination Unreachable (code=PORT) is counted in
         'icmp4__destination_unreachable__port__send'.
+
+        Reference: RFC 792 (Destination Unreachable Code 3).
         """
 
         self._handler._phtx_icmp4(
@@ -147,28 +153,48 @@ class TestPacketHandlerIcmp4Tx(TestCase):
 
         self.assertEqual(self._handler._packet_stats_tx.icmp4__destination_unreachable__port__send, 1)
 
-    def test__stack__packet_handler__icmp4__tx__unsupported_type_raises(self) -> None:
+    def test__stack__packet_handler__icmp4__tx__unsupported_type_drops(self) -> None:
         """
         Ensure an unsupported ICMPv4 message type / code combination
-        raises 'ValueError' rather than silently producing an invalid
-        packet. Destination Unreachable with code=NETWORK is not in
-        the supported match arms.
+        is dropped with 'TxStatus.DROPPED__ICMP4__UNKNOWN' and bumps
+        the 'icmp4__unknown__drop' counter — defensive over the old
+        'raise ValueError' behaviour. Destination Unreachable with
+        code=NETWORK is not in the supported match arms.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError):
-            self._handler._phtx_icmp4(
-                ip4__src=STACK__IP4_ADDRESS,
-                ip4__dst=HOST_A__IP4,
-                icmp4__message=Icmp4MessageDestinationUnreachable(
-                    code=Icmp4DestinationUnreachableCode.NETWORK,
-                    data=b"\x00" * 20,
-                ),
-            )
+        status = self._handler._phtx_icmp4(
+            ip4__src=STACK__IP4_ADDRESS,
+            ip4__dst=HOST_A__IP4,
+            icmp4__message=Icmp4MessageDestinationUnreachable(
+                code=Icmp4DestinationUnreachableCode.NETWORK,
+                data=b"\x00" * 20,
+            ),
+        )
+
+        self.assertIs(
+            status,
+            TxStatus.DROPPED__ICMP4__UNKNOWN,
+            msg="Unsupported ICMPv4 type must return DROPPED__ICMP4__UNKNOWN.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_tx.icmp4__unknown__drop,
+            1,
+            msg="Unsupported ICMPv4 type must bump 'icmp4__unknown__drop'.",
+        )
+        self.assertEqual(
+            len(self._handler.ip4_tx_calls),
+            0,
+            msg="Unsupported ICMPv4 type must NOT forward to '_phtx_ip4'.",
+        )
 
     def test__stack__packet_handler__icmp4__tx__send_icmp4_packet_forwards(self) -> None:
         """
         Ensure the public 'send_icmp4_packet' helper forwards its
         arguments verbatim to '_phtx_icmp4'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler.send_icmp4_packet(

@@ -35,6 +35,8 @@ from unittest import TestCase
 from net_addr import Ip6Address, Ip6Host, MacAddress
 from net_proto import (
     Icmp6Assembler,
+    Icmp6DestinationUnreachableCode,
+    Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
     Icmp6Mld2MessageReport,
@@ -108,6 +110,8 @@ class TestPacketHandlerIcmp6Tx(TestCase):
         """
         Ensure an Echo Reply increments 'icmp6__echo_reply__send' and
         forwards to '_phtx_ip6'.
+
+        Reference: RFC 4443 §4.2 (Echo Reply).
         """
 
         status = self._handler._phtx_icmp6(
@@ -124,6 +128,8 @@ class TestPacketHandlerIcmp6Tx(TestCase):
     def test__stack__packet_handler__icmp6__tx__echo_request_counted(self) -> None:
         """
         Ensure an Echo Request increments 'icmp6__echo_request__send'.
+
+        Reference: RFC 4443 §4.1 (Echo Request).
         """
 
         self._handler._phtx_icmp6(
@@ -155,6 +161,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
         Ensure '_send_icmp6_nd_dad_message' sends an NS from 0:: to the
         candidate's solicited-node multicast with hop=255.
+
+        Reference: RFC 4862 §5.4 (Duplicate Address Detection).
         """
 
         candidate = Ip6Address("2001:db8:0:1::100")
@@ -175,6 +183,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
         Ensure '_send_icmp6_multicast_listener_report' filters out
         ff02::1 (all-nodes) and sends an MLDv2 report for the rest.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report).
         """
 
         group = Ip6Address("ff02::1:3")
@@ -196,6 +206,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
         Ensure no MLDv2 report is emitted when the only joined group
         is ff02::1 (it is excluded from the report set).
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report).
         """
 
         handler = _StubHandler(ip6_multicast=[Ip6Address("ff02::1")])
@@ -211,6 +223,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
         Ensure '_send_icmp6_nd_router_solicitation' addresses ff02::2
         (all-routers) with hop=255 and includes an SLLA option.
+
+        Reference: RFC 4861 §6.3.7 (Router Solicitation transmission).
         """
 
         self._handler._send_icmp6_nd_router_solicitation()
@@ -224,6 +238,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         Ensure 'send_icmp6_neighbor_solicitation' addresses the target's
         solicited-node multicast with hop=255 and picks src from the
         matching stack host.
+
+        Reference: RFC 4861 §7.2.2 (Neighbor Solicitation transmission).
         """
 
         target = HOST_A__IP6
@@ -238,6 +254,8 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
         Ensure the public 'send_icmp6_packet' helper forwards its
         arguments to '_phtx_icmp6'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler.send_icmp6_packet(
@@ -255,19 +273,12 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
     The unsupported-type behaviour tests.
     """
 
-    def test__stack__packet_handler__icmp6__tx__unsupported_raises(self) -> None:
+    def test__stack__packet_handler__icmp6__tx__mld2_report_counted(self) -> None:
         """
-        Ensure an unsupported type/code combination raises ValueError.
-        An Icmp6NdOptions-only message doesn't exist; use a type that
-        falls through the match. The handler only knows the types
-        enumerated in the match statement.
+        Ensure an MLDv2 Report is counted in 'icmp6__mld2__report__send'
+        — the positive baseline case for the type-dispatch match.
 
-        Here we force a message where type lands in the fallthrough by
-        using a generic 'object' stub — not a real test path; we rely
-        on the match statement being exhaustive for the currently
-        supported set (Echo Reply, Echo Request, DU Port, ND *, MLDv2).
-
-        Instead, pin the positive behaviour: MLDv2 reports are counted.
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler()
@@ -282,4 +293,38 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
             handler._packet_stats_tx.icmp6__mld2__report__send,
             1,
             msg="MLDv2 report must be counted in icmp6__mld2__report__send.",
+        )
+
+    def test__stack__packet_handler__icmp6__tx__unsupported_type_drops(self) -> None:
+        """
+        Ensure an unsupported ICMPv6 type/code combination is dropped
+        with 'TxStatus.DROPPED__ICMP6__UNKNOWN' and bumps the
+        'icmp6__unknown__drop' counter — defensive over a 'raise'
+        that would crash the calling thread. ICMPv6 Destination
+        Unreachable code=NO_ROUTE is not in the supported match arms
+        (only PORT is).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _StubHandler()
+        status = handler._phtx_icmp6(
+            ip6__src=STACK__IP6_ADDRESS,
+            ip6__dst=HOST_A__IP6,
+            ip6__hop=64,
+            icmp6__message=Icmp6MessageDestinationUnreachable(
+                code=Icmp6DestinationUnreachableCode.NO_ROUTE,
+                data=b"\x00" * 40,
+            ),
+        )
+
+        self.assertIs(
+            status,
+            TxStatus.DROPPED__ICMP6__UNKNOWN,
+            msg="Unsupported ICMPv6 type must return DROPPED__ICMP6__UNKNOWN.",
+        )
+        self.assertEqual(
+            handler._packet_stats_tx.icmp6__unknown__drop,
+            1,
+            msg="Unsupported ICMPv6 type must bump 'icmp6__unknown__drop'.",
         )

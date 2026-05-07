@@ -111,9 +111,17 @@ class PacketHandlerIcmp4Tx(ABC):
             case Icmp4Type.ECHO_REQUEST, _:
                 self._packet_stats_tx.icmp4__echo_request__send += 1
             case _:
-                raise ValueError(
-                    f"Unsupported ICMPv4 message type {icmp4__message.type}, " f"code {icmp4__message.code}."
+                # Defensive drop: unsupported ICMPv4 type/code shouldn't
+                # reach the TX path (the call sites enumerate their
+                # message types), but if one does, count + drop is
+                # robust where 'raise' would crash the calling thread.
+                self._packet_stats_tx.icmp4__unknown__drop += 1
+                __debug__ and log(
+                    "icmp4",
+                    f"{icmp4_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv4 "
+                    f"type {icmp4__message.type}, code {icmp4__message.code}</>",
                 )
+                return TxStatus.DROPPED__ICMP4__UNKNOWN
 
         return self._phtx_ip4(
             ip4__src=ip4__src,

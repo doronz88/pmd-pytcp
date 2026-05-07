@@ -390,28 +390,36 @@ class TestIcmp4Tx__DestUnreachableUnsupportedCode(IcmpTestCase):
     Outbound ICMPv4 Destination Unreachable with a non-PORT code.
     """
 
-    def test__icmp4__tx__dst_unreach_non_port__raises(self) -> None:
+    def test__icmp4__tx__dst_unreach_non_port__drops(self) -> None:
         """
-        Ensure '_phtx_icmp4' raises ValueError when asked to emit
-        a Destination Unreachable with a code other than PORT — the
-        TX path only supports the PORT subcase today.
+        Ensure '_phtx_icmp4' drops with TxStatus.DROPPED__ICMP4__UNKNOWN
+        when asked to emit a Destination Unreachable with a code other
+        than PORT or PROTOCOL — the TX path only supports those two
+        subcases today, and the fall-through is a defensive drop with
+        a counter bump rather than an exception.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError) as error:
-            self._packet_handler._phtx_icmp4(
-                ip4__src=STACK__IP4_HOST.address,
-                ip4__dst=HOST_A__IP4_ADDRESS,
-                icmp4__message=Icmp4MessageDestinationUnreachable(
-                    code=Icmp4DestinationUnreachableCode.NETWORK,
-                ),
-            )
+        before = self._packet_handler._packet_stats_tx.icmp4__unknown__drop
 
+        status = self._packet_handler._phtx_icmp4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            icmp4__message=Icmp4MessageDestinationUnreachable(
+                code=Icmp4DestinationUnreachableCode.NETWORK,
+            ),
+        )
+
+        self.assertIs(
+            status,
+            TxStatus.DROPPED__ICMP4__UNKNOWN,
+            msg="Unsupported code must return DROPPED__ICMP4__UNKNOWN.",
+        )
         self.assertEqual(
-            str(error.exception),
-            "Unsupported ICMPv4 message type Destination Unreachable, code Network.",
-            msg="Unexpected ValueError message for non-PORT Destination Unreachable.",
+            self._packet_handler._packet_stats_tx.icmp4__unknown__drop,
+            before + 1,
+            msg="Unsupported code must bump 'icmp4__unknown__drop'.",
         )
 
 
