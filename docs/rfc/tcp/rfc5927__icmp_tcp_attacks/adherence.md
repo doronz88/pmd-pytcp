@@ -12,26 +12,31 @@
 
 ## Top-line adherence
 
-After Phase 2 of the ICMP-into-TCP-FSM-dispatch
-refactor, PyTCP **partially implements** RFC 5927:
+After Phase 3 of the ICMP-into-TCP-FSM-dispatch
+refactor, PyTCP **implements** the RFC 5927
+counter-measures end-to-end:
 
 - §4 sequence-in-window guard is **shipped** for
   both ICMPv4 and ICMPv6 Destination Unreachable +
   PTB demuxes.
-- §5.2 hard-error softening is **shipped at the
-  FSM-dispatch layer**: per-state ICMP handlers in
-  `pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`
-  decide hard-vs-soft on a per-state basis, and the
-  shared `fsm__icmp__synchronized` default
-  downgrades every hard error to soft once a
-  connection is synchronized (the canonical RFC
-  5927 §5.2 counter-measure). SYN_SENT is the only
-  state allowed to abort, and it now covers all
-  four canonical hard-error codes (ICMPv4 Code 2/3,
-  ICMPv6 Code 1/4). Production wiring of the ICMP
-  RX path through `tcp_fsm(icmp=...)` lands in
-  Phase 3; until then the legacy `on_unreachable`
-  direct-call path on `TcpSession` is still in use.
+- §5.2 hard-error softening is **shipped end-to-
+  end**: the production ICMPv4 / ICMPv6 RX path in
+  `packet_handler__icmp{4,6}__rx.py` builds an
+  `IcmpMetadata` and calls `session.tcp_fsm(icmp=
+  metadata)`, which routes through
+  `FSM_ICMP_HANDLERS` to per-state handlers in
+  `pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`.
+  Per-state handlers decide hard-vs-soft on a
+  per-state basis: SYN_SENT is the only state
+  allowed to abort (covering all four canonical
+  hard-error codes — ICMPv4 Code 2/3, ICMPv6 Code
+  1/4); the shared `fsm__icmp__synchronized`
+  default downgrades every hard error to soft once
+  a connection is synchronized (the canonical
+  counter-measure for the blind connection-reset
+  attack). The legacy `TcpSession.on_*` methods
+  are no longer reachable from production code; a
+  Phase 4 commit deletes them.
 
 What still **does not happen**:
 
@@ -69,13 +74,15 @@ before notifying the session. Failures bump
 > synchronized states SHOULD be treated as
 > advisory rather than aborting the connection."
 
-**Adherence:** shipped at the FSM-dispatch layer
-(Phase 2 of the ICMP-into-FSM refactor).
+**Adherence:** shipped end-to-end (Phase 3 of the
+ICMP-into-FSM refactor).
 
-`tcp_fsm(icmp=IcmpMetadata(...))` routes through
-`FSM_ICMP_HANDLERS` (see
-`pytcp/protocols/tcp/fsm/tcp__fsm.py`) to the
-per-state handler:
+The production ICMPv4 / ICMPv6 RX path
+(`packet_handler__icmp{4,6}__rx.py`) builds an
+`IcmpMetadata` and calls
+`session.tcp_fsm(icmp=metadata)`. The FSM dispatcher
+in `pytcp/protocols/tcp/fsm/tcp__fsm.py` routes via
+`FSM_ICMP_HANDLERS` to the per-state handler:
 
 - **SYN_SENT** (`fsm__syn_sent__icmp`): the only
   state that aborts. Hard codes (v4 Code 2/3, v6
@@ -93,18 +100,10 @@ per-state handler:
   `snd_mss`.
 - **LISTEN** (`fsm__listen__icmp`): pure no-op.
 
-The legacy `TcpSession.on_unreachable` is still
-present on the session and is the path the
-production ICMP RX handlers
-(`packet_handler__icmp{4,6}__rx.py`) drive today.
-Phase 3 of the refactor migrates those callers to
-`tcp_fsm(icmp=...)` so the per-state semantics
-become the actual user-observable behavior; Phase
-4 deletes `on_*`. After Phase 3 the legacy
-`on_unreachable` "synchronized state + Net/Host
-Unreachable surfaces ConnError" branch becomes
-unreachable and the §5.2 counter-measure is
-end-to-end.
+The legacy `TcpSession.on_*` methods remain on the
+class as no-longer-reachable code; Phase 4 deletes
+them. The §5.2 counter-measure is end-to-end as of
+this Phase 3 commit.
 
 ## §5 PMTUD Attacks
 
@@ -140,21 +139,15 @@ ICMP signals are forged.
 | Aspect                                  | Status                              |
 |-----------------------------------------|-------------------------------------|
 | §4 sequence-in-window guard             | **shipped**                         |
-| §5.2 hard-error softening (FSM layer)   | **shipped (Phase 2)**               |
-| §5.2 hard-error softening (production)  | partially shipped (awaits Phase 3)  |
+| §5.2 hard-error softening (end-to-end)  | **shipped (Phase 3)**               |
 | §5 PMTUD attack mitigation              | not implemented                     |
 
 The seq-in-window guard is the load-bearing
 security mitigation against off-path ICMP forgery;
 it is in place and tested. The §5.2 softening
-behavior is now explicit at the FSM-dispatch layer
-— the `fsm__icmp__synchronized` default downgrades
-every synchronized-state hard error to a no-op,
-and `fsm__syn_sent__icmp` covers all four
-canonical hard-error codes for the abort path.
-The production ICMP RX path still calls
-`TcpSession.on_*` directly; Phase 3 of the
-refactor (`docs/refactor/icmp_into_tcp_fsm_plan.md`)
-migrates those callers and makes the FSM path
-end-to-end. The PMTUD attack mitigation gap is
-closed only by RFC 4821 / 8899 active probing.
+behavior is end-to-end as of Phase 3: the
+production ICMP RX path drives `tcp_fsm(icmp=...)`
+into the per-state dispatcher, and only SYN_SENT
+is allowed to abort. The PMTUD attack mitigation
+gap is closed only by RFC 4821 / 8899 active
+probing.

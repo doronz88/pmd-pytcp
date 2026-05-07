@@ -50,6 +50,7 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
+from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
@@ -254,8 +255,8 @@ class PacketHandlerIcmp4Rx(ABC):
         Route an ICMPv4 Destination Unreachable carrying an embedded
         TCP segment to the matching TcpSession via TcpSocket. Applies
         the RFC 5927 §4 sequence-in-window guard. Code-4 Frag-Needed
-        with a non-None mtu drives the PMTUD on_pmtu callback; every
-        other code drives on_unreachable.
+        with a non-None mtu drives the PMTU FSM event; every other
+        code drives a DEST_UNREACHABLE FSM event.
         """
 
         socket_id = SocketId(
@@ -282,7 +283,15 @@ class PacketHandlerIcmp4Rx(ABC):
                 f"{packet_rx.tracker} - <INFO>Found matching TCP session "
                 f"for Frag-Needed from {packet_rx.ip4.src}, mtu={frag_needed_mtu}</>",
             )
-            socket._tcp_session.on_pmtu(next_hop_mtu=frag_needed_mtu, ip_version=4)
+            socket._tcp_session.tcp_fsm(
+                icmp=IcmpMetadata(
+                    category=IcmpCategory.PMTU,
+                    icmp_type=3,
+                    icmp_code=4,
+                    next_hop_mtu=frag_needed_mtu,
+                    ip_version=4,
+                ),
+            )
             self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
             return
 
@@ -291,7 +300,14 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Unreachable packet from {packet_rx.ip4.src}</>",
         )
-        socket._tcp_session.on_unreachable(icmp_type=3, icmp_code=icmp_code)
+        socket._tcp_session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.DEST_UNREACHABLE,
+                icmp_type=3,
+                icmp_code=icmp_code,
+                ip_version=4,
+            ),
+        )
         self._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
 
     def __phrx_icmp4__time_exceeded(self, packet_rx: PacketRx) -> None:
@@ -400,7 +416,14 @@ class PacketHandlerIcmp4Rx(ABC):
             "icmp4",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session " f"for Time Exceeded from {packet_rx.ip4.src}</>",
         )
-        socket._tcp_session.on_time_exceeded(icmp_type=11, icmp_code=icmp_code)
+        socket._tcp_session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.TIME_EXCEEDED,
+                icmp_type=11,
+                icmp_code=icmp_code,
+                ip_version=4,
+            ),
+        )
         self._packet_stats_rx.icmp4__time_exceeded__tcp__notify += 1
 
     def __phrx_icmp4__parameter_problem(self, packet_rx: PacketRx) -> None:
@@ -510,7 +533,14 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Parameter Problem from {packet_rx.ip4.src}</>",
         )
-        socket._tcp_session.on_parameter_problem(icmp_type=12, icmp_code=icmp_code)
+        socket._tcp_session.tcp_fsm(
+            icmp=IcmpMetadata(
+                category=IcmpCategory.PARAM_PROBLEM,
+                icmp_type=12,
+                icmp_code=icmp_code,
+                ip_version=4,
+            ),
+        )
         self._packet_stats_rx.icmp4__parameter_problem__tcp__notify += 1
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
