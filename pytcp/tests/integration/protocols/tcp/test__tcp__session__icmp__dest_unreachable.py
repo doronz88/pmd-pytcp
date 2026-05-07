@@ -8,10 +8,10 @@
 ##   the Free Software Foundation, either version 3 of the License, or        ##
 ##   (at your option) any later version.                                      ##
 ##                                                                            ##
-##   This program is distributed in the hope that it will be useful,          ##
-##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
-##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
-##   GNU General Public License for more details.                             ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
 ##                                                                            ##
 ##   You should have received a copy of the GNU General Public License        ##
 ##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
@@ -27,12 +27,14 @@
 
 
 """
-Integration tests for the ICMP PMTUD → TCP demux path added in
-Phase 6 of the ICMP demux + PMTUD refactor. Drives an ICMPv4
-Frag-Needed (Type 3 Code 4) into a SYN_SENT-state TCP session and
-verifies pmtu_cache update + snd_mss recompute.
+Integration tests for the ICMP Destination Unreachable → TCP demux
+path added in Phase 5 of the ICMP demux + PMTUD refactor. Drives
+a SYN_SENT-state session through:
+  * RFC 5927 §4 sequence-in-window guard.
+  * Per-code routing (Net / Host / Port).
+  * ConnError surfacing on TcpSession.
 
-pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py
 
 ver 3.0.4
 """
@@ -46,6 +48,7 @@ from net_proto import (
     TcpAssembler,
 )
 from pytcp import stack
+from pytcp.protocols.tcp.tcp__enums import ConnError
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
@@ -64,13 +67,12 @@ STACK__PORT: int = 12345
 PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
 PEER__PORT: int = 80
 LOCAL__ISS: int = 0x0000_1000
-NEXT_HOP_MTU: int = 1400
 
 
-def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
+def _build_icmp4_unreachable_frame(*, code: Icmp4DestinationUnreachableCode, embedded_seq: int) -> bytes:
     """
-    Build an Ethernet/IPv4/ICMPv4 Type 3 Code 4 (Frag-Needed) frame
-    whose embedded data is an IPv4+TCP SYN segment for the
+    Build an Ethernet/IPv4/ICMPv4 Destination Unreachable frame whose
+    embedded data is an IPv4+TCP SYN segment for the
     (PEER → STACK : PEER__PORT → STACK__PORT) flow with seq=embedded_seq.
     """
 
@@ -88,8 +90,7 @@ def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
     )
     icmp = Icmp4Assembler(
         icmp4__message=Icmp4MessageDestinationUnreachable(
-            code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
-            mtu=mtu,
+            code=code,
             data=embedded_tcp,
         ),
     )
@@ -103,14 +104,16 @@ def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
 
 
-class TestTcpOnPmtu(TcpSessionTestCase):
+class TestTcpOnUnreachable(TcpSessionTestCase):
     """
-    Integration tests for the ICMPv4 Frag-Needed → TCP PMTUD path.
+    Integration tests for the ICMP Destination Unreachable → TCP
+    demux path.
     """
 
     def _make_syn_sent_session(self) -> TcpSession:
         """
-        Build a SYN_SENT-state session.
+        Build a SYN_SENT-state session: open the active connect
+        and let the SYN go on the wire.
         """
 
         self._force_iss(LOCAL__ISS)
@@ -133,126 +136,133 @@ class TestTcpOnPmtu(TcpSessionTestCase):
         assert session.state is FsmState.SYN_SENT
         return session
 
-    def test__icmp4__frag_needed__updates_pmtu_cache(self) -> None:
+    def test__icmp4__port_unreachable__on_syn_sent__refused_and_closed(self) -> None:
         """
-        Ensure an ICMPv4 Frag-Needed for a 4-tuple matching a TCP
-        session updates 'stack.pmtu_cache' with the advertised
-        next-hop MTU keyed by the remote address.
+        Ensure an ICMPv4 Port Unreachable matching a SYN_SENT
+        session sets ConnError.REFUSED and transitions the FSM to
+        CLOSED, releasing the blocked CONNECT caller.
 
-        Reference: RFC 1191 §3 (Path MTU Discovery on the host).
-        """
-
-        self._make_syn_sent_session()
-
-        self._drive_rx(
-            frame=_build_icmp4_frag_needed_frame(mtu=NEXT_HOP_MTU, embedded_seq=LOCAL__ISS),
-        )
-
-        self.assertEqual(
-            stack.pmtu_cache.get(PEER__IP),
-            NEXT_HOP_MTU,
-            msg="ICMPv4 Frag-Needed must update stack.pmtu_cache for the remote address.",
-        )
-
-    def test__icmp4__frag_needed__shrinks_snd_mss(self) -> None:
-        """
-        Ensure the Frag-Needed callback shrinks the session's
-        snd_mss to fit the new path MTU minus IPv4(20) + TCP(20) =
-        40 bytes of fixed overhead.
-
-        Reference: RFC 9293 §3.7.5 (MSS option update on path-MTU change).
+        Reference: RFC 9293 §3.10.7.3 (RST in SYN-SENT triggers connection refused).
         """
 
         session = self._make_syn_sent_session()
-        # Force a comfortably-large initial MSS so the shrink is observable.
-        session._win.snd_mss = 1460
 
         self._drive_rx(
-            frame=_build_icmp4_frag_needed_frame(mtu=NEXT_HOP_MTU, embedded_seq=LOCAL__ISS),
+            frame=_build_icmp4_unreachable_frame(
+                code=Icmp4DestinationUnreachableCode.PORT,
+                embedded_seq=LOCAL__ISS,
+            )
         )
 
-        self.assertEqual(
-            session._win.snd_mss,
-            NEXT_HOP_MTU - 40,
-            msg="snd_mss must drop to next_hop_mtu - 40 (IPv4 + TCP overhead).",
+        self.assertIs(
+            session._connection_error,
+            ConnError.REFUSED,
+            msg="Port Unreachable on SYN_SENT must surface ConnError.REFUSED.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSED,
+            msg="Port Unreachable on SYN_SENT must transition the session to CLOSED.",
         )
 
-    def test__icmp4__frag_needed__never_grows_snd_mss(self) -> None:
+    def test__icmp4__host_unreachable__sets_host_unreachable_error(self) -> None:
         """
-        Ensure a Frag-Needed advertising a MTU larger than the
-        current snd_mss + overhead does NOT grow snd_mss — RFC 1191
-        is shrink-only on the immediate signal.
+        Ensure an ICMPv4 Host Unreachable surfaces
+        ConnError.HOST_UNREACHABLE without altering the FSM state —
+        ICMP errors are advisory.
 
-        Reference: RFC 1191 §6.4 (PMTU only shrinks on a Frag-Needed).
+        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
         """
 
         session = self._make_syn_sent_session()
-        session._win.snd_mss = 500  # smaller than NEXT_HOP_MTU - 40 = 1360
 
         self._drive_rx(
-            frame=_build_icmp4_frag_needed_frame(mtu=NEXT_HOP_MTU, embedded_seq=LOCAL__ISS),
+            frame=_build_icmp4_unreachable_frame(
+                code=Icmp4DestinationUnreachableCode.HOST,
+                embedded_seq=LOCAL__ISS,
+            )
         )
 
-        self.assertEqual(
-            session._win.snd_mss,
-            500,
-            msg="snd_mss must not grow on a Frag-Needed signaling a larger path MTU.",
+        self.assertIs(
+            session._connection_error,
+            ConnError.HOST_UNREACHABLE,
+            msg="Host Unreachable must surface ConnError.HOST_UNREACHABLE.",
         )
 
-    def test__icmp4__frag_needed__seq_out_of_window__drops(self) -> None:
+    def test__icmp4__net_unreachable__sets_net_unreachable_error(self) -> None:
         """
-        Ensure a Frag-Needed whose embedded TCP seq fails the
-        sequence-in-window guard does not update the cache and does
-        not change snd_mss.
+        Ensure an ICMPv4 Net Unreachable surfaces
+        ConnError.NET_UNREACHABLE.
+
+        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
+        """
+
+        session = self._make_syn_sent_session()
+
+        self._drive_rx(
+            frame=_build_icmp4_unreachable_frame(
+                code=Icmp4DestinationUnreachableCode.NETWORK,
+                embedded_seq=LOCAL__ISS,
+            )
+        )
+
+        self.assertIs(
+            session._connection_error,
+            ConnError.NET_UNREACHABLE,
+            msg="Net Unreachable must surface ConnError.NET_UNREACHABLE.",
+        )
+
+    def test__icmp4__seq_out_of_window__drops(self) -> None:
+        """
+        Ensure an ICMPv4 error whose embedded TCP seq does not lie
+        in SND.UNA..SND.NXT is silently dropped. The session's
+        connection_error must remain NONE and the matching counter
+        must bump.
 
         Reference: RFC 5927 §4 (sequence-in-window check).
         """
 
         session = self._make_syn_sent_session()
-        session._win.snd_mss = 1460
         before = self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop
 
         self._drive_rx(
-            frame=_build_icmp4_frag_needed_frame(
-                mtu=NEXT_HOP_MTU,
+            frame=_build_icmp4_unreachable_frame(
+                code=Icmp4DestinationUnreachableCode.PORT,
                 embedded_seq=LOCAL__ISS + 0x4000_0000,
-            ),
+            )
         )
 
-        self.assertEqual(
-            session._win.snd_mss,
-            1460,
-            msg="Out-of-window Frag-Needed must NOT shrink snd_mss.",
-        )
-        self.assertNotIn(
-            PEER__IP,
-            stack.pmtu_cache,
-            msg="Out-of-window Frag-Needed must NOT update pmtu_cache.",
+        self.assertIs(
+            session._connection_error,
+            ConnError.NONE,
+            msg="Out-of-window ICMP error must NOT surface a connection error.",
         )
         self.assertEqual(
             self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop,
             before + 1,
-            msg="Out-of-window Frag-Needed must bump the seq-out-of-window drop counter.",
+            msg="Out-of-window ICMP error must bump the seq-out-of-window drop counter.",
         )
 
-    def test__icmp4__frag_needed__bumps_notify_pmtu_counter(self) -> None:
+    def test__icmp4__bumps_tcp_notify_counter(self) -> None:
         """
-        Ensure a successful Frag-Needed → TCP demux bumps the
-        'icmp4__destination_unreachable__fragmentation_needed__notify_pmtu'
-        counter.
+        Ensure a successful ICMPv4 → TCP demux bumps the
+        'icmp4__destination_unreachable__tcp__notify' counter.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._make_syn_sent_session()
-        before = self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu
+        before = self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__tcp__notify
 
         self._drive_rx(
-            frame=_build_icmp4_frag_needed_frame(mtu=NEXT_HOP_MTU, embedded_seq=LOCAL__ISS),
+            frame=_build_icmp4_unreachable_frame(
+                code=Icmp4DestinationUnreachableCode.PORT,
+                embedded_seq=LOCAL__ISS,
+            )
         )
 
         self.assertEqual(
-            self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu,
+            self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__tcp__notify,
             before + 1,
-            msg="Successful Frag-Needed → TCP demux must bump the notify-pmtu counter.",
+            msg="Successful ICMP→TCP demux must bump the 'tcp__notify' counter.",
         )

@@ -27,22 +27,22 @@
 
 
 """
-Integration tests for the ICMPv6 Time Exceeded → TCP demux path.
-Mirrors the v4 tests; verifies that the v6 RX dispatch arm + v6
-embedded-L4 demux reach TcpSession.on_time_exceeded with soft-error
-semantics (no FSM mutation per RFC 5927 §6).
+Integration tests for the ICMP Time Exceeded → TCP demux path.
+Time Exceeded is a soft error per RFC 5927 §6 — the session must
+record the diagnostic but MUST NOT abort the connection nor mutate
+any FSM state.
 
-pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded__ip6.py
+pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__time_exceeded.py
 
 ver 3.0.4
 """
 
-from net_addr import Ip6Address
+from net_addr import Ip4Address
 from net_proto import (
-    Icmp6Assembler,
-    Icmp6MessageTimeExceeded,
-    Icmp6TimeExceededCode,
-    Ip6Assembler,
+    Icmp4Assembler,
+    Icmp4MessageTimeExceeded,
+    Icmp4TimeExceededCode,
+    Ip4Assembler,
     TcpAssembler,
 )
 from pytcp import stack
@@ -55,34 +55,34 @@ from pytcp.protocols.tcp.tcp__session import (
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
-    HOST_A__IP6_ADDRESS,
-    STACK__IP6_HOST,
+    HOST_A__IP4_ADDRESS,
+    STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
-STACK__IP: Ip6Address = STACK__IP6_HOST.address
+STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
-PEER__IP: Ip6Address = HOST_A__IP6_ADDRESS
+PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
 PEER__PORT: int = 80
 LOCAL__ISS: int = 0x0000_1000
 
 
-def _build_icmp6_time_exceeded_frame(
+def _build_icmp4_time_exceeded_frame(
     *,
-    code: Icmp6TimeExceededCode,
+    code: Icmp4TimeExceededCode,
     embedded_seq: int,
 ) -> bytes:
     """
-    Build an Ethernet/IPv6/ICMPv6 Time Exceeded frame whose embedded
-    data is an IPv6+TCP SYN segment for the
+    Build an Ethernet/IPv4/ICMPv4 Time Exceeded frame whose embedded
+    data is an IPv4+TCP SYN segment for the
     (STACK → PEER : STACK__PORT → PEER__PORT) flow with seq=embedded_seq.
     """
 
     embedded_tcp = bytes(
-        Ip6Assembler(
-            ip6__src=STACK__IP,
-            ip6__dst=PEER__IP,
-            ip6__payload=TcpAssembler(
+        Ip4Assembler(
+            ip4__src=STACK__IP,
+            ip4__dst=PEER__IP,
+            ip4__payload=TcpAssembler(
                 tcp__sport=STACK__PORT,
                 tcp__dport=PEER__PORT,
                 tcp__seq=embedded_seq,
@@ -90,34 +90,35 @@ def _build_icmp6_time_exceeded_frame(
             ),
         )
     )
-    icmp = Icmp6Assembler(
-        icmp6__message=Icmp6MessageTimeExceeded(
+    icmp = Icmp4Assembler(
+        icmp4__message=Icmp4MessageTimeExceeded(
             code=code,
             data=embedded_tcp,
         ),
     )
-    ip6 = bytes(
-        Ip6Assembler(
-            ip6__src=PEER__IP,
-            ip6__dst=STACK__IP,
-            ip6__payload=icmp,
+    ip4 = bytes(
+        Ip4Assembler(
+            ip4__src=PEER__IP,
+            ip4__dst=STACK__IP,
+            ip4__payload=icmp,
         )
     )
-    return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd" + ip6
+    return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
 
 
-class TestTcpOnTimeExceededIp6(TcpSessionTestCase):
+class TestTcpOnTimeExceeded(TcpSessionTestCase):
     """
-    Integration tests for the ICMPv6 Time Exceeded → TCP demux path.
+    Integration tests for the ICMP Time Exceeded → TCP demux path.
     """
 
     def _make_syn_sent_session(self) -> TcpSession:
         """
-        Build a SYN_SENT-state IPv6 session.
+        Build a SYN_SENT-state session — same pattern as
+        test__tcp__session__icmp__dest_unreachable.py.
         """
 
         self._force_iss(LOCAL__ISS)
-        sock = TcpSocket(family=AddressFamily.INET6)
+        sock = TcpSocket(family=AddressFamily.INET4)
         sock._local_ip_address = STACK__IP
         sock._local_port = STACK__PORT
         sock._remote_ip_address = PEER__IP
@@ -136,21 +137,25 @@ class TestTcpOnTimeExceededIp6(TcpSessionTestCase):
         assert session.state is FsmState.SYN_SENT
         return session
 
-    def test__icmp6__time_exceeded__no_fsm_transition(self) -> None:
+    def test__icmp4__time_exceeded__ttl_in_transit__no_fsm_transition(self) -> None:
         """
-        Ensure an ICMPv6 Time Exceeded matching a SYN_SENT session is
-        recorded as a diagnostic but does NOT abort the connection or
-        transition the FSM.
+        Ensure an ICMPv4 Time Exceeded (code 0 — TTL Exceeded in
+        Transit) matching a SYN_SENT session is recorded as a
+        diagnostic but does NOT abort the connection or transition
+        the FSM. Soft-error semantics: existing SYN-RTO timer
+        machinery continues to handle the actual recovery.
 
-        Reference: RFC 4443 §3.3 (Time Exceeded soft-error semantics).
-        Reference: RFC 5927 §6 (Time Exceeded MUST NOT cause connection abort).
+        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
+        transport layer).
+        Reference: RFC 5927 §6 (Time Exceeded is a soft error and
+        MUST NOT abort the connection).
         """
 
         session = self._make_syn_sent_session()
 
         self._drive_rx(
-            frame=_build_icmp6_time_exceeded_frame(
-                code=Icmp6TimeExceededCode.HOP_LIMIT_EXCEEDED_IN_TRANSIT,
+            frame=_build_icmp4_time_exceeded_frame(
+                code=Icmp4TimeExceededCode.TTL_EXCEEDED_IN_TRANSIT,
                 embedded_seq=LOCAL__ISS,
             )
         )
@@ -166,10 +171,42 @@ class TestTcpOnTimeExceededIp6(TcpSessionTestCase):
             msg="Time Exceeded must NOT transition the session FSM.",
         )
 
-    def test__icmp6__time_exceeded__bumps_tcp_notify_counter(self) -> None:
+    def test__icmp4__time_exceeded__fragment_reassembly__no_fsm_transition(self) -> None:
         """
-        Ensure that an in-window ICMPv6 Time Exceeded matched to an
-        active session bumps the v6 tcp__notify counter.
+        Ensure an ICMPv4 Time Exceeded (code 1 — Fragment Reassembly
+        Time Exceeded) matching a SYN_SENT session is recorded as a
+        diagnostic but does NOT abort the connection.
+
+        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
+        transport layer).
+        Reference: RFC 5927 §6 (Time Exceeded is a soft error).
+        """
+
+        session = self._make_syn_sent_session()
+
+        self._drive_rx(
+            frame=_build_icmp4_time_exceeded_frame(
+                code=Icmp4TimeExceededCode.FRAGMENT_REASSEMBLY_TIME_EXCEEDED,
+                embedded_seq=LOCAL__ISS,
+            )
+        )
+
+        self.assertIs(
+            session._connection_error,
+            ConnError.NONE,
+            msg="Time Exceeded must NOT mutate the connection-error state.",
+        )
+        self.assertIs(
+            session.state,
+            FsmState.SYN_SENT,
+            msg="Time Exceeded must NOT transition the session FSM.",
+        )
+
+    def test__icmp4__time_exceeded__bumps_tcp_notify_counter(self) -> None:
+        """
+        Ensure that an in-window Time Exceeded matched to an active
+        session bumps the TCP-side notify counter, exposing the event
+        for observability.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -177,42 +214,45 @@ class TestTcpOnTimeExceededIp6(TcpSessionTestCase):
         self._make_syn_sent_session()
 
         self._drive_rx(
-            frame=_build_icmp6_time_exceeded_frame(
-                code=Icmp6TimeExceededCode.HOP_LIMIT_EXCEEDED_IN_TRANSIT,
+            frame=_build_icmp4_time_exceeded_frame(
+                code=Icmp4TimeExceededCode.TTL_EXCEEDED_IN_TRANSIT,
                 embedded_seq=LOCAL__ISS,
             )
         )
 
         self.assertEqual(
-            self._packet_handler.packet_stats_rx.icmp6__time_exceeded__tcp__notify,
+            self._packet_handler.packet_stats_rx.icmp4__time_exceeded__tcp__notify,
             1,
-            msg="In-window Time Exceeded must bump the v6 tcp__notify counter.",
+            msg="In-window Time Exceeded must bump the tcp__notify counter.",
         )
 
-    def test__icmp6__time_exceeded__seq_out_of_window__drops(self) -> None:
+    def test__icmp4__time_exceeded__seq_out_of_window__drops(self) -> None:
         """
         Ensure that an out-of-window embedded sequence number causes
-        the acceptability guard to drop the message.
+        the acceptability guard to drop the message before it reaches
+        the TCP session — the seq-out-of-window counter bumps and the
+        notify counter does not.
 
-        Reference: RFC 5927 §4 (off-path attacker sequence-in-window guard).
+        Reference: RFC 5927 §4 (off-path attacker mitigation —
+        sequence-in-window guard).
         """
 
         self._make_syn_sent_session()
 
         self._drive_rx(
-            frame=_build_icmp6_time_exceeded_frame(
-                code=Icmp6TimeExceededCode.HOP_LIMIT_EXCEEDED_IN_TRANSIT,
-                embedded_seq=LOCAL__ISS + 0x10_0000,
+            frame=_build_icmp4_time_exceeded_frame(
+                code=Icmp4TimeExceededCode.TTL_EXCEEDED_IN_TRANSIT,
+                embedded_seq=LOCAL__ISS + 0x10_0000,  # well outside the window
             )
         )
 
         self.assertEqual(
-            self._packet_handler.packet_stats_rx.icmp6__time_exceeded__tcp__seq_out_of_window__drop,
+            self._packet_handler.packet_stats_rx.icmp4__time_exceeded__tcp__seq_out_of_window__drop,
             1,
             msg="Out-of-window Time Exceeded must bump the seq_out_of_window counter.",
         )
         self.assertEqual(
-            self._packet_handler.packet_stats_rx.icmp6__time_exceeded__tcp__notify,
+            self._packet_handler.packet_stats_rx.icmp4__time_exceeded__tcp__notify,
             0,
             msg="Out-of-window Time Exceeded must NOT reach the session-level notify path.",
         )

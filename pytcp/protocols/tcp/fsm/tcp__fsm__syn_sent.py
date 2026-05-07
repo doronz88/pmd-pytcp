@@ -130,7 +130,7 @@ def fsm__syn_sent__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
 
     if metadata.category is IcmpCategory.PMTU:
         assert metadata.next_hop_mtu is not None, "IcmpMetadata.next_hop_mtu must be set for PMTU events."
-        session.on_pmtu(
+        session._apply_pmtu_update(
             next_hop_mtu=metadata.next_hop_mtu,
             ip_version=metadata.ip_version,
         )

@@ -1,8 +1,11 @@
 # ICMP feed → TcpSession FSM dispatch (4th source) — refactor plan
 
-**Status:** PLANNED — not started.
-**Last commit before this plan:** `6f44091e` (ip4/ip6 Protocol Unreachable, SHOULD #1).
-**Suite state at planning time:** 8825 passing / 4 skipped, lint clean.
+**Status:** ✅ COMPLETED — all four phases shipped.
+- Phase 1: `cdcb1808` (additive `IcmpMetadata` + shim)
+- Phase 2: `69987dd7` (per-state handlers + RFC 5927 §5.2 taxonomy)
+- Phase 3: `f479d579` (production ICMP RX migrated to FSM dispatch)
+- Phase 4: this commit (legacy `on_*` deleted; single canonical path)
+**Suite state at completion:** 8843 passing / 4 skipped, lint clean.
 
 ---
 

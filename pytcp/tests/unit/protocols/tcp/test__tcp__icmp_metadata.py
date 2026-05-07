@@ -50,10 +50,9 @@ class TestIcmpCategory(TestCase):
         """
         Ensure 'IcmpCategory' exposes exactly the four event kinds the
         TCP FSM dispatch consumes: DEST_UNREACHABLE, TIME_EXCEEDED,
-        PARAM_PROBLEM, PMTU. These map 1-to-1 onto the four legacy
-        on_unreachable / on_time_exceeded / on_parameter_problem /
-        on_pmtu hooks; missing or renaming a member would silently
-        break the dispatch shim.
+        PARAM_PROBLEM, PMTU. The category drives 'FSM_ICMP_HANDLERS'
+        per-state routing; missing or renaming a member would silently
+        break the dispatch.
 
         Reference: RFC 5927 §3 (ICMP-to-TCP error categories).
         Reference: RFC 1191 §6 (PMTU as a separate event class).

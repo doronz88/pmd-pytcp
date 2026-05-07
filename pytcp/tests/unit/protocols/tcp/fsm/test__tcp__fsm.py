@@ -654,10 +654,10 @@ class TestTcpFsmSynSentHandleIcmp(_TcpSessionFsmFixture):
     def test__tcp_session__syn_sent_icmp_v4_protocol_unreachable_aborts(self) -> None:
         """
         Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 2 (Protocol
-        Unreachable) aborts with REFUSED. The legacy on_unreachable
-        path silently ignored Code 2; the per-state handler closes
-        the gap by treating it as a hard error matching RFC 5927's
-        canonical hard-error list.
+        Unreachable) aborts with REFUSED. The per-state handler
+        treats Code 2 as a hard error matching the canonical hard-
+        error list, closing a historical gap where Code 2 was
+        silently no-op'd.
 
         Reference: RFC 5927 §5.2 (ICMPv4 Code 2 Protocol Unreachable
         is a hard error).

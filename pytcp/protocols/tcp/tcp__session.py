@@ -767,17 +767,18 @@ class TcpSession:
             return self._snd_seq.una <= seq <= self._snd_seq.nxt
         return seq >= self._snd_seq.una or seq <= self._snd_seq.nxt
 
-    def on_pmtu(self, *, next_hop_mtu: int, ip_version: int) -> None:
+    def _apply_pmtu_update(self, *, next_hop_mtu: int, ip_version: int) -> None:
         """
-        Handle an inbound ICMP Path-MTU update for this session.
+        Apply an inbound ICMP Path-MTU update to this session.
         Records the next-hop MTU into 'stack.pmtu_cache' for the
         remote address and recomputes 'self._win.snd_mss' from the
-        new MTU minus IP+TCP fixed overhead.
+        new MTU minus IP+TCP fixed overhead. Called from the
+        per-state ICMP handlers ('fsm__syn_sent__icmp' and
+        'fsm__icmp__synchronized') for PMTU-category events.
 
-        Phase 6 deliberately stops at the MSS-recompute step. Active
-        retransmit walkback (RFC 1191 §6.5) for in-flight segments
-        that exceed the new MSS is left for a follow-up feature
-        commit alongside RFC 4821 / 8899 active probing.
+        Active retransmit walkback (RFC 1191 §6.5) for in-flight
+        segments that exceed the new MSS is left for a follow-up
+        feature commit alongside RFC 4821 / 8899 active probing.
 
         Reference: RFC 1191 §6 (PMTUD on the host).
         Reference: RFC 8201 §4 (IPv6 PMTUD MTU update rule).
@@ -797,96 +798,6 @@ class TcpSession:
             self._win.snd_mss = new_mss
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
-
-    def on_time_exceeded(self, *, icmp_type: int, icmp_code: int) -> None:
-        """
-        Handle an inbound ICMP Time Exceeded that the RX handler has
-        matched against this session. Time Exceeded is a soft error
-        per RFC 5927 §6 — purely diagnostic. The session deliberately
-        does NOT mutate any FSM state, ConnError, or event flag; the
-        existing retransmission machinery handles whatever loss the
-        Time Exceeded reports.
-
-        Reference: RFC 1122 §3.2.2.4 (Time Exceeded MUST be passed to
-        the transport layer).
-        Reference: RFC 5927 §6 (Time Exceeded is a soft error and
-        MUST NOT cause connection abort).
-        """
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - <ly>[{self._state}]</> - got Time Exceeded "
-            f"type={icmp_type} code={icmp_code} "
-            "(soft error per RFC 5927 §6 — diagnostic only)",
-        )
-
-    def on_parameter_problem(self, *, icmp_type: int, icmp_code: int) -> None:
-        """
-        Handle an inbound ICMP Parameter Problem that the RX handler
-        has matched against this session. Parameter Problem is a soft
-        error per RFC 5927 §6 — purely diagnostic. Same shape as
-        on_time_exceeded: log + return; no FSM mutation.
-
-        Reference: RFC 1122 §3.2.2.5 (Parameter Problem MUST be passed
-        to the transport layer).
-        Reference: RFC 5927 §6 (Parameter Problem is a soft error).
-        """
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - <ly>[{self._state}]</> - got Parameter Problem "
-            f"type={icmp_type} code={icmp_code} "
-            "(soft error per RFC 5927 §6 — diagnostic only)",
-        )
-
-    def on_unreachable(self, *, icmp_type: int, icmp_code: int) -> None:
-        """
-        Handle an inbound ICMP Destination Unreachable that the RX
-        handler has matched against this session. Routes by code:
-        Host / Net Unreachable mark the session with the appropriate
-        ConnError and release blocked syscalls; Port Unreachable in
-        SYN_SENT aborts the connection with REFUSED.
-
-        Per RFC 1122 §4.2.3.9, ICMP errors during synchronized states
-        are advisory — the session does not transition to CLOSED on
-        Host / Net Unreachable, only the connection error is recorded
-        for the user/TCP interface to surface. Synchronized-state
-        Port Unreachable is ignored entirely.
-
-        Reference: RFC 792 (Destination Unreachable Message).
-        Reference: RFC 1122 §4.2.3.9 (TCP MUST react to ICMP).
-        Reference: RFC 4443 §3.1 (ICMPv6 Destination Unreachable).
-        """
-
-        # Resolve the cross-version code into a normalized intent.
-        # ICMPv4 Type 3 codes: 0=Net, 1=Host, 3=Port.
-        # ICMPv6 Type 1 codes: 0=NoRoute, 3=Address, 4=Port.
-        is_host = (icmp_type == 3 and icmp_code == 1) or (icmp_type == 1 and icmp_code == 3)
-        is_net = (icmp_type == 3 and icmp_code == 0) or (icmp_type == 1 and icmp_code == 0)
-        is_port = (icmp_type == 3 and icmp_code == 3) or (icmp_type == 1 and icmp_code == 4)
-
-        if is_port and self._state is FsmState.SYN_SENT:
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - <ly>[{self._state}]</> - got Port Unreachable, refusing",
-            )
-            self._connection_error = ConnError.REFUSED
-            self._event__rx_buffer.set()
-            self._event__connect.release()
-            self._change_state(FsmState.CLOSED)
-            return
-
-        if is_host:
-            self._connection_error = ConnError.HOST_UNREACHABLE
-            self._event__rx_buffer.set()
-            self._event__connect.release()
-            return
-
-        if is_net:
-            self._connection_error = ConnError.NET_UNREACHABLE
-            self._event__rx_buffer.set()
-            self._event__connect.release()
-            return
 
     def _change_state(self, state: FsmState) -> None:
         """
