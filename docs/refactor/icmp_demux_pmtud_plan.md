@@ -312,7 +312,7 @@ matrices.
 
 ### Phase 9 — Per-RFC adherence audit updates (1 commit)
 
-- Update `docs/rfc/tcp/rfc1191__path_mtu_discovery/adherence.md`
+- Update `docs/rfc/ip4/rfc1191__pmtud_ip4/adherence.md`
   reflecting shipped status.
 - Update RFC 8201 (IPv6 PMTUD) audit (create if not present).
 - Update RFC 5927 audit reflecting the seq-in-window guard.
