@@ -32,6 +32,8 @@ ver 3.0.4
 
 from __future__ import annotations
 
+import errno
+import os
 import threading
 from typing import TYPE_CHECKING, cast, override
 
@@ -76,12 +78,13 @@ class RawSocket(socket):
 
         assert type is SocketType.RAW
 
-        match family:
-            case AddressFamily.INET6:
-                self._ip_proto = protocol or IpProto.IP6
-            case AddressFamily.INET4:
-                self._ip_proto = protocol or IpProto.IP4
+        # Raw sockets need an explicit IANA next-header value; there
+        # is no meaningful default. Mirror Linux 'sys_socket' which
+        # returns 'EPROTONOSUPPORT' for 'socket(AF_INET, SOCK_RAW, 0)'.
+        if protocol is None:
+            raise OSError(errno.EPROTONOSUPPORT, os.strerror(errno.EPROTONOSUPPORT))
 
+        self._ip_proto = protocol
         self._address_family = family
         self._packet_rx_md: list[RawMetadata] = []
         self._packet_rx_md_ready = threading.Semaphore(0)

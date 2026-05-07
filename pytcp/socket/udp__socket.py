@@ -73,13 +73,17 @@ class UdpSocket(socket):
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.DGRAM,
-        protocol: IpProto | None = IpProto.UDP,
+        protocol: IpProto | int | None = IpProto.UDP,
     ) -> None:
         """
         Initialize the IPv6/IPv4 UDP socket.
         """
 
         assert type is SocketType.DGRAM
+        # Accept the BSD 'IPPROTO_IP' (= 0) default-protocol sentinel
+        # as equivalent to 'IpProto.UDP' for DGRAM sockets.
+        if protocol is None or (protocol.__class__ is int and protocol == 0):
+            protocol = IpProto.UDP
         assert protocol is IpProto.UDP
 
         self._address_family = family

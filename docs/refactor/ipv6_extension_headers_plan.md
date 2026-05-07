@@ -309,40 +309,34 @@ transport. Phase-2 forwarders will re-emit the same bytes.
 
 ### 3.8 IpProto enum extensions
 
-`net_proto/lib/enums.py` adds three new members (Phase 0 commit):
+`net_proto/lib/enums.py` adds four new members (Phase 0 commit):
 
 ```python
 class IpProto(ProtoEnumByte):
-    IP4 = 0
-    IP6_HBH = 0           # NEW — same wire value as IP4! See note below.
+    IP6_HBH = 0           # NEW — RFC 8200 §4.3 Hop-by-Hop Options
     ICMP4 = 1
+    IP4 = 4               # CHANGED from 0 — RFC 2003 IPv4-in-IPv4 (Phase -1)
     TCP = 6
     UDP = 17
     IP6 = 41
-    IP6_ROUTING = 43      # NEW
+    IP6_ROUTING = 43      # NEW — RFC 8200 §4.4
     IP6_FRAG = 44
-    IP6_DEST_OPTS = 60    # NEW
     ICMP6 = 58
-    IP6_NO_NEXT_HEADER = 59  # NEW — RFC 8200 §4.7 (terminator)
+    IP6_NO_NEXT_HEADER = 59  # NEW — RFC 8200 §4.7
+    IP6_DEST_OPTS = 60    # NEW — RFC 8200 §4.6
     RAW = 255
 ```
 
-⚠️ **Critical detail:** `IP6_HBH = 0` collides with `IP4 = 0`
-in the protocol-number space. Wire context disambiguates:
-inside an IPv6 packet `next_header = 0` means HBH; inside an
-Ethernet-layer dispatch `protocol = 0x0800` (different field
-entirely) means IP4. The IpProto enum is overloaded.
-
-PyTCP's existing IpProto already has `IP6 = 41` which is the
-next-header value for IP6-in-IP6, also a valid wire collision
-with the EtherType space. Pattern is established. The fix is
-to either:
-- Accept the overloaded enum (current pattern; minimal change)
-- Split `IpProto` into `EtherType` + `IpNextHeader` (bigger
-  refactor; out of scope for this plan)
-
-**Decision:** accept the overloaded enum. Document the
-collision in a comment on the IP6_HBH enum member.
+**Pre-resolved collision:** the original plan put `IP4 = 0`
+and tried to add `IP6_HBH = 0` alongside, but Python's enum
+semantics make duplicate-value declarations into aliases
+(not distinct members), so that was unworkable. Phase -1
+(below) lands first to set `IpProto.IP4 = 4` to its IANA-
+correct value (RFC 2003 IPv4-in-IPv4 next-header) and
+decouple the BSD socket constant `IPPROTO_IP` (which BSD
+defines as `0`, the "default protocol" sentinel — not an
+IANA next-header value). With `IP4 = 4`, `IP6_HBH = 0` slots
+in cleanly with no alias collision.
 
 `from_int` already handles unknown values via `aenum`; no
 changes needed there.
@@ -381,9 +375,87 @@ built for symmetry and to enable Phase 2 cleanly.
 
 ## 4. Phase-by-phase commit plan
 
-Each phase is one commit. Phase 0 lands first; phases within
+Each phase is one commit. Phase -1 lands first; phases within
 the same level (e.g. 1a/1b/1c) can run in parallel by
 different agents but each commit is atomic.
+
+### Phase -1 — Fix `IpProto.IP4` IANA value + decouple BSD `IPPROTO_IP` (1 commit)
+
+**Subject:** `net_proto/enums + pytcp/socket: align IpProto.IP4 with IANA, decouple BSD IPPROTO_IP`
+
+**Why first:** the existing `IpProto.IP4 = 0` (introduced in
+commit `f344cfc04` 2024-09-14 as a rename of the legacy
+`IpProto.IPPROTO_IP = 0` member) conflates two unrelated
+namespaces:
+
+- **BSD socket API:** `IPPROTO_IP = 0` — the "default protocol"
+  sentinel for `socket()` calls; never serialized to a wire
+  byte (Linux: `<netinet/in.h>`).
+- **IANA next-header:** value `0` is HOPOPT (Hop-by-Hop);
+  IPv4-in-IPv4 encapsulation is value `4` (RFC 2003).
+
+The conflation blocks adding `IP6_HBH = 0` cleanly (Python's
+enum semantics turn duplicate values into aliases — not
+distinct members). It also has a latent bug: today's socket
+factory rejects `socket(AF_INET, SOCK_STREAM, IPPROTO_IP)`
+because the BSD-spec sentinel `0` doesn't match any of the
+factory's `IpProto.TCP | None` cases.
+
+**Scope:**
+- `net_proto/lib/enums.py`: change `IpProto.IP4 = 0 → IP4 = 4`
+  (IANA RFC 2003).
+- `pytcp/socket/__init__.py`:
+  - `IPPROTO_IP: int = 0` (plain int, decoupled from `IpProto`).
+    Inline comment cites BSD `<netinet/in.h>`.
+  - Rename `IPPROTO_IP4 → IPPROTO_IPIP` (matches Linux's
+    stdlib `socket.IPPROTO_IPIP = 4`); points at
+    `IpProto.IP4` (which is now `4`, IANA-correct).
+  - Update `socket.__new__` factory `match` to coerce the
+    BSD `IPPROTO_IP` sentinel (plain int `0`) to `None`
+    before dispatch, so `socket(AF_INET, SOCK_STREAM, 0)`
+    correctly returns `TcpSocket`.
+- `pytcp/socket/raw__socket.py`:
+  - Remove the `protocol or IpProto.IP4` / `protocol or IpProto.IP6`
+    fallbacks. Raise `OSError(errno.EPROTONOSUPPORT, ...)`
+    when no protocol is specified (Linux parity:
+    `socket(AF_INET, SOCK_RAW, 0)` returns `EPROTONOSUPPORT`).
+  - Tighten the `protocol` parameter type to `IpProto` (no
+    more `None`).
+
+**Tests-first (MANDATORY per CLAUDE.md):**
+- `net_proto/tests/unit/lib/test__lib__enums.py`:
+  - `IpProto.IP4` value is `4`, bytes is `b'\x04'`,
+    `from_int(4) is IpProto.IP4`, `from_int(0) is not IpProto.IP4`
+- `pytcp/tests/unit/socket/test__socket__base.py`:
+  - `IPPROTO_IP == 0` (plain int) and `not isinstance(IPPROTO_IP, IpProto)`
+  - `IPPROTO_IPIP is IpProto.IP4`
+  - `socket(AF_INET, SOCK_STREAM, IPPROTO_IP)` returns `TcpSocket`
+    (the BSD default-protocol sentinel pathway)
+  - `socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)` returns `UdpSocket`
+  - The old `test__socket__ipproto_aliases` rewritten to reflect
+    the new contract (some entries become `is`, others become
+    `==` against `int`)
+- `pytcp/tests/unit/socket/test__socket__raw__socket.py`:
+  - `socket(AF_INET, SOCK_RAW)` (no protocol) raises
+    `OSError(EPROTONOSUPPORT)`
+  - Same for `AF_INET6`
+  - The old "ip_proto must default to IP4" test rewritten or
+    removed — the default no longer exists.
+
+**§7.2 audit script run before staging.**
+
+**Reference:** RFC 2003 §1 (IPv4-in-IPv4 protocol number 4);
+IANA "Assigned Internet Protocol Numbers" registry; BSD
+`<netinet/in.h>` (`IPPROTO_IP=0` default-protocol sentinel);
+Linux `socket.IPPROTO_IPIP=4`.
+
+**Risk:** wire-byte change for `RawSocket(AF_INET, SOCK_RAW)`
+no-protocol callers (today emits `Protocol=0`, which is
+already invalid IANA); after Phase -1 the call errors instead.
+This is a deliberate Linux-parity fix, not a regression.
+
+**Lint + test gating:** `make lint && make test` clean before
+staging.
 
 ### Phase 0 — IpProto enum extensions (1 commit)
 

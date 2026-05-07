@@ -98,7 +98,7 @@ class TcpSocket(socket):
         self,
         family: AddressFamily,
         type: SocketType = SocketType.STREAM,
-        protocol: IpProto | None = IpProto.TCP,
+        protocol: IpProto | int | None = IpProto.TCP,
         *,
         tcp_session: TcpSession | None = None,
     ) -> None:
@@ -107,6 +107,10 @@ class TcpSocket(socket):
         """
 
         assert type is SocketType.STREAM
+        # Accept the BSD 'IPPROTO_IP' (= 0) default-protocol sentinel
+        # as equivalent to 'IpProto.TCP' for STREAM sockets.
+        if protocol is None or (protocol.__class__ is int and protocol == 0):
+            protocol = IpProto.TCP
         assert protocol is IpProto.TCP
 
         self._address_family = family

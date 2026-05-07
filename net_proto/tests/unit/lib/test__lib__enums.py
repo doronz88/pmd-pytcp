@@ -250,9 +250,9 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "IpProto.IP4 known value.",
+            "_description": "IpProto.IP4 known value (RFC 2003 IPv4-in-IPv4 protocol number).",
             "_member": IpProto.IP4,
-            "_results": {"value": 0, "__str__": "IPv4"},
+            "_results": {"value": 4, "__str__": "IPv4"},
         },
         {
             "_description": "IpProto.ICMP4 known value.",

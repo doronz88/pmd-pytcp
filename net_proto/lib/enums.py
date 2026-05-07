@@ -95,8 +95,8 @@ class IpProto(ProtoEnumByte):
     The IpProto values.
     """
 
-    IP4 = 0
     ICMP4 = 1
+    IP4 = 4  # RFC 2003 §1: IPv4 encapsulated in IP (IP-in-IP).
     TCP = 6
     UDP = 17
     IP6 = 41

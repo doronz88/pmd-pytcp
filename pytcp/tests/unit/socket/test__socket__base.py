@@ -45,8 +45,8 @@ from pytcp.socket import (
     IPPROTO_ICMP6,
     IPPROTO_ICMPV6,
     IPPROTO_IP,
-    IPPROTO_IP4,
     IPPROTO_IP6,
+    IPPROTO_IPIP,
     IPPROTO_IPV6,
     IPPROTO_RAW,
     IPPROTO_TCP,
@@ -254,23 +254,67 @@ class TestIpProtoAliases(TestCase):
     The module-level 'IPPROTO_*' alias tests.
     """
 
-    def test__socket__ipproto_aliases(self) -> None:
+    def test__socket__ipproto_ip_is_bsd_default_protocol_sentinel(self) -> None:
         """
-        Ensure every BSD-style 'IPPROTO_*' alias exported by
-        'pytcp.socket' points at the matching 'IpProto' enum member.
-        Any drift would silently break the BSD-API surface.
+        Ensure 'IPPROTO_IP' is exposed as a plain 'int' equal to 0 — the
+        BSD '<netinet/in.h>' "default protocol" sentinel — and is NOT an
+        'IpProto' enum member. The BSD sentinel and the IANA next-header
+        namespace must stay decoupled so the IpProto enum member with
+        value 0 (Hop-by-Hop Options) can coexist without an alias
+        collision.
+
+        Reference: RFC 2003 §1 (IPv4-in-IPv4 IANA protocol number 4).
+        Reference: RFC 8200 §4.3 (Hop-by-Hop Options, next-header value 0).
+        """
+
+        self.assertIsInstance(
+            IPPROTO_IP,
+            int,
+            msg="IPPROTO_IP must be a plain int per BSD <netinet/in.h>.",
+        )
+        self.assertNotIsInstance(
+            IPPROTO_IP,
+            IpProto,
+            msg=(
+                "IPPROTO_IP must not be an IpProto member — it is the BSD "
+                "default-protocol sentinel, not an IANA next-header value."
+            ),
+        )
+        self.assertEqual(
+            IPPROTO_IP,
+            0,
+            msg="IPPROTO_IP must equal 0 per BSD <netinet/in.h>.",
+        )
+
+    def test__socket__ipproto_ipip_aliases_ip4(self) -> None:
+        """
+        Ensure 'IPPROTO_IPIP' (Linux's stdlib name for IPv4-in-IPv4)
+        aliases 'IpProto.IP4' and that 'int(IPPROTO_IPIP) == 4' matches
+        the IANA-assigned protocol number for IPv4 encapsulation.
+
+        Reference: RFC 2003 §1 (IPv4-in-IPv4 protocol number 4).
         """
 
         self.assertIs(
-            IPPROTO_IP,
+            IPPROTO_IPIP,
             IpProto.IP4,
-            msg="IPPROTO_IP must alias IpProto.IP4.",
+            msg="IPPROTO_IPIP must alias IpProto.IP4 (Linux parity, RFC 2003).",
         )
-        self.assertIs(
-            IPPROTO_IP4,
-            IpProto.IP4,
-            msg="IPPROTO_IP4 must alias IpProto.IP4.",
+        self.assertEqual(
+            int(IPPROTO_IPIP),
+            4,
+            msg="IPPROTO_IPIP must serialize to IANA value 4 (RFC 2003).",
         )
+
+    def test__socket__ipproto_aliases(self) -> None:
+        """
+        Ensure every remaining BSD-style 'IPPROTO_*' alias exported by
+        'pytcp.socket' points at the matching 'IpProto' enum member.
+        Any drift would silently break the BSD-API surface.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
         self.assertIs(
             IPPROTO_ICMP,
             IpProto.ICMP4,
@@ -434,6 +478,8 @@ class TestSocketFactory(TestCase):
         """
         Ensure an unsupported (family, type, protocol) triple raises
         'ValueError' with a message that names the rejected values.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         with self.assertRaises(ValueError) as context:
@@ -447,6 +493,113 @@ class TestSocketFactory(TestCase):
             "Invalid socket",
             str(context.exception),
             msg="socket.__new__ must raise ValueError naming the rejected tuple.",
+        )
+
+    def test__socket__stream_with_ipproto_ip_sentinel_creates_tcp(self) -> None:
+        """
+        Ensure passing the BSD 'IPPROTO_IP' (= 0) sentinel as the
+        protocol arg routes 'SocketType.STREAM' to 'TcpSocket' just
+        like the implicit-protocol path. BSD 'socket(AF_INET,
+        SOCK_STREAM, IPPROTO_IP)' must yield a TCP socket because
+        IPPROTO_IP is the "default protocol" marker, not an IANA
+        next-header value.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
+        s = socket(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            protocol=IPPROTO_IP,
+        )
+        self.assertIsInstance(
+            s,
+            TcpSocket,
+            msg="socket(STREAM, IPPROTO_IP) must dispatch to TcpSocket per BSD default-protocol semantics.",
+        )
+
+    def test__socket__dgram_with_ipproto_ip_sentinel_creates_udp(self) -> None:
+        """
+        Ensure 'socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)' yields a
+        'UdpSocket' — the BSD default-protocol sentinel selects UDP
+        for the DGRAM socket type.
+
+        Reference: RFC 768 (UDP user interface).
+        """
+
+        s = socket(
+            family=AddressFamily.INET4,
+            type=SocketType.DGRAM,
+            protocol=IPPROTO_IP,
+        )
+        self.assertIsInstance(
+            s,
+            UdpSocket,
+            msg="socket(DGRAM, IPPROTO_IP) must dispatch to UdpSocket per BSD default-protocol semantics.",
+        )
+
+    def test__socket__raw_without_protocol_raises_eprotonosupport(self) -> None:
+        """
+        Ensure 'socket(AF_INET, SOCK_RAW)' with no explicit protocol
+        raises 'OSError(EPROTONOSUPPORT)' — the Linux behavior. Raw
+        sockets cannot use the BSD "default protocol" sentinel because
+        a raw socket without a chosen protocol is undefined; Linux's
+        'sys_socket' returns 'EPROTONOSUPPORT' for this case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        with self.assertRaises(OSError) as context:
+            socket(family=AddressFamily.INET4, type=SocketType.RAW)
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPROTONOSUPPORT,
+            msg="socket(RAW) with no protocol must raise OSError(EPROTONOSUPPORT).",
+        )
+
+    def test__socket__raw_with_ipproto_ip_sentinel_raises_eprotonosupport(self) -> None:
+        """
+        Ensure 'socket(AF_INET, SOCK_RAW, IPPROTO_IP)' (raw with the
+        BSD default-protocol sentinel) errors with 'EPROTONOSUPPORT',
+        same as no-protocol — the sentinel cannot select a default for
+        raw sockets.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        with self.assertRaises(OSError) as context:
+            socket(
+                family=AddressFamily.INET4,
+                type=SocketType.RAW,
+                protocol=IPPROTO_IP,
+            )
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPROTONOSUPPORT,
+            msg="socket(RAW, IPPROTO_IP) must raise OSError(EPROTONOSUPPORT).",
+        )
+
+    def test__socket__raw_ipv6_without_protocol_raises_eprotonosupport(self) -> None:
+        """
+        Ensure 'socket(AF_INET6, SOCK_RAW)' with no explicit protocol
+        also raises 'OSError(EPROTONOSUPPORT)' — symmetric with the
+        IPv4 case, matching Linux behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        with self.assertRaises(OSError) as context:
+            socket(family=AddressFamily.INET6, type=SocketType.RAW)
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPROTONOSUPPORT,
+            msg="socket(INET6, RAW) with no protocol must raise OSError(EPROTONOSUPPORT).",
         )
 
     def test__socket__subclass_bypasses_factory(self) -> None:

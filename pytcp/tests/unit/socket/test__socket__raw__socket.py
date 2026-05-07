@@ -106,19 +106,69 @@ class TestRawSocketInit(_RawSocketTestCase):
     The 'RawSocket.__init__' tests.
     """
 
-    def test__raw_socket__init_ip4_default_protocol(self) -> None:
+    def test__raw_socket__init_ip4_no_protocol_raises_eprotonosupport(self) -> None:
         """
-        Ensure an IPv4 'RawSocket' with no explicit protocol defaults
-        to 'IpProto.IP4' and binds the local/remote IP addresses to
-        the unspecified '0.0.0.0' placeholder.
+        Ensure constructing an IPv4 'RawSocket' with no explicit
+        protocol raises 'OSError(EPROTONOSUPPORT)'. Raw sockets must
+        carry an explicit IANA next-header value; there is no
+        meaningful default, so PyTCP mirrors Linux's 'sys_socket'
+        behavior of returning 'EPROTONOSUPPORT' for this case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        import errno
+
+        with self.assertRaises(OSError) as context:
+            RawSocket(AddressFamily.INET4)
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPROTONOSUPPORT,
+            msg="RawSocket(INET4) with no protocol must raise OSError(EPROTONOSUPPORT).",
+        )
+
+    def test__raw_socket__init_ip6_no_protocol_raises_eprotonosupport(self) -> None:
+        """
+        Ensure constructing an IPv6 'RawSocket' with no explicit
+        protocol raises 'OSError(EPROTONOSUPPORT)' — symmetric with
+        the IPv4 case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        with self.assertRaises(OSError) as context:
+            RawSocket(AddressFamily.INET6)
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPROTONOSUPPORT,
+            msg="RawSocket(INET6) with no protocol must raise OSError(EPROTONOSUPPORT).",
+        )
+
+    def test__raw_socket__init_explicit_protocol(self) -> None:
+        """
+        Ensure an explicit 'protocol=' is stored on '_ip_proto' and
+        the 'local_port' shadow mirrors 'int(protocol)' so the
+        socket-registry lookup key is unique per protocol.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
 
         self.assertIs(s.address_family, AddressFamily.INET4, msg="address_family must be INET4.")
         self.assertIs(s.socket_type, SocketType.RAW, msg="socket_type must be RAW.")
-        self.assertIs(s.ip_proto, IpProto.IP4, msg="ip_proto must default to IP4 for IPv4 raw sockets.")
-        self.assertEqual(s.local_ip_address, Ip4Address(), msg="local_ip_address must start unspecified for IPv4.")
+        self.assertIs(
+            s.ip_proto,
+            IpProto.ICMP4,
+            msg="Explicit IpProto.ICMP4 must be stored on _ip_proto.",
+        )
+        self.assertEqual(
+            s.local_ip_address,
+            Ip4Address(),
+            msg="local_ip_address must start unspecified for IPv4.",
+        )
         self.assertEqual(
             s.remote_ip_address,
             Ip4Address(),
@@ -126,45 +176,52 @@ class TestRawSocketInit(_RawSocketTestCase):
         )
         self.assertEqual(
             s.local_port,
-            int(IpProto.IP4),
-            msg="local_port must be set to int(ip_proto) for raw sockets.",
+            int(IpProto.ICMP4),
+            msg="local_port must equal int(ip_proto) after construction.",
         )
         self.assertEqual(s.remote_port, 0, msg="remote_port must start at 0 for raw sockets.")
 
-    def test__raw_socket__init_ip6_default_protocol(self) -> None:
+    def test__raw_socket__init_explicit_ipv6_protocol(self) -> None:
         """
-        Ensure an IPv6 'RawSocket' with no explicit protocol defaults
-        to 'IpProto.IP6' and uses the '::' unspecified IPv6 addresses.
-        """
+        Ensure an explicit IPv6 protocol (e.g. 'IpProto.ICMP6') is
+        stored on '_ip_proto' and selects the IPv6 unspecified-
+        address placeholders for the local/remote bind state.
 
-        s = RawSocket(family=AddressFamily.INET6)
-
-        self.assertIs(s.ip_proto, IpProto.IP6, msg="ip_proto must default to IP6 for IPv6 raw sockets.")
-        self.assertEqual(s.local_ip_address, Ip6Address(), msg="local_ip_address must start unspecified for IPv6.")
-        self.assertEqual(s.remote_ip_address, Ip6Address(), msg="remote_ip_address must start unspecified for IPv6.")
-
-    def test__raw_socket__init_explicit_protocol(self) -> None:
-        """
-        Ensure an explicit 'protocol=' overrides the default and the
-        local-port shadow mirrors 'int(protocol)'.
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
-        self.assertIs(s.ip_proto, IpProto.ICMP4, msg="Explicit IpProto.ICMP4 must override the default IP4.")
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
+
+        self.assertIs(
+            s.ip_proto,
+            IpProto.ICMP6,
+            msg="Explicit IpProto.ICMP6 must be stored on _ip_proto.",
+        )
         self.assertEqual(
-            s.local_port,
-            int(IpProto.ICMP4),
-            msg="local_port must equal int(ip_proto) after construction.",
+            s.local_ip_address,
+            Ip6Address(),
+            msg="local_ip_address must start unspecified for IPv6.",
+        )
+        self.assertEqual(
+            s.remote_ip_address,
+            Ip6Address(),
+            msg="remote_ip_address must start unspecified for IPv6.",
         )
 
     def test__raw_socket__init_rejects_non_raw_type(self) -> None:
         """
         Ensure constructing with any 'SocketType' other than 'RAW'
         fires the 'assert type is SocketType.RAW' guard.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
-            RawSocket(family=AddressFamily.INET4, type=SocketType.STREAM)
+            RawSocket(
+                family=AddressFamily.INET4,
+                type=SocketType.STREAM,
+                protocol=IpProto.ICMP4,
+            )
 
 
 class TestRawSocketBind(_RawSocketTestCase):
@@ -179,7 +236,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         socket in 'stack.sockets'.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.bind(("10.0.0.1", 0))
 
         self.assertEqual(
@@ -200,7 +257,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         represents a wildcard bind.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.bind(("0.0.0.0", 0))
 
         self.assertEqual(
@@ -215,7 +272,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         'OSError' with the canonical Errno 99 message.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(OSError) as context:
             s.bind(("192.168.99.99", 0))
         self.assertIn(
@@ -230,7 +287,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         stack-level alias for 'socket.gaierror'.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(gaierror):
             s.bind(("not-an-ip", 0))
 
@@ -240,7 +297,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         raises Errno 99 when the address is not owned.
         """
 
-        s = RawSocket(family=AddressFamily.INET6)
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
         with self.assertRaises(OSError) as context:
             s.bind(("2001:db8:dead::1", 0))
         self.assertIn(
@@ -254,7 +311,7 @@ class TestRawSocketBind(_RawSocketTestCase):
         Ensure malformed IPv6 literals raise 'gaierror'.
         """
 
-        s = RawSocket(family=AddressFamily.INET6)
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
         with self.assertRaises(gaierror):
             s.bind(("not-a-v6", 0))
 
@@ -271,7 +328,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
         stores both sides plus the remote port.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
@@ -297,7 +354,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
         outside the 0-65535 inclusive range.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(OverflowError):
             s.connect(("10.0.0.5", 70000))
 
@@ -307,7 +364,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
         literal is malformed.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(gaierror):
             s.connect(("not-an-ip", 7))
 
@@ -318,7 +375,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
         picks would be unspecified).
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address(),
@@ -339,7 +396,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         unspecified placeholder.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(OSError) as context:
             s.send(b"data")
         self.assertIn(
@@ -354,7 +411,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         socket and returns 'len(data)' on 'PASSED__ETHERNET__TO_TX_RING'.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
@@ -372,7 +429,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         socket.
         """
 
-        s = RawSocket(family=AddressFamily.INET6)
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip6Address("2001:db8::1"),
@@ -393,7 +450,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         handler = _make_packet_handler()
         handler.send_ip4_packet = lambda **_: TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
         with patch("pytcp.socket.raw__socket.stack.packet_handler", handler):
-            s = RawSocket(family=AddressFamily.INET4)
+            s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
             with patch(
                 "pytcp.socket.raw__socket.pick_local_ip_address",
                 return_value=Ip4Address("10.0.0.1"),
@@ -412,7 +469,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         from 'pick_local_ip_address'.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
@@ -429,7 +486,7 @@ class TestRawSocketSend(_RawSocketTestCase):
         raw socket.
         """
 
-        s = RawSocket(family=AddressFamily.INET6)
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
         with patch(
             "pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip6Address("2001:db8::1"),
@@ -470,7 +527,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         once per packet.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.process_raw_packet(self._make_md())
 
         self.assertEqual(
@@ -485,7 +542,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         'raw__data' as 'bytes', and honors the queued-packet ordering.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.process_raw_packet(self._make_md())
 
         self.assertEqual(
@@ -500,7 +557,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         no packet arrives within the window.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(TimeoutError):
             s.recv(timeout=0.01)
 
@@ -510,7 +567,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         port is always 0 for raw sockets since there is no L4 port.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.process_raw_packet(self._make_md())
 
         data, addr = s.recvfrom()
@@ -531,7 +588,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         when no packet arrives within the window.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(TimeoutError):
             s.recvfrom(timeout=0.01)
 
@@ -548,7 +605,7 @@ class TestRawSocketClose(_RawSocketTestCase):
         never bound is a no-op.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.bind(("10.0.0.1", 0))
         self.assertIn(
             s.socket_id,
@@ -570,5 +627,5 @@ class TestRawSocketClose(_RawSocketTestCase):
         — it must treat 'socket not in registry' as success.
         """
 
-        s = RawSocket(family=AddressFamily.INET4)
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.close()  # must not raise

@@ -30,6 +30,8 @@ pytcp/socket/__init__.py
 ver 3.0.4
 """
 
+import errno
+import os
 from abc import ABC
 from enum import IntEnum
 from types import TracebackType
@@ -40,8 +42,14 @@ from net_proto.lib.enums import IpProto
 from pytcp.lib.name_enum import NameEnum
 from pytcp.socket.socket_id import SocketId
 
-IPPROTO_IP = IpProto.IP4
-IPPROTO_IP4 = IpProto.IP4
+# BSD '<netinet/in.h>' default-protocol sentinel: socket(family,
+# type, IPPROTO_IP) selects the kernel's default protocol for the
+# requested socket type (TCP for STREAM, UDP for DGRAM). Decoupled
+# from 'IpProto' because the IANA next-header value 0 is HOPOPT
+# (IPv6 Hop-by-Hop, RFC 8200 §4.3), not "default IP".
+IPPROTO_IP: int = 0
+
+IPPROTO_IPIP = IpProto.IP4  # RFC 2003 IPv4-in-IPv4 (Linux: socket.IPPROTO_IPIP).
 IPPROTO_ICMP = IpProto.ICMP4
 IPPROTO_ICMP4 = IpProto.ICMP4
 IPPROTO_TCP = IpProto.TCP
@@ -157,7 +165,7 @@ class socket(ABC):
         cls,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-        protocol: IpProto | None = None,
+        protocol: IpProto | int | None = None,
         **__: Any,
     ) -> socket:
         """
@@ -169,14 +177,21 @@ class socket(ABC):
             from pytcp.socket.tcp__socket import TcpSocket
             from pytcp.socket.udp__socket import UdpSocket
 
+            # Coerce the BSD 'IPPROTO_IP' (= 0) default-protocol
+            # sentinel to None so STREAM/DGRAM dispatch picks the
+            # canonical default and RAW falls into the explicit
+            # EPROTONOSUPPORT branch.
+            if protocol.__class__ is int and protocol == 0:
+                protocol = None
+
             match family, type, protocol:
                 case _, SocketType.STREAM, IpProto.TCP | None:
                     return cls.__new__(TcpSocket)
                 case _, SocketType.DGRAM, IpProto.UDP | None:
                     return cls.__new__(UdpSocket)
-                case (AddressFamily.INET6, SocketType.RAW, _):
-                    return cls.__new__(RawSocket)
-                case (AddressFamily.INET4, SocketType.RAW, _):
+                case _, SocketType.RAW, None:
+                    raise OSError(errno.EPROTONOSUPPORT, os.strerror(errno.EPROTONOSUPPORT))
+                case (AddressFamily.INET6 | AddressFamily.INET4, SocketType.RAW, IpProto()):
                     return cls.__new__(RawSocket)
                 case _:
                     raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
