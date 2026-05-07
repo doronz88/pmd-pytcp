@@ -1,21 +1,36 @@
 # RFC 792 — Internet Control Message Protocol
 
-| Field       | Value                                              |
-|-------------|----------------------------------------------------|
-| RFC number  | 792                                                |
-| Title       | Internet Control Message Protocol                  |
-| Category    | Internet Standard (STD 5)                          |
-| Date        | September 1981                                     |
-| Source text | [`rfc792.txt`](rfc792.txt)                         |
+| Field       | Value                             |
+|-------------|-----------------------------------|
+| RFC number  | 792                               |
+| Title       | Internet Control Message Protocol |
+| Category    | Internet Standard (STD 5)         |
+| Date        | September 1981                    |
+| Source text | [`rfc792.txt`](rfc792.txt)        |
 
-This adherence record is a stub. The PyTCP codebase has not
-been audited against RFC 792 yet — the RFC text was added so
-subsequent code and test work can cite specific clauses with
-confidence (especially the Destination Unreachable / Time
-Exceeded / Echo Request paths exercised by the ICMP demux
-+ PMTUD refactor).
+This adherence record is currently a stub for the RFC 792 base
+spec. The host-requirements layer that prescribes how PyTCP
+generates and processes RFC 792 messages is audited in detail at
+[`../rfc1122__host_requirements_icmp/adherence.md`](../rfc1122__host_requirements_icmp/adherence.md).
 
-The audit will be filled in using the
+Implementation status by ICMPv4 type, as of the recent ICMP
+host-requirements work:
+
+| Type  | Name                    | Status                                         |
+|-------|-------------------------|------------------------------------------------|
+| 0     | Echo Reply              | met (RX + RAW socket delivery)                 |
+| 3     | Destination Unreachable | met (parser + emitter; demux to TCP/UDP/PMTUD) |
+| 4     | Source Quench           | deliberate non-implementation (RFC 6633)       |
+| 5     | Redirect                | not implemented (parsed as Unknown)            |
+| 8     | Echo Request            | met (Smurf gate at v4 echo handler)            |
+| 11    | Time Exceeded           | NOT MET — silently dropped (Phase β gap)       |
+| 12    | Parameter Problem       | NOT MET — silently dropped (Phase β gap)       |
+| 13/14 | Timestamp / Reply       | deliberate non-implementation (RFC 6633)       |
+| 15/16 | Information Req/Reply   | deliberate non-implementation (obsolete)       |
+| 17/18 | Address Mask            | deliberate non-implementation (RFC 6633)       |
+
+The audit will be expanded into a per-section walkthrough using the
 [`rfc_adherence_audit`](../../../../.claude/skills/rfc_adherence_audit/SKILL.md)
-skill when feature/refactor work touches behaviour governed
-by this RFC.
+skill when Phase β closes the Time Exceeded / Parameter Problem
+gap, since those changes touch RFC 792 normative wording on Type 11
+/ Type 12 message format.
