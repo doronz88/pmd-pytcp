@@ -776,11 +776,17 @@ class TcpSession:
         per-state ICMP handlers ('fsm__syn_sent__icmp' and
         'fsm__icmp__synchronized') for PMTU-category events.
 
-        Active retransmit walkback (RFC 1191 §6.5) for in-flight
-        segments that exceed the new MSS is left for a follow-up
-        feature commit alongside RFC 4821 / 8899 active probing.
+        Implements the optional RFC 1191 §6.5 retransmit walkback:
+        when the snd_mss shrink leaves in-flight segments oversized
+        for the new path MTU, mark all in-flight segments lost and
+        rewind 'snd_nxt' to 'snd_una' so the next timer tick re-emits
+        from snd_una at the new (smaller) MSS rather than waiting for
+        RTO. Unlike RTO, the walkback does NOT halve cwnd / ssthresh
+        and does NOT bump '_retransmit_count' or back off RTO — the
+        path narrowed but did not congest, so this is not a loss event.
 
         Reference: RFC 1191 §6 (PMTUD on the host).
+        Reference: RFC 1191 §6.5 (PMTU shrink retransmit walkback).
         Reference: RFC 8201 §4 (IPv6 PMTUD MTU update rule).
         Reference: RFC 9293 §3.7.5 (MSS option update on path-MTU change).
         """
@@ -794,10 +800,37 @@ class TcpSession:
         # only shrink, never grow.
         floor = 536 - 20 if ip_version == 4 else 1280 - 40 - 20
         new_mss = max(new_mss, floor)
-        if new_mss < self._win.snd_mss:
+        shrunk = new_mss < self._win.snd_mss
+        if shrunk:
             self._win.snd_mss = new_mss
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+
+        # RFC 1191 §6.5 walkback. Only fire when (a) the MSS actually
+        # shrunk and (b) at least one in-flight segment is oversized
+        # for the new MSS — single small segments that already fit
+        # don't need walking back.
+        if shrunk and any(
+            (seg.end_seq - seq) & 0xFFFF_FFFF > new_mss for seq, seg in self._rack_tlp.rack_segments.items()
+        ):
+            from pytcp.protocols.tcp.tcp__rack import INFINITE_TS
+
+            self._rack_tlp.rack_segments = {
+                seq: RackSegment(
+                    end_seq=seg.end_seq,
+                    xmit_ts=INFINITE_TS,
+                    retransmitted=seg.retransmitted,
+                    lost=True,
+                )
+                for seq, seg in self._rack_tlp.rack_segments.items()
+            }
+            self._snd_seq.nxt = self._snd_seq.una
+            __debug__ and log(
+                "tcp-ss",
+                f"[{self}] - <ly>RFC 1191 §6.5 walkback: snd_mss -> "
+                f"{new_mss}, snd_nxt rewound to snd_una "
+                f"({self._snd_seq.una})</>",
+            )
 
     def _change_state(self, state: FsmState) -> None:
         """

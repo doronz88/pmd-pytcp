@@ -35,9 +35,6 @@ What still **does not happen**:
   never expire.
 - Plateau-search fallback for non-RFC-1191 routers
   whose ICMP error has no Next-Hop MTU (§6.5).
-- Active retransmit-walkback when an in-flight TCP
-  segment exceeds the new MSS (RFC 1191 §6.5; left
-  for the RFC 4821 PLPMTUD follow-up).
 
 ---
 
@@ -79,6 +76,35 @@ shrinks `self._win.snd_mss` accordingly. The RFC 5927
 §4 sequence-in-window guard is applied before
 notifying TCP.
 
+### §6.5 TCP retransmit walkback on PMTU shrink
+
+> "If TCP responds to the receipt of an ICMP Datagram
+> Too Big message by retransmitting the segment that
+> caused the message, it MUST take care to choose new
+> IP-level segment boundaries such that the new
+> segments are smaller than the new path MTU."
+
+**Adherence:** **shipped**.
+`TcpSession._apply_pmtu_update` (in
+`pytcp/protocols/tcp/tcp__session.py`) detects the
+case where the inbound Frag-Needed shrinks `snd_mss`
+AND in-flight RACK segments exceed the new MSS. When
+both conditions hold, it marks every in-flight RACK
+segment lost and rewinds `snd_nxt` to `snd_una`, so
+the next timer tick re-emits from `snd_una` at the
+new (smaller) MSS rather than waiting for RTO
+(typically ≥ 1 second).
+
+Crucially, the walkback path does NOT halve `cwnd` /
+`ssthresh`, does NOT bump `_retransmit_count`, and
+does NOT back off RTO — a path that narrowed is not
+a congestion event. This matches Linux's
+`tcp_simple_retransmit` behaviour. The RFC requires
+"new IP-level segment boundaries"; PyTCP's TX path
+re-fragments naturally from the byte-oriented
+`_tx.buffer` at the current `snd_mss`, so the rewind
+is sufficient.
+
 ### §6.5 Old-style ICMP detection (non-RFC-1191 routers)
 
 > "Hosts MUST be prepared to fall back to a
@@ -114,7 +140,8 @@ follow-up.
 | §3 outbound DF=1 on TCP segments                    | shipped — `pytcp/tests/integration/test__packet_handler__tcp__tx.py` golden frames |
 | §3 outbound DF=1 on UDP datagrams                   | shipped — `pytcp/tests/integration/test__packet_handler__udp__tx.py` golden frames |
 | §4 ICMP Frag-Needed Next-Hop MTU update for UDP     | shipped — `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` |
-| §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_pmtu.py` |
+| §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` |
+| §6.5 retransmit walkback (snd_nxt rewind on shrink) | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtu_walkback.py` |
 | §6.5 fallback for non-RFC-1191 routers              | n/a (gap) |
 | §7 PMTU aging                                       | n/a (gap) |
 
@@ -126,6 +153,7 @@ follow-up.
 |----------------------------------------------|-----------------|
 | §3 outbound DF=1 + ICMP-driven discovery     | **shipped**     |
 | §4 Next-Hop MTU field consumption            | **shipped**     |
+| §6.5 TCP retransmit walkback                 | **shipped**     |
 | §6.5 plateau-search fallback                 | not implemented |
 | §7 path-MTU aging                            | not implemented |
 
