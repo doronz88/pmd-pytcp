@@ -416,6 +416,16 @@ class UdpSocket(socket):
         # signature stable; the body is intentionally minimal today.
         del icmp_type, icmp_code
 
+    def notify_parameter_problem(self, *, icmp_type: int, icmp_code: int) -> None:
+        """
+        Pass an inbound ICMP Parameter Problem notification that the
+        RX handler has matched against this socket. Same hook shape
+        as notify_time_exceeded — RFC 1122 §3.2.2.5 mandates pass-to-
+        transport.
+        """
+
+        del icmp_type, icmp_code
+
     def notify_pmtu(self, *, next_hop_mtu: int) -> None:
         """
         Receive a Path-MTU update for this socket's remote peer. The

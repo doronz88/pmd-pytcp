@@ -118,6 +118,10 @@ class PacketStatsRx(PacketStats):
     icmp4__time_exceeded__tcp__notify: int = 0
     icmp4__time_exceeded__tcp__seq_out_of_window__drop: int = 0
     icmp4__time_exceeded__udp__notify: int = 0
+    icmp4__parameter_problem: int = 0
+    icmp4__parameter_problem__tcp__notify: int = 0
+    icmp4__parameter_problem__tcp__seq_out_of_window__drop: int = 0
+    icmp4__parameter_problem__udp__notify: int = 0
     icmp4__unknown: int = 0
 
     icmp6__pre_parse: int = 0

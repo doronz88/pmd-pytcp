@@ -24,7 +24,7 @@ host-requirements work:
 | 5     | Redirect                | not implemented (parsed as Unknown)            |
 | 8     | Echo Request            | met (Smurf gate at v4 echo handler)            |
 | 11    | Time Exceeded           | met (parser + RFC 5927 §6 soft-error plumbing) |
-| 12    | Parameter Problem       | NOT MET — silently dropped (Phase β gap)       |
+| 12    | Parameter Problem       | met (parser + RFC 5927 §6 soft-error plumbing) |
 | 13/14 | Timestamp / Reply       | deliberate non-implementation (RFC 6633)       |
 | 15/16 | Information Req/Reply   | deliberate non-implementation (obsolete)       |
 | 17/18 | Address Mask            | deliberate non-implementation (RFC 6633)       |

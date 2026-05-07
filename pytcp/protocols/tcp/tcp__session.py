@@ -818,6 +818,25 @@ class TcpSession:
             "(soft error per RFC 5927 §6 — diagnostic only)",
         )
 
+    def on_parameter_problem(self, *, icmp_type: int, icmp_code: int) -> None:
+        """
+        Handle an inbound ICMP Parameter Problem that the RX handler
+        has matched against this session. Parameter Problem is a soft
+        error per RFC 5927 §6 — purely diagnostic. Same shape as
+        on_time_exceeded: log + return; no FSM mutation.
+
+        Reference: RFC 1122 §3.2.2.5 (Parameter Problem MUST be passed
+        to the transport layer).
+        Reference: RFC 5927 §6 (Parameter Problem is a soft error).
+        """
+
+        __debug__ and log(
+            "tcp-ss",
+            f"[{self}] - <ly>[{self._state}]</> - got Parameter Problem "
+            f"type={icmp_type} code={icmp_code} "
+            "(soft error per RFC 5927 §6 — diagnostic only)",
+        )
+
     def on_unreachable(self, *, icmp_type: int, icmp_code: int) -> None:
         """
         Handle an inbound ICMP Destination Unreachable that the RX

@@ -51,6 +51,9 @@ from net_proto.protocols.icmp4.message.icmp4__message__echo_reply import (
 from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
     Icmp4MessageEchoRequest,
 )
+from net_proto.protocols.icmp4.message.icmp4__message__parameter_problem import (
+    Icmp4MessageParameterProblem,
+)
 from net_proto.protocols.icmp4.message.icmp4__message__time_exceeded import (
     Icmp4MessageTimeExceeded,
 )
@@ -94,6 +97,8 @@ class Icmp4Parser(Icmp4, ProtoParser):
                 return Icmp4MessageEchoRequest
             case Icmp4Type.TIME_EXCEEDED:
                 return Icmp4MessageTimeExceeded
+            case Icmp4Type.PARAMETER_PROBLEM:
+                return Icmp4MessageParameterProblem
             case _:
                 return Icmp4MessageUnknown
 

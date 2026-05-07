@@ -56,6 +56,7 @@ class Icmp4Type(ProtoEnumByte):
     DESTINATION_UNREACHABLE = 3
     ECHO_REQUEST = 8
     TIME_EXCEEDED = 11
+    PARAMETER_PROBLEM = 12
 
 
 class Icmp4Code(ProtoEnumByte):

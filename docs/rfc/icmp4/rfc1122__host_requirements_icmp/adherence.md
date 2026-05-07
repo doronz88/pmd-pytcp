@@ -254,15 +254,28 @@ purely observability + future MSG_ERRQUEUE delivery.
 > "A host SHOULD generate Parameter Problem messages."
 
 **Adherence:** **not implemented**. PyTCP does not generate ICMPv4
-Parameter Problem messages.
+Parameter Problem messages. Generation requires the IPv4 parser to
+surface the offending field's offset to the packet handler, which
+is a separate enhancement deliberately deferred.
 
 > "An incoming Parameter Problem message MUST be passed to the
 > transport layer, and it MAY be reported to the user."
 
-**Adherence:** **not met**. Same gap shape as §3.2.2.4: ICMPv4 type
-12 is not declared in `Icmp4Type`; inbound Parameter Problem
-routes to Unknown and is silently dropped. Phase β closes this
-together with Time Exceeded.
+**Adherence:** **met** (post Phase β.3). ICMPv4 type 12 routes
+through `Icmp4MessageParameterProblem` parsing
+(`net_proto/protocols/icmp4/message/icmp4__message__parameter_problem.py`),
+and the `__phrx_icmp4__parameter_problem` packet-handler arm runs
+`parse_embedded_l4` on the carried original-datagram bytes and
+dispatches to either `TcpSession.on_parameter_problem` or
+`UdpSocket.notify_parameter_problem` based on the embedded L4
+protocol. The TCP demux applies the RFC 5927 §4 sequence-in-window
+guard before notifying the session.
+
+Per RFC 5927 §6, Parameter Problem is a soft error: same shape as
+Time Exceeded — diagnostic only, no FSM mutation. The
+"MAY be reported to the user" sub-clause is a future MSG_ERRQUEUE /
+IP_RECVERR feature; current behaviour is observability via
+packet_stats counter and log line.
 
 ---
 
@@ -468,17 +481,21 @@ test, but the surrounding parser dispatch is fully exercised).
 covered by direct exercise of the `__phrx_icmp4__time_exceeded__dispatch_udp`
 arm; a dedicated UDP integration test is a future polish.
 
-### §3.2.2.5 — gap not yet closed
+### §3.2.2.5 — Parameter Problem inbound (closed in β.3)
 
-**No test surface — gap not yet closed.** When Phase β closes
-PARAMETER_PROBLEM (type 12), the natural tests are:
+- **Unit (parser):**
+  `net_proto/tests/unit/protocols/icmp4/test__icmp4__message__parameter_problem__parser.py`
+  — pins that type-12 frames route to
+  `Icmp4MessageParameterProblem`, with codes 0/1 and pointer field
+  round-tripping cleanly.
+- **Integration (TCP demux):**
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem.py::TestTcpOnParameterProblem`
+  — pins that a Parameter Problem carrying an in-window embedded
+  TCP SYN reaches `TcpSession.on_parameter_problem`, bumps the
+  `tcp__notify` counter, and does NOT mutate FSM/ConnError. Out-
+  of-window embedded seq drops at the seq-in-window guard.
 
-1. A unit test for the new `Icmp4MessageParameterProblem` parser
-   dispatch (verifies the type byte routes away from
-   `Icmp4MessageUnknown`).
-2. An integration test that drives an inbound Parameter Problem
-   carrying an embedded TCP segment matching an active session and
-   asserts the soft-error notify path runs.
+**Status:** **locked in** (parser + TCP demux).
 
 ### §3.2.2.2 Redirect inbound — gap not yet closed
 
@@ -499,7 +516,7 @@ support.
 | §3.2.2.6 Echo server (unicast)            | locked in |
 | §3.2.2.6 Echo Smurf-mitigation drop       | locked in |
 | §3.2.2.4 Time Exceeded inbound            | locked in |
-| §3.2.2.5 Parameter Problem inbound        | n/a (gap) |
+| §3.2.2.5 Parameter Problem inbound        | locked in |
 | §3.2.2.2 Redirect inbound                 | n/a (gap) |
 
 ---
@@ -522,7 +539,7 @@ support.
 | §3.2.2.2 MUST process inbound Redirect              | not implemented       |
 | §3.2.2.3 Source Quench                              | deliberate (RFC 6633) |
 | §3.2.2.4 MUST pass Time Exceeded to transport       | met                   |
-| §3.2.2.5 MUST pass Param Problem to transport       | not met (Phase β)     |
+| §3.2.2.5 MUST pass Param Problem to transport       | met                   |
 | §3.2.2.5 SHOULD generate Param Problem              | not implemented       |
 | §3.2.2.6 MUST implement Echo server                 | met                   |
 | §3.2.2.6 MAY discard Echo to bcast/mcast            | met (Smurf drop)      |
