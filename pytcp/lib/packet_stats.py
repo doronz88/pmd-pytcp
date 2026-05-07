@@ -104,6 +104,11 @@ class PacketStatsRx(PacketStats):
     ip6_frag__failed_parse: int = 0
     ip6_frag__defrag: int = 0
 
+    ip4__no_proto_support__respond_icmp4_unreachable: int = 0
+    ip4__no_proto_support__icmp4_unreachable_suppressed: int = 0
+    ip6__no_proto_support__respond_icmp6_param_problem: int = 0
+    ip6__no_proto_support__icmp6_param_problem_suppressed: int = 0
+
     icmp4__pre_parse: int = 0
     icmp4__failed_parse__drop: int = 0
     icmp4__echo_reply: int = 0
@@ -251,12 +256,14 @@ class PacketStatsTx(PacketStats):
     icmp4__echo_reply__send: int = 0
     icmp4__echo_request__send: int = 0
     icmp4__destination_unreachable__port__send: int = 0
+    icmp4__destination_unreachable__protocol__send: int = 0
     icmp4__unknown__drop: int = 0
 
     icmp6__pre_assemble: int = 0
     icmp6__echo_reply__send: int = 0
     icmp6__echo_request__send: int = 0
     icmp6__destination_unreachable__port__send: int = 0
+    icmp6__parameter_problem__send: int = 0
     icmp6__nd__router_solicitation__send: int = 0
     icmp6__nd__router_advertisement__send: int = 0
     icmp6__nd__neighbor_solicitation__send: int = 0

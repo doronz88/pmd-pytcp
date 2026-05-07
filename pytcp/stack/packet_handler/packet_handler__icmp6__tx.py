@@ -115,6 +115,8 @@ class PacketHandlerIcmp6Tx(ABC):
                 Icmp6DestinationUnreachableCode.PORT,
             ):
                 self._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
+            case Icmp6Type.PARAMETER_PROBLEM, _:
+                self._packet_stats_tx.icmp6__parameter_problem__send += 1
             case Icmp6Type.ND__ROUTER_SOLICITATION, _:
                 self._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT, _:

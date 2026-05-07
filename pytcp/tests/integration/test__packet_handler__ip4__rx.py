@@ -945,34 +945,16 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/IPv4 - dst is our unicast, unsupported proto (99), drop",
-            "_frames_rx": [
-                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x0800
-                # IPv4: src=10.0.1.91, dst=10.0.1.7, proto=99 (unsupported), 4 bytes raw payload
-                #
-                # Summary: Bumps 'ip4__dst_unicast' (classifier) and 'ip4__no_proto_support__drop'
-                #          (default match arm).
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
-                b"\x00\x18\x00\x00\x00\x00\x40\x63\x64\x22\x0a\x00\x01\x5b\x0a\x00"
-                b"\x01\x07\x00\x00\x00\x00",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                ip4__pre_parse=1,
-                ip4__dst_unicast=1,
-                ip4__no_proto_support__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
             "_description": "Ethernet/IPv4 - dst is limited broadcast (255.255.255.255), unsupported proto (99), drop",
             "_frames_rx": [
                 # Ethernet II: dst=ff:ff:ff:ff:ff:ff (broadcast), src=02:00:00:00:00:91
                 # IPv4: src=10.0.1.91, dst=255.255.255.255 (limited broadcast), proto=99
                 #
-                # Summary: Bumps 'ip4__dst_broadcast' (classifier) and 'ip4__no_proto_support__drop'.
+                # Summary: Bumps 'ip4__dst_broadcast' (classifier) and
+                #          'ip4__no_proto_support__drop'. The host-requirements
+                #          gate suppresses the SHOULD-emit Protocol Unreachable
+                #          response (RFC 1122 §3.2.2 forbids ICMP errors in
+                #          response to broadcast destinations).
                 b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
                 b"\x00\x18\x00\x00\x00\x00\x40\x63\x6f\x29\x0a\x00\x01\x5b\xff\xff"
                 b"\xff\xff\x00\x00\x00\x00",
@@ -984,6 +966,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ip4__pre_parse=1,
                 ip4__dst_broadcast=1,
                 ip4__no_proto_support__drop=1,
+                ip4__no_proto_support__icmp4_unreachable_suppressed=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
@@ -1145,6 +1128,11 @@ class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
                 ip4__pre_parse=1,
                 ip4__dst_multicast=1,
                 ip4__no_proto_support__drop=1,
+                ip4__no_proto_support__icmp4_unreachable_suppressed=1,
             ),
-            msg="ip4__dst_multicast and ip4__no_proto_support__drop must both bump.",
+            msg=(
+                "ip4__dst_multicast and ip4__no_proto_support__drop must both "
+                "bump; the host-requirements gate suppresses the would-be "
+                "Protocol Unreachable response per RFC 1122 §3.2.2."
+            ),
         )

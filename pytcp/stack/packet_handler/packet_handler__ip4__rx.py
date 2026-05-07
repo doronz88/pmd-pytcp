@@ -31,12 +31,16 @@ ver 3.0.4
 """
 
 import struct
+import time as time_module
 from abc import ABC
 from time import time
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
     IP4__HEADER__LEN,
+    Icmp4DestinationUnreachableCode,
+    Icmp4Message,
+    Icmp4MessageDestinationUnreachable,
     Ip4Parser,
     IpProto,
     PacketRx,
@@ -46,6 +50,8 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
+from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
@@ -57,7 +63,9 @@ class PacketHandlerIp4Rx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import Ip4Address
+        from net_proto import Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
+        from pytcp.lib.tx_status import TxStatus
 
         _packet_stats_rx: PacketStatsRx
         _ip4_multicast: list[Ip4Address]
@@ -68,6 +76,15 @@ class PacketHandlerIp4Rx(ABC):
         def _phrx_icmp4(self, packet_rx: PacketRx, /) -> None: ...
         def _phrx_udp(self, packet_rx: PacketRx, /) -> None: ...
         def _phrx_tcp(self, packet_rx: PacketRx, /) -> None: ...
+
+        def _phtx_icmp4(
+            self,
+            *,
+            ip4__src: Ip4Address,
+            ip4__dst: Ip4Address,
+            icmp4__message: Icmp4Message,
+            echo_tracker: Tracker | None = None,
+        ) -> TxStatus: ...
 
         # pylint: disable=missing-function-docstring
 
@@ -162,6 +179,52 @@ class PacketHandlerIp4Rx(ABC):
                     "ip4",
                     f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip4.proto}, dropping.",
                 )
+                self.__phrx_ip4__emit_protocol_unreachable(packet_rx)
+
+    def __phrx_ip4__emit_protocol_unreachable(self, packet_rx: PacketRx) -> None:
+        """
+        Emit ICMPv4 Destination Unreachable code 2 (Protocol
+        Unreachable) in response to an inbound IPv4 datagram whose
+        'proto' field designates a transport protocol the host does
+        not implement, subject to the host-requirements gates and
+        rate limit.
+
+        Reference: RFC 1122 §3.2.2.1 (host SHOULD generate Code 2).
+        Reference: RFC 1122 §3.2.2 (gates: bcast/mcast destination,
+        non-initial fragment, invalid source).
+        Reference: RFC 1812 §4.3.2.8 (rate-limit ICMP error generation).
+        """
+
+        # DHCP-client mode: no configured unicast IPv4 address. Cannot
+        # emit ICMP errors because the source-IP reflection from
+        # packet_rx.ip4.dst would not be a valid stack address.
+        if not self._ip4_unicast:
+            return
+
+        verdict = try_emit_icmp_error(
+            classify_inbound(packet_rx),
+            rate_limiter=stack.icmp4_error_rate_limiter,
+            now=time_module.monotonic(),
+        )
+        if verdict is not None:
+            self._packet_stats_rx.ip4__no_proto_support__icmp4_unreachable_suppressed += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Protocol Unreachable "
+                f"to {packet_rx.ip4.src}: {verdict}</>",
+            )
+            return
+
+        self._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable += 1
+        self._phtx_icmp4(
+            ip4__src=packet_rx.ip4.dst,
+            ip4__dst=packet_rx.ip4.src,
+            icmp4__message=Icmp4MessageDestinationUnreachable(
+                code=Icmp4DestinationUnreachableCode.PROTOCOL,
+                data=packet_rx.ip.packet_bytes,
+            ),
+            echo_tracker=packet_rx.tracker,
+        )
 
     def __defragment_ip4_packet(self, packet_rx: PacketRx) -> PacketRx | None:
         """

@@ -98,35 +98,16 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/IPv6 - dst is our unicast, unsupported next header (99), drop",
-            "_frames_rx": [
-                # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91, type=0x86dd
-                # IPv6: src=2001:db8:0:1::91, dst=2001:db8:0:1::7 (us), next=99, plen=4
-                #
-                # Summary: Bumps 'ip6__dst_unicast' (classifier) and 'ip6__no_proto_support__drop'
-                #          (default match arm).
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
-                b"\x00\x00\x00\x04\x63\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                b"\x00\x00\x00\x00\x00\x07\x00\x00\x00\x00",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                ip6__pre_parse=1,
-                ip6__dst_unicast=1,
-                ip6__no_proto_support__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
             "_description": ("Ethernet/IPv6 - dst is our solicited-node multicast, unsupported next header (99), drop"),
             "_frames_rx": [
                 # Ethernet II: dst=33:33:ff:00:00:07 (solicited-node MAC for ::7), src=02:00:00:00:00:91
                 # IPv6: src=2001:db8:0:1::91, dst=ff02::1:ff00:7 (solicited-node multicast for ::7), next=99
                 #
-                # Summary: Bumps 'ip6__dst_multicast' (classifier) and 'ip6__no_proto_support__drop'.
+                # Summary: Bumps 'ip6__dst_multicast' (classifier) and
+                #          'ip6__no_proto_support__drop'. The host-requirements
+                #          gate suppresses the SHOULD-emit Parameter Problem
+                #          (Unrecognized Next Header) response per RFC 4443
+                #          §2.4(e).
                 b"\x33\x33\xff\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
                 b"\x00\x00\x00\x04\x63\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
                 b"\x00\x00\x00\x00\x00\x91\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -139,6 +120,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 ip6__pre_parse=1,
                 ip6__dst_multicast=1,
                 ip6__no_proto_support__drop=1,
+                ip6__no_proto_support__icmp6_param_problem_suppressed=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },

@@ -131,10 +131,21 @@ PRECEDENCE_CUTOFF).
 > code: 2 (Protocol Unreachable), when the designated transport
 > protocol is not supported"
 
-**Adherence:** **not implemented**. The IPv4 RX path drops packets
-of unknown protocol with `ip4__no_proto_support__drop` but does
-not emit a Protocol Unreachable
-(`pytcp/stack/packet_handler/packet_handler__ip4__rx.py:160-165`).
+**Adherence:** **met**. The IPv4 RX path drops packets of unknown
+protocol with `ip4__no_proto_support__drop` and then emits an
+ICMPv4 Destination Unreachable code 2 via
+`__phrx_ip4__emit_protocol_unreachable`
+(`pytcp/stack/packet_handler/packet_handler__ip4__rx.py`), routed
+through `try_emit_icmp_error()` so the §3.2.2 host-requirements
+gates and RFC 1812 §4.3.2.8 rate limit apply uniformly with the
+other ICMP error generators.
+
+The IPv6 mirror is RFC 4443 §3.4 Parameter Problem code 1
+("Unrecognized Next Header type"), not Destination Unreachable —
+the v6 wire format expresses the same semantic via Param Problem.
+Wired symmetrically at
+`pytcp/stack/packet_handler/packet_handler__ip6__rx.py::__phrx_ip6__emit_unrecognized_next_header`
+per RFC 8200 §4.
 
 > "A host SHOULD generate Destination Unreachable messages with
 > code: 3 (Port Unreachable), when the designated transport
@@ -439,6 +450,23 @@ test, but the surrounding parser dispatch is fully exercised).
 
 **Status:** **locked in**.
 
+### §3.2.2.1 Code 2 (Protocol Unreachable) generation
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__CleanUnicast`
+  — drives an IPv4 datagram with proto=42 and pins that the stack
+  emits a Destination Unreachable type 3 / code 2 response with
+  the success counter bumped.
+- **Integration:**
+  `pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__GateSuppressed`
+  — drives the same probe to a broadcast destination and pins
+  that the §3.2.2 host-requirements gate suppresses the emission.
+- **Integration:**
+  `pytcp/tests/integration/protocols/icmp6/test__icmp6__parameter_problem_unrecognized_next_header.py`
+  — IPv6 mirror via Parameter Problem code 1.
+
+**Status:** **locked in**.
+
 ### §3.2.2.6 Echo server (unicast)
 
 - **Integration:**
@@ -512,6 +540,7 @@ support.
 | §3.2.2 unknown-type silent discard        | indirect  |
 | §3.2.2 embedded-datagram unchanged        | locked in |
 | §3.2.2.1 Code 3 Port Unreachable emission | locked in |
+| §3.2.2.1 Code 2 Protocol Unreachable      | locked in |
 | §3.2.2.1 TCP MUST accept Port Unreachable | locked in |
 | §3.2.2.6 Echo server (unicast)            | locked in |
 | §3.2.2.6 Echo Smurf-mitigation drop       | locked in |
@@ -530,7 +559,7 @@ support.
 | §3.2.2 ICMP-error generation gates (5 MUST NOTs)    | met                   |
 | §3.2.2 TOS=0 on errors                              | vacuous               |
 | §3.2.2.1 Codes 6-12 defined                         | met                   |
-| §3.2.2.1 SHOULD generate Code 2 (Protocol Unreach.) | not implemented       |
+| §3.2.2.1 SHOULD generate Code 2 (Protocol Unreach.) | met                   |
 | §3.2.2.1 SHOULD generate Code 3 (Port Unreach.)     | met                   |
 | §3.2.2.1 MUST report to transport                   | met                   |
 | §3.2.2.1 TCP MUST accept Port Unreachable           | met                   |

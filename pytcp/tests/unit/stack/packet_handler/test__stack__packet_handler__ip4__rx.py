@@ -39,6 +39,7 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragFlowId
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.lib.tx_status import TxStatus
 from pytcp.stack.packet_handler.packet_handler__ip4__rx import (
     PacketHandlerIp4Rx,
 )
@@ -123,6 +124,16 @@ class _StubHandler(PacketHandlerIp4Rx):
 
     def _phrx_tcp(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("tcp")
+
+    def _phtx_icmp4(self, **_kwargs: object) -> TxStatus:
+        """
+        Stub the outbound ICMPv4 emit so the unsupported-proto path's
+        SHOULD-emit Protocol Unreachable response goes to a no-op
+        rather than blowing up on a missing TX surface.
+        """
+
+        self.dispatched.append("phtx_icmp4")
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
 
 def _ip4_frame(
@@ -326,7 +337,15 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
             1,
             msg="Unsupported IPv4 proto must be counted in ip4__no_proto_support__drop.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        # SHOULD-emit Protocol Unreachable per RFC 1122 §3.2.2.1 — the stub
+        # records the outbound dispatch via 'phtx_icmp4' rather than the
+        # upper-layer RX dispatch list.
+        self.assertEqual(self._handler.dispatched, ["phtx_icmp4"])
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable,
+            1,
+            msg="Unsupported proto must trigger the Protocol Unreachable emit counter.",
+        )
 
 
 class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):

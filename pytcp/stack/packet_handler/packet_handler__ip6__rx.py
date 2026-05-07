@@ -30,12 +30,23 @@ pytcp/subsystems/packet_handler/packet_handler__ip6__rx.py
 ver 3.0.4
 """
 
+import time as time_module
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
-from net_proto import Ip6Parser, IpProto, PacketRx, PacketValidationError
+from net_proto import (
+    Icmp6Message,
+    Icmp6MessageParameterProblem,
+    Icmp6ParameterProblemCode,
+    Ip6Parser,
+    IpProto,
+    PacketRx,
+    PacketValidationError,
+)
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
+from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
@@ -47,7 +58,9 @@ class PacketHandlerIp6Rx(ABC):
 
     if TYPE_CHECKING:
         from net_addr import Ip6Address
+        from net_proto import Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
+        from pytcp.lib.tx_status import TxStatus
 
         _packet_stats_rx: PacketStatsRx
         _ip6_multicast: list[Ip6Address]
@@ -58,6 +71,16 @@ class PacketHandlerIp6Rx(ABC):
         def _phrx_icmp6(self, packet_rx: PacketRx, /) -> None: ...
         def _phrx_udp(self, packet_rx: PacketRx, /) -> None: ...
         def _phrx_tcp(self, packet_rx: PacketRx, /) -> None: ...
+
+        def _phtx_icmp6(
+            self,
+            *,
+            ip6__src: Ip6Address,
+            ip6__dst: Ip6Address,
+            ip6__hop: int = 64,
+            icmp6__message: Icmp6Message,
+            echo_tracker: Tracker | None = None,
+        ) -> TxStatus: ...
 
         # pylint: disable=missing-function-docstring
 
@@ -132,3 +155,55 @@ class PacketHandlerIp6Rx(ABC):
                     "ip6",
                     f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip6.next}, dropping.",
                 )
+                self.__phrx_ip6__emit_unrecognized_next_header(packet_rx)
+
+    def __phrx_ip6__emit_unrecognized_next_header(self, packet_rx: PacketRx) -> None:
+        """
+        Emit ICMPv6 Parameter Problem code 1 (Unrecognized Next Header)
+        in response to an inbound IPv6 datagram whose Next Header field
+        designates a transport protocol the host does not implement.
+
+        Per RFC 8200 §4 the pointer field carries the byte offset of
+        the offending Next Header. PyTCP does not currently process
+        IPv6 extension headers, so the pointer is fixed at 6 (the
+        offset of the Next Header field in the IPv6 main header).
+
+        Subject to the host-requirements gates and rate limit.
+
+        Reference: RFC 8200 §4 (IPv6 node MUST send Param Problem
+        code 1 on unrecognized Next Header).
+        Reference: RFC 4443 §3.4 (Parameter Problem code 1 wire format).
+        Reference: RFC 4443 §2.4(e/f) (gate + rate-limit requirements).
+        """
+
+        # No configured unicast IPv6 address: cannot emit because the
+        # source-IP reflection from packet_rx.ip6.dst would not be a
+        # valid stack address.
+        if not self._ip6_unicast:
+            return
+
+        verdict = try_emit_icmp_error(
+            classify_inbound(packet_rx),
+            rate_limiter=stack.icmp6_error_rate_limiter,
+            now=time_module.monotonic(),
+        )
+        if verdict is not None:
+            self._packet_stats_rx.ip6__no_proto_support__icmp6_param_problem_suppressed += 1
+            __debug__ and log(
+                "ip6",
+                f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Unrecognized Next Header "
+                f"to {packet_rx.ip6.src}: {verdict}</>",
+            )
+            return
+
+        self._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem += 1
+        self._phtx_icmp6(
+            ip6__src=packet_rx.ip6.dst,
+            ip6__dst=packet_rx.ip6.src,
+            icmp6__message=Icmp6MessageParameterProblem(
+                code=Icmp6ParameterProblemCode.UNRECOGNIZED_NEXT_HEADER,
+                pointer=6,
+                data=packet_rx.ip.packet_bytes,
+            ),
+            echo_tracker=packet_rx.tracker,
+        )

@@ -38,6 +38,7 @@ from net_proto import Ip6Assembler, IpProto, RawAssembler
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.lib.tx_status import TxStatus
 from pytcp.stack.packet_handler.packet_handler__ip6__rx import (
     PacketHandlerIp6Rx,
 )
@@ -100,6 +101,15 @@ class _StubHandler(PacketHandlerIp6Rx):
 
     def _phrx_tcp(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("tcp")
+
+    def _phtx_icmp6(self, **_kwargs: object) -> TxStatus:
+        """
+        Stub the outbound ICMPv6 emit so the unsupported-next-header
+        path's SHOULD-emit Parameter Problem response goes to a no-op.
+        """
+
+        self.dispatched.append("phtx_icmp6")
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
 
 def _ip6_frame(
@@ -252,7 +262,14 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
             1,
             msg="Unsupported IPv6 next-header must be counted in ip6__no_proto_support__drop.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        # SHOULD-emit Parameter Problem code 1 per RFC 8200 §4 — the stub
+        # records the outbound dispatch via 'phtx_icmp6'.
+        self.assertEqual(self._handler.dispatched, ["phtx_icmp6"])
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem,
+            1,
+            msg="Unsupported next-header must trigger the Param Problem emit counter.",
+        )
 
 
 class TestPacketHandlerIp6RxRawSocketMatch(_Ip6RxTestBase):
