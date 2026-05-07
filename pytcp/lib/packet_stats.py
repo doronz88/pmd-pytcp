@@ -86,6 +86,7 @@ class PacketStatsRx(PacketStats):
     ip4__pre_parse: int = 0
     ip4__failed_parse__drop: int = 0
     ip4__no_proto_support__drop: int = 0
+    ip4__source_route__drop: int = 0
     ip4__dst_unknown__drop: int = 0
     ip4__dst_unicast: int = 0
     ip4__dst_multicast: int = 0

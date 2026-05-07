@@ -127,6 +127,22 @@ class PacketHandlerIp4Rx(ABC):
 
         __debug__ and log("ip4", f"{packet_rx.tracker} - {packet_rx.ip4}")
 
+        # Source-route gate: drop inbound packets carrying LSRR or
+        # SSRR options unless 'IP4__ACCEPT_SOURCE_ROUTE' is True.
+        # Default False matches Linux's
+        # 'net.ipv4.conf.*.accept_source_route' default and closes
+        # an attack surface that the LSRR/SSRR echo support
+        # otherwise widens — the Echo Reply path stays in place
+        # for operators that explicitly opt in.
+        if not stack.IP4__ACCEPT_SOURCE_ROUTE and (packet_rx.ip4.lsrr is not None or packet_rx.ip4.ssrr is not None):
+            self._packet_stats_rx.ip4__source_route__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <WARN>Dropping source-routed IPv4 packet "
+                f"from {packet_rx.ip4.src} (IP4__ACCEPT_SOURCE_ROUTE=False)</>",
+            )
+            return
+
         # Check if received packet has been sent to us directly or by
         # unicast/broadcast, allow any destination if no unicast address
         # is configured (for DHCP client).

@@ -46,6 +46,7 @@ from net_proto import (
     Ip4Parser,
     PacketRx,
 )
+from pytcp import stack
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 
@@ -79,6 +80,17 @@ class TestIcmp4EchoOptions(IcmpTestCase):
     """
     The IPv4 Echo Reply options-echo behaviour tests.
     """
+
+    def setUp(self) -> None:
+        """
+        Opt into 'IP4__ACCEPT_SOURCE_ROUTE' so the inbound LSRR/SSRR
+        gate does not drop the test frames before they reach the
+        Echo Reply path. The default-False gate is exercised
+        separately in 'test__packet_handler__ip4__rx__source_route'.
+        """
+
+        super().setUp()
+        stack.IP4__ACCEPT_SOURCE_ROUTE = True
 
     def _parse_reply_lsrr(self, reply_frame: bytes) -> Ip4OptionLsrr | None:
         """

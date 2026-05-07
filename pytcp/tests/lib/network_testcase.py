@@ -133,6 +133,7 @@ _STACK__PATCHED_ATTRS: tuple[str, ...] = (
     "LOG__CHANNEL",
     "IP6__SUPPORT",
     "IP4__SUPPORT",
+    "IP4__ACCEPT_SOURCE_ROUTE",
     "INTERFACE__TAP__MTU",
     "INTERFACE__TUN__MTU",
     "UDP__ECHO_NATIVE",

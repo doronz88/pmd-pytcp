@@ -380,6 +380,15 @@ misaligned route data / length > buffer). Other option types
 `Ip4OptionUnknown` — adequate for verbatim echo, but a follow-up
 could elevate them as well for first-class accessor surface.
 
+A separate IP-layer gate `stack.IP4__ACCEPT_SOURCE_ROUTE`
+(default `False`) silently drops inbound IPv4 packets carrying
+LSRR or SSRR options at `_phrx_ip4` — the LSRR/SSRR echo
+machinery only runs when an operator explicitly opts in. This
+matches Linux's `net.ipv4.conf.*.accept_source_route=0`
+default and closes the attack surface the echo support would
+otherwise widen. Counter:
+`ip4__source_route__drop`.
+
 ---
 
 ## §3.2.2.7 — Information Request/Reply

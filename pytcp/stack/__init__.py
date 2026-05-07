@@ -125,6 +125,14 @@ IP6_GATEWAY = None
 IP6__SUPPORT = True
 IP4__SUPPORT = True
 
+# Whether the stack accepts inbound IPv4 packets carrying LSRR or
+# SSRR source-route options (RFC 791 §3.1, types 131 / 137).
+# Default False matches Linux's 'net.ipv4.conf.*.accept_source_route'
+# default since the early 2000s — source-routed packets are dropped
+# at the IPv4 RX gate. Operators that genuinely need source-route
+# acceptance set this to True.
+IP4__ACCEPT_SOURCE_ROUTE = False
+
 # ARP cache configuration.
 ARP__CACHE__ENTRY_MAX_AGE = 3600
 ARP__CACHE__ENTRY_REFRESH_TIME = 300
