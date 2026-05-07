@@ -47,6 +47,7 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp.icmp__echo_gate import should_emit_echo_reply
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
@@ -297,7 +298,10 @@ class PacketHandlerIcmp4Rx(ABC):
 
         assert isinstance(packet_rx.icmp4.message, Icmp4MessageEchoRequest)
 
-        if packet_rx.ip4.dst.is_limited_broadcast or packet_rx.ip4.dst.is_multicast:
+        if not should_emit_echo_reply(
+            dst_is_broadcast=packet_rx.ip4.dst.is_limited_broadcast,
+            dst_is_multicast=packet_rx.ip4.dst.is_multicast,
+        ):
             self._packet_stats_rx.icmp4__echo_request__bcast_or_mcast__drop += 1
             __debug__ and log(
                 "icmp4",
