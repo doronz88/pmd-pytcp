@@ -88,6 +88,19 @@ _FRAME_RX__SOURCE_QUENCH: bytes = (
     b"\x01\x07\x04\x00\xfb\xff"
 )
 
+# ICMPv4 Address Mask Request (Type 17) — deprecated by RFC 6918.
+#   IPv4     : total_len=24
+#   ICMPv4   : type=17, code=0, cksum=0xeeff, no payload
+# Representative of the 15 ICMPv4 types that RFC 6918 deprecated
+# en block. PyTCP's Icmp4Type enum has no entries for any of them,
+# so they all fall through to the unknown handler. This frame pins
+# the most well-known deprecated type as a regression guard.
+_FRAME_RX__ADDR_MASK_REQUEST: bytes = (
+    b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+    b"\x00\x18\x00\x00\x00\x00\x40\x01\x64\x84\x0a\x00\x01\x5b\x0a\x00"
+    b"\x01\x07\x11\x00\xee\xff"
+)
+
 # ICMPv4 Destination Unreachable carrying a valid embedded IPv4+UDP
 # header but no UDP socket matches the resulting metadata.
 #   IPv4     : total_len=56
@@ -404,6 +417,57 @@ class TestIcmp4Rx__SourceQuench__Rfc6633(IcmpTestCase):
         self._drive_rx(frame=_FRAME_RX__SOURCE_QUENCH)
 
         self._assert_packet_stats_tx()
+
+
+class TestIcmp4Rx__DeprecatedTypes__Rfc6918(IcmpTestCase):
+    """
+    Inbound ICMPv4 message types deprecated en block by RFC 6918
+    (15 types: 6, 15, 16, 17, 18, 30, 31, 32, 33, 34, 35, 36, 37,
+    38, 39). PyTCP's Icmp4Type enum has no entries for any of
+    them, so each falls through to the unknown-type handler and
+    is silently discarded. Address Mask Request (Type 17) is the
+    most well-known of the set and serves as a representative
+    regression guard.
+    """
+
+    def test__icmp4__rx__addr_mask_request__no_tx(self) -> None:
+        """
+        Ensure an inbound Address Mask Request (Type 17) produces
+        no TX frames — the host neither replies with an Address
+        Mask Reply nor reacts to the deprecated message in any
+        observable way.
+
+        Reference: RFC 6918 §3 (IANA registry deprecation of 15
+        ICMPv4 message types including Address Mask Request).
+        Reference: RFC 6918 §2.4 (Address Mask Request superseded
+        by DHCP).
+        """
+
+        self._drive_rx(frame=_FRAME_RX__ADDR_MASK_REQUEST)
+
+        self._assert_no_tx()
+
+    def test__icmp4__rx__addr_mask_request__packet_stats_rx(self) -> None:
+        """
+        Ensure an inbound Address Mask Request bumps the
+        'icmp4__unknown' counter — proof the deprecated type is
+        being absorbed by the unknown-type path rather than
+        dispatched to a Type-17-specific handler.
+
+        Reference: RFC 6918 §3 (Type 17 deprecated; falls through
+        unknown-type silent-discard path).
+        """
+
+        self._drive_rx(frame=_FRAME_RX__ADDR_MASK_REQUEST)
+
+        self._assert_packet_stats_rx(
+            ethernet__pre_parse=1,
+            ethernet__dst_unicast=1,
+            ip4__pre_parse=1,
+            ip4__dst_unicast=1,
+            icmp4__pre_parse=1,
+            icmp4__unknown=1,
+        )
 
 
 class TestIcmp4Rx__DestUnreachableNoSocket(IcmpTestCase):
