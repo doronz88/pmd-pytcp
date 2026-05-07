@@ -33,6 +33,9 @@ All MUSTs across both v4 and v6 inbound paths are met:
   sanity errors ✅ (commits `dd68e3ac` + this commit)
 - #3 — RFC 5927 §6 hard-vs-soft refactor ✅ (FSM-dispatch refactor
   Phases 1-4: `cdcb1808 → b6948c68`)
+- #4 — IP options echo on Echo Reply, with LSRR/SSRR reversal ✅
+  (`00a0ee7b` first-class option types; this commit wires the
+  echo helper)
 
 ---
 

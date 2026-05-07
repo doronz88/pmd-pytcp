@@ -357,9 +357,28 @@ fragmentation (post the RFC 791 §3.1 DF-honoring change in commit
 > received in the Echo Request. [...] An ICMP Echo Reply SHOULD
 > echo all options received in the Echo Request."
 
-**Adherence:** **partial**. Data is echoed verbatim; IPv4 options
-are NOT echoed because the RX path does not currently parse and
-forward IPv4 options through to the Echo Reply construction.
+**Adherence:** **shipped** (SHOULD #4). Data is echoed verbatim;
+IPv4 options are also echoed via
+`pytcp/protocols/icmp4/icmp4__echo_options.py::echo_reply_options`,
+which `__phrx_icmp4__echo_request` calls before threading the
+result into `_phtx_icmp4(..., ip4__options=...)`. The helper:
+
+- **Reverses LSRR / SSRR** (`Ip4OptionLsrr` / `Ip4OptionSsrr`,
+  RFC 791 §3.1) — route slots in flipped order, pointer reset to
+  4. This satisfies the §3.2.2.6 "MUST be reversed" rule for
+  source-route options on Echo Reply.
+- **Echoes everything else verbatim** (NOP / EOL / Record Route /
+  Timestamp / Security / Unknown). Echo Reply is not a forwarded
+  packet, so Record Route slots and Timestamp entries are
+  preserved as-is.
+
+The first-class option types `Ip4OptionLsrr` and `Ip4OptionSsrr`
+land in commit `00a0ee7b` per CLAUDE.md option layout (full
+unit-test matrix; integrity checks for under-min length /
+misaligned route data / length > buffer). Other option types
+(Record Route, Timestamp) continue to round-trip as
+`Ip4OptionUnknown` — adequate for verbatim echo, but a follow-up
+could elevate them as well for first-class accessor surface.
 
 ---
 

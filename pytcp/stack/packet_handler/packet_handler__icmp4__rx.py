@@ -50,6 +50,7 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
+from pytcp.protocols.icmp4.icmp4__echo_options import echo_reply_options
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
@@ -67,7 +68,7 @@ class PacketHandlerIcmp4Rx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_proto import Icmp4Message, Tracker
+        from net_proto import Icmp4Message, Ip4Options, Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 
@@ -80,6 +81,7 @@ class PacketHandlerIcmp4Rx(ABC):
             *,
             ip4__src: Ip4Address,
             ip4__dst: Ip4Address,
+            ip4__options: Ip4Options = ...,
             icmp4__message: Icmp4Message,
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
@@ -576,6 +578,7 @@ class PacketHandlerIcmp4Rx(ABC):
         self._phtx_icmp4(
             ip4__src=packet_rx.ip4.dst,
             ip4__dst=packet_rx.ip4.src,
+            ip4__options=echo_reply_options(packet_rx.ip4.options),
             icmp4__message=Icmp4MessageEchoReply(
                 id=packet_rx.icmp4.message.id,
                 seq=packet_rx.icmp4.message.seq,

@@ -38,6 +38,7 @@ from net_proto import (
     IP4__DEFAULT_TTL,
     Ip4Assembler,
     Ip4FragAssembler,
+    Ip4Options,
     Ip4Payload,
     IpProto,
     RawAssembler,
@@ -95,6 +96,7 @@ class PacketHandlerIp4Tx(ABC):
         ip4__ttl: int = IP4__DEFAULT_TTL,
         ip4__ecn: int = 0,
         ip4__flag_df: bool = False,
+        ip4__options: Ip4Options = Ip4Options(),
         ip4__payload: Ip4Payload = RawAssembler(),
     ) -> TxStatus:
         """
@@ -137,6 +139,7 @@ class PacketHandlerIp4Tx(ABC):
             ip4__ttl=ip4__ttl,
             ip4__ecn=ip4__ecn,
             ip4__flag_df=ip4__flag_df,
+            ip4__options=ip4__options,
             ip4__payload=ip4__payload,
         )
 

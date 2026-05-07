@@ -39,6 +39,7 @@ from net_proto import (
     Icmp4DestinationUnreachableCode,
     Icmp4Message,
     Icmp4Type,
+    Ip4Options,
     Tracker,
 )
 from pytcp.lib.logger import log
@@ -66,6 +67,7 @@ class PacketHandlerIcmp4Tx(ABC):
             ip4__ttl: int = IP4__DEFAULT_TTL,
             ip4__ecn: int = 0,
             ip4__flag_df: bool = False,
+            ip4__options: Ip4Options = Ip4Options(),
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -74,6 +76,7 @@ class PacketHandlerIcmp4Tx(ABC):
         *,
         ip4__src: Ip4Address,
         ip4__dst: Ip4Address,
+        ip4__options: Ip4Options = Ip4Options(),
         icmp4__message: Icmp4Message,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
@@ -115,6 +118,7 @@ class PacketHandlerIcmp4Tx(ABC):
         return self._phtx_ip4(
             ip4__src=ip4__src,
             ip4__dst=ip4__dst,
+            ip4__options=ip4__options,
             ip4__payload=icmp4_packet_tx,
         )
 
