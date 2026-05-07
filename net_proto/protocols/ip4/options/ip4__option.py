@@ -45,8 +45,12 @@ class Ip4OptionType(ProtoOptionType):
 
     EOL = 0
     NOP = 1
+    RR = 7  # Record Route - RFC 791
+    TIMESTAMP = 68  # Timestamp - RFC 791
+    CIPSO = 134  # Commercial IP Security Option - FIPS-188 / Linux NetLabel
     LSRR = 131  # Loose Source and Record Route - RFC 791
     SSRR = 137  # Strict Source and Record Route - RFC 791
+    ROUTER_ALERT = 148  # Router Alert - RFC 2113
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

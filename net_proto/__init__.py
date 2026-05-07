@@ -330,6 +330,11 @@ from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
 )
+from net_proto.protocols.ip4.options.ip4__option__router_alert import (  # noqa: F401
+    IP4__OPTION__ROUTER_ALERT__LEN,
+    IP4__OPTION__ROUTER_ALERT__VALUE__EXAMINE,
+    Ip4OptionRouterAlert,
+)
 from net_proto.protocols.ip4.options.ip4__option__ssrr import (  # noqa: F401
     IP4__OPTION__SSRR__HDR_LEN,
     IP4__OPTION__SSRR__MIN_LEN,
@@ -596,6 +601,7 @@ __all__ = [
     "Ip4OptionEol",
     "Ip4OptionLsrr",
     "Ip4OptionNop",
+    "Ip4OptionRouterAlert",
     "Ip4OptionSsrr",
     "Ip4OptionType",
     "Ip4OptionUnknown",

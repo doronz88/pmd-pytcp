@@ -44,6 +44,9 @@ from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
 )
+from net_proto.protocols.ip4.options.ip4__option__router_alert import (
+    Ip4OptionRouterAlert,
+)
 from net_proto.protocols.ip4.options.ip4__option__ssrr import Ip4OptionSsrr
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
     Ip4OptionUnknown,
@@ -109,6 +112,8 @@ class Ip4Options(ProtoOptions):
                     options.append(Ip4OptionLsrr.from_buffer(buffer[offset:]))
                 case Ip4OptionType.SSRR:
                     options.append(Ip4OptionSsrr.from_buffer(buffer[offset:]))
+                case Ip4OptionType.ROUTER_ALERT:
+                    options.append(Ip4OptionRouterAlert.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
@@ -145,5 +150,16 @@ class Ip4OptionsProperties(ABC):
 
         for option in self._options:
             if isinstance(option, Ip4OptionSsrr):
+                return option
+        return None
+
+    @property
+    def router_alert(self) -> Ip4OptionRouterAlert | None:
+        """
+        Get the IPv4 'router_alert' option (RFC 2113), if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionRouterAlert):
                 return option
         return None
