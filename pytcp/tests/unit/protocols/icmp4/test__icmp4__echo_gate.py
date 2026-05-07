@@ -23,9 +23,9 @@
 
 
 """
-This module contains tests for the ICMP Echo Reply emission gate.
+This module contains tests for the ICMPv4 Echo Reply emission gate.
 
-pytcp/tests/unit/protocols/icmp/test__icmp__echo_gate.py
+pytcp/tests/unit/protocols/icmp4/test__icmp4__echo_gate.py
 
 ver 3.0.4
 """
@@ -35,15 +35,15 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from pytcp.protocols.icmp.icmp__echo_gate import should_emit_echo_reply
+from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
 
 
 class TestShouldEmitEchoReply__Permit(TestCase):
     """
-    The 'should_emit_echo_reply()' permit-path tests.
+    The ICMPv4 'should_emit_echo_reply()' permit-path tests.
     """
 
-    def test__icmp__echo_gate__clean_unicast_permits(self) -> None:
+    def test__icmp4__echo_gate__clean_unicast_permits(self) -> None:
         """
         Ensure that an Echo Request whose destination is a unicast IP
         address (neither broadcast nor multicast) permits the Echo
@@ -82,13 +82,13 @@ class TestShouldEmitEchoReply__Permit(TestCase):
 )
 class TestShouldEmitEchoReply__Block(TestCase):
     """
-    The 'should_emit_echo_reply()' Smurf-mitigation tests.
+    The ICMPv4 'should_emit_echo_reply()' Smurf-mitigation tests.
     """
 
     _description: str
     _kwargs: dict[str, Any]
 
-    def test__icmp__echo_gate__bcast_or_mcast_blocks(self) -> None:
+    def test__icmp4__echo_gate__bcast_or_mcast_blocks(self) -> None:
         """
         Ensure that an Echo Request whose destination is a broadcast
         or multicast IPv4 address blocks the Echo Reply emission.

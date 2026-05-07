@@ -53,6 +53,7 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
@@ -335,10 +336,16 @@ class PacketHandlerIcmp6Rx(ABC):
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:
         """
-        Handle inbound ICMPv6 Echo Request packets.
+        Handle inbound ICMPv6 Echo Request packets. Delegates the
+        emission decision to the icmp6__echo_gate module so any
+        future ICMPv6-specific Echo policy lands in one file rather
+        than scattered inline checks.
         """
 
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoRequest)
+
+        if not should_emit_echo_reply():
+            return
 
         self._packet_stats_rx.icmp6__echo_request__respond_echo_reply += 1
         __debug__ and log(

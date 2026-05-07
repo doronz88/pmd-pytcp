@@ -23,31 +23,26 @@
 
 
 """
-This module contains the ICMP Echo Reply emission gate. Lives next
-to icmp__error_emitter.py because both files codify outbound-ICMP
-policy, but the Echo gate is intentionally separate: Echo Reply is
-not an ICMP error message, so the host-requirements error-generation
-rules do not apply to it. The Echo-specific policy is the
-RFC 1122 §3.2.2.6 Smurf-mitigation rule.
+This module contains the ICMPv6 Echo Reply emission gate. ICMPv6
+deliberately diverges from the ICMPv4 Smurf-mitigation rule: replies
+to multicast Echo Requests are explicitly permitted by the spec,
+with appropriate src-address selection performed by the TX path.
+This module is the canonical home for any future ICMPv6-specific
+Echo emission policy (e.g. rate limiting on Echo Reply, src-address
+selection rules).
 
-pytcp/protocols/icmp/icmp__echo_gate.py
+pytcp/protocols/icmp6/icmp6__echo_gate.py
 
 ver 3.0.4
 """
 
 
-def should_emit_echo_reply(
-    *,
-    dst_is_broadcast: bool,
-    dst_is_multicast: bool,
-) -> bool:
+def should_emit_echo_reply() -> bool:
     """
-    Return True if an ICMPv4 Echo Reply may be sent in response to an
-    Echo Request whose IPv4 destination has the given properties.
+    Return True if an ICMPv6 Echo Reply may be sent. Currently
+    unconditional: replies to multicast Echo Requests are permitted.
 
-    IPv6 deliberately does not call this — RFC 4443 §4.2 explicitly
-    permits replying to Echo Requests received on a multicast
-    destination, with appropriate src-address selection.
+    Reference: RFC 4443 §4.2 (ICMPv6 Echo Reply emission).
     """
 
-    return not (dst_is_broadcast or dst_is_multicast)
+    return True

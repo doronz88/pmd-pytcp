@@ -47,7 +47,7 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.protocols.icmp.icmp__echo_gate import should_emit_echo_reply
+from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
