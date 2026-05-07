@@ -6,6 +6,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PyTCP is a pure Python TCP/IP stack (Python 3.14+) built on TAP/TUN interfaces. It implements Ethernet through TCP/UDP with zero runtime dependencies (stdlib only). The project is structured as three independent packages: `net_addr`, `net_proto`, and `pytcp`.
 
+## Project North Star
+
+PyTCP's goal is to be a pure-Python TCP/IP stack that is **feature-equivalent to the Linux kernel network stack**, in two phases:
+
+- **Phase 1 (current):** host-stack parity. Default-configured Linux host coverage — every protocol mechanism a Linux host runs by default.
+- **Phase 2 (future):** router-grade parity. Full forwarding plane: FIB, IP forwarding, ICMP Redirect generation, PMTU advertising on transit, RFC 1812 router requirements, IGMP/MLD querier role.
+
+Design decisions made in Phase 1 must not foreclose Phase 2. Concretely:
+
+- **Don't bake "we are the destination" assumptions** into parser / dispatch code paths that will later need to make a forwarding decision. Keep RX-path delivery and forward-or-deliver routing as separable steps even if the forward branch is currently a stub.
+- **Parse extension headers / options as full typed objects, not opaque blobs**, even when the host has no semantic use for them — Phase 2 needs to forward them faithfully (RH preservation, HBH walking, etc.).
+- **Per-destination routing state must be representable** in the eventual data model. Single-gateway shortcuts are tolerated as Phase 1 simplifications; they should be marked with a `# Phase 2: ...` comment so the upgrade path is greppable.
+- **Hop-Limit / TTL handling, ICMP error rate-limiting, embedded-data preservation** — already wired host-side, designed once with forwarding in mind.
+
+Conformance precedence:
+
+1. **RFC text first.** When the governing RFC is unambiguous, PyTCP follows it. Deliberate deviation requires an inline comment citing the rationale.
+2. **Linux behavior as tiebreaker.** When the RFC is silent, ambiguous, or offers a SHOULD/MAY menu, PyTCP picks the Linux choice. Cite the Linux source file or sysctl in the commit body so the decision is greppable.
+3. **Linux-specific extensions are in scope** when there is a real PyTCP consumer (e.g. CIPSO/CALIPSO, IP_RECVERR-style socket APIs, sysctl knobs that gate behavior).
+
+Explicit non-goals (out of scope regardless of phase):
+
+- Hardware offloads, XDP / AF_XDP, kernel-bypass paths
+- Netfilter / eBPF / nftables hooks
+- Crypto extensions (AH, ESP, IPsec, MACsec)
+- Mobility extensions (MIPv6, NEMO, RH2 mobility processing)
+- Userspace routing protocols (BGP, OSPF, RIP — these belong outside the stack)
+
+Feature triage uses this north star: a gap that exists in PyTCP but not in Linux as host (Phase 1) or router (Phase 2) is on-list. Phase-2 items are tracked but deferrable; Phase-1 items are not.
+
 ## Commands
 
 ```bash

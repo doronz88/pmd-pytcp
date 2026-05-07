@@ -36,6 +36,25 @@ When the RFC and the existing implementation disagree,
 the RFC wins. Document any deliberate deviation in a
 comment with the rationale, not the rule violation.
 
+**Linux is the tiebreaker for ambiguity.** When the RFC
+is silent, offers SHOULD/MAY choices, or has multiple
+defensible interpretations, follow what default Linux
+does. Cite the Linux file / sysctl in the commit body
+(e.g. `net/ipv6/exthdrs.c::ipv6_destopt_rcv` or
+`net.ipv4.tcp_mtu_probing`). PyTCP's project-level
+north star is Linux stack parity — see `CLAUDE.md`
+"Project North Star".
+
+**Phase-2 awareness.** PyTCP is a host stack today, a
+router-grade stack tomorrow. Design decisions that
+would foreclose Phase 2 (router/forwarding parity)
+must be flagged: parser code that drops fields a
+forwarder would need to preserve, dispatch code that
+conflates "deliver" with "process", or per-destination
+state crammed into single-gateway shortcuts. Mark
+Phase-1 simplifications with `# Phase 2: ...` so the
+upgrade path is greppable.
+
 ## 2. Tests-first
 
 Every behavioural change opens with one or more failing
