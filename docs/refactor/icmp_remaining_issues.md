@@ -1,7 +1,7 @@
 # ICMP — remaining issues / gaps
 
-**Status snapshot at:** `6f44091e` (ip4/ip6 Protocol Unreachable, SHOULD #1).
-**Suite:** 8825 passing / 4 skipped, lint clean.
+**Status snapshot at:** `46769bb1` (RFC 1191 §6.5 retransmit walkback).
+**Suite:** 9013 passing / 4 skipped, lint clean.
 
 ---
 
@@ -24,18 +24,28 @@ All MUSTs across both v4 and v6 inbound paths are met:
 - A1 Smurf gate on Echo handler ✅
 - A2 rate limit on outbound ICMP errors ✅
 - A4 bcast/mcast/src-invalid/non-initial-frag gates ✅
+- IP4 source-route gate (LSRR/SSRR drop unless
+  `STACK__IP4__ACCEPT_SOURCE_ROUTE`) ✅ (`65b7e5cd`)
 
 ### SHOULDs
 
 - #1 — Protocol Unreachable / Param Problem code 1 generation on
   unsupported proto / next-header ✅ (`6f44091e`)
 - #2 — Parameter Problem outbound generation on inbound IP-header
-  sanity errors ✅ (commits `dd68e3ac` + this commit)
+  sanity errors ✅ (`dd68e3ac` + `ebbb41f8`)
 - #3 — RFC 5927 §6 hard-vs-soft refactor ✅ (FSM-dispatch refactor
   Phases 1-4: `cdcb1808 → b6948c68`)
 - #4 — IP options echo on Echo Reply, with LSRR/SSRR reversal ✅
-  (`00a0ee7b` first-class option types; this commit wires the
-  echo helper)
+  (`00a0ee7b` + `388e035b`)
+- TCP RFC 1191 §6.5 retransmit walkback on PMTU shrink ✅
+  (`46769bb1`)
+
+### Code-quality / hygiene closed
+
+- `_phtx_icmp{4,6}` ValueError → drop+counter ✅ (`f5610888`)
+- Linux IPv4 option parity in `net_proto`: Router Alert / Record
+  Route / Timestamp / CIPSO as first-class option types ✅
+  (`d9f4c50e` + `995a5587` + `1439bbd6` + `822f5dce` + `19c169de`)
 
 ---
 
