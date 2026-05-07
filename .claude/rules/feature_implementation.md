@@ -55,7 +55,22 @@ state crammed into single-gateway shortcuts. Mark
 Phase-1 simplifications with `# Phase 2: ...` so the
 upgrade path is greppable.
 
-## 2. Tests-first
+## 2. Tests-first (MUST)
+
+**A code change without a preceding failing test is a
+violation of this rule, regardless of how trivial the
+change appears.** The test exists to *expose* the
+missing feature, bug, or spec gap that the code is
+meant to address; if it cannot be made to fail before
+the fix, it is not pinning anything. Reviewers and
+the §7.2 audit treat the absent-test case as a
+blocker, not a polish item.
+
+This applies to: new features, RFC-conformance work,
+bug fixes, refactors that change observable
+behaviour, and any code path that did not previously
+exist. It does **not** apply to pure-internal
+renames, formatting passes, or doc-only edits.
 
 Every behavioural change opens with one or more failing
 tests that pin the spec requirement:

@@ -36,6 +36,14 @@ Explicit non-goals (out of scope regardless of phase):
 
 Feature triage uses this north star: a gap that exists in PyTCP but not in Linux as host (Phase 1) or router (Phase 2) is on-list. Phase-2 items are tracked but deferrable; Phase-1 items are not.
 
+## Tests First (MUST)
+
+Every behavioural change opens with one or more **failing tests** that pin the spec requirement, then the implementation flips them green. A code change without a preceding failing test is a violation of this rule, regardless of how trivial the change appears. The test exists to *expose* the missing feature, bug, or spec gap that the code is meant to address — if it cannot be made to fail before the fix, it is not pinning anything.
+
+This applies to: new features, RFC-conformance work, bug fixes, refactors that change observable behaviour, and any code path that did not previously exist. It does **not** apply to pure-internal renames, formatting passes, or doc-only edits.
+
+See [`.claude/rules/feature_implementation.md`](.claude/rules/feature_implementation.md) §2 for the full procedure (writing the test against the spec not the current code, verifying the failure mode, docstring conventions, the §7.2 self-audit).
+
 ## Commands
 
 ```bash
