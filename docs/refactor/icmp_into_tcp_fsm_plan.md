@@ -51,8 +51,17 @@ handlers BEFORE dispatching, not part of FSM.
 
 ## Target state (post-refactor)
 
+Naming follows the existing `UdpMetadata` / `RawMetadata`
+convention (`pytcp/socket/udp__metadata.py`,
+`pytcp/socket/raw__metadata.py`) — the dataclass that flows from
+the packet handler to the upper-layer consumer is suffixed
+`Metadata`. ICMP-into-TCP-FSM follows the same shape: the
+metadata describes a normalized inbound ICMP event, and the FSM
+is its consumer. The file lives next to the FSM that consumes
+it, under `pytcp/protocols/tcp/`.
+
 ```python
-# pytcp/protocols/tcp/tcp__icmp_event.py (new)
+# pytcp/protocols/tcp/tcp__icmp_metadata.py (new)
 class IcmpCategory(IntEnum):
     DEST_UNREACHABLE = 1
     TIME_EXCEEDED    = 2
@@ -60,7 +69,7 @@ class IcmpCategory(IntEnum):
     PMTU             = 4
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class IcmpEvent:
+class IcmpMetadata:
     category:      IcmpCategory
     icmp_type:     int
     icmp_code:     int
@@ -71,12 +80,12 @@ class IcmpEvent:
 
 ```python
 # Dispatch:
-session.tcp_fsm(icmp=IcmpEvent(category=IcmpCategory.DEST_UNREACHABLE,
+session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.DEST_UNREACHABLE,
                                icmp_type=3, icmp_code=3, ip_version=4))
 
 # Per-state handler (one per state file):
 # pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py
-def handle_icmp(session: "TcpSession", event: IcmpEvent) -> None:
+def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
     """SYN_SENT: hard-error (Port Unreachable) aborts; soft-errors diagnostic."""
     if event.category is IcmpCategory.DEST_UNREACHABLE and event.icmp_code == 3:
         session._connection_error = ConnError.REFUSED
@@ -97,14 +106,14 @@ def handle_icmp(session: "TcpSession", event: IcmpEvent) -> None:
 
 ### Phase 1 — additive shim (no behavioral change)
 
-**Commit subject:** `tcp: add IcmpEvent + tcp_fsm(icmp=...) additive dispatch`
+**Commit subject:** `tcp: add IcmpMetadata + tcp_fsm(icmp=...) additive dispatch`
 
 **New files:**
-- `pytcp/protocols/tcp/tcp__icmp_event.py` — `IcmpEvent` dataclass + `IcmpCategory` enum
-- `pytcp/tests/unit/protocols/tcp/test__tcp__icmp_event.py` — dataclass invariants
+- `pytcp/protocols/tcp/tcp__icmp_metadata.py` — `IcmpMetadata` dataclass + `IcmpCategory` enum
+- `pytcp/tests/unit/protocols/tcp/test__tcp__icmp_metadata.py` — dataclass invariants
 
 **Modified files:**
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — `tcp_fsm()` signature: add `icmp: IcmpEvent | None = None`
+- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — `tcp_fsm()` signature: add `icmp: IcmpMetadata | None = None  # follows UdpMetadata / RawMetadata convention`
 - `pytcp/protocols/tcp/fsm/tcp__fsm.py` — top of dispatch: if `icmp is not None`, call `_dispatch_icmp(icmp)`
 - `_dispatch_icmp` (new internal): for now, translates back to existing `on_*` calls. This keeps the additive contract — both old API and new API work.
 
@@ -152,7 +161,7 @@ def handle_icmp(session: "TcpSession", event: IcmpEvent) -> None:
 **Commit subject:** `icmp: route ICMP errors through tcp_fsm(icmp=...) dispatch`
 
 **Modified files:**
-- `pytcp/stack/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpEvent(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
+- `pytcp/stack/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpMetadata(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
 - `pytcp/stack/packet_handler/packet_handler__icmp6__rx.py` — same (5 call sites)
 - `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` — rename to `test__tcp__session__icmp__dest_unreachable.py`, drive via `tcp_fsm(icmp=...)`
 - `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py` — rename to `..__icmp__time_exceeded.py`, drive via FSM
@@ -183,10 +192,10 @@ def handle_icmp(session: "TcpSession", event: IcmpEvent) -> None:
 
 | Old API call | New API call |
 |---|---|
-| `session.on_unreachable(icmp_type=3, icmp_code=3)` | `session.tcp_fsm(icmp=IcmpEvent(category=IcmpCategory.DEST_UNREACHABLE, icmp_type=3, icmp_code=3, ip_version=4))` |
-| `session.on_time_exceeded(icmp_type=11, icmp_code=0)` | `session.tcp_fsm(icmp=IcmpEvent(category=IcmpCategory.TIME_EXCEEDED, icmp_type=11, icmp_code=0, ip_version=4))` |
-| `session.on_parameter_problem(icmp_type=12, icmp_code=0)` | `session.tcp_fsm(icmp=IcmpEvent(category=IcmpCategory.PARAM_PROBLEM, icmp_type=12, icmp_code=0, pointer=20, ip_version=4))` |
-| `session.on_pmtu(next_hop_mtu=1280, ip_version=4)` | `session.tcp_fsm(icmp=IcmpEvent(category=IcmpCategory.PMTU, icmp_type=3, icmp_code=4, next_hop_mtu=1280, ip_version=4))` |
+| `session.on_unreachable(icmp_type=3, icmp_code=3)` | `session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.DEST_UNREACHABLE, icmp_type=3, icmp_code=3, ip_version=4))` |
+| `session.on_time_exceeded(icmp_type=11, icmp_code=0)` | `session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.TIME_EXCEEDED, icmp_type=11, icmp_code=0, ip_version=4))` |
+| `session.on_parameter_problem(icmp_type=12, icmp_code=0)` | `session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.PARAM_PROBLEM, icmp_type=12, icmp_code=0, pointer=20, ip_version=4))` |
+| `session.on_pmtu(next_hop_mtu=1280, ip_version=4)` | `session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.PMTU, icmp_type=3, icmp_code=4, next_hop_mtu=1280, ip_version=4))` |
 
 ## Test surface implications
 
@@ -240,7 +249,7 @@ After Phase 4:
 > `docs/refactor/icmp_into_tcp_fsm_plan.md`. We're starting with
 > Phase 1 (additive `tcp_fsm(icmp=...)` shim that translates back
 > to the existing `on_*` methods). Tests-first: build
-> `IcmpEvent` + dataclass tests, then extend the `tcp_fsm`
+> `IcmpMetadata` + dataclass tests, then extend the `tcp_fsm`
 > signature, run lint+suite, commit. Then proceed phase by phase.
 > Last commit before this work: `6f44091e`. Current suite: 8825
 > passing / 4 skipped.
