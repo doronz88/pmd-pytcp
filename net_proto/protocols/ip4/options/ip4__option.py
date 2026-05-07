@@ -45,6 +45,8 @@ class Ip4OptionType(ProtoOptionType):
 
     EOL = 0
     NOP = 1
+    LSRR = 131  # Loose Source and Record Route - RFC 791
+    SSRR = 137  # Strict Source and Record Route - RFC 791
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

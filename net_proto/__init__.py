@@ -319,9 +319,23 @@ from net_proto.protocols.ip4.options.ip4__option__eol import (
     IP4__OPTION__EOL__LEN,
     Ip4OptionEol,
 )
+from net_proto.protocols.ip4.options.ip4__option__lsrr import (  # noqa: F401
+    IP4__OPTION__LSRR__HDR_LEN,
+    IP4__OPTION__LSRR__MIN_LEN,
+    IP4__OPTION__LSRR__POINTER_BASE,
+    IP4__OPTION__LSRR__SLOT_LEN,
+    Ip4OptionLsrr,
+)
 from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
+)
+from net_proto.protocols.ip4.options.ip4__option__ssrr import (  # noqa: F401
+    IP4__OPTION__SSRR__HDR_LEN,
+    IP4__OPTION__SSRR__MIN_LEN,
+    IP4__OPTION__SSRR__POINTER_BASE,
+    IP4__OPTION__SSRR__SLOT_LEN,
+    Ip4OptionSsrr,
 )
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
     IP4__OPTION__LEN,
@@ -580,7 +594,9 @@ __all__ = [
     "Ip4IntegrityError",
     "Ip4Option",
     "Ip4OptionEol",
+    "Ip4OptionLsrr",
     "Ip4OptionNop",
+    "Ip4OptionSsrr",
     "Ip4OptionType",
     "Ip4OptionUnknown",
     "Ip4Options",

@@ -39,10 +39,12 @@ from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
 from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 from net_proto.protocols.ip4.options.ip4__option__eol import Ip4OptionEol
+from net_proto.protocols.ip4.options.ip4__option__lsrr import Ip4OptionLsrr
 from net_proto.protocols.ip4.options.ip4__option__nop import (
     IP4__OPTION__NOP__LEN,
     Ip4OptionNop,
 )
+from net_proto.protocols.ip4.options.ip4__option__ssrr import Ip4OptionSsrr
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
     Ip4OptionUnknown,
 )
@@ -103,6 +105,10 @@ class Ip4Options(ProtoOptions):
                     break
                 case Ip4OptionType.NOP:
                     options.append(Ip4OptionNop.from_buffer(buffer[offset:]))
+                case Ip4OptionType.LSRR:
+                    options.append(Ip4OptionLsrr.from_buffer(buffer[offset:]))
+                case Ip4OptionType.SSRR:
+                    options.append(Ip4OptionSsrr.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
@@ -117,3 +123,27 @@ class Ip4OptionsProperties(ABC):
     """
 
     _options: Ip4Options
+
+    @property
+    def lsrr(self) -> Ip4OptionLsrr | None:
+        """
+        Get the IPv4 'lsrr' option (RFC 791 Loose Source and Record Route),
+        if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionLsrr):
+                return option
+        return None
+
+    @property
+    def ssrr(self) -> Ip4OptionSsrr | None:
+        """
+        Get the IPv4 'ssrr' option (RFC 791 Strict Source and Record Route),
+        if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionSsrr):
+                return option
+        return None
