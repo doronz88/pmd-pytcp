@@ -62,6 +62,7 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
             ),
             "_results": {
                 "error_message": "The 'hop' field must not be 0. Got: 0",
+                "pointer": 7,
             },
         },
         {
@@ -89,6 +90,7 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
                     "The 'src' field must not be a multicast address. "
                     "Got: Ip6Address('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')"
                 ),
+                "pointer": 8,
             },
         },
         {
@@ -112,6 +114,7 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
             ),
             "_results": {
                 "error_message": ("The 'src' field must not be a multicast address. Got: Ip6Address('ff02::1')"),
+                "pointer": 8,
             },
         },
     ],
@@ -137,6 +140,8 @@ class TestIp6ParserSanityChecks(TestCase):
         """
         Ensure the IPv6 packet parser raises Ip6SanityError with the
         expected message for each semantically invalid frame.
+
+        Reference: RFC 8200 §3 (IPv6 header layout).
         """
 
         with self.assertRaises(Ip6SanityError) as error:
@@ -146,4 +151,26 @@ class TestIp6ParserSanityChecks(TestCase):
             str(error.exception),
             f"[SANITY ERROR][IPv6] {self._results['error_message']}",
             msg=f"Unexpected sanity-error message for case: {self._description}",
+        )
+
+    def test__ip6__parser__sanity_error_pointer(self) -> None:
+        """
+        Ensure the IPv6 packet parser sets the canonical RFC 4443
+        Parameter Problem 'pointer' on the raised Ip6SanityError so
+        the packet handler can emit Code 0 (erroneous header field
+        encountered) with the correct byte offset of the offending
+        field.
+
+        Reference: RFC 4443 §3.4 (Parameter Problem pointer).
+        Reference: RFC 1122 §3.2.2.5 (host SHOULD generate Param Problem
+        on inbound IP-header errors).
+        """
+
+        with self.assertRaises(Ip6SanityError) as error:
+            Ip6Parser(self._packet_rx)
+
+        self.assertEqual(
+            error.exception.pointer,
+            self._results["pointer"],
+            msg=f"Unexpected sanity-error pointer for case: {self._description}",
         )

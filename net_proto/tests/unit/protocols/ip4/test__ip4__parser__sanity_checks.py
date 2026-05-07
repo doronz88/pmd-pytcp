@@ -49,6 +49,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\x00\xff\xd8\x24" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": "The 'ttl' field must be greater than 0. Got: 0",
+                "pointer": 8,
             },
         },
         {
@@ -58,6 +59,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x21\x5e" b"\xe0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": ("The 'src' field must not be a multicast address. Got: Ip4Address('224.0.0.1')"),
+                "pointer": 12,
             },
         },
         {
@@ -67,6 +69,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x11\x5e" b"\xf0\x00\x00\x01\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": ("The 'src' field must not be a reserved address. Got: Ip4Address('240.0.0.1')"),
+                "pointer": 12,
             },
         },
         {
@@ -78,6 +81,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
                 "error_message": (
                     "The 'src' field must not be a limited broadcast address. Got: Ip4Address('255.255.255.255')"
                 ),
+                "pointer": 12,
             },
         },
         {
@@ -92,6 +96,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
                     "The 'flag_df' and 'flag_mf' flags must not be set simultaneously. "
                     "Got: self.flag_df=True, self.flag_mf=True"
                 ),
+                "pointer": 6,
             },
         },
         {
@@ -101,6 +106,7 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x41\x00\xff\xff\xd8\x23" b"\x0a\x14\x1e\x28\x32\x3c\x46\x50"),
             "_results": {
                 "error_message": ("The 'offset' field must be 0 when the 'flag_df' flag is set. Got: 2048"),
+                "pointer": 6,
             },
         },
     ]
@@ -126,6 +132,8 @@ class TestIp4ParserSanityChecks(TestCase):
         """
         Ensure the IPv4 packet parser raises Ip4SanityError with the
         expected message for each semantically invalid frame.
+
+        Reference: RFC 791 §3.1 (IPv4 header layout).
         """
 
         with self.assertRaises(Ip4SanityError) as error:
@@ -135,4 +143,25 @@ class TestIp4ParserSanityChecks(TestCase):
             str(error.exception),
             f"[SANITY ERROR][IPv4] {self._results['error_message']}",
             msg=f"Unexpected sanity-error message for case: {self._description}",
+        )
+
+    def test__ip4__parser__sanity_error_pointer(self) -> None:
+        """
+        Ensure the IPv4 packet parser sets the canonical RFC 792
+        Parameter Problem 'pointer' on the raised Ip4SanityError so
+        the packet handler can emit Code 0 with the correct byte
+        offset of the offending field.
+
+        Reference: RFC 792 (Parameter Problem pointer).
+        Reference: RFC 1122 §3.2.2.5 (host SHOULD generate Param Problem
+        on inbound IP-header errors).
+        """
+
+        with self.assertRaises(Ip4SanityError) as error:
+            Ip4Parser(self._packet_rx)
+
+        self.assertEqual(
+            error.exception.pointer,
+            self._results["pointer"],
+            msg=f"Unexpected sanity-error pointer for case: {self._description}",
         )

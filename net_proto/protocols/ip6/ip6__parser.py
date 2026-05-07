@@ -40,7 +40,12 @@ from net_proto.protocols.ip6.ip6__errors import (
     Ip6IntegrityError,
     Ip6SanityError,
 )
-from net_proto.protocols.ip6.ip6__header import IP6__HEADER__LEN, Ip6Header
+from net_proto.protocols.ip6.ip6__header import (
+    IP6__HEADER__LEN,
+    IP6__POINTER__HOP,
+    IP6__POINTER__SRC,
+    Ip6Header,
+)
 
 
 class Ip6Parser(Ip6[Buffer], ProtoParser):
@@ -99,17 +104,22 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Ensure sanity of the IPv6 packet after parsing it.
+        Ensure sanity of the IPv6 packet after parsing it. Each
+        violation carries the canonical RFC 4443 'pointer' value
+        (byte offset of the offending field) so the packet handler
+        can emit an ICMPv6 Parameter Problem with the correct pointer.
         """
 
         if (hop := self.hop) == 0:
             raise Ip6SanityError(
                 f"The 'hop' field must not be 0. Got: {hop!r}",
+                pointer=IP6__POINTER__HOP,
             )
 
         if (src := self.src).is_multicast:
             raise Ip6SanityError(
                 f"The 'src' field must not be a multicast address. Got: {src!r}",
+                pointer=IP6__POINTER__SRC,
             )
 
     @property

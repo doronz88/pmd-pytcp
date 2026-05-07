@@ -41,7 +41,13 @@ from net_proto.protocols.ip4.ip4__errors import (
     Ip4IntegrityError,
     Ip4SanityError,
 )
-from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, Ip4Header
+from net_proto.protocols.ip4.ip4__header import (
+    IP4__HEADER__LEN,
+    IP4__POINTER__FLAGS_OFFSET,
+    IP4__POINTER__SRC,
+    IP4__POINTER__TTL,
+    Ip4Header,
+)
 from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 
 
@@ -114,38 +120,47 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
     @override
     def _validate_sanity(self) -> None:
         """
-        Ensure sanity of the IPv4 packet after parsing it.
+        Ensure sanity of the IPv4 packet after parsing it. Each
+        violation carries the canonical RFC 792 'pointer' value (byte
+        offset of the offending field) so the packet handler can emit
+        an ICMPv4 Parameter Problem with the correct pointer.
         """
 
         if (ttl := self.ttl) == 0:
             raise Ip4SanityError(
                 f"The 'ttl' field must be greater than 0. Got: {ttl!r}",
+                pointer=IP4__POINTER__TTL,
             )
 
         if (src := self.src).is_multicast:
             raise Ip4SanityError(
                 f"The 'src' field must not be a multicast address. Got: {src!r}",
+                pointer=IP4__POINTER__SRC,
             )
 
         if (src := self.src).is_reserved:
             raise Ip4SanityError(
                 f"The 'src' field must not be a reserved address. Got: {src!r}",
+                pointer=IP4__POINTER__SRC,
             )
 
         if (src := self.src).is_limited_broadcast:
             raise Ip4SanityError(
                 f"The 'src' field must not be a limited broadcast address. Got: {src!r}",
+                pointer=IP4__POINTER__SRC,
             )
 
         if self.flag_df and self.flag_mf:
             raise Ip4SanityError(
                 "The 'flag_df' and 'flag_mf' flags must not be set simultaneously. "
                 f"Got: {self.flag_df=}, {self.flag_mf=}",
+                pointer=IP4__POINTER__FLAGS_OFFSET,
             )
 
         if self.flag_df and (offset := self.offset) != 0:
             raise Ip4SanityError(
                 f"The 'offset' field must be 0 when the 'flag_df' flag is set. Got: {offset!r}",
+                pointer=IP4__POINTER__FLAGS_OFFSET,
             )
 
     @property

@@ -48,8 +48,16 @@ class Ip6IntegrityError(PacketIntegrityError):
 class Ip6SanityError(PacketSanityError):
     """
     Exception raised when IPv6 packet sanity check fails.
+
+    Carries an optional 'pointer' field — the byte offset of the
+    offending header field, used by the packet handler when emitting
+    an ICMPv6 Parameter Problem (Code 0, erroneous header field
+    encountered) per RFC 1122 §3.2.2.5 / RFC 4443 §3.4.
     """
 
+    pointer: int | None
+
     @override
-    def __init__(self, message: str, /) -> None:
+    def __init__(self, message: str, /, *, pointer: int | None = None) -> None:
         super().__init__("[IPv6] " + message)
+        self.pointer = pointer

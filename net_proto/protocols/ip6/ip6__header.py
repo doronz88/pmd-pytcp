@@ -78,6 +78,13 @@ IP6__PAYLOAD__MAX_LEN = UINT_16__MAX
 IP6__DEFAULT_HOP_LIMIT = 64
 IP6__MIN_MTU = 1280  # RFC 8200
 
+# Byte offsets of selected header fields, used as the ICMPv6
+# Parameter Problem 'pointer' value when the parser raises
+# Ip6SanityError on a field-level violation (RFC 4443 §3.4 /
+# RFC 1122 §3.2.2.5).
+IP6__POINTER__HOP = 7
+IP6__POINTER__SRC = 8  # Source Address (16 bytes; pointer = first byte)
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Ip6Header(ProtoStruct):

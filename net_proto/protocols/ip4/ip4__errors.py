@@ -48,8 +48,16 @@ class Ip4IntegrityError(PacketIntegrityError):
 class Ip4SanityError(PacketSanityError):
     """
     Exception raised when IPv4 packet sanity check fails.
+
+    Carries an optional 'pointer' field — the byte offset of the
+    offending header field, used by the packet handler when emitting
+    an ICMPv4 Parameter Problem (Code 0) per RFC 1122 §3.2.2.5 / RFC
+    792.
     """
 
+    pointer: int | None
+
     @override
-    def __init__(self, message: str, /) -> None:
+    def __init__(self, message: str, /, *, pointer: int | None = None) -> None:
         super().__init__("[IPv4] " + message)
+        self.pointer = pointer

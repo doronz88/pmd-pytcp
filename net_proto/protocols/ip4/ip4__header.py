@@ -75,6 +75,14 @@ IP4__PAYLOAD__MAX_LEN = UINT_16__MAX - IP4__HEADER__LEN
 IP4__DEFAULT_TTL = 64
 IP4__MIN_MTU = 576  # RFC 791
 
+# Byte offsets of selected header fields, used as the ICMPv4
+# Parameter Problem 'pointer' value when the parser raises
+# Ip4SanityError on a field-level violation (RFC 792 / RFC 1122
+# §3.2.2.5).
+IP4__POINTER__FLAGS_OFFSET = 6  # Flags + Fragment Offset
+IP4__POINTER__TTL = 8
+IP4__POINTER__SRC = 12  # Source Address (4 bytes; pointer = first byte)
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Ip4Header(ProtoStruct):
