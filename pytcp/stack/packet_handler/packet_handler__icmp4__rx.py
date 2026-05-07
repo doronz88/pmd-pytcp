@@ -289,10 +289,23 @@ class PacketHandlerIcmp4Rx(ABC):
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
         """
-        Handle inbound ICMPv4 Echo Reply packets.
+        Handle inbound ICMPv4 Echo Request packets. Drops requests
+        whose IPv4 destination is a broadcast or multicast address
+        (Smurf-attack mitigation, RFC 1122 §3.2.2.6 / RFC 1812
+        §4.3.3.6); replies to all other requests.
         """
 
         assert isinstance(packet_rx.icmp4.message, Icmp4MessageEchoRequest)
+
+        if packet_rx.ip4.dst.is_limited_broadcast or packet_rx.ip4.dst.is_multicast:
+            self._packet_stats_rx.icmp4__echo_request__bcast_or_mcast__drop += 1
+            __debug__ and log(
+                "icmp4",
+                f"{packet_rx.tracker} - <WARN>Dropping ICMPv4 Echo Request "
+                f"from {packet_rx.ip4.src} to {packet_rx.ip4.dst} "
+                f"(bcast/mcast destination — Smurf mitigation)</>",
+            )
+            return
 
         __debug__ and log(
             "icmp4",
