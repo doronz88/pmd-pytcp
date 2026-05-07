@@ -133,6 +133,10 @@ class PacketStatsRx(PacketStats):
     icmp6__time_exceeded__tcp__notify: int = 0
     icmp6__time_exceeded__tcp__seq_out_of_window__drop: int = 0
     icmp6__time_exceeded__udp__notify: int = 0
+    icmp6__parameter_problem: int = 0
+    icmp6__parameter_problem__tcp__notify: int = 0
+    icmp6__parameter_problem__tcp__seq_out_of_window__drop: int = 0
+    icmp6__parameter_problem__udp__notify: int = 0
     icmp6__packet_too_big: int = 0
     icmp6__packet_too_big__notify_pmtu: int = 0
     icmp6__echo_request__respond_echo_reply: int = 0

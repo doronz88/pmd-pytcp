@@ -39,6 +39,7 @@ from net_proto import (
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
     Icmp6MessagePacketTooBig,
+    Icmp6MessageParameterProblem,
     Icmp6MessageTimeExceeded,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
@@ -130,6 +131,8 @@ class PacketHandlerIcmp6Rx(ABC):
                 self.__phrx_icmp6__packet_too_big(packet_rx)
             case Icmp6Type.TIME_EXCEEDED:
                 self.__phrx_icmp6__time_exceeded(packet_rx)
+            case Icmp6Type.PARAMETER_PROBLEM:
+                self.__phrx_icmp6__parameter_problem(packet_rx)
             case Icmp6Type.ECHO_REQUEST:
                 self.__phrx_icmp6__echo_request(packet_rx)
             case Icmp6Type.ECHO_REPLY:
@@ -360,6 +363,114 @@ class PacketHandlerIcmp6Rx(ABC):
         )
         socket._tcp_session.on_time_exceeded(icmp_type=3, icmp_code=icmp_code)
         self._packet_stats_rx.icmp6__time_exceeded__tcp__notify += 1
+
+    def __phrx_icmp6__parameter_problem(self, packet_rx: PacketRx) -> None:
+        """
+        Handle inbound ICMPv6 Parameter Problem packets. Routes the
+        embedded L4 segment to the matching TCP / UDP socket as a
+        soft-error notification per RFC 4443 §3.4 / RFC 5927 §6.
+        """
+
+        assert isinstance(packet_rx.icmp6.message, Icmp6MessageParameterProblem)
+
+        message = packet_rx.icmp6.message
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - Received ICMPv6 Parameter Problem packet "
+            f"from {packet_rx.ip6.src}, code={message.code}, pointer={message.pointer}",
+        )
+        self._packet_stats_rx.icmp6__parameter_problem += 1
+
+        embedded = parse_embedded_l4(message.data, IpVersion.IP6)
+        if embedded is None:
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - Parameter Problem data doesn't pass basic IPv6/L4 integrity check",
+            )
+            return
+
+        if embedded.proto is IpProto.UDP:
+            self.__phrx_icmp6__parameter_problem__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+        if embedded.proto is IpProto.TCP:
+            self.__phrx_icmp6__parameter_problem__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            return
+
+    def __phrx_icmp6__parameter_problem__dispatch_udp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv6 Parameter Problem carrying an embedded UDP
+        segment to the matching UdpSocket via notify_parameter_problem().
+        """
+
+        packet = UdpMetadata(
+            ip__ver=IpVersion.IP6,
+            ip__local_address=cast(Ip6Address, embedded.local_ip),
+            ip__remote_address=cast(Ip6Address, embedded.remote_ip),
+            udp__local_port=embedded.local_port,
+            udp__remote_port=embedded.remote_port,
+        )
+
+        for socket_id in packet.socket_ids:
+            if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                __debug__ and log(
+                    "icmp6",
+                    f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
+                    f"{socket} for Parameter Problem from {packet_rx.ip6.src}</>",
+                )
+                socket.notify_parameter_problem(icmp_type=4, icmp_code=icmp_code)
+                self._packet_stats_rx.icmp6__parameter_problem__udp__notify += 1
+                return
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - Parameter Problem data doesn't match any UDP socket",
+        )
+
+    def __phrx_icmp6__parameter_problem__dispatch_tcp(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: int,
+    ) -> None:
+        """
+        Route an ICMPv6 Parameter Problem carrying an embedded TCP
+        segment to the matching TcpSession via TcpSocket. Applies the
+        RFC 5927 §4 sequence-in-window guard before notifying.
+        """
+
+        socket_id = SocketId(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.STREAM,
+            local_address=cast(Ip6Address, embedded.local_ip),
+            local_port=embedded.local_port,
+            remote_address=cast(Ip6Address, embedded.remote_ip),
+            remote_port=embedded.remote_port,
+        )
+
+        socket = cast(TcpSocket, stack.sockets.get(socket_id, None))
+        if socket is None or socket._tcp_session is None:
+            return
+
+        if embedded.embedded_seq is not None and not socket._tcp_session.is_seq_in_window(embedded.embedded_seq):
+            self._packet_stats_rx.icmp6__parameter_problem__tcp__seq_out_of_window__drop += 1
+            return
+
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - <INFO>Found matching TCP session "
+            f"for Parameter Problem from {packet_rx.ip6.src}</>",
+        )
+        socket._tcp_session.on_parameter_problem(icmp_type=4, icmp_code=icmp_code)
+        self._packet_stats_rx.icmp6__parameter_problem__tcp__notify += 1
 
     def __phrx_icmp6__packet_too_big(self, packet_rx: PacketRx) -> None:
         """

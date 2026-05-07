@@ -54,6 +54,9 @@ from net_proto.protocols.icmp6.message.icmp6__message__echo_request import (
 from net_proto.protocols.icmp6.message.icmp6__message__packet_too_big import (
     Icmp6MessagePacketTooBig,
 )
+from net_proto.protocols.icmp6.message.icmp6__message__parameter_problem import (
+    Icmp6MessageParameterProblem,
+)
 from net_proto.protocols.icmp6.message.icmp6__message__time_exceeded import (
     Icmp6MessageTimeExceeded,
 )
@@ -114,6 +117,8 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 return Icmp6MessagePacketTooBig
             case Icmp6Type.TIME_EXCEEDED:
                 return Icmp6MessageTimeExceeded
+            case Icmp6Type.PARAMETER_PROBLEM:
+                return Icmp6MessageParameterProblem
             case Icmp6Type.ECHO_REQUEST:
                 return Icmp6MessageEchoRequest
             case Icmp6Type.ECHO_REPLY:
