@@ -47,6 +47,7 @@ from net_proto.protocols.ip4.options.ip4__option__nop import (
 from net_proto.protocols.ip4.options.ip4__option__router_alert import (
     Ip4OptionRouterAlert,
 )
+from net_proto.protocols.ip4.options.ip4__option__rr import Ip4OptionRr
 from net_proto.protocols.ip4.options.ip4__option__ssrr import Ip4OptionSsrr
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
     Ip4OptionUnknown,
@@ -114,6 +115,8 @@ class Ip4Options(ProtoOptions):
                     options.append(Ip4OptionSsrr.from_buffer(buffer[offset:]))
                 case Ip4OptionType.ROUTER_ALERT:
                     options.append(Ip4OptionRouterAlert.from_buffer(buffer[offset:]))
+                case Ip4OptionType.RR:
+                    options.append(Ip4OptionRr.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
@@ -161,5 +164,16 @@ class Ip4OptionsProperties(ABC):
 
         for option in self._options:
             if isinstance(option, Ip4OptionRouterAlert):
+                return option
+        return None
+
+    @property
+    def rr(self) -> Ip4OptionRr | None:
+        """
+        Get the IPv4 'rr' option (RFC 791 Record Route), if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionRr):
                 return option
         return None
