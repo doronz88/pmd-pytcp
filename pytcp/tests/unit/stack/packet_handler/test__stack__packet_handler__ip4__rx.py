@@ -99,6 +99,7 @@ class _StubHandler(PacketHandlerIp4Rx):
         self._ip4_frag_flows = {}
 
         self.dispatched: list[str] = []
+        self.last_udp_packet: PacketRx | None = None
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:
@@ -121,6 +122,7 @@ class _StubHandler(PacketHandlerIp4Rx):
 
     def _phrx_udp(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("udp")
+        self.last_udp_packet = packet_rx
 
     def _phrx_tcp(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("tcp")
@@ -534,6 +536,170 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
             self._handler._ip4_frag_flows,
             {},
             msg="Flow table must be empty after successful reassembly.",
+        )
+
+    def test__stack__packet_handler__ip4__rx__out_of_order_three_fragments_reassemble(self) -> None:
+        """
+        Ensure three fragments arriving out of order (middle, last,
+        first) reassemble into a single datagram with the payload
+        bytes laid out in offset order regardless of arrival order.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly assembles in offset order).
+        """
+
+        payload_a = b"\xaa" * 8
+        payload_b = b"\xbb" * 8
+        payload_c = b"\xcc" * 8
+        expected_payload = payload_a + payload_b + payload_c
+
+        frag_a = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=11111,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=payload_a,
+            )
+        )
+        frag_b = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=11111,
+                ip4_frag__offset=8,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=payload_b,
+            )
+        )
+        frag_c = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=11111,
+                ip4_frag__offset=16,
+                ip4_frag__flag_mf=False,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=payload_c,
+            )
+        )
+
+        # Arrival order: middle → last → first.
+        self._handler._phrx_ip4(PacketRx(frag_b))
+        self._handler._phrx_ip4(PacketRx(frag_c))
+        self._handler._phrx_ip4(PacketRx(frag_a))
+
+        self.assertEqual(
+            self._handler.dispatched,
+            ["udp"],
+            msg="Reassembled datagram must dispatch to _phrx_udp exactly once.",
+        )
+        assert self._handler.last_udp_packet is not None
+        self.assertEqual(
+            bytes(self._handler.last_udp_packet.ip4.payload_bytes),
+            expected_payload,
+            msg="Reassembled payload bytes must be in offset order regardless of arrival order.",
+        )
+
+    def test__stack__packet_handler__ip4__rx__reassembled_header_preserves_first_fragment_fields(self) -> None:
+        """
+        Ensure the reassembled IPv4 datagram preserves the DSCP,
+        ECN, and TTL fields from the first fragment while
+        rewriting Total Length, MF, Fragment Offset, and Header
+        Checksum. A regression that recopies a stale total-length
+        or fails to clear MF/offset would surface here.
+
+        Reference: RFC 791 §3.2 (reassembled header preserves
+        first-fragment fields apart from length, flags, offset,
+        and checksum).
+        """
+
+        payload_a = b"\xaa" * 8
+        payload_b = b"\xbb" * 8
+
+        frag_a = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=22222,
+                ip4_frag__dscp=0x3A,
+                ip4_frag__ecn=0x02,
+                ip4_frag__ttl=42,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=payload_a,
+            )
+        )
+        frag_b = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=22222,
+                ip4_frag__dscp=0x3A,
+                ip4_frag__ecn=0x02,
+                ip4_frag__ttl=42,
+                ip4_frag__offset=8,
+                ip4_frag__flag_mf=False,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=payload_b,
+            )
+        )
+
+        self._handler._phrx_ip4(PacketRx(frag_a))
+        self._handler._phrx_ip4(PacketRx(frag_b))
+
+        assert self._handler.last_udp_packet is not None
+        ip4 = self._handler.last_udp_packet.ip4
+
+        # Preserved from first fragment.
+        self.assertEqual(
+            ip4.dscp,
+            0x3A,
+            msg="Reassembled header must preserve the first-fragment DSCP.",
+        )
+        self.assertEqual(
+            ip4.ecn,
+            0x02,
+            msg="Reassembled header must preserve the first-fragment ECN.",
+        )
+        self.assertEqual(
+            ip4.ttl,
+            42,
+            msg="Reassembled header must preserve the first-fragment TTL.",
+        )
+        self.assertEqual(
+            ip4.proto,
+            IpProto.UDP,
+            msg="Reassembled header must preserve the first-fragment protocol.",
+        )
+        self.assertEqual(
+            ip4.src,
+            HOST_A__IP4,
+            msg="Reassembled header must preserve the first-fragment source.",
+        )
+        self.assertEqual(
+            ip4.dst,
+            STACK__IP4_ADDRESS,
+            msg="Reassembled header must preserve the first-fragment destination.",
+        )
+
+        # Rewritten by the rebuild path.
+        self.assertFalse(
+            ip4.flag_mf,
+            msg="Reassembled header MF flag must be 0 after rebuild.",
+        )
+        self.assertEqual(
+            ip4.offset,
+            0,
+            msg="Reassembled header Fragment Offset must be 0 after rebuild.",
+        )
+        self.assertEqual(
+            ip4.payload_len,
+            len(payload_a) + len(payload_b),
+            msg="Reassembled header payload-length must equal the joined fragment payloads.",
         )
 
 

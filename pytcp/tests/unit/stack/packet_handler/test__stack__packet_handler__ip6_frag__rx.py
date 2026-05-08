@@ -93,6 +93,10 @@ def _ip6_frag_packet_rx(
     flag_mf: bool,
     payload: bytes,
     next_proto: IpProto = IpProto.UDP,
+    dscp: int = 0,
+    ecn: int = 0,
+    flow: int = 0,
+    hop: int = 64,
 ) -> PacketRx:
     """
     Build a 'PacketRx' that looks like one just parsed by 'Ip6Parser':
@@ -104,6 +108,10 @@ def _ip6_frag_packet_rx(
         Ip6Assembler(
             ip6__src=src,
             ip6__dst=dst,
+            ip6__dscp=dscp,
+            ip6__ecn=ecn,
+            ip6__flow=flow,
+            ip6__hop=hop,
             ip6__payload=Ip6FragAssembler(
                 ip6_frag__next=next_proto,
                 ip6_frag__offset=offset,
@@ -248,6 +256,152 @@ class TestPacketHandlerIp6FragRx(TestCase):
             len(self._handler._ip6_frag_flows),
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
+        )
+
+    def test__stack__packet_handler__ip6_frag__rx__out_of_order_three_fragments_reassemble(self) -> None:
+        """
+        Ensure three IPv6 fragments arriving out of order
+        (middle, last, first) reassemble into a single datagram
+        with the payload bytes laid out in offset order regardless
+        of arrival order.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly assembles in offset order).
+        """
+
+        payload_a = b"\xaa" * 8
+        payload_b = b"\xbb" * 8
+        payload_c = b"\xcc" * 8
+        expected_payload = payload_a + payload_b + payload_c
+
+        frag_a = _ip6_frag_packet_rx(
+            frag_id=21111,
+            offset=0,
+            flag_mf=True,
+            payload=payload_a,
+        )
+        frag_b = _ip6_frag_packet_rx(
+            frag_id=21111,
+            offset=8,
+            flag_mf=True,
+            payload=payload_b,
+        )
+        frag_c = _ip6_frag_packet_rx(
+            frag_id=21111,
+            offset=16,
+            flag_mf=False,
+            payload=payload_c,
+        )
+
+        # Arrival order: middle → last → first.
+        self._handler._phrx_ip6_frag(frag_b)
+        self._handler._phrx_ip6_frag(frag_c)
+        self._handler._phrx_ip6_frag(frag_a)
+
+        self.assertEqual(
+            len(self._handler.ip6_reassembled),
+            1,
+            msg="Reassembled datagram must dispatch to _phrx_ip6 exactly once.",
+        )
+        reassembled = self._handler.ip6_reassembled[0]
+        Ip6Parser(reassembled)
+        self.assertEqual(
+            bytes(reassembled.ip6.payload_bytes),
+            expected_payload,
+            msg="Reassembled payload bytes must be in offset order regardless of arrival order.",
+        )
+
+    def test__stack__packet_handler__ip6_frag__rx__reassembled_header_preserves_first_fragment_fields(self) -> None:
+        """
+        Ensure the reassembled IPv6 datagram preserves the DSCP,
+        ECN, Flow Label, and Hop Limit fields from the first
+        fragment while rewriting Payload Length and Next Header
+        (the latter to the upper-layer protocol carried after the
+        Fragment header).
+
+        Reference: RFC 8200 §4.5 (reassembled header preserves
+        first-fragment fields apart from payload length and the
+        Next Header, which becomes the upper-layer protocol).
+        """
+
+        payload_a = b"\xaa" * 8
+        payload_b = b"\xbb" * 8
+
+        frag_a = _ip6_frag_packet_rx(
+            frag_id=33333,
+            offset=0,
+            flag_mf=True,
+            payload=payload_a,
+            next_proto=IpProto.UDP,
+            dscp=0x3A,
+            ecn=0x02,
+            flow=0x12345,
+            hop=42,
+        )
+        frag_b = _ip6_frag_packet_rx(
+            frag_id=33333,
+            offset=8,
+            flag_mf=False,
+            payload=payload_b,
+            next_proto=IpProto.UDP,
+            dscp=0x3A,
+            ecn=0x02,
+            flow=0x12345,
+            hop=42,
+        )
+
+        self._handler._phrx_ip6_frag(frag_a)
+        self._handler._phrx_ip6_frag(frag_b)
+
+        reassembled = self._handler.ip6_reassembled[0]
+        Ip6Parser(reassembled)
+        ip6 = reassembled.ip6
+
+        # Preserved from first fragment.
+        self.assertEqual(
+            ip6.dscp,
+            0x3A,
+            msg="Reassembled header must preserve the first-fragment DSCP.",
+        )
+        self.assertEqual(
+            ip6.ecn,
+            0x02,
+            msg="Reassembled header must preserve the first-fragment ECN.",
+        )
+        self.assertEqual(
+            ip6.flow,
+            0x12345,
+            msg="Reassembled header must preserve the first-fragment Flow Label.",
+        )
+        self.assertEqual(
+            ip6.hop,
+            42,
+            msg="Reassembled header must preserve the first-fragment Hop Limit.",
+        )
+        self.assertEqual(
+            ip6.src,
+            HOST_A__IP6,
+            msg="Reassembled header must preserve the first-fragment source.",
+        )
+        self.assertEqual(
+            ip6.dst,
+            STACK__IP6_ADDRESS,
+            msg="Reassembled header must preserve the first-fragment destination.",
+        )
+
+        # Rewritten by the rebuild path.
+        self.assertEqual(
+            ip6.next,
+            IpProto.UDP,
+            msg=(
+                "Reassembled header Next Header must be the upper-layer "
+                "protocol carried by the original Fragment Extension "
+                "Header (UDP), not IP6_FRAG."
+            ),
+        )
+        self.assertEqual(
+            ip6.dlen,
+            len(payload_a) + len(payload_b),
+            msg="Reassembled header Payload Length must equal the joined fragment payloads.",
         )
 
     def test__stack__packet_handler__ip6_frag__rx__expired_flow_is_reaped(self) -> None:
