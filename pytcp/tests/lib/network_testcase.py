@@ -36,7 +36,7 @@ ver 3.0.4
 
 from typing import cast
 from unittest import TestCase
-from unittest.mock import create_autospec
+from unittest.mock import create_autospec, patch
 
 from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, MacAddress
 from net_proto.lib.buffer import Buffer
@@ -44,7 +44,7 @@ from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.stack.arp_cache import ArpCache
 from pytcp.stack.nd_cache import NdCache
-from pytcp.stack.packet_handler import PacketHandlerL2
+from pytcp.stack.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
 from pytcp.stack.tx_ring import TxRing
 
 # # #  IPv4
@@ -259,12 +259,34 @@ class NetworkTestCase(TestCase):
             mock__packet_handler=self._packet_handler,
         )
 
+        # Override the production RFC 7739 random Fragment ID
+        # generator with a deterministic counter so fixture-
+        # based fragmentation tests can assert specific
+        # Identification field values. Each call returns 1, 2,
+        # 3, ..., matching the legacy monotonic-counter
+        # behaviour the existing fixtures were authored
+        # against.
+        self._frag_id_counter: list[int] = [0]
+
+        def _det_frag_id() -> int:
+            self._frag_id_counter[0] += 1
+            return self._frag_id_counter[0]
+
+        self._frag_id_patch = patch.object(
+            packet_handler__ip6_frag__tx,
+            "_generate_ip6_frag_id",
+            side_effect=_det_frag_id,
+        )
+        self._frag_id_patch.start()
+
     def tearDown(self) -> None:
         """
         Restore the stack globals patched in 'setUp' so test-only
         values do not leak into unrelated tests run in the same
         process.
         """
+
+        self._frag_id_patch.stop()
 
         stack.__dict__.update(self._stack__attr_snapshot)
 

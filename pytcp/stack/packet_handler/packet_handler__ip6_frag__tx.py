@@ -30,6 +30,7 @@ pytcp/subsystems/packet_handler/packet_handler__ip6_frag__tx.py
 ver 3.0.4
 """
 
+import secrets
 from abc import ABC
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,26 @@ from net_proto import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+
+
+def _generate_ip6_frag_id() -> int:
+    """
+    Generate a cryptographic-quality random IPv6 Fragment
+    Identification value.
+
+    Reference: RFC 7739 §5 (Fragment Identification values
+    SHOULD be unpredictable to defeat fragmentation-based
+    attacks). The previous monotonic '+1' counter let an
+    off-path attacker guess the next value and forge fragments
+    that get reassembled with legitimate ones.
+
+    Module-level helper rather than a method so test
+    infrastructure can patch it deterministically (see
+    'pytcp/tests/lib/network_testcase.py') for fixture-based
+    integration tests that need known IDs.
+    """
+
+    return secrets.randbelow(2**32)
 
 
 class PacketHandlerIp6FragTx(ABC):
@@ -90,7 +111,7 @@ class PacketHandlerIp6FragTx(ABC):
         payload_mtu = (self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN) & 0b1111111111111000
         data_frags = [payload[_ : payload_mtu + _] for _ in range(0, len(payload), payload_mtu)]
         offset = 0
-        self._ip6_id += 1
+        self._ip6_id = _generate_ip6_frag_id()
         ip6_tx_status: set[TxStatus] = set()
         for data_frag in data_frags:
             ip6_frag_tx = Ip6FragAssembler(
