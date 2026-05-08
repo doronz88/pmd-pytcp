@@ -564,7 +564,12 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag))
         self._handler._phrx_ip4(PacketRx(frag))
 
-        flow = IpFragFlowId(src=HOST_A__IP4, dst=STACK__IP4_ADDRESS, id=7777)
+        flow = IpFragFlowId(
+            src=HOST_A__IP4,
+            dst=STACK__IP4_ADDRESS,
+            id=7777,
+            proto=IpProto.UDP,
+        )
         self.assertIn(
             flow,
             self._handler._ip4_frag_flows,
@@ -574,6 +579,55 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             len(self._handler._ip4_frag_flows),
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
+        )
+
+    def test__stack__packet_handler__ip4__rx__proto_distinguishes_flows(self) -> None:
+        """
+        Ensure two simultaneously-fragmented IPv4 datagrams that
+        share (src, dst, ID) but carry different upper-layer
+        protocols are reassembled into independent flows. A
+        handler that omits the protocol from the reassembly key
+        would alias the two streams onto a single flow entry and
+        produce a corrupted reassembly.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly key includes protocol).
+        """
+
+        # Same src/dst/ID, different protos — must occupy two flows.
+        udp_frag = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=2424,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=b"\xaa" * 8,
+            )
+        )
+        tcp_frag = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=2424,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.TCP,
+                ip4_frag__payload=b"\xbb" * 8,
+            )
+        )
+
+        self._handler._phrx_ip4(PacketRx(udp_frag))
+        self._handler._phrx_ip4(PacketRx(tcp_frag))
+
+        self.assertEqual(
+            len(self._handler._ip4_frag_flows),
+            2,
+            msg=(
+                "Two fragments sharing (src, dst, ID) but carrying different "
+                "protos must occupy two flow-table entries; otherwise the "
+                "reassembly key is missing 'proto' and the streams would mix."
+            ),
         )
 
     def test__stack__packet_handler__ip4__rx__expired_flow_is_reaped(self) -> None:
@@ -604,6 +658,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             src=HOST_A__IP4,
             dst=STACK__IP4_ADDRESS,
             id=8888,
+            proto=IpProto.UDP,
         )
         self.assertIn(
             stale_flow_id,
@@ -648,6 +703,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             src=HOST_A__IP4,
             dst=STACK__IP4_ADDRESS,
             id=9999,
+            proto=IpProto.UDP,
         )
         self.assertIn(
             fresh_flow_id,

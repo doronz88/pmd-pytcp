@@ -35,6 +35,7 @@ from dataclasses import FrozenInstanceError, fields
 from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
+from net_proto import IpProto
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
 
 
@@ -218,14 +219,76 @@ class TestIpFragFlowIdFields(TestCase):
 
     def test__ip_frag_flow_id__field_names(self) -> None:
         """
-        Ensure the dataclass exposes exactly the 'src', 'dst', 'id' fields
-        in that order; a silent rename would be a wire-format regression.
+        Ensure the dataclass exposes exactly the (src, dst, id,
+        proto) fields in that order; a silent rename would be a
+        wire-format regression.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly key includes protocol).
+        Reference: RFC 8200 §4.5 (IPv6 reassembly key omits protocol).
         """
 
         self.assertEqual(
             tuple(f.name for f in fields(IpFragFlowId)),
-            ("src", "dst", "id"),
-            msg="IpFragFlowId must declare exactly (src, dst, id) in order.",
+            ("src", "dst", "id", "proto"),
+            msg="IpFragFlowId must declare exactly (src, dst, id, proto) in order.",
+        )
+
+
+class TestIpFragFlowIdProto(TestCase):
+    """
+    The 'IpFragFlowId.proto' field tests.
+    """
+
+    def test__ip_frag_flow_id__proto_defaults_to_none(self) -> None:
+        """
+        Ensure the 'proto' field defaults to None so callers in
+        the IPv6 path (whose reassembly key omits the protocol)
+        can construct the flow-id without specifying it.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly key omits protocol).
+        """
+
+        flow = IpFragFlowId(
+            src=Ip6Address("2001:db8::1"),
+            dst=Ip6Address("2001:db8::2"),
+            id=1,
+        )
+
+        self.assertIsNone(
+            flow.proto,
+            msg="IpFragFlowId.proto must default to None for the IPv6-shaped key.",
+        )
+
+    def test__ip_frag_flow_id__proto_distinguishes_equal_src_dst_id(self) -> None:
+        """
+        Ensure two 'IpFragFlowId' instances that share src/dst/ID
+        but differ only in 'proto' compare unequal and hash apart,
+        so they occupy distinct dict entries — the IPv4 reassembly
+        invariant.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly key includes protocol).
+        """
+
+        src = Ip4Address("10.0.0.1")
+        dst = Ip4Address("10.0.0.2")
+
+        flow_udp = IpFragFlowId(src=src, dst=dst, id=42, proto=IpProto.UDP)
+        flow_tcp = IpFragFlowId(src=src, dst=dst, id=42, proto=IpProto.TCP)
+
+        self.assertNotEqual(
+            flow_udp,
+            flow_tcp,
+            msg=(
+                "Two IpFragFlowId instances differing only in 'proto' must " "be unequal (RFC 791 §3.2 reassembly key)."
+            ),
+        )
+        self.assertNotEqual(
+            hash(flow_udp),
+            hash(flow_tcp),
+            msg=(
+                "Hashes of IpFragFlowId instances differing only in 'proto' "
+                "must differ so dict lookup separates the two streams."
+            ),
         )
 
 

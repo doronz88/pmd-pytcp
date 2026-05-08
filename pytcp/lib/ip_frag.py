@@ -34,17 +34,23 @@ import time
 from dataclasses import dataclass, field
 
 from net_addr import Ip4Address, Ip6Address
+from net_proto import IpProto
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class IpFragFlowId:
     """
     The IPv4/IPv6 packet fragmentation flow ID.
+
+    For IPv4 the reassembly key is (src, dst, ID, proto) per RFC
+    791 §3.2. For IPv6 the key is (src, dst, ID) per RFC 8200
+    §4.5; the 'proto' slot stays None.
     """
 
     src: Ip6Address | Ip4Address
     dst: Ip6Address | Ip4Address
     id: int
+    proto: IpProto | None = None
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

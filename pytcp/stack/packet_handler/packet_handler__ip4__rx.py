@@ -324,6 +324,7 @@ class PacketHandlerIp4Rx(ABC):
             src=packet_rx.ip4.src,
             dst=packet_rx.ip4.dst,
             id=packet_rx.ip4.id,
+            proto=packet_rx.ip4.proto,
         )
 
         # Update flow db.
