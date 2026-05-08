@@ -50,6 +50,9 @@ if TYPE_CHECKING:
     )
     from net_proto.protocols.ip6_frag.ip6_frag__parser import Ip6FragParser
     from net_proto.protocols.ip6_hbh.ip6_hbh__parser import Ip6HbhParser
+    from net_proto.protocols.ip6_routing.ip6_routing__parser import (
+        Ip6RoutingParser,
+    )
     from net_proto.protocols.tcp.tcp__parser import TcpParser
     from net_proto.protocols.udp.udp__parser import UdpParser
 
@@ -77,6 +80,7 @@ class PacketRx:
         self.ip6_dest_opts: Ip6DestOptsParser
         self.ip6_frag: Ip6FragParser
         self.ip6_hbh: Ip6HbhParser
+        self.ip6_routing: Ip6RoutingParser
         self.icmp4: Icmp4Parser
         self.icmp6: Icmp6Parser
         self.tcp: TcpParser
