@@ -59,10 +59,10 @@ class TestIp6HbhParserSanity(TestCase):
 
         # HBH wire frame (8 bytes):
         #   Bytes 0-1 : 06 00 -> next=TCP, hdr_ext_len=0
-        #   Byte 2    : 0x05 -> unknown type, top-2-bits=00 (skip)
+        #   Byte 2    : 0x06 -> unknown type (IANA-unassigned), top-2-bits=00 (skip)
         #   Byte 3    : 0x04 -> opt_data_len=4
         #   Bytes 4-7 : 00 00 00 00 -> data
-        parser = Ip6HbhParser(PacketRx(b"\x06\x00\x05\x04\x00\x00\x00\x00"))
+        parser = Ip6HbhParser(PacketRx(b"\x06\x00\x06\x04\x00\x00\x00\x00"))
         self.assertEqual(
             len(list(parser.options)),
             1,

@@ -53,6 +53,9 @@ from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__pad1 import (
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__padn import (
     Ip6HbhOptionPadN,
 )
+from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__router_alert import (
+    Ip6HbhOptionRouterAlert,
+)
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__unknown import (
     Ip6HbhOptionUnknown,
 )
@@ -69,6 +72,18 @@ class Ip6HbhOptions(ProtoOptions):
     """
     The IPv6 Hop-by-Hop Options packet options.
     """
+
+    @property
+    def router_alert(self) -> Ip6HbhOptionRouterAlert | None:
+        """
+        Get the Router Alert option if present in the container.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip6HbhOptionRouterAlert):
+                return option
+
+        return None
 
     @staticmethod
     def validate_integrity(*, buffer: Buffer) -> None:
@@ -181,6 +196,8 @@ class Ip6HbhOptions(ProtoOptions):
                     options.append(Ip6HbhOptionPad1.from_buffer(buffer[offset:]))
                 case Ip6HbhOptionType.PADN:
                     options.append(Ip6HbhOptionPadN.from_buffer(buffer[offset:]))
+                case Ip6HbhOptionType.ROUTER_ALERT:
+                    options.append(Ip6HbhOptionRouterAlert.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip6HbhOptionUnknown.from_buffer(buffer[offset:]))
 

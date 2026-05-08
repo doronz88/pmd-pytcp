@@ -116,26 +116,27 @@ class TestIp6HbhOptionsComposition(TestCase):
 
     def test__ip6_hbh__options__from_buffer_synthesizes_unknown(self) -> None:
         """
-        Ensure 'from_buffer' wraps any non-Pad1 / non-PadN option
-        in 'Ip6HbhOptionUnknown' so the option's type byte and
-        data payload are preserved for a future Phase-2 forwarder.
+        Ensure 'from_buffer' wraps any option type that is not a
+        currently-known option in 'Ip6HbhOptionUnknown' so the
+        option's type byte and data payload are preserved for a
+        future Phase-2 forwarder.
 
         Reference: RFC 8200 §4.2 (unrecognized options preserved).
         """
 
         # Synthetic unknown-type option with action-bits 00 (skip):
-        # Type=0x05 (top-2-bits=00), Opt Data Len=2, data=AB CD.
-        buffer = b"\x05\x02\xab\xcd"
+        # Type=0x06 (top-2-bits=00, IANA-unassigned), Opt Data Len=2, data=AB CD.
+        buffer = b"\x06\x02\xab\xcd"
         opts = Ip6HbhOptions.from_buffer(buffer)
         self.assertEqual(len(list(opts)), 1, msg="Buffer must parse to exactly one option.")
         self.assertIsInstance(
             opts[0],
             Ip6HbhOptionUnknown,
-            msg="Non-Pad1/PadN option must be wrapped in Ip6HbhOptionUnknown.",
+            msg="Non-known option must be wrapped in Ip6HbhOptionUnknown.",
         )
         self.assertEqual(
             int(opts[0].type),
-            0x05,
+            0x06,
             msg="Unknown option must preserve its original Type byte.",
         )
 
@@ -199,9 +200,9 @@ class TestIp6HbhOptionsValidateSanity(TestCase):
         Reference: RFC 8200 §4.2 (action 00: skip the option).
         """
 
-        # Type=0x05 (top-2-bits=00), Opt Data Len=2, data=zero-zero.
+        # Type=0x06 (top-2-bits=00, IANA-unassigned), Opt Data Len=2, data=zero-zero.
         # Walker must accept without raising.
-        Ip6HbhOptions.validate_sanity(buffer=b"\x05\x02\x00\x00")
+        Ip6HbhOptions.validate_sanity(buffer=b"\x06\x02\x00\x00")
 
     def test__ip6_hbh__options__validate_sanity__discard_action_raises_no_pointer(self) -> None:
         """
