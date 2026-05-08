@@ -255,9 +255,29 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
             "_results": {"value": 4, "__str__": "IPv4"},
         },
         {
+            "_description": "IpProto.IP6_HBH known value (RFC 8200 §4.3 Hop-by-Hop Options).",
+            "_member": IpProto.IP6_HBH,
+            "_results": {"value": 0, "__str__": "IPv6_HBH"},
+        },
+        {
             "_description": "IpProto.ICMP4 known value.",
             "_member": IpProto.ICMP4,
             "_results": {"value": 1, "__str__": "ICMPv4"},
+        },
+        {
+            "_description": "IpProto.IP6_ROUTING known value (RFC 8200 §4.4 Routing Header).",
+            "_member": IpProto.IP6_ROUTING,
+            "_results": {"value": 43, "__str__": "IPv6_Routing"},
+        },
+        {
+            "_description": "IpProto.IP6_NO_NEXT_HEADER known value (RFC 8200 §4.7 No Next Header).",
+            "_member": IpProto.IP6_NO_NEXT_HEADER,
+            "_results": {"value": 59, "__str__": "IPv6_NoNextHeader"},
+        },
+        {
+            "_description": "IpProto.IP6_DEST_OPTS known value (RFC 8200 §4.6 Destination Options).",
+            "_member": IpProto.IP6_DEST_OPTS,
+            "_results": {"value": 60, "__str__": "IPv6_DestOpts"},
         },
         {
             "_description": "IpProto.TCP known value.",
@@ -368,6 +388,67 @@ class TestNetProtoLibEnumsIpProtoUnknown(TestCase):
 
         unknown = IpProto.from_int(55)
         self.assertEqual(str(unknown), "55")
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "from_int(0) returns IpProto.IP6_HBH (Hop-by-Hop Options).",
+            "_value": 0,
+            "_expected_name": "IP6_HBH",
+        },
+        {
+            "_description": "from_int(43) returns IpProto.IP6_ROUTING (Routing Header).",
+            "_value": 43,
+            "_expected_name": "IP6_ROUTING",
+        },
+        {
+            "_description": "from_int(59) returns IpProto.IP6_NO_NEXT_HEADER.",
+            "_value": 59,
+            "_expected_name": "IP6_NO_NEXT_HEADER",
+        },
+        {
+            "_description": "from_int(60) returns IpProto.IP6_DEST_OPTS (Destination Options).",
+            "_value": 60,
+            "_expected_name": "IP6_DEST_OPTS",
+        },
+    ]
+)
+class TestNetProtoLibEnumsIpProtoIpv6ExtensionFromInt(TestCase):
+    """
+    The NetProto IpProto from_int() coverage for the IPv6 extension-
+    header next-header values added in Phase 0.
+    """
+
+    _description: str
+    _value: int
+    _expected_name: str
+
+    def test__net_proto__lib__enums__ip_proto__ipv6_extension_from_int(self) -> None:
+        """
+        Ensure the IpProto enum exposes a typed member at the IANA
+        next-header value for each IPv6 extension header. Without
+        this, 'from_int' would dynamically synthesise an 'UNKNOWN_X'
+        sentinel and the chain-walker dispatch in Phase 8 would have
+        no enum to match against.
+
+        Reference: RFC 8200 §4.3 (Hop-by-Hop Options, value 0).
+        Reference: RFC 8200 §4.4 (Routing Header, value 43).
+        Reference: RFC 8200 §4.6 (Destination Options, value 60).
+        Reference: RFC 8200 §4.7 (No Next Header, value 59).
+        """
+
+        member = IpProto.from_int(self._value)
+
+        self.assertEqual(
+            member.name,
+            self._expected_name,
+            msg=f"{self._description}: from_int returned wrong member.",
+        )
+        self.assertFalse(
+            member.is_unknown,
+            msg=f"{self._description}: must be a known member, not a synthesised UNKNOWN_X.",
+        )
 
 
 @parameterized_class(
@@ -505,13 +586,17 @@ class TestNetProtoLibEnumsRoundtrip(TestCase):
         """
 
         for member in (
-            IpProto.IP4,
+            IpProto.IP6_HBH,
             IpProto.ICMP4,
+            IpProto.IP4,
             IpProto.TCP,
             IpProto.UDP,
             IpProto.IP6,
+            IpProto.IP6_ROUTING,
             IpProto.IP6_FRAG,
             IpProto.ICMP6,
+            IpProto.IP6_NO_NEXT_HEADER,
+            IpProto.IP6_DEST_OPTS,
             IpProto.RAW,
         ):
             with self.subTest(member=member):

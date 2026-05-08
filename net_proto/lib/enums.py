@@ -95,13 +95,17 @@ class IpProto(ProtoEnumByte):
     The IpProto values.
     """
 
+    IP6_HBH = 0  # RFC 8200 §4.3: Hop-by-Hop Options extension header.
     ICMP4 = 1
     IP4 = 4  # RFC 2003 §1: IPv4 encapsulated in IP (IP-in-IP).
     TCP = 6
     UDP = 17
     IP6 = 41
+    IP6_ROUTING = 43  # RFC 8200 §4.4: Routing Header extension header.
     IP6_FRAG = 44
     ICMP6 = 58
+    IP6_NO_NEXT_HEADER = 59  # RFC 8200 §4.7: No Next Header (chain terminator).
+    IP6_DEST_OPTS = 60  # RFC 8200 §4.6: Destination Options extension header.
     RAW = 255
 
     @override
@@ -111,20 +115,28 @@ class IpProto(ProtoEnumByte):
         """
 
         match self:
-            case IpProto.IP4:
-                name = "IPv4"
+            case IpProto.IP6_HBH:
+                name = "IPv6_HBH"
             case IpProto.ICMP4:
                 name = "ICMPv4"
+            case IpProto.IP4:
+                name = "IPv4"
             case IpProto.TCP:
                 name = "TCP"
             case IpProto.UDP:
                 name = "UDP"
             case IpProto.IP6:
                 name = "IPv6"
+            case IpProto.IP6_ROUTING:
+                name = "IPv6_Routing"
             case IpProto.IP6_FRAG:
                 name = "IPv6_Frag"
             case IpProto.ICMP6:
                 name = "ICMPv6"
+            case IpProto.IP6_NO_NEXT_HEADER:
+                name = "IPv6_NoNextHeader"
+            case IpProto.IP6_DEST_OPTS:
+                name = "IPv6_DestOpts"
             case IpProto.RAW:
                 name = "Raw"
 
