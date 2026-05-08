@@ -97,26 +97,42 @@ class RxRing(Subsystem):
     @override
     def _subsystem_loop(self) -> None:
         """
-        Receive and enqueue the incoming packets.
+        Receive and enqueue the incoming packets. After the outer
+        'selector.select' wake-up, drain every additional frame the
+        kernel TAP / TUN buffer holds via a 'select(timeout=0)'
+        inner peek so a single wake-up amortises across the whole
+        pending burst — at line rate the kernel queue can hold many
+        frames between two selector polls, and reading them one-
+        wake-up-at-a-time wastes outer-loop overhead.
         """
 
         if not self._selector.select(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
             return
 
-        packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
-        __debug__ and log(
-            "rx-ring",
-            f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
-        )
-
-        try:
-            self._rx_ring.put(item=packet_rx, block=False)
-        except queue.Full:
-            self._queue_full_drop_count += 1
+        while True:
+            packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
             __debug__ and log(
                 "rx-ring",
-                f"{packet_rx.tracker} - RX Queue is full, dropping packet",
+                f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
             )
+
+            try:
+                self._rx_ring.put(item=packet_rx, block=False)
+            except queue.Full:
+                self._queue_full_drop_count += 1
+                __debug__ and log(
+                    "rx-ring",
+                    f"{packet_rx.tracker} - RX Queue is full, dropping packet",
+                )
+                # Stop draining the moment the consumer falls
+                # behind — further reads would just keep dropping.
+                break
+
+            # Peek for more readable data without blocking. Empty
+            # list => kernel buffer drained; exit and let the
+            # outer Subsystem driver re-enter on the next wake-up.
+            if not self._selector.select(timeout=0):
+                break
 
     @override
     def _stop(self) -> None:

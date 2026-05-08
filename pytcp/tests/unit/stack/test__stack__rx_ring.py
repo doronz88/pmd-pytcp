@@ -191,7 +191,10 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
     def test__rx_ring__loop_enqueues_packet_on_read(self) -> None:
         """
         Ensure the loop reads bytes from the fd and enqueues a
-        'PacketRx' when the selector signals a readable event.
+        'PacketRx' when the selector signals a readable event. The
+        selector is mocked to return ready on the first call and
+        empty on the inner-drain peek so the loop exits after one
+        frame.
         """
 
         frame = b"\x00" * 64
@@ -199,7 +202,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             patch.object(
                 self._ring._selector,
                 "select",
-                return_value=[MagicMock()],
+                side_effect=[[MagicMock()], []],
             ),
             patch(
                 "pytcp.stack.rx_ring.os.read",
@@ -238,7 +241,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             patch.object(
                 ring._selector,
                 "select",
-                return_value=[MagicMock()],
+                side_effect=[[MagicMock()], []],
             ),
             patch(
                 "pytcp.stack.rx_ring.os.read",
@@ -293,6 +296,99 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             ring._rx_ring.qsize(),
             1,
             msg="On a full queue, the new frame must be dropped (queue size unchanged).",
+        )
+
+    def test__rx_ring__loop_drains_all_pending_packets_per_select_wake(self) -> None:
+        """
+        Ensure a single 'selectors.DefaultSelector.select' wake-up
+        drains every packet currently readable on the fd, not just
+        one. The inner-drain pattern amortises the outer-select
+        round-trip across the whole pending burst — under bursty
+        traffic, the kernel TAP buffer can hold many frames between
+        two selector wake-ups, and the producer should empty them
+        in one pass rather than yielding back to the subsystem
+        driver between every packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=100)
+        n_frames = 25
+
+        # First select() returns ready (outer wake-up); subsequent
+        # peeks return ready N-1 more times then empty so the
+        # inner drain naturally exits.
+        select_returns: list[list] = [[MagicMock()]] * n_frames + [[]]
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                side_effect=select_returns,
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                return_value=b"\x00" * 64,
+            ),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            ring._rx_ring.qsize(),
+            n_frames,
+            msg=(
+                f"A single _subsystem_loop wake must drain all {n_frames} "
+                f"pre-buffered frames in one pass. Got qsize="
+                f"{ring._rx_ring.qsize()}."
+            ),
+        )
+
+    def test__rx_ring__loop_inner_drain_breaks_on_full_queue(self) -> None:
+        """
+        Ensure the inner-drain loop stops the moment the consumer-
+        side ring is full — continuing to read would only keep
+        bumping the drop counter without delivering anything to the
+        consumer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=2)
+
+        select_returns: list[list] = [[MagicMock()]] * 100  # plenty of "ready"
+        read_calls: list[int] = []
+
+        def _track_read(fd: int, size: int) -> bytes:
+            read_calls.append(size)
+            return b"\x00" * 64
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                side_effect=select_returns,
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                side_effect=_track_read,
+            ),
+        ):
+            ring._subsystem_loop()
+
+        # The ring is size-2 and starts empty: two successful puts,
+        # then one queue.Full drop, then break. No further reads.
+        self.assertEqual(
+            len(read_calls),
+            3,
+            msg=(
+                "Inner drain must break after the first queue-full "
+                "drop. Expected 3 reads (2 enqueued + 1 dropped); "
+                f"got {len(read_calls)}."
+            ),
+        )
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            1,
+            msg="Exactly one drop should be counted before the drain breaks.",
         )
 
     def test__rx_ring__queue_full_drop_count_starts_at_zero(self) -> None:
