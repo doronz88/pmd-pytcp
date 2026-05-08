@@ -104,6 +104,17 @@ class RxRing(Subsystem):
                 f"{packet_rx.tracker} - RX Queue is full, dropping packet",
             )
 
+    @override
+    def _stop(self) -> None:
+        """
+        Release the OS-level epoll/poll/kqueue resource backing the
+        'selectors.DefaultSelector' so 'stack.stop()' returns the fd
+        to the kernel. Idempotent — the selector's own 'close()' is
+        a no-op on an already-closed instance.
+        """
+
+        self._selector.close()
+
     def dequeue(self) -> PacketRx | None:
         """
         Dequeue inbound frame from RX Ring.

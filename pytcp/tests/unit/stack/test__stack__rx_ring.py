@@ -296,6 +296,29 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         )
 
 
+class TestRxRingStopReleasesSelector(_RxRingFixture):
+    """
+    The 'RxRing._stop' selector-cleanup tests.
+    """
+
+    def test__rx_ring__stop_closes_selector(self) -> None:
+        """
+        Ensure 'RxRing._stop' closes the underlying
+        'selectors.DefaultSelector' so the epoll fd it wraps is
+        released back to the kernel. Long-lived embedded use of the
+        stack would otherwise leak one epoll fd per stack.start /
+        stack.stop cycle.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sel = self._ring._selector
+        with patch.object(sel, "close") as mock_close:
+            self._ring._stop()
+
+        mock_close.assert_called_once_with()
+
+
 class TestRxRingQueueFullSpelling(TestCase):
     """
     Cross-check the module imports 'queue.Full' (not a custom class).
