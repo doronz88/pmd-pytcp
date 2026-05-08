@@ -211,6 +211,12 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
             )
 
         if ip6__src.is_unspecified:
+            if ip6__dst != self.target_address.solicited_node_multicast:
+                raise Icmp6SanityError(
+                    "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, "
+                    "the 'ip6__dst' must be the solicited-node multicast of 'target_address'. "
+                    f"Got: {ip6__dst!r}",
+                )
             if self.option_slla is not None:
                 raise Icmp6SanityError(
                     "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, the 'slla' option "

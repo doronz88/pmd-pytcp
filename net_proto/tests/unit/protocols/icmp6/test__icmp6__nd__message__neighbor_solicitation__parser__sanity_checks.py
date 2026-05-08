@@ -179,7 +179,9 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
 
     def test__icmp6__nd__message__neighbor_solicitation__src_unspecified__accepted(self) -> None:
         """
-        Ensure an unspecified 'ip6__src' passes the sanity check (DAD case).
+        Ensure an unspecified 'ip6__src' passes the sanity check
+        (DAD case, with the canonical DAD-shape destination —
+        target_address's solicited-node multicast).
         """
 
         Icmp6Parser(
@@ -187,7 +189,7 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
                 _NS_TARGET_UNICAST_FRAME,
                 ip6__hop=255,
                 ip6__src=Ip6Address("::"),
-                ip6__dst=Ip6Address("2001:db8::1"),
+                ip6__dst=Ip6Address("ff02::1:ff00:1"),
             )
         )
 
@@ -256,6 +258,64 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDst(TestCase):
         )
 
 
+class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDadDestination(TestCase):
+    """
+    Sanity-check tests for the DAD-context destination address
+    constraint when 'ip6__src' is unspecified.
+    """
+
+    def test__icmp6__nd__message__neighbor_solicitation__dad_dst_target__rejected(self) -> None:
+        """
+        Ensure a DAD-context Neighbor Solicitation (src is the
+        unspecified address) whose destination is the
+        target_address itself — rather than the solicited-node
+        multicast — is rejected with a canonical
+        'Icmp6SanityError'.
+
+        Reference: RFC 4861 §7.2.3 (DAD NS validity: src=::,
+        dst=solicited-node multicast).
+        """
+
+        with self.assertRaises(Icmp6SanityError) as error:
+            Icmp6Parser(
+                _packet_rx_with_ip6(
+                    _NS_TARGET_UNICAST_FRAME,
+                    ip6__hop=255,
+                    ip6__src=Ip6Address("::"),
+                    ip6__dst=Ip6Address("2001:db8::1"),  # target_address itself, NOT solicited-node mcast.
+                )
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][ICMPv6] ND Neighbor Solicitation - [RFC 4861] "
+                "When the 'ip6__src' is unspecified, the 'ip6__dst' must be "
+                f"the solicited-node multicast of 'target_address'. Got: {Ip6Address('2001:db8::1')!r}"
+            ),
+            msg="Unexpected sanity-error message for DAD NS with dst==target_address.",
+        )
+
+    def test__icmp6__nd__message__neighbor_solicitation__dad_dst_solicited_node_multicast__accepted(self) -> None:
+        """
+        Ensure a DAD-context Neighbor Solicitation (src is the
+        unspecified address) whose destination is the target's
+        solicited-node multicast passes the sanity check — the
+        canonical DAD shape.
+
+        Reference: RFC 4861 §7.2.3 (DAD NS validity).
+        """
+
+        Icmp6Parser(
+            _packet_rx_with_ip6(
+                _NS_TARGET_UNICAST_FRAME,
+                ip6__hop=255,
+                ip6__src=Ip6Address("::"),
+                ip6__dst=Ip6Address("ff02::1:ff00:1"),
+            )
+        )
+
+
 class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksTargetAddress(TestCase):
     """
     Sanity-check tests for the 'target_address' field (RFC 4861 requires
@@ -319,7 +379,7 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifie
                     _NS_WITH_SLLA_FRAME,
                     ip6__hop=255,
                     ip6__src=Ip6Address("::"),
-                    ip6__dst=Ip6Address("2001:db8::2"),
+                    ip6__dst=Ip6Address("ff02::1:ff00:2"),
                 )
             )
 
@@ -335,8 +395,9 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifie
 
     def test__icmp6__nd__message__neighbor_solicitation__no_slla_with_unspecified_src__accepted(self) -> None:
         """
-        Ensure an NS with no SLLA option passes when 'ip6__src' is
-        unspecified (the DAD case).
+        Ensure an NS with no SLLA option passes when 'ip6__src'
+        is unspecified (the canonical DAD case, with the
+        target's solicited-node multicast as the destination).
         """
 
         Icmp6Parser(
@@ -344,6 +405,6 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifie
                 _NS_TARGET_UNICAST_FRAME,
                 ip6__hop=255,
                 ip6__src=Ip6Address("::"),
-                ip6__dst=Ip6Address("2001:db8::1"),
+                ip6__dst=Ip6Address("ff02::1:ff00:1"),
             )
         )
