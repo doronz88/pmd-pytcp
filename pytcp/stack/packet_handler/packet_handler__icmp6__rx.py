@@ -33,7 +33,7 @@ ver 3.0.4
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
-from net_addr import Ip6Address, IpVersion
+from net_addr import Ip6Address, Ip6Network, IpVersion
 from net_proto import (
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
@@ -668,6 +668,28 @@ class PacketHandlerIcmp6Rx(ABC):
     def __phrx_icmp6__nd_router_advertisement(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 ND Router Advertisement packets.
+
+        Reference: RFC 4862 §5.5.3 (PI option processing rules).
+
+        Filters each Prefix Information option per RFC 4862
+        §5.5.3 steps (e)(1)-(e)(3) before adding the prefix to
+        the SLAAC candidate list:
+
+          - (e)(1) Autonomous flag must be set; otherwise the
+            prefix is for on-link determination only and SLAAC
+            must not derive an address from it.
+          - (e)(2) The link-local prefix is reserved; an RA
+            advertising it must not be consumed by SLAAC.
+          - (e)(3) preferred_lifetime must not exceed
+            valid_lifetime; otherwise the option is malformed.
+
+        # Phase 2: per-prefix lifetime tracking with the 2-hour
+        # rule on existing-prefix lifetime extensions (RFC 4862
+        # §5.5.3 (e)(6)) requires a SLAAC state machine that
+        # tracks per-prefix wall-clock expiry. The current
+        # 'list[(prefix, gateway)]' representation is a Phase-1
+        # snapshot; the upgrade path is greppable via this
+        # marker.
         """
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement)
@@ -677,8 +699,28 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Router Advertisement " f"packet from {packet_rx.ip6.src}",
         )
-        # Make note of prefixes that can be used for address autoconfiguration.
-        self._icmp6_ra__prefixes = [(option.prefix, packet_rx.ip6.src) for option in packet_rx.icmp6.message.option_pi]
+
+        admitted: list[tuple[Ip6Network, Ip6Address]] = []
+        for option in packet_rx.icmp6.message.option_pi:
+            reason: str | None = None
+            if not option.flag_a:
+                reason = "RFC 4862 §5.5.3 (e)(1): A flag clear (non-autonomous)"
+            elif option.prefix.address.is_link_local:
+                reason = "RFC 4862 §5.5.3 (e)(2): link-local prefix reserved"
+            elif option.preferred_lifetime > option.valid_lifetime:
+                reason = "RFC 4862 §5.5.3 (e)(3): preferred_lifetime > valid_lifetime"
+            if reason is not None:
+                self._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop += 1
+                __debug__ and log(
+                    "icmp6",
+                    f"{packet_rx.tracker} - <WARN>Dropping RA Prefix "
+                    f"Information option for {option.prefix} from "
+                    f"{packet_rx.ip6.src}: {reason}</>",
+                )
+                continue
+            admitted.append((option.prefix, packet_rx.ip6.src))
+
+        self._icmp6_ra__prefixes = admitted
         self._icmp6_ra__event.release()
 
     def __phrx_icmp6__nd_neighbor_solicitation(self, packet_rx: PacketRx) -> None:

@@ -34,13 +34,14 @@ import threading
 from unittest import TestCase
 from unittest.mock import patch
 
-from net_addr import Ip6Address, MacAddress
+from net_addr import Ip6Address, Ip6Network, MacAddress
 from net_proto import (
     Icmp6Assembler,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRouterAdvertisement,
+    Icmp6NdOptionPi,
     Icmp6NdOptions,
     Ip6Assembler,
     Ip6Parser,
@@ -230,6 +231,202 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
     """
     The ICMPv6 ND (Neighbor Discovery) dispatch tests.
     """
+
+    def test__stack__packet_handler__icmp6__rx__router_advertisement__non_autonomous_prefix_dropped(self) -> None:
+        """
+        Ensure a Prefix Information option whose Autonomous flag
+        is clear is silently filtered out of the SLAAC candidate
+        list and the 'icmp6__nd_router_advertisement__prefix_info__drop'
+        counter increments. Without the A bit, SLAAC must not
+        derive an address from the prefix.
+
+        Reference: RFC 4862 §5.5.3 (e)(1) (PI without A flag is
+        ignored for address autoconfiguration).
+        """
+
+        ra_message = Icmp6NdMessageRouterAdvertisement(
+            hop=64,
+            flag_m=False,
+            flag_o=False,
+            router_lifetime=1800,
+            reachable_time=0,
+            retrans_timer=0,
+            options=Icmp6NdOptions(
+                Icmp6NdOptionPi(
+                    flag_l=True,
+                    flag_a=False,  # SLAAC ineligible.
+                    flag_r=False,
+                    valid_lifetime=86400,
+                    preferred_lifetime=14400,
+                    prefix=Ip6Network("2001:db8:0:1::/64"),
+                ),
+            ),
+        )
+        ip6 = _build_icmp6_frame(
+            src=Ip6Address("fe80::1"),
+            dst=Ip6Address("ff02::1"),
+            message=ra_message,
+        )
+
+        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+
+        self.assertEqual(
+            self._handler._icmp6_ra__prefixes,
+            [],
+            msg=("A non-autonomous Prefix Information option must not be added to " "'_icmp6_ra__prefixes'."),
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            1,
+            msg=(
+                "A filtered Prefix Information option must increment "
+                "'icmp6__nd_router_advertisement__prefix_info__drop'."
+            ),
+        )
+
+    def test__stack__packet_handler__icmp6__rx__router_advertisement__link_local_prefix_dropped(self) -> None:
+        """
+        Ensure a Prefix Information option whose prefix is the
+        link-local prefix is silently filtered out of the SLAAC
+        candidate list. SLAAC must not derive a global address
+        from the link-local prefix.
+
+        Reference: RFC 4862 §5.5.3 (e)(2) (PI for the link-local
+        prefix is ignored).
+        """
+
+        ra_message = Icmp6NdMessageRouterAdvertisement(
+            hop=64,
+            flag_m=False,
+            flag_o=False,
+            router_lifetime=1800,
+            reachable_time=0,
+            retrans_timer=0,
+            options=Icmp6NdOptions(
+                Icmp6NdOptionPi(
+                    flag_l=True,
+                    flag_a=True,
+                    flag_r=False,
+                    valid_lifetime=86400,
+                    preferred_lifetime=14400,
+                    prefix=Ip6Network("fe80::/64"),
+                ),
+            ),
+        )
+        ip6 = _build_icmp6_frame(
+            src=Ip6Address("fe80::1"),
+            dst=Ip6Address("ff02::1"),
+            message=ra_message,
+        )
+
+        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+
+        self.assertEqual(
+            self._handler._icmp6_ra__prefixes,
+            [],
+            msg="A link-local Prefix Information option must not be added to '_icmp6_ra__prefixes'.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            1,
+            msg="A link-local PI option must bump the prefix_info drop counter.",
+        )
+
+    def test__stack__packet_handler__icmp6__rx__router_advertisement__preferred_gt_valid_dropped(self) -> None:
+        """
+        Ensure a Prefix Information option whose preferred
+        lifetime exceeds its valid lifetime is silently filtered
+        out — the option is malformed per the lifetime-ordering
+        invariant and SLAAC must not consume it.
+
+        Reference: RFC 4862 §5.5.3 (e)(3) (preferred_lifetime
+        MUST NOT exceed valid_lifetime).
+        """
+
+        ra_message = Icmp6NdMessageRouterAdvertisement(
+            hop=64,
+            flag_m=False,
+            flag_o=False,
+            router_lifetime=1800,
+            reachable_time=0,
+            retrans_timer=0,
+            options=Icmp6NdOptions(
+                Icmp6NdOptionPi(
+                    flag_l=True,
+                    flag_a=True,
+                    flag_r=False,
+                    valid_lifetime=3600,
+                    preferred_lifetime=7200,  # > valid_lifetime — invalid.
+                    prefix=Ip6Network("2001:db8:0:1::/64"),
+                ),
+            ),
+        )
+        ip6 = _build_icmp6_frame(
+            src=Ip6Address("fe80::1"),
+            dst=Ip6Address("ff02::1"),
+            message=ra_message,
+        )
+
+        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+
+        self.assertEqual(
+            self._handler._icmp6_ra__prefixes,
+            [],
+            msg=("A PI option with preferred_lifetime > valid_lifetime must not " "be added to '_icmp6_ra__prefixes'."),
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            1,
+            msg=("A PI option with preferred_lifetime > valid_lifetime must bump " "the prefix_info drop counter."),
+        )
+
+    def test__stack__packet_handler__icmp6__rx__router_advertisement__valid_prefix_admitted(self) -> None:
+        """
+        Ensure a well-formed Prefix Information option (A flag
+        set, non-link-local prefix, preferred_lifetime <=
+        valid_lifetime) is admitted to the SLAAC candidate list.
+        Regression-pin for the happy path past the new filters.
+
+        Reference: RFC 4862 §5.5.3 (e)(4) (well-formed PI option
+        contributes to the prefix list).
+        """
+
+        ra_message = Icmp6NdMessageRouterAdvertisement(
+            hop=64,
+            flag_m=False,
+            flag_o=False,
+            router_lifetime=1800,
+            reachable_time=0,
+            retrans_timer=0,
+            options=Icmp6NdOptions(
+                Icmp6NdOptionPi(
+                    flag_l=True,
+                    flag_a=True,
+                    flag_r=False,
+                    valid_lifetime=86400,
+                    preferred_lifetime=14400,
+                    prefix=Ip6Network("2001:db8:0:1::/64"),
+                ),
+            ),
+        )
+        ip6 = _build_icmp6_frame(
+            src=Ip6Address("fe80::1"),
+            dst=Ip6Address("ff02::1"),
+            message=ra_message,
+        )
+
+        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+
+        self.assertEqual(
+            len(self._handler._icmp6_ra__prefixes),
+            1,
+            msg="A well-formed PI option must be admitted to '_icmp6_ra__prefixes'.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            0,
+            msg="A well-formed PI option must not bump the drop counter.",
+        )
 
     def test__stack__packet_handler__icmp6__rx__router_advertisement_counted(self) -> None:
         """

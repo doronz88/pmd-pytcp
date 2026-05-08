@@ -177,6 +177,7 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_neighbor_advertisement__update_nd_cache: int = 0
     icmp6__nd_router_solicitation: int = 0
     icmp6__nd_router_advertisement: int = 0
+    icmp6__nd_router_advertisement__prefix_info__drop: int = 0
     icmp6__mld2_report: int = 0
     icmp6__unknown: int = 0
 
