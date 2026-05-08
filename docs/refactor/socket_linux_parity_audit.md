@@ -555,3 +555,60 @@ implement, regardless of compatibility cost:
 
 Apps that depend on these will not work atop PyTCP and
 that's intentional.
+
+---
+
+## §99 Resume prompt (paste verbatim after `/compact`)
+
+```
+I'm resuming PyTCP socket-layer Linux-parity work from a
+context-compacted state. The full audit lives at
+`docs/refactor/socket_linux_parity_audit.md` (committed at
+`ccae024c`); it catalogues 26 deficiencies in pytcp.socket
+classified CRITICAL / HIGH / MEDIUM / LOW against the
+POSIX-2017 + Linux extensions baseline.
+
+Read these in order before any code:
+
+  1. docs/refactor/socket_linux_parity_audit.md (the full
+     deficiency report — sections by tier, plus the
+     "Recommended sequencing" §99 phase plan)
+  2. CLAUDE.md (Project North Star: applications written
+     for Linux should re-import against pytcp.socket and
+     work unchanged; deliberate-skip categories)
+  3. .claude/rules/feature_implementation.md (commit
+     discipline; tests-first; Linux-as-tiebreaker rule)
+  4. .claude/rules/unit_tests.md (test-authoring rule;
+     §7.2 self-audit script blocks every commit)
+  5. .claude/rules/coding_style.md (source-authoring rule)
+  6. The current pytcp/socket/ tree to see what's there:
+     - pytcp/socket/__init__.py (factory + enums + base)
+     - pytcp/socket/tcp__socket.py
+     - pytcp/socket/udp__socket.py
+     - pytcp/socket/raw__socket.py
+     - pytcp/socket/socket_id.py
+
+After reading, confirm you understand:
+
+  - The CRITICAL bucket is interlocked: C1 (fileno + eventfd
+    backing) is the foundation; C2 (setblocking), C3
+    (selector integration), C5 (bufsize) layer on top.
+    Without C1, the other CRITICAL items are mostly
+    ineffective for async frameworks (asyncio / trio /
+    twisted).
+  - Phase 1 (the work block to start with) is C1 → C2 →
+    C5 → C3 → C6 (errno sweep) → C4 (getaddrinfo re-
+    export from CPython stdlib). Each commit lands tests-
+    first; the §7.2 audit blocks every commit.
+  - Out-of-scope per North Star: AF_UNIX, TCP_MD5SIG,
+    IPsec socket options. Don't add these even if asked.
+
+Branch: PyTCP_3_0__pre_release
+
+Then ask the user which Phase-1 commit to start with. If
+they say "go" or "next", start with C1 (fileno() +
+eventfd backing). Tests-first per CLAUDE.md MUST.
+
+Do NOT push without explicit user request. Commit after
+each phase; user pushes when ready.
+```
