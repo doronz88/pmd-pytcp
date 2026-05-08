@@ -99,7 +99,8 @@ class TcpEchoService(TcpService):
                 socket.close()
                 continue
 
-            self._log(f"Received {len(message)} bytes from {remote_ip_address}, port {remote_port}.")
+            if __debug__:
+                self._log(f"Received {len(message)} bytes from {remote_ip_address}, port {remote_port}.")
 
             if b"malpka" in message.strip().lower():
                 message = malpka
@@ -111,7 +112,8 @@ class TcpEchoService(TcpService):
                 message = malpi
 
             if socket.send(message):
-                self._log(f"Sent {len(message)} bytes back to {remote_ip_address}, port {remote_port}.")
+                if __debug__:
+                    self._log(f"Sent {len(message)} bytes back to {remote_ip_address}, port {remote_port}.")
 
 
 @click.command()

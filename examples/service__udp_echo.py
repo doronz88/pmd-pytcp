@@ -79,7 +79,10 @@ class UdpEchoService(UdpService):
                 message, remote_address = socket.recvfrom(timeout=1)
 
                 if message:
-                    self._log(f"Received {len(message)} bytes from " f"{remote_address[0]}, port {remote_address[1]}.")
+                    if __debug__:
+                        self._log(
+                            f"Received {len(message)} bytes from " f"{remote_address[0]}, port {remote_address[1]}."
+                        )
 
                     if b"malpka" in message.strip().lower():
                         message = malpka
@@ -90,7 +93,10 @@ class UdpEchoService(UdpService):
 
                     socket.sendto(message, remote_address)
 
-                    self._log(f"Sent {len(message)} bytes back to " f"{remote_address[0]}, port {remote_address[1]}.")
+                    if __debug__:
+                        self._log(
+                            f"Sent {len(message)} bytes back to " f"{remote_address[0]}, port {remote_address[1]}."
+                        )
 
             except TimeoutError:
                 continue
