@@ -360,6 +360,95 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         mock_writev.assert_not_called()
 
 
+class TestTxRingInnerDrain(_TxRingFixture):
+    """
+    The 'TxRing._subsystem_loop' inner-drain tests.
+    """
+
+    def _make_ethernet(self) -> MagicMock:
+        """
+        Build a MagicMock 'EthernetAssembler' for queue insertion.
+        """
+
+        pkt = MagicMock(spec=EthernetAssembler)
+        pkt.__len__.return_value = 64
+
+        def assemble(buffers: list) -> None:
+            buffers.append(b"x" * 64)
+
+        pkt.assemble.side_effect = assemble
+        return pkt
+
+    def test__tx_ring__loop_drains_all_pending_packets_per_get_wake(self) -> None:
+        """
+        Ensure a single '_subsystem_loop' invocation drains every
+        packet currently in the TX ring queue, not just one. The
+        inner-drain pattern mirrors the RX-side optimisation: the
+        outer 'queue.get(block=True, timeout=0.1)' is the slow path;
+        once awoken, the worker should drain the rest of the queue
+        via cheap 'queue.get(block=False)' calls until the queue
+        is empty, then yield back to the Subsystem driver.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n_frames = 10
+        for _ in range(n_frames):
+            self._ring._tx_ring.put(self._make_ethernet(), block=False)
+
+        with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            mock_writev.call_count,
+            n_frames,
+            msg=(
+                f"A single _subsystem_loop call must drain all {n_frames} "
+                f"queued packets in one pass. Got {mock_writev.call_count} "
+                f"os.writev calls."
+            ),
+        )
+        self.assertTrue(
+            self._ring._tx_ring.empty(),
+            msg="After the inner drain the queue must be empty.",
+        )
+
+    def test__tx_ring__loop_inner_drain_breaks_on_writev_oserror(self) -> None:
+        """
+        Ensure the inner-drain loop stops on the first 'os.writev'
+        OSError. Repeatedly retrying when the interface is down /
+        ENOBUFS would only burn cycles — better to yield and let
+        the next outer-loop iteration check the stop event.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for _ in range(5):
+            self._ring._tx_ring.put(self._make_ethernet(), block=False)
+
+        with patch(
+            "pytcp.stack.tx_ring.os.writev",
+            side_effect=OSError("link down"),
+        ) as mock_writev:
+            self._ring._subsystem_loop()
+
+        # First writev errors → break. No further writev calls,
+        # but exactly one drop counted.
+        self.assertEqual(
+            mock_writev.call_count,
+            1,
+            msg=(
+                "Inner drain must break after the first writev OSError. "
+                f"Expected 1 writev call; got {mock_writev.call_count}."
+            ),
+        )
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            1,
+            msg="Exactly one drop should be counted before the drain breaks.",
+        )
+
+
 class TestTxRingDropCounters(_TxRingFixture):
     """
     The 'TxRing' drop-counter observability tests.

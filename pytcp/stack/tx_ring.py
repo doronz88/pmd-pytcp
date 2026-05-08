@@ -107,13 +107,43 @@ class TxRing(Subsystem):
     @override
     def _subsystem_loop(self) -> None:
         """
-        Dequeue packets from TX Ring and put them on the wire.
+        Dequeue packets from TX Ring and put them on the wire. After
+        the outer 'queue.get(block=True, timeout=...)' wakes, drain
+        every additional packet currently queued via cheap
+        non-blocking 'queue.get(block=False)' calls in an inner loop
+        — the outer-loop overhead (Subsystem driver dispatch,
+        blocking queue.get setup) amortises across the whole burst
+        instead of one packet per outer cycle.
         """
 
         try:
             packet_tx = self._tx_ring.get(block=True, timeout=SUBSYSTEM_SLEEP_TIME__SEC)
         except queue.Empty:
             return
+
+        while True:
+            if not self._send_one(packet_tx):
+                # 'os.writev' errored — stop draining; let the outer
+                # loop take a fresh tick so the stop event can be
+                # checked and the next pass is a clean restart.
+                return
+
+            try:
+                packet_tx = self._tx_ring.get(block=False)
+            except queue.Empty:
+                return
+
+    def _send_one(
+        self,
+        packet_tx: EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler,
+    ) -> bool:
+        """
+        Build the wire-buffer list for a single packet and call
+        'os.writev'. Returns True on a successful send (including
+        the silent oversized-frame and unknown-type drops which
+        are non-fatal log-only branches), and False on 'os.writev'
+        OSError so the inner drain can break early.
+        """
 
         buffers: list[Buffer]
 
@@ -134,14 +164,14 @@ class TxRing(Subsystem):
                 "tx-ring",
                 f"{packet_tx.tracker} - <CRIT>Unknown packet type: " f"{type(packet_tx)!r}</>",
             )
-            return
+            return True
 
         if (packet_tx_len := len(packet_tx)) > mtu:
             __debug__ and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - Unable to send frame, frame" f"len ({packet_tx_len}) > mtu ({mtu})",
             )
-            return
+            return True
 
         packet_tx.assemble(buffers)
 
@@ -153,7 +183,7 @@ class TxRing(Subsystem):
                 "tx-ring",
                 f"{packet_tx.tracker} - <CRIT>Unable to send frame, " f"OSError: {error}</>",
             )
-            return
+            return False
 
         __debug__ and log(
             "tx-ring",
@@ -161,6 +191,7 @@ class TxRing(Subsystem):
             f"{packet_tx.tracker.latency}</> - sent frame, "
             f"{len(packet_tx)} bytes",
         )
+        return True
 
     def enqueue(
         self,
