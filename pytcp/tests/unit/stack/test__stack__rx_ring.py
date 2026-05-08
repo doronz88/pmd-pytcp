@@ -295,6 +295,55 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             msg="On a full queue, the new frame must be dropped (queue size unchanged).",
         )
 
+    def test__rx_ring__queue_full_drop_count_starts_at_zero(self) -> None:
+        """
+        Ensure 'queue_full_drop_count' starts at 0 on a freshly
+        constructed ring so observability monitors can establish a
+        baseline.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._ring.queue_full_drop_count,
+            0,
+            msg="A fresh RxRing must report queue_full_drop_count == 0.",
+        )
+
+    def test__rx_ring__loop_increments_drop_count_on_full_queue(self) -> None:
+        """
+        Ensure 'queue_full_drop_count' increments by exactly one each
+        time the RX loop catches 'queue.Full'. Drop counters are the
+        only signal that the kernel-side TAP / TUN buffer has
+        outpaced the consumer; without this counter, packet loss is
+        invisible to monitoring.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
+        ring._rx_ring.put(MagicMock(spec=PacketRx), block=False)
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                return_value=[MagicMock()],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                return_value=b"\x00" * 64,
+            ),
+        ):
+            ring._subsystem_loop()
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            2,
+            msg="Each queue-full drop must bump 'queue_full_drop_count' by exactly one.",
+        )
+
 
 class TestRxRingStopReleasesSelector(_RxRingFixture):
     """

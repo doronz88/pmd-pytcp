@@ -62,6 +62,8 @@ class TxRing(Subsystem):
     _queue_max_size: int
 
     _tx_ring: queue.Queue[EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler]
+    _queue_full_drop_count: int
+    _os_error_drop_count: int
 
     @override
     def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
@@ -76,6 +78,31 @@ class TxRing(Subsystem):
         super().__init__(info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}")
 
         self._tx_ring = queue.Queue(maxsize=queue_max_size)
+        self._queue_full_drop_count = 0
+        self._os_error_drop_count = 0
+
+    @property
+    def queue_full_drop_count(self) -> int:
+        """
+        Get the cumulative count of outbound packets dropped because
+        the TX ring was at capacity at 'enqueue' time. A non-zero
+        rate signals the producer (the packet handler) is generating
+        packets faster than 'os.writev' can drain them.
+        """
+
+        return self._queue_full_drop_count
+
+    @property
+    def os_error_drop_count(self) -> int:
+        """
+        Get the cumulative count of outbound packets dropped because
+        'os.writev' raised 'OSError' (typically ENOBUFS, ENETDOWN,
+        EIO on link failure). A non-zero rate signals interface
+        trouble the application would otherwise have no visibility
+        into.
+        """
+
+        return self._os_error_drop_count
 
     @override
     def _subsystem_loop(self) -> None:
@@ -121,6 +148,7 @@ class TxRing(Subsystem):
         try:
             os.writev(self._fd, buffers)
         except OSError as error:
+            self._os_error_drop_count += 1
             __debug__ and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - <CRIT>Unable to send frame, " f"OSError: {error}</>",
@@ -145,6 +173,7 @@ class TxRing(Subsystem):
         try:
             self._tx_ring.put(item=packet_tx, block=False)
         except queue.Full:
+            self._queue_full_drop_count += 1
             __debug__ and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - TX Queue is full, dropping packet",

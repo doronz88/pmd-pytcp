@@ -358,3 +358,90 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
             self._ring._subsystem_loop()
 
         mock_writev.assert_not_called()
+
+
+class TestTxRingDropCounters(_TxRingFixture):
+    """
+    The 'TxRing' drop-counter observability tests.
+    """
+
+    def test__tx_ring__queue_full_drop_count_starts_at_zero(self) -> None:
+        """
+        Ensure 'queue_full_drop_count' starts at 0 on a freshly
+        constructed ring so monitors have a clean baseline.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._ring.queue_full_drop_count,
+            0,
+            msg="A fresh TxRing must report queue_full_drop_count == 0.",
+        )
+
+    def test__tx_ring__os_error_drop_count_starts_at_zero(self) -> None:
+        """
+        Ensure 'os_error_drop_count' starts at 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            0,
+            msg="A fresh TxRing must report os_error_drop_count == 0.",
+        )
+
+    def test__tx_ring__enqueue_increments_drop_count_on_full_queue(self) -> None:
+        """
+        Ensure 'queue_full_drop_count' bumps each time
+        'enqueue' is called on a full ring. Without the counter,
+        a saturated TX queue silently drops outbound packets.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
+        ring._tx_ring.put(MagicMock(spec=EthernetAssembler), block=False)
+
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            3,
+            msg="Each full-queue drop must bump 'queue_full_drop_count' by exactly one.",
+        )
+
+    def test__tx_ring__loop_increments_os_error_drop_count(self) -> None:
+        """
+        Ensure 'os_error_drop_count' bumps each time 'os.writev'
+        raises 'OSError' (interface down, ENOBUFS, etc.). Without
+        the counter, link-down conditions silently lose every
+        outbound packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def _make_pkt() -> MagicMock:
+            pkt = MagicMock(spec=EthernetAssembler)
+            pkt.__len__.return_value = 64
+            pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+            return pkt
+
+        for _ in range(2):
+            self._ring._tx_ring.put(_make_pkt(), block=False)
+
+        with patch(
+            "pytcp.stack.tx_ring.os.writev",
+            side_effect=OSError("link down"),
+        ):
+            self._ring._subsystem_loop()
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            2,
+            msg="Each os.writev OSError must bump 'os_error_drop_count' by exactly one.",
+        )

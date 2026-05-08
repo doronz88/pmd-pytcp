@@ -64,6 +64,7 @@ class RxRing(Subsystem):
 
     _rx_ring: queue.Queue[PacketRx]
     _selector: selectors.DefaultSelector
+    _queue_full_drop_count: int
 
     @override
     def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
@@ -80,6 +81,18 @@ class RxRing(Subsystem):
         self._rx_ring = queue.Queue(maxsize=queue_max_size)
         self._selector = selectors.DefaultSelector()
         self._selector.register(self._fd, selectors.EVENT_READ)
+        self._queue_full_drop_count = 0
+
+    @property
+    def queue_full_drop_count(self) -> int:
+        """
+        Get the cumulative count of inbound frames dropped because
+        the RX ring was at capacity. Useful as a saturation signal
+        for monitoring — a non-zero rate-of-change indicates the
+        consumer is not keeping up with kernel-side packet arrivals.
+        """
+
+        return self._queue_full_drop_count
 
     @override
     def _subsystem_loop(self) -> None:
@@ -99,6 +112,7 @@ class RxRing(Subsystem):
         try:
             self._rx_ring.put(item=packet_rx, block=False)
         except queue.Full:
+            self._queue_full_drop_count += 1
             __debug__ and log(
                 "rx-ring",
                 f"{packet_rx.tracker} - RX Queue is full, dropping packet",
