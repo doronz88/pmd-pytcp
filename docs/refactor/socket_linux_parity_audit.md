@@ -649,6 +649,51 @@ If resuming this work, prioritise (rough order):
 
 ---
 
+## §101 Stack-ring audit findings (post-`fe43a785`)
+
+A separate audit of the RX / TX ring path landed four focused fixes
+(`3ae9087e`, `fabbe61a`, `502d4143`, `2dc796c8`) and produced a
+benchmark + profiling harness (`fe43a785`, `c6882e5c`). Two
+optimisation candidates remain open; one is now resolved-with-data.
+
+### Resolved (do not ship)
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| **RX inner-drain loop** | **Won't ship — confirmed invisible.** | Ping-flood test (~6,300 pps sustained over 25 minutes; 800k+ packets) showed `rx_ring.qsize == 0` and zero `queue_full_drop_count` bumps. The current `select() + os.read() + queue.put()` per-packet loop drains faster than the kernel TAP buffer fills. The consumer (`packet_handler` ICMP echo-reply dispatch) is the throughput ceiling at ~158µs/packet, not the ring at ~8µs/packet (with `-O`). |
+
+### Open (low priority, no flood-test evidence yet)
+
+| Item | Status | Evidence needed |
+|---|---|---|
+| TUN protocol-family hint dispatch (`isinstance` chain in `tx_ring.py`) | Acceptable as-is | Only refactor if VLAN-tagged TAP / TUN_PI variants land. |
+| 100ms-poll dequeue cadence | Acceptable as-is | Negligible under GIL. Replace with eventfd-pair only if profiling shows it as a hotspot — current profile data shows it is not. |
+
+### Real bottleneck — consumer-side dispatch
+
+The flood-test data points at the actual ceiling for anyone wanting
+to push PyTCP throughput higher: the `packet_handler` thread's
+per-packet work (parse → dispatch → emit). Suggested investigations:
+
+1. Profile under a real-wire flood (`PYTCP_STATS_INTERVAL=1
+   PYTHONOPTIMIZE=1 make run` + `cProfile`) — find which protocol
+   handler dominates.
+2. The 884 `__debug__ and log(...)` call sites add ~50% overhead
+   when not stripped. Always run benchmarks with `-O`.
+3. The ICMP echo-reply path round-trips through ARP cache lookup
+   + Ethernet-header rewrite — verify the ARP cache hit is fast.
+4. The two-thread, two-queue model (RX ring → packet_handler) costs
+   one queue.get + queue.put per packet (~6µs each). Removing the
+   queue (direct callback) would save ~12µs/packet but ties RX
+   throughput to the consumer's slowest dispatch path.
+
+These are not on the socket-Linux-parity audit punch list; they live
+under a separate "throughput optimisation" track that hasn't been
+opened. Mention them here so future audits know where the data
+points.
+
+---
+
 ## §99 Resume prompt (paste verbatim after `/compact`)
 
 ```
