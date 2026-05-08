@@ -113,6 +113,8 @@ class TcpSocket(socket):
             protocol = IpProto.TCP
         assert protocol is IpProto.TCP
 
+        super().__init__()
+
         self._address_family = family
         self._event__tcp_session_established: Semaphore = threading.Semaphore(0)
         self._tcp_accept: list[socket] = []
@@ -631,6 +633,13 @@ class TcpSocket(socket):
             raise TimeoutError("TCP Socket - Accept operation timed out.")
 
         socket = cast(TcpSocket, self._tcp_accept.pop(0))
+        if not self._tcp_accept:
+            self._drain_readable()
+            # Producer race: the FSM may have appended another
+            # child between the empty-check and drain — re-check
+            # under the GIL and re-signal so the selector wakes.
+            if self._tcp_accept:
+                self._signal_readable()
 
         __debug__ and log(
             "socket",
@@ -697,6 +706,7 @@ class TcpSocket(socket):
         assert self._tcp_session is not None
 
         self._tcp_session.close()
+        self._close_io_runtime()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 

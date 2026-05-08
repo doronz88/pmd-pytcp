@@ -86,6 +86,8 @@ class UdpSocket(socket):
             protocol = IpProto.UDP
         assert protocol is IpProto.UDP
 
+        super().__init__()
+
         self._address_family = family
         self._local_port = 0
         self._remote_port = 0
@@ -338,6 +340,13 @@ class UdpSocket(socket):
 
         if self._packet_rx_md_ready.acquire(timeout=timeout):
             data_rx = self._packet_rx_md.pop(0).udp__data
+            if not self._packet_rx_md:
+                self._drain_readable()
+                # Producer race: a packet handler may have appended
+                # between the empty-check and the drain; re-check
+                # under the GIL and re-signal so the selector wakes.
+                if self._packet_rx_md:
+                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -368,6 +377,10 @@ class UdpSocket(socket):
 
         if self._packet_rx_md_ready.acquire(timeout=timeout):
             packet_rx_md = self._packet_rx_md.pop(0)
+            if not self._packet_rx_md:
+                self._drain_readable()
+                if self._packet_rx_md:
+                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - <lg>Received</> {len(packet_rx_md.udp__data)} bytes of data",
@@ -388,6 +401,7 @@ class UdpSocket(socket):
         """
 
         stack.sockets.pop(self.socket_id, None)
+        self._close_io_runtime()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 
@@ -398,6 +412,7 @@ class UdpSocket(socket):
 
         self._packet_rx_md.append(packet_rx_md)
         self._packet_rx_md_ready.release()
+        self._signal_readable()
 
     def notify_unreachable(self) -> None:
         """

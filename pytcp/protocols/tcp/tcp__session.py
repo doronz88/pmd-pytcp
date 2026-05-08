@@ -650,6 +650,13 @@ class TcpSession:
                 FsmState.CLOSED,
             }:
                 self._event__rx_buffer.clear()
+                # Drain the eventfd backing 'socket.fileno()' so the
+                # next selector tick stops firing once the buffer is
+                # empty. CLOSE_WAIT / CLOSED are deliberately
+                # excluded so peer-FIN EOF stays select-readable as
+                # a 0-byte recv() until the application closes its
+                # half (matches BSD select-on-read-EOF semantics).
+                self._socket._drain_readable()
 
         return bytes(rx_buffer)
 
@@ -696,6 +703,7 @@ class TcpSession:
                 # shutdown and returns 0 (the FSM check + empty
                 # buffer makes recv() yield empty bytes).
                 self._event__rx_buffer.set()
+                self._socket._signal_readable()
                 __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_RD): receive side closed")
 
         # SHUT_WR or SHUT_RDWR: trigger FIN emission via the
@@ -742,6 +750,7 @@ class TcpSession:
         # Mark connection as aborted so any blocked recv() raises.
         self._connection_error = ConnError.CANCELED
         self._event__rx_buffer.set()
+        self._socket._signal_readable()
         self._event__connect.release()
         self._change_state(FsmState.CLOSED)
 
@@ -2149,6 +2158,7 @@ class TcpSession:
             self._connection_error = ConnError.TIMEOUT
             self._event__connect.release()
             self._event__rx_buffer.set()
+            self._socket._signal_readable()
             self._change_state(FsmState.CLOSED)
             return
         stack.packet_handler.send_tcp_packet(
@@ -2326,6 +2336,12 @@ class TcpSession:
             # 'Event.set()' is idempotent so this is safe whether the
             # event was already set by a sibling FSM handler or not.
             self._event__rx_buffer.set()
+            # Selector readability: an asyncio / trio / selectors
+            # consumer waiting on 'self._socket.fileno()' must wake
+            # on inbound data. The hook lives under the rx-buffer
+            # lock so concurrent recv() drains observe a consistent
+            # eventfd state.
+            self._socket._signal_readable()
 
     def _transmit_data(self) -> None:
         """
@@ -2641,6 +2657,7 @@ class TcpSession:
             }:
                 self._connection_error = ConnError.TIMEOUT
                 self._event__rx_buffer.set()
+                self._socket._signal_readable()
             # If in SYN_SENT state inform CONNECT syscall that the
             # connection related event happened.
             if self._state is FsmState.SYN_SENT:

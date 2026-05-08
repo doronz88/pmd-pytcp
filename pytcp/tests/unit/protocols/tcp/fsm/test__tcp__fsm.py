@@ -33,6 +33,7 @@ ver 3.0.4
 """
 
 from types import SimpleNamespace
+from typing import cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -1085,3 +1086,24 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
         session = self._make_session()
         with self.assertRaises(AssertionError):
             session._enqueue_rx_buffer(b"raw-bytes")  # type: ignore[arg-type]
+
+    def test__tcp_session__enqueue_signals_readable_on_socket(self) -> None:
+        """
+        Ensure '_enqueue_rx_buffer' calls '_signal_readable' on the
+        owning socket so the selector-readable bit on the socket's
+        fileno() flips ready when data lands. Without this hook,
+        asyncio / trio loops blocked on the socket's fd would never
+        wake on inbound data.
+
+        Reference: RFC 9293 §3.10.5 (RECEIVE call) — buffer delivery.
+        """
+
+        session = self._make_session()
+        session._enqueue_rx_buffer(memoryview(b"hello"))
+
+        # session._socket is a MagicMock from the fixture; cast lets
+        # mypy see the dynamic '.assert_called()' on the auto-spec'd
+        # '_signal_readable' attribute without widening the production
+        # method's typed signature.
+        signal = cast(MagicMock, session._socket._signal_readable)
+        signal.assert_called()

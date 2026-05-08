@@ -31,6 +31,9 @@ pytcp/tests/unit/socket/test__socket__raw__socket.py
 ver 3.0.4
 """
 
+import errno
+import fcntl
+import select
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -629,3 +632,139 @@ class TestRawSocketClose(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.close()  # must not raise
+
+
+class TestRawSocketFileno(_RawSocketTestCase):
+    """
+    The 'RawSocket.fileno' / read-readiness signal-and-drain tests.
+    """
+
+    def _make_md(self, data: bytes = b"payload") -> RawMetadata:
+        """
+        Build a canonical IPv4 'RawMetadata' envelope.
+        """
+
+        from net_addr import IpVersion
+
+        return RawMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            ip__proto=IpProto.ICMP4,
+            raw__data=data,
+        )
+
+    def setUp(self) -> None:
+        """
+        Build a fresh raw socket. 'tearDown' closes it before the
+        parent fixture stops the 'log' patch so the close-time log
+        line stays suppressed.
+        """
+
+        super().setUp()
+        self._socket = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket while the 'log' patch is still active, then
+        let the parent tear down the stack stubs.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__raw_socket__fileno_returns_non_negative_int(self) -> None:
+        """
+        Ensure 'fileno()' on a raw socket returns a non-negative
+        integer file descriptor for selector consumption.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+
+        self.assertIsInstance(
+            fd,
+            int,
+            msg="RawSocket.fileno() must return an int.",
+        )
+        self.assertGreaterEqual(
+            fd,
+            0,
+            msg="RawSocket.fileno() must return a non-negative fd.",
+        )
+
+    def test__raw_socket__fileno_initially_not_select_ready(self) -> None:
+        """
+        Ensure a freshly-constructed raw socket is not select-readable
+        before any packet has been delivered.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="A fresh RawSocket must not be select-readable.",
+        )
+
+    def test__raw_socket__fileno_select_ready_after_packet_arrives(self) -> None:
+        """
+        Ensure 'process_raw_packet' transitions the fd into the
+        select-readable state.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_raw_packet(self._make_md())
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [self._socket.fileno()],
+            msg="process_raw_packet must mark the fd as select-readable.",
+        )
+
+    def test__raw_socket__fileno_drained_after_recv_consumes_last_packet(self) -> None:
+        """
+        Ensure 'recv()' returns the fd to the not-readable state
+        once the last queued packet has been consumed.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_raw_packet(self._make_md())
+        self._socket.recv()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="recv() draining the last packet must clear the readable bit.",
+        )
+
+    def test__raw_socket__close_closes_underlying_fd(self) -> None:
+        """
+        Ensure 'close()' tears down the eventfd backing 'fileno()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+        self._socket.close()
+
+        with self.assertRaises(OSError) as context:
+            fcntl.fcntl(fd, fcntl.F_GETFD)
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EBADF,
+            msg="close() must close the eventfd backing fileno() (EBADF on syscall).",
+        )

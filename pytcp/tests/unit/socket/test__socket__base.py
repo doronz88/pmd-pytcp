@@ -31,6 +31,9 @@ pytcp/tests/unit/socket/test__socket__base.py
 ver 3.0.4
 """
 
+import errno
+import fcntl
+import select
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -974,3 +977,233 @@ class TestSocketPlaceholders(TestCase):
 
         with self.assertRaises(NotImplementedError):
             self._socket.recvfrom__mv()
+
+
+class _FdSocket(socket):
+    """
+    Minimal concrete 'socket' subclass that calls 'super().__init__()'
+    to exercise the base-class file-descriptor backing without the
+    full Tcp/Udp/Raw runtime — used by the fileno / signal / drain
+    tests below.
+    """
+
+    def __init__(self) -> None:
+        """
+        Allocate the base-class IO runtime and leave every other
+        attribute unset; the fileno-side surface is independent of
+        the address tuple.
+        """
+
+        super().__init__()
+
+
+class TestSocketFileno(TestCase):
+    """
+    The 'socket.fileno' / read-readiness signal-and-drain tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Allocate a fresh '_FdSocket' and register cleanup so its OS
+        file descriptor never leaks between tests.
+        """
+
+        self._socket = _FdSocket()
+        self.addCleanup(self._socket._close_io_runtime)
+
+    def test__socket__fileno_returns_non_negative_int(self) -> None:
+        """
+        Ensure 'fileno()' returns a non-negative integer file
+        descriptor that 'select.select' / 'selectors.DefaultSelector'
+        can consume, matching POSIX socket FD semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+
+        self.assertIsInstance(
+            fd,
+            int,
+            msg="socket.fileno() must return an int matching the POSIX FD shape.",
+        )
+        self.assertGreaterEqual(
+            fd,
+            0,
+            msg="socket.fileno() must return a non-negative file descriptor.",
+        )
+
+    def test__socket__fileno_is_unique_per_socket_instance(self) -> None:
+        """
+        Ensure two distinct sockets each get their own OS file
+        descriptor — the eventfd backing 'fileno()' must not be
+        shared across instances.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        other = _FdSocket()
+        self.addCleanup(other._close_io_runtime)
+
+        self.assertNotEqual(
+            self._socket.fileno(),
+            other.fileno(),
+            msg="Each socket instance must get its own backing fd.",
+        )
+
+    def test__socket__fileno_initially_not_select_ready(self) -> None:
+        """
+        Ensure a freshly-constructed socket is not reported readable
+        by 'select.select' before any data-arrived signal has been
+        delivered. A spurious initial-ready bit would loop async
+        frameworks immediately.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="A fresh socket must not be reported readable by select.select.",
+        )
+
+    def test__socket__signal_readable_makes_fileno_select_ready(self) -> None:
+        """
+        Ensure '_signal_readable()' flips the eventfd into the
+        readable state so a subsequent 'select.select' returns
+        the fd as ready.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._signal_readable()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [self._socket.fileno()],
+            msg="_signal_readable() must mark the fd as select-readable.",
+        )
+
+    def test__socket__drain_readable_clears_select_ready(self) -> None:
+        """
+        Ensure '_drain_readable()' returns the eventfd to the
+        not-readable state after a prior signal — selector callers
+        rely on this transition to stop firing once the queue empties.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._signal_readable()
+        self._socket._drain_readable()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="_drain_readable() must return the fd to the not-readable state.",
+        )
+
+    def test__socket__drain_readable_is_idempotent(self) -> None:
+        """
+        Ensure '_drain_readable()' is safe to call when the eventfd
+        is already drained — the per-call 'EAGAIN' from a zero
+        counter must be swallowed silently so consumers don't have to
+        track ready-state themselves.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._drain_readable()
+        self._socket._drain_readable()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="Repeated _drain_readable() on an empty eventfd must remain a no-op.",
+        )
+
+    def test__socket__signal_then_drain_round_trip(self) -> None:
+        """
+        Ensure a signal-then-drain cycle returns to the not-ready
+        state and a fresh signal flips it readable again — the round
+        trip is the core selector-integration contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._signal_readable()
+        self._socket._drain_readable()
+        self._socket._signal_readable()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [self._socket.fileno()],
+            msg="signal -> drain -> signal must leave the fd select-readable.",
+        )
+
+    def test__socket__close_io_runtime_closes_underlying_fd(self) -> None:
+        """
+        Ensure '_close_io_runtime()' closes the OS-level eventfd so
+        the descriptor is no longer valid for further syscalls. The
+        BSD socket lifecycle requires 'close()' to release the
+        kernel resource.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+        self._socket._close_io_runtime()
+
+        with self.assertRaises(OSError) as context:
+            fcntl.fcntl(fd, fcntl.F_GETFD)
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EBADF,
+            msg="After _close_io_runtime() the fd must be closed (EBADF on syscall).",
+        )
+
+    def test__socket__close_io_runtime_is_idempotent(self) -> None:
+        """
+        Ensure repeated '_close_io_runtime()' calls do not raise —
+        the cleanup helper is invoked from teardown paths that may
+        also fire from explicit 'close()', and double-close on a
+        recycled fd would be a real bug.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._close_io_runtime()
+        self._socket._close_io_runtime()
+
+    def test__socket__signal_after_close_is_noop(self) -> None:
+        """
+        Ensure '_signal_readable()' on a closed socket does not raise.
+        A stack-thread producer racing with an application close()
+        must never crash the producer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._close_io_runtime()
+        self._socket._signal_readable()
+
+    def test__socket__drain_after_close_is_noop(self) -> None:
+        """
+        Ensure '_drain_readable()' on a closed socket does not raise —
+        symmetric with the signal-after-close guarantee.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket._close_io_runtime()
+        self._socket._drain_readable()

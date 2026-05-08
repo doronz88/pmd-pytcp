@@ -32,6 +32,9 @@ pytcp/tests/unit/socket/test__socket__tcp__socket.py
 ver 3.0.4
 """
 
+import errno
+import fcntl
+import select
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -1203,4 +1206,173 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             self._session_cls.return_value._tcp_nodelay,
             True,
             msg=("connect() must propagate '_tcp_nodelay' to the new " "TcpSession so the Nagle gate can read it."),
+        )
+
+
+class TestTcpSocketFileno(_TcpSocketTestCase):
+    """
+    The 'TcpSocket.fileno' / read-readiness signal-and-drain tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a fresh TCP socket. 'tearDown' closes the eventfd
+        before the parent fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = TcpSocket(family=AddressFamily.INET4)
+
+    def tearDown(self) -> None:
+        """
+        Release the socket's eventfd while the 'log' patch is still
+        active, then let the parent tear down the stack stubs.
+        '_close_io_runtime' rather than 'close()' here because the
+        socket has no session attached.
+        """
+
+        try:
+            self._socket._close_io_runtime()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__tcp_socket__fileno_returns_non_negative_int(self) -> None:
+        """
+        Ensure 'fileno()' on a TCP socket returns a non-negative
+        integer file descriptor for selector consumption.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+
+        self.assertIsInstance(
+            fd,
+            int,
+            msg="TcpSocket.fileno() must return an int.",
+        )
+        self.assertGreaterEqual(
+            fd,
+            0,
+            msg="TcpSocket.fileno() must return a non-negative fd.",
+        )
+
+    def test__tcp_socket__fileno_initially_not_select_ready(self) -> None:
+        """
+        Ensure a freshly-constructed TCP socket reports as not
+        readable until either a child connection lands on the
+        accept queue or session data lands in the rx buffer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="A fresh TcpSocket must not be select-readable.",
+        )
+
+    def test__tcp_socket__fileno_select_ready_after_accept_queue_appended(self) -> None:
+        """
+        Ensure a child socket landing on the listening socket's
+        accept queue (the listener-fork hook in
+        'tcp__fsm__syn_rcvd.py') makes the listening socket
+        select-readable so an event-loop accept-loop wakes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 9293 §3.10.2 (OPEN passive / accept queue delivery).
+        """
+
+        child = MagicMock()
+        self._socket._tcp_accept.append(child)
+        self._socket._event__tcp_session_established.release()
+        self._socket._signal_readable()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [self._socket.fileno()],
+            msg="A child appended to the accept queue must mark the listening fd readable.",
+        )
+
+    def test__tcp_socket__accept_drains_fileno_when_last_child_consumed(self) -> None:
+        """
+        Ensure 'accept()' returns the listening fd to the
+        not-readable state once the last queued child has been
+        consumed — selector-driven accept loops rely on this.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 9293 §3.10.2 (OPEN passive / accept queue delivery).
+        """
+
+        child = MagicMock()
+        child.remote_ip_address = Ip4Address("10.0.0.5")
+        child.remote_port = 12345
+        self._socket._tcp_accept.append(child)
+        self._socket._event__tcp_session_established.release()
+        self._socket._signal_readable()
+
+        self._socket.accept()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [],
+            msg="accept() consuming the last queued child must clear the readable bit.",
+        )
+
+    def test__tcp_socket__accept_keeps_fileno_ready_when_more_children_queued(self) -> None:
+        """
+        Ensure 'accept()' on a queue with more than one pending
+        child leaves the listening fd select-readable so the next
+        selector tick still wakes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = MagicMock()
+        first.remote_ip_address = Ip4Address("10.0.0.5")
+        first.remote_port = 12345
+        second = MagicMock()
+        second.remote_ip_address = Ip4Address("10.0.0.6")
+        second.remote_port = 12346
+        self._socket._tcp_accept.extend([first, second])
+        self._socket._event__tcp_session_established.release()
+        self._socket._event__tcp_session_established.release()
+        self._socket._signal_readable()
+        self._socket._signal_readable()
+
+        self._socket.accept()
+
+        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
+
+        self.assertEqual(
+            rlist,
+            [self._socket.fileno()],
+            msg="accept() leaving children queued must keep the listening fd readable.",
+        )
+
+    def test__tcp_socket__close_io_runtime_closes_underlying_fd(self) -> None:
+        """
+        Ensure '_close_io_runtime()' tears down the eventfd backing
+        'fileno()' on a TCP socket.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        fd = self._socket.fileno()
+        self._socket._close_io_runtime()
+
+        with self.assertRaises(OSError) as context:
+            fcntl.fcntl(fd, fcntl.F_GETFD)
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EBADF,
+            msg="_close_io_runtime() must close the eventfd backing fileno() (EBADF).",
         )

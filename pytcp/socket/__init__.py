@@ -160,6 +160,29 @@ class socket(ABC):
     _remote_ip_address: Ip4Address | Ip6Address
     _local_port: int
     _remote_port: int
+    _read_event_fd: int
+
+    def __init__(
+        self,
+        family: AddressFamily = AddressFamily.INET4,
+        type: SocketType = SocketType.STREAM,
+        protocol: IpProto | int | None = None,
+        **__: Any,
+    ) -> None:
+        """
+        Allocate the OS-level eventfd backing 'fileno()'. The
+        descriptor signals readability for select / poll / epoll /
+        selectors when data lands in the socket's RX queue. Counter
+        starts at 0 (not readable); EFD_NONBLOCK + EFD_CLOEXEC match
+        the default Linux socket FD flags. The 'family' / 'type' /
+        'protocol' parameters mirror the '__new__' factory triple so
+        calls like 'socket(family=..., type=..., protocol=...)' bind
+        cleanly; the base class itself does not act on them — concrete
+        Tcp/Udp/Raw subclasses consume them in their own '__init__'.
+        """
+
+        del family, type, protocol  # consumed by concrete-class __init__.
+        self._read_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
 
     def __new__(
         cls,
@@ -332,6 +355,63 @@ class socket(ABC):
         """
 
         return self._ip_proto
+
+    def fileno(self) -> int:
+        """
+        Get the OS file descriptor backing this socket. Returns the
+        underlying eventfd that signals readability when the RX
+        queue is non-empty, suitable for 'select.select' /
+        'select.poll' / 'select.epoll' / 'selectors.DefaultSelector'.
+        """
+
+        return self._read_event_fd
+
+    def _signal_readable(self) -> None:
+        """
+        Mark the socket's eventfd as select-readable. The producer
+        (stack-thread RX path) calls this whenever a new datagram /
+        segment / accept-queue child lands. Best-effort: a closed fd
+        is silently tolerated so the producer never crashes on a
+        race with application-side close().
+        """
+
+        if (fd := self._read_event_fd) < 0:
+            return
+        try:
+            os.eventfd_write(fd, 1)
+        except OSError:
+            pass
+
+    def _drain_readable(self) -> None:
+        """
+        Return the socket's eventfd to the not-readable state. The
+        consumer (application-thread recv / accept) calls this once
+        the RX queue / accept queue has been drained empty so the
+        next selector tick stops firing. Best-effort: a closed fd
+        or already-zero counter (EAGAIN) is silently tolerated.
+        """
+
+        if (fd := self._read_event_fd) < 0:
+            return
+        try:
+            os.eventfd_read(fd)
+        except OSError:
+            pass
+
+    def _close_io_runtime(self) -> None:
+        """
+        Close the OS-level eventfd backing 'fileno()'. Idempotent
+        so concrete 'close()' overrides can call it unconditionally
+        without tracking whether the fd is still open.
+        """
+
+        if (fd := self._read_event_fd) < 0:
+            return
+        self._read_event_fd = -1
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
     def getsockname(self) -> tuple[str, int]:
         """

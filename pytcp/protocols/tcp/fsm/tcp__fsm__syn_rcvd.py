@@ -218,6 +218,10 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             if parent_socket is not None:
                 parent_socket._tcp_accept.append(session._socket)  # pylint: disable=protected-access
                 parent_socket._event__tcp_session_established.release()  # pylint: disable=protected-access
+                # Selector readability: a 'selectors.DefaultSelector'
+                # waiting on the listening socket's fileno() must
+                # wake when a child lands on the accept queue.
+                parent_socket._signal_readable()  # pylint: disable=protected-access
             # Inform connect syscall that connection related
             # event happened. Required for the active-open
             # simultaneous-open path (where the application
