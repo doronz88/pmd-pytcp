@@ -37,9 +37,9 @@ from net_proto import Ip6Assembler, Ip6Parser, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ip6_frag.ip6_frag__assembler import Ip6FragAssembler
 from pytcp import stack
-from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.stack.packet_handler.packet_handler__ip6_frag__rx import (
     PacketHandlerIp6FragRx,
 )

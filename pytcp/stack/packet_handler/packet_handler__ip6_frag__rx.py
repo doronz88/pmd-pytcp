@@ -35,9 +35,9 @@ from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import Ip6FragParser, PacketRx, PacketValidationError
-from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
 from pytcp.lib.logger import log
+from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
 
 
 class PacketHandlerIp6FragRx(ABC):

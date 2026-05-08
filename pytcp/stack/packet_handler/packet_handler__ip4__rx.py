@@ -50,11 +50,11 @@ from net_proto import (
     inet_cksum,
 )
 from pytcp import stack
-from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
+from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 

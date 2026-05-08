@@ -50,10 +50,10 @@ from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType
 from pytcp import stack
 from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.lib.subsystem import Subsystem
+from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
 from .packet_handler__arp__tx import PacketHandlerArpTx

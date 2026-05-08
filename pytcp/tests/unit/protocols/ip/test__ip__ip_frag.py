@@ -25,7 +25,7 @@
 """
 This module contains tests for the 'IpFragFlowId' and 'IpFragData' dataclasses.
 
-pytcp/tests/unit/lib/test__lib__ip_frag.py
+pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
-from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId
 
 
 class TestIpFragFlowIdIp4(TestCase):

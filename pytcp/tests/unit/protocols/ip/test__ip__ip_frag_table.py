@@ -25,7 +25,7 @@
 """
 This module contains tests for the 'IpFragTable' shared flow store.
 
-pytcp/tests/unit/lib/test__lib__ip_frag_table.py
+pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py
 
 ver 3.0.4
 """
@@ -34,8 +34,8 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
-from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
+from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
 
 _HOST_A__IP4 = Ip4Address("10.0.0.1")
 _HOST_B__IP4 = Ip4Address("10.0.0.2")

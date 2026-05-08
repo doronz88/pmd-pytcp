@@ -37,10 +37,10 @@ from net_addr import Ip4Address
 from net_proto import Ip4FragAssembler, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
-from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.stack.packet_handler.packet_handler__ip4__rx import (
     PacketHandlerIp4Rx,
 )
