@@ -255,6 +255,116 @@ class TestIpFragTableAddFragmentIp6(TestCase):
         )
 
 
+class TestIpFragTableAtomicFragment(TestCase):
+    """
+    The 'IpFragTable' RFC 8200 §4.5 atomic-fragment fast-path tests.
+    """
+
+    def test__ip_frag_table__add_fragment__atomic_returns_complete_without_admission(self) -> None:
+        """
+        Ensure an atomic fragment (offset=0, M=0) yields the
+        COMPLETE outcome immediately, with the input bytes
+        echoed back as the joined datagram, and the flow store
+        is not touched at all.
+
+        Reference: RFC 8200 §4.5 (atomic fragment is a complete datagram).
+        Reference: RFC 6946 §4 (atomic fragments processed in isolation).
+        """
+
+        table = IpFragTable(timeout=5.0)
+        flow_id = IpFragFlowId(
+            src=_HOST_A__IP6,
+            dst=_HOST_B__IP6,
+            id=42,
+        )
+
+        result = table.add_fragment(
+            flow_id=flow_id,
+            offset=0,
+            payload=b"\xaa" * 16,
+            flag_mf=False,
+            header=b"\x60" + b"\x00" * 39,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="An atomic fragment must yield COMPLETE on a single arrival.",
+        )
+        self.assertEqual(
+            result.payload,
+            b"\xaa" * 16,
+            msg="The atomic fragment's payload bytes must be returned as the joined payload.",
+        )
+        self.assertEqual(
+            result.header,
+            b"\x60" + b"\x00" * 39,
+            msg="The atomic fragment's header bytes must be returned verbatim.",
+        )
+        self.assertEqual(
+            table.flows,
+            {},
+            msg="An atomic fragment must not allocate a flow-table entry.",
+        )
+
+    def test__ip_frag_table__add_fragment__atomic_isolated_from_existing_flow(self) -> None:
+        """
+        Ensure an atomic fragment with the same flow id as an
+        in-progress non-atomic reassembly does not interact with
+        that reassembly: it returns COMPLETE for itself, and the
+        existing flow continues unchanged.
+
+        Reference: RFC 6946 §4 (atomic fragments isolated from
+        any concurrent non-atomic reassembly).
+        """
+
+        table = IpFragTable(timeout=5.0)
+        flow_id = IpFragFlowId(
+            src=_HOST_A__IP6,
+            dst=_HOST_B__IP6,
+            id=99,
+        )
+
+        # Seed an in-progress non-atomic reassembly.
+        table.add_fragment(
+            flow_id=flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=b"\x60" + b"\x00" * 39,
+        )
+
+        # An atomic fragment with the same flow id arrives.
+        atomic_result = table.add_fragment(
+            flow_id=flow_id,
+            offset=0,
+            payload=b"\xff" * 16,
+            flag_mf=False,
+            header=b"\x60" + b"\x00" * 39,
+        )
+
+        self.assertIs(
+            atomic_result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="The atomic fragment must complete despite a colliding flow id.",
+        )
+        self.assertEqual(
+            atomic_result.payload,
+            b"\xff" * 16,
+            msg="The atomic fragment must return its own bytes, not the existing flow's.",
+        )
+        self.assertIn(
+            flow_id,
+            table.flows,
+            msg="The existing non-atomic flow must remain in the store untouched.",
+        )
+        self.assertEqual(
+            bytes(table.flows[flow_id].payload[0]),
+            b"\xaa" * 8,
+            msg="The existing flow's stored bytes must remain intact.",
+        )
+
+
 class TestIpFragTableExpiry(TestCase):
     """
     The 'IpFragTable' lazy-expiry sweep tests.

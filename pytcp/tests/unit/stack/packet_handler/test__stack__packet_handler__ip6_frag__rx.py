@@ -275,6 +275,48 @@ class TestPacketHandlerIp6FragRx(TestCase):
             msg="Overlap detection must increment 'ip6_frag__overlap__drop'.",
         )
 
+    def test__stack__packet_handler__ip6_frag__rx__atomic_fragment_dispatches_without_flow_table(self) -> None:
+        """
+        Ensure an atomic IPv6 fragment (offset=0, M=0) dispatches
+        to the upper layer immediately, bumps both
+        'ip6_frag__defrag' and 'ip6_frag__atomic__defrag', and
+        leaves the flow table untouched.
+
+        Reference: RFC 8200 §4.5 (atomic fragment fast-path).
+        Reference: RFC 6946 §4 (atomic fragments isolated from
+        any non-atomic reassembly).
+        """
+
+        atomic = _ip6_frag_packet_rx(
+            frag_id=6060,
+            offset=0,
+            flag_mf=False,
+            payload=b"\x77" * 16,
+        )
+
+        self._handler._phrx_ip6_frag(atomic)
+
+        self.assertEqual(
+            len(self._handler.ip6_reassembled),
+            1,
+            msg="An atomic fragment must dispatch to '_phrx_ip6' once.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip6_frag__defrag,
+            1,
+            msg="An atomic fragment must increment 'ip6_frag__defrag'.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip6_frag__atomic__defrag,
+            1,
+            msg="An atomic fragment must increment 'ip6_frag__atomic__defrag'.",
+        )
+        self.assertEqual(
+            self._handler._ip6_frag_table.flows,
+            {},
+            msg="An atomic fragment must not allocate a flow-table entry.",
+        )
+
     def test__stack__packet_handler__ip6_frag__rx__overlapping_fragments_drop_flow(self) -> None:
         """
         Ensure two non-final fragments whose byte ranges overlap

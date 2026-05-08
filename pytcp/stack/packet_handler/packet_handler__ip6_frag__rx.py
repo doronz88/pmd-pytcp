@@ -78,6 +78,8 @@ class PacketHandlerIp6FragRx(ABC):
 
         if defragmented_packet_rx := self.__defragment_ip6_packet(packet_rx):
             self._packet_stats_rx.ip6_frag__defrag += 1
+            if packet_rx.ip6_frag.offset == 0 and not packet_rx.ip6_frag.flag_mf:
+                self._packet_stats_rx.ip6_frag__atomic__defrag += 1
             self._phrx_ip6(
                 defragmented_packet_rx,
             )

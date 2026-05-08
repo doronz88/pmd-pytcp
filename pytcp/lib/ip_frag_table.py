@@ -126,10 +126,27 @@ class IpFragTable:
                        previously marked discarded; it is
                        silently dropped without admission.
 
+        Atomic fragments (offset=0, M=0) bypass the flow store
+        entirely and yield COMPLETE on the spot, in isolation
+        from any other fragment with the same 'flow_id' (RFC
+        8200 §4.5 / RFC 6946 §4).
+
         The expiry sweep ('time() - timestamp >= timeout' purges
         the flow) runs at the head of every admission, matching
         Linux's lazy-reap model.
         """
+
+        # RFC 8200 §4.5 / RFC 6946 §4 atomic-fragment fast-path.
+        # An atomic fragment is the entire datagram; it must
+        # never touch the flow store and must process in
+        # isolation from any concurrent non-atomic reassembly
+        # that happens to share the same source/destination/ID.
+        if offset == 0 and not flag_mf:
+            return IpFragAddResult(
+                outcome=IpFragAddOutcome.COMPLETE,
+                header=bytes(header),
+                payload=bytes(payload),
+            )
 
         # Lazy expiry sweep.
         now = time()
