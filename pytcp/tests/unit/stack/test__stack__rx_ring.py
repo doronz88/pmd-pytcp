@@ -214,6 +214,53 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             msg="_subsystem_loop must enqueue one PacketRx per readable event.",
         )
 
+    def test__rx_ring__loop_read_size_honors_mtu_for_jumbo_frames(self) -> None:
+        """
+        Ensure 'os.read' is called with a buffer large enough to hold
+        a full jumbo Ethernet frame ('mtu + L2 overhead'), not the
+        legacy hardcoded 2048-byte buffer that silently truncated
+        anything above ~2 KiB. Jumbo Ethernet (MTU 9000) and IPv6
+        jumbograms (RFC 2675, RFC 9293 §3.7.5) require this.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 9293 §3.7.5 (IPv6 jumbograms).
+        """
+
+        ring = RxRing(fd=self._read_fd, mtu=9000)
+
+        captured: list[int] = []
+
+        def _capture_read(fd: int, size: int) -> bytes:
+            captured.append(size)
+            return b"\x00" * 64
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                return_value=[MagicMock()],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                side_effect=_capture_read,
+            ),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            len(captured),
+            1,
+            msg="Setup invariant: _subsystem_loop must call os.read once.",
+        )
+        self.assertGreaterEqual(
+            captured[0],
+            9014,
+            msg=(
+                "os.read buffer must be at least 'mtu + 14 (Ethernet)' bytes "
+                f"to fit a jumbo frame. Got size={captured[0]} for mtu=9000."
+            ),
+        )
+
     def test__rx_ring__loop_drops_packet_on_full_queue(self) -> None:
         """
         Ensure the loop catches 'queue.Full' when the RX ring is

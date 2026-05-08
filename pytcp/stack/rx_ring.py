@@ -39,6 +39,17 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
+# Per-read kernel-buffer headroom over the configured L3 MTU. Sized
+# to accommodate the largest L2 framing PyTCP supports plus slack:
+#   14 bytes Ethernet II header
+#  +  4 bytes 802.1Q VLAN tag (future-proofing — not parsed today)
+#  +  4 bytes BSD TUN protocol-family prefix
+#  +  ~40 bytes slack
+# A buffer of 'mtu + RX_RING__READ_HEADROOM' fits any frame the
+# kernel can hand us, including jumbo-Ethernet (MTU 9000) and IPv6
+# jumbograms per RFC 2675 / RFC 9293 §3.7.5.
+RX_RING__READ_HEADROOM: int = 64
+
 
 class RxRing(Subsystem):
     """
@@ -79,7 +90,7 @@ class RxRing(Subsystem):
         if not self._selector.select(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
             return
 
-        packet_rx = PacketRx(os.read(self._fd, 2048))
+        packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
         __debug__ and log(
             "rx-ring",
             f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
