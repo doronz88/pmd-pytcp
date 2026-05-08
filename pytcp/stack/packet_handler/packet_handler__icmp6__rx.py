@@ -779,6 +779,23 @@ class PacketHandlerIcmp6Rx(ABC):
     def __phrx_icmp6__mld2_report(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 MLDv2 Report packets.
+
+        Reference: RFC 3810 §5 (MLDv2 querier processing model).
+
+        Host-stack scope (Phase 1): Reports are processed by an
+        MLDv2 querier — typically a multicast-aware router. PyTCP
+        is a host: it sends Reports (see
+        '_send_icmp6_multicast_listener_report') but takes no
+        action on inbound Reports beyond accounting. The
+        'icmp6__mld2_report' counter records every received
+        Report so an operator can observe the link's multicast
+        activity.
+
+        # Phase 2: MLDv2 querier role goes here. A router-grade
+        # PyTCP would maintain per-multicast-group state, run
+        # the General/Multicast-Address-Specific/Multicast-
+        # Address-and-Source-Specific Query timers, and update
+        # group memberships from inbound Reports.
         """
 
         self._packet_stats_rx.icmp6__mld2_report += 1
