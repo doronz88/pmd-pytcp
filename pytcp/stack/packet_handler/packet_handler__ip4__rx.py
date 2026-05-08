@@ -33,7 +33,6 @@ ver 3.0.4
 import struct
 import time as time_module
 from abc import ABC
-from time import time
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
@@ -51,7 +50,8 @@ from net_proto import (
     inet_cksum,
 )
 from pytcp import stack
-from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+from pytcp.lib.ip_frag import IpFragFlowId
+from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
@@ -72,7 +72,7 @@ class PacketHandlerIp4Rx(ABC):
 
         _packet_stats_rx: PacketStatsRx
         _ip4_multicast: list[Ip4Address]
-        _ip4_frag_flows: dict[IpFragFlowId, IpFragData]
+        _ip4_frag_table: IpFragTable
 
         # pylint: disable=unused-argument
 
@@ -304,15 +304,6 @@ class PacketHandlerIp4Rx(ABC):
         Defragment IPv4 packet.
         """
 
-        # Cleanup expired flows. A flow is kept while its age
-        # (now - first-fragment timestamp) is below the timeout.
-        now = time()
-        self._ip4_frag_flows = {
-            flow: self._ip4_frag_flows[flow]
-            for flow in self._ip4_frag_flows
-            if now - self._ip4_frag_flows[flow].timestamp < stack.IP4__FRAG_FLOW_TIMEOUT
-        }
-
         __debug__ and log(
             "ip4",
             f"{packet_rx.tracker} - IPv4 packet fragment, offset "
@@ -320,44 +311,26 @@ class PacketHandlerIp4Rx(ABC):
             f"{'' if packet_rx.ip4.flag_mf else ', last'}",
         )
 
-        flow_id = IpFragFlowId(
-            src=packet_rx.ip4.src,
-            dst=packet_rx.ip4.dst,
-            id=packet_rx.ip4.id,
-            proto=packet_rx.ip4.proto,
+        result = self._ip4_frag_table.add_fragment(
+            flow_id=IpFragFlowId(
+                src=packet_rx.ip4.src,
+                dst=packet_rx.ip4.dst,
+                id=packet_rx.ip4.id,
+                proto=packet_rx.ip4.proto,
+            ),
+            offset=packet_rx.ip4.offset,
+            payload=packet_rx.ip4.payload_bytes,
+            flag_mf=packet_rx.ip4.flag_mf,
+            header=packet_rx.ip4.header_bytes,
         )
-
-        # Update flow db.
-        if flow_id in self._ip4_frag_flows:
-            self._ip4_frag_flows[flow_id].payload[packet_rx.ip4.offset] = packet_rx.ip4.payload_bytes
-        else:
-            self._ip4_frag_flows[flow_id] = IpFragData(
-                header=packet_rx.ip4.header_bytes,
-                payload={packet_rx.ip4.offset: packet_rx.ip4.payload_bytes},
-            )
-        if not packet_rx.ip4.flag_mf:
-            self._ip4_frag_flows[flow_id].received_last_frag()
-
-        # Test if we received all fragments.
-        if not self._ip4_frag_flows[flow_id].last:
+        if result is None:
             return None
-        payload_len = 0
-        for offset in sorted(self._ip4_frag_flows[flow_id].payload):
-            if offset > payload_len:
-                return None
-            payload_len = offset + len(self._ip4_frag_flows[flow_id].payload[offset])
+        header_bytes, payload = result
 
-        # Defragment packet.
-        header = bytearray(self._ip4_frag_flows[flow_id].header)
-        payload = bytearray(payload_len)
-        for offset in sorted(self._ip4_frag_flows[flow_id].payload):
-            struct.pack_into(
-                f"{len(self._ip4_frag_flows[flow_id].payload[offset])}s",
-                payload,
-                offset,
-                bytes(self._ip4_frag_flows[flow_id].payload[offset]),
-            )
-        del self._ip4_frag_flows[flow_id]
+        # Reassembled IPv4 header rewrite: drop options (IHL=5),
+        # rewrite Total Length, clear Flags / Fragment Offset,
+        # recompute Header Checksum.
+        header = bytearray(header_bytes)
         header[0] = 0x45
         struct.pack_into("!H", header, 2, IP4__HEADER__LEN + len(payload))
         header[6] = header[7] = header[10] = header[11] = 0

@@ -38,6 +38,7 @@ from net_proto import Ip4FragAssembler, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragFlowId
+from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.stack.packet_handler.packet_handler__ip4__rx import (
@@ -96,7 +97,7 @@ class _StubHandler(PacketHandlerIp4Rx):
         self._ip4_broadcast_list = (
             ip4_broadcast if ip4_broadcast is not None else [STACK__IP4_NETWORK_BROADCAST, STACK__IP4_BROADCAST]
         )
-        self._ip4_frag_flows = {}
+        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT)
 
         self.dispatched: list[str] = []
         self.last_udp_packet: PacketRx | None = None
@@ -405,9 +406,9 @@ class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):
         )
         self.assertEqual(self._handler.dispatched, [])
         self.assertEqual(
-            len(self._handler._ip4_frag_flows),
+            len(self._handler._ip4_frag_table.flows),
             1,
-            msg="The fragment must be stored in _ip4_frag_flows.",
+            msg="The fragment must be stored in _ip4_frag_table.",
         )
 
     def test__stack__packet_handler__ip4__rx__fragment_out_of_order_pending(self) -> None:
@@ -533,7 +534,7 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
             msg="Reassembled UDP packet must dispatch to _phrx_udp.",
         )
         self.assertEqual(
-            self._handler._ip4_frag_flows,
+            self._handler._ip4_frag_table.flows,
             {},
             msg="Flow table must be empty after successful reassembly.",
         )
@@ -738,11 +739,11 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             flow,
-            self._handler._ip4_frag_flows,
+            self._handler._ip4_frag_table.flows,
             msg="Flow entry must exist after repeated fragment arrivals.",
         )
         self.assertEqual(
-            len(self._handler._ip4_frag_flows),
+            len(self._handler._ip4_frag_table.flows),
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
         )
@@ -787,7 +788,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(tcp_frag))
 
         self.assertEqual(
-            len(self._handler._ip4_frag_flows),
+            len(self._handler._ip4_frag_table.flows),
             2,
             msg=(
                 "Two fragments sharing (src, dst, ID) but carrying different "
@@ -828,13 +829,13 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             stale_flow_id,
-            self._handler._ip4_frag_flows,
+            self._handler._ip4_frag_table.flows,
             msg="Precondition: the stale flow must exist after the first fragment.",
         )
 
         # Backdate the stored fragment's timestamp past the timeout
         # so the next defragment pass should reap it.
-        stale_flow = self._handler._ip4_frag_flows[stale_flow_id]
+        stale_flow = self._handler._ip4_frag_table.flows[stale_flow_id]
         object.__setattr__(
             stale_flow,
             "timestamp",
@@ -858,7 +859,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
 
         self.assertNotIn(
             stale_flow_id,
-            self._handler._ip4_frag_flows,
+            self._handler._ip4_frag_table.flows,
             msg=(
                 "A flow whose timestamp predates 'time() - IP4__FRAG_FLOW_TIMEOUT' "
                 "must be removed by the cleanup pass at the start of "
@@ -873,11 +874,11 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             fresh_flow_id,
-            self._handler._ip4_frag_flows,
+            self._handler._ip4_frag_table.flows,
             msg="The new fragment's flow must be admitted alongside the cleanup.",
         )
         self.assertEqual(
-            len(self._handler._ip4_frag_flows),
+            len(self._handler._ip4_frag_table.flows),
             1,
             msg="After cleanup the stale flow is gone and only the fresh flow remains.",
         )

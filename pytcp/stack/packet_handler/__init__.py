@@ -47,9 +47,10 @@ from net_addr import (
     MacAddress,
 )
 from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType
+from pytcp import stack
 from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.lib.subsystem import Subsystem
@@ -101,8 +102,8 @@ class PacketHandler(Subsystem, ABC):
     _ip4_multicast: list[Ip4Address]
     _ip6_id: int
     _ip4_id: int
-    _ip6_frag_flows: dict[IpFragFlowId, IpFragData]
-    _ip4_frag_flows: dict[IpFragFlowId, IpFragData]
+    _ip6_frag_table: IpFragTable
+    _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
 
     @override
@@ -149,8 +150,8 @@ class PacketHandler(Subsystem, ABC):
         self._ip6_id: int = 0
 
         # Used to defragment IPv4 and IPv6 packets.
-        self._ip4_frag_flows = {}
-        self._ip6_frag_flows = {}
+        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT)
+        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT)
 
         # Used for IPv4 and IPv6 address configuration.
         self._ip_configuration_in_progress: Semaphore = threading.Semaphore(0)

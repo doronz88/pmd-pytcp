@@ -1,0 +1,132 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the shared IPv4/IPv6 fragment-reassembly flow table.
+
+pytcp/lib/ip_frag_table.py
+
+ver 3.0.4
+"""
+
+import struct
+from time import time
+
+from net_proto.lib.buffer import Buffer
+from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+
+
+class IpFragTable:
+    """
+    Shared IPv4/IPv6 fragment-reassembly flow table.
+
+    Mirrors the Linux 'net/ipv4/inet_fragment.c' shape: a flow
+    table keyed by the family-specific 'IpFragFlowId' carrying a
+    per-offset fragment store, with a lazy expiry sweep on every
+    admission. Family differences (key shape, header rewrite,
+    atomic-fragment fast-path) live in the calling handler — this
+    table only owns the common machinery.
+    """
+
+    _flows: dict[IpFragFlowId, IpFragData]
+    _timeout: float
+
+    def __init__(self, *, timeout: float) -> None:
+        """
+        Initialize the flow table with the given expiry timeout.
+        """
+
+        self._flows = {}
+        self._timeout = timeout
+
+    @property
+    def flows(self) -> dict[IpFragFlowId, IpFragData]:
+        """
+        Get a live view of the flow store. Mutation by callers is
+        permitted and used by tests that backdate a flow's
+        timestamp to drive the expiry path.
+        """
+
+        return self._flows
+
+    def add_fragment(
+        self,
+        *,
+        flow_id: IpFragFlowId,
+        offset: int,
+        payload: Buffer,
+        flag_mf: bool,
+        header: Buffer,
+    ) -> tuple[bytes, bytes] | None:
+        """
+        Admit one fragment into the flow store.
+
+        Returns a '(header_bytes, joined_payload_bytes)' tuple
+        when the fragment that just arrived completes the
+        datagram. Returns None when more fragments are still
+        expected, or when the offsets so far do not yet form a
+        contiguous prefix.
+
+        The expiry sweep ('time() - timestamp >= timeout' purges
+        the flow) runs at the head of every admission, matching
+        Linux's lazy-reap model.
+        """
+
+        # Lazy expiry sweep.
+        now = time()
+        self._flows = {
+            flow: self._flows[flow] for flow in self._flows if now - self._flows[flow].timestamp < self._timeout
+        }
+
+        # Insert / update per-offset entry.
+        if flow_id in self._flows:
+            self._flows[flow_id].payload[offset] = payload
+        else:
+            self._flows[flow_id] = IpFragData(
+                header=header,
+                payload={offset: payload},
+            )
+        if not flag_mf:
+            self._flows[flow_id].received_last_frag()
+
+        # Completeness check: last-fragment seen + every byte
+        # covered by a contiguous offset chain starting at zero.
+        if not self._flows[flow_id].last:
+            return None
+        payload_len = 0
+        for entry_offset in sorted(self._flows[flow_id].payload):
+            if entry_offset > payload_len:
+                return None
+            payload_len = entry_offset + len(self._flows[flow_id].payload[entry_offset])
+
+        # Build the joined payload buffer in offset order.
+        joined = bytearray(payload_len)
+        for entry_offset in sorted(self._flows[flow_id].payload):
+            chunk = self._flows[flow_id].payload[entry_offset]
+            struct.pack_into(f"{len(chunk)}s", joined, entry_offset, bytes(chunk))
+
+        header_bytes = bytes(self._flows[flow_id].header)
+        del self._flows[flow_id]
+
+        return header_bytes, bytes(joined)

@@ -113,8 +113,8 @@ class TestPacketHandlerBaseConstruction(TestCase):
         self.assertEqual(h._ip6_multicast, [])
         self.assertEqual(h._ip4_id, 0)
         self.assertEqual(h._ip6_id, 0)
-        self.assertEqual(h._ip4_frag_flows, {})
-        self.assertEqual(h._ip6_frag_flows, {})
+        self.assertEqual(h._ip4_frag_table.flows, {})
+        self.assertEqual(h._ip6_frag_table.flows, {})
         self.assertEqual(h._interface_mtu, 1500)
 
     def test__stack__packet_handler__init__ip4_host_seeds_candidate(self) -> None:

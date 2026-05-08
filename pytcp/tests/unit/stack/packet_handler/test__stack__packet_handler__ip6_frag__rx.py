@@ -37,7 +37,8 @@ from net_proto import Ip6Assembler, Ip6Parser, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ip6_frag.ip6_frag__assembler import Ip6FragAssembler
 from pytcp import stack
-from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+from pytcp.lib.ip_frag import IpFragFlowId
+from pytcp.lib.ip_frag_table import IpFragTable
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.stack.packet_handler.packet_handler__ip6_frag__rx import (
     PacketHandlerIp6FragRx,
@@ -75,7 +76,7 @@ class _StubHandler(PacketHandlerIp6FragRx):
 
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
-        self._ip6_frag_flows: dict[IpFragFlowId, IpFragData] = {}
+        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT)
 
         # Spy: record each reassembled packet forwarded to _phrx_ip6.
         self.ip6_reassembled: list[PacketRx] = []
@@ -159,7 +160,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
             msg="Incomplete fragment set must not trigger defrag counter.",
         )
         self.assertEqual(
-            len(self._handler._ip6_frag_flows),
+            len(self._handler._ip6_frag_table.flows),
             1,
             msg="The first fragment must be stored in the flow table.",
         )
@@ -197,7 +198,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
             msg="Successful reassembly must increment ip6_frag__defrag.",
         )
         self.assertEqual(
-            self._handler._ip6_frag_flows,
+            self._handler._ip6_frag_table.flows,
             {},
             msg="Flow entry must be cleared after full reassembly.",
         )
@@ -253,7 +254,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag2)
 
         self.assertEqual(
-            len(self._handler._ip6_frag_flows),
+            len(self._handler._ip6_frag_table.flows),
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
         )
@@ -430,13 +431,13 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self.assertIn(
             stale_flow_id,
-            self._handler._ip6_frag_flows,
+            self._handler._ip6_frag_table.flows,
             msg="Precondition: the stale flow must exist after the first fragment.",
         )
 
         # Backdate the stored fragment's timestamp past the timeout
         # so the next defragment pass should reap it.
-        stale_flow = self._handler._ip6_frag_flows[stale_flow_id]
+        stale_flow = self._handler._ip6_frag_table.flows[stale_flow_id]
         object.__setattr__(
             stale_flow,
             "timestamp",
@@ -455,7 +456,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
 
         self.assertNotIn(
             stale_flow_id,
-            self._handler._ip6_frag_flows,
+            self._handler._ip6_frag_table.flows,
             msg=(
                 "A flow whose timestamp predates 'time() - IP6__FRAG_FLOW_TIMEOUT' "
                 "must be removed by the cleanup pass at the start of "
@@ -469,11 +470,11 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self.assertIn(
             fresh_flow_id,
-            self._handler._ip6_frag_flows,
+            self._handler._ip6_frag_table.flows,
             msg="The new fragment's flow must be admitted alongside the cleanup.",
         )
         self.assertEqual(
-            len(self._handler._ip6_frag_flows),
+            len(self._handler._ip6_frag_table.flows),
             1,
             msg="After cleanup the stale flow is gone and only the fresh flow remains.",
         )
