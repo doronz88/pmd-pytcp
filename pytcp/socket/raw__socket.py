@@ -48,6 +48,7 @@ from pytcp.lib.ip_helper import pick_local_ip_address
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    SOL_SOCKET,
     AddressFamily,
     IpProto,
     SocketType,
@@ -131,6 +132,32 @@ class RawSocket(socket):
             local_ip_address = self._local_ip_address
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
+
+    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+        """
+        Set a socket option per the BSD 'setsockopt' API. RAW
+        sockets currently only honor SOL_SOCKET-level options.
+        """
+
+        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+            return
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
+
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+        """
+        Get a socket option per the BSD 'getsockopt' API.
+        Symmetric to 'setsockopt'.
+        """
+
+        if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
+            return value
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"getsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
 
     @override
     def bind(self, address: tuple[str, int]) -> None:
@@ -282,10 +309,12 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        if timeout is None and not self._blocking:
+        # SO_RCVTIMEO supplies the default if no per-call timeout.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).raw__data
@@ -303,7 +332,7 @@ class RawSocket(socket):
             )
             return bytes(data_rx)  # Note: Conversion: memoryview -> bytes
 
-        if timeout is None and not self._blocking:
+        if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
@@ -313,10 +342,12 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        if timeout is None and not self._blocking:
+        # SO_RCVTIMEO supplies the default if no per-call timeout.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
@@ -339,7 +370,7 @@ class RawSocket(socket):
                 ),
             )
 
-        if timeout is None and not self._blocking:
+        if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 

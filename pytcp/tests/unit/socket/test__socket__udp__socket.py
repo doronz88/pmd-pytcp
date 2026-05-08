@@ -41,7 +41,18 @@ from unittest.mock import patch
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
-from pytcp.socket import AddressFamily, SocketType, gaierror
+from pytcp.socket import (
+    SO_BROADCAST,
+    SO_RCVBUF,
+    SO_RCVTIMEO,
+    SO_REUSEADDR,
+    SO_SNDBUF,
+    SO_SNDTIMEO,
+    SOL_SOCKET,
+    AddressFamily,
+    SocketType,
+    gaierror,
+)
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
@@ -1120,6 +1131,129 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             addr,
             ("10.0.0.2", 5678),
             msg="recvfrom__mv(bufsize=2) must still return the sender's (ip, port).",
+        )
+
+
+class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
+    """
+    The 'UdpSocket' SOL_SOCKET-level setsockopt / getsockopt tests.
+    """
+
+    def test__udp_socket__so_reuseaddr_round_trip(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_REUSEADDR, 1) +
+        getsockopt round-trips as 1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_REUSEADDR),
+            1,
+            msg="SO_REUSEADDR must round-trip via setsockopt/getsockopt.",
+        )
+
+    def test__udp_socket__so_reuseaddr_bypasses_address_in_use_check(self) -> None:
+        """
+        Ensure 'bind()' on a SO_REUSEADDR-set socket succeeds even
+        when the (addr, port) tuple is already registered, mirroring
+        Linux's 'setsockopt(SO_REUSEADDR)' semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(first.close)
+        first.bind(("10.0.0.1", 8080))
+
+        second = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(second.close)
+        second.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+
+        second.bind(("10.0.0.1", 8080))  # must not raise.
+
+    def test__udp_socket__so_rcvtimeo_supplies_recv_default_timeout(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_RCVTIMEO, N) makes a
+        subsequent 'recv()' (with no per-call timeout) raise
+        'TimeoutError' after N seconds elapsed — Linux 'SO_RCVTIMEO'
+        contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(SOL_SOCKET, SO_RCVTIMEO, 1)  # internal: 1 second
+
+        # Use a small float manually to keep the test fast.
+        s._so_rcvtimeo = 0.01
+
+        with self.assertRaises(TimeoutError):
+            s.recv()
+
+    def test__udp_socket__so_broadcast_round_trip(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_BROADCAST, 1) round-trips.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_BROADCAST),
+            1,
+            msg="SO_BROADCAST must round-trip via setsockopt/getsockopt.",
+        )
+
+    def test__udp_socket__so_sndbuf_so_rcvbuf_round_trip(self) -> None:
+        """
+        Ensure SO_SNDBUF / SO_RCVBUF integer values round-trip via
+        setsockopt / getsockopt. Behavioral enforcement of these
+        caps is deferred — apps that probe for support via the
+        round-trip succeed today.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(SOL_SOCKET, SO_SNDBUF, 8192)
+        s.setsockopt(SOL_SOCKET, SO_RCVBUF, 16384)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_SNDBUF),
+            8192,
+            msg="SO_SNDBUF must round-trip the configured value.",
+        )
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_RCVBUF),
+            16384,
+            msg="SO_RCVBUF must round-trip the configured value.",
+        )
+
+    def test__udp_socket__so_sndtimeo_round_trip(self) -> None:
+        """
+        Ensure SO_SNDTIMEO round-trips via setsockopt / getsockopt.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(SOL_SOCKET, SO_SNDTIMEO, 5)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_SNDTIMEO),
+            5,
+            msg="SO_SNDTIMEO must round-trip the configured value.",
         )
 
 

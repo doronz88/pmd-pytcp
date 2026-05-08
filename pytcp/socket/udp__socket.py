@@ -52,6 +52,7 @@ from pytcp.lib.ip_helper import (
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    SOL_SOCKET,
     AddressFamily,
     IpProto,
     SocketType,
@@ -106,6 +107,34 @@ class UdpSocket(socket):
                 self._remote_ip_address = Ip4Address()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
+
+    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+        """
+        Set a socket option per the BSD 'setsockopt' API. UDP
+        sockets currently only honor SOL_SOCKET-level options
+        (SO_REUSEADDR, SO_BROADCAST, SO_SNDBUF, SO_RCVBUF,
+        SO_RCVTIMEO, SO_SNDTIMEO).
+        """
+
+        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+            return
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
+
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+        """
+        Get a socket option per the BSD 'getsockopt' API.
+        Symmetric to 'setsockopt'.
+        """
+
+        if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
+            return value
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"getsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
 
     def _get_ip_addresses(
         self,
@@ -200,7 +229,11 @@ class UdpSocket(socket):
 
         # Confirm or pick local port number.
         if (local_port := address[1]) > 0:
-            if is_address_in_use(
+            # SO_REUSEADDR bypasses the in-use check, mirroring
+            # Linux's setsockopt(SOL_SOCKET, SO_REUSEADDR) which
+            # allows rebinding to an in-use port (mostly used
+            # post-restart so a server can rebind through TIME_WAIT).
+            if not self._so_reuseaddr and is_address_in_use(
                 local_ip_address=local_ip_address,
                 local_port=local_port,
                 address_family=self._address_family,
@@ -355,13 +388,14 @@ class UdpSocket(socket):
                 "Connection refused - [Remote host sent ICMP Unreachable]",
             )
 
-        # Per-call 'timeout' takes precedence over 'setblocking()';
-        # otherwise non-blocking mode equates to a non-blocking
-        # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
-        if timeout is None and not self._blocking:
+        # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
+        # supplies the default; otherwise the blocking flag picks
+        # blocking-forever vs non-blocking-EAGAIN.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).udp__data
@@ -383,7 +417,7 @@ class UdpSocket(socket):
             )
             return data_rx
 
-        if timeout is None and not self._blocking:
+        if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
@@ -405,10 +439,14 @@ class UdpSocket(socket):
         Read data from socket as a memoryview.
         """
 
-        if timeout is None and not self._blocking:
+        # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
+        # supplies the default; otherwise the blocking flag picks
+        # blocking-forever vs non-blocking-EAGAIN.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
@@ -431,7 +469,7 @@ class UdpSocket(socket):
                 ),
             )
 
-        if timeout is None and not self._blocking:
+        if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 

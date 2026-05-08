@@ -73,7 +73,10 @@ class SocketOption(IntEnum):
     BSD setsockopt 'optname' parameter values, by integer number
     matching Linux. Setsockopt validates the (level, optname)
     pair: socket-level options use 'SOL_SOCKET' as level, TCP-
-    level options use 'IPPROTO_TCP'.
+    level options use 'IPPROTO_TCP'. SOL_SOCKET-level options
+    that share an integer value with an IPPROTO_TCP-level option
+    (e.g. SO_BROADCAST=6 vs TCP_KEEPCNT=6) live as plain ints
+    below the enum to avoid IntEnum aliasing.
     """
 
     TCP_NODELAY = 1  # level=IPPROTO_TCP; bool: disable Nagle (RFC 1122 §4.2.3.4)
@@ -92,6 +95,16 @@ TCP_KEEPINTVL = SocketOption.TCP_KEEPINTVL
 TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
 TCP_CONGESTION = SocketOption.TCP_CONGESTION
 TCP_FASTOPEN = SocketOption.TCP_FASTOPEN
+
+# SOL_SOCKET-level options sharing integer values with IPPROTO_TCP-
+# level options (Linux numbers, disambiguated by 'level' parameter
+# of setsockopt, not by the optname value itself).
+SO_REUSEADDR: int = 2  # level=SOL_SOCKET; bool: bypass "address in use" on rebind
+SO_BROADCAST: int = 6  # level=SOL_SOCKET; bool: allow UDP broadcast send
+SO_SNDBUF: int = 7  # level=SOL_SOCKET; int: send-buffer cap (storage only)
+SO_RCVBUF: int = 8  # level=SOL_SOCKET; int: recv-buffer cap (storage only)
+SO_RCVTIMEO: int = 20  # level=SOL_SOCKET; float seconds: persistent recv timeout
+SO_SNDTIMEO: int = 21  # level=SOL_SOCKET; float seconds: persistent send timeout
 
 
 # BSD-socket 'shutdown(how)' constants per POSIX. Linux-numbered
@@ -186,6 +199,12 @@ class socket(ABC):
     _remote_port: int
     _read_event_fd: int
     _blocking: bool
+    _so_reuseaddr: bool
+    _so_broadcast: bool
+    _so_sndbuf: int | None
+    _so_rcvbuf: int | None
+    _so_rcvtimeo: float | None
+    _so_sndtimeo: float | None
 
     def __init__(
         self,
@@ -210,6 +229,61 @@ class socket(ABC):
         del family, type, protocol  # consumed by concrete-class __init__.
         self._read_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
         self._blocking = True
+        self._so_reuseaddr = False
+        self._so_broadcast = False
+        self._so_sndbuf = None
+        self._so_rcvbuf = None
+        self._so_rcvtimeo = None
+        self._so_sndtimeo = None
+
+    def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
+        """
+        Apply a SOL_SOCKET-level setsockopt option; return True if
+        handled or False if the optname is not a base-class option
+        (subclasses then dispatch their TCP/UDP-specific options).
+        """
+
+        match optname:
+            case _ if optname == SO_REUSEADDR:
+                self._so_reuseaddr = bool(value)
+                return True
+            case _ if optname == SO_BROADCAST:
+                self._so_broadcast = bool(value)
+                return True
+            case _ if optname == SO_SNDBUF:
+                self._so_sndbuf = int(value)
+                return True
+            case _ if optname == SO_RCVBUF:
+                self._so_rcvbuf = int(value)
+                return True
+            case _ if optname == SO_RCVTIMEO:
+                self._so_rcvtimeo = float(value) if value else None
+                return True
+            case _ if optname == SO_SNDTIMEO:
+                self._so_sndtimeo = float(value) if value else None
+                return True
+        return False
+
+    def _sol_socket_getsockopt(self, optname: int, /) -> int | None:
+        """
+        Get a SOL_SOCKET-level option's stored value, or 'None' if
+        the option is not a base-class option.
+        """
+
+        match optname:
+            case _ if optname == SO_REUSEADDR:
+                return int(self._so_reuseaddr)
+            case _ if optname == SO_BROADCAST:
+                return int(self._so_broadcast)
+            case _ if optname == SO_SNDBUF:
+                return self._so_sndbuf or 0
+            case _ if optname == SO_RCVBUF:
+                return self._so_rcvbuf or 0
+            case _ if optname == SO_RCVTIMEO:
+                return int(self._so_rcvtimeo) if self._so_rcvtimeo else 0
+            case _ if optname == SO_SNDTIMEO:
+                return int(self._so_sndtimeo) if self._so_sndtimeo else 0
+        return None
 
     def __new__(
         cls,

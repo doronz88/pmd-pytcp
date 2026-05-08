@@ -302,6 +302,8 @@ class TcpSocket(socket):
         if level == SOL_SOCKET and optname == SO_KEEPALIVE:
             self._so_keepalive = bool(value)
             return
+        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+            return
         if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             self._tcp_keepidle = int(value)
             return
@@ -351,6 +353,8 @@ class TcpSocket(socket):
 
         if level == SOL_SOCKET and optname == SO_KEEPALIVE:
             return int(self._so_keepalive)
+        if level == SOL_SOCKET and (sol_value := self._sol_socket_getsockopt(optname)) is not None:
+            return sol_value
         if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             # 0 means "no override set"; the session falls back
             # to 'tcp__constants.KEEPALIVE_IDLE_TIME' at runtime.
@@ -459,7 +463,8 @@ class TcpSocket(socket):
 
         # Confirm or pick local port number
         if (local_port := address[1]) > 0:
-            if is_address_in_use(
+            # SO_REUSEADDR bypasses the in-use check (Linux parity).
+            if not self._so_reuseaddr and is_address_in_use(
                 local_ip_address=local_ip_address,
                 local_port=local_port,
                 address_family=self._address_family,
@@ -720,10 +725,18 @@ class TcpSocket(socket):
         assert self._tcp_session is not None
 
         # Per-call 'timeout' takes precedence over 'setblocking()';
-        # non-blocking mode forwards 'timeout=0' so the session's
-        # 'Event.wait(0)' returns immediately. The resulting
-        # 'TimeoutError' is translated into 'BlockingIOError(EAGAIN)'.
-        effective_timeout = 0 if timeout is None and not self._blocking else timeout
+        # SO_RCVTIMEO supplies the next-best default; non-blocking
+        # mode forwards 'timeout=0' so the session's 'Event.wait(0)'
+        # returns immediately. The resulting 'TimeoutError' is
+        # translated into 'BlockingIOError(EAGAIN)' iff non-blocking.
+        if timeout is not None:
+            effective_timeout: float | None = timeout
+        elif self._so_rcvtimeo is not None:
+            effective_timeout = self._so_rcvtimeo
+        elif not self._blocking:
+            effective_timeout = 0
+        else:
+            effective_timeout = None
 
         try:
             if data_rx := self._tcp_session.receive(byte_count=bufsize, timeout=effective_timeout):
