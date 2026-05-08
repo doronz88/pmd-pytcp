@@ -106,6 +106,9 @@ class PacketHandlerIp6FragRx(ABC):
             flag_mf=packet_rx.ip6_frag.flag_mf,
             header=packet_rx.ip6.header_bytes,
         )
+        if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
+            self._packet_stats_rx.ip6_frag__overlap__drop += 1
+            return None
         if result.outcome is not IpFragAddOutcome.COMPLETE:
             return None
         header_bytes = result.header

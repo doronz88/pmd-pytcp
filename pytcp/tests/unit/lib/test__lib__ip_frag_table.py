@@ -309,45 +309,188 @@ class TestIpFragTableExpiry(TestCase):
         )
 
 
-class TestIpFragTableIdempotence(TestCase):
+class TestIpFragTableOverlap(TestCase):
     """
-    The 'IpFragTable' duplicate-fragment tests.
+    The 'IpFragTable' RFC 5722 §3 overlap-detection tests.
     """
 
-    def test__ip_frag_table__repeated_fragment_does_not_duplicate_flow(self) -> None:
+    def setUp(self) -> None:
         """
-        Ensure re-receiving the same fragment (same offset)
-        updates the stored bytes in place rather than creating a
-        second flow entry.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Build a fresh table per test so flow state cannot leak.
         """
 
-        table = IpFragTable(timeout=5.0)
-        flow_id = IpFragFlowId(src=_HOST_A__IP4, dst=_HOST_B__IP4, id=7, proto=IpProto.UDP)
+        self._table = IpFragTable(timeout=5.0)
+        self._flow_id = IpFragFlowId(
+            src=_HOST_A__IP4,
+            dst=_HOST_B__IP4,
+            id=7,
+            proto=IpProto.UDP,
+        )
 
-        table.add_fragment(
-            flow_id=flow_id,
+    def test__ip_frag_table__add_fragment__overlap_drops_flow(self) -> None:
+        """
+        Ensure two fragments whose byte ranges overlap (e.g. one
+        at offset 0 / length 16 and one at offset 8 / length 8)
+        cause the entire flow to be marked discarded and yield
+        the OVERLAP outcome on the second arrival.
+
+        Reference: RFC 5722 §3 (silent-discard on fragment overlap).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
             offset=0,
-            payload=b"\xaa" * 8,
+            payload=b"\xaa" * 16,
             flag_mf=True,
             header=b"\x45" + b"\x00" * 19,
         )
-        table.add_fragment(
-            flow_id=flow_id,
-            offset=0,
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
             payload=b"\xbb" * 8,
             flag_mf=True,
             header=b"\x45" + b"\x00" * 19,
         )
 
-        self.assertEqual(
-            len(table.flows),
-            1,
-            msg="A repeated fragment must not duplicate the flow entry.",
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.OVERLAP,
+            msg="Overlapping byte ranges must yield the OVERLAP outcome.",
+        )
+        self.assertTrue(
+            self._table.flows[self._flow_id].discarded,
+            msg="Overlap detection must mark the flow as discarded.",
         )
         self.assertEqual(
-            bytes(table.flows[flow_id].payload[0]),
-            b"\xbb" * 8,
-            msg="A repeated fragment at the same offset must overwrite the stored bytes.",
+            self._table.flows[self._flow_id].payload,
+            {},
+            msg=(
+                "A discarded flow must clear its stored payload to free "
+                "memory (RFC 5722 §3 silent-discard semantics)."
+            ),
+        )
+
+    def test__ip_frag_table__add_fragment__exact_duplicate_treated_as_overlap(self) -> None:
+        """
+        Ensure two fragments at the same offset with the same
+        length are treated as overlapping. PyTCP picks the
+        strict reading over the lenient retransmit-tolerant
+        interpretation: any same-offset arrival drops the
+        in-progress datagram.
+
+        Reference: RFC 5722 §3 (silent-discard, strict reading
+        treats exact duplicates as overlapping).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.OVERLAP,
+            msg="An exact-duplicate fragment must be treated as OVERLAP under the strict reading.",
+        )
+
+    def test__ip_frag_table__add_fragment__subsequent_after_discard_yields_discarded(self) -> None:
+        """
+        Ensure a fragment arriving for an already-discarded flow
+        yields the DISCARDED outcome, the flow stays cleared,
+        and reassembly does not happen even if the new fragment
+        would otherwise complete the datagram.
+
+        Reference: RFC 5722 §3 ("any constituent fragments,
+        including those not yet received, MUST be silently
+        discarded").
+        """
+
+        # Trigger overlap to mark the flow discarded.
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 16,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+
+        # A fully reasonable final fragment arrives.
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=16,
+            payload=b"\xcc" * 8,
+            flag_mf=False,
+            header=b"\x45" + b"\x00" * 19,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.DISCARDED,
+            msg="A fragment for an already-discarded flow must yield DISCARDED.",
+        )
+        self.assertEqual(
+            self._table.flows[self._flow_id].payload,
+            {},
+            msg="The discarded flow's payload store must remain cleared.",
+        )
+
+    def test__ip_frag_table__add_fragment__three_fragments_no_overlap_still_reassembles(self) -> None:
+        """
+        Ensure overlap detection does not break the multi-
+        fragment happy path: three contiguous, non-overlapping
+        fragments still reassemble cleanly into a COMPLETE
+        outcome.
+
+        Reference: RFC 791 §3.2 (contiguous non-overlapping
+        fragments reassemble normally).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=16,
+            payload=b"\xcc" * 8,
+            flag_mf=False,
+            header=b"\x45" + b"\x00" * 19,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="Three contiguous non-overlapping fragments must reassemble.",
+        )
+        self.assertEqual(
+            result.payload,
+            b"\xaa" * 8 + b"\xbb" * 8 + b"\xcc" * 8,
+            msg="Joined payload must be the concatenation in offset order.",
         )

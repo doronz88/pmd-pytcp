@@ -230,10 +230,19 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self.assertEqual(self._handler.ip6_reassembled, [])
 
-    def test__stack__packet_handler__ip6_frag__rx__repeated_fragment_updates_in_place(self) -> None:
+    def test__stack__packet_handler__ip6_frag__rx__same_fragment_twice_drops_flow(self) -> None:
         """
-        Ensure re-receiving the same fragment updates the stored bytes
-        rather than creating a new flow entry.
+        Ensure that re-receiving a fragment with the same offset
+        is treated as an overlapping arrival under PyTCP's
+        strict reading: the flow is marked discarded, its stored
+        payload is cleared, and the 'ip6_frag__overlap__drop'
+        counter increments. Benign duplicates therefore destroy
+        in-progress reassemblies — the stricter security
+        posture is preferred over the lenient retransmit-tolerant
+        interpretation.
+
+        Reference: RFC 5722 §3 (silent-discard on fragment overlap;
+        strict reading treats exact duplicates as overlapping).
         """
 
         frag = _ip6_frag_packet_rx(
@@ -242,8 +251,6 @@ class TestPacketHandlerIp6FragRx(TestCase):
             flag_mf=True,
             payload=b"\xcc" * 8,
         )
-        # Parse a fresh packet_rx for each call because the parser
-        # advances 'frame'.
         self._handler._phrx_ip6_frag(frag)
         frag2 = _ip6_frag_packet_rx(
             frag_id=4444,
@@ -253,10 +260,66 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self._handler._phrx_ip6_frag(frag2)
 
+        flow = IpFragFlowId(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            id=4444,
+        )
+        self.assertTrue(
+            self._handler._ip6_frag_table.flows[flow].discarded,
+            msg="Repeated fragment must mark the flow discarded.",
+        )
         self.assertEqual(
-            len(self._handler._ip6_frag_table.flows),
+            self._handler._packet_stats_rx.ip6_frag__overlap__drop,
             1,
-            msg="Repeated fragment must not duplicate the flow entry.",
+            msg="Overlap detection must increment 'ip6_frag__overlap__drop'.",
+        )
+
+    def test__stack__packet_handler__ip6_frag__rx__overlapping_fragments_drop_flow(self) -> None:
+        """
+        Ensure two non-final fragments whose byte ranges overlap
+        (offset 0 length 16, then offset 8 length 8) are dropped:
+        no dispatch to '_phrx_ip6', the
+        'ip6_frag__overlap__drop' counter increments, and the
+        flow is marked discarded.
+
+        Reference: RFC 5722 §3 (silent-discard on fragment overlap).
+        """
+
+        frag_a = _ip6_frag_packet_rx(
+            frag_id=5454,
+            offset=0,
+            flag_mf=True,
+            payload=b"\xaa" * 16,
+        )
+        frag_b = _ip6_frag_packet_rx(
+            frag_id=5454,
+            offset=8,
+            flag_mf=True,
+            payload=b"\xbb" * 8,
+        )
+
+        self._handler._phrx_ip6_frag(frag_a)
+        self._handler._phrx_ip6_frag(frag_b)
+
+        self.assertEqual(
+            self._handler.ip6_reassembled,
+            [],
+            msg="An overlapping flow must not dispatch to '_phrx_ip6'.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip6_frag__overlap__drop,
+            1,
+            msg="Overlap detection must increment 'ip6_frag__overlap__drop'.",
+        )
+        flow = IpFragFlowId(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            id=5454,
+        )
+        self.assertTrue(
+            self._handler._ip6_frag_table.flows[flow].discarded,
+            msg="Overlap detection must mark the flow as discarded.",
         )
 
     def test__stack__packet_handler__ip6_frag__rx__out_of_order_three_fragments_reassemble(self) -> None:

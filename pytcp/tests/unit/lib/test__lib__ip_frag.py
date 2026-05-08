@@ -438,6 +438,72 @@ class TestIpFragDataReceivedLastFrag(TestCase):
             self._frag.last = True  # type: ignore[misc]
 
 
+class TestIpFragDataMarkDiscarded(TestCase):
+    """
+    The 'IpFragData.mark_discarded()' tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a fresh 'IpFragData' instance with at least one stored
+        fragment so 'mark_discarded()' has payload to clear.
+        """
+
+        self._frag = IpFragData(
+            header=b"hdr",
+            payload={0: b"AAAA", 8: b"BBBB"},
+        )
+
+    def test__ip_frag_data__discarded_defaults_to_false(self) -> None:
+        """
+        Ensure the 'discarded' flag defaults to False on
+        construction so a freshly admitted flow never appears
+        already-discarded.
+
+        Reference: RFC 5722 §3 (discarded state is opt-in per
+        overlap detection, not the default).
+        """
+
+        self.assertFalse(
+            self._frag.discarded,
+            msg="IpFragData.discarded must default to False on a freshly built instance.",
+        )
+
+    def test__ip_frag_data__mark_discarded__sets_flag(self) -> None:
+        """
+        Ensure 'mark_discarded()' flips 'discarded' from False to
+        True via the frozen-dataclass escape hatch.
+
+        Reference: RFC 5722 §3 (silent-discard requires per-flow
+        discarded bit).
+        """
+
+        self._frag.mark_discarded()
+
+        self.assertTrue(
+            self._frag.discarded,
+            msg="mark_discarded() must set 'discarded' to True.",
+        )
+
+    def test__ip_frag_data__mark_discarded__clears_payload(self) -> None:
+        """
+        Ensure 'mark_discarded()' clears the per-offset fragment
+        store so a discarded flow does not retain memory for the
+        bytes it already received.
+
+        Reference: RFC 5722 §3 (silent-discard semantics; freed
+        memory is part of the buffer-hygiene goal).
+        """
+
+        self._frag.mark_discarded()
+
+        self.assertEqual(
+            self._frag.payload,
+            {},
+            msg="mark_discarded() must clear the stored fragment payload.",
+        )
+
+
 class TestIpFragDataFields(TestCase):
     """
     The 'IpFragData' dataclass field-layout tests.
@@ -445,14 +511,19 @@ class TestIpFragDataFields(TestCase):
 
     def test__ip_frag_data__field_names(self) -> None:
         """
-        Ensure the dataclass exposes exactly (timestamp, header, last,
-        payload) in that order.
+        Ensure the dataclass exposes exactly (timestamp, header,
+        last, payload, discarded) in that order. The 'discarded'
+        field marks a flow unrecoverable while it still occupies
+        the table until the expiry sweep reaps it.
+
+        Reference: RFC 5722 §3 (silent-discard requires per-flow
+        discarded bit).
         """
 
         self.assertEqual(
             tuple(f.name for f in fields(IpFragData)),
-            ("timestamp", "header", "last", "payload"),
-            msg="IpFragData must declare exactly (timestamp, header, last, payload) in order.",
+            ("timestamp", "header", "last", "payload", "discarded"),
+            msg="IpFragData must declare exactly (timestamp, header, last, payload, discarded) in order.",
         )
 
     def test__ip_frag_data__timestamp_is_init_false(self) -> None:

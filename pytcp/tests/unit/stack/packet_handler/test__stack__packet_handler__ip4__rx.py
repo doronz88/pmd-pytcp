@@ -709,11 +709,19 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
     The fragment-flow-state tests.
     """
 
-    def test__stack__packet_handler__ip4__rx__same_fragment_twice_is_idempotent(self) -> None:
+    def test__stack__packet_handler__ip4__rx__same_fragment_twice_drops_flow(self) -> None:
         """
-        Ensure re-receiving the same fragment (same offset) updates
-        the stored bytes in place rather than creating a duplicate
-        flow entry.
+        Ensure that re-receiving the same fragment (offset=0,
+        len=8) is treated as an overlapping arrival under PyTCP's
+        strict reading: the flow is marked discarded, its stored
+        payload is cleared, and the 'ip4__frag__overlap__drop'
+        counter increments. Benign duplicates therefore destroy
+        in-progress reassemblies — the stricter security
+        posture is preferred over the lenient retransmit-tolerant
+        interpretation.
+
+        Reference: RFC 5722 §3 (silent-discard on fragment overlap;
+        strict reading treats exact duplicates as overlapping).
         """
 
         frag = bytes(
@@ -740,12 +748,74 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         self.assertIn(
             flow,
             self._handler._ip4_frag_table.flows,
-            msg="Flow entry must exist after repeated fragment arrivals.",
+            msg="The discarded flow must remain in the table until the expiry sweep reaps it.",
+        )
+        self.assertTrue(
+            self._handler._ip4_frag_table.flows[flow].discarded,
+            msg="Repeated fragment must mark the flow discarded.",
         )
         self.assertEqual(
-            len(self._handler._ip4_frag_table.flows),
+            self._handler._packet_stats_rx.ip4__frag__overlap__drop,
             1,
-            msg="Repeated fragment must not duplicate the flow entry.",
+            msg="Overlap detection must increment 'ip4__frag__overlap__drop'.",
+        )
+
+    def test__stack__packet_handler__ip4__rx__overlapping_fragments_drop_flow(self) -> None:
+        """
+        Ensure two non-final fragments whose byte ranges overlap
+        (offset 0 length 16, then offset 8 length 8) are dropped
+        under the strict reading: no upper-layer dispatch, the
+        'ip4__frag__overlap__drop' counter increments, and the
+        flow is marked discarded.
+
+        Reference: RFC 5722 §3 (silent-discard on fragment overlap).
+        """
+
+        frag_a = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=8888,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=b"\xaa" * 16,
+            )
+        )
+        frag_b = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=8888,
+                ip4_frag__offset=8,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=b"\xbb" * 8,
+            )
+        )
+
+        self._handler._phrx_ip4(PacketRx(frag_a))
+        self._handler._phrx_ip4(PacketRx(frag_b))
+
+        self.assertEqual(
+            self._handler.dispatched,
+            [],
+            msg="An overlapping flow must not dispatch to any upper-layer handler.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip4__frag__overlap__drop,
+            1,
+            msg="Overlap detection must increment 'ip4__frag__overlap__drop'.",
+        )
+        flow = IpFragFlowId(
+            src=HOST_A__IP4,
+            dst=STACK__IP4_ADDRESS,
+            id=8888,
+            proto=IpProto.UDP,
+        )
+        self.assertTrue(
+            self._handler._ip4_frag_table.flows[flow].discarded,
+            msg="Overlap detection must mark the flow as discarded.",
         )
 
     def test__stack__packet_handler__ip4__rx__proto_distinguishes_flows(self) -> None:

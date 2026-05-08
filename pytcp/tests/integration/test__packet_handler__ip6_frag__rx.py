@@ -218,7 +218,11 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/IPv6/UDP Echo - two frag flows into two packets response",
+            "_description": (
+                "Ethernet/IPv6/UDP Echo - duplicate fragments in flow A drop "
+                "flow A under RFC 5722 §3 strict reading; flow B (no duplicates) "
+                "reassembles and emits one echo response"
+            ),
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : 02:00:00:00:00:07
@@ -557,61 +561,34 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 b"\x8a\xd1\x08\x24\x98\x57\xcf\x4f\x31\x69\x19\x16\xc5\x9a\x6e\x08"
                 b"\x3a\x75\x54\x06\xe9\x80\x9c\xef\x21\x81\x31\x18\x4f\x04\xad\x27"
                 b"\xf2\xa4\x51\x6c\x07\xdb",
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:91
-                #   Source MAC      : 02:00:00:00:00:07
-                #   Ethertype       : 0x86dd (IPv6)
-                #   Frame length    : 194 bytes
-                #
-                # IPv6
-                #   Version / Traffic Class / Flow Label : 6 / 0x00 / 0x00000
-                #   Payload Length : 0x008c (140 bytes)
-                #   Next Header    : 17 (UDP)
-                #   Hop Limit      : 64
-                #   Source IP      : 2001:db8:0:1::7
-                #   Destination IP : 2001:db8:0:1::91
-                #
-                # UDP
-                #   Source Port    : 7
-                #   Destination Port: 5527
-                #   Length         : 0x008c (140 bytes)
-                #   Checksum       : 0x1c49
-                #
-                # Summary: IPv6 UDP echo reply from 2001:db8:0:1::7 to 2001:db8:0:1::91
-                #          (140-byte payload).
-                b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x86\xdd\x60\x00"
-                b"\x00\x00\x00\x8c\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                b"\x00\x00\x00\x00\x00\x07\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-                b"\x00\x00\x00\x00\x00\x91\x00\x07\x15\x97\x00\x8c\x1c\x49\x54\x6f"
-                b"\x6d\x20\x54\x69\x74\x20\x54\x6f\x74\x00\x01\x02\x03\x04\x05\x06"
-                b"\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16"
-                b"\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25\x26"
-                b"\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35\x36"
-                b"\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44\x45\x46"
-                b"\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56"
-                b"\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66"
-                b"\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76"
-                b"\x77\x78",
+                # Flow A produces no echo: the A1 replay (frame 3 in
+                # the input list) triggers RFC 5722 §3 strict-overlap
+                # detection, marking flow A as discarded. Subsequent
+                # A-fragments (A2/A3/A4/A5/A5-replay) silently drop
+                # against the discarded marker. The 'ip6_frag__overlap__drop'
+                # counter records each of the six rejected arrivals
+                # (1 OVERLAP + 5 DISCARDED).
             ],
             "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=7 + 3,
-                ethernet__dst_unicast=7 + 3,
-                ip6__pre_parse=7 + 3 + 2,  # For the IPv6 frag implementation packets once reasembled
-                ip6__dst_unicast=7 + 3 + 2,  # are put again through the IPv6 parser for processing
-                ip6_frag__pre_parse=7 + 3,
-                ip6_frag__defrag=1 + 1,
-                udp__pre_parse=1 + 1,
-                udp__echo_native__respond_udp=1 + 1,
+                ethernet__pre_parse=10,
+                ethernet__dst_unicast=10,
+                ip6__pre_parse=10 + 1,  # +1 for the reassembled flow B packet re-entering ip6 parse
+                ip6__dst_unicast=10 + 1,
+                ip6_frag__pre_parse=10,
+                ip6_frag__defrag=1,
+                ip6_frag__overlap__drop=6,
+                udp__pre_parse=1,
+                udp__echo_native__respond_udp=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(
-                udp__pre_assemble=2,
-                udp__send=2,
-                ip6__pre_assemble=2,
-                ip6__mtu_ok__send=2,
-                ethernet__pre_assemble=2,
-                ethernet__src_unspec__fill=2,
-                ethernet__dst_unspec__ip6_lookup=2,
-                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=2,
+                udp__pre_assemble=1,
+                udp__send=1,
+                ip6__pre_assemble=1,
+                ip6__mtu_ok__send=1,
+                ethernet__pre_assemble=1,
+                ethernet__src_unspec__fill=1,
+                ethernet__dst_unspec__ip6_lookup=1,
+                ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=1,
             ),
         },
         {

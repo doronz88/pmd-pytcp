@@ -46,6 +46,8 @@ class IpFragAddOutcome(Enum):
 
     PENDING = "pending"
     COMPLETE = "complete"
+    OVERLAP = "overlap"
+    DISCARDED = "discarded"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -110,12 +112,19 @@ class IpFragTable:
 
         Returns an 'IpFragAddResult' tagged by 'IpFragAddOutcome':
 
-          - PENDING:  the fragment is stored and more are
-                      expected (or the offset chain is not yet
-                      contiguous).
-          - COMPLETE: the fragment that just arrived completes
-                      the datagram; 'header' / 'payload' carry
-                      the joined bytes.
+          - PENDING:   the fragment is stored and more are
+                       expected (or the offset chain is not yet
+                       contiguous).
+          - COMPLETE:  the fragment that just arrived completes
+                       the datagram; 'header' / 'payload' carry
+                       the joined bytes.
+          - OVERLAP:   the fragment overlaps a previously-stored
+                       fragment in the same flow; the flow is
+                       marked discarded and its payload cleared
+                       (RFC 5722 §3 silent-discard).
+          - DISCARDED: the fragment arrived for a flow that was
+                       previously marked discarded; it is
+                       silently dropped without admission.
 
         The expiry sweep ('time() - timestamp >= timeout' purges
         the flow) runs at the head of every admission, matching
@@ -127,6 +136,22 @@ class IpFragTable:
         self._flows = {
             flow: self._flows[flow] for flow in self._flows if now - self._flows[flow].timestamp < self._timeout
         }
+
+        # RFC 5722 §3: a fragment arriving for an already-
+        # discarded flow is silently dropped.
+        if flow_id in self._flows and self._flows[flow_id].discarded:
+            return IpFragAddResult(outcome=IpFragAddOutcome.DISCARDED)
+
+        # RFC 5722 §3: detect overlap with any previously-stored
+        # fragment in the same flow. Strict reading — exact-
+        # duplicate offsets are also overlapping.
+        if flow_id in self._flows:
+            new_end = offset + len(payload)
+            for stored_offset, stored_chunk in self._flows[flow_id].payload.items():
+                stored_end = stored_offset + len(stored_chunk)
+                if offset < stored_end and stored_offset < new_end:
+                    self._flows[flow_id].mark_discarded()
+                    return IpFragAddResult(outcome=IpFragAddOutcome.OVERLAP)
 
         # Insert / update per-offset entry.
         if flow_id in self._flows:

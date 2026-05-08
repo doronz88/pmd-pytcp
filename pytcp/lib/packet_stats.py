@@ -93,6 +93,7 @@ class PacketStatsRx(PacketStats):
     ip4__dst_broadcast: int = 0
     ip4__frag: int = 0
     ip4__defrag: int = 0
+    ip4__frag__overlap__drop: int = 0
 
     ip6__pre_parse: int = 0
     ip6__failed_parse__drop: int = 0
@@ -104,6 +105,7 @@ class PacketStatsRx(PacketStats):
     ip6_frag__pre_parse: int = 0
     ip6_frag__failed_parse: int = 0
     ip6_frag__defrag: int = 0
+    ip6_frag__overlap__drop: int = 0
 
     ip6_hbh__pre_parse: int = 0
     ip6_hbh__failed_parse: int = 0

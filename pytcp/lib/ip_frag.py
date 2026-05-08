@@ -63,6 +63,7 @@ class IpFragData:
     header: bytes
     last: bool = field(repr=False, init=False, default=False)
     payload: dict[int, bytes]
+    discarded: bool = field(repr=False, init=False, default=False)
 
     def received_last_frag(self) -> None:
         """
@@ -71,3 +72,20 @@ class IpFragData:
 
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "last", True)
+
+    def mark_discarded(self) -> None:
+        """
+        Mark the flow as discarded and free its stored fragments.
+
+        The discarded flag tells subsequent fragment arrivals
+        for the same flow to be silently dropped without
+        admission, per RFC 5722 §3 ("the entire datagram (and
+        any constituent fragments, including those not yet
+        received) MUST be silently discarded"). The flow itself
+        is not deleted from the table — it is reaped by the
+        normal expiry sweep once its timestamp goes stale.
+        """
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "discarded", True)
+        self.payload.clear()
