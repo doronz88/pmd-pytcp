@@ -656,11 +656,11 @@ A separate audit of the RX / TX ring path landed four focused fixes
 benchmark + profiling harness (`fe43a785`, `c6882e5c`). Two
 optimisation candidates remain open; one is now resolved-with-data.
 
-### Resolved (do not ship)
+### Resolved
 
 | Item | Verdict | Evidence |
 |---|---|---|
-| **RX inner-drain loop** | **Won't ship — confirmed invisible.** | Ping-flood test (~6,300 pps sustained over 25 minutes; 800k+ packets) showed `rx_ring.qsize == 0` and zero `queue_full_drop_count` bumps. The current `select() + os.read() + queue.put()` per-packet loop drains faster than the kernel TAP buffer fills. The consumer (`packet_handler` ICMP echo-reply dispatch) is the throughput ceiling at ~158µs/packet, not the ring at ~8µs/packet (with `-O`). |
+| **RX inner-drain loop** | **Shipped (`f0ad0076`) — 1.9% measurable, future-proofing.** | Ping-flood test (~6,300 pps over 25 minutes; 800k+ packets) showed `rx_ring.qsize == 0` and zero `queue_full_drop_count` bumps — at *current* consumer speed the ring already drains faster than the kernel TAP buffer fills, so the optimisation is invisible *today*. Synthetic SOCK_DGRAM bench (`make bench__rx_ring`, 10×100k frames, `-O`) showed median throughput improvement from 74,164 pps to 75,597 pps (+1.9%). The optimisation is load-bearing when the consumer side gets faster (e.g. ICMP echo-reply dispatch optimisation) and the ring becomes the next bottleneck. Tests pin the drain semantic so future regressions are caught immediately. |
 
 ### Open (low priority, no flood-test evidence yet)
 
