@@ -1,5 +1,15 @@
 # Socket-Layer Linux Parity Audit
 
+> **STATUS UPDATE (post-`89da6654`):** Phase 1 is fully shipped (8
+> commits since audit creation `ccae024c`). Phase 2 server-compat
+> options are mostly shipped; substantial items (H3 IPV6_V6ONLY,
+> H2 SO_REUSEPORT, H4 multicast, M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE,
+> H8 SO_LINGER) are deliberately deferred with rationale below —
+> they each need a meaningful refactor that earns its own focused
+> work block. See §100 "Shipping status" for the full ledger.
+
+
+
 **Goal:** PyTCP's `pytcp.socket` module should be a drop-in
 substitute for CPython's stdlib `socket` module, such that
 applications written against the Linux/BSD socket API can be
@@ -558,57 +568,130 @@ that's intentional.
 
 ---
 
+## §100 Shipping status (post-`89da6654`)
+
+### Phase 1 — shipped in full (6/6)
+
+| Gap | Commit    | Summary                                                       |
+|-----|-----------|---------------------------------------------------------------|
+| C1  | `eb084949`| `fileno()` backed by per-socket `os.eventfd`; RX-side signal/drain wired across UDP, RAW, TCP-data, TCP-accept-queue, EOF/abort/timeout/keep-alive paths. |
+| C2  | `31983483`| `setblocking(flag)` / `getblocking()` on the abstract base; non-blocking RX/accept paths raise `BlockingIOError(errno.EAGAIN)`; accepted children inherit the listener's flag. |
+| C5  | `7dfe3723`| `recv(bufsize)` honor — UDP/RAW truncate the popped datagram per POSIX SOCK_DGRAM/SOCK_RAW; TCP already forwarded bufsize as byte_count, regression test added. |
+| C3  | `b8559d7c`| `selectors.DefaultSelector` integration tests; eventfd is always writable (matches PyTCP's unbounded tx buffer until SO_SNDBUF lands). |
+| C6  | `c27182e6`| Errno-mapped `OSError` sweep — `e.errno` set to ECONNREFUSED/ETIMEDOUT/EADDRINUSE/EADDRNOTAVAIL/EAGAIN/EPIPE/EDESTADDRREQ/ENOPROTOOPT/EINVAL across Tcp/Udp/Raw. |
+| C4  | `74af6e82`| `getaddrinfo` / `gethostbyname` / `gethostbyname_ex` / `gethostname` / `getnameinfo` / `getfqdn` re-exported from CPython stdlib; INADDR_* constants exposed (L4 bonus). |
+
+### Phase 2 — shipped (5/8) + deferred (3/8)
+
+| Gap | Status | Commit / Rationale |
+|-----|--------|---------------------|
+| H1 SO_REUSEADDR     | shipped | `705a4617` — bypasses "address already in use" gate when set. |
+| H7 SO_SNDBUF/RCVBUF | shipped (storage) | `705a4617` — round-trip via setsockopt; full tx/rx buffer cap enforcement deferred to a focused commit (RCVBUF would also need to drive RCV.WND advertisement). |
+| H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded; TCP storage-only (FSM segment-emit propagation deferred). |
+| M1 SO_RCVTIMEO/SO_SNDTIMEO | shipped (RCVTIMEO) | `705a4617` — RCVTIMEO supplies recv-default timeout; SNDTIMEO storage-only (UDP/RAW sends today don't block on tx buffer space). |
+| M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
+| **H3 IPV6_V6ONLY**  | **deferred** | Substantial — needs IPv4-mapped IPv6 (`::ffff:0:0/96`) support in `Ip6Address`, plus dual-stack listener-fork that translates inbound IPv4 connections into IPv4-mapped peer addresses on `accept()`. Ship as a focused work block. |
+| **H2 SO_REUSEPORT** | **deferred** | Substantial — needs `stack.sockets` refactor from `dict[SocketId, socket]` to a multi-listener-aware structure, plus inbound-connection demux (round-robin or hash) across the REUSEPORT cohort. |
+| **H8 SO_LINGER**    | **deferred** | Needs a bytes-encoded `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", onoff, linger))` API; PyTCP's setsockopt currently takes `value: int`, so a kwarg-shape change is required first. Bundle with M2 sendmsg/recvmsg work. |
+
+### Phase 3 — multicast / advanced — all deferred (5/5)
+
+| Gap | Status | Rationale |
+|-----|--------|-----------|
+| **H4 IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP** | deferred | Substantial — needs MLDv2 querier role / group-membership table refactor in the packet handler. Crosses into Phase-2 (router) North Star territory. |
+| **H5 SO_BROADCAST** | partially shipped | `705a4617` stored the flag; full broadcast-send gate enforcement (refuse with EACCES when flag is False, matching Linux) deferred — would break existing PyTCP callers that don't set the flag, needs a coordinated stack-internal audit first. |
+| **H2 SO_REUSEPORT** | (see Phase 2)    |  |
+| **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | partial | (see Phase 2 row above) |
+| **M5 TCP_INFO**     | deferred | Needs to pack `TcpStatus` (already exposed via `socket.status()`) into the Linux `tcp_info` struct (~50 fields, ~232 bytes). Mostly mechanical; one commit. |
+
+### Phase 4 — specialised — all deferred (5/5)
+
+| Gap | Rationale |
+|-----|-----------|
+| **M2 sendmsg / recvmsg**  | Substantial — needs a control-message decoder/encoder layer (cmsg). Many apps don't use this; stubbing as `NotImplementedError` until a concrete consumer arrives is acceptable. |
+| **M3 MSG_OOB**            | Needs TCP-FSM URG-flag pivot to expose urgent-byte split through `recv(MSG_OOB)`; the FSM RX-side URG handling exists but isn't surfaced to the application. |
+| **M6 TCP_USER_TIMEOUT**   | Needs `TcpSession._rto_state` to consult a per-connection override on the R2 abort path. ~15-line change. |
+| **M7 TCP_MAXSEG**         | Needs `TcpSession` to clamp the SYN MSS option to the configured value during SYN options assembly. ~10-line change. |
+| **M8 MSG_ERRQUEUE / IP_RECVERR** | Substantial — needs per-socket error queue, `notify_*` paths refactored to enqueue rather than inline-raise. |
+
+### Phase 5 — polish (1/4 shipped + 3 deferred)
+
+| Gap | Status | Rationale |
+|-----|--------|-----------|
+| **L1 dup() / dup2()**     | deferred | Depends on the per-socket eventfd's OS semantics — `os.dup(eventfd)` shares the kernel object, but we'd also need to share the Python-level rx queue / accept queue, which doesn't fit the BSD `dup` model cleanly. |
+| **L2 socketpair()**       | deferred (out-of-scope) | Mostly Unix-domain; outside North-Star. |
+| **L3 hostname in bind/connect** | deferred | Apps should call `getaddrinfo` first and pass a numeric IP; the C4 re-export already unblocks this idiom. Auto-resolve in bind/connect is a SHOULD, not a MUST. |
+| **L4 INADDR_* constants** | shipped | `74af6e82` exposes INADDR_ANY / INADDR_BROADCAST / INADDR_LOOPBACK / INADDR_NONE. |
+
+### Cross-cutting (X1-X3)
+
+| Item | Status | Note |
+|------|--------|------|
+| **X1 stack-thread safety audit** | not yet performed | The producer (stack thread) and consumer (app thread) coordination paths are GIL-correct under the C1+C2 invariants, but a full race analysis is owed. |
+| **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
+| **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
+
+### Suggested resume points
+
+If resuming this work, prioritise (rough order):
+
+  1. **M5 TCP_INFO** — small, high-value (debugging / monitoring).
+  2. **M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG** — small, per-connection
+     TCP options that round out application-level control.
+  3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most
+     servers expect dual-stack); substantial refactor in
+     `net_addr.Ip6Address` + dual-stack listener pivot.
+  4. **H4 multicast** — needs MLDv2 querier role; pair with the
+     Phase-2 (router) North Star work.
+  5. **H2 SO_REUSEPORT** — `stack.sockets` multi-listener refactor.
+  6. **M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE** — control-message
+     layer; one focused work block.
+
+---
+
 ## §99 Resume prompt (paste verbatim after `/compact`)
 
 ```
 I'm resuming PyTCP socket-layer Linux-parity work from a
-context-compacted state. The full audit lives at
-`docs/refactor/socket_linux_parity_audit.md` (committed at
-`ccae024c`); it catalogues 26 deficiencies in pytcp.socket
-classified CRITICAL / HIGH / MEDIUM / LOW against the
-POSIX-2017 + Linux extensions baseline.
+context-compacted state. Phase 1 is fully shipped (`eb084949`
+through `74af6e82`) and Phase 2 is partially shipped (commits
+`705a4617`, `89da6654`); the remaining deferred items are listed
+in the audit doc's §100 "Shipping status" ledger.
 
 Read these in order before any code:
 
-  1. docs/refactor/socket_linux_parity_audit.md (the full
-     deficiency report — sections by tier, plus the
-     "Recommended sequencing" §99 phase plan)
-  2. CLAUDE.md (Project North Star: applications written
-     for Linux should re-import against pytcp.socket and
-     work unchanged; deliberate-skip categories)
+  1. docs/refactor/socket_linux_parity_audit.md — read §100
+     "Shipping status" first to see what's done and what's
+     deferred-with-rationale, then the original tier-by-tier
+     classification for context.
+  2. CLAUDE.md (Project North Star: Linux-stack parity;
+     deliberate-skip categories)
   3. .claude/rules/feature_implementation.md (commit
      discipline; tests-first; Linux-as-tiebreaker rule)
   4. .claude/rules/unit_tests.md (test-authoring rule;
      §7.2 self-audit script blocks every commit)
   5. .claude/rules/coding_style.md (source-authoring rule)
-  6. The current pytcp/socket/ tree to see what's there:
-     - pytcp/socket/__init__.py (factory + enums + base)
-     - pytcp/socket/tcp__socket.py
-     - pytcp/socket/udp__socket.py
-     - pytcp/socket/raw__socket.py
-     - pytcp/socket/socket_id.py
+  6. The current pytcp/socket/ tree
 
 After reading, confirm you understand:
 
-  - The CRITICAL bucket is interlocked: C1 (fileno + eventfd
-    backing) is the foundation; C2 (setblocking), C3
-    (selector integration), C5 (bufsize) layer on top.
-    Without C1, the other CRITICAL items are mostly
-    ineffective for async frameworks (asyncio / trio /
-    twisted).
-  - Phase 1 (the work block to start with) is C1 → C2 →
-    C5 → C3 → C6 (errno sweep) → C4 (getaddrinfo re-
-    export from CPython stdlib). Each commit lands tests-
-    first; the §7.2 audit blocks every commit.
+  - Phase 1 (CRITICAL) is fully shipped. Phase 2 (HIGH) is
+    mostly shipped except H3 IPV6_V6ONLY, H2 SO_REUSEPORT,
+    H8 SO_LINGER (substantial refactors deferred per §100).
+  - Suggested resume order (per §100 "Suggested resume
+    points"): M5 TCP_INFO → M6 TCP_USER_TIMEOUT + M7
+    TCP_MAXSEG → H3 IPV6_V6ONLY → H4 multicast → H2
+    SO_REUSEPORT → M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE.
   - Out-of-scope per North Star: AF_UNIX, TCP_MD5SIG,
-    IPsec socket options. Don't add these even if asked.
+    IPsec socket options, SCM_RIGHTS, socketpair (Unix
+    domain). Don't add these even if asked.
 
 Branch: PyTCP_3_0__pre_release
 
-Then ask the user which Phase-1 commit to start with. If
-they say "go" or "next", start with C1 (fileno() +
-eventfd backing). Tests-first per CLAUDE.md MUST.
+Then ask the user which item to start with (default to
+M5 TCP_INFO if they say "go" or "next"). Tests-first per
+CLAUDE.md MUST.
 
 Do NOT push without explicit user request. Commit after
-each phase; user pushes when ready.
+each item; user pushes when ready.
 ```
