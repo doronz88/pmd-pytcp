@@ -49,14 +49,6 @@ _BASELINE_FRAME = b"\xff\x00\x00\x00\x00\x00\x00\x00"
 class TestIp6FragParserSanityChecks(TestCase):
     """
     The IPv6 Frag packet parser sanity checks tests.
-
-    The Ip6FragParser '_validate_sanity()' implementation is currently
-    a no-op (RFC 2460 fragmentation header has no semantic constraints
-    beyond the wire-format ones already covered by the integrity stage
-    and dataclass asserts). This suite documents that contract: a
-    well-formed frame must parse without raising Ip6FragSanityError,
-    and any future sanity check should be added here as a parametrized
-    negative test.
     """
 
     def test__ip6_frag__parser__sanity__no_op_for_baseline_frame(self) -> None:
@@ -64,6 +56,8 @@ class TestIp6FragParserSanityChecks(TestCase):
         Ensure that parsing a well-formed minimal frame does not raise
         Ip6FragSanityError. This guards against a future change that
         accidentally rejects valid frames.
+
+        Reference: RFC 8200 §4.5 (Fragment header well-formed baseline).
         """
 
         packet_rx = PacketRx(_BASELINE_FRAME)
@@ -75,6 +69,78 @@ class TestIp6FragParserSanityChecks(TestCase):
             Ip6FragParser(packet_rx)
         except Ip6FragSanityError as error:  # pragma: no cover
             self.fail(f"Baseline frame must not raise Ip6FragSanityError, got: {error!s}")
+
+    def test__ip6_frag__parser__sanity__non_final_payload_not_8_byte_aligned(self) -> None:
+        """
+        Ensure a non-final fragment whose payload length is not a
+        multiple of 8 octets raises Ip6FragSanityError. The
+        normative MUST is that the receiver discard such a frame;
+        the parser raises so the upstream handler can drop it (and,
+        in a later commit, may emit ICMPv6 Parameter Problem code
+        0 pointing at the Payload Length field).
+
+        Reference: RFC 8200 §4.5 (non-final fragment payload length
+        MUST be a multiple of 8).
+        """
+
+        # IPv6 Frag wire frame (8 + 7 = 15 bytes):
+        #   Byte  0     : 0x06       -> next=TCP (6)
+        #   Byte  1     : 0x00       -> reserved
+        #   Bytes 2-3   : 0x0001     -> offset=0, res=0, flag_mf=1
+        #   Bytes 4-7   : 0x00000042 -> id=0x42
+        #   Bytes 8-14  : 0xaa * 7   -> 7-byte payload (sanity violation: not 8-aligned)
+        frame = b"\x06\x00\x00\x01\x00\x00\x00\x42" + b"\xaa" * 7
+
+        packet_rx = PacketRx(frame)
+        packet_rx.ip6 = SimpleNamespace(  # type: ignore[assignment]
+            dlen=len(frame),
+        )
+
+        with self.assertRaises(Ip6FragSanityError) as error:
+            Ip6FragParser(packet_rx)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[SANITY ERROR][IPv6 Frag] Non-final fragment payload length "
+                "must be a multiple of 8. Got: len(self._payload)=7, "
+                "self._header.flag_mf=True"
+            ),
+            msg=(
+                "Non-final fragment with 7-byte payload must raise "
+                "Ip6FragSanityError with the canonical message format."
+            ),
+        )
+
+    def test__ip6_frag__parser__sanity__final_fragment_unaligned_payload_accepted(self) -> None:
+        """
+        Ensure a final fragment (M=0) whose payload is not a
+        multiple of 8 parses cleanly. The 8-octet-alignment
+        constraint applies only to non-final fragments because the
+        last fragment carries whatever remainder is left of the
+        original datagram.
+
+        Reference: RFC 8200 §4.5 (alignment constraint scoped to
+        non-final fragments).
+        """
+
+        # IPv6 Frag wire frame (8 + 7 = 15 bytes):
+        #   Byte  0     : 0x06       -> next=TCP (6)
+        #   Byte  1     : 0x00       -> reserved
+        #   Bytes 2-3   : 0x0010     -> offset=2 (16 bytes), res=0, flag_mf=0
+        #   Bytes 4-7   : 0x00000042 -> id=0x42
+        #   Bytes 8-14  : 0xbb * 7   -> 7-byte payload (final fragment remainder)
+        frame = b"\x06\x00\x00\x10\x00\x00\x00\x42" + b"\xbb" * 7
+
+        packet_rx = PacketRx(frame)
+        packet_rx.ip6 = SimpleNamespace(  # type: ignore[assignment]
+            dlen=len(frame),
+        )
+
+        try:
+            Ip6FragParser(packet_rx)
+        except Ip6FragSanityError as error:  # pragma: no cover
+            self.fail(f"Final fragment with unaligned payload must parse, got: {error!s}")
 
     def test__ip6_frag__sanity_error__message_prefix(self) -> None:
         """

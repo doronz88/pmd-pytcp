@@ -36,7 +36,10 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
-from net_proto.protocols.ip6_frag.ip6_frag__errors import Ip6FragIntegrityError
+from net_proto.protocols.ip6_frag.ip6_frag__errors import (
+    Ip6FragIntegrityError,
+    Ip6FragSanityError,
+)
 from net_proto.protocols.ip6_frag.ip6_frag__header import (
     IP6_FRAG__HEADER__LEN,
     Ip6FragHeader,
@@ -89,9 +92,17 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
     def _validate_sanity(self) -> None:
         """
         Ensure sanity of the IPv6 Frag packet after parsing it.
+
+        Reference: RFC 8200 §4.5 (non-final fragment payload length
+        MUST be a multiple of 8 octets; receiver discards otherwise).
         """
 
-        # Currently no sanity checks are implemented for the IPv6 Frag protocol.
+        if self._header.flag_mf and (value := len(self._payload)) % 8 != 0:
+            raise Ip6FragSanityError(
+                "Non-final fragment payload length must be a multiple of 8. "
+                f"Got: len(self._payload)={value}, "
+                f"self._header.flag_mf={self._header.flag_mf}",
+            )
 
     @property
     def header_bytes(self) -> Buffer:
