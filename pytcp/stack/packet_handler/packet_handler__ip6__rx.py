@@ -239,6 +239,17 @@ class PacketHandlerIp6Rx(ABC):
                     chain_offset += (packet_rx.ip6_dest_opts.hdr_ext_len + 1) * 8
                     current_next = packet_rx.ip6_dest_opts.next
 
+            # Re-anchor 'packet_rx.ip6._payload' onto the post-
+            # extension-header frame so downstream transport
+            # parsers (Icmp6Parser, UdpParser, TcpParser) see the
+            # correct 'payload_len' / 'dlen' for THEIR header. The
+            # parsers' integrity checks compare 'len(frame)' against
+            # 'ip6.dlen'; without this mutation the dlen still
+            # reflects the original IPv6 payload (including the
+            # consumed extension headers) and the upper-bound check
+            # trips on a chain-walked frame.
+            packet_rx.ip6._payload = packet_rx.frame
+
         # Transport / chain-terminator dispatch.
         match current_next:
             case IpProto.ICMP6:

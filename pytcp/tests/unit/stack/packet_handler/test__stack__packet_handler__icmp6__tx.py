@@ -195,7 +195,11 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         call = handler.ip6_tx_calls[0]
         self.assertEqual(call["ip6__dst"], Ip6Address("ff02::16"))
         self.assertEqual(call["ip6__hop"], 1)
-        self.assertIsInstance(call["ip6__payload"], Icmp6Assembler)
+        # The MLDv2 Report is wrapped in an HBH+RouterAlert per RFC
+        # 3810 §5 + RFC 2711, so the IPv6 payload is an Ip6HbhAssembler.
+        from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
+
+        self.assertIsInstance(call["ip6__payload"], Ip6HbhAssembler)
         self.assertEqual(
             handler._packet_stats_tx.icmp6__mld2__report__send,
             1,

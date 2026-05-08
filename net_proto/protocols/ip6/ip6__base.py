@@ -37,12 +37,28 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto import Proto
 from net_proto.protocols.icmp6.icmp6__assembler import Icmp6Assembler
 from net_proto.protocols.ip6.ip6__header import Ip6Header, Ip6HeaderProperties
+from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__assembler import (
+    Ip6DestOptsAssembler,
+)
 from net_proto.protocols.ip6_frag.ip6_frag__assembler import Ip6FragAssembler
+from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
+from net_proto.protocols.ip6_routing.ip6_routing__assembler import (
+    Ip6RoutingAssembler,
+)
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from net_proto.protocols.udp.udp__assembler import UdpAssembler
 
-type Ip6Payload = (Ip6FragAssembler | Icmp6Assembler | TcpAssembler | UdpAssembler | RawAssembler)
+type Ip6Payload = (
+    Ip6HbhAssembler
+    | Ip6RoutingAssembler
+    | Ip6FragAssembler
+    | Ip6DestOptsAssembler
+    | Icmp6Assembler
+    | TcpAssembler
+    | UdpAssembler
+    | RawAssembler
+)
 
 
 class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):

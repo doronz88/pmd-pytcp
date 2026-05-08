@@ -30,6 +30,7 @@ pytcp/subsystems/packet_handler/packet_handler__icmp6__tx.py
 ver 3.0.4
 """
 
+import struct
 from abc import ABC
 from typing import TYPE_CHECKING
 
@@ -46,8 +47,18 @@ from net_proto import (
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6Type,
+    IpProto,
     Tracker,
 )
+from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
+from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__padn import (
+    Ip6HbhOptionPadN,
+)
+from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__router_alert import (
+    IP6_HBH__OPTION__ROUTER_ALERT__VALUE__MLD,
+    Ip6HbhOptionRouterAlert,
+)
+from net_proto.protocols.ip6_hbh.options.ip6_hbh__options import Ip6HbhOptions
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -178,43 +189,106 @@ class PacketHandlerIcmp6Tx(ABC):
 
     def _send_icmp6_multicast_listener_report(self) -> None:
         """
-        Send out ICMPv6 Multicast Listener Report for given list of addresses.
+        Send out ICMPv6 Multicast Listener Report for given list of
+        addresses, wrapped in a Hop-by-Hop Options header carrying
+        the Router Alert option (value=MLD) so MLD-aware routers
+        intercept the report per RFC 3810 §5 + RFC 2711.
+
+        Hop Limit is fixed at 1 per RFC 3810 §5.2.13 (MLDv2 messages
+        are link-local).
         """
 
         # Need to use set here to avoid reusing duplicate multicast entries
         # from stack_ip6_multicast list, also All Multicast Nodes address is
         # not being advertised as this is not necessary.
-        if icmp6_mlr2_multicast_address_record := {
+        icmp6_mlr2_multicast_address_record = {
             Icmp6Mld2MulticastAddressRecord(
                 type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
                 multicast_address=multicast_address,
             )
             for multicast_address in self._ip6_multicast
             if multicast_address not in {Ip6Address("ff02::1")}
-        }:
-            tx_status = self._phtx_icmp6(
-                ip6__src=(self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()),
-                ip6__dst=Ip6Address("ff02::16"),
-                ip6__hop=1,
-                icmp6__message=Icmp6Mld2MessageReport(records=list(icmp6_mlr2_multicast_address_record)),
-            )
+        }
 
-            if tx_status in {
-                TxStatus.PASSED__ETHERNET__TO_TX_RING,
-                TxStatus.PASSED__IP6__TO_TX_RING,
-            }:
-                __debug__ and log(
-                    "stack",
-                    "Sent out ICMPv6 Multicast Listener Report message for "
-                    f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}",
-                )
-            else:
-                __debug__ and log(
-                    "stack",
-                    "Failed to send out ICMPv6 Multicast Listener Report message for "
-                    f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}, "
-                    f"tx_status: {tx_status}",
-                )
+        if not icmp6_mlr2_multicast_address_record:
+            return
+
+        ip6__src = self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()
+        ip6__dst = Ip6Address("ff02::16")
+
+        # Build the ICMPv6 MLDv2 Report packet.
+        icmp6_packet_tx = Icmp6Assembler(
+            icmp6__message=Icmp6Mld2MessageReport(records=list(icmp6_mlr2_multicast_address_record)),
+        )
+
+        # Pre-compute the ICMPv6 pseudo-header sum that will be used
+        # to finalise the ICMPv6 checksum. RFC 4443 §2.3: the
+        # pseudo-header carries 'src + dst + Upper-Layer Packet
+        # Length + Next Header = 58' regardless of any extension
+        # headers between IPv6 and ICMPv6, so the value can be
+        # computed here without help from 'Ip6Assembler' (which
+        # only auto-injects pshdr_sum on TCP/UDP/Icmp6/Raw payloads
+        # — not when the immediate IPv6 payload is a Hop-by-Hop
+        # extension header).
+        pseudo_header = struct.pack(
+            "! 16s 16s L BBBB",
+            bytes(ip6__src),
+            bytes(ip6__dst),
+            len(icmp6_packet_tx),
+            0,
+            0,
+            0,
+            int(IpProto.ICMP6),
+        )
+        icmp6_packet_tx.pshdr_sum = sum(struct.unpack("! 5Q", pseudo_header))
+
+        # Serialise the (now-checksummed) ICMPv6 packet to bytes for
+        # carriage as the HBH payload.
+        icmp6_buffers: list = []
+        icmp6_packet_tx.assemble(icmp6_buffers)
+        icmp6_bytes = b"".join(bytes(buf) for buf in icmp6_buffers)
+
+        # Wrap in HBH carrying Router Alert (value=MLD per RFC 2711)
+        # plus a PadN(0) to align the HBH header to 8 octets:
+        #   2-byte HBH prefix + 4-byte RA + 2-byte PadN(0) = 8 bytes.
+        hbh_packet_tx = Ip6HbhAssembler(
+            ip6_hbh__next=IpProto.ICMP6,
+            ip6_hbh__options=Ip6HbhOptions(
+                Ip6HbhOptionRouterAlert(
+                    value=IP6_HBH__OPTION__ROUTER_ALERT__VALUE__MLD,
+                ),
+                Ip6HbhOptionPadN(b""),
+            ),
+            ip6_hbh__payload=icmp6_bytes,
+            echo_tracker=icmp6_packet_tx.tracker,
+        )
+
+        self._packet_stats_tx.icmp6__pre_assemble += 1
+        self._packet_stats_tx.icmp6__mld2__report__send += 1
+
+        tx_status = self._phtx_ip6(
+            ip6__src=ip6__src,
+            ip6__dst=ip6__dst,
+            ip6__hop=1,
+            ip6__payload=hbh_packet_tx,
+        )
+
+        if tx_status in {
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            TxStatus.PASSED__IP6__TO_TX_RING,
+        }:
+            __debug__ and log(
+                "stack",
+                "Sent out ICMPv6 Multicast Listener Report (HBH+RA) for "
+                f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}",
+            )
+        else:
+            __debug__ and log(
+                "stack",
+                "Failed to send out ICMPv6 Multicast Listener Report (HBH+RA) for "
+                f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}, "
+                f"tx_status: {tx_status}",
+            )
 
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """
