@@ -32,6 +32,7 @@ ver 3.0.4
 
 import errno
 import os
+import socket as _stdlib_socket
 from abc import ABC
 from enum import IntEnum
 from types import TracebackType
@@ -146,6 +147,29 @@ AF_INET6 = AddressFamily.INET6
 SOCK_STREAM = SocketType.STREAM
 SOCK_DGRAM = SocketType.DGRAM
 SOCK_RAW = SocketType.RAW
+
+# DNS / hostname resolution lives outside the TCP/IP stack scope:
+# 'getaddrinfo' / 'gethostbyname' / 'getnameinfo' / 'getfqdn' are
+# re-exported verbatim from CPython's stdlib 'socket' so application
+# code calling 'pytcp.socket.getaddrinfo("example.com", 80)' gets
+# real DNS resolution. The resulting numeric IP string then flows
+# back into PyTCP's 'bind' / 'connect' / 'sendto'.
+getaddrinfo = _stdlib_socket.getaddrinfo
+gethostbyname = _stdlib_socket.gethostbyname
+gethostbyname_ex = _stdlib_socket.gethostbyname_ex
+gethostname = _stdlib_socket.gethostname
+getnameinfo = _stdlib_socket.getnameinfo
+getfqdn = _stdlib_socket.getfqdn
+
+# BSD '<arpa/inet.h>' INADDR_* constants (re-exported as plain ints
+# matching CPython's stdlib 'socket.INADDR_*'). Apps that pass
+# 'INADDR_ANY' to 'bind()' instead of the empty string are common
+# in code ported from C; expose the constants so the same idiom
+# works.
+INADDR_ANY: int = 0
+INADDR_BROADCAST: int = 0xFFFFFFFF
+INADDR_LOOPBACK: int = 0x7F000001
+INADDR_NONE: int = 0xFFFFFFFF
 
 
 class socket(ABC):

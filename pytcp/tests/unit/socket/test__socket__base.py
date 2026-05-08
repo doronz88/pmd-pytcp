@@ -1284,3 +1284,115 @@ class TestSocketBlocking(TestCase):
                 value,
                 msg=f"setblocking({value}) must round-trip through getblocking().",
             )
+
+
+class TestSocketDnsHelpers(TestCase):
+    """
+    The 'pytcp.socket' DNS-helper re-export tests.
+    """
+
+    def test__socket__getaddrinfo_is_stdlib_re_export(self) -> None:
+        """
+        Ensure 'pytcp.socket.getaddrinfo' is the same callable as
+        CPython's stdlib 'socket.getaddrinfo' so apps calling
+        'pytcp.socket.getaddrinfo(...)' get real DNS resolution.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import socket as _stdlib
+
+        from pytcp import socket as pytcp_socket
+
+        self.assertIs(
+            pytcp_socket.getaddrinfo,
+            _stdlib.getaddrinfo,
+            msg="pytcp.socket.getaddrinfo must be the stdlib getaddrinfo callable.",
+        )
+
+    def test__socket__gethostbyname_is_stdlib_re_export(self) -> None:
+        """
+        Ensure 'pytcp.socket.gethostbyname' is the stdlib symbol.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import socket as _stdlib
+
+        from pytcp import socket as pytcp_socket
+
+        self.assertIs(
+            pytcp_socket.gethostbyname,
+            _stdlib.gethostbyname,
+            msg="pytcp.socket.gethostbyname must be the stdlib gethostbyname callable.",
+        )
+
+    def test__socket__getnameinfo_is_stdlib_re_export(self) -> None:
+        """
+        Ensure 'pytcp.socket.getnameinfo' is the stdlib symbol.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import socket as _stdlib
+
+        from pytcp import socket as pytcp_socket
+
+        self.assertIs(
+            pytcp_socket.getnameinfo,
+            _stdlib.getnameinfo,
+            msg="pytcp.socket.getnameinfo must be the stdlib getnameinfo callable.",
+        )
+
+
+class TestSocketInaddrConstants(TestCase):
+    """
+    The 'pytcp.socket' INADDR_* constant tests.
+    """
+
+    def test__socket__inaddr_any_is_zero(self) -> None:
+        """
+        Ensure 'INADDR_ANY' equals 0, matching '<arpa/inet.h>'
+        and CPython's stdlib 'socket.INADDR_ANY'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import INADDR_ANY
+
+        self.assertEqual(
+            INADDR_ANY,
+            0,
+            msg="INADDR_ANY must equal 0 per <arpa/inet.h>.",
+        )
+
+    def test__socket__inaddr_loopback_is_127_0_0_1(self) -> None:
+        """
+        Ensure 'INADDR_LOOPBACK' equals 0x7f000001 (127.0.0.1).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import INADDR_LOOPBACK
+
+        self.assertEqual(
+            INADDR_LOOPBACK,
+            0x7F000001,
+            msg="INADDR_LOOPBACK must equal 0x7f000001 (127.0.0.1).",
+        )
+
+    def test__socket__inaddr_broadcast_is_all_ones(self) -> None:
+        """
+        Ensure 'INADDR_BROADCAST' equals 0xffffffff
+        (255.255.255.255).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import INADDR_BROADCAST
+
+        self.assertEqual(
+            INADDR_BROADCAST,
+            0xFFFFFFFF,
+            msg="INADDR_BROADCAST must equal 0xffffffff (255.255.255.255).",
+        )
