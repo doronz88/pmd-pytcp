@@ -35,7 +35,7 @@ from unittest import TestCase
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
 from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragTable
+from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
 
 _HOST_A__IP4 = Ip4Address("10.0.0.1")
 _HOST_B__IP4 = Ip4Address("10.0.0.2")
@@ -102,8 +102,9 @@ class TestIpFragTableAddFragmentIp4(TestCase):
 
     def test__ip_frag_table__add_fragment__pending_when_more_expected(self) -> None:
         """
-        Ensure 'add_fragment' returns None and stores the fragment
-        when the M flag is still set (more fragments to come).
+        Ensure 'add_fragment' returns the PENDING outcome and
+        stores the fragment when the M flag is still set (more
+        fragments to come).
 
         Reference: RFC 791 §3.2 (fragmented datagram still pending).
         """
@@ -116,9 +117,10 @@ class TestIpFragTableAddFragmentIp4(TestCase):
             header=b"\x45" + b"\x00" * 19,
         )
 
-        self.assertIsNone(
-            result,
-            msg="A non-final fragment alone must return None.",
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.PENDING,
+            msg="A non-final fragment alone must yield the PENDING outcome.",
         )
         self.assertIn(
             self._flow_id,
@@ -129,8 +131,8 @@ class TestIpFragTableAddFragmentIp4(TestCase):
     def test__ip_frag_table__add_fragment__contiguous_completion_returns_payload(self) -> None:
         """
         Ensure two contiguous fragments (offset 0 / MF=1, offset 8
-        / MF=0) reassemble into a single joined payload and the
-        flow is dropped from the store.
+        / MF=0) reassemble into a single joined payload, yield the
+        COMPLETE outcome, and drop the flow from the store.
 
         Reference: RFC 791 §3.2 (reassembly on contiguous offset chain).
         """
@@ -150,19 +152,18 @@ class TestIpFragTableAddFragmentIp4(TestCase):
             header=b"\x45" + b"\x00" * 19,
         )
 
-        self.assertIsNotNone(
-            result,
-            msg="Final fragment of a contiguous flow must return the joined bytes.",
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="Final fragment of a contiguous flow must yield the COMPLETE outcome.",
         )
-        assert result is not None
-        header_bytes, payload_bytes = result
         self.assertEqual(
-            payload_bytes,
+            result.payload,
             b"\xaa" * 8 + b"\xbb" * 8,
             msg="Joined payload must be the concatenation of fragment payloads in offset order.",
         )
         self.assertEqual(
-            header_bytes,
+            result.header,
             b"\x45" + b"\x00" * 19,
             msg="Returned header must be the first-fragment header bytes verbatim.",
         )
@@ -197,9 +198,10 @@ class TestIpFragTableAddFragmentIp4(TestCase):
             header=b"\x45" + b"\x00" * 19,
         )
 
-        self.assertIsNone(
-            result,
-            msg="A flow with a hole must return None even after the last fragment lands.",
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.PENDING,
+            msg="A flow with a hole must remain PENDING even after the last fragment lands.",
         )
         self.assertIn(
             self._flow_id,
@@ -241,10 +243,13 @@ class TestIpFragTableAddFragmentIp6(TestCase):
             header=b"\x60" + b"\x00" * 39,
         )
 
-        assert result is not None
-        _, payload_bytes = result
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="An IPv6 contiguous reassembly must yield COMPLETE.",
+        )
         self.assertEqual(
-            payload_bytes,
+            result.payload,
             b"\x00" * 8 + b"\x11" * 8,
             msg="IPv6 flow must reassemble identically to IPv4.",
         )

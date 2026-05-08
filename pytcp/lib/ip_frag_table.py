@@ -31,10 +31,36 @@ ver 3.0.4
 """
 
 import struct
+from dataclasses import dataclass
+from enum import Enum
 from time import time
 
 from net_proto.lib.buffer import Buffer
 from pytcp.lib.ip_frag import IpFragData, IpFragFlowId
+
+
+class IpFragAddOutcome(Enum):
+    """
+    Tag for the outcome of an 'IpFragTable.add_fragment' call.
+    """
+
+    PENDING = "pending"
+    COMPLETE = "complete"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class IpFragAddResult:
+    """
+    Tagged result of an 'IpFragTable.add_fragment' call.
+
+    'header' / 'payload' carry the joined datagram bytes when
+    'outcome is IpFragAddOutcome.COMPLETE'. Otherwise both are
+    empty 'bytes()' sentinels and callers must not consume them.
+    """
+
+    outcome: IpFragAddOutcome
+    header: bytes = b""
+    payload: bytes = b""
 
 
 class IpFragTable:
@@ -78,15 +104,18 @@ class IpFragTable:
         payload: Buffer,
         flag_mf: bool,
         header: Buffer,
-    ) -> tuple[bytes, bytes] | None:
+    ) -> IpFragAddResult:
         """
         Admit one fragment into the flow store.
 
-        Returns a '(header_bytes, joined_payload_bytes)' tuple
-        when the fragment that just arrived completes the
-        datagram. Returns None when more fragments are still
-        expected, or when the offsets so far do not yet form a
-        contiguous prefix.
+        Returns an 'IpFragAddResult' tagged by 'IpFragAddOutcome':
+
+          - PENDING:  the fragment is stored and more are
+                      expected (or the offset chain is not yet
+                      contiguous).
+          - COMPLETE: the fragment that just arrived completes
+                      the datagram; 'header' / 'payload' carry
+                      the joined bytes.
 
         The expiry sweep ('time() - timestamp >= timeout' purges
         the flow) runs at the head of every admission, matching
@@ -113,11 +142,11 @@ class IpFragTable:
         # Completeness check: last-fragment seen + every byte
         # covered by a contiguous offset chain starting at zero.
         if not self._flows[flow_id].last:
-            return None
+            return IpFragAddResult(outcome=IpFragAddOutcome.PENDING)
         payload_len = 0
         for entry_offset in sorted(self._flows[flow_id].payload):
             if entry_offset > payload_len:
-                return None
+                return IpFragAddResult(outcome=IpFragAddOutcome.PENDING)
             payload_len = entry_offset + len(self._flows[flow_id].payload[entry_offset])
 
         # Build the joined payload buffer in offset order.
@@ -129,4 +158,8 @@ class IpFragTable:
         header_bytes = bytes(self._flows[flow_id].header)
         del self._flows[flow_id]
 
-        return header_bytes, bytes(joined)
+        return IpFragAddResult(
+            outcome=IpFragAddOutcome.COMPLETE,
+            header=header_bytes,
+            payload=bytes(joined),
+        )

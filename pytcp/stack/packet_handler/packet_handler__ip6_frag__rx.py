@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 from net_proto import Ip6FragParser, PacketRx, PacketValidationError
 from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragTable
+from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
 from pytcp.lib.logger import log
 
 
@@ -106,9 +106,10 @@ class PacketHandlerIp6FragRx(ABC):
             flag_mf=packet_rx.ip6_frag.flag_mf,
             header=packet_rx.ip6.header_bytes,
         )
-        if result is None:
+        if result.outcome is not IpFragAddOutcome.COMPLETE:
             return None
-        header_bytes, payload = result
+        header_bytes = result.header
+        payload = result.payload
 
         # Reassembled IPv6 header rewrite: rewrite Payload Length
         # (bytes 4-5), set Next Header (byte 6) to the upper-layer

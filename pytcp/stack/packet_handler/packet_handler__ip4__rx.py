@@ -51,7 +51,7 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.ip_frag import IpFragFlowId
-from pytcp.lib.ip_frag_table import IpFragTable
+from pytcp.lib.ip_frag_table import IpFragAddOutcome, IpFragTable
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
@@ -323,9 +323,10 @@ class PacketHandlerIp4Rx(ABC):
             flag_mf=packet_rx.ip4.flag_mf,
             header=packet_rx.ip4.header_bytes,
         )
-        if result is None:
+        if result.outcome is not IpFragAddOutcome.COMPLETE:
             return None
-        header_bytes, payload = result
+        header_bytes = result.header
+        payload = result.payload
 
         # Reassembled IPv4 header rewrite: drop options (IHL=5),
         # rewrite Total Length, clear Flags / Fragment Offset,
