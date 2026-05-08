@@ -150,7 +150,8 @@ class RawSocket(socket):
                         Ip6Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip6AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -161,7 +162,8 @@ class RawSocket(socket):
                         Ip4Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip4AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -208,7 +210,10 @@ class RawSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified:
-            raise OSError("[Errno 89] Destination address required - [Socket has no destination address set]")
+            raise OSError(
+                errno.EDESTADDRREQ,
+                "Destination address required - [Socket has no destination address set]",
+            )
 
         match self._address_family:
             case AddressFamily.INET6:

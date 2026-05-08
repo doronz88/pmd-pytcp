@@ -1522,6 +1522,140 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
             self._socket.accept(timeout=0.01)
 
 
+class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
+    """
+    The 'TcpSocket' OSError errno-mapping tests.
+    """
+
+    def test__tcp_socket__bind_twice_carries_einval_errno(self) -> None:
+        """
+        Ensure 'bind()' on an already-bound TCP socket raises
+        'OSError' with '.errno == errno.EINVAL'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s._close_io_runtime)
+        s.bind(("10.0.0.1", 8080))
+
+        with self.assertRaises(OSError) as context:
+            s.bind(("10.0.0.1", 8081))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EINVAL,
+            msg="bind-twice OSError must carry errno=EINVAL.",
+        )
+
+    def test__tcp_socket__bind_foreign_ip_carries_eaddrnotavail_errno(self) -> None:
+        """
+        Ensure 'bind()' to a non-stack-owned IP raises 'OSError'
+        with '.errno == errno.EADDRNOTAVAIL'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s._close_io_runtime)
+
+        with self.assertRaises(OSError) as context:
+            s.bind(("192.168.99.99", 0))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRNOTAVAIL,
+            msg="foreign-IP bind OSError must carry errno=EADDRNOTAVAIL.",
+        )
+
+    def test__tcp_socket__bind_address_in_use_carries_eaddrinuse_errno(self) -> None:
+        """
+        Ensure 'bind()' to an in-use port raises 'OSError' with
+        '.errno == errno.EADDRINUSE'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(first._close_io_runtime)
+        first.bind(("10.0.0.1", 8080))
+
+        second = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(second._close_io_runtime)
+
+        with self.assertRaises(OSError) as context:
+            second.bind(("10.0.0.1", 8080))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRINUSE,
+            msg="address-in-use bind OSError must carry errno=EADDRINUSE.",
+        )
+
+    def test__tcp_socket__send_no_destination_carries_epipe_errno(self) -> None:
+        """
+        Ensure 'send()' on a socket with no remote IP raises
+        'BrokenPipeError' with '.errno == errno.EPIPE'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s._close_io_runtime)
+        s._tcp_session = MagicMock()
+
+        with self.assertRaises(BrokenPipeError) as context:
+            s.send(b"data")
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EPIPE,
+            msg="no-destination BrokenPipeError must carry errno=EPIPE.",
+        )
+
+    def test__tcp_socket__setsockopt_unknown_carries_enoprotoopt_errno(self) -> None:
+        """
+        Ensure 'setsockopt()' with an unknown (level, optname) pair
+        raises 'OSError' with '.errno == errno.ENOPROTOOPT' so apps
+        can branch on POSIX 'getsockopt(2)' semantics rather than
+        message text.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s._close_io_runtime)
+
+        with self.assertRaises(OSError) as context:
+            s.setsockopt(0, 9999, 1)
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.ENOPROTOOPT,
+            msg="unknown setsockopt OSError must carry errno=ENOPROTOOPT.",
+        )
+
+    def test__tcp_socket__getsockopt_unknown_carries_enoprotoopt_errno(self) -> None:
+        """
+        Ensure 'getsockopt()' with an unknown (level, optname) pair
+        raises 'OSError' with '.errno == errno.ENOPROTOOPT'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s._close_io_runtime)
+
+        with self.assertRaises(OSError) as context:
+            s.getsockopt(0, 9999)
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.ENOPROTOOPT,
+            msg="unknown getsockopt OSError must carry errno=ENOPROTOOPT.",
+        )
+
+
 class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
     """
     The 'TcpSocket.accept' child-inherits-parent-blocking tests.

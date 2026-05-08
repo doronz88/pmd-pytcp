@@ -334,7 +334,10 @@ class TcpSocket(socket):
             if self._tcp_session is not None:
                 self._tcp_session._tcp_nodelay = flag
             return
-        raise OSError(f"setsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
 
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
         """
@@ -362,7 +365,10 @@ class TcpSocket(socket):
             return int(self._cc_mode.value)
         if level == IPPROTO_TCP and optname == TCP_NODELAY:
             return int(self._tcp_nodelay)
-        raise OSError(f"getsockopt: unsupported (level, optname) pair: " f"level={level!r}, optname={optname!r}")
+        raise OSError(
+            errno.ENOPROTOOPT,
+            f"getsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
+        )
 
     def _get_ip_addresses(
         self,
@@ -384,7 +390,10 @@ class TcpSocket(socket):
             raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]") from error
 
         if remote_ip_address.is_unspecified:
-            raise ConnectionRefusedError("[Errno 111] Connection refused - [Unspecified remote IP address]")
+            raise ConnectionRefusedError(
+                errno.ECONNREFUSED,
+                "Connection refused - [Unspecified remote IP address]",
+            )
 
         local_ip_address = self._local_ip_address
 
@@ -412,7 +421,10 @@ class TcpSocket(socket):
 
         # Check if "bound" already.
         if self._local_port in range(1, 65536):
-            raise OSError("[Errno 22] Invalid argument - [Socket bound to specific port already]")
+            raise OSError(
+                errno.EINVAL,
+                "Invalid argument - [Socket bound to specific port already]",
+            )
 
         local_ip_address: Ip6Address | Ip4Address
 
@@ -423,7 +435,8 @@ class TcpSocket(socket):
                         Ip6Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip6AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -434,7 +447,8 @@ class TcpSocket(socket):
                         Ip4Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip4AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -451,7 +465,10 @@ class TcpSocket(socket):
                 address_family=self._address_family,
                 socket_type=self._socket_type,
             ):
-                raise OSError("[Errno 98] Address already in use - [Local address already in use]")
+                raise OSError(
+                    errno.EADDRINUSE,
+                    "Address already in use - [Local address already in use]",
+                )
         else:
             local_port = pick_local_port()
 
@@ -557,11 +574,13 @@ class TcpSocket(socket):
         except TcpSessionError as error:
             if str(error) == "Connection refused":
                 raise ConnectionRefusedError(
-                    "[Errno 111] Connection refused - [Received RST packet from remote host]"
+                    errno.ECONNREFUSED,
+                    "Connection refused - [Received RST packet from remote host]",
                 ) from error
             if str(error) == "Connection timeout":
                 raise TimeoutError(
-                    "[Errno 110] Connection timed out - [No valid response received from remote host]"
+                    errno.ETIMEDOUT,
+                    "Connection timed out - [No valid response received from remote host]",
                 ) from error
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
@@ -674,14 +693,17 @@ class TcpSocket(socket):
         # The 'send' call requires 'connect' call to be run prior to it.
 
         if self._remote_ip_address.is_unspecified or self._remote_port == 0:
-            raise BrokenPipeError("[Errno 32] Broken pipe - [Socket has no destination address set]")
+            raise BrokenPipeError(
+                errno.EPIPE,
+                "Broken pipe - [Socket has no destination address set]",
+            )
 
         assert self._tcp_session is not None
 
         try:
             bytes_sent = self._tcp_session.send(data=data)
         except TcpSessionError as error:
-            raise BrokenPipeError(f"[Errno 32] Broken pipe - [{error}]") from error
+            raise BrokenPipeError(errno.EPIPE, f"Broken pipe - [{error}]") from error
 
         __debug__ and log(
             "socket",

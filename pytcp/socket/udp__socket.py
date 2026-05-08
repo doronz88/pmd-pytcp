@@ -162,7 +162,10 @@ class UdpSocket(socket):
 
         # Check if "bound" already.
         if self._local_port in range(1, 65536):
-            raise OSError("[Errno 22] Invalid argument - [Socket bound to specific port already]")
+            raise OSError(
+                errno.EINVAL,
+                "Invalid argument - [Socket bound to specific port already]",
+            )
 
         local_ip_address: Ip4Address | Ip6Address
 
@@ -173,7 +176,8 @@ class UdpSocket(socket):
                         Ip6Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip6AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -184,7 +188,8 @@ class UdpSocket(socket):
                         Ip4Address()
                     }:
                         raise OSError(
-                            "[Errno 99] Cannot assign requested address - [Local IP address not owned by stack]"
+                            errno.EADDRNOTAVAIL,
+                            "Cannot assign requested address - [Local IP address not owned by stack]",
                         )
                 except Ip4AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
@@ -201,7 +206,10 @@ class UdpSocket(socket):
                 address_family=self._address_family,
                 socket_type=self._socket_type,
             ):
-                raise OSError("[Errno 98] Address already in use - [Local address already in use]")
+                raise OSError(
+                    errno.EADDRINUSE,
+                    "Address already in use - [Local address already in use]",
+                )
         else:
             local_port = pick_local_port()
 
@@ -255,11 +263,17 @@ class UdpSocket(socket):
 
         # The 'send' call requires 'connect' call to be run prior to it.
         if self._remote_ip_address.is_unspecified or self._remote_port == 0:
-            raise OSError("[Errno 89] Destination address required - [Socket has no destination address set]")
+            raise OSError(
+                errno.EDESTADDRREQ,
+                "Destination address required - [Socket has no destination address set]",
+            )
 
         if self._unreachable:
             self._unreachable = False
-            raise ConnectionRefusedError("[Errno 111] Connection refused - [Remote host sent ICMP Unreachable]")
+            raise ConnectionRefusedError(
+                errno.ECONNREFUSED,
+                "Connection refused - [Remote host sent ICMP Unreachable]",
+            )
 
         tx_status = stack.packet_handler.send_udp_packet(
             ip__local_address=self._local_ip_address,
@@ -336,7 +350,10 @@ class UdpSocket(socket):
 
         if self._unreachable:
             self._unreachable = False
-            raise ConnectionRefusedError("[Errno 111] Connection refused - [Remote host sent ICMP Unreachable]")
+            raise ConnectionRefusedError(
+                errno.ECONNREFUSED,
+                "Connection refused - [Remote host sent ICMP Unreachable]",
+            )
 
         # Per-call 'timeout' takes precedence over 'setblocking()';
         # otherwise non-blocking mode equates to a non-blocking

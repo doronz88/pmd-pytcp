@@ -1204,6 +1204,113 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
             msg="After draining the queue, the selector must not report readable.",
         )
 
+    def test__udp_socket__bind_twice_oserror_carries_einval_errno(self) -> None:
+        """
+        Ensure binding an already-bound socket raises 'OSError' with
+        '.errno == errno.EINVAL' so apps can branch on the errno
+        constant rather than parsing the message text.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.bind(("10.0.0.1", 8080))
+
+        with self.assertRaises(OSError) as context:
+            s.bind(("10.0.0.1", 8081))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EINVAL,
+            msg="bind-twice OSError must carry errno=EINVAL.",
+        )
+
+    def test__udp_socket__bind_foreign_ip_oserror_carries_eaddrnotavail_errno(self) -> None:
+        """
+        Ensure binding to a non-stack-owned IP raises 'OSError' with
+        '.errno == errno.EADDRNOTAVAIL'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as context:
+            s.bind(("192.168.99.99", 0))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRNOTAVAIL,
+            msg="foreign-IP bind OSError must carry errno=EADDRNOTAVAIL.",
+        )
+
+    def test__udp_socket__bind_address_in_use_oserror_carries_eaddrinuse_errno(self) -> None:
+        """
+        Ensure binding to a port already in use raises 'OSError'
+        with '.errno == errno.EADDRINUSE'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(first.close)
+        first.bind(("10.0.0.1", 8080))
+
+        second = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(second.close)
+
+        with self.assertRaises(OSError) as context:
+            second.bind(("10.0.0.1", 8080))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRINUSE,
+            msg="address-in-use bind OSError must carry errno=EADDRINUSE.",
+        )
+
+    def test__udp_socket__send_no_destination_oserror_carries_edestaddrreq_errno(self) -> None:
+        """
+        Ensure 'send()' on a socket with no remote IP raises
+        'OSError' with '.errno == errno.EDESTADDRREQ'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as context:
+            s.send(b"data")
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EDESTADDRREQ,
+            msg="send-without-destination OSError must carry errno=EDESTADDRREQ.",
+        )
+
+    def test__udp_socket__recv_unreachable_carries_econnrefused_errno(self) -> None:
+        """
+        Ensure 'recv()' translation of an ICMP Unreachable raises
+        'ConnectionRefusedError' with '.errno == errno.ECONNREFUSED'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.notify_unreachable()
+
+        with self.assertRaises(ConnectionRefusedError) as context:
+            s.recv()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.ECONNREFUSED,
+            msg="ICMP-Unreachable ConnectionRefusedError must carry errno=ECONNREFUSED.",
+        )
+
     def test__udp_socket__select_select_event_write_is_always_ready(self) -> None:
         """
         Ensure 'select.select' reports the socket as immediately

@@ -948,3 +948,49 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
             ("10.0.0.2", 0),
             msg="recvfrom(bufsize=3) must still return the (ip, 0) tuple.",
         )
+
+
+class TestRawSocketErrnoMapping(_RawSocketTestCase):
+    """
+    The 'RawSocket' OSError errno-mapping tests.
+    """
+
+    def test__raw_socket__bind_foreign_ip_carries_eaddrnotavail_errno(self) -> None:
+        """
+        Ensure 'bind()' to a non-stack-owned IP raises 'OSError'
+        with '.errno == errno.EADDRNOTAVAIL'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as context:
+            s.bind(("192.168.99.99", 0))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRNOTAVAIL,
+            msg="foreign-IP bind OSError must carry errno=EADDRNOTAVAIL.",
+        )
+
+    def test__raw_socket__send_no_destination_carries_edestaddrreq_errno(self) -> None:
+        """
+        Ensure 'send()' on a socket with no remote IP raises
+        'OSError' with '.errno == errno.EDESTADDRREQ'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as context:
+            s.send(b"data")
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EDESTADDRREQ,
+            msg="send-without-destination OSError must carry errno=EDESTADDRREQ.",
+        )
