@@ -45,6 +45,9 @@ if TYPE_CHECKING:
     from net_proto.protocols.icmp6.icmp6__parser import Icmp6Parser
     from net_proto.protocols.ip4.ip4__parser import Ip4Parser
     from net_proto.protocols.ip6.ip6__parser import Ip6Parser
+    from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__parser import (
+        Ip6DestOptsParser,
+    )
     from net_proto.protocols.ip6_frag.ip6_frag__parser import Ip6FragParser
     from net_proto.protocols.ip6_hbh.ip6_hbh__parser import Ip6HbhParser
     from net_proto.protocols.tcp.tcp__parser import TcpParser
@@ -71,6 +74,7 @@ class PacketRx:
         self.ip: Ip6Parser | Ip4Parser
         self.ip4: Ip4Parser
         self.ip6: Ip6Parser
+        self.ip6_dest_opts: Ip6DestOptsParser
         self.ip6_frag: Ip6FragParser
         self.ip6_hbh: Ip6HbhParser
         self.icmp4: Icmp4Parser
