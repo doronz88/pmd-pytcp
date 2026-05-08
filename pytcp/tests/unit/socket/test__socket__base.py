@@ -1207,3 +1207,80 @@ class TestSocketFileno(TestCase):
 
         self._socket._close_io_runtime()
         self._socket._drain_readable()
+
+
+class TestSocketBlocking(TestCase):
+    """
+    The 'socket.setblocking' / 'socket.getblocking' tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a fresh '_FdSocket' for the blocking-flag matrix and
+        register cleanup of its eventfd.
+        """
+
+        self._socket = _FdSocket()
+        self.addCleanup(self._socket._close_io_runtime)
+
+    def test__socket__getblocking_default_is_true(self) -> None:
+        """
+        Ensure a freshly-constructed socket reports 'getblocking() ==
+        True', matching POSIX 'socket(2)' which returns sockets in
+        blocking mode by default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertTrue(
+            self._socket.getblocking(),
+            msg="A fresh socket must default to blocking mode (POSIX socket(2)).",
+        )
+
+    def test__socket__setblocking_false_then_getblocking_returns_false(self) -> None:
+        """
+        Ensure 'setblocking(False)' flips the flag so 'getblocking()'
+        reports 'False' on a subsequent call.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.setblocking(False)
+
+        self.assertFalse(
+            self._socket.getblocking(),
+            msg="setblocking(False) must make getblocking() return False.",
+        )
+
+    def test__socket__setblocking_true_then_getblocking_returns_true(self) -> None:
+        """
+        Ensure 'setblocking(True)' restores the default after a prior
+        'setblocking(False)' so apps can toggle modes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.setblocking(False)
+        self._socket.setblocking(True)
+
+        self.assertTrue(
+            self._socket.getblocking(),
+            msg="setblocking(True) after False must restore blocking mode.",
+        )
+
+    def test__socket__setblocking_round_trips_through_getblocking(self) -> None:
+        """
+        Ensure repeated 'setblocking' / 'getblocking' calls preserve
+        the most recently set value, with no stale state between
+        toggles.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in (False, True, False, True, False):
+            self._socket.setblocking(value)
+            self.assertEqual(
+                self._socket.getblocking(),
+                value,
+                msg=f"setblocking({value}) must round-trip through getblocking().",
+            )

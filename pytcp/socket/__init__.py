@@ -161,6 +161,7 @@ class socket(ABC):
     _local_port: int
     _remote_port: int
     _read_event_fd: int
+    _blocking: bool
 
     def __init__(
         self,
@@ -179,10 +180,12 @@ class socket(ABC):
         calls like 'socket(family=..., type=..., protocol=...)' bind
         cleanly; the base class itself does not act on them — concrete
         Tcp/Udp/Raw subclasses consume them in their own '__init__'.
+        Blocking mode defaults to True per POSIX 'socket(2)'.
         """
 
         del family, type, protocol  # consumed by concrete-class __init__.
         self._read_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
+        self._blocking = True
 
     def __new__(
         cls,
@@ -365,6 +368,28 @@ class socket(ABC):
         """
 
         return self._read_event_fd
+
+    def setblocking(self, flag: bool, /) -> None:
+        """
+        Set the socket's blocking mode per POSIX 'socket(2)' /
+        CPython 'socket.setblocking'. With 'flag=True' (default),
+        recv / accept calls block until data / a child is available;
+        with 'flag=False', the same calls raise 'BlockingIOError'
+        carrying 'errno.EAGAIN' when they would otherwise block.
+        Non-bool truthy / falsy values are coerced to bool to match
+        CPython's stdlib behavior.
+        """
+
+        self._blocking = bool(flag)
+
+    def getblocking(self) -> bool:
+        """
+        Get the socket's current blocking mode per CPython
+        'socket.getblocking'. Returns 'True' for blocking sockets
+        (the default) and 'False' for non-blocking sockets.
+        """
+
+        return self._blocking
 
     def _signal_readable(self) -> None:
         """

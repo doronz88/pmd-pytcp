@@ -810,3 +810,127 @@ class TestUdpSocketFileno(_UdpSocketTestCase):
             errno.EBADF,
             msg="close() must close the eventfd backing fileno() (EBADF on syscall).",
         )
+
+
+class TestUdpSocketNonBlocking(_UdpSocketTestCase):
+    """
+    The 'UdpSocket.setblocking' non-blocking-recv tests.
+    """
+
+    def _make_md(self, data: bytes = b"payload") -> UdpMetadata:
+        """
+        Build a canonical IPv4 UDP envelope.
+        """
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(data),
+        )
+
+    def setUp(self) -> None:
+        """
+        Build a non-blocking UDP socket. tearDown closes it before
+        the parent fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = UdpSocket(family=AddressFamily.INET4)
+        self._socket.setblocking(False)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket before the parent tears down patches.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__udp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+        """
+        Ensure 'recv()' on a non-blocking socket with an empty queue
+        raises 'BlockingIOError' carrying 'errno.EAGAIN', matching
+        the POSIX 'recv(2)' contract for a 'O_NONBLOCK' fd with no
+        data ready.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.recv()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__udp_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
+        """
+        Ensure 'recvfrom()' parallels 'recv()' in raising
+        'BlockingIOError(EAGAIN)' on a non-blocking socket with an
+        empty queue.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.recvfrom()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking recvfrom() with no data must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__udp_socket__recv_returns_data_when_non_blocking_and_packet_queued(self) -> None:
+        """
+        Ensure 'recv()' on a non-blocking socket returns the queued
+        payload immediately when one is available — non-blocking
+        mode only changes the empty-queue behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"payload"))
+
+        self.assertEqual(
+            self._socket.recv(),
+            b"payload",
+            msg="Non-blocking recv() with a queued packet must return its payload.",
+        )
+
+    def test__udp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
+        """
+        Ensure an explicit 'timeout=' parameter takes precedence over
+        the 'setblocking(False)' flag — the per-call argument wins,
+        matching CPython's 'socket.recv(...)' semantics where a
+        per-call timeout supersedes the persistent flag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TimeoutError):
+            self._socket.recv(timeout=0.01)
+
+    def test__udp_socket__recv_blocking_mode_unchanged_by_default(self) -> None:
+        """
+        Ensure a default-mode (blocking=True) socket with a finite
+        per-call timeout still raises 'TimeoutError' rather than
+        'BlockingIOError' — the blocking-flag plumbing must not
+        regress the existing timeout behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(TimeoutError):
+            s.recv(timeout=0.01)

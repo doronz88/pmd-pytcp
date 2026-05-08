@@ -279,7 +279,12 @@ class RawSocket(socket):
 
         # TODO - Implement support for bufsize
 
-        if self._packet_rx_md_ready.acquire(timeout=timeout):
+        if timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+
+        if acquired:
             data_rx = self._packet_rx_md.pop(0).raw__data
             if not self._packet_rx_md:
                 self._drain_readable()
@@ -291,6 +296,8 @@ class RawSocket(socket):
             )
             return bytes(data_rx)  # Note: Conversion: memoryview -> bytes
 
+        if timeout is None and not self._blocking:
+            raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
     @override
@@ -301,7 +308,12 @@ class RawSocket(socket):
 
         # TODO - Implement support for bufsize
 
-        if self._packet_rx_md_ready.acquire(timeout=timeout):
+        if timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+
+        if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
             if not self._packet_rx_md:
                 self._drain_readable()
@@ -319,6 +331,8 @@ class RawSocket(socket):
                 ),
             )
 
+        if timeout is None and not self._blocking:
+            raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
     @override

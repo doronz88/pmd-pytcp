@@ -32,6 +32,8 @@ ver 3.0.4
 
 from __future__ import annotations
 
+import errno
+import os
 import threading
 from typing import TYPE_CHECKING, override
 
@@ -338,7 +340,15 @@ class UdpSocket(socket):
             self._unreachable = False
             raise ConnectionRefusedError("[Errno 111] Connection refused - [Remote host sent ICMP Unreachable]")
 
-        if self._packet_rx_md_ready.acquire(timeout=timeout):
+        # Per-call 'timeout' takes precedence over 'setblocking()';
+        # otherwise non-blocking mode equates to a non-blocking
+        # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
+        if timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+
+        if acquired:
             data_rx = self._packet_rx_md.pop(0).udp__data
             if not self._packet_rx_md:
                 self._drain_readable()
@@ -353,6 +363,8 @@ class UdpSocket(socket):
             )
             return data_rx
 
+        if timeout is None and not self._blocking:
+            raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     @override
@@ -375,7 +387,12 @@ class UdpSocket(socket):
 
         # TODO - Implement support for bufsize.
 
-        if self._packet_rx_md_ready.acquire(timeout=timeout):
+        if timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=timeout)
+
+        if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
             if not self._packet_rx_md:
                 self._drain_readable()
@@ -392,6 +409,9 @@ class UdpSocket(socket):
                     packet_rx_md.udp__remote_port,
                 ),
             )
+
+        if timeout is None and not self._blocking:
+            raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     @override

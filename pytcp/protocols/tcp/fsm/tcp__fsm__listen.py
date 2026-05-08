@@ -178,6 +178,13 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                 ),
                 tcp_session=session,
             )
+            # POSIX accept(2) inherits the listener's O_NONBLOCK
+            # onto the accepted child. Propagate the listener's
+            # 'setblocking()' flag onto the freshly-constructed
+            # child socket; the eventual 'accept()' caller re-
+            # applies it in case the listener has flipped after
+            # the listener-fork (covers both timing windows).
+            session._socket._blocking = listen_socket._blocking
             # Propagate SO_KEEPALIVE from the listening parent
             # onto the new child socket so a future
             # 'getsockopt(SO_KEEPALIVE)' on the accept()'d child

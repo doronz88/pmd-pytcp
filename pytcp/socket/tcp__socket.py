@@ -32,6 +32,8 @@ ver 3.0.4
 
 from __future__ import annotations
 
+import errno
+import os
 import threading
 from typing import TYPE_CHECKING, cast, override
 
@@ -629,10 +631,24 @@ class TcpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Waiting for inbound connection")
 
-        if not self._event__tcp_session_established.acquire(timeout=timeout):
+        # Per-call 'timeout' takes precedence over 'setblocking()';
+        # otherwise non-blocking mode equates to a non-blocking
+        # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
+        if timeout is None and not self._blocking:
+            acquired = self._event__tcp_session_established.acquire(blocking=False)
+        else:
+            acquired = self._event__tcp_session_established.acquire(timeout=timeout)
+
+        if not acquired:
+            if timeout is None and not self._blocking:
+                raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
             raise TimeoutError("TCP Socket - Accept operation timed out.")
 
         socket = cast(TcpSocket, self._tcp_accept.pop(0))
+        # POSIX accept(2) inherits the listener's O_NONBLOCK on the
+        # accepted child; mirror that so apps that flip the listener
+        # to non-blocking get non-blocking children.
+        socket._blocking = self._blocking
         if not self._tcp_accept:
             self._drain_readable()
             # Producer race: the FSM may have appended another
@@ -681,8 +697,14 @@ class TcpSocket(socket):
 
         assert self._tcp_session is not None
 
+        # Per-call 'timeout' takes precedence over 'setblocking()';
+        # non-blocking mode forwards 'timeout=0' so the session's
+        # 'Event.wait(0)' returns immediately. The resulting
+        # 'TimeoutError' is translated into 'BlockingIOError(EAGAIN)'.
+        effective_timeout = 0 if timeout is None and not self._blocking else timeout
+
         try:
-            if data_rx := self._tcp_session.receive(byte_count=bufsize, timeout=timeout):
+            if data_rx := self._tcp_session.receive(byte_count=bufsize, timeout=effective_timeout):
                 __debug__ and log(
                     "socket",
                     f"<g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -695,6 +717,8 @@ class TcpSocket(socket):
             return data_rx
 
         except TimeoutError as error:
+            if timeout is None and not self._blocking:
+                raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN)) from error
             raise TimeoutError("TCP Socket - Receive operation timed out.") from error
 
     @override

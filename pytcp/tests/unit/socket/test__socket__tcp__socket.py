@@ -36,6 +36,7 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
+from typing import cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -1375,4 +1376,208 @@ class TestTcpSocketFileno(_TcpSocketTestCase):
             context.exception.errno,
             errno.EBADF,
             msg="_close_io_runtime() must close the eventfd backing fileno() (EBADF).",
+        )
+
+
+class TestTcpSocketNonBlocking(_TcpSocketTestCase):
+    """
+    The 'TcpSocket.setblocking' non-blocking-recv / accept tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a non-blocking TCP socket. tearDown releases the
+        eventfd before the parent fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = TcpSocket(family=AddressFamily.INET4)
+        self._socket.setblocking(False)
+
+    def tearDown(self) -> None:
+        """
+        Close the eventfd before the parent tears down patches.
+        """
+
+        try:
+            self._socket._close_io_runtime()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__tcp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+        """
+        Ensure 'recv()' on a non-blocking TCP socket with an empty
+        rx buffer raises 'BlockingIOError(EAGAIN)' to match POSIX
+        'O_NONBLOCK' semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 9293 §3.10.5 (RECEIVE call).
+        """
+
+        session = MagicMock()
+        session.receive.side_effect = TimeoutError("no data ready")
+        self._socket._tcp_session = session
+        self._socket._remote_ip_address = Ip4Address("10.0.0.5")
+        self._socket._remote_port = 80
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.recv()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__tcp_socket__recv_passes_zero_timeout_when_non_blocking(self) -> None:
+        """
+        Ensure 'recv()' on a non-blocking TCP socket forwards
+        'timeout=0' to 'TcpSession.receive' so the session does not
+        wait — the per-call non-blocking attempt is what makes
+        BlockingIOError translation correct.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        session = MagicMock()
+        session.receive.return_value = b"data"
+        self._socket._tcp_session = session
+        self._socket._remote_ip_address = Ip4Address("10.0.0.5")
+        self._socket._remote_port = 80
+
+        self._socket.recv()
+
+        session.receive.assert_called_once_with(byte_count=None, timeout=0)
+
+    def test__tcp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
+        """
+        Ensure an explicit 'timeout=' parameter takes precedence
+        over the 'setblocking(False)' flag — per-call timeout wins,
+        matching CPython socket semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        session = MagicMock()
+        session.receive.side_effect = TimeoutError("session timeout")
+        self._socket._tcp_session = session
+        self._socket._remote_ip_address = Ip4Address("10.0.0.5")
+        self._socket._remote_port = 80
+
+        with self.assertRaises(TimeoutError):
+            self._socket.recv(timeout=0.01)
+
+    def test__tcp_socket__accept_raises_blocking_io_error_when_no_child(self) -> None:
+        """
+        Ensure 'accept()' on a non-blocking listening TCP socket
+        with an empty accept queue raises 'BlockingIOError(EAGAIN)'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 9293 §3.10.2 (OPEN passive / accept queue delivery).
+        """
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.accept()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking accept() with no child queued must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__tcp_socket__accept_returns_child_when_non_blocking_and_queued(self) -> None:
+        """
+        Ensure 'accept()' on a non-blocking socket returns the
+        queued child immediately when one is available.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        child = MagicMock()
+        child.remote_ip_address = Ip4Address("10.0.0.5")
+        child.remote_port = 12345
+        self._socket._tcp_accept.append(child)
+        self._socket._event__tcp_session_established.release()
+        self._socket._signal_readable()
+
+        result, _ = self._socket.accept()
+
+        self.assertIs(
+            result,
+            child,
+            msg="Non-blocking accept() with a queued child must return it.",
+        )
+
+    def test__tcp_socket__accept_per_call_timeout_overrides_non_blocking(self) -> None:
+        """
+        Ensure an explicit 'timeout=' on 'accept()' takes precedence
+        over the 'setblocking(False)' flag and yields 'TimeoutError'
+        on elapse.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TimeoutError):
+            self._socket.accept(timeout=0.01)
+
+
+class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
+    """
+    The 'TcpSocket.accept' child-inherits-parent-blocking tests.
+    """
+
+    def test__tcp_socket__accept_child_inherits_parent_blocking_default(self) -> None:
+        """
+        Ensure a child socket popped by 'accept()' inherits the
+        parent listening socket's default 'blocking=True' flag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        parent = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(parent._close_io_runtime)
+
+        child = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(child._close_io_runtime)
+        child._remote_ip_address = Ip4Address("10.0.0.5")
+        child._remote_port = 12345
+        parent._tcp_accept.append(child)
+        parent._event__tcp_session_established.release()
+        parent._signal_readable()
+
+        accepted, _ = parent.accept()
+
+        self.assertTrue(
+            cast(TcpSocket, accepted).getblocking(),
+            msg="accept() child must inherit the parent's blocking=True default.",
+        )
+
+    def test__tcp_socket__accept_child_inherits_parent_blocking_false(self) -> None:
+        """
+        Ensure a child socket popped by 'accept()' inherits the
+        parent listening socket's 'setblocking(False)' configuration
+        — required so async frameworks that flip the listener also
+        receive non-blocking children.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        parent = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(parent._close_io_runtime)
+        parent.setblocking(False)
+
+        child = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(child._close_io_runtime)
+        child._remote_ip_address = Ip4Address("10.0.0.5")
+        child._remote_port = 12345
+        parent._tcp_accept.append(child)
+        parent._event__tcp_session_established.release()
+        parent._signal_readable()
+
+        accepted, _ = parent.accept()
+
+        self.assertFalse(
+            cast(TcpSocket, accepted).getblocking(),
+            msg="accept() child must inherit setblocking(False) from the parent.",
         )

@@ -768,3 +768,66 @@ class TestRawSocketFileno(_RawSocketTestCase):
             errno.EBADF,
             msg="close() must close the eventfd backing fileno() (EBADF on syscall).",
         )
+
+
+class TestRawSocketNonBlocking(_RawSocketTestCase):
+    """
+    The 'RawSocket.setblocking' non-blocking-recv tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a non-blocking raw socket. tearDown closes it before
+        the parent fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        self._socket.setblocking(False)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket before the parent tears down patches.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__raw_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+        """
+        Ensure 'recv()' on a non-blocking raw socket with an empty
+        queue raises 'BlockingIOError(EAGAIN)' to match POSIX
+        'O_NONBLOCK' semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.recv()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__raw_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
+        """
+        Ensure 'recvfrom()' parallels 'recv()' in raising
+        'BlockingIOError(EAGAIN)' on a non-blocking socket with an
+        empty queue.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(BlockingIOError) as context:
+            self._socket.recvfrom()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="Non-blocking recvfrom() with no data must raise BlockingIOError(EAGAIN).",
+        )
