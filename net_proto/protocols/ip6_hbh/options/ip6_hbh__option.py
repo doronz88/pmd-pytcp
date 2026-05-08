@@ -57,6 +57,7 @@ class Ip6HbhOptionType(ProtoOptionType):
     PAD1 = 0x00
     PADN = 0x01
     ROUTER_ALERT = 0x05
+    JUMBO_PAYLOAD = 0xC2
 
 
 class Ip6HbhOptionAction(IntEnum):

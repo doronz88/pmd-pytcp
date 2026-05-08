@@ -46,6 +46,9 @@ from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import (
     Ip6HbhOptionType,
     ip6_hbh__option_action,
 )
+from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__jumbo_payload import (
+    Ip6HbhOptionJumboPayload,
+)
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__pad1 import (
     IP6_HBH__OPTION__PAD1__LEN,
     Ip6HbhOptionPad1,
@@ -81,6 +84,18 @@ class Ip6HbhOptions(ProtoOptions):
 
         for option in self._options:
             if isinstance(option, Ip6HbhOptionRouterAlert):
+                return option
+
+        return None
+
+    @property
+    def jumbo_payload(self) -> Ip6HbhOptionJumboPayload | None:
+        """
+        Get the Jumbo Payload option if present in the container.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip6HbhOptionJumboPayload):
                 return option
 
         return None
@@ -198,6 +213,8 @@ class Ip6HbhOptions(ProtoOptions):
                     options.append(Ip6HbhOptionPadN.from_buffer(buffer[offset:]))
                 case Ip6HbhOptionType.ROUTER_ALERT:
                     options.append(Ip6HbhOptionRouterAlert.from_buffer(buffer[offset:]))
+                case Ip6HbhOptionType.JUMBO_PAYLOAD:
+                    options.append(Ip6HbhOptionJumboPayload.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip6HbhOptionUnknown.from_buffer(buffer[offset:]))
 
