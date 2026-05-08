@@ -1121,3 +1121,106 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             ("10.0.0.2", 5678),
             msg="recvfrom__mv(bufsize=2) must still return the sender's (ip, port).",
         )
+
+
+class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
+    """
+    The 'UdpSocket' + 'selectors.DefaultSelector' integration tests.
+    """
+
+    def _make_md(self, data: bytes = b"payload") -> UdpMetadata:
+        """
+        Build a canonical IPv4 UDP envelope.
+        """
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(data),
+        )
+
+    def setUp(self) -> None:
+        """
+        Build a UDP socket; tearDown closes it before the parent
+        fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = UdpSocket(family=AddressFamily.INET4)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket before the parent tears down patches.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__udp_socket__selectors_default_selector_event_read_lifecycle(self) -> None:
+        """
+        Ensure a 'selectors.DefaultSelector' driving the socket
+        sees the EVENT_READ bit toggle on/off across the full
+        deliver -> recv lifecycle. This is the core asyncio /
+        trio compatibility contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import selectors
+
+        sel = selectors.DefaultSelector()
+        sel.register(self._socket, selectors.EVENT_READ, data="udp")
+        self.addCleanup(sel.close)
+
+        self.assertEqual(
+            sel.select(timeout=0),
+            [],
+            msg="A fresh socket must not be reported readable by the selector.",
+        )
+
+        self._socket.process_udp_packet(self._make_md(b"hello"))
+        events = sel.select(timeout=0)
+        self.assertEqual(
+            len(events),
+            1,
+            msg="An arrived datagram must wake the selector with one EVENT_READ entry.",
+        )
+        self.assertTrue(
+            events[0][1] & selectors.EVENT_READ,
+            msg="The selector entry must carry the EVENT_READ bit.",
+        )
+
+        self._socket.recv()
+
+        self.assertEqual(
+            sel.select(timeout=0),
+            [],
+            msg="After draining the queue, the selector must not report readable.",
+        )
+
+    def test__udp_socket__select_select_event_write_is_always_ready(self) -> None:
+        """
+        Ensure 'select.select' reports the socket as immediately
+        writable. PyTCP's tx buffer is unbounded today, so the
+        write-readable bit is always asserted; matches the
+        kernel-level eventfd "writable when counter < UINT64_MAX -
+        1" behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import select as _select
+
+        _, wlist, _ = _select.select([], [self._socket], [], 0)
+
+        self.assertEqual(
+            wlist,
+            [self._socket],
+            msg="The socket fd must always be select-writable while tx buffer is unbounded.",
+        )
