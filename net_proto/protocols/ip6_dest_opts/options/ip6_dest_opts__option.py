@@ -56,6 +56,7 @@ class Ip6DestOptsOptionType(ProtoOptionType):
 
     PAD1 = 0x00
     PADN = 0x01
+    TUNNEL_ENCAPSULATION_LIMIT = 0x04
 
 
 class Ip6DestOptsOptionAction(IntEnum):

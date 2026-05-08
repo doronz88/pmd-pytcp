@@ -53,6 +53,9 @@ from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__pad1 impor
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__padn import (
     Ip6DestOptsOptionPadN,
 )
+from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__tunnel_encapsulation_limit import (
+    Ip6DestOptsOptionTunnelEncapsulationLimit,
+)
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__unknown import (
     Ip6DestOptsOptionUnknown,
 )
@@ -69,6 +72,19 @@ class Ip6DestOptsOptions(ProtoOptions):
     """
     The IPv6 Destination Options packet options.
     """
+
+    @property
+    def tunnel_encapsulation_limit(self) -> Ip6DestOptsOptionTunnelEncapsulationLimit | None:
+        """
+        Get the Tunnel Encapsulation Limit option if present in the
+        container.
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip6DestOptsOptionTunnelEncapsulationLimit):
+                return option
+
+        return None
 
     @staticmethod
     def validate_integrity(*, buffer: Buffer) -> None:
@@ -181,6 +197,8 @@ class Ip6DestOptsOptions(ProtoOptions):
                     options.append(Ip6DestOptsOptionPad1.from_buffer(buffer[offset:]))
                 case Ip6DestOptsOptionType.PADN:
                     options.append(Ip6DestOptsOptionPadN.from_buffer(buffer[offset:]))
+                case Ip6DestOptsOptionType.TUNNEL_ENCAPSULATION_LIMIT:
+                    options.append(Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Ip6DestOptsOptionUnknown.from_buffer(buffer[offset:]))
 
