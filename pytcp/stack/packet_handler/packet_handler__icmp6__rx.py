@@ -125,6 +125,25 @@ class PacketHandlerIcmp6Rx(ABC):
 
         __debug__ and log("icmp6", f"{packet_rx.tracker} - {packet_rx.icmp6}")
 
+        # RFC 6980 §5: Neighbor Discovery and SEcure Neighbor
+        # Discovery messages MUST be silently ignored if they
+        # arrived as IPv6 fragments. The IPv6 frag-RX handler
+        # marks the reassembled PacketRx; the gate here drops
+        # any ND-typed message that traversed it.
+        if packet_rx.was_fragmented and packet_rx.icmp6.message.type in {
+            Icmp6Type.ND__ROUTER_SOLICITATION,
+            Icmp6Type.ND__ROUTER_ADVERTISEMENT,
+            Icmp6Type.ND__NEIGHBOR_SOLICITATION,
+            Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
+        }:
+            self._packet_stats_rx.icmp6__nd_message__fragmented__drop += 1
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - <WARN>Dropping fragmented ND message "
+                f"(type={packet_rx.icmp6.message.type}); RFC 6980 §5 silent-discard.</>",
+            )
+            return
+
         match packet_rx.icmp6.message.type:
             case Icmp6Type.DESTINATION_UNREACHABLE:
                 self.__phrx_icmp6__destination_unreachable(packet_rx)

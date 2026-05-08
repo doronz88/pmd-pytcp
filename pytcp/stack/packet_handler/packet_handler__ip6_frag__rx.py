@@ -123,6 +123,10 @@ class PacketHandlerIp6FragRx(ABC):
         struct.pack_into("!H", header, 4, len(payload))
         header[6] = int(packet_rx.ip6_frag.next)
         packet_rx = PacketRx(bytes(header) + payload)
+        # Mark this PacketRx as having been reassembled so the
+        # ICMPv6 RX dispatch can refuse fragmented ND / SEND
+        # messages per RFC 6980 §5.
+        packet_rx.was_fragmented = True
         __debug__ and log(
             "ip6",
             f"{packet_rx.tracker} - Defragmented IPv6 packet, " f"payload len {len(payload)} bytes",

@@ -232,6 +232,86 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
     The ICMPv6 ND (Neighbor Discovery) dispatch tests.
     """
 
+    def test__stack__packet_handler__icmp6__rx__fragmented_neighbor_solicitation_dropped(self) -> None:
+        """
+        Ensure a Neighbor Solicitation that arrived as IPv6
+        fragments and was reassembled by the IPv6 fragment-RX
+        path is silently dropped at the ICMPv6 dispatch layer
+        (no upper-layer dispatch, no NA reply), and the
+        'icmp6__nd_message__fragmented__drop' counter
+        increments.
+
+        Reference: RFC 6980 §5 (nodes MUST silently ignore ND
+        / SEND messages on receipt if fragmented).
+        """
+
+        ns_message = Icmp6NdMessageNeighborSolicitation(
+            target_address=STACK__IP6_ADDRESS,
+            options=Icmp6NdOptions(),
+        )
+        ip6 = _build_icmp6_frame(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            message=ns_message,
+        )
+
+        # Mark the inbound packet as having been reassembled
+        # from fragments, mimicking what 'PacketHandlerIp6FragRx'
+        # would have set on the reassembled 'PacketRx'.
+        packet_rx = _packet_rx_from_ip6_icmp6(ip6)
+        packet_rx.was_fragmented = True
+
+        self._handler._phrx_icmp6(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_message__fragmented__drop,
+            1,
+            msg=("A fragmented ND message must increment " "'icmp6__nd_message__fragmented__drop'."),
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_neighbor_solicitation,
+            0,
+            msg="A fragmented NS must not progress to the per-type counter.",
+        )
+        self.assertEqual(
+            self._handler.icmp6_tx_calls,
+            [],
+            msg="A fragmented ND message must not trigger any TX dispatch.",
+        )
+
+    def test__stack__packet_handler__icmp6__rx__fragmented_echo_request_passes_through(self) -> None:
+        """
+        Ensure the silent-discard scope is limited to ND /
+        SEND messages — a fragmented ICMPv6 Echo Request
+        (not an ND message) must still reach the echo-reply
+        path. Regression-pin for the gate's ND-only scope.
+
+        Reference: RFC 6980 §5 (silent-discard scope is ND /
+        SEND messages only, not all ICMPv6).
+        """
+
+        ip6 = _build_icmp6_frame(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            message=Icmp6MessageEchoRequest(id=1, seq=1, data=b"x"),
+        )
+
+        packet_rx = _packet_rx_from_ip6_icmp6(ip6)
+        packet_rx.was_fragmented = True
+
+        self._handler._phrx_icmp6(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__nd_message__fragmented__drop,
+            0,
+            msg="Echo Request must not bump the ND-fragmented-drop counter.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.icmp6__echo_request__respond_echo_reply,
+            1,
+            msg="A fragmented Echo Request must still produce an Echo Reply.",
+        )
+
     def test__stack__packet_handler__icmp6__rx__router_advertisement__non_autonomous_prefix_dropped(self) -> None:
         """
         Ensure a Prefix Information option whose Autonomous flag

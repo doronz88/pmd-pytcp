@@ -71,6 +71,13 @@ class PacketRx:
         self.tracker: Tracker = Tracker(prefix="RX")
         self.parse_failed: str = ""
 
+        # Set to True by the IPv6 frag-RX handler on the
+        # reassembled PacketRx it forwards back to the IPv6
+        # chain walker. Used by the ICMPv6 RX dispatch to
+        # silently drop fragmented ND / SEND messages per
+        # RFC 6980 §5.
+        self.was_fragmented: bool = False
+
         self.ethernet: EthernetParser
         self.ethernet_802_3: Ethernet8023Parser
         self.arp: ArpParser
