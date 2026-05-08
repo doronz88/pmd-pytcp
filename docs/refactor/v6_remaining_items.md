@@ -1,12 +1,18 @@
 # IPv6 Punch List — Remaining Items After Extension-Header Deployment
 
-**Status:** the IPv6 extension-header deployment plan
-(`docs/refactor/ipv6_extension_headers_plan.md`) is complete.
-This document tracks the independent v6 follow-up items that
-were deferred from that plan.
+**Status: ALL ITEMS SHIPPED.** Originally tracked six follow-
+ups (#281-#286) deferred from the extension-header
+deployment; all closed in the work block on top of commit
+`60077ad7`. This document is retained for archaeology — see
+the per-item sections below for the commit hashes that
+landed each one.
 
 **Branch:** `PyTCP_3_0__pre_release`.
-**Resume prompt:** see §99 below.
+**Final commits:** `604eebbf` / `909c3e06` / `d23d17bb` /
+`88d09251` / `3459cddf` (plus this doc commit). The
+fragmentation rework that #281 / #282 build on lives in
+`9a19194a` / `c2216640` / `8b72fa99` / `dd5dda8f` /
+`6c1c8634` / `8842c8f1`.
 
 ---
 
