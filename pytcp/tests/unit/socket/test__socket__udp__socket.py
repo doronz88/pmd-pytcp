@@ -1239,6 +1239,83 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="SO_RCVBUF must round-trip the configured value.",
         )
 
+    def test__udp_socket__ip_ttl_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_TTL, 32) round-trips and
+        the per-socket TTL override is forwarded into
+        'send_udp_packet' via the 'ip__ttl' kwarg.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import IP_TTL, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_TTL, 32)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_TTL),
+            32,
+            msg="IP_TTL must round-trip via setsockopt/getsockopt.",
+        )
+
+    def test__udp_socket__ip_ttl_threads_into_send_udp_packet(self) -> None:
+        """
+        Ensure a non-default IP_TTL set on a UDP socket appears as
+        the 'ip__ttl' kwarg on 'send_udp_packet'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import IP_TTL, IPPROTO_IP
+
+        captured: list[dict] = []
+
+        original_send = self._handler.send_udp_packet
+
+        def _capture_send(**kw: object) -> object:
+            captured.append(dict(kw))
+            return original_send(**kw)
+
+        self._handler.send_udp_packet = _capture_send
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_TTL, 32)
+        s.bind(("10.0.0.1", 5555))
+        with patch(
+            "pytcp.socket.udp__socket.pick_local_ip_address",
+            return_value=Ip4Address("10.0.0.1"),
+        ):
+            s.sendto(b"data", ("10.0.0.5", 9999))
+
+        self.assertEqual(
+            captured[0].get("ip__ttl"),
+            32,
+            msg="setsockopt(IP_TTL, 32) must thread into send_udp_packet's ip__ttl kwarg.",
+        )
+
+    def test__udp_socket__ip_tos_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_TOS) stores an 8-bit DSCP+ECN
+        value with the low 2 bits exposed as ECN to send_udp_packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import IP_TOS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_TOS, 0xC2)  # DSCP=48, ECN=2 (ECT(0))
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_TOS),
+            0xC2,
+            msg="IP_TOS must round-trip the full 8-bit DSCP+ECN value.",
+        )
+
     def test__udp_socket__so_sndtimeo_round_trip(self) -> None:
         """
         Ensure SO_SNDTIMEO round-trips via setsockopt / getsockopt.

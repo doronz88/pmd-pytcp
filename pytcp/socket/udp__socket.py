@@ -52,6 +52,8 @@ from pytcp.lib.ip_helper import (
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    IPPROTO_IP,
+    IPPROTO_IPV6,
     SOL_SOCKET,
     AddressFamily,
     IpProto,
@@ -111,12 +113,15 @@ class UdpSocket(socket):
     def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. UDP
-        sockets currently only honor SOL_SOCKET-level options
-        (SO_REUSEADDR, SO_BROADCAST, SO_SNDBUF, SO_RCVBUF,
-        SO_RCVTIMEO, SO_SNDTIMEO).
+        sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6
+        options through the base-class helpers.
         """
 
         if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+            return
+        if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
+            return
+        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         raise OSError(
             errno.ENOPROTOOPT,
@@ -130,6 +135,10 @@ class UdpSocket(socket):
         """
 
         if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
+            return value
+        if level == IPPROTO_IP and (value := self._ipproto_ip_getsockopt(optname)) is not None:
+            return value
+        if level == IPPROTO_IPV6 and (value := self._ipproto_ipv6_getsockopt(optname)) is not None:
             return value
         raise OSError(
             errno.ENOPROTOOPT,
@@ -314,6 +323,8 @@ class UdpSocket(socket):
             udp__local_port=self._local_port,
             udp__remote_port=self._remote_port,
             udp__payload=data,
+            ip__ttl=self._effective_ip_ttl(),
+            ip__ecn=self._effective_ip_ecn(),
         )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
@@ -356,6 +367,8 @@ class UdpSocket(socket):
             udp__local_port=self._local_port,
             udp__remote_port=remote_port,
             udp__payload=data,
+            ip__ttl=self._effective_ip_ttl(),
+            ip__ecn=self._effective_ip_ecn(),
         )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0

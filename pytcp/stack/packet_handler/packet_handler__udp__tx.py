@@ -31,7 +31,7 @@ ver 3.0.4
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import Tracker, UdpAssembler
@@ -89,6 +89,8 @@ class PacketHandlerUdpTx(ABC):
         udp__sport: int,
         udp__dport: int,
         udp__payload: bytes = bytes(),
+        ip__ttl: int | None = None,
+        ip__ecn: int = 0,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
         """
@@ -109,11 +111,15 @@ class PacketHandlerUdpTx(ABC):
         match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
             case True, True, False, False:
                 self._packet_stats_tx.udp__send += 1
-                return self._phtx_ip6(
-                    ip6__src=cast(Ip6Address, ip__src),
-                    ip6__dst=cast(Ip6Address, ip__dst),
-                    ip6__payload=udp_packet_tx,
-                )
+                ip6_kwargs: dict[str, Any] = {
+                    "ip6__src": cast(Ip6Address, ip__src),
+                    "ip6__dst": cast(Ip6Address, ip__dst),
+                    "ip6__payload": udp_packet_tx,
+                    "ip6__ecn": ip__ecn,
+                }
+                if ip__ttl is not None:
+                    ip6_kwargs["ip6__hop"] = ip__ttl
+                return self._phtx_ip6(**ip6_kwargs)
             case False, False, True, True:
                 self._packet_stats_tx.udp__send += 1
                 # RFC 1191 §3 / RFC 8201 §4: outbound UDP datagrams
@@ -121,12 +127,16 @@ class PacketHandlerUdpTx(ABC):
                 # sender. UDP applications that want in-network
                 # fragmentation can disable IP_PMTUDISC at the
                 # socket layer (deferred to a follow-up commit).
-                return self._phtx_ip4(
-                    ip4__src=cast(Ip4Address, ip__src),
-                    ip4__dst=cast(Ip4Address, ip__dst),
-                    ip4__flag_df=True,
-                    ip4__payload=udp_packet_tx,
-                )
+                ip4_kwargs: dict[str, Any] = {
+                    "ip4__src": cast(Ip4Address, ip__src),
+                    "ip4__dst": cast(Ip4Address, ip__dst),
+                    "ip4__flag_df": True,
+                    "ip4__payload": udp_packet_tx,
+                    "ip4__ecn": ip__ecn,
+                }
+                if ip__ttl is not None:
+                    ip4_kwargs["ip4__ttl"] = ip__ttl
+                return self._phtx_ip4(**ip4_kwargs)
             case _:
                 raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
 
@@ -138,6 +148,8 @@ class PacketHandlerUdpTx(ABC):
         udp__local_port: int,
         udp__remote_port: int,
         udp__payload: bytes = bytes(),
+        ip__ttl: int | None = None,
+        ip__ecn: int = 0,
     ) -> TxStatus:
         """
         Interface method for UDP Socket -> Packet Assembler communication.
@@ -149,4 +161,6 @@ class PacketHandlerUdpTx(ABC):
             udp__sport=udp__local_port,
             udp__dport=udp__remote_port,
             udp__payload=udp__payload,
+            ip__ttl=ip__ttl,
+            ip__ecn=ip__ecn,
         )

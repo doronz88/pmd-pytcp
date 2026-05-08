@@ -76,6 +76,8 @@ class PacketHandlerUdpRx(ABC):
             udp__sport: int,
             udp__dport: int,
             udp__payload: bytes = bytes(),
+            ip__ttl: int | None = None,
+            ip__ecn: int = 0,
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
 

@@ -31,7 +31,7 @@ ver 3.0.3
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
@@ -399,19 +399,25 @@ class PacketHandlerIp4Tx(ABC):
         ip4__remote_address: Ip4Address,
         ip4__proto: IpProto,
         ip4__payload: bytes = bytes(),
+        ip4__ttl: int | None = None,
+        ip4__ecn: int = 0,
     ) -> TxStatus:
         """
         Interface method for RAW Socket -> Packet Assembler communication.
         """
 
-        return self._phtx_ip4(
-            ip4__src=ip4__local_address,
-            ip4__dst=ip4__remote_address,
-            ip4__payload=RawAssembler(
+        kwargs: dict[str, Any] = {
+            "ip4__src": ip4__local_address,
+            "ip4__dst": ip4__remote_address,
+            "ip4__payload": RawAssembler(
                 raw__payload=ip4__payload,
                 ip_proto=ip4__proto,
             ),
-        )
+            "ip4__ecn": ip4__ecn,
+        }
+        if ip4__ttl is not None:
+            kwargs["ip4__ttl"] = ip4__ttl
+        return self._phtx_ip4(**kwargs)
 
     @staticmethod
     def __send_out_packet(

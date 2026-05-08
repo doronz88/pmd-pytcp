@@ -31,7 +31,7 @@ ver 3.0.3
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
@@ -304,19 +304,25 @@ class PacketHandlerIp6Tx(ABC):
         ip6__remote_address: Ip6Address,
         ip6__next: IpProto,
         ip6__payload: bytes = bytes(),
+        ip6__hop: int | None = None,
+        ip6__ecn: int = 0,
     ) -> TxStatus:
         """
         Interface method for RAW Socket -> Packet Assembler communication.
         """
 
-        return self._phtx_ip6(
-            ip6__src=ip6__local_address,
-            ip6__dst=ip6__remote_address,
-            ip6__payload=RawAssembler(
+        kwargs: dict[str, Any] = {
+            "ip6__src": ip6__local_address,
+            "ip6__dst": ip6__remote_address,
+            "ip6__payload": RawAssembler(
                 raw__payload=ip6__payload,
                 ip_proto=ip6__next,
             ),
-        )
+            "ip6__ecn": ip6__ecn,
+        }
+        if ip6__hop is not None:
+            kwargs["ip6__hop"] = ip6__hop
+        return self._phtx_ip6(**kwargs)
 
     @staticmethod
     def __send_out_packet(ip6_packet_tx: Ip6Assembler) -> None:

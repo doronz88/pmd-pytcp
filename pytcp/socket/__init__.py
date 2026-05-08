@@ -106,6 +106,14 @@ SO_RCVBUF: int = 8  # level=SOL_SOCKET; int: recv-buffer cap (storage only)
 SO_RCVTIMEO: int = 20  # level=SOL_SOCKET; float seconds: persistent recv timeout
 SO_SNDTIMEO: int = 21  # level=SOL_SOCKET; float seconds: persistent send timeout
 
+# IPPROTO_IP-level options (Linux numbers from <netinet/ip.h>).
+IP_TOS: int = 1  # level=IPPROTO_IP; int: 8-bit DSCP+ECN (RFC 2474)
+IP_TTL: int = 2  # level=IPPROTO_IP; int 1-255: per-socket TTL override
+
+# IPPROTO_IPV6-level options (Linux numbers from <netinet/in.h>).
+IPV6_UNICAST_HOPS: int = 16  # level=IPPROTO_IPV6; int 1-255: per-socket Hop-Limit override
+IPV6_TCLASS: int = 67  # level=IPPROTO_IPV6; int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
+
 
 # BSD-socket 'shutdown(how)' constants per POSIX. Linux-numbered
 # values matching stdlib 'socket.SHUT_*'. RFC 9293 §3.9.1
@@ -205,6 +213,10 @@ class socket(ABC):
     _so_rcvbuf: int | None
     _so_rcvtimeo: float | None
     _so_sndtimeo: float | None
+    _ip_ttl: int | None
+    _ip_tos: int
+    _ipv6_unicast_hops: int | None
+    _ipv6_tclass: int
 
     def __init__(
         self,
@@ -235,6 +247,10 @@ class socket(ABC):
         self._so_rcvbuf = None
         self._so_rcvtimeo = None
         self._so_sndtimeo = None
+        self._ip_ttl = None
+        self._ip_tos = 0
+        self._ipv6_unicast_hops = None
+        self._ipv6_tclass = 0
 
     def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
         """
@@ -263,6 +279,91 @@ class socket(ABC):
                 self._so_sndtimeo = float(value) if value else None
                 return True
         return False
+
+    def _ipproto_ip_setsockopt(self, optname: int, value: int, /) -> bool:
+        """
+        Apply an IPPROTO_IP-level setsockopt option; return True if
+        handled. Currently supports IP_TTL (1-255 per-socket override)
+        and IP_TOS (8-bit DSCP+ECN per-packet marking).
+        """
+
+        match optname:
+            case _ if optname == IP_TTL:
+                if not 0 < int(value) < 256:
+                    raise OSError(errno.EINVAL, f"IP_TTL must be in 1..255, got {value!r}")
+                self._ip_ttl = int(value)
+                return True
+            case _ if optname == IP_TOS:
+                self._ip_tos = int(value) & 0xFF
+                return True
+        return False
+
+    def _ipproto_ip_getsockopt(self, optname: int, /) -> int | None:
+        """
+        Get an IPPROTO_IP-level option's stored value, or 'None' if
+        the option is not handled here.
+        """
+
+        match optname:
+            case _ if optname == IP_TTL:
+                return self._ip_ttl or 0
+            case _ if optname == IP_TOS:
+                return self._ip_tos
+        return None
+
+    def _ipproto_ipv6_setsockopt(self, optname: int, value: int, /) -> bool:
+        """
+        Apply an IPPROTO_IPV6-level setsockopt option; return True if
+        handled. Currently supports IPV6_UNICAST_HOPS (1-255 per-socket
+        override) and IPV6_TCLASS (8-bit Traffic Class).
+        """
+
+        match optname:
+            case _ if optname == IPV6_UNICAST_HOPS:
+                if not 0 < int(value) < 256:
+                    raise OSError(errno.EINVAL, f"IPV6_UNICAST_HOPS must be in 1..255, got {value!r}")
+                self._ipv6_unicast_hops = int(value)
+                return True
+            case _ if optname == IPV6_TCLASS:
+                self._ipv6_tclass = int(value) & 0xFF
+                return True
+        return False
+
+    def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
+        """
+        Get an IPPROTO_IPV6-level option's stored value, or 'None' if
+        the option is not handled here.
+        """
+
+        match optname:
+            case _ if optname == IPV6_UNICAST_HOPS:
+                return self._ipv6_unicast_hops or 0
+            case _ if optname == IPV6_TCLASS:
+                return self._ipv6_tclass
+        return None
+
+    def _effective_ip_ttl(self) -> int | None:
+        """
+        Get the effective per-socket TTL (IPv4) or Hop-Limit (IPv6)
+        override based on the socket's address family. Returns 'None'
+        if no override is set, in which case the packet handler's
+        default applies.
+        """
+
+        if self._address_family is AddressFamily.INET6:
+            return self._ipv6_unicast_hops
+        return self._ip_ttl
+
+    def _effective_ip_ecn(self) -> int:
+        """
+        Get the effective ECN bits (low 2 bits of IP_TOS / IPV6_TCLASS)
+        based on the socket's address family. Apps that set the full
+        TOS/Traffic-Class byte get the ECN portion automatically.
+        """
+
+        if self._address_family is AddressFamily.INET6:
+            return self._ipv6_tclass & 0x03
+        return self._ip_tos & 0x03
 
     def _sol_socket_getsockopt(self, optname: int, /) -> int | None:
         """

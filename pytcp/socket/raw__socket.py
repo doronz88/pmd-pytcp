@@ -48,6 +48,8 @@ from pytcp.lib.ip_helper import pick_local_ip_address
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    IPPROTO_IP,
+    IPPROTO_IPV6,
     SOL_SOCKET,
     AddressFamily,
     IpProto,
@@ -136,10 +138,15 @@ class RawSocket(socket):
     def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. RAW
-        sockets currently only honor SOL_SOCKET-level options.
+        sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6
+        options through the base-class helpers.
         """
 
         if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+            return
+        if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
+            return
+        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         raise OSError(
             errno.ENOPROTOOPT,
@@ -153,6 +160,10 @@ class RawSocket(socket):
         """
 
         if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
+            return value
+        if level == IPPROTO_IP and (value := self._ipproto_ip_getsockopt(optname)) is not None:
+            return value
+        if level == IPPROTO_IPV6 and (value := self._ipproto_ipv6_getsockopt(optname)) is not None:
             return value
         raise OSError(
             errno.ENOPROTOOPT,
@@ -249,6 +260,8 @@ class RawSocket(socket):
                     ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
                     ip6__next=self._ip_proto,
                     ip6__payload=data,
+                    ip6__hop=self._effective_ip_ttl(),
+                    ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
                 tx_status = stack.packet_handler.send_ip4_packet(
@@ -256,6 +269,8 @@ class RawSocket(socket):
                     ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
                     ip4__proto=self._ip_proto,
                     ip4__payload=data,
+                    ip4__ttl=self._effective_ip_ttl(),
+                    ip4__ecn=self._effective_ip_ecn(),
                 )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
@@ -285,6 +300,8 @@ class RawSocket(socket):
                     ip6__remote_address=cast(Ip6Address, remote_ip_address),
                     ip6__next=self._ip_proto,
                     ip6__payload=data,
+                    ip6__hop=self._effective_ip_ttl(),
+                    ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
                 tx_status = stack.packet_handler.send_ip4_packet(
@@ -292,6 +309,8 @@ class RawSocket(socket):
                     ip4__remote_address=cast(Ip4Address, remote_ip_address),
                     ip4__proto=self._ip_proto,
                     ip4__payload=data,
+                    ip4__ttl=self._effective_ip_ttl(),
+                    ip4__ecn=self._effective_ip_ecn(),
                 )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0

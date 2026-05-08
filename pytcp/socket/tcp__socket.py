@@ -53,6 +53,8 @@ from pytcp.lib.logger import log
 from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
 from pytcp.socket import (
+    IPPROTO_IP,
+    IPPROTO_IPV6,
     IPPROTO_TCP,
     SO_KEEPALIVE,
     SOL_SOCKET,
@@ -304,6 +306,14 @@ class TcpSocket(socket):
             return
         if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
+        # IPPROTO_IP / IPPROTO_IPV6 round-trip storage for TCP
+        # sockets: the per-socket TTL / Hop-Limit / TOS / TClass
+        # values are stored on the base; behavioral propagation to
+        # the FSM segment-emit path is a follow-up commit.
+        if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
+            return
+        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+            return
         if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             self._tcp_keepidle = int(value)
             return
@@ -355,6 +365,10 @@ class TcpSocket(socket):
             return int(self._so_keepalive)
         if level == SOL_SOCKET and (sol_value := self._sol_socket_getsockopt(optname)) is not None:
             return sol_value
+        if level == IPPROTO_IP and (ip_value := self._ipproto_ip_getsockopt(optname)) is not None:
+            return ip_value
+        if level == IPPROTO_IPV6 and (ip6_value := self._ipproto_ipv6_getsockopt(optname)) is not None:
+            return ip6_value
         if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             # 0 means "no override set"; the session falls back
             # to 'tcp__constants.KEEPALIVE_IDLE_TIME' at runtime.
