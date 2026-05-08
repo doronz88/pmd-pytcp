@@ -152,7 +152,10 @@ class IpProto(ProtoEnumByte):
         from net_proto.protocols.icmp6.icmp6__base import Icmp6
         from net_proto.protocols.ip4.ip4__base import Ip4
         from net_proto.protocols.ip6.ip6__base import Ip6
+        from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__base import Ip6DestOpts
         from net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
+        from net_proto.protocols.ip6_hbh.ip6_hbh__base import Ip6Hbh
+        from net_proto.protocols.ip6_routing.ip6_routing__base import Ip6Routing
         from net_proto.protocols.raw.raw__base import Raw
         from net_proto.protocols.tcp.tcp__base import Tcp
         from net_proto.protocols.udp.udp__base import Udp
@@ -172,8 +175,17 @@ class IpProto(ProtoEnumByte):
         if isinstance(proto, Ip6):
             return IpProto.IP6
 
+        if isinstance(proto, Ip6Hbh):
+            return IpProto.IP6_HBH
+
+        if isinstance(proto, Ip6Routing):
+            return IpProto.IP6_ROUTING
+
         if isinstance(proto, Ip6Frag):
             return IpProto.IP6_FRAG
+
+        if isinstance(proto, Ip6DestOpts):
+            return IpProto.IP6_DEST_OPTS
 
         if isinstance(proto, Icmp6):
             return IpProto.ICMP6
