@@ -575,3 +575,87 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
         )
+
+    def test__stack__packet_handler__ip4__rx__expired_flow_is_reaped(self) -> None:
+        """
+        Ensure a fragment flow whose timestamp is older than
+        'IP4__FRAG_FLOW_TIMEOUT' seconds is removed from the flow
+        table on the next defragment pass, freeing the buffer that
+        would otherwise grow without bound.
+
+        Reference: RFC 791 §3.2 (reassembly timeout, fragments discarded).
+        Reference: RFC 1122 §3.3.2 (IP reassembly buffer management).
+        """
+
+        stale_frag = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=8888,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=b"\xee" * 8,
+            )
+        )
+        self._handler._phrx_ip4(PacketRx(stale_frag))
+
+        stale_flow_id = IpFragFlowId(
+            src=HOST_A__IP4,
+            dst=STACK__IP4_ADDRESS,
+            id=8888,
+        )
+        self.assertIn(
+            stale_flow_id,
+            self._handler._ip4_frag_flows,
+            msg="Precondition: the stale flow must exist after the first fragment.",
+        )
+
+        # Backdate the stored fragment's timestamp past the timeout
+        # so the next defragment pass should reap it.
+        stale_flow = self._handler._ip4_frag_flows[stale_flow_id]
+        object.__setattr__(
+            stale_flow,
+            "timestamp",
+            stale_flow.timestamp - (stack.IP4__FRAG_FLOW_TIMEOUT + 1),
+        )
+
+        # Fire an unrelated fragment so '__defragment_ip4_packet' runs
+        # its cleanup pass.
+        fresh_frag = bytes(
+            Ip4FragAssembler(
+                ip4_frag__src=HOST_A__IP4,
+                ip4_frag__dst=STACK__IP4_ADDRESS,
+                ip4_frag__id=9999,
+                ip4_frag__offset=0,
+                ip4_frag__flag_mf=True,
+                ip4_frag__proto=IpProto.UDP,
+                ip4_frag__payload=b"\xff" * 8,
+            )
+        )
+        self._handler._phrx_ip4(PacketRx(fresh_frag))
+
+        self.assertNotIn(
+            stale_flow_id,
+            self._handler._ip4_frag_flows,
+            msg=(
+                "A flow whose timestamp predates 'time() - IP4__FRAG_FLOW_TIMEOUT' "
+                "must be removed by the cleanup pass at the start of "
+                "'__defragment_ip4_packet'."
+            ),
+        )
+        fresh_flow_id = IpFragFlowId(
+            src=HOST_A__IP4,
+            dst=STACK__IP4_ADDRESS,
+            id=9999,
+        )
+        self.assertIn(
+            fresh_flow_id,
+            self._handler._ip4_frag_flows,
+            msg="The new fragment's flow must be admitted alongside the cleanup.",
+        )
+        self.assertEqual(
+            len(self._handler._ip4_frag_flows),
+            1,
+            msg="After cleanup the stale flow is gone and only the fresh flow remains.",
+        )

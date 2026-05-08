@@ -249,3 +249,77 @@ class TestPacketHandlerIp6FragRx(TestCase):
             1,
             msg="Repeated fragment must not duplicate the flow entry.",
         )
+
+    def test__stack__packet_handler__ip6_frag__rx__expired_flow_is_reaped(self) -> None:
+        """
+        Ensure a fragment flow whose timestamp is older than
+        'IP6__FRAG_FLOW_TIMEOUT' seconds is removed from the flow
+        table on the next defragment pass, freeing the buffer that
+        would otherwise grow without bound.
+
+        Reference: RFC 8200 §4.5 (reassembly timeout, fragments discarded).
+        Reference: RFC 8504 §16 (host buffer-hygiene requirement).
+        """
+
+        stale_frag = _ip6_frag_packet_rx(
+            frag_id=5555,
+            offset=0,
+            flag_mf=True,
+            payload=b"\xee" * 8,
+        )
+        self._handler._phrx_ip6_frag(stale_frag)
+
+        stale_flow_id = IpFragFlowId(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            id=5555,
+        )
+        self.assertIn(
+            stale_flow_id,
+            self._handler._ip6_frag_flows,
+            msg="Precondition: the stale flow must exist after the first fragment.",
+        )
+
+        # Backdate the stored fragment's timestamp past the timeout
+        # so the next defragment pass should reap it.
+        stale_flow = self._handler._ip6_frag_flows[stale_flow_id]
+        object.__setattr__(
+            stale_flow,
+            "timestamp",
+            stale_flow.timestamp - (stack.IP6__FRAG_FLOW_TIMEOUT + 1),
+        )
+
+        # Fire an unrelated fragment so '__defragment_ip6_packet' runs
+        # its cleanup pass.
+        fresh_frag = _ip6_frag_packet_rx(
+            frag_id=9999,
+            offset=0,
+            flag_mf=True,
+            payload=b"\xff" * 8,
+        )
+        self._handler._phrx_ip6_frag(fresh_frag)
+
+        self.assertNotIn(
+            stale_flow_id,
+            self._handler._ip6_frag_flows,
+            msg=(
+                "A flow whose timestamp predates 'time() - IP6__FRAG_FLOW_TIMEOUT' "
+                "must be removed by the cleanup pass at the start of "
+                "'__defragment_ip6_packet'."
+            ),
+        )
+        fresh_flow_id = IpFragFlowId(
+            src=HOST_A__IP6,
+            dst=STACK__IP6_ADDRESS,
+            id=9999,
+        )
+        self.assertIn(
+            fresh_flow_id,
+            self._handler._ip6_frag_flows,
+            msg="The new fragment's flow must be admitted alongside the cleanup.",
+        )
+        self.assertEqual(
+            len(self._handler._ip6_frag_flows),
+            1,
+            msg="After cleanup the stale flow is gone and only the fresh flow remains.",
+        )

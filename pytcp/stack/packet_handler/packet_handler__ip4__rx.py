@@ -304,11 +304,13 @@ class PacketHandlerIp4Rx(ABC):
         Defragment IPv4 packet.
         """
 
-        # Cleanup expired flows.
+        # Cleanup expired flows. A flow is kept while its age
+        # (now - first-fragment timestamp) is below the timeout.
+        now = time()
         self._ip4_frag_flows = {
             flow: self._ip4_frag_flows[flow]
             for flow in self._ip4_frag_flows
-            if self._ip4_frag_flows[flow].timestamp - time() < stack.IP4__FRAG_FLOW_TIMEOUT
+            if now - self._ip4_frag_flows[flow].timestamp < stack.IP4__FRAG_FLOW_TIMEOUT
         }
 
         __debug__ and log(
