@@ -390,10 +390,18 @@ def stop() -> None:
 
     assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
+    # Teardown order:
+    #   1. packet_handler  — stop application-side TX producers.
+    #   2. timer           — stop periodic callbacks (TCP RTO,
+    #                        persist, keep-alive, delayed-ACK) so
+    #                        they cannot enqueue to a stopped tx_ring.
+    #   3. rx_ring         — stop kernel reads.
+    #   4. tx_ring         — drain anything still queued + stop.
+    #   5. arp_cache / nd_cache — stop cache-refresh threads.
     packet_handler.stop()
+    timer.stop()
     rx_ring.stop()
     tx_ring.stop()
     if hasattr(packet_handler, "arp_cache"):
         arp_cache.stop()
     nd_cache.stop()
-    timer.stop()

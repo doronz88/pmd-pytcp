@@ -504,6 +504,125 @@ class TestStackMockInit(TestCase):
         )
 
 
+class TestStackStopOrdering(TestCase):
+    """
+    The 'stack.stop()' subsystem teardown-order tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the module-level state and replace each subsystem
+        with a MagicMock so 'stack.stop()' can be invoked without a
+        live stack.
+        """
+
+        self._saved = {
+            "stack_initialized": stack.stack_initialized,
+            "timer": getattr(stack, "timer", None),
+            "rx_ring": getattr(stack, "rx_ring", None),
+            "tx_ring": getattr(stack, "tx_ring", None),
+            "arp_cache": getattr(stack, "arp_cache", None),
+            "nd_cache": getattr(stack, "nd_cache", None),
+            "packet_handler": getattr(stack, "packet_handler", None),
+        }
+
+        self._call_log: list[str] = []
+
+        def _make_subsystem(name: str) -> MagicMock:
+            m = MagicMock()
+            m.stop.side_effect = lambda n=name: self._call_log.append(n)
+            return m
+
+        stack.timer = _make_subsystem("timer")
+        stack.rx_ring = _make_subsystem("rx_ring")
+        stack.tx_ring = _make_subsystem("tx_ring")
+        stack.arp_cache = _make_subsystem("arp_cache")
+        stack.nd_cache = _make_subsystem("nd_cache")
+        stack.packet_handler = _make_subsystem("packet_handler")
+        # Make 'hasattr(packet_handler, "arp_cache")' True so the
+        # arp_cache.stop() branch fires.
+        stack.packet_handler.arp_cache = MagicMock()
+        stack.stack_initialized = True
+
+    def tearDown(self) -> None:
+        """
+        Restore the saved module-level subsystems.
+        """
+
+        for name, value in self._saved.items():
+            if value is not None:
+                setattr(stack, name, value)
+
+    def test__stack__stop_stops_timer_before_tx_ring(self) -> None:
+        """
+        Ensure 'stack.stop()' stops the timer before the TX ring so
+        timer-driven callbacks (TCP RTO, persist, keep-alive,
+        delayed-ACK) cannot fire after the TX ring has stopped and
+        silently lose their outbound packets to a never-drained queue.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stop()
+
+        timer_idx = self._call_log.index("timer")
+        tx_ring_idx = self._call_log.index("tx_ring")
+
+        self.assertLess(
+            timer_idx,
+            tx_ring_idx,
+            msg=(
+                "timer.stop() must precede tx_ring.stop() so timer-driven "
+                "callbacks cannot enqueue to a stopped TX ring. Got order: "
+                f"{self._call_log}"
+            ),
+        )
+
+    def test__stack__stop_stops_packet_handler_first(self) -> None:
+        """
+        Ensure 'stack.stop()' stops the packet handler first so
+        application-side TX producers exit before the rings tear
+        down.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stop()
+
+        self.assertEqual(
+            self._call_log[0],
+            "packet_handler",
+            msg=("packet_handler.stop() must be the first action in " f"stack.stop(). Got order: {self._call_log}"),
+        )
+
+    def test__stack__stop_stops_rings_after_packet_handler(self) -> None:
+        """
+        Ensure both rings are stopped after the packet handler exits
+        — packet_handler is the producer; stopping it first means
+        the rings only need to drain in-flight packets, not absorb
+        new arrivals.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stop()
+
+        ph_idx = self._call_log.index("packet_handler")
+        rx_idx = self._call_log.index("rx_ring")
+        tx_idx = self._call_log.index("tx_ring")
+
+        self.assertLess(
+            ph_idx,
+            rx_idx,
+            msg=f"rx_ring must stop after packet_handler. Got: {self._call_log}",
+        )
+        self.assertLess(
+            ph_idx,
+            tx_idx,
+            msg=f"tx_ring must stop after packet_handler. Got: {self._call_log}",
+        )
+
+
 class TestStackPythonVersionGuard(TestCase):
     """
     The Python-version-guard tests at module import time.
