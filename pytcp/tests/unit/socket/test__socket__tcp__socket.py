@@ -1553,6 +1553,35 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
             msg="accept() child must inherit the parent's blocking=True default.",
         )
 
+    def test__tcp_socket__recv_forwards_bufsize_as_byte_count_to_session(self) -> None:
+        """
+        Ensure 'recv(bufsize)' on a TCP socket forwards the bufsize
+        argument as 'byte_count' to 'TcpSession.receive', so the
+        session's slice-of-rx-buffer respects the caller's request.
+        Pinning the contract guards against regressions where the
+        socket facade silently drops or remaps the parameter.
+
+        Reference: RFC 9293 §3.10.5 (RECEIVE call).
+        """
+
+        parent = TcpSocket(family=AddressFamily.INET4)
+        self.addCleanup(parent._close_io_runtime)
+
+        session = MagicMock()
+        session.receive.return_value = b"abcd"
+        parent._tcp_session = session
+        parent._remote_ip_address = Ip4Address("10.0.0.5")
+        parent._remote_port = 80
+
+        result = parent.recv(bufsize=4)
+
+        self.assertEqual(
+            result,
+            b"abcd",
+            msg="recv(bufsize=4) must return the bytes the session yields.",
+        )
+        session.receive.assert_called_once_with(byte_count=4, timeout=None)
+
     def test__tcp_socket__accept_child_inherits_parent_blocking_false(self) -> None:
         """
         Ensure a child socket popped by 'accept()' inherits the

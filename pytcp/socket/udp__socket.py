@@ -334,8 +334,6 @@ class UdpSocket(socket):
         Read data from socket as a memoryview.
         """
 
-        # TODO - Implement support for bufsize.
-
         if self._unreachable:
             self._unreachable = False
             raise ConnectionRefusedError("[Errno 111] Connection refused - [Remote host sent ICMP Unreachable]")
@@ -350,6 +348,11 @@ class UdpSocket(socket):
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).udp__data
+            # POSIX recv(2) on SOCK_DGRAM truncates the datagram to
+            # 'bufsize' bytes and silently discards the remainder;
+            # the entire datagram is consumed regardless.
+            if bufsize is not None:
+                data_rx = data_rx[:bufsize]
             if not self._packet_rx_md:
                 self._drain_readable()
                 # Producer race: a packet handler may have appended
@@ -385,8 +388,6 @@ class UdpSocket(socket):
         Read data from socket as a memoryview.
         """
 
-        # TODO - Implement support for bufsize.
-
         if timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
@@ -394,16 +395,19 @@ class UdpSocket(socket):
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
+            data_rx = packet_rx_md.udp__data
+            if bufsize is not None:
+                data_rx = data_rx[:bufsize]
             if not self._packet_rx_md:
                 self._drain_readable()
                 if self._packet_rx_md:
                     self._signal_readable()
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - <lg>Received</> {len(packet_rx_md.udp__data)} bytes of data",
+                f"<B><g>[{self}]</> - <lg>Received</> {len(data_rx)} bytes of data",
             )
             return (
-                packet_rx_md.udp__data,
+                data_rx,
                 (
                     str(packet_rx_md.ip__remote_address),
                     packet_rx_md.udp__remote_port,

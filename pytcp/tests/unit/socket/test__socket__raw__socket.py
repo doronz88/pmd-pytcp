@@ -831,3 +831,120 @@ class TestRawSocketNonBlocking(_RawSocketTestCase):
             errno.EAGAIN,
             msg="Non-blocking recvfrom() with no data must raise BlockingIOError(EAGAIN).",
         )
+
+
+class TestRawSocketRecvBufsize(_RawSocketTestCase):
+    """
+    The 'RawSocket.recv' / 'recvfrom' bufsize-truncation tests.
+    """
+
+    def _make_md(self, data: bytes) -> RawMetadata:
+        """
+        Build a canonical IPv4 RawMetadata envelope.
+        """
+
+        from net_addr import IpVersion
+
+        return RawMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            ip__proto=IpProto.ICMP4,
+            raw__data=data,
+        )
+
+    def setUp(self) -> None:
+        """
+        Build a raw socket; tearDown closes it before the parent
+        fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket before the parent tears down patches.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__raw_socket__recv_truncates_oversized_packet_to_bufsize(self) -> None:
+        """
+        Ensure 'recv(bufsize)' on a raw socket returns at most
+        'bufsize' bytes when the queued packet exceeds it; the
+        remainder is silently discarded per POSIX 'recv(2)' on
+        SOCK_RAW.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_raw_packet(self._make_md(b"abcdefghij"))
+
+        self.assertEqual(
+            self._socket.recv(bufsize=4),
+            b"abcd",
+            msg="recv(bufsize=4) on a 10-byte raw packet must return the first 4 bytes only.",
+        )
+
+    def test__raw_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
+        """
+        Ensure 'recv(bufsize)' returns the full packet when the
+        packet is smaller than 'bufsize' — the bufsize is a ceiling.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_raw_packet(self._make_md(b"hi"))
+
+        self.assertEqual(
+            self._socket.recv(bufsize=1024),
+            b"hi",
+            msg="recv(bufsize=1024) on a 2-byte raw packet must return the full payload.",
+        )
+
+    def test__raw_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
+        """
+        Ensure 'recv()' with no 'bufsize' argument returns the
+        complete raw packet — preserves the existing default
+        behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"x" * 200
+        self._socket.process_raw_packet(self._make_md(payload))
+
+        self.assertEqual(
+            self._socket.recv(),
+            payload,
+            msg="recv() without bufsize must return the full raw packet.",
+        )
+
+    def test__raw_socket__recvfrom_truncates_oversized_packet_to_bufsize(self) -> None:
+        """
+        Ensure 'recvfrom(bufsize)' parallels 'recv(bufsize)' by
+        truncating while still returning the sender's (ip, 0)
+        tuple.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_raw_packet(self._make_md(b"abcdefghij"))
+
+        data, addr = self._socket.recvfrom(bufsize=3)
+
+        self.assertEqual(
+            data,
+            b"abc",
+            msg="recvfrom(bufsize=3) must truncate the payload to 3 bytes.",
+        )
+        self.assertEqual(
+            addr,
+            ("10.0.0.2", 0),
+            msg="recvfrom(bufsize=3) must still return the (ip, 0) tuple.",
+        )

@@ -934,3 +934,190 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
 
         with self.assertRaises(TimeoutError):
             s.recv(timeout=0.01)
+
+
+class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
+    """
+    The 'UdpSocket.recv' / 'recvfrom' bufsize-truncation tests.
+    """
+
+    def _make_md(self, data: bytes) -> UdpMetadata:
+        """
+        Build a canonical IPv4 UDP envelope carrying the supplied
+        payload.
+        """
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(data),
+        )
+
+    def setUp(self) -> None:
+        """
+        Build a UDP socket; tearDown closes it before the parent
+        fixture stops the 'log' patch.
+        """
+
+        super().setUp()
+        self._socket = UdpSocket(family=AddressFamily.INET4)
+
+    def tearDown(self) -> None:
+        """
+        Close the socket before the parent tears down patches.
+        """
+
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+        super().tearDown()
+
+    def test__udp_socket__recv_truncates_oversized_datagram_to_bufsize(self) -> None:
+        """
+        Ensure 'recv(bufsize)' returns at most 'bufsize' bytes when
+        the queued datagram exceeds it; the datagram remainder is
+        silently discarded per POSIX 'recv(2)' semantics on UDP.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
+
+        self.assertEqual(
+            self._socket.recv(bufsize=4),
+            b"abcd",
+            msg="recv(bufsize=4) on a 10-byte datagram must return the first 4 bytes only.",
+        )
+
+    def test__udp_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
+        """
+        Ensure 'recv(bufsize)' returns the full datagram unchanged
+        when the datagram is smaller than 'bufsize' — bufsize is a
+        ceiling, not a floor.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"hi"))
+
+        self.assertEqual(
+            self._socket.recv(bufsize=1024),
+            b"hi",
+            msg="recv(bufsize=1024) on a 2-byte datagram must return the full payload.",
+        )
+
+    def test__udp_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
+        """
+        Ensure 'recv()' with no 'bufsize' argument (the default
+        'None') returns the complete datagram — preserves the
+        existing call-shape that does not pass 'bufsize'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"x" * 1500
+        self._socket.process_udp_packet(self._make_md(payload))
+
+        self.assertEqual(
+            self._socket.recv(),
+            payload,
+            msg="recv() without bufsize must return the full datagram.",
+        )
+
+    def test__udp_socket__recv_with_bufsize_zero_returns_empty(self) -> None:
+        """
+        Ensure 'recv(bufsize=0)' returns 'b""' and consumes the
+        queued datagram per POSIX UDP recv semantics — bufsize of
+        zero is a valid request that yields no bytes but still
+        pops the datagram off the queue.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"payload"))
+
+        self.assertEqual(
+            self._socket.recv(bufsize=0),
+            b"",
+            msg="recv(bufsize=0) must return empty bytes.",
+        )
+        self.assertEqual(
+            len(self._socket._packet_rx_md),
+            0,
+            msg="recv(bufsize=0) must still consume the queued datagram.",
+        )
+
+    def test__udp_socket__recvfrom_truncates_oversized_datagram_to_bufsize(self) -> None:
+        """
+        Ensure 'recvfrom(bufsize)' parallels 'recv(bufsize)' by
+        truncating an oversized datagram while still returning the
+        sender's address tuple.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
+
+        data, addr = self._socket.recvfrom(bufsize=3)
+
+        self.assertEqual(
+            data,
+            b"abc",
+            msg="recvfrom(bufsize=3) must truncate the payload to 3 bytes.",
+        )
+        self.assertEqual(
+            addr,
+            ("10.0.0.2", 5678),
+            msg="recvfrom(bufsize=3) must still return the sender's (ip, port).",
+        )
+
+    def test__udp_socket__recv_mv_with_bufsize_truncates_memoryview(self) -> None:
+        """
+        Ensure 'recv__mv(bufsize)' returns a memoryview limited to
+        'bufsize' bytes — the zero-copy variant honors the same
+        truncation contract as 'recv()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
+
+        mv = self._socket.recv__mv(bufsize=5)
+
+        self.assertEqual(
+            len(mv),
+            5,
+            msg="recv__mv(bufsize=5) must return a 5-byte memoryview.",
+        )
+        self.assertEqual(
+            bytes(mv),
+            b"abcde",
+            msg="recv__mv(bufsize=5) must contain the first 5 datagram bytes.",
+        )
+
+    def test__udp_socket__recvfrom_mv_with_bufsize_truncates_memoryview(self) -> None:
+        """
+        Ensure 'recvfrom__mv(bufsize)' truncates the memoryview to
+        'bufsize' bytes while still returning the sender tuple.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
+
+        mv, addr = self._socket.recvfrom__mv(bufsize=2)
+
+        self.assertEqual(
+            bytes(mv),
+            b"ab",
+            msg="recvfrom__mv(bufsize=2) must contain the first 2 datagram bytes.",
+        )
+        self.assertEqual(
+            addr,
+            ("10.0.0.2", 5678),
+            msg="recvfrom__mv(bufsize=2) must still return the sender's (ip, port).",
+        )

@@ -277,8 +277,6 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        # TODO - Implement support for bufsize
-
         if timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
@@ -286,6 +284,10 @@ class RawSocket(socket):
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).raw__data
+            # POSIX recv(2) on SOCK_RAW truncates the packet to
+            # 'bufsize' bytes and silently discards the remainder.
+            if bufsize is not None:
+                data_rx = data_rx[:bufsize]
             if not self._packet_rx_md:
                 self._drain_readable()
                 if self._packet_rx_md:
@@ -306,8 +308,6 @@ class RawSocket(socket):
         Read data from socket.
         """
 
-        # TODO - Implement support for bufsize
-
         if timeout is None and not self._blocking:
             acquired = self._packet_rx_md_ready.acquire(blocking=False)
         else:
@@ -315,16 +315,19 @@ class RawSocket(socket):
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
+            data_rx = packet_rx_md.raw__data
+            if bufsize is not None:
+                data_rx = data_rx[:bufsize]
             if not self._packet_rx_md:
                 self._drain_readable()
                 if self._packet_rx_md:
                     self._signal_readable()
             __debug__ and log(
                 "socket",
-                f"<B><g>[{self}]</> - Received {len(packet_rx_md.raw__data)} bytes of data",
+                f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
             )
             return (
-                bytes(packet_rx_md.raw__data),  # Note: Conversion: memoryview -> bytes
+                bytes(data_rx),  # Note: Conversion: memoryview -> bytes
                 (
                     str(packet_rx_md.ip__remote_address),
                     0,
