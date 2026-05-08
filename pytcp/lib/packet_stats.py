@@ -105,6 +105,16 @@ class PacketStatsRx(PacketStats):
     ip6_frag__failed_parse: int = 0
     ip6_frag__defrag: int = 0
 
+    ip6_hbh__pre_parse: int = 0
+    ip6_hbh__failed_parse: int = 0
+    ip6_routing__pre_parse: int = 0
+    ip6_routing__failed_parse: int = 0
+    ip6_routing__rh0__drop: int = 0
+    ip6_dest_opts__pre_parse: int = 0
+    ip6_dest_opts__failed_parse: int = 0
+    ip6__hbh__not_first__drop: int = 0
+    ip6__no_next_header: int = 0
+
     ip4__no_proto_support__respond_icmp4_unreachable: int = 0
     ip4__no_proto_support__icmp4_unreachable_suppressed: int = 0
     ip6__no_proto_support__respond_icmp6_param_problem: int = 0
