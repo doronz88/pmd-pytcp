@@ -81,6 +81,28 @@ test: venv
 
 validate: lint test
 
+# RX-ring micro-benchmark — measures per-frame overhead of the
+# 'select() + os.read() + queue.put()' loop. Run twice (once with
+# '-O' to strip __debug__/asserts, once without) and compare.
+bench__rx_ring: venv
+	@echo '<<< RX-RING BENCH (default)'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tools/bench_rx_ring.py
+	@echo
+	@echo '<<< RX-RING BENCH (-O, __debug__ + asserts stripped)'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -O tools/bench_rx_ring.py
+
+# Profile RX-ring under cProfile, dump top-25 cumulative-time
+# entries. Use to find the actual hot spot before deciding whether
+# item 5 (RX inner-drain loop) is worth implementing.
+profile__rx_ring: venv
+	@echo '<<< RX-RING PROFILE (-O)'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -O -m cProfile \
+		-o /tmp/pytcp_rx_ring.prof tools/bench_rx_ring.py \
+		--frames 50000 --runs 1
+	@./$(VENV)/bin/python -c "import pstats; \
+		pstats.Stats('/tmp/pytcp_rx_ring.prof').strip_dirs(\
+		).sort_stats('cumulative').print_stats(25)"
+
 bridge:
 	@brctl addbr br0
 
