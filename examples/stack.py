@@ -54,6 +54,58 @@ from net_addr import (
 from pytcp import stack
 
 
+def _capture_stats_snapshot() -> dict[str, int]:
+    """
+    Snapshot the live ring + packet-handler counters. Returns a
+    flat dict so deltas are trivial.
+    """
+
+    snap: dict[str, int] = {}
+    if hasattr(stack, "rx_ring") and stack.rx_ring is not None:
+        snap["rx_ring__queue_full__drop"] = stack.rx_ring.queue_full_drop_count
+        snap["rx_ring__qsize"] = stack.rx_ring._rx_ring.qsize()
+    if hasattr(stack, "tx_ring") and stack.tx_ring is not None:
+        snap["tx_ring__queue_full__drop"] = stack.tx_ring.queue_full_drop_count
+        snap["tx_ring__os_error__drop"] = stack.tx_ring.os_error_drop_count
+        snap["tx_ring__qsize"] = stack.tx_ring._tx_ring.qsize()
+    if hasattr(stack, "packet_handler") and stack.packet_handler is not None:
+        rx_stats = stack.packet_handler.packet_stats_rx
+        for field in (
+            "ethernet__pre_parse",
+            "ip4__pre_parse",
+            "ip4__defrag",
+            "ip4__frag__overlap__drop",
+            "ip6__pre_parse",
+            "ip6_frag__overlap__drop",
+            "icmp4__echo_request",
+            "icmp6__echo_request",
+            "tcp__pre_parse",
+            "udp__pre_parse",
+        ):
+            if hasattr(rx_stats, field):
+                snap[f"rx__{field}"] = getattr(rx_stats, field)
+    return snap
+
+
+def _print_stats_delta(prev: dict[str, int], now: dict[str, int], interval: int) -> None:
+    """
+    Pretty-print the per-counter delta + per-second rate over the
+    'interval' window since the last snapshot.
+    """
+
+    print("=" * 70)
+    print(f"PyTCP stats — {interval}s window")
+    print("-" * 70)
+    print(f"  {'counter':<40} {'total':>12} {'delta':>8} {'pps':>8}")
+    for key in sorted(now):
+        total = now[key]
+        delta = total - prev.get(key, 0)
+        pps = delta // interval if interval else 0
+        if delta or "qsize" in key:
+            print(f"  {key:<40} {total:>12} {delta:>8} {pps:>8}")
+    print("=" * 70)
+
+
 @click.command()
 @click.option(
     "--stack-interface",
@@ -186,8 +238,23 @@ def cli(
                 subsystem.stack_ip4_address = stack__ip4_host.address if stack__ip4_host else Ip4Address()
             subsystem.start()
 
+        # Periodic stats snapshot — every 5 seconds during the run,
+        # print the ring drop counters + the per-protocol RX
+        # accept counts so flood-testing has live observability.
+        # Set 'PYTCP_STATS_INTERVAL' to override (0 disables).
+        import os as _os
+
+        _stats_interval = int(_os.environ.get("PYTCP_STATS_INTERVAL", "5"))
+        _last_stats = time.monotonic()
+        _last_snapshot = _capture_stats_snapshot()
+
         while any(subsystem.is_alive for subsystem in subsystems if subsystem) or not subsystems:
             time.sleep(1)
+            if _stats_interval and time.monotonic() - _last_stats >= _stats_interval:
+                now_snapshot = _capture_stats_snapshot()
+                _print_stats_delta(_last_snapshot, now_snapshot, _stats_interval)
+                _last_snapshot = now_snapshot
+                _last_stats = time.monotonic()
 
     except KeyboardInterrupt:
         pass
