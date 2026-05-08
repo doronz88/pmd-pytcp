@@ -1015,25 +1015,32 @@ class TcpSession:
         #   - Non-SYN segments: emit iff '_send_ts'. tsval=now_ms,
         #     tsecr=_ts_recent. (Phase 2 wires this; Phase 1 only
         #     handles handshake.)
+        # RFC 7323 §5.4: TSval / TSecr are 4-byte unsigned integers
+        # that wrap at 2**32. PyTCP's 'stack.timer.now_ms' is a
+        # monotonic ms counter that exceeds UINT32_MAX after ~49.7
+        # days of stack uptime; mask to 32 bits so the wire field
+        # carries the wrapped value rather than overflowing the
+        # TcpOptionTimestamps assertion.
+        ts_clock = stack.timer.now_ms & 0xFFFF_FFFF
         tcp__tsval: int | None
         tcp__tsecr: int | None
         if flag_syn and not flag_ack:
             if self._advertise.ts:
-                tcp__tsval = stack.timer.now_ms
+                tcp__tsval = ts_clock
                 tcp__tsecr = 0
             else:
                 tcp__tsval = None
                 tcp__tsecr = None
         elif flag_syn and flag_ack:
             if self._ts.send_ts:
-                tcp__tsval = stack.timer.now_ms
+                tcp__tsval = ts_clock
                 tcp__tsecr = self._ts.ts_recent
             else:
                 tcp__tsval = None
                 tcp__tsecr = None
         else:
             if self._ts.send_ts:
-                tcp__tsval = stack.timer.now_ms
+                tcp__tsval = ts_clock
                 tcp__tsecr = self._ts.ts_recent
             else:
                 tcp__tsval = None

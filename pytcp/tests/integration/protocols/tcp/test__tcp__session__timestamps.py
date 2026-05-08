@@ -1721,3 +1721,112 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
                 f"_ts_recent={session._ts.ts_recent}."
             ),
         )
+
+
+class TestTcpTimestampsClockWrap32Bit(TcpSessionTestCase):
+    """
+    RFC 7323 §5.4 32-bit TS clock wrap-around tests.
+    """
+
+    def test__ts__active_open_syn_masks_tsval_to_32_bits(self) -> None:
+        """
+        Ensure an active-open SYN whose 'stack.timer.now_ms' exceeds
+        the 32-bit unsigned range emits a TSval masked to UINT32_MAX
+        rather than crashing in the TcpOptionTimestamps assertion.
+        On hosts with uptime above 49.7 days, monotonic-ms-derived
+        TS clocks naturally exceed 0xFFFFFFFF; the wire field is a
+        4-byte unsigned integer that must wrap, not overflow.
+
+        Reference: RFC 7323 §5.4 (TS clock 32-bit wrap-around).
+        """
+
+        # Set the FakeTimer's now_ms to one tick above UINT32_MAX
+        # so the active-open SYN's TSval crosses the wrap boundary.
+        UINT32_MAX = 0xFFFF_FFFF
+        self._timer._now_ms = UINT32_MAX + 1
+
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        tx = self._advance(ms=1)
+
+        self.assertEqual(
+            len(tx),
+            1,
+            msg="Setup invariant: connect must emit one SYN frame.",
+        )
+        probe = self._parse_tx(tx[0])
+        self.assertIn(
+            "SYN",
+            probe.flags,
+            msg="Setup invariant: outbound frame must be the SYN.",
+        )
+        self.assertIsNotNone(
+            probe.tsval,
+            msg="Active-open SYN must carry the Timestamps option.",
+        )
+        # After advancing by 1 ms, now_ms = UINT32_MAX + 2 = 0x100000001;
+        # masked to 32 bits this is 0x00000001.
+        self.assertEqual(
+            probe.tsval,
+            0x0000_0001,
+            msg=(
+                "TSval must be masked to UINT32_MAX so the 4-byte "
+                "wire field carries the wrapped clock value. Got "
+                f"TSval={probe.tsval!r}."
+            ),
+        )
+
+    def test__ts__post_handshake_data_segment_masks_tsval_to_32_bits(self) -> None:
+        """
+        Ensure post-handshake data segments also mask the TSval to
+        32 bits when the TS clock has wrapped — the same wrap path
+        that crashes on long-uptime hosts during a passive-open
+        SYN+ACK reply.
+
+        Reference: RFC 7323 §5.4 (TS clock 32-bit wrap-around).
+        """
+
+        # Establish a session with TSopt negotiated bilaterally.
+        session = self._make_active_session(iss=LOCAL__ISS)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+
+        peer_syn_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS,
+            ack=LOCAL__ISS + 1,
+            flags=("SYN", "ACK"),
+            win=PEER__WIN,
+            mss=PEER__MSS,
+            tsval=PEER__TSVAL_INITIAL,
+            tsecr=0,
+        )
+        self._drive_rx(frame=peer_syn_ack)
+        assert session.state is FsmState.ESTABLISHED
+        # Bypass slow-start so the data segment fires immediately.
+        session._cc.snd_ewn = PEER__WIN
+
+        # Cross the 32-bit wrap boundary mid-session.
+        UINT32_MAX = 0xFFFF_FFFF
+        self._timer._now_ms = UINT32_MAX
+
+        session.send(data=b"x")
+        tx = self._advance(ms=1)
+
+        probe = self._parse_tx(tx[0])
+        self.assertIsNotNone(
+            probe.tsval,
+            msg="Setup invariant: post-handshake segment must carry TSopt.",
+        )
+        # _now_ms = UINT32_MAX + 1 = 0x100000000 after the 1 ms tick;
+        # masked to 32 bits this is 0x00000000.
+        self.assertEqual(
+            probe.tsval,
+            0x0000_0000,
+            msg=(
+                "TSval must be masked to UINT32_MAX so the 4-byte "
+                "wire field carries the wrapped clock value. Got "
+                f"TSval={probe.tsval!r}."
+            ),
+        )
