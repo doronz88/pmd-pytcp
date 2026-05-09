@@ -26,7 +26,7 @@
 This module contains tests for the 'ArpCache' subsystem and its
 'CacheEntry' helper.
 
-pytcp/tests/unit/stack/test__stack__arp_cache.py
+pytcp/tests/unit/protocols/arp/test__arp__cache.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, MacAddress
-from pytcp.stack.arp_cache import ArpCache, CacheEntry
+from pytcp.protocols.arp.arp__cache import ArpCache, CacheEntry
 
 
 class TestArpCacheEntry(TestCase):
@@ -120,7 +120,7 @@ class _ArpCacheFixture(TestCase):
         Install the log patches and build the cache.
         """
 
-        self._log_patch = patch("pytcp.stack.arp_cache.log")
+        self._log_patch = patch("pytcp.protocols.arp.arp__cache.log")
         self._log_patch.start()
         self._subsystem_log_patch = patch("pytcp.lib.subsystem.log")
         self._subsystem_log_patch.start()
@@ -211,7 +211,7 @@ class TestArpCacheAddFind(_ArpCacheFixture):
         from pytcp.stack.packet_handler import PacketHandlerL2
 
         handler = MagicMock(spec=PacketHandlerL2)
-        with patch("pytcp.stack.arp_cache.stack.packet_handler", handler):
+        with patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler):
             result = self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertIsNone(
@@ -270,7 +270,6 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         configured neighbors.
         """
 
-        import pytcp.stack as stack_module
         from net_addr import MacAddress
 
         ip = Ip4Address("10.0.0.1")
@@ -281,17 +280,15 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
 
         # Force the entry's age to be > max age.
         with (
-            patch("pytcp.stack.arp_cache.time.time", return_value=10_000_000),
+            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=10_000_000),
             patch.object(
                 self._cache._event__stop_subsystem,
                 "wait",
                 return_value=False,
             ),
-            patch.object(
-                stack_module,
-                "ARP__CACHE__ENTRY_MAX_AGE",
+            patch(
+                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
                 1,
-                create=True,
             ),
         ):
             self._cache._subsystem_loop()
@@ -308,28 +305,24 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         'ARP__CACHE__ENTRY_MAX_AGE' is removed from the cache.
         """
 
-        import pytcp.stack as stack_module
-
         ip = Ip4Address("10.0.0.1")
         # Build the entry at t=1000, then advance the clock to t=10000.
-        with patch("pytcp.stack.arp_cache.time.time", return_value=1000):
+        with patch("pytcp.protocols.arp.arp__cache.time.time", return_value=1000):
             self._cache.add_entry(
                 ip4_address=ip,
                 mac_address=MacAddress("02:00:00:00:00:01"),
             )
 
         with (
-            patch("pytcp.stack.arp_cache.time.time", return_value=10_000),
+            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=10_000),
             patch.object(
                 self._cache._event__stop_subsystem,
                 "wait",
                 return_value=False,
             ),
-            patch.object(
-                stack_module,
-                "ARP__CACHE__ENTRY_MAX_AGE",
+            patch(
+                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
                 1,
-                create=True,
             ),
         ):
             self._cache._subsystem_loop()
@@ -347,7 +340,6 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         to refresh it, and resets its hit_count.
         """
 
-        import pytcp.stack as stack_module
         from pytcp.stack.packet_handler import PacketHandlerL2
 
         ip = Ip4Address("10.0.0.1")
@@ -363,7 +355,7 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         # Age between (MAX_AGE - REFRESH_TIME)=2 and MAX_AGE=10 -> force 5.
         with (
             patch(
-                "pytcp.stack.arp_cache.time.time",
+                "pytcp.protocols.arp.arp__cache.time.time",
                 side_effect=lambda: self._cache._arp_cache[ip].create_time + 5,
             ),
             patch.object(
@@ -371,19 +363,15 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
                 "wait",
                 return_value=False,
             ),
-            patch.object(
-                stack_module,
-                "ARP__CACHE__ENTRY_MAX_AGE",
+            patch(
+                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
                 10,
-                create=True,
             ),
-            patch.object(
-                stack_module,
-                "ARP__CACHE__ENTRY_REFRESH_TIME",
+            patch(
+                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_REFRESH_TIME",
                 8,
-                create=True,
             ),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache._subsystem_loop()
 
@@ -417,8 +405,8 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
 
         handler = MagicMock(spec=PacketHandlerL2)
         with (
-            patch("pytcp.stack.arp_cache.time.monotonic", return_value=1000.0),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=1000.0),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
 
@@ -438,8 +426,8 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
 
         handler = MagicMock(spec=PacketHandlerL2)
         with (
-            patch("pytcp.stack.arp_cache.time.monotonic", side_effect=[1000.0, 1000.5]),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", side_effect=[1000.0, 1000.5]),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
@@ -472,10 +460,10 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
         handler = MagicMock(spec=PacketHandlerL2)
         with (
             patch(
-                "pytcp.stack.arp_cache.time.monotonic",
+                "pytcp.protocols.arp.arp__cache.time.monotonic",
                 side_effect=[1000.0, 1001.5, 1002.0],
             ),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
@@ -509,10 +497,10 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
         handler = MagicMock(spec=PacketHandlerL2)
         with (
             patch(
-                "pytcp.stack.arp_cache.time.monotonic",
+                "pytcp.protocols.arp.arp__cache.time.monotonic",
                 side_effect=[1000.0, 1000.3, 1000.6],
             ),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
             self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
@@ -545,8 +533,8 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
         mac = MacAddress("02:00:00:00:00:05")
         handler = MagicMock(spec=PacketHandlerL2)
         with (
-            patch("pytcp.stack.arp_cache.time.monotonic", side_effect=[1000.0, 1000.1]),
-            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", side_effect=[1000.0, 1000.1]),
+            patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=ip)
             # Resolution arrives — should clear the pending entry.
@@ -634,7 +622,7 @@ class TestArpCachePendingPacketQueue(_ArpCacheFixture):
         packet = MagicMock()
         tx_ring = MagicMock()
 
-        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+        with patch("pytcp.protocols.arp.arp__cache.stack.tx_ring", tx_ring):
             self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=packet)
             self._cache.add_entry(ip4_address=ip, mac_address=mac)
 
@@ -658,7 +646,7 @@ class TestArpCachePendingPacketQueue(_ArpCacheFixture):
         mac = MacAddress("02:00:00:00:00:05")
         tx_ring = MagicMock()
 
-        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+        with patch("pytcp.protocols.arp.arp__cache.stack.tx_ring", tx_ring):
             self._cache.add_entry(ip4_address=ip, mac_address=mac)
 
         tx_ring.enqueue.assert_not_called()
@@ -678,7 +666,7 @@ class TestArpCachePendingPacketQueue(_ArpCacheFixture):
         packet = MagicMock()
         tx_ring = MagicMock()
 
-        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+        with patch("pytcp.protocols.arp.arp__cache.stack.tx_ring", tx_ring):
             self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=packet)
             self._cache.add_entry(ip4_address=ip, mac_address=mac)
 
