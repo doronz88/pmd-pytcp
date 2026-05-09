@@ -159,126 +159,18 @@ detection — not implemented."
 
 ## §2 — Tier 2 #9: abandon-after-second-conflict (RFC 5227 §2.4(b) MUST)
 
-### What's missing
+Absorbed into the NUD work — Phase 6 of
+[`docs/refactor/nud_state_machine.md`](nud_state_machine.md).
+The NUD `FAILED` state provides the "neighbour unreachable"
+semantic that the TcpSession ABORT path needs; the abandon
+mechanism gates on having FAILED available, so #9 lands
+last in the NUD migration. The §2.4(b) MUST itself is a
+PacketHandler-level concern (per-IP last-conflict timestamp,
+abandon path that ABORTs sessions and removes the address
+from `_ip4_host`); the NUD doc §8 captures the design.
 
-> "However, if this is not the first conflicting ARP packet the
-> host has seen, and the time recorded for the previous
-> conflicting ARP packet is recent, within DEFEND_INTERVAL
-> seconds, then the host MUST immediately cease using this
-> address and signal an error to the configuring agent as
-> described above."
-
-Today PyTCP's `_maybe_send_arp_defense`
-(`packet_handler__arp__rx.py:90-103`) rate-limits the defense
-but never abandons. The MUST: on the **second** conflict within
-DEFEND_INTERVAL of the previous, give up the address.
-
-Plus the §2.4-final SHOULD:
-
-> "Before abandoning an address due to a conflict, hosts SHOULD
-> actively attempt to reset any existing connections using that
-> address."
-
-### Required state
-
-Add to `PacketHandlerL2`:
-
-```python
-self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
-```
-
-Distinct from the existing `_arp_defend__last_emitted` (which
-tracks last DEFENSE; this tracks last CONFLICT — they're
-different timestamps because rate-limiting suppresses defenses).
-
-### Logic split
-
-Replace `_maybe_send_arp_defense` with `_handle_arp_conflict`
-that does:
-
-```python
-def _handle_arp_conflict(self, *, ip4_unicast):
-    now = time.monotonic()
-    last = self._arp_defend__last_conflict_at.get(ip4_unicast)
-    self._arp_defend__last_conflict_at[ip4_unicast] = now
-
-    if last is not None and now - last < ARP__DEFEND_INTERVAL:
-        # Second conflict within window — RFC 5227 §2.4(b) MUST abandon.
-        self._abandon_ipv4_address(ip4_unicast=ip4_unicast)
-        return
-
-    # First conflict (or stale window) — defend, gated by
-    # the per-IP last-defended timestamp (existing logic).
-    last_defense = self._arp_defend__last_emitted.get(ip4_unicast)
-    if last_defense is None or now - last_defense >= ARP__DEFEND_INTERVAL:
-        self._arp_defend__last_emitted[ip4_unicast] = now
-        self._send_gratuitous_arp(ip4_unicast=ip4_unicast)
-```
-
-### Abandon path
-
-```python
-def _abandon_ipv4_address(self, *, ip4_unicast):
-    """
-    Tear down all sessions bound to the address, remove from
-    '_ip4_host', log, signal the configuring agent.
-    """
-    # 1. ABORT any TcpSessions bound to this address.
-    from pytcp.lib.tx_status import TxStatus
-    from pytcp.protocols.tcp.tcp__session import SysCall
-    for socket_id, sock in list(stack.sockets.items()):
-        if socket_id.local_ip == ip4_unicast:
-            session = getattr(sock, "_tcp_session", None)
-            if session is not None:
-                session.tcp_fsm(syscall=SysCall.ABORT)
-
-    # 2. Remove from _ip4_host.
-    self._ip4_host = [h for h in self._ip4_host if h.address != ip4_unicast]
-
-    # 3. Log + stat.
-    log("arp", f"<CRIT>Abandoned IPv4 address {ip4_unicast} after second conflict</>")
-    # Optional: PacketStatsRx.arp__op_*__conflict__abandon += 1
-
-    # 4. Configuring-agent signal: if _ip4_host is now empty,
-    #    set _ip4_support = False (mirrors the DAD-failure path
-    #    at the bottom of _create_stack_ip4_addressing).
-    if not self._ip4_host:
-        self._ip4_support = False
-```
-
-### Tests-first
-
-**Unit** in
-`test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxDefendInterval`
-(extend the existing class):
-
-- `test__abandon_after_second_conflict_within_window` — drive
-  2 conflicts at t=1000 and t=1005; assert address removed
-  from `_ip4_host` and the stub's `aborted_session_ids` (or
-  similar spy) records the ABORT.
-- `test__no_abandon_after_second_conflict_outside_window` —
-  drive 2 conflicts at t=1000 and t=1011 (10.5 s apart, past
-  DEFEND_INTERVAL); assert address still in `_ip4_host` and
-  defense fires both times.
-
-**Integration** in
-`test__arp__defend_interval.py::TestArpDefendInterval`:
-
-- `test__second_conflict_within_window_abandons` — drive 2
-  conflicts at the wire level; assert no second defensive
-  ARP, address removed from `_ip4_host`.
-
-### Effort
-
-Substantial. Touches:
-- `pytcp/stack/packet_handler/packet_handler__arp__rx.py` (~30 lines)
-- `pytcp/stack/packet_handler/__init__.py` (~30 lines for `_abandon_ipv4_address` + state field)
-- `pytcp/lib/packet_stats.py` (new counter)
-- TCP session ABORT plumbing — verify the API exists and works from this caller (`tcp_session.tcp_fsm(syscall=SysCall.ABORT)` is the canonical call per `pytcp/protocols/tcp/tcp__session.py`).
-
-### Reference
-
-`docs/rfc/arp/rfc5227__ipv4_acd/adherence.md` §2.4 / §2.4(b).
+Adherence reference: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`
+§2.4 / §2.4(b).
 
 ---
 
@@ -330,142 +222,53 @@ in static-config model)."
 
 ## §4 — Tier 3 #11: NUD state machine
 
-### What's missing
+The full design + per-phase migration plan now lives in a
+dedicated document at
+[`docs/refactor/nud_state_machine.md`](nud_state_machine.md).
+Read that doc before starting any code; the resume prompt in
+its §12 is the canonical entry point.
 
-Linux's `net/core/neighbour.c` implements the RFC 4861 §7.3.2
-state machine plus FAILED:
+Summary for the punch list:
 
-```
-        NUD_NONE
-            ↓ (find_entry on miss)
-       NUD_INCOMPLETE
-            ↓ (ARP Reply received)         ↓ (PROBE_NUM probes, no Reply)
-        NUD_REACHABLE                      NUD_FAILED
-            ↓ (REACHABLE_TIME elapsed)
-         NUD_STALE
-            ↓ (TX uses entry)
-          NUD_DELAY
-            ↓ (DELAY_FIRST_PROBE_TIME elapsed, no upper-layer confirm)
-          NUD_PROBE
-            ↓ (probe Reply)         ↓ (no Reply after MAX_UNICAST_SOLICIT)
-        NUD_REACHABLE                NUD_FAILED
-```
+- **#11 NUD FSM** — six states (`INCOMPLETE` / `REACHABLE` /
+  `STALE` / `DELAY` / `PROBE` / `FAILED`) per RFC 4861 §7.3.2,
+  shared between ARP (IPv4) and ND (IPv6). The generic
+  `NeighborCache[A]` lives at `pytcp/lib/neighbor.py`
+  (Linux's `net/core/neighbour.c` factoring); per-protocol
+  adapters supply the wire-level solicit hook. NUD timing
+  constants register through the sysctl framework
+  (`neighbor.reachable_time`, `neighbor.gc_thresh1` …)
+  rather than as static `*__NUD__*` constants.
+- **#12 reachability confirmation hook** — folds into #11
+  Phase 4; TCP calls `NeighborCache.confirm_reachability` on
+  in-window ACK to bypass the unicast probe.
+- **#13 bounded cache + GC** — folds into #11 Phase 5.
+- **#9 abandon-after-second-conflict** — folds into #11
+  Phase 6; the FAILED state provides the "neighbour
+  unreachable" signal the TcpSession ABORT path needs.
 
-Today PyTCP has binary present/absent. The
-`_PendingResolution` table from #3 is essentially `INCOMPLETE`
-already; the cache's `CacheEntry` is essentially a degenerate
-`REACHABLE` (no aging-related state). The FSM grows from
-adding STALE/DELAY/PROBE/FAILED states and the transitions
-between them.
-
-### Implementation rough plan
-
-1. **New file** `pytcp/protocols/arp/arp__nud.py` housing:
-   - `NudState` enum (INCOMPLETE/REACHABLE/STALE/DELAY/PROBE/FAILED)
-   - `NeighborEntry` dataclass replacing `CacheEntry` — carries
-     state, `state_changed_at: float` (monotonic), `probe_count: int`
-   - State transition helpers
-
-2. **Refactor `ArpCache`** (`pytcp/protocols/arp/arp__cache.py`):
-   - Replace `_arp_cache: dict[Ip4Address, CacheEntry]` with
-     `_neighbours: dict[Ip4Address, NeighborEntry]`
-   - `find_entry` returns MAC immediately for REACHABLE; queues
-     packet for INCOMPLETE; for STALE → transition to DELAY
-     and return MAC; for DELAY → return MAC; for PROBE → return
-     MAC; for FAILED → return None
-   - `add_entry` (on RX of Reply) → REACHABLE
-   - `_subsystem_loop` runs the timer-driven transitions
-     (REACHABLE → STALE after REACHABLE_TIME; DELAY → PROBE
-     after DELAY_FIRST_PROBE_TIME; PROBE → FAILED after
-     MAX_UNICAST_SOLICIT × RETRANS_TIMER)
-
-3. **Reachability confirmation hook** (#12 below): public
-   method `confirm_reachability(ip4_address)` that the TCP
-   layer calls on in-window ACK. Moves the entry directly
-   from STALE/DELAY/PROBE → REACHABLE without sending a probe.
-
-4. **Bounded cache + GC** (#13 below): three thresholds
-   triggering eviction (LRU? oldest-first?) when cache size
-   crosses each.
-
-5. **Generic `NeighborCache[A: Ip4Address | Ip6Address]`**:
-   if the work is going to grow into ND too, extract a generic
-   base. ARP and ND would both inherit. Linux's
-   `net/core/neighbour.c` is the canonical model.
-
-### Constants to add
-
-Linux defaults (RFC 4861 §10):
-- `ARP__NUD__REACHABLE_TIME = 30000`  ms (30 s base, randomised
-  to 50–150% per Linux)
-- `ARP__NUD__DELAY_FIRST_PROBE_TIME = 5000`  ms (5 s)
-- `ARP__NUD__RETRANS_TIMER = 1000`  ms (1 s)
-- `ARP__NUD__MAX_UNICAST_SOLICIT = 3`
-- `ARP__NUD__MAX_MULTICAST_SOLICIT = 3`
-- `ARP__GC_THRESH1 = 128`
-- `ARP__GC_THRESH2 = 512`
-- `ARP__GC_THRESH3 = 1024`
-
-### Tests-first
-
-This is the largest single piece of remaining work. Plan: one
-PR per state with its own failing tests (incremental tests-
-first):
-
-1. `INCOMPLETE` state (folds in #3's `_PendingResolution`).
-2. `REACHABLE` state (current `CacheEntry` semantics).
-3. `STALE` transition on REACHABLE_TIME elapse.
-4. `DELAY` transition on first TX from STALE.
-5. `PROBE` transition + unicast probe emission.
-6. `FAILED` transition after MAX_UNICAST_SOLICIT.
-7. Reachability confirmation hook (#12).
-8. Bounded-cache eviction (#13).
-
-### Effort
-
-1–2 weeks. Foundational architectural work.
-
-### Reference
-
-`docs/refactor/arp_linux_parity.md` (this file) §4
-(this section) is the canonical plan.
+Effort: 1–2 weeks across 6 phases. One phase per session
+recommended given the context budget; each phase is a
+mechanically reversible green-test commit.
 
 ---
 
 ## §5 — Tier 3 #12: reachability confirmation hook
 
-Folds into #11. The TCP layer feeds back "I just received an
-in-window ACK from this IP" so the neighbour entry can be
-moved STALE → REACHABLE without sending a probe.
-
-### Implementation
-
-- `ArpCache.confirm_reachability(ip4_address)` public API
-- TCP session calls it from the in-window-ACK code path
-  (`pytcp/protocols/tcp/tcp__session.py`'s ACK processor)
-
-### Effort
-
-Small (~20 lines + tests) **once #11 lands**.
+Absorbed into the NUD work — Phase 4 of
+[`docs/refactor/nud_state_machine.md`](nud_state_machine.md).
+TCP calls `NeighborCache.confirm_reachability` on in-window
+ACK to bypass the unicast probe.
 
 ---
 
 ## §6 — Tier 3 #13: bounded cache + GC
 
-Folds into #11. Linux uses three thresholds:
-- `gc_thresh1 = 128` — below this, never GC
-- `gc_thresh2 = 512` — above this, GC after stale_time
-- `gc_thresh3 = 1024` — hard cap; never exceed
-
-### Implementation
-
-- Cache size check in `add_entry`.
-- Eviction: prefer FAILED entries first, then oldest STALE,
-  then oldest by last_used.
-
-### Effort
-
-Small (~50 lines + tests) **once #11 lands**.
+Absorbed into the NUD work — Phase 5 of
+[`docs/refactor/nud_state_machine.md`](nud_state_machine.md).
+Three Linux-style thresholds (`gc_thresh1 = 128` /
+`gc_thresh2 = 512` / `gc_thresh3 = 1024`) registered as
+sysctls; eviction priority FAILED → STALE → LRU.
 
 ---
 
@@ -673,50 +476,62 @@ fresh session:
 ```
 I'm resuming the PyTCP ARP→Linux-host parity work. Read
 'docs/refactor/arp_linux_parity.md' first — it's the canonical
-plan with §0 status snapshot, §1–§3 Tier 2 RFC 5227 finish items,
-§4–§10 Tier 3 Linux-specific defaults, and §12 file/constants
-inventory. Then read these in order before any code:
+punch list with §0 status snapshot. Then read these in order
+before any code:
 
   1. CLAUDE.md (Project North Star, Phase 1 vs Phase 2 split)
   2. .claude/rules/feature_implementation.md (tests-first MUST,
      §7.2 audit before commit, commit discipline)
   3. .claude/rules/unit_tests.md (test authoring conventions,
      §7.2 audit script)
-  4. .claude/rules/coding_style.md (source authoring)
-  5. The current state of pytcp/protocols/arp/ + the
+  4. .claude/rules/coding_style.md (source authoring;
+     §6.1 sysctl pattern applies to NUD timing constants)
+  5. .claude/skills/sysctl_knob/SKILL.md (workflow when
+     adding a registered policy knob)
+  6. docs/refactor/sysctl_framework.md (the runtime-tunable
+     registry; Phase 0/1/2 shipped — see §8)
+  7. docs/refactor/nud_state_machine.md — IF the next item
+     is the NUD work (#11/#12/#13/#9). The dedicated doc
+     has its own §12 resume prompt.
+  8. The current state of pytcp/protocols/arp/ + the
      packet_handler__arp__{rx,tx}.py files — these are the
      ARP runtime today.
 
 After reading, confirm you understand:
 
-  - Tier 1 (#1, #2, #3) shipped (commits cffd4841, 87851caa,
-    628e724b). Tier 2 RFC 5227 items #5/#6/#7 also shipped
-    (commits 3d7d276d, 01841e10, 5777c00a).
-  - Tier 2 remaining: #8 simultaneous-probe detection (small),
-    #9 abandon-after-second-conflict (substantial — needs
-    TcpSession ABORT plumbing), #10 MAX_CONFLICTS (dormant in
-    static-config model).
-  - Tier 3 (NUD FSM + extensions) is the big architectural
-    piece. The _PendingResolution table from #3 is the seed
-    for NUD's INCOMPLETE state.
-  - Tier 4 (RFC 1027 / RFC 3927) is deliberately deferred per
-    the North Star.
+  - Tier 1 (#1, #2, #3) shipped. Tier 2 RFC 5227 items
+    #5/#6/#7/#8 all shipped.
+  - Tier 2 remaining: #9 abandon-after-second-conflict (gated
+    on the NUD FAILED state — folds into the NUD plan as
+    Phase 6). #10 MAX_CONFLICTS dormant (no candidate-rotation
+    path).
+  - Tier 3: #14 unicast refresh, #15 monotonic clock, #16
+    configurable timeout, #17 partial (arp.accept +
+    arp.ignore) all shipped. arp.announce / arp.filter
+    deferred until multi-interface lands.
+  - Sysctl framework Phase 0 (registry) + Phase 1 (ARP
+    package migration + #16 retrofit) + Phase 2 (#17 partial)
+    shipped. Phase 3+ migrations are per-package, driven by
+    feature work.
+  - The NUD state machine (#11 + #12 + #13 + #9) is the next
+    big architectural piece. Its plan lives in
+    'docs/refactor/nud_state_machine.md', split across 6
+    phases, ~1 phase per session.
+  - Tier 4 (RFC 1027 / RFC 3927) is deliberately deferred
+    per the North Star.
 
 Suggested resume order:
 
-  1. #8 simultaneous-probe — small standalone commit closing
-     the last RFC 5227 §2.1.1 detection gap.
-  2. #15 wall-clock → monotonic in cache aging — tiny standalone.
-  3. #14 unicast cache-refresh probe — small standalone.
-  4. Then either:
-     (a) #11 NUD state machine — 1–2 weeks of architectural
-         work; absorbs #12, #13, and lays foundation for ND.
-     (b) Keep picking off small standalone items from Tier 3
-         until ready to commit to the bigger refactor.
-
-Defer #9 abandon-after-second-conflict UNTIL the NUD work
-starts — its FAILED state is the natural home for the abandon
-path.
+  1. NUD Phase 1 — generic 'NeighborCache[A]' module at
+     'pytcp/lib/neighbor.py' + unit tests. ~80–120k tokens
+     of work; one session.
+  2. NUD Phase 2 — ArpCache adapter on top of NeighborCache.
+  3. NUD Phase 3 — NdCache adapter + ND cache relocation
+     ('pytcp/stack/nd_cache.py' → 'pytcp/protocols/icmp6/
+     nd__cache.py').
+  4. NUD Phase 4 — reachability hook from TCP (#12).
+  5. NUD Phase 5 — bounded cache + GC (#13).
+  6. NUD Phase 6 — abandon-after-second-conflict (#9).
 
 Branch: PyTCP_3_0__pre_release.
 
@@ -728,5 +543,6 @@ not a polish item.
 
 Do NOT push without explicit user request. Commit after each
 item; user pushes when ready. Then ask the user which item to
-start with (default to #8 if they say "go" or "next").
+start with (default to "NUD Phase 1" if they say "go" or
+"next").
 ```
