@@ -32,8 +32,6 @@ pytcp/socket/tcp__status.py
 ver 3.0.4
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from net_addr import Ip4Address, Ip6Address

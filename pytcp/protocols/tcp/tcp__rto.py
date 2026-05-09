@@ -57,8 +57,6 @@ pytcp/protocols/tcp/tcp__rto.py
 ver 3.0.4
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 # RFC 6298 §2.1 / RFC 8961: initial RTO before any RTT sample.
