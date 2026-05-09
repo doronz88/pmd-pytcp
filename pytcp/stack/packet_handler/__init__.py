@@ -57,6 +57,10 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
     ARP__ANNOUNCE_WAIT,
+    ARP__PROBE_MAX,
+    ARP__PROBE_MIN,
+    ARP__PROBE_NUM,
+    ARP__PROBE_WAIT,
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
@@ -671,13 +675,21 @@ class PacketHandlerL2(
                 if ip4_host := Dhcp4Client(mac_address=self._mac_unicast).fetch():
                     self._ip4_host_candidate.append(ip4_host)
 
-        # Perform Duplicate Address Detection.
-        for _ in range(3):
+        # RFC 5227 §2.1.1 PROBE_WAIT — initial 0..PROBE_WAIT
+        # random delay before the first Probe so a fleet of hosts
+        # powered on simultaneously do not all probe at the same
+        # instant.
+        time.sleep(random.uniform(0, ARP__PROBE_WAIT))
+
+        # Perform Duplicate Address Detection — RFC 5227 §2.1.1
+        # broadcasts PROBE_NUM Probes spaced uniformly between
+        # PROBE_MIN and PROBE_MAX seconds.
+        for _ in range(ARP__PROBE_NUM):
             for ip4_unicast in [ip4_host_candidate.address for ip4_host_candidate in self._ip4_host_candidate]:
                 if ip4_unicast not in self._arp_probe__unicast_conflict:
                     self._send_arp_probe(ip4_unicast=ip4_unicast)
                     __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
-            time.sleep(random.uniform(1, 2))
+            time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))
 
         # RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period.
         # Wait this long after the last Probe before emitting any

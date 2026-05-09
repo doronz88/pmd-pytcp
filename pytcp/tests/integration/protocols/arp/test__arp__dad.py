@@ -122,7 +122,7 @@ class TestArpDad(ArpTestCase):
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
         def _inject_conflict(idx: int) -> None:
-            if idx == 0:
+            if idx == 1:  # first inter-probe sleep — within probe window
                 self._drive_arp(
                     ethernet_dst=MAC__BROADCAST,
                     ethernet_src=HOST_A__MAC_ADDRESS,
@@ -166,7 +166,7 @@ class TestArpDad(ArpTestCase):
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
         def _inject_conflict(idx: int) -> None:
-            if idx == 0:
+            if idx == 1:  # first inter-probe sleep — within probe window
                 self._drive_arp(
                     ethernet_dst=STACK__MAC_ADDRESS,
                     ethernet_src=HOST_A__MAC_ADDRESS,
@@ -210,7 +210,7 @@ class TestArpDad(ArpTestCase):
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
         def _inject_conflict(idx: int) -> None:
-            if idx == 0:
+            if idx == 1:  # first inter-probe sleep — within probe window
                 self._drive_arp(
                     ethernet_dst=MAC__BROADCAST,
                     ethernet_src=HOST_A__MAC_ADDRESS,
@@ -255,7 +255,7 @@ class TestArpDad(ArpTestCase):
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
         def _inject_conflict(idx: int) -> None:
-            if idx == 0:
+            if idx == 1:  # first inter-probe sleep — within probe window
                 self._drive_arp(
                     ethernet_dst=MAC__BROADCAST,
                     ethernet_src=HOST_A__MAC_ADDRESS,
@@ -379,27 +379,97 @@ class TestArpDad(ArpTestCase):
         self._drive_dad()
 
         # Sleep order from '_create_stack_ip4_addressing':
-        #   indexes 0..2 — three probe-loop sleeps (random.uniform(1,2))
-        #   index 3       — ANNOUNCE_WAIT post-probe quiet period
-        #   index 4       — ANNOUNCE_INTERVAL between Announcements
+        #   index 0       — PROBE_WAIT initial random delay
+        #   indexes 1..3  — three inter-probe sleeps (PROBE_MIN..PROBE_MAX)
+        #   index 4       — ANNOUNCE_WAIT post-probe quiet period
+        #   index 5       — ANNOUNCE_INTERVAL between Announcements
         self.assertGreaterEqual(
             len(self._dad_sleep_durations),
-            5,
+            6,
             msg=(
-                "Expected at least 5 'time.sleep' calls (3 probe-loop sleeps + "
-                "1 ANNOUNCE_WAIT + 1 ANNOUNCE_INTERVAL). Got: "
+                "Expected at least 6 'time.sleep' calls (1 PROBE_WAIT + 3 "
+                "inter-probe + 1 ANNOUNCE_WAIT + 1 ANNOUNCE_INTERVAL). Got: "
                 f"{len(self._dad_sleep_durations)}"
             ),
         )
         self.assertEqual(
-            self._dad_sleep_durations[4],
+            self._dad_sleep_durations[5],
             ARP__ANNOUNCE_INTERVAL,
             msg=(
-                "Sleep between Announcements (index 4, after ANNOUNCE_WAIT) must "
+                "Sleep between Announcements (index 5, after ANNOUNCE_WAIT) must "
                 f"equal ARP__ANNOUNCE_INTERVAL = {ARP__ANNOUNCE_INTERVAL} s; "
-                f"got {self._dad_sleep_durations[4]} s."
+                f"got {self._dad_sleep_durations[5]} s."
             ),
         )
+
+    def test__arp__dad__probe_wait_initial_random_delay(self) -> None:
+        """
+        Ensure the host waits a uniform-random delay in
+        [0, ARP__PROBE_WAIT] before sending the first ARP
+        Probe — prevents a fleet of hosts powered on
+        simultaneously from synchronising their probes.
+
+        Reference: RFC 5227 §2.1.1 (PROBE_WAIT initial random delay).
+        """
+
+        from pytcp.protocols.arp.arp__constants import ARP__PROBE_WAIT
+
+        self._drive_dad()
+
+        self.assertGreaterEqual(
+            len(self._dad_sleep_durations),
+            1,
+            msg="Expected at least 1 'time.sleep' call — index 0 is the PROBE_WAIT initial delay.",
+        )
+        self.assertGreaterEqual(
+            self._dad_sleep_durations[0],
+            0.0,
+            msg=f"PROBE_WAIT initial delay must be >= 0; got {self._dad_sleep_durations[0]}.",
+        )
+        self.assertLessEqual(
+            self._dad_sleep_durations[0],
+            ARP__PROBE_WAIT,
+            msg=(
+                f"PROBE_WAIT initial delay must be <= ARP__PROBE_WAIT = {ARP__PROBE_WAIT} s; "
+                f"got {self._dad_sleep_durations[0]} s."
+            ),
+        )
+
+    def test__arp__dad__inter_probe_spacing_within_range(self) -> None:
+        """
+        Ensure the three inter-probe sleeps (sleep indices 1..3)
+        each fall in [ARP__PROBE_MIN, ARP__PROBE_MAX] seconds
+        — RFC 5227 §2.1.1 spec for probe spacing.
+
+        Reference: RFC 5227 §2.1.1 (PROBE_MIN..PROBE_MAX inter-probe spacing).
+        """
+
+        from pytcp.protocols.arp.arp__constants import ARP__PROBE_MAX, ARP__PROBE_MIN
+
+        self._drive_dad()
+
+        self.assertGreaterEqual(
+            len(self._dad_sleep_durations),
+            4,
+            msg="Expected at least 4 'time.sleep' calls — indices 1..3 are inter-probe sleeps.",
+        )
+        for idx in (1, 2, 3):
+            self.assertGreaterEqual(
+                self._dad_sleep_durations[idx],
+                ARP__PROBE_MIN,
+                msg=(
+                    f"Inter-probe sleep[{idx}] must be >= ARP__PROBE_MIN = {ARP__PROBE_MIN} s; "
+                    f"got {self._dad_sleep_durations[idx]} s."
+                ),
+            )
+            self.assertLessEqual(
+                self._dad_sleep_durations[idx],
+                ARP__PROBE_MAX,
+                msg=(
+                    f"Inter-probe sleep[{idx}] must be <= ARP__PROBE_MAX = {ARP__PROBE_MAX} s; "
+                    f"got {self._dad_sleep_durations[idx]} s."
+                ),
+            )
 
     def test__arp__dad__announce_wait_post_probe_quiet_period(self) -> None:
         """
@@ -419,20 +489,20 @@ class TestArpDad(ArpTestCase):
 
         self.assertGreaterEqual(
             len(self._dad_sleep_durations),
-            4,
+            5,
             msg=(
-                "Expected at least 4 'time.sleep' calls — the 4th is the "
+                "Expected at least 5 'time.sleep' calls — index 4 is the "
                 "ANNOUNCE_WAIT post-probe quiet period. Got: "
                 f"{len(self._dad_sleep_durations)}"
             ),
         )
         self.assertEqual(
-            self._dad_sleep_durations[3],
+            self._dad_sleep_durations[4],
             ARP__ANNOUNCE_WAIT,
             msg=(
-                "Sleep at index 3 (post-probe-loop, pre-announce) must equal "
+                "Sleep at index 4 (post-probe-loop, pre-announce) must equal "
                 f"ARP__ANNOUNCE_WAIT = {ARP__ANNOUNCE_WAIT} s; "
-                f"got {self._dad_sleep_durations[3]} s."
+                f"got {self._dad_sleep_durations[4]} s."
             ),
         )
 
@@ -451,7 +521,7 @@ class TestArpDad(ArpTestCase):
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
         def _inject_conflict(idx: int) -> None:
-            if idx == 3:  # ANNOUNCE_WAIT sleep — after all probes, before announcements
+            if idx == 4:  # ANNOUNCE_WAIT sleep — after all probes, before announcements
                 self._drive_arp(
                     ethernet_dst=MAC__BROADCAST,
                     ethernet_src=HOST_A__MAC_ADDRESS,
@@ -462,7 +532,7 @@ class TestArpDad(ArpTestCase):
                     arp_tpa=candidate_address,
                 )
 
-        self._drive_dad(on_sleep=_inject_conflict, num_sleep_callbacks=4)
+        self._drive_dad(on_sleep=_inject_conflict, num_sleep_callbacks=5)
 
         addresses_after = {host.address for host in self._packet_handler._ip4_host}
         self.assertNotIn(

@@ -40,6 +40,10 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__CACHE__ENTRY_MAX_AGE,
     ARP__CACHE__ENTRY_REFRESH_TIME,
     ARP__DEFEND_INTERVAL,
+    ARP__PROBE_MAX,
+    ARP__PROBE_MIN,
+    ARP__PROBE_NUM,
+    ARP__PROBE_WAIT,
     ARP__REQUEST_RATE_LIMIT,
 )
 
@@ -148,4 +152,59 @@ class TestArpConstants(TestCase):
             ARP__ANNOUNCE_WAIT,
             2,
             msg=f"ANNOUNCE_WAIT must equal 2 s. Got: {ARP__ANNOUNCE_WAIT}.",
+        )
+
+    def test__arp__constants__probe_wait_matches_rfc_5227(self) -> None:
+        """
+        Ensure 'ARP__PROBE_WAIT' equals 1 second — the upper
+        bound of the initial random delay before the first
+        ARP Probe.
+
+        Reference: RFC 5227 §1.1 (PROBE_WAIT = 1 second).
+        """
+
+        self.assertEqual(
+            ARP__PROBE_WAIT,
+            1,
+            msg=f"PROBE_WAIT must equal 1 s. Got: {ARP__PROBE_WAIT}.",
+        )
+
+    def test__arp__constants__probe_num_matches_rfc_5227(self) -> None:
+        """
+        Ensure 'ARP__PROBE_NUM' equals 3 — number of ARP
+        Probes broadcast per candidate during DAD.
+
+        Reference: RFC 5227 §1.1 (PROBE_NUM = 3).
+        """
+
+        self.assertEqual(
+            ARP__PROBE_NUM,
+            3,
+            msg=f"PROBE_NUM must equal 3. Got: {ARP__PROBE_NUM}.",
+        )
+
+    def test__arp__constants__probe_min_max_window(self) -> None:
+        """
+        Ensure 'ARP__PROBE_MIN' equals 1 second and
+        'ARP__PROBE_MAX' equals 2 seconds, with MIN < MAX so
+        the uniform-random spacing produces a non-degenerate
+        distribution.
+
+        Reference: RFC 5227 §1.1 (PROBE_MIN = 1 s, PROBE_MAX = 2 s).
+        """
+
+        self.assertEqual(
+            ARP__PROBE_MIN,
+            1,
+            msg=f"PROBE_MIN must equal 1 s. Got: {ARP__PROBE_MIN}.",
+        )
+        self.assertEqual(
+            ARP__PROBE_MAX,
+            2,
+            msg=f"PROBE_MAX must equal 2 s. Got: {ARP__PROBE_MAX}.",
+        )
+        self.assertLess(
+            ARP__PROBE_MIN,
+            ARP__PROBE_MAX,
+            msg="PROBE_MIN < PROBE_MAX is required by random.uniform.",
         )

@@ -63,6 +63,19 @@ ARP__REQUEST_RATE_LIMIT = 1
 ARP__ANNOUNCE_NUM = 2
 ARP__ANNOUNCE_INTERVAL = 2
 
+# RFC 5227 §1.1 / §2.1.1 ARP Probe timing.
+#   PROBE_WAIT — initial 0..PROBE_WAIT random delay before the
+#                first Probe (so a fleet of hosts powered on
+#                simultaneously do not all probe at the same
+#                instant).
+#   PROBE_NUM  — number of Probes broadcast per candidate.
+#   PROBE_MIN / PROBE_MAX — uniform-random spacing between
+#                successive Probes.
+ARP__PROBE_WAIT = 1
+ARP__PROBE_NUM = 3
+ARP__PROBE_MIN = 1
+ARP__PROBE_MAX = 2
+
 # RFC 5227 §1.1 / §2.1.1 ANNOUNCE_WAIT post-probe quiet period.
 # After the last ARP Probe is transmitted, the host waits this
 # many seconds before emitting the first Announcement. Late
