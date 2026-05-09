@@ -340,7 +340,7 @@ def init(
     # each set(); cross-knob constraints
     # ('finalize_validators') run after the bag is fully
     # applied. Importing 'arp__constants' / 'neighbor__constants'
-    # triggers their module-level '_register' calls so the
+    # triggers their module-level 'register' calls so the
     # registry is populated before we set anything.
     from pytcp.lib import neighbor__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.lib import sysctl as sysctl_module

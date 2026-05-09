@@ -110,70 +110,70 @@ ARP__IGNORE = 1
 # legacy cache-aging knobs ('arp.cache.max_age',
 # 'arp.cache.refresh_time') are gone — the NUD migration
 # (Phase 2) replaces them with the 'neighbor.*' namespace.
-from pytcp.lib.sysctl import _finalize_validators, _is_positive_int, _register, get  # noqa: E402
+from pytcp.lib.sysctl import get, is_positive_int, register, register_finalize_validator  # noqa: E402
 
-_register(
+register(
     key="arp.defend_interval",
     module_name=__name__,
     attr="ARP__DEFEND_INTERVAL",
     default=ARP__DEFEND_INTERVAL,
-    validator=_is_positive_int("arp.defend_interval"),
+    validator=is_positive_int("arp.defend_interval"),
     description="RFC 5227 §2.4(c) DEFEND_INTERVAL — defensive-ARP rate-limit window, seconds.",
 )
-_register(
+register(
     key="arp.probe_wait",
     module_name=__name__,
     attr="ARP__PROBE_WAIT",
     default=ARP__PROBE_WAIT,
-    validator=_is_positive_int("arp.probe_wait"),
+    validator=is_positive_int("arp.probe_wait"),
     description="RFC 5227 §2.1.1 PROBE_WAIT — upper bound of initial random delay before first ARP Probe, seconds.",
 )
-_register(
+register(
     key="arp.probe_num",
     module_name=__name__,
     attr="ARP__PROBE_NUM",
     default=ARP__PROBE_NUM,
-    validator=_is_positive_int("arp.probe_num"),
+    validator=is_positive_int("arp.probe_num"),
     description="RFC 5227 §2.1.1 PROBE_NUM — number of ARP Probes per candidate.",
 )
-_register(
+register(
     key="arp.probe_min",
     module_name=__name__,
     attr="ARP__PROBE_MIN",
     default=ARP__PROBE_MIN,
-    validator=_is_positive_int("arp.probe_min"),
+    validator=is_positive_int("arp.probe_min"),
     description="RFC 5227 §2.1.1 PROBE_MIN — lower bound of inter-probe spacing, seconds; must be < arp.probe_max.",
 )
-_register(
+register(
     key="arp.probe_max",
     module_name=__name__,
     attr="ARP__PROBE_MAX",
     default=ARP__PROBE_MAX,
-    validator=_is_positive_int("arp.probe_max"),
+    validator=is_positive_int("arp.probe_max"),
     description="RFC 5227 §2.1.1 PROBE_MAX — upper bound of inter-probe spacing, seconds.",
 )
-_register(
+register(
     key="arp.announce_num",
     module_name=__name__,
     attr="ARP__ANNOUNCE_NUM",
     default=ARP__ANNOUNCE_NUM,
-    validator=_is_positive_int("arp.announce_num"),
+    validator=is_positive_int("arp.announce_num"),
     description="RFC 5227 §2.3 ANNOUNCE_NUM — number of ARP Announcements after successful DAD.",
 )
-_register(
+register(
     key="arp.announce_interval",
     module_name=__name__,
     attr="ARP__ANNOUNCE_INTERVAL",
     default=ARP__ANNOUNCE_INTERVAL,
-    validator=_is_positive_int("arp.announce_interval"),
+    validator=is_positive_int("arp.announce_interval"),
     description="RFC 5227 §2.3 ANNOUNCE_INTERVAL — spacing between back-to-back Announcements, seconds.",
 )
-_register(
+register(
     key="arp.announce_wait",
     module_name=__name__,
     attr="ARP__ANNOUNCE_WAIT",
     default=ARP__ANNOUNCE_WAIT,
-    validator=_is_positive_int("arp.announce_wait"),
+    validator=is_positive_int("arp.announce_wait"),
     description="RFC 5227 §2.1.1 ANNOUNCE_WAIT — post-probe quiet period before first Announcement, seconds.",
 )
 
@@ -203,7 +203,7 @@ def _arp_ignore_validator(value: object) -> None:
         )
 
 
-_register(
+register(
     key="arp.accept",
     module_name=__name__,
     attr="ARP__ACCEPT",
@@ -211,7 +211,7 @@ _register(
     validator=_arp_accept_validator,
     description="Linux 'net.ipv4.conf.<iface>.arp_accept' (0=reject off-subnet, 1=admit).",
 )
-_register(
+register(
     key="arp.ignore",
     module_name=__name__,
     attr="ARP__IGNORE",
@@ -237,4 +237,4 @@ def _finalize__probe_min_lt_probe_max() -> None:
         )
 
 
-_finalize_validators.append(_finalize__probe_min_lt_probe_max)
+register_finalize_validator(_finalize__probe_min_lt_probe_max)

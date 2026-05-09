@@ -65,7 +65,7 @@ _registry: dict[str, _Knob] = {}
 _finalize_validators: list[Callable[[], None]] = []
 
 
-def _register(
+def register(
     *,
     key: str,
     module_name: str,
@@ -91,6 +91,18 @@ def _register(
         validator=validator,
         description=description,
     )
+
+
+def register_finalize_validator(callback: Callable[[], None], /) -> None:
+    """
+    Register a cross-knob constraint callback. The callback is
+    invoked from 'finalize_validators()' (called at the end of
+    'stack.init()' and on every individual 'set()'). It must
+    raise 'ValueError' on rejection — the registry re-raises
+    the first failure verbatim.
+    """
+
+    _finalize_validators.append(callback)
 
 
 def _resolve(key: str) -> _Knob:
@@ -250,7 +262,7 @@ class _SysctlRegistry:
 sysctl = _SysctlRegistry()
 
 
-def _is_positive_int(name: str) -> Callable[[Any], None]:
+def is_positive_int(name: str) -> Callable[[Any], None]:
     """
     Build a validator that requires a positive (> 0) integer.
     The 'name' is closed over so the rejection message

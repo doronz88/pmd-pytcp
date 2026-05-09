@@ -39,9 +39,9 @@ pytcp/lib/neighbor__constants.py
 ver 3.0.4
 """
 
-from typing import Any
+from typing import Any, Callable
 
-from pytcp.lib.sysctl import _finalize_validators, _is_positive_int, _register, get
+from pytcp.lib.sysctl import get, is_positive_int, register, register_finalize_validator
 
 # RFC 4861 §10 / Linux net.ipv4.neigh.default.* defaults,
 # scaled to seconds.
@@ -90,7 +90,7 @@ NEIGHBOR__GC_THRESH3 = 1024
 NEIGHBOR__GC_STALE_TIME = 60
 
 
-def _is_non_negative_int(name: str) -> Any:
+def _is_non_negative_int(name: str) -> Callable[[Any], None]:
     """
     Build a validator that requires a non-negative integer
     (>= 0) — used for GC thresholds where 0 means "never GC."
@@ -107,47 +107,47 @@ def _is_non_negative_int(name: str) -> Any:
     return validator
 
 
-_register(
+register(
     key="neighbor.reachable_time",
     module_name=__name__,
     attr="NEIGHBOR__REACHABLE_TIME",
     default=NEIGHBOR__REACHABLE_TIME,
-    validator=_is_positive_int("neighbor.reachable_time"),
+    validator=is_positive_int("neighbor.reachable_time"),
     description="NUD_REACHABLE lifetime, seconds (Linux base_reachable_time).",
 )
-_register(
+register(
     key="neighbor.delay_first_probe_time",
     module_name=__name__,
     attr="NEIGHBOR__DELAY_FIRST_PROBE_TIME",
     default=NEIGHBOR__DELAY_FIRST_PROBE_TIME,
-    validator=_is_positive_int("neighbor.delay_first_probe_time"),
+    validator=is_positive_int("neighbor.delay_first_probe_time"),
     description="NUD_DELAY → NUD_PROBE timer, seconds.",
 )
-_register(
+register(
     key="neighbor.retrans_timer",
     module_name=__name__,
     attr="NEIGHBOR__RETRANS_TIMER",
     default=NEIGHBOR__RETRANS_TIMER,
-    validator=_is_positive_int("neighbor.retrans_timer"),
+    validator=is_positive_int("neighbor.retrans_timer"),
     description="Inter-solicit retransmit timer, seconds.",
 )
-_register(
+register(
     key="neighbor.max_unicast_solicit",
     module_name=__name__,
     attr="NEIGHBOR__MAX_UNICAST_SOLICIT",
     default=NEIGHBOR__MAX_UNICAST_SOLICIT,
-    validator=_is_positive_int("neighbor.max_unicast_solicit"),
+    validator=is_positive_int("neighbor.max_unicast_solicit"),
     description="Max unicast probes in NUD_PROBE before NUD_FAILED.",
 )
-_register(
+register(
     key="neighbor.max_multicast_solicit",
     module_name=__name__,
     attr="NEIGHBOR__MAX_MULTICAST_SOLICIT",
     default=NEIGHBOR__MAX_MULTICAST_SOLICIT,
-    validator=_is_positive_int("neighbor.max_multicast_solicit"),
+    validator=is_positive_int("neighbor.max_multicast_solicit"),
     description="Max multicast/broadcast probes in NUD_INCOMPLETE before NUD_FAILED.",
 )
-_register(
+register(
     key="neighbor.gc_thresh1",
     module_name=__name__,
     attr="NEIGHBOR__GC_THRESH1",
@@ -155,7 +155,7 @@ _register(
     validator=_is_non_negative_int("neighbor.gc_thresh1"),
     description="GC threshold below which the cache never collects (default 128).",
 )
-_register(
+register(
     key="neighbor.gc_thresh2",
     module_name=__name__,
     attr="NEIGHBOR__GC_THRESH2",
@@ -163,7 +163,7 @@ _register(
     validator=_is_non_negative_int("neighbor.gc_thresh2"),
     description="GC threshold above which stale entries are collected (default 512).",
 )
-_register(
+register(
     key="neighbor.gc_thresh3",
     module_name=__name__,
     attr="NEIGHBOR__GC_THRESH3",
@@ -171,12 +171,12 @@ _register(
     validator=_is_non_negative_int("neighbor.gc_thresh3"),
     description="GC hard cap; eviction MUST run above this size (default 1024).",
 )
-_register(
+register(
     key="neighbor.gc_stale_time",
     module_name=__name__,
     attr="NEIGHBOR__GC_STALE_TIME",
     default=NEIGHBOR__GC_STALE_TIME,
-    validator=_is_positive_int("neighbor.gc_stale_time"),
+    validator=is_positive_int("neighbor.gc_stale_time"),
     description="Time STALE entries must age before GC-eligible above gc_thresh2, seconds.",
 )
 
@@ -200,4 +200,4 @@ def _finalize__gc_thresh_ordering() -> None:
         )
 
 
-_finalize_validators.append(_finalize__gc_thresh_ordering)
+register_finalize_validator(_finalize__gc_thresh_ordering)

@@ -59,7 +59,7 @@ class _SysctlFixtureBase(TestCase):
     setUp and restore it on tearDown so each test starts and
     ends with a clean slate. The framework allows lazy
     re-registration in production (constants modules call
-    '_register' at import time, once), but tests need to
+    'register' at import time, once), but tests need to
     re-register fresh keys per case.
     """
 
@@ -102,12 +102,12 @@ class _SysctlFixtureBase(TestCase):
 
         module = _build_carrier_module(carrier_name, **{attr: default})
         self._carriers.append(carrier_name)
-        sysctl._register(
+        sysctl.register(
             key=key,
             module_name=carrier_name,
             attr=attr,
             default=default,
-            validator=sysctl._is_positive_int(key),
+            validator=sysctl.is_positive_int(key),
             description=description,
         )
         return module
@@ -115,7 +115,7 @@ class _SysctlFixtureBase(TestCase):
 
 class TestSysctlRegisterAndGet(_SysctlFixtureBase):
     """
-    The '_register' / 'get' happy-path tests.
+    The 'register' / 'get' happy-path tests.
     """
 
     def test__lib__sysctl__register_then_get_returns_default(self) -> None:
@@ -459,7 +459,7 @@ class TestSysctlCrossKnobValidation(_SysctlFixtureBase):
             if sysctl.get("test.refresh") >= sysctl.get("test.max"):
                 raise ValueError("test.refresh must be strictly less than test.max")
 
-        sysctl._finalize_validators.append(refresh_lt_max)
+        sysctl.register_finalize_validator(refresh_lt_max)
 
         sysctl.set("test.refresh", 200)  # individual set passes per-knob check
         with self.assertRaises(ValueError) as ctx:
@@ -490,7 +490,7 @@ class TestSysctlCrossKnobValidation(_SysctlFixtureBase):
             if sysctl.get("test.refresh") >= sysctl.get("test.max"):
                 raise ValueError("test.refresh must be < test.max")
 
-        sysctl._finalize_validators.append(refresh_lt_max)
+        sysctl.register_finalize_validator(refresh_lt_max)
         # Both at default → 10 < 100 → passes.
         sysctl.finalize_validators()
 
@@ -572,23 +572,23 @@ class TestSysctlDictLikeAccess(_SysctlFixtureBase):
 
 class TestSysctlValidatorHelpers(_SysctlFixtureBase):
     """
-    The '_is_positive_int' validator-helper tests.
+    The 'is_positive_int' validator-helper tests.
     """
 
     def test__lib__sysctl__is_positive_int_accepts_positive(self) -> None:
         """
-        Ensure '_is_positive_int' accepts (does not raise on)
+        Ensure 'is_positive_int' accepts (does not raise on)
         any positive integer.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sysctl._is_positive_int("test.foo")(1)
-        sysctl._is_positive_int("test.foo")(99999)
+        sysctl.is_positive_int("test.foo")(1)
+        sysctl.is_positive_int("test.foo")(99999)
 
     def test__lib__sysctl__is_positive_int_rejects_zero(self) -> None:
         """
-        Ensure '_is_positive_int' rejects zero — a zero timeout
+        Ensure 'is_positive_int' rejects zero — a zero timeout
         / count is almost always wrong (would make the loop
         spin or no-op).
 
@@ -596,21 +596,21 @@ class TestSysctlValidatorHelpers(_SysctlFixtureBase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl._is_positive_int("test.foo")(0)
+            sysctl.is_positive_int("test.foo")(0)
 
     def test__lib__sysctl__is_positive_int_rejects_negative(self) -> None:
         """
-        Ensure '_is_positive_int' rejects negative integers.
+        Ensure 'is_positive_int' rejects negative integers.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(ValueError):
-            sysctl._is_positive_int("test.foo")(-5)
+            sysctl.is_positive_int("test.foo")(-5)
 
     def test__lib__sysctl__is_positive_int_rejects_non_int(self) -> None:
         """
-        Ensure '_is_positive_int' rejects non-int types
+        Ensure 'is_positive_int' rejects non-int types
         (booleans excepted — Python treats bool as int but the
         validator must reject 'True' / 'False' as numerically
         meaningless for a count).
@@ -619,8 +619,8 @@ class TestSysctlValidatorHelpers(_SysctlFixtureBase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl._is_positive_int("test.foo")("5")
+            sysctl.is_positive_int("test.foo")("5")
         with self.assertRaises(ValueError):
-            sysctl._is_positive_int("test.foo")(1.5)
+            sysctl.is_positive_int("test.foo")(1.5)
         with self.assertRaises(ValueError):
-            sysctl._is_positive_int("test.foo")(True)
+            sysctl.is_positive_int("test.foo")(True)
