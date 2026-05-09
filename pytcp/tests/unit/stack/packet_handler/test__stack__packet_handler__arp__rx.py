@@ -183,7 +183,12 @@ class _ArpRxTestBase(TestCase):
 
         self._handler = _StubHandler()
 
-        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock())
+        # 'stack.arp_cache' is a bare forward declaration in
+        # 'pytcp/stack/__init__.py' (no assignment until the
+        # stack starts), so 'patch.object' needs 'create=True'
+        # to install the mock when the unit test runs without
+        # a live stack.
+        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock(), create=True)
         self._arp_cache = self._arp_cache_patch.start()
 
     def tearDown(self) -> None:
