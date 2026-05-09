@@ -77,21 +77,22 @@ class ArpCache(NeighborCache["Ip4Address"]):
         )
 
     # ------------------------------------------------------------
-    # Public API — kw-only wrappers preserve the legacy ARP
-    # call-site convention while delegating to the generic
-    # NeighborCache positional API.
+    # Public API — kw-only methods preserve the established ARP
+    # call-site convention. They delegate to the protected
+    # 'NeighborCache._*' hooks rather than overriding a public
+    # parent surface, so there is no Liskov violation to ignore.
     # ------------------------------------------------------------
 
-    def find_entry(self, *, ip4_address: "Ip4Address") -> "MacAddress | None":  # type: ignore[override]
+    def find_entry(self, *, ip4_address: "Ip4Address") -> "MacAddress | None":
         """
         Look up the MAC for an IPv4 address; on miss, fire a
         broadcast ARP Request and return None. See
-        'NeighborCache.find_entry' for full FSM semantics.
+        'NeighborCache._find_entry' for full FSM semantics.
         """
 
-        return super().find_entry(ip4_address)
+        return self._find_entry(ip4_address)
 
-    def add_entry(  # type: ignore[override]
+    def add_entry(
         self,
         *,
         ip4_address: "Ip4Address",
@@ -103,9 +104,9 @@ class ArpCache(NeighborCache["Ip4Address"]):
         NUD_REACHABLE; flushes any queued packet.
         """
 
-        super().add_entry(ip4_address, mac_address)
+        self._add_entry(ip4_address, mac_address)
 
-    def add_permanent_entry(  # type: ignore[override]
+    def add_permanent_entry(
         self,
         *,
         ip4_address: "Ip4Address",
@@ -116,18 +117,18 @@ class ArpCache(NeighborCache["Ip4Address"]):
         ARP learning never overrides PERMANENT entries.
         """
 
-        super().add_permanent_entry(ip4_address, mac_address)
+        self._add_permanent_entry(ip4_address, mac_address)
 
-    def confirm_reachability(self, *, ip4_address: "Ip4Address") -> None:  # type: ignore[override]
+    def confirm_reachability(self, *, ip4_address: "Ip4Address") -> None:
         """
         Upper-layer fastpath: promote a STALE / DELAY / PROBE
         entry directly to REACHABLE without firing a unicast
         ARP probe. Called by the TCP layer on in-window ACK.
         """
 
-        super().confirm_reachability(ip4_address)
+        self._confirm_reachability(ip4_address)
 
-    def enqueue_pending(  # type: ignore[override]
+    def enqueue_pending(
         self,
         *,
         ip4_address: "Ip4Address",
@@ -139,7 +140,7 @@ class ArpCache(NeighborCache["Ip4Address"]):
         deliver it post-resolution (RFC 1122 §2.3.2.2).
         """
 
-        super().enqueue_pending(ip4_address, ethernet_packet_tx)
+        self._enqueue_pending(ip4_address, ethernet_packet_tx)
 
     # ------------------------------------------------------------
     # Protocol-specific callbacks consumed by NeighborCache.

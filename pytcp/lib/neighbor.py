@@ -152,7 +152,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
     # Public surface — RX / TX integration points.
     # ------------------------------------------------------------
 
-    def find_entry(self, address: A) -> MacAddress | None:
+    def _find_entry(self, address: A) -> MacAddress | None:
         """
         Look up the MAC for an address. Drives the on-TX
         side of the FSM:
@@ -197,7 +197,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
             # INCOMPLETE / FAILED: no MAC available.
             return None
 
-    def add_entry(self, address: A, mac_address: MacAddress) -> None:
+    def _add_entry(self, address: A, mac_address: MacAddress) -> None:
         """
         Drive the on-Reply side of the FSM. Transitions the
         named entry to REACHABLE (creating it if absent) and
@@ -245,7 +245,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
                 )
                 self._flush_callback(queued_packet, mac_address)
 
-    def add_permanent_entry(self, address: A, mac_address: MacAddress) -> None:
+    def _add_permanent_entry(self, address: A, mac_address: MacAddress) -> None:
         """
         Install a PERMANENT entry — an operator-configured
         static neighbour that the FSM never ages out and
@@ -266,7 +266,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
                 f"NUD: {address} → {mac_address} (PERMANENT)",
             )
 
-    def confirm_reachability(self, address: A) -> None:
+    def _confirm_reachability(self, address: A) -> None:
         """
         Upper-layer fastpath: promote a STALE / DELAY / PROBE
         entry directly to REACHABLE without firing a unicast
@@ -284,7 +284,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
                 self._transition(entry, NudState.REACHABLE, time.monotonic())
                 object.__setattr__(entry, "probe_count", 0)
 
-    def enqueue_pending(self, address: A, packet: object) -> None:
+    def _enqueue_pending(self, address: A, packet: object) -> None:
         """
         Save the most recent outbound packet for an
         INCOMPLETE address so 'add_entry' can dispatch it

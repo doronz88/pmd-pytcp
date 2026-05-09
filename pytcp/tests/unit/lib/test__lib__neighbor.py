@@ -134,7 +134,7 @@ class TestNeighborCacheFindMiss(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            result = self._cache.find_entry(ADDR_A)
+            result = self._cache._find_entry(ADDR_A)
 
         self.assertIsNone(
             result,
@@ -163,7 +163,7 @@ class TestNeighborCacheFindMiss(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
 
         self.assertEqual(
             self._solicit_calls,
@@ -186,8 +186,8 @@ class TestNeighborCacheFindMiss(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
 
         self.assertEqual(
             len(self._solicit_calls),
@@ -215,8 +215,8 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._find_entry(ADDR_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         entry = self._cache._entries[ADDR_A]
         self.assertIs(
@@ -231,7 +231,7 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1001.0):
-            result = self._cache.find_entry(ADDR_A)
+            result = self._cache._find_entry(ADDR_A)
         self.assertEqual(
             result,
             MAC_A,
@@ -253,7 +253,7 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -274,9 +274,9 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         sentinel_packet = object()
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
-            self._cache.enqueue_pending(ADDR_A, sentinel_packet)
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._find_entry(ADDR_A)
+            self._cache._enqueue_pending(ADDR_A, sentinel_packet)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         self.assertEqual(
             self._flush_calls,
@@ -297,8 +297,8 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._find_entry(ADDR_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         self.assertEqual(
             self._flush_calls,
@@ -317,8 +317,8 @@ class TestNeighborCacheAddEntry(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_permanent_entry(ADDR_A, MAC_A)
-            self._cache.add_entry(ADDR_A, MAC_B)
+            self._cache._add_permanent_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_B)
 
         entry = self._cache._entries[ADDR_A]
         self.assertEqual(
@@ -349,7 +349,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         # REACHABLE_TIME default is 30 s; advance to 1000 + 31.
         self._run_loop_once(now=1031.0)
@@ -370,7 +370,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         # 5 s elapsed, well below the 30 s default.
         self._run_loop_once(now=1005.0)
@@ -399,7 +399,7 @@ class TestNeighborCacheStaleToDelay(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         self._run_loop_once(now=1031.0)
         self.assertIs(
@@ -409,7 +409,7 @@ class TestNeighborCacheStaleToDelay(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            result = self._cache.find_entry(ADDR_A)
+            result = self._cache._find_entry(ADDR_A)
 
         self.assertEqual(
             result,
@@ -439,11 +439,11 @@ class TestNeighborCacheDelayToProbe(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)  # → STALE
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            self._cache.find_entry(ADDR_A)  # → DELAY
+            self._cache._find_entry(ADDR_A)  # → DELAY
         self._solicit_calls.clear()
 
         # DELAY_FIRST_PROBE_TIME default = 5 s.
@@ -480,10 +480,10 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
 
         # Drive entry into PROBE state.
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
         self._run_loop_once(now=1037.5)  # DELAY → PROBE; one solicit fired.
         self._solicit_calls.clear()
 
@@ -514,10 +514,10 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)  # → STALE
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            self._cache.find_entry(ADDR_A)  # → DELAY
+            self._cache._find_entry(ADDR_A)  # → DELAY
         self._run_loop_once(now=1037.5)  # DELAY → PROBE, probe_count=1
 
         # Two more retransmits, then one more loop pass to
@@ -551,7 +551,7 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1010.0):
-            result = self._cache.find_entry(ADDR_A)
+            result = self._cache._find_entry(ADDR_A)
 
         self.assertIsNone(
             result,
@@ -579,10 +579,10 @@ class TestNeighborCacheProbeToReachable(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
         self._run_loop_once(now=1037.5)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -591,7 +591,7 @@ class TestNeighborCacheProbeToReachable(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1038.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
 
         entry = self._cache._entries[ADDR_A]
         self.assertIs(
@@ -622,7 +622,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -631,7 +631,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1032.0):
-            self._cache.confirm_reachability(ADDR_A)
+            self._cache._confirm_reachability(ADDR_A)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -649,10 +649,10 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_entry(ADDR_A, MAC_A)
+            self._cache._add_entry(ADDR_A, MAC_A)
         self._run_loop_once(now=1031.0)
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
             NudState.DELAY,
@@ -660,7 +660,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         )
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1032.0):
-            self._cache.confirm_reachability(ADDR_A)
+            self._cache._confirm_reachability(ADDR_A)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -678,8 +678,8 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
-            self._cache.confirm_reachability(ADDR_A)
+            self._cache._find_entry(ADDR_A)
+            self._cache._confirm_reachability(ADDR_A)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -699,7 +699,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.confirm_reachability(ADDR_A)
+            self._cache._confirm_reachability(ADDR_A)
 
         self.assertNotIn(
             ADDR_A,
@@ -724,7 +724,7 @@ class TestNeighborCachePermanent(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.add_permanent_entry(ADDR_A, MAC_A)
+            self._cache._add_permanent_entry(ADDR_A, MAC_A)
 
         # Advance well past REACHABLE_TIME.
         self._run_loop_once(now=1_000_000.0)
@@ -752,7 +752,7 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)  # initial solicit
+            self._cache._find_entry(ADDR_A)  # initial solicit
         self._solicit_calls.clear()
 
         self._run_loop_once(now=1001.5)
@@ -783,7 +783,7 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
         """
 
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-            self._cache.find_entry(ADDR_A)
+            self._cache._find_entry(ADDR_A)
         # MAX_MULTICAST_SOLICIT default = 3 — initial + 2 retries
         # then loop pass detects the cap.
         self._run_loop_once(now=1001.5)
@@ -814,7 +814,7 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
 
         with sysctl_module.override("neighbor.reachable_time", 5):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-                self._cache.add_entry(ADDR_A, MAC_A)
+                self._cache._add_entry(ADDR_A, MAC_A)
 
             # 6 s elapsed (above override of 5).
             self._run_loop_once(now=1006.0)
@@ -858,7 +858,7 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
         addrs = [Ip4Address(f"10.0.{i // 256}.{i % 256}") for i in range(base, base + count)]
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             for a in addrs:
-                self._cache.add_entry(a, MAC_A)
+                self._cache._add_entry(a, MAC_A)
         return addrs
 
     def _force_state(self, address: Ip4Address, state: NudState, *, when: float = 1000.0) -> None:
@@ -1037,8 +1037,8 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
             sysctl_module.override("neighbor.gc_thresh3", 0),
         ):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-                self._cache.add_permanent_entry(ADDR_A, MAC_A)
-                self._cache.add_entry(ADDR_B, MAC_B)
+                self._cache._add_permanent_entry(ADDR_A, MAC_A)
+                self._cache._add_entry(ADDR_B, MAC_B)
             # Force the dynamic entry to STALE so it gets
             # picked up by tier 2.
             self._force_state(ADDR_B, NudState.STALE, when=1000.0)
@@ -1066,8 +1066,8 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
             sysctl_module.override("neighbor.gc_thresh3", 0),
         ):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
-                self._cache.find_entry(ADDR_A)  # → INCOMPLETE
-                self._cache.enqueue_pending(ADDR_A, packet=object())
+                self._cache._find_entry(ADDR_A)  # → INCOMPLETE
+                self._cache._enqueue_pending(ADDR_A, packet=object())
 
             # Drive the entry to FAILED while keeping the
             # queued_packet — represents the worst case

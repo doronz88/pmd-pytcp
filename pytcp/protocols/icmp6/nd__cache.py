@@ -83,20 +83,21 @@ class NdCache(NeighborCache["Ip6Address"]):
         )
 
     # ------------------------------------------------------------
-    # Public API — kw-only wrappers preserve the legacy ND
-    # call-site convention while delegating to the generic
-    # NeighborCache positional API.
+    # Public API — kw-only methods preserve the established ND
+    # call-site convention. They delegate to the protected
+    # 'NeighborCache._*' hooks rather than overriding a public
+    # parent surface, so there is no Liskov violation to ignore.
     # ------------------------------------------------------------
 
-    def find_entry(self, *, ip6_address: "Ip6Address") -> "MacAddress | None":  # type: ignore[override]
+    def find_entry(self, *, ip6_address: "Ip6Address") -> "MacAddress | None":
         """
         Look up the MAC for an IPv6 address; on miss, fire a
         multicast Neighbor Solicitation and return None.
         """
 
-        return super().find_entry(ip6_address)
+        return self._find_entry(ip6_address)
 
-    def add_entry(  # type: ignore[override]
+    def add_entry(
         self,
         *,
         ip6_address: "Ip6Address",
@@ -108,9 +109,9 @@ class NdCache(NeighborCache["Ip6Address"]):
         entry to NUD_REACHABLE.
         """
 
-        super().add_entry(ip6_address, mac_address)
+        self._add_entry(ip6_address, mac_address)
 
-    def add_permanent_entry(  # type: ignore[override]
+    def add_permanent_entry(
         self,
         *,
         ip6_address: "Ip6Address",
@@ -121,16 +122,16 @@ class NdCache(NeighborCache["Ip6Address"]):
         learning never overrides PERMANENT entries.
         """
 
-        super().add_permanent_entry(ip6_address, mac_address)
+        self._add_permanent_entry(ip6_address, mac_address)
 
-    def confirm_reachability(self, *, ip6_address: "Ip6Address") -> None:  # type: ignore[override]
+    def confirm_reachability(self, *, ip6_address: "Ip6Address") -> None:
         """
         Upper-layer fastpath: promote a STALE / DELAY / PROBE
         entry directly to REACHABLE without firing a unicast
         NS probe. Called by the TCP layer on in-window ACK.
         """
 
-        super().confirm_reachability(ip6_address)
+        self._confirm_reachability(ip6_address)
 
     # ------------------------------------------------------------
     # Protocol-specific callback consumed by NeighborCache.
