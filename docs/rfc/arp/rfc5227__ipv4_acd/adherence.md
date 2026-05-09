@@ -633,7 +633,7 @@ would require this if implemented; see that audit.
 | §2.3    | ANNOUNCE_NUM = 2 + ANNOUNCE_INTERVAL                             | n/a (gap not closed; add test with fix)         |
 | §2.4    | Conflict detection (Request and Reply)                           | locked in                                       |
 | §2.4    | DEFEND_INTERVAL rate-limit                                       | n/a (gap not closed; add test with fix)         |
-| §2.4    | Abandon after second conflict                                    | n/a (gap not closed; add test with fix)         |
+| §2.4    | Abandon after second conflict                                    | locked in (unit: TestPacketHandlerArpRxDefendInterval abandon tests) |
 | §2.4    | Reset connections before abandoning                              | n/a (no abandon path)                           |
 | §2.5    | Continuing operation (Reply to Request)                          | locked in                                       |
 | §2.6    | Broadcast Replies (NOT-RECOMMENDED)                              | n/a (deliberately not selected)                 |
@@ -663,7 +663,7 @@ would require this if implemented; see that audit.
 | §2.4 (a)    | Abandon-on-conflict path                     | not implemented (option not chosen — that's allowed)   |
 | §2.4 (b)    | Defense via single gratuitous Announcement   | met (mechanism); fires per-packet, not rate-limited    |
 | §2.4 (b)    | DEFEND_INTERVAL rate-limit (MAY but pinned)  | not implemented                                        |
-| §2.4 (b)    | Abandon after second conflict in DEFEND_INTERVAL | not implemented                                    |
+| §2.4 (b)    | Abandon after second conflict in DEFEND_INTERVAL | met                                                |
 | §2.4 (c)    | Indefinite-defend rate-limit (MUST NOT)      | **violated** — defends every packet, no rate-limit     |
 | §2.4 final  | Reset connections before abandon (SHOULD)    | vacuous (no abandon path)                              |
 | §2.5        | Reply to Requests during use                 | met                                                    |

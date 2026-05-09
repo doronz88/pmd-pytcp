@@ -532,9 +532,19 @@ class PacketHandlerL2(
 
         # RFC 5227 §2.4(c) DEFEND_INTERVAL rate-limit state: per-IP
         # 'time.monotonic()' timestamp of the last defensive
-        # gratuitous ARP. Read+updated by '_maybe_send_arp_defense'
+        # gratuitous ARP. Read+updated by '_handle_arp_conflict'
         # in the RX mixin.
         self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
+
+        # RFC 5227 §2.4(b) per-IP last-conflict timestamp state.
+        # Distinct from '_arp_defend__last_emitted': this tracks
+        # when we last OBSERVED a conflict, not when we last
+        # DEFENDED. The two timestamps differ because rate-
+        # limiting suppresses defenses but every conflict still
+        # registers here. Two conflicts within DEFEND_INTERVAL
+        # of each other trigger the abandon path
+        # ('_abandon_ipv4_address').
+        self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
 
         # Used for the ICMPv6 ND DAD process.
         self._icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None = None

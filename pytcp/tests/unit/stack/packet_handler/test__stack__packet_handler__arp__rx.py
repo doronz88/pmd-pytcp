@@ -143,9 +143,11 @@ class _StubHandler(PacketHandlerArpRx):
         self._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
         self._arp_probe__unicast_conflict: set[Ip4Address] = set()
         self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
+        self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
 
         self.arp_replies_sent: list[dict[str, object]] = []
         self.gratuitous_arps_sent: list[Ip4Address] = []
+        self.aborted_session_local_ips: list[Ip4Address] = []
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:
@@ -973,6 +975,114 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
                 f"{self._handler.gratuitous_arps_sent!r}"
             ),
         )
+
+    def test__stack__packet_handler__arp__rx__abandon_after_second_conflict_within_interval(self) -> None:
+        """
+        Ensure a second conflicting ARP packet for the same IP
+        within DEFEND_INTERVAL of the previous conflict
+        triggers the abandon path: the IPv4 address is removed
+        from '_ip4_host' and the 'arp__conflict__abandon' stat
+        is incremented. The second conflict does NOT emit a
+        defensive gratuitous ARP — the host is giving up the
+        address rather than defending it.
+
+        Reference: RFC 5227 §2.4(b) (MUST cease using address after second conflict).
+        """
+
+        with patch("time.monotonic", side_effect=[1000.0, 1005.0]):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS],
+            msg=(
+                "Second conflict within DEFEND_INTERVAL must NOT defend (host "
+                "is abandoning the address per RFC 5227 §2.4(b))."
+            ),
+        )
+        self.assertNotIn(
+            STACK__IP4_HOST,
+            self._handler._ip4_host,
+            msg=(
+                "RFC 5227 §2.4(b) MUST: the abandoned IPv4 address must be "
+                "removed from '_ip4_host' so the stack stops using it."
+            ),
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.arp__conflict__abandon,
+            1,
+            msg="The 'arp__conflict__abandon' stat must be incremented on the abandon path.",
+        )
+
+    def test__stack__packet_handler__arp__rx__no_abandon_after_second_conflict_outside_interval(self) -> None:
+        """
+        Ensure two conflicts spaced MORE than DEFEND_INTERVAL
+        apart do NOT trigger the abandon path — both fire
+        their own defensive gratuitous ARP and the address
+        stays in '_ip4_host'. The MUST in §2.4(b) is gated on
+        "within DEFEND_INTERVAL"; conflicts outside that window
+        are independent events.
+
+        Reference: RFC 5227 §2.4(b) (abandon gated on within DEFEND_INTERVAL).
+        """
+
+        # 10.5 s apart — past the 10 s default DEFEND_INTERVAL.
+        with patch("time.monotonic", side_effect=[1000.0, 1010.5]):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS, STACK__IP4_ADDRESS],
+            msg="Conflicts past DEFEND_INTERVAL must each fire a defense.",
+        )
+        self.assertIn(
+            STACK__IP4_HOST,
+            self._handler._ip4_host,
+            msg="Address must NOT be abandoned when conflicts are past DEFEND_INTERVAL.",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.arp__conflict__abandon,
+            0,
+            msg="The 'arp__conflict__abandon' stat must NOT increment outside the window.",
+        )
+
+    def test__stack__packet_handler__arp__rx__abandon_aborts_bound_tcp_sessions(self) -> None:
+        """
+        Ensure the abandon path attempts to ABORT every
+        TcpSession bound to the abandoned address. Iterates
+        'pytcp.stack.sockets' and calls
+        'tcp_session.tcp_fsm(syscall=SysCall.ABORT)' on every
+        socket whose 'socket_id.local_address' matches.
+
+        Reference: RFC 5227 §2.4 final (reset connections before abandon).
+        """
+
+        from pytcp.protocols.tcp.tcp__session import SysCall
+        from pytcp.socket import AddressFamily, SocketType
+        from pytcp.socket.socket_id import SocketId
+
+        # Construct a fake socket with a TCP-session-shaped
+        # spy on tcp_fsm.
+        fake_session = MagicMock()
+        fake_socket = MagicMock()
+        fake_socket._tcp_session = fake_session
+        socket_id = SocketId(
+            address_family=AddressFamily.INET4,
+            socket_type=SocketType.STREAM,
+            local_address=STACK__IP4_ADDRESS,
+            local_port=12345,
+            remote_address=HOST_A__IP4,
+            remote_port=80,
+        )
+
+        with patch.dict(stack.sockets, {socket_id: fake_socket}, clear=True):
+            with patch("time.monotonic", side_effect=[1000.0, 1005.0]):
+                self._drive_conflict(spa=STACK__IP4_ADDRESS)
+                self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        fake_session.tcp_fsm.assert_called_with(syscall=SysCall.ABORT)
 
 
 class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):

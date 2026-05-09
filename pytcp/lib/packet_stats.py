@@ -81,6 +81,7 @@ class PacketStatsRx(PacketStats):
     arp__op_request__simultaneous_probe: int = 0
     arp__op_request__tpa_stack: int = 0
     arp__op_request__tpa_unknown: int = 0
+    arp__conflict__abandon: int = 0
     arp__op_request__gratuitous: int = 0
     arp__op_request__respond: int = 0
     arp__op_request__update_arp_cache: int = 0

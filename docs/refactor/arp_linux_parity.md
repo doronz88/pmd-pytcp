@@ -157,17 +157,16 @@ detection — not implemented."
 
 ---
 
-## §2 — Tier 2 #9: abandon-after-second-conflict (RFC 5227 §2.4(b) MUST)
+## §2 — Tier 2 #9: abandon-after-second-conflict (RFC 5227 §2.4(b) MUST) ✅ shipped
 
-Absorbed into the NUD work — Phase 6 of
-[`docs/refactor/nud_state_machine.md`](nud_state_machine.md).
-The NUD `FAILED` state provides the "neighbour unreachable"
-semantic that the TcpSession ABORT path needs; the abandon
-mechanism gates on having FAILED available, so #9 lands
-last in the NUD migration. The §2.4(b) MUST itself is a
-PacketHandler-level concern (per-IP last-conflict timestamp,
-abandon path that ABORTs sessions and removes the address
-from `_ip4_host`); the NUD doc §8 captures the design.
+Landed as Phase 6 of the NUD migration. The
+`PacketHandler._handle_arp_conflict` helper tracks per-IP
+last-conflict timestamps; a second conflict within
+`DEFEND_INTERVAL` of the previous triggers
+`_abandon_ipv4_address` which (a) ABORTs every TcpSession
+bound to the address (`RFC 5227 §2.4-final` SHOULD), (b)
+removes the address from `_ip4_host`, and (c) increments the
+new `arp__conflict__abandon` PacketStatsRx counter.
 
 Adherence reference: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`
 §2.4 / §2.4(b).

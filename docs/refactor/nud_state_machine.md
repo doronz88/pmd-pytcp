@@ -444,7 +444,7 @@ call the hook for the peer's IPv4 / IPv6 address. Effort
 `_gc_pass` implementation, three sysctl gc_thresh entries,
 eviction priority order. Effort ~50 lines + tests.
 
-### Phase 6 — Abandon-after-second-conflict (#9)
+### Phase 6 — Abandon-after-second-conflict (#9) ✅ shipped (this commit)
 
 RFC 5227 §2.4(b) MUST plumbing on PacketHandler. TcpSession
 ABORT path. The most operator-visible change — produces a

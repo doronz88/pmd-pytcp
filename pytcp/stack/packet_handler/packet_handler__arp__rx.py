@@ -58,6 +58,7 @@ class PacketHandlerArpRx(ABC):
         _ip4_host_candidate: list[Ip4Host]
         _arp_probe__unicast_conflict: set[Ip4Address]
         _arp_defend__last_emitted: dict[Ip4Address, float]
+        _arp_defend__last_conflict_at: dict[Ip4Address, float]
 
         # pylint: disable=unused-argument
 
@@ -90,20 +91,77 @@ class PacketHandlerArpRx(ABC):
         @property
         def _ip4_unicast(self) -> list[Ip4Address]: ...
 
-    def _maybe_send_arp_defense(self, *, ip4_unicast: "Ip4Address") -> None:
+    def _handle_arp_conflict(self, *, ip4_unicast: "Ip4Address") -> None:
         """
-        Emit a defensive gratuitous ARP for 'ip4_unicast', gated by
-        the per-IP DEFEND_INTERVAL rate-limit. Skipped silently if a
-        defense for this IP was emitted within
-        'ARP__DEFEND_INTERVAL' seconds of now.
+        Handle an observed conflicting ARP packet for one of
+        our IPv4 addresses. Implements RFC 5227 §2.4(b) MUST
+        plus the §2.4(c) rate-limit:
+
+          - Second conflict within DEFEND_INTERVAL of the
+            previous conflict → abandon the address (the §2.4(b)
+            MUST). No defense is emitted; the address is removed
+            from '_ip4_host'; bound TcpSessions are aborted
+            (§2.4 final SHOULD).
+          - Otherwise → fire a defensive gratuitous ARP, gated by
+            the per-IP last-defended-at rate-limit (§2.4(c)
+            MUST NOT defend more than once per DEFEND_INTERVAL).
+
+        Replaces the old '_maybe_send_arp_defense' helper —
+        same call sites in the conflict-defense paths of
+        '__phrx_arp__request' and '__phrx_arp__reply'.
         """
 
         now = time.monotonic()
-        last = self._arp_defend__last_emitted.get(ip4_unicast)
-        if last is not None and now - last < ARP__DEFEND_INTERVAL:
+        prior_conflict = self._arp_defend__last_conflict_at.get(ip4_unicast)
+        self._arp_defend__last_conflict_at[ip4_unicast] = now
+
+        if prior_conflict is not None and now - prior_conflict < ARP__DEFEND_INTERVAL:
+            # Second conflict within window — RFC 5227 §2.4(b) MUST abandon.
+            self._abandon_ipv4_address(ip4_unicast=ip4_unicast)
+            return
+
+        # First conflict (or after window) — defend, gated by
+        # the §2.4(c) per-IP rate-limit on emitted defenses.
+        last_defense = self._arp_defend__last_emitted.get(ip4_unicast)
+        if last_defense is not None and now - last_defense < ARP__DEFEND_INTERVAL:
             return
         self._arp_defend__last_emitted[ip4_unicast] = now
         self._send_gratuitous_arp(ip4_unicast=ip4_unicast)
+
+    def _abandon_ipv4_address(self, *, ip4_unicast: "Ip4Address") -> None:
+        """
+        Tear down all TCP sessions bound to 'ip4_unicast' and
+        remove it from '_ip4_host' — RFC 5227 §2.4(b) MUST
+        ("immediately cease using this address") plus the
+        §2.4-final SHOULD ("hosts SHOULD actively attempt to
+        reset any existing connections using that address").
+        """
+
+        # RFC 5227 §2.4-final SHOULD: ABORT any TcpSession
+        # bound to this address. The session-side ABORT
+        # syscall sends RST and tears down the session per
+        # RFC 9293 §3.10.7.4.
+        from pytcp.protocols.tcp.tcp__session import SysCall
+
+        for socket_id in list(stack.sockets):
+            if socket_id.local_address == ip4_unicast:
+                sock = stack.sockets[socket_id]
+                session = getattr(sock, "_tcp_session", None)
+                if session is not None:
+                    session.tcp_fsm(syscall=SysCall.ABORT)
+
+        # Remove the abandoned address from '_ip4_host' so
+        # the stack stops claiming it. Future RX-side conflict
+        # detection on this IP will see it is no longer in
+        # '_ip4_unicast' and skip the defense path entirely.
+        self._ip4_host = [host for host in self._ip4_host if host.address != ip4_unicast]
+
+        self._packet_stats_rx.arp__conflict__abandon += 1
+        __debug__ and log(
+            "arp",
+            f"<CRIT>RFC 5227 §2.4(b) abandoning IPv4 address {ip4_unicast} "
+            f"after second conflict within DEFEND_INTERVAL</>",
+        )
 
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         """
@@ -204,7 +262,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._maybe_send_arp_defense(ip4_unicast=packet_rx.arp.spa)
+            self._handle_arp_conflict(ip4_unicast=packet_rx.arp.spa)
             return
 
         # RFC 5227 §2.1.1 simultaneous-probe conflict: a peer is probing
@@ -334,7 +392,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._maybe_send_arp_defense(ip4_unicast=packet_rx.arp.spa)
+            self._handle_arp_conflict(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Check for ARP reply that is response to our ARP probe, this indicates
