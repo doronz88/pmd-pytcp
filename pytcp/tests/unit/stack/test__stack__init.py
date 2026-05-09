@@ -51,6 +51,8 @@ class TestStackModuleConstants(TestCase):
         Ensure the TAP/TUN ioctl constants match the Linux kernel
         values. Wrong values would make 'initialize_interface__tap'
         attach the wrong kernel interface.
+
+        Reference: Linux kernel tun.h (TUNSETIFF / IFF_TUN / IFF_TAP / IFF_NO_PI).
         """
 
         self.assertEqual(
@@ -79,6 +81,8 @@ class TestStackModuleConstants(TestCase):
         Ensure the default MTU for TAP/TUN interfaces is 1500 bytes —
         the standard Ethernet MTU. Changing this shifts every
         fragmentation / MSS calculation downstream.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -96,6 +100,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure IPv4 and IPv6 support flags are enabled by default.
         Disabling them silently would break the integration tests.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -111,6 +117,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure the ICMPv6 ND cache maximum age and refresh window are
         both positive with refresh time strictly less than max age.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertGreater(
@@ -133,6 +141,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure the ephemeral port range lies within the 0-65535 bounds
         of a 16-bit port field and ends above its start.
+
+        Reference: RFC 6335 §6 (ephemeral port range).
         """
 
         self.assertGreaterEqual(
@@ -155,6 +165,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure IP fragment reassembly timeouts are positive. A value
         of 0 would immediately drop every fragment flow.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertGreater(
@@ -173,6 +185,8 @@ class TestStackModuleConstants(TestCase):
         Ensure the default 'LOG__CHANNEL' set contains the core
         subsystem channels referenced across the codebase. Dropping
         a channel here silences an entire subsystem's log output.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         required = {
@@ -203,6 +217,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure the 'PYTCP_VERSION' string starts with 'ver ' so any
         consumers that parse "ver X.Y.Z" can keep working.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -214,6 +230,8 @@ class TestStackModuleConstants(TestCase):
         """
         Ensure the module-level 'stack_initialized' flag starts False
         — start()/stop() gate on it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         # It might be True if the process already ran stack.init() in a
@@ -251,6 +269,8 @@ class TestStackInitializeInterfaceTap(TestCase):
         Ensure 'initialize_interface__tap' returns a dict carrying the
         file descriptor, InterfaceLayer.L2, default MTU, and the
         derived MAC address — the shape 'stack.init()' consumes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -285,6 +305,8 @@ class TestStackInitializeInterfaceTap(TestCase):
         Ensure passing 'mac_address=' overrides the MAC derived from
         the interface name. Used by integration tests that need a
         deterministic MAC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mac = MacAddress("02:00:00:00:00:99")
@@ -304,6 +326,8 @@ class TestStackInitializeInterfaceTap(TestCase):
         """
         Ensure the helper calls 'sys.exit(-1)' when '/dev/net/tun' is
         not present. This is the operator-visible failure path.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -343,6 +367,8 @@ class TestStackInitializeInterfaceTun(TestCase):
         Ensure 'initialize_interface__tun' returns a dict carrying
         the file descriptor, InterfaceLayer.L3, and the default MTU.
         TUN mode does not report a MAC address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -376,6 +402,8 @@ class TestStackInitializeInterfaceTun(TestCase):
         """
         Ensure the TUN helper also exits on FileNotFoundError to
         match 'initialize_interface__tap'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -429,6 +457,8 @@ class TestStackMockInit(TestCase):
         Ensure 'mock__init' wires every provided mock into the
         corresponding module-level singleton. Missing mocks leave
         their prior binding untouched.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         fake_timer = MagicMock()
@@ -458,6 +488,8 @@ class TestStackMockInit(TestCase):
         """
         Ensure 'mock__init' only overwrites the singletons the caller
         passes a mock for — omitted ones stay at their prior value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         # First assign all to sentinel values, then call mock__init with
@@ -780,6 +812,8 @@ class TestStackPythonVersionGuard(TestCase):
         Ensure the module-level assert requires Python 3.12+. This is
         the floor the codebase's PEP 695 generics and 'typing.override'
         usage depend on.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertGreaterEqual(
