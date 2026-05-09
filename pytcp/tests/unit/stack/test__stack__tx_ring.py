@@ -31,9 +31,11 @@ ver 3.0.4
 """
 
 import os
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+import pytcp.stack.tx_ring as tx_ring_module
 from net_proto import (
     Ethernet8023Assembler,
     EthernetAssembler,
@@ -614,4 +616,98 @@ class TestTxRingDropCounters(_TxRingFixture):
             self._ring.os_error_drop_count,
             2,
             msg="Each os.writev OSError must bump 'os_error_drop_count' by exactly one.",
+        )
+
+
+class TestTxRingDispatchFastPath(_TxRingFixture):
+    """
+    The '_TX_PROTO_DISPATCH' production fast-path tests — verify the
+    dict is keyed by the actual production assembler classes so a
+    real (non-mock) packet resolves via a single 'type()' lookup
+    rather than the 'isinstance' fallback loop reserved for
+    'MagicMock(spec=...)' fixtures.
+    """
+
+    def test__tx_ring__dispatch_dict_keys_are_production_assembler_classes(self) -> None:
+        """
+        Ensure '_TX_PROTO_DISPATCH' contains every production assembler
+        class as a literal 'type' key. If a key were ever replaced with
+        a string, a subclass, or removed, real packets would skip the
+        O(1) fast path and silently degrade to the 'isinstance' walk —
+        a regression mocked-only unit tests cannot catch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for cls in (
+            EthernetAssembler,
+            Ethernet8023Assembler,
+            Ip6Assembler,
+            Ip4Assembler,
+            Ip4FragAssembler,
+        ):
+            self.assertIn(
+                cls,
+                tx_ring_module._TX_PROTO_DISPATCH,
+                msg=(
+                    f"{cls.__name__} must be a literal key of _TX_PROTO_DISPATCH so "
+                    "type(packet) lookup hits the O(1) fast path. Missing keys force "
+                    "the isinstance fallback loop on every send."
+                ),
+            )
+
+    def test__tx_ring__send_one_real_assembler_resolves_via_type_lookup(self) -> None:
+        """
+        Ensure '_send_one' on a real (non-mock) 'EthernetAssembler'
+        resolves its dispatch entry via the 'type()' dict-lookup fast
+        path: 'dict.get' returns non-None and the 'isinstance' fallback
+        loop is not entered. Existing unit tests use 'MagicMock(spec=X)'
+        whose 'type(...)' is 'MagicMock', so they always exercise the
+        fallback path — this test pins the production behaviour.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        get_calls: list[type] = []
+
+        class _SpyDict(dict[type, tuple[bytes, int]]):
+            """
+            Wraps the production dispatch dict; records every '.get'
+            key and fail-louds if the 'isinstance' fallback path
+            iterates '.items()'.
+            """
+
+            def get(self, key: Any, default: Any = None) -> Any:
+                get_calls.append(key)
+                return super().get(key, default)
+
+            def items(self) -> Any:
+                raise AssertionError(
+                    "isinstance fallback path entered — real EthernetAssembler should "
+                    "resolve via 'type()' dict-lookup fast path, not via the "
+                    "'.items()' iteration reserved for MagicMock(spec=...) fixtures."
+                )
+
+        spy_dispatch = _SpyDict(tx_ring_module._TX_PROTO_DISPATCH)
+        real_assembler = EthernetAssembler()
+
+        with (
+            patch.object(tx_ring_module, "_TX_PROTO_DISPATCH", spy_dispatch),
+            patch("pytcp.stack.tx_ring.os.writev", return_value=14) as writev,
+        ):
+            sent_ok = self._ring._send_one(real_assembler)
+
+        self.assertTrue(
+            sent_ok,
+            msg="_send_one on a real EthernetAssembler must return True (success).",
+        )
+        self.assertEqual(
+            get_calls,
+            [EthernetAssembler],
+            msg=("_send_one must call _TX_PROTO_DISPATCH.get exactly once with type(packet); " f"got: {get_calls!r}"),
+        )
+        self.assertEqual(
+            writev.call_count,
+            1,
+            msg="_send_one must invoke os.writev exactly once on a successful dispatch.",
         )

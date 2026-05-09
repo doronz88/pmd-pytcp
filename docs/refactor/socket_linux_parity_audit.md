@@ -649,48 +649,97 @@ If resuming this work, prioritise (rough order):
 
 ---
 
-## §101 Stack-ring audit findings (post-`fe43a785`)
+## §101 Stack-ring audit findings (post-`bb2a13fa`)
 
-A separate audit of the RX / TX ring path landed four focused fixes
-(`3ae9087e`, `fabbe61a`, `502d4143`, `2dc796c8`) and produced a
-benchmark + profiling harness (`fe43a785`, `c6882e5c`). Two
-optimisation candidates remain open; one is now resolved-with-data.
+A separate audit of the RX / TX ring path landed in two waves. The
+**first wave** added focused MTU / shutdown / observability fixes
+(`3ae9087e`, `fabbe61a`, `502d4143`, `2dc796c8`) and the
+benchmark + profiling harness (`fe43a785`, `c6882e5c`). The **second
+wave** rewrote the ring data plane after a real-wire hping3 flood
+exposed the `queue.Queue` `Lock + Condition` pair as the bottleneck
+under producer/consumer load: drains converted to inner-loop drains
+(`f0ad0076`, `d3fbccfb`), `queue.Queue` replaced by `collections.deque`
++ `os.eventfd` on both sides (`f207f2dd`, `0625e2ed`), defensive
+`os.read` OSError handling shipped (`e1d77217`), and the ring drop
+counters were folded into the shared `PacketStats` dataclasses so the
+unified-stats snapshot covers them in one pass (`bb2a13fa`).
 
-### Resolved
+### Real-wire delivered throughput
 
-| Item | Verdict | Evidence |
+Measured against `hping3 --flood --icmp -d 1472 <stack-ip>` on a TAP
+interface, kernel TX `txqueuelen=1000`, single CPU, `PYTHONOPTIMIZE=1`:
+
+| Stage | Echo-reply pps | TX qsize | TX queue-full drops |
+|---|---|---|---|
+| Pre-refactor (`queue.Queue`, outer-only drain) | ~3,800 | pegged at 1000 | thousands per 5s |
+| Post-TX inner-drain | ~6,800 | 0 ↔ 1000 oscillation | hundreds per 5s |
+| Post-deque + eventfd (TX) | ~6,900 | 0 — 13 | zero |
+| Post-deque + eventfd (RX, current) | **~6,965** | 0 — 13 | zero |
+
+The 78% throughput improvement (`3,800 → 6,965 pps`) and the
+collapse of TX queue-full drops to zero validate the refactor.
+The remaining ceiling at ~7k pps is **consumer-side and GIL-bound**
+(packet handler at 99-119% CPU), not ring-side.
+
+### Shipped — ring-side punch list (closed)
+
+| # | Item | Commit | Notes |
+|---|---|---|---|
+| 1 | RX read buffer scales with MTU | `3ae9087e` | Jumbo / jumbogram support, no fixed 1518 ceiling. |
+| 2 | RX selector closed on stop | `fabbe61a` | No epoll fd leak across `stack.stop()` cycles. |
+| 3 | Shutdown order: timer → TX ring | `2dc796c8` | Timer-driven RTO/persist/keep-alive callbacks cannot enqueue to a stopped TX ring. |
+| 4 | Drop counters (queue-full + os-error) | `502d4143` | Both rings, both error classes. |
+| 5 | RX inner-drain (drain all per wake-up) | `f0ad0076` | +1.9% on synthetic bench, prevents loss-on-burst once consumer speeds up. |
+| 6 | TX inner-drain (drain all per wake-up) | `d3fbccfb` | First wave that closed the real-wire TX qsize oscillation. |
+| 7 | TX `queue.Queue` → deque + eventfd | `f207f2dd` | Replaces `Lock + Condition` per-op cost with deque atomics + single eventfd signal. Module-level `_TX_PROTO_DISPATCH: dict[type, ...]` for O(1) protocol resolution; `isinstance` fallback only for `MagicMock(spec=...)` fixtures. |
+| 8 | RX `queue.Queue` → deque + eventfd | `0625e2ed` | Same shape as TX. Fast path: deque non-empty; slow path: `select` on the eventfd. |
+| 9 | RX defensive OSError on `os.read` | `e1d77217` | Drains the eventfd notification even if the kernel read fails (ENXIO on shutdown race), increments `rx_ring__os_error__drop`. |
+| 10 | Ring counters wired into `PacketStats` | `bb2a13fa` | `tx_ring__queue_full__drop`, `tx_ring__os_error__drop`, `rx_ring__queue_full__drop`, `rx_ring__os_error__drop` are now fields on the shared dataclasses; `examples/stack.py` snapshots via generic `dataclasses.fields(stats)` iteration so any new counter shows up without curated lists. |
+
+Tests: every item above has unit-test coverage (`test__stack__rx_ring.py`,
+`test__stack__tx_ring.py`, `test__lib__packet_stats.py`,
+`test__stack__init.py`). The dispatch fast-path now also has structural
++ behavioural tests pinning the `type()`-keyed dict (the `MagicMock`-
+based tests would not have caught a regression where a key was replaced
+with a string or removed). Stack-level integration tests pin the
+shared-`PacketStats` invariant — same instance threaded into both
+rings + the packet handler.
+
+### Acceptable as-is (post-refactor data)
+
+| Item | Status | Rationale |
 |---|---|---|
-| **RX inner-drain loop** | **Shipped (`f0ad0076`) — 1.9% measurable, future-proofing.** | Ping-flood test (~6,300 pps over 25 minutes; 800k+ packets) showed `rx_ring.qsize == 0` and zero `queue_full_drop_count` bumps — at *current* consumer speed the ring already drains faster than the kernel TAP buffer fills, so the optimisation is invisible *today*. Synthetic SOCK_DGRAM bench (`make bench__rx_ring`, 10×100k frames, `-O`) showed median throughput improvement from 74,164 pps to 75,597 pps (+1.9%). The optimisation is load-bearing when the consumer side gets faster (e.g. ICMP echo-reply dispatch optimisation) and the ring becomes the next bottleneck. Tests pin the drain semantic so future regressions are caught immediately. |
-
-### Open (low priority, no flood-test evidence yet)
-
-| Item | Status | Evidence needed |
-|---|---|---|
-| TUN protocol-family hint dispatch (`isinstance` chain in `tx_ring.py`) | Acceptable as-is | Only refactor if VLAN-tagged TAP / TUN_PI variants land. |
-| 100ms-poll dequeue cadence | Acceptable as-is | Negligible under GIL. Replace with eventfd-pair only if profiling shows it as a hotspot — current profile data shows it is not. |
+| TUN protocol-family hint dispatch | Acceptable | Only refactor if VLAN-tagged TAP / TUN_PI variants land. The fast-path dict already covers Ethernet II, 802.3, IPv4, IPv6, IPv4-frag — that is the production set. |
+| Cosmetic `_stop` symmetry between rings | Acceptable | RX has a selector to close, TX uses `select.select` directly. Asymmetric but correct; no leak in either direction. |
+| Kernel TAP `txqueuelen` ceiling | Out of ring scope | A separate flood-test data point: `ip -s link show tap7` showed 96.3% kernel-side TX drops at one stage. The fix is `ip link set tap7 txqueuelen 10000` on the host, not stack code. Document on the benchmark page if the GIL ceiling lifts. |
 
 ### Real bottleneck — consumer-side dispatch
 
-The flood-test data points at the actual ceiling for anyone wanting
-to push PyTCP throughput higher: the `packet_handler` thread's
-per-packet work (parse → dispatch → emit). Suggested investigations:
+The post-refactor flood data points the next throughput frontier
+firmly **outside** the rings: `packet_handler` thread per-packet
+work (parse → dispatch → emit). Suggested investigations:
 
 1. Profile under a real-wire flood (`PYTCP_STATS_INTERVAL=1
-   PYTHONOPTIMIZE=1 make run` + `cProfile`) — find which protocol
-   handler dominates.
+   PYTHONOPTIMIZE=1 make benchmark` + `cProfile`) — find which
+   protocol handler dominates.
 2. The 884 `__debug__ and log(...)` call sites add ~50% overhead
-   when not stripped. Always run benchmarks with `-O`.
+   when not stripped. Always run benchmarks with `-O` /
+   `PYTHONOPTIMIZE=1` (`make benchmark` does this; `make run`
+   does not).
 3. The ICMP echo-reply path round-trips through ARP cache lookup
    + Ethernet-header rewrite — verify the ARP cache hit is fast.
-4. The two-thread, two-queue model (RX ring → packet_handler) costs
-   one queue.get + queue.put per packet (~6µs each). Removing the
-   queue (direct callback) would save ~12µs/packet but ties RX
-   throughput to the consumer's slowest dispatch path.
+4. Free-threaded CPython 3.13t / 3.14t lifts the GIL ceiling.
+   The deque + eventfd patterns shipped here are already
+   GIL-free-friendly — no `Lock` contention to migrate. A simple
+   `python3.14t make benchmark` smoke test would quantify.
+5. AF_PACKET TPACKET_V3 mmap rings are the kernel-bypass path
+   for sub-µs RX; explicitly **out of scope** per the project
+   North Star (kernel-bypass rejected by Phase 1 + Phase 2
+   constraints).
 
-These are not on the socket-Linux-parity audit punch list; they live
-under a separate "throughput optimisation" track that hasn't been
-opened. Mention them here so future audits know where the data
-points.
+These are tracked here so future audits know the rings are not the
+current bottleneck and the next investment is in the consumer
+thread or the interpreter — not the ring data plane.
 
 ---
 

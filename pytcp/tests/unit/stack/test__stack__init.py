@@ -623,6 +623,176 @@ class TestStackStopOrdering(TestCase):
         )
 
 
+class TestStackInitSharedPacketStats(TestCase):
+    """
+    The 'stack.init()' shared 'PacketStats' wiring tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the module-level singletons that 'stack.init()'
+        rebinds so each test can roll back cleanly.
+        """
+
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in (
+                "timer",
+                "rx_ring",
+                "tx_ring",
+                "arp_cache",
+                "nd_cache",
+                "packet_handler",
+                "interface_mtu",
+                "stack_initialized",
+            )
+        }
+
+    def tearDown(self) -> None:
+        """
+        Restore the snapshot so subsequent tests start from the same
+        module-level state.
+        """
+
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+
+    def test__stack__init_l2_shares_packet_stats_across_rings_and_handler(self) -> None:
+        """
+        Ensure 'stack.init()' on the L2 (TAP) path constructs one
+        'PacketStatsRx' and one 'PacketStatsTx' instance and threads
+        the same objects into 'RxRing', 'TxRing', and
+        'PacketHandlerL2'. Without this sharing, ring drop counters
+        (rx_ring__queue_full__drop / __os_error__drop, tx_ring
+        equivalents) would land on a different dataclass than the
+        per-protocol counters and the unified 'PacketStats' snapshot
+        would lose them.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+
+        with (
+            patch.object(stack, "TxRing") as tx_ring_cls,
+            patch.object(stack, "RxRing") as rx_ring_cls,
+            patch.object(stack, "PacketHandlerL2") as handler_cls,
+        ):
+            stack.init(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mtu=1500,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+                ip4_support=False,
+                ip4_host=None,
+                ip4_dhcp=False,
+                ip6_support=False,
+                ip6_host=None,
+                ip6_gua_autoconfig=False,
+                ip6_lla_autoconfig=False,
+            )
+
+        rx_stats = rx_ring_cls.call_args.kwargs["packet_stats"]
+        tx_stats = tx_ring_cls.call_args.kwargs["packet_stats"]
+        handler_kwargs = handler_cls.call_args.kwargs
+
+        self.assertIsInstance(
+            rx_stats,
+            PacketStatsRx,
+            msg="RxRing must receive a PacketStatsRx instance from stack.init().",
+        )
+        self.assertIsInstance(
+            tx_stats,
+            PacketStatsTx,
+            msg="TxRing must receive a PacketStatsTx instance from stack.init().",
+        )
+        self.assertIs(
+            handler_kwargs["packet_stats_rx"],
+            rx_stats,
+            msg=(
+                "PacketHandlerL2 must receive the SAME PacketStatsRx instance the RxRing got — "
+                "ring drop counters live on this dataclass and the unified-stats snapshot "
+                "depends on the rings and the handler sharing one object."
+            ),
+        )
+        self.assertIs(
+            handler_kwargs["packet_stats_tx"],
+            tx_stats,
+            msg=(
+                "PacketHandlerL2 must receive the SAME PacketStatsTx instance the TxRing got — "
+                "ring drop counters live on this dataclass and the unified-stats snapshot "
+                "depends on the rings and the handler sharing one object."
+            ),
+        )
+
+    def test__stack__init_l3_shares_packet_stats_across_rings_and_handler(self) -> None:
+        """
+        Ensure 'stack.init()' on the L3 (TUN) path also threads one
+        'PacketStatsRx' / 'PacketStatsTx' pair through both rings and
+        the 'PacketHandlerL3' constructor — same invariant as the L2
+        path, different handler class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+
+        with (
+            patch.object(stack, "TxRing") as tx_ring_cls,
+            patch.object(stack, "RxRing") as rx_ring_cls,
+            patch.object(stack, "PacketHandlerL3") as handler_cls,
+        ):
+            stack.init(
+                fd=-1,
+                layer=InterfaceLayer.L3,
+                mtu=1500,
+                mac_address=None,
+                ip4_support=False,
+                ip4_host=None,
+                ip4_dhcp=False,
+                ip6_support=False,
+                ip6_host=None,
+                ip6_gua_autoconfig=False,
+                ip6_lla_autoconfig=False,
+            )
+
+        rx_stats = rx_ring_cls.call_args.kwargs["packet_stats"]
+        tx_stats = tx_ring_cls.call_args.kwargs["packet_stats"]
+        handler_kwargs = handler_cls.call_args.kwargs
+
+        self.assertIsInstance(
+            rx_stats,
+            PacketStatsRx,
+            msg="RxRing must receive a PacketStatsRx instance from stack.init() on the L3 path.",
+        )
+        self.assertIsInstance(
+            tx_stats,
+            PacketStatsTx,
+            msg="TxRing must receive a PacketStatsTx instance from stack.init() on the L3 path.",
+        )
+        self.assertIs(
+            handler_kwargs["packet_stats_rx"],
+            rx_stats,
+            msg=(
+                "PacketHandlerL3 must receive the SAME PacketStatsRx instance the RxRing got — "
+                "shared-stats invariant must hold on the L3 path identically to L2."
+            ),
+        )
+        self.assertIs(
+            handler_kwargs["packet_stats_tx"],
+            tx_stats,
+            msg=(
+                "PacketHandlerL3 must receive the SAME PacketStatsTx instance the TxRing got — "
+                "shared-stats invariant must hold on the L3 path identically to L2."
+            ),
+        )
+
+
 class TestStackPythonVersionGuard(TestCase):
     """
     The Python-version-guard tests at module import time.
