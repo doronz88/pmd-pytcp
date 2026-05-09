@@ -409,7 +409,7 @@ Sysctl registrations land in this commit too —
 `neighbor.reachable_time` etc. are registered with the
 framework before any consumer exists.
 
-### Phase 2 — ArpCache adapter
+### Phase 2 — ArpCache adapter ✅ shipped (this commit)
 
 Refactor `ArpCache` to inherit from `NeighborCache[Ip4Address]`.
 The existing ArpCache tests get updated to expect NUD-state

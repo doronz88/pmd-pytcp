@@ -136,7 +136,7 @@ class ArpTestCase(NetworkTestCase):
         )
         self._monotonic_patch.start()
         self._arp_cache_monotonic_patch = patch(
-            "pytcp.protocols.arp.arp__cache.time.monotonic",
+            "pytcp.lib.neighbor.time.monotonic",
             side_effect=_read_monotonic,
         )
         self._arp_cache_monotonic_patch.start()

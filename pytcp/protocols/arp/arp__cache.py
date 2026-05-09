@@ -23,7 +23,15 @@
 
 
 """
-This module contains class supporting ARP Cache operations.
+This module contains the IPv4 ARP cache — a thin adapter on
+top of the generic 'NeighborCache[A]' NUD state machine at
+'pytcp/lib/neighbor.py'. Phase 2 of the NUD migration plan
+('docs/refactor/nud_state_machine.md').
+
+The adapter supplies the IPv4-specific solicit and flush
+callbacks: broadcast or unicast ARP Request for solicits
+(driven by 'cached_mac is None / not None'), Ethernet TX
+ring dispatch with destination-MAC rewrite for flushes.
 
 pytcp/protocols/arp/arp__cache.py
 
@@ -32,242 +40,152 @@ ver 3.0.4
 
 from __future__ import annotations
 
-import threading
-import time
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
 
 from pytcp import stack
-from pytcp.lib.logger import log
-from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
-from pytcp.protocols.arp import arp__constants
-from pytcp.protocols.arp.arp__constants import ARP__REQUEST_RATE_LIMIT
+from pytcp.lib.neighbor import NeighborCache
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, MacAddress
     from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class CacheEntry:
+class ArpCache(NeighborCache["Ip4Address"]):
     """
-    Container class for cache entries.
+    The IPv4 ARP cache. Inherits the full NUD state machine
+    from 'NeighborCache[Ip4Address]' and supplies the wire-
+    level callbacks ('_solicit_arp', '_flush_packet'). The
+    public surface ('find_entry', 'add_entry',
+    'enqueue_pending', 'add_permanent_entry',
+    'confirm_reachability') is overridden with kw-only
+    wrappers that match the established PyTCP convention
+    ('ip4_address=', 'mac_address=', 'ethernet_packet_tx=').
     """
-
-    mac_address: MacAddress
-    permanent: bool = False
-    # Monotonic timestamp (seconds since arbitrary process-start
-    # epoch). 'time.time' is wall-clock and would let an NTP step
-    # adjustment mass-expire fresh entries; Linux's neighbour
-    # cache uses jiffies (monotonic) for the same reason.
-    create_time: float = field(
-        init=False,
-        default_factory=lambda: time.monotonic(),
-    )
-    hit_count: int = field(init=False, default=0)
-
-    def hit_count__increment(self) -> None:
-        """
-        Increment hit count.
-        """
-
-        object.__setattr__(self, "hit_count", self.hit_count + 1)
-
-    def hit_count__reset(self) -> None:
-        """
-        Reset hit count.
-        """
-
-        object.__setattr__(self, "hit_count", 0)
-
-
-@dataclass(slots=True)
-class _PendingResolution:
-    """
-    In-progress ARP resolution state for a single IPv4
-    destination. Holds the 'time.monotonic()' timestamp of the
-    most recent ARP Request emitted for the address (gates
-    subsequent Requests by 'ARP__REQUEST_RATE_LIMIT' per
-    RFC 1122 §2.3.2.1) and the most recently queued outbound
-    Ethernet packet pending resolution (RFC 1122 §2.3.2.2).
-    """
-
-    last_request_at: float = 0.0
-    queued_packet: "EthernetAssembler | None" = None
-
-
-class ArpCache(Subsystem):
-    """
-    Support for ARP Cache operations.
-    """
-
-    _subsystem_name = "ARP Cache"
-
-    _arp_cache: dict[Ip4Address, CacheEntry]
-    _pending_resolution: dict[Ip4Address, _PendingResolution]
-
-    _event__stop_subsystem: threading.Event
 
     @override
     def __init__(self) -> None:
         """
-        Initialize ARP Cache.
+        Initialise the ARP cache. The Subsystem name is "ARP
+        Cache" (legacy log channel "arp-c"); the parent class
+        wires the FSM machinery + sysctl-driven timers.
         """
 
-        super().__init__()
-
-        self._arp_cache = {}
-        # Per-destination in-progress-resolution table — RFC 1122
-        # §2.3.2.1 outbound-Request rate-limit + §2.3.2.2 saved-
-        # unresolved-packet queue. Populated lazily by 'find_entry'
-        # / 'enqueue_pending', drained by 'add_entry' on resolution.
-        self._pending_resolution = {}
-
-    def __repr__(self) -> str:
-        """
-        Return string representation of the ARP Cache.
-        """
-
-        return repr(self._arp_cache)
-
-    @override
-    def _subsystem_loop(self) -> None:
-        """
-        Maintain the ARP Cache entries.
-        """
-
-        for ip4_address in list(self._arp_cache):
-            # Skip permanent entries.
-            if self._arp_cache[ip4_address].permanent:
-                continue
-
-            # If entry age is over maximum age then discard the entry.
-            # Read the constants via qualified access on
-            # 'arp__constants' so 'stack.init(arp_cache_max_age=...,
-            # arp_cache_refresh_time=...)' overrides take effect at
-            # runtime — sysctl-style live mutability of the timeouts.
-            if time.monotonic() - self._arp_cache[ip4_address].create_time > arp__constants.ARP__CACHE__ENTRY_MAX_AGE:
-                mac_address = self._arp_cache.pop(ip4_address).mac_address
-                __debug__ and log(
-                    "arp-c",
-                    f"Discarded expir ARP Cache entry - {ip4_address} -> " f"{mac_address}",
-                )
-
-            # If entry age is close to maximum age but the entry has been
-            # used since last refresh then send out a unicast refresh
-            # probe addressed to the cached MAC (RFC 1122 §2.3.2.1
-            # IMPL (2)) — broadcasting the refresh would wake every
-            # host on the segment for a mapping we already have.
-            elif (
-                time.monotonic() - self._arp_cache[ip4_address].create_time
-                > arp__constants.ARP__CACHE__ENTRY_MAX_AGE - arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
-            ) and self._arp_cache[ip4_address].hit_count:
-                cached_mac = self._arp_cache[ip4_address].mac_address
-                self._arp_cache[ip4_address].hit_count__reset()
-                assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
-                stack.packet_handler.send_arp_unicast_request(
-                    arp__tpa=ip4_address,
-                    ethernet__dst=cached_mac,
-                )
-                __debug__ and log(
-                    "arp-c",
-                    f"Trying to refresh expiring ARP Cache entry for "
-                    f"{ip4_address} -> {cached_mac} via unicast probe",
-                )
-
-        # Put thread to sleep for a 100 milliseconds.
-        self._event__stop_subsystem.wait(SUBSYSTEM_SLEEP_TIME__SEC)
-
-    def add_entry(
-        self,
-        *,
-        ip4_address: Ip4Address,
-        mac_address: MacAddress,
-    ) -> None:
-        """
-        Add / refresh an entry in the cache and, if a packet
-        was queued against an in-progress resolution for the
-        same address, rewrite its Ethernet destination to the
-        resolved MAC and dispatch it through the TX ring (RFC
-        1122 §2.3.2.2).
-        """
-
-        __debug__ and log(
-            "arp-c",
-            f"<INFO>Adding/refreshing ARP Cache entry - {ip4_address} -> " f"{mac_address}</>",
+        super().__init__(
+            name="ARP Cache",
+            solicit_callback=self._solicit_arp,
+            flush_callback=self._flush_packet,
         )
 
-        self._arp_cache[ip4_address] = CacheEntry(mac_address=mac_address)
+    # ------------------------------------------------------------
+    # Public API — kw-only wrappers preserve the legacy ARP
+    # call-site convention while delegating to the generic
+    # NeighborCache positional API.
+    # ------------------------------------------------------------
 
-        pending = self._pending_resolution.pop(ip4_address, None)
-        if pending is not None and pending.queued_packet is not None:
-            packet = pending.queued_packet
-            packet.dst = mac_address
-            __debug__ and log(
-                "arp-c",
-                f"<INFO>Flushing queued packet for {ip4_address} -> {mac_address}</>",
-            )
-            stack.tx_ring.enqueue(packet)
+    def find_entry(self, *, ip4_address: "Ip4Address") -> "MacAddress | None":  # type: ignore[override]
+        """
+        Look up the MAC for an IPv4 address; on miss, fire a
+        broadcast ARP Request and return None. See
+        'NeighborCache.find_entry' for full FSM semantics.
+        """
 
-    def enqueue_pending(
+        return super().find_entry(ip4_address)
+
+    def add_entry(  # type: ignore[override]
         self,
         *,
-        ip4_address: Ip4Address,
-        ethernet_packet_tx: EthernetAssembler,
+        ip4_address: "Ip4Address",
+        mac_address: "MacAddress",
     ) -> None:
         """
-        Save the most recently dropped outbound Ethernet packet
-        for an unresolved IPv4 address so 'add_entry' can
-        deliver it post-resolution (RFC 1122 §2.3.2.2). A
-        second call for the same address overwrites the
-        previously queued packet — only the latest is kept,
-        matching the SHOULD's "at least one (the latest)"
-        wording.
+        Install / refresh the IPv4-MAC mapping in response to
+        an inbound ARP Reply. Transitions the entry to
+        NUD_REACHABLE; flushes any queued packet.
         """
 
-        pending = self._pending_resolution.get(ip4_address)
-        if pending is None:
-            pending = _PendingResolution()
-            self._pending_resolution[ip4_address] = pending
-        pending.queued_packet = ethernet_packet_tx
+        super().add_entry(ip4_address, mac_address)
 
-    def find_entry(self, *, ip4_address: Ip4Address) -> MacAddress | None:
+    def add_permanent_entry(  # type: ignore[override]
+        self,
+        *,
+        ip4_address: "Ip4Address",
+        mac_address: "MacAddress",
+    ) -> None:
         """
-        Find entry in cache and return MAC address. On miss,
-        dispatch an ARP Request — gated by the per-destination
-        rate-limit (RFC 1122 §2.3.2.1) so successive misses
-        within the window do not flood the link.
+        Install a PERMANENT static-neighbour entry. Dynamic
+        ARP learning never overrides PERMANENT entries.
         """
 
-        if arp_entry := self._arp_cache.get(ip4_address, None):
-            arp_entry.hit_count__increment()
-            __debug__ and log(
-                "arp-c",
-                f"Found {ip4_address} -> {arp_entry.mac_address} entry, "
-                f"age {time.monotonic() - arp_entry.create_time:.0f}s, "
-                f"hit_count {arp_entry.hit_count}",
-            )
-            return arp_entry.mac_address
+        super().add_permanent_entry(ip4_address, mac_address)
 
-        # Cache miss — gate the ARP Request by RFC 1122 §2.3.2.1.
-        now = time.monotonic()
-        pending = self._pending_resolution.get(ip4_address)
-        if pending is None:
-            pending = _PendingResolution()
-            self._pending_resolution[ip4_address] = pending
+    def confirm_reachability(self, *, ip4_address: "Ip4Address") -> None:  # type: ignore[override]
+        """
+        Upper-layer fastpath: promote a STALE / DELAY / PROBE
+        entry directly to REACHABLE without firing a unicast
+        ARP probe. Called by the TCP layer on in-window ACK.
+        """
 
-        if now - pending.last_request_at >= ARP__REQUEST_RATE_LIMIT:
-            pending.last_request_at = now
-            __debug__ and log(
-                "arp-c",
-                f"Unable to find entry for {ip4_address}, sending ARP request",
-            )
-            assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
+        super().confirm_reachability(ip4_address)
+
+    def enqueue_pending(  # type: ignore[override]
+        self,
+        *,
+        ip4_address: "Ip4Address",
+        ethernet_packet_tx: "EthernetAssembler",
+    ) -> None:
+        """
+        Save the most recently dropped outbound Ethernet
+        packet for an unresolved IPv4 address so the FSM can
+        deliver it post-resolution (RFC 1122 §2.3.2.2).
+        """
+
+        super().enqueue_pending(ip4_address, ethernet_packet_tx)
+
+    # ------------------------------------------------------------
+    # Protocol-specific callbacks consumed by NeighborCache.
+    # ------------------------------------------------------------
+
+    def _solicit_arp(
+        self,
+        ip4_address: "Ip4Address",
+        cached_mac: "MacAddress | None",
+    ) -> None:
+        """
+        Fire an ARP Request — broadcast for INCOMPLETE state
+        (cached_mac is None), unicast to the cached MAC for
+        PROBE state (RFC 1122 §2.3.2.1 IMPL (2)). Routes
+        through the live PacketHandlerL2 instance on
+        'pytcp.stack'.
+        """
+
+        # Late-resolved import keeps this module decoupled
+        # from the packet handler at module load time —
+        # 'pytcp.stack.packet_handler' is only assigned by
+        # 'stack.init()'.
+        assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
+        if cached_mac is None:
             stack.packet_handler.send_arp_request(arp__tpa=ip4_address)
         else:
-            __debug__ and log(
-                "arp-c",
-                f"Unable to find entry for {ip4_address}, ARP request "
-                f"rate-limited (last sent {now - pending.last_request_at:.2f}s ago)",
+            stack.packet_handler.send_arp_unicast_request(
+                arp__tpa=ip4_address,
+                ethernet__dst=cached_mac,
             )
-        return None
+
+    def _flush_packet(self, packet: object, mac_address: "MacAddress") -> None:
+        """
+        Dispatch a queued Ethernet packet through the TX ring
+        with the destination MAC rewritten to the resolved
+        value. The 'object' parameter type comes from the
+        generic 'NeighborCache' surface; the actual type at
+        runtime is always 'EthernetAssembler' for ARP.
+        """
+
+        from net_proto.protocols.ethernet.ethernet__assembler import (
+            EthernetAssembler,
+        )
+
+        assert isinstance(
+            packet, EthernetAssembler
+        ), f"ArpCache._flush_packet got non-Ethernet payload: {type(packet)!r}"
+        packet.dst = mac_address
+        stack.tx_ring.enqueue(packet)

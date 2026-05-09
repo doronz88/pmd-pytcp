@@ -37,14 +37,11 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
     ARP__ANNOUNCE_WAIT,
-    ARP__CACHE__ENTRY_MAX_AGE,
-    ARP__CACHE__ENTRY_REFRESH_TIME,
     ARP__DEFEND_INTERVAL,
     ARP__PROBE_MAX,
     ARP__PROBE_MIN,
     ARP__PROBE_NUM,
     ARP__PROBE_WAIT,
-    ARP__REQUEST_RATE_LIMIT,
 )
 
 
@@ -52,32 +49,6 @@ class TestArpConstants(TestCase):
     """
     The ARP runtime-configuration constants tests.
     """
-
-    def test__arp__constants__cache_timers_are_positive(self) -> None:
-        """
-        Ensure the ARP cache maximum age and refresh window are
-        both positive, with refresh time strictly less than max
-        age — the invariant the refresh-path arithmetic in
-        'ArpCache._subsystem_loop' relies on.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertGreater(
-            ARP__CACHE__ENTRY_MAX_AGE,
-            0,
-            msg="ARP__CACHE__ENTRY_MAX_AGE must be positive.",
-        )
-        self.assertGreater(
-            ARP__CACHE__ENTRY_REFRESH_TIME,
-            0,
-            msg="ARP__CACHE__ENTRY_REFRESH_TIME must be positive.",
-        )
-        self.assertLess(
-            ARP__CACHE__ENTRY_REFRESH_TIME,
-            ARP__CACHE__ENTRY_MAX_AGE,
-            msg="REFRESH_TIME < MAX_AGE is required by the refresh-window arithmetic.",
-        )
 
     def test__arp__constants__defend_interval_matches_rfc_5227(self) -> None:
         """
@@ -93,21 +64,6 @@ class TestArpConstants(TestCase):
             ARP__DEFEND_INTERVAL,
             10,
             msg=f"DEFEND_INTERVAL must equal 10 s. Got: {ARP__DEFEND_INTERVAL}.",
-        )
-
-    def test__arp__constants__request_rate_limit_matches_rfc_1122(self) -> None:
-        """
-        Ensure 'ARP__REQUEST_RATE_LIMIT' equals 1 second — the
-        recommended max of 1 ARP Request per second per
-        destination.
-
-        Reference: RFC 1122 §2.3.2.1 (max 1 Request/sec/destination).
-        """
-
-        self.assertEqual(
-            ARP__REQUEST_RATE_LIMIT,
-            1,
-            msg=f"REQUEST_RATE_LIMIT must equal 1 s. Got: {ARP__REQUEST_RATE_LIMIT}.",
         )
 
     def test__arp__constants__announce_num_matches_rfc_5227(self) -> None:

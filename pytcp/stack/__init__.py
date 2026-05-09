@@ -319,8 +319,6 @@ def init(
     ip6_host: Ip6Host | None = (None if IP6_ADDRESS is None else Ip6Host(IP6_ADDRESS, gateway=IP6_GATEWAY)),
     ip6_gua_autoconfig: bool = True if IP6_ADDRESS is None else False,
     ip6_lla_autoconfig: bool = True,
-    arp_cache_max_age: int | None = None,
-    arp_cache_refresh_time: int | None = None,
     sysctls: dict[str, Any] | None = None,
 ) -> None:
     """
@@ -330,23 +328,19 @@ def init(
     global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler
     global interface_mtu, stack_initialized
 
-    # Apply user overrides for the ARP cache aging timeouts before
-    # any subsystem is constructed. Both the explicit kwargs and
-    # the 'sysctls={...}' bag route through 'pytcp.lib.sysctl.set'
-    # so the per-knob validators run; cross-knob constraints
-    # (e.g. refresh < max_age) run after every kwarg has been
-    # applied, via 'finalize_validators'.
-    #
-    # Importing 'arp__constants' triggers its module-level
-    # '_register' calls, populating the registry before we set
-    # any values.
+    # Apply any operator overrides for the registered sysctl
+    # knobs before subsystems are constructed. The bag-form
+    # 'sysctls={"arp.X": ..., "neighbor.X": ...}' is keyed by
+    # the dotted-name canonical key. Per-knob validators run on
+    # each set(); cross-knob constraints
+    # ('finalize_validators') run after the bag is fully
+    # applied. Importing 'arp__constants' / 'neighbor__constants'
+    # triggers their module-level '_register' calls so the
+    # registry is populated before we set anything.
+    from pytcp.lib import neighbor__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.lib import sysctl as sysctl_module
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
 
-    if arp_cache_max_age is not None:
-        sysctl_module.set("arp.cache.max_age", arp_cache_max_age)
-    if arp_cache_refresh_time is not None:
-        sysctl_module.set("arp.cache.refresh_time", arp_cache_refresh_time)
     if sysctls is not None:
         for key, value in sysctls.items():
             sysctl_module.set(key, value)

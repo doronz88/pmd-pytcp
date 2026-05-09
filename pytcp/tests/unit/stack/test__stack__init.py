@@ -815,15 +815,14 @@ class TestStackInitArpCacheConfig(TestCase):
 
     def setUp(self) -> None:
         """
-        Snapshot the constants (and any module-level singletons
-        'init()' rebinds) so each test can roll back cleanly.
+        Snapshot the module-level singletons 'init()' rebinds so
+        each test can roll back cleanly. Sysctl mutations are
+        rolled back via 'reset_to_defaults' in tearDown.
         """
 
         from pytcp.protocols.arp import arp__constants
 
         self._arp__constants = arp__constants
-        self._snapshot_max_age = arp__constants.ARP__CACHE__ENTRY_MAX_AGE
-        self._snapshot_refresh = arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
         self._sentinel = object()
         self._snapshot = {
             name: getattr(stack, name, self._sentinel)
@@ -841,20 +840,12 @@ class TestStackInitArpCacheConfig(TestCase):
 
     def tearDown(self) -> None:
         """
-        Restore the constants and module-level singletons.
+        Restore module-level singletons and sysctl defaults.
         """
 
-        # The registry's reset_to_defaults handles every
-        # registered policy knob (covers ARP cache + RFC 5227
-        # timing constants etc.); the explicit restore of the
-        # two cache constants is belt-and-braces in case the
-        # registry default has drifted between registration
-        # time and now.
         from pytcp.lib import sysctl as sysctl_module
 
         sysctl_module.reset_to_defaults()
-        self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE = self._snapshot_max_age
-        self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME = self._snapshot_refresh
         for name, value in self._snapshot.items():
             if value is self._sentinel:
                 if hasattr(stack, name):
@@ -889,90 +880,6 @@ class TestStackInitArpCacheConfig(TestCase):
                 ip6_lla_autoconfig=False,
                 **extra,  # type: ignore[arg-type]
             )
-
-    def test__stack__init__arp_cache_max_age_kwarg_overrides_constant(self) -> None:
-        """
-        Ensure 'stack.init(arp_cache_max_age=600)' sets the live
-        'ARP__CACHE__ENTRY_MAX_AGE' constant in 'arp__constants'
-        to 600 so the cache loop ages entries by the user value.
-
-        Reference: RFC 1122 §2.3.2.1 (cache timeout SHOULD be configurable).
-        """
-
-        self._init_l2(arp_cache_max_age=600, arp_cache_refresh_time=60)
-
-        self.assertEqual(
-            self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE,
-            600,
-            msg=(
-                "stack.init(arp_cache_max_age=600) must mutate "
-                "arp__constants.ARP__CACHE__ENTRY_MAX_AGE in place; "
-                "the cache loop reads this constant at runtime."
-            ),
-        )
-
-    def test__stack__init__arp_cache_refresh_time_kwarg_overrides_constant(self) -> None:
-        """
-        Ensure 'stack.init(arp_cache_refresh_time=60)' sets the
-        live 'ARP__CACHE__ENTRY_REFRESH_TIME' constant to 60.
-
-        Reference: RFC 1122 §2.3.2.1 (cache timeout SHOULD be configurable).
-        """
-
-        self._init_l2(arp_cache_max_age=600, arp_cache_refresh_time=60)
-
-        self.assertEqual(
-            self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME,
-            60,
-            msg=(
-                "stack.init(arp_cache_refresh_time=60) must mutate "
-                "arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME in place."
-            ),
-        )
-
-    def test__stack__init__arp_cache_default_kwargs_preserve_constants(self) -> None:
-        """
-        Ensure calling 'stack.init()' without the ARP-cache kwargs
-        leaves the compile-time defaults untouched — no kwarg, no
-        change to the live constants.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        before_max_age = self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE
-        before_refresh = self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
-
-        self._init_l2()
-
-        self.assertEqual(
-            self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE,
-            before_max_age,
-            msg="ARP__CACHE__ENTRY_MAX_AGE must be unchanged when no kwarg is passed.",
-        )
-        self.assertEqual(
-            self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME,
-            before_refresh,
-            msg="ARP__CACHE__ENTRY_REFRESH_TIME must be unchanged when no kwarg is passed.",
-        )
-
-    def test__stack__init__arp_cache_invalid_refresh_geq_max_rejected(self) -> None:
-        """
-        Ensure 'stack.init()' rejects a configuration where
-        'arp_cache_refresh_time' is greater than or equal to
-        'arp_cache_max_age'. The refresh-window arithmetic in the
-        cache loop relies on REFRESH_TIME < MAX_AGE; configurations
-        that violate this would either skip the refresh path
-        entirely (refresh == max) or compute a negative refresh
-        window (refresh > max).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(ValueError):
-            self._init_l2(arp_cache_max_age=10, arp_cache_refresh_time=10)
-
-        with self.assertRaises(ValueError):
-            self._init_l2(arp_cache_max_age=10, arp_cache_refresh_time=20)
 
     def test__stack__init__sysctls_bag_propagates_through_registry(self) -> None:
         """

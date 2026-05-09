@@ -32,10 +32,6 @@ pytcp/protocols/arp/arp__constants.py
 ver 3.0.4
 """
 
-# ARP cache configuration.
-ARP__CACHE__ENTRY_MAX_AGE = 3600
-ARP__CACHE__ENTRY_REFRESH_TIME = 300
-
 # RFC 5227 §1.1 / §2.4(c) defensive-ARP rate-limit. After
 # emitting a defensive gratuitous ARP for an address, no
 # further defense for that address is emitted until at least
@@ -45,13 +41,17 @@ ARP__CACHE__ENTRY_REFRESH_TIME = 300
 # MUST NOT failure mode).
 ARP__DEFEND_INTERVAL = 10
 
-# RFC 1122 §2.3.2.1 outbound-ARP-Request rate-limit. The host
-# MUST NOT flood the link with repeated Requests for the same
-# unresolved IP; the recommended maximum is 1 per second per
-# destination. Used by 'ArpCache.find_entry' to gate Request
-# emission via 'time.monotonic()' timestamps stored on the
-# per-destination '_pending_resolution' table.
-ARP__REQUEST_RATE_LIMIT = 1
+# Cache-aging timeouts and the per-destination outbound-
+# Request rate-limit moved to the generic NUD framework at
+# 'pytcp/lib/neighbor__constants.py'. The ARP cache is now a
+# thin adapter on 'NeighborCache[Ip4Address]' that reads:
+#   - 'neighbor.reachable_time'    (was ARP__CACHE__ENTRY_MAX_AGE)
+#   - 'neighbor.retrans_timer'     (was ARP__REQUEST_RATE_LIMIT)
+#   - the rest of the 'neighbor.*' sysctl namespace.
+# The legacy 'arp.cache.max_age' / 'arp.cache.refresh_time'
+# sysctls are removed; operators tune cache aging via
+# 'pytcp.stack.sysctl["neighbor.reachable_time"]' or the
+# 'sysctls={"neighbor.X": ...}' bag kwarg on 'stack.init()'.
 
 # RFC 5227 §1.1 / §2.3 ARP Announcement count and spacing.
 # After successful DAD, the host MUST broadcast ANNOUNCE_NUM
@@ -104,32 +104,14 @@ ARP__ACCEPT = 0
 # rejected by the validator until a real consumer surfaces.
 ARP__IGNORE = 1
 
-# Sysctl registration. Every constant above except
-# 'ARP__REQUEST_RATE_LIMIT' is a policy knob (operator-tunable
-# at boot via 'stack.init()' or at runtime via
-# 'pytcp.stack.sysctl["arp...."] = N'). The exception
-# 'ARP__REQUEST_RATE_LIMIT' is RFC 1122 §2.3.2.1-pinned at 1 s
-# "recommended" and PyTCP's rate-limit gate currently treats
-# the recommendation as a hard floor — re-classify when there
-# is a real consumer for a runtime override.
+# Sysctl registration. Every constant above is a policy knob
+# (operator-tunable at boot via 'stack.init(sysctls={...})'
+# or at runtime via 'pytcp.stack.sysctl["arp...."] = N'). The
+# legacy cache-aging knobs ('arp.cache.max_age',
+# 'arp.cache.refresh_time') are gone — the NUD migration
+# (Phase 2) replaces them with the 'neighbor.*' namespace.
 from pytcp.lib.sysctl import _finalize_validators, _is_positive_int, _register, get  # noqa: E402
 
-_register(
-    key="arp.cache.max_age",
-    module_name=__name__,
-    attr="ARP__CACHE__ENTRY_MAX_AGE",
-    default=ARP__CACHE__ENTRY_MAX_AGE,
-    validator=_is_positive_int("arp.cache.max_age"),
-    description="ARP cache entry lifetime, seconds.",
-)
-_register(
-    key="arp.cache.refresh_time",
-    module_name=__name__,
-    attr="ARP__CACHE__ENTRY_REFRESH_TIME",
-    default=ARP__CACHE__ENTRY_REFRESH_TIME,
-    validator=_is_positive_int("arp.cache.refresh_time"),
-    description="ARP cache refresh-window window, seconds; must be < arp.cache.max_age.",
-)
 _register(
     key="arp.defend_interval",
     module_name=__name__,
@@ -239,23 +221,6 @@ _register(
 )
 
 
-def _finalize__refresh_lt_max_age() -> None:
-    """
-    Cross-knob constraint — 'arp.cache.refresh_time' must be
-    strictly less than 'arp.cache.max_age'. The refresh-window
-    arithmetic in 'ArpCache._subsystem_loop' assumes
-    REFRESH < MAX; equality skips the refresh path entirely
-    and inversion produces a negative window.
-    """
-
-    if get("arp.cache.refresh_time") >= get("arp.cache.max_age"):
-        raise ValueError(
-            f"sysctl 'arp.cache.refresh_time' ({get('arp.cache.refresh_time')}) must be "
-            f"strictly less than 'arp.cache.max_age' ({get('arp.cache.max_age')}); the "
-            f"refresh-window arithmetic in the cache loop requires REFRESH < MAX."
-        )
-
-
 def _finalize__probe_min_lt_probe_max() -> None:
     """
     Cross-knob constraint — 'arp.probe_min' must be strictly
@@ -272,5 +237,4 @@ def _finalize__probe_min_lt_probe_max() -> None:
         )
 
 
-_finalize_validators.append(_finalize__refresh_lt_max_age)
 _finalize_validators.append(_finalize__probe_min_lt_probe_max)
