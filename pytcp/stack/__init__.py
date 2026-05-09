@@ -146,6 +146,14 @@ ARP__CACHE__ENTRY_REFRESH_TIME = 300
 # MUST NOT failure mode).
 ARP__DEFEND_INTERVAL = 10
 
+# RFC 1122 §2.3.2.1 outbound-ARP-Request rate-limit. The host
+# MUST NOT flood the link with repeated Requests for the same
+# unresolved IP; the recommended maximum is 1 per second per
+# destination. Used by 'ArpCache.find_entry' to gate Request
+# emission via 'time.monotonic()' timestamps stored on the
+# per-destination '_pending_resolution' table.
+ARP__REQUEST_RATE_LIMIT = 1
+
 # ICMPv6 ND cache configuration.
 ICMP6__ND__CACHE__ENTRY_MAX_AGE = 3600
 ICMP6__ND__CACHE__ENTRY_REFRESH_TIME = 300

@@ -252,6 +252,13 @@ class PacketHandlerEthernetTx(ABC):
                         self.__send_out_packet(ethernet_packet_tx)
                         return TxStatus.PASSED__ETHERNET__TO_TX_RING
                     self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop += 1
+                    # RFC 1122 §2.3.2.2: save the most recently
+                    # dropped packet for delivery once the gateway
+                    # MAC has been resolved.
+                    stack.arp_cache.enqueue_pending(
+                        ip4_address=ip4_host.gateway,
+                        ethernet_packet_tx=ethernet_packet_tx,
+                    )
                     return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC from
@@ -274,6 +281,13 @@ class PacketHandlerEthernetTx(ABC):
                 "ether",
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 "MAC could be obtained from ARP cache, dropping</>",
+            )
+            # RFC 1122 §2.3.2.2: save the most recently dropped
+            # packet for delivery once the destination MAC has
+            # been resolved.
+            stack.arp_cache.enqueue_pending(
+                ip4_address=ip4_dst,
+                ethernet_packet_tx=ethernet_packet_tx,
             )
             return TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS
 

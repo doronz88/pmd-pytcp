@@ -43,6 +43,7 @@ from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, MacAddress
+    from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -74,6 +75,21 @@ class CacheEntry:
         object.__setattr__(self, "hit_count", 0)
 
 
+@dataclass(slots=True)
+class _PendingResolution:
+    """
+    In-progress ARP resolution state for a single IPv4
+    destination. Holds the 'time.monotonic()' timestamp of the
+    most recent ARP Request emitted for the address (gates
+    subsequent Requests by 'stack.ARP__REQUEST_RATE_LIMIT' per
+    RFC 1122 §2.3.2.1) and the most recently queued outbound
+    Ethernet packet pending resolution (RFC 1122 §2.3.2.2).
+    """
+
+    last_request_at: float = 0.0
+    queued_packet: "EthernetAssembler | None" = None
+
+
 class ArpCache(Subsystem):
     """
     Support for ARP Cache operations.
@@ -82,6 +98,7 @@ class ArpCache(Subsystem):
     _subsystem_name = "ARP Cache"
 
     _arp_cache: dict[Ip4Address, CacheEntry]
+    _pending_resolution: dict[Ip4Address, _PendingResolution]
 
     _event__stop_subsystem: threading.Event
 
@@ -94,6 +111,11 @@ class ArpCache(Subsystem):
         super().__init__()
 
         self._arp_cache = {}
+        # Per-destination in-progress-resolution table — RFC 1122
+        # §2.3.2.1 outbound-Request rate-limit + §2.3.2.2 saved-
+        # unresolved-packet queue. Populated lazily by 'find_entry'
+        # / 'enqueue_pending', drained by 'add_entry' on resolution.
+        self._pending_resolution = {}
 
     def __repr__(self) -> str:
         """
@@ -148,7 +170,11 @@ class ArpCache(Subsystem):
         mac_address: MacAddress,
     ) -> None:
         """
-        Add / refresh entry in cache.
+        Add / refresh an entry in the cache and, if a packet
+        was queued against an in-progress resolution for the
+        same address, rewrite its Ethernet destination to the
+        resolved MAC and dispatch it through the TX ring (RFC
+        1122 §2.3.2.2).
         """
 
         __debug__ and log(
@@ -158,9 +184,44 @@ class ArpCache(Subsystem):
 
         self._arp_cache[ip4_address] = CacheEntry(mac_address=mac_address)
 
+        pending = self._pending_resolution.pop(ip4_address, None)
+        if pending is not None and pending.queued_packet is not None:
+            packet = pending.queued_packet
+            packet.dst = mac_address
+            __debug__ and log(
+                "arp-c",
+                f"<INFO>Flushing queued packet for {ip4_address} -> {mac_address}</>",
+            )
+            stack.tx_ring.enqueue(packet)
+
+    def enqueue_pending(
+        self,
+        *,
+        ip4_address: Ip4Address,
+        ethernet_packet_tx: EthernetAssembler,
+    ) -> None:
+        """
+        Save the most recently dropped outbound Ethernet packet
+        for an unresolved IPv4 address so 'add_entry' can
+        deliver it post-resolution (RFC 1122 §2.3.2.2). A
+        second call for the same address overwrites the
+        previously queued packet — only the latest is kept,
+        matching the SHOULD's "at least one (the latest)"
+        wording.
+        """
+
+        pending = self._pending_resolution.get(ip4_address)
+        if pending is None:
+            pending = _PendingResolution()
+            self._pending_resolution[ip4_address] = pending
+        pending.queued_packet = ethernet_packet_tx
+
     def find_entry(self, *, ip4_address: Ip4Address) -> MacAddress | None:
         """
-        Find entry in cache and return MAC address.
+        Find entry in cache and return MAC address. On miss,
+        dispatch an ARP Request — gated by the per-destination
+        rate-limit (RFC 1122 §2.3.2.1) so successive misses
+        within the window do not flood the link.
         """
 
         if arp_entry := self._arp_cache.get(ip4_address, None):
@@ -173,10 +234,25 @@ class ArpCache(Subsystem):
             )
             return arp_entry.mac_address
 
-        __debug__ and log(
-            "arp-c",
-            f"Unable to find entry for {ip4_address}, sending ARP request",
-        )
-        assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
-        stack.packet_handler.send_arp_request(arp__tpa=ip4_address)
+        # Cache miss — gate the ARP Request by RFC 1122 §2.3.2.1.
+        now = time.monotonic()
+        pending = self._pending_resolution.get(ip4_address)
+        if pending is None:
+            pending = _PendingResolution()
+            self._pending_resolution[ip4_address] = pending
+
+        if now - pending.last_request_at >= stack.ARP__REQUEST_RATE_LIMIT:
+            pending.last_request_at = now
+            __debug__ and log(
+                "arp-c",
+                f"Unable to find entry for {ip4_address}, sending ARP request",
+            )
+            assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
+            stack.packet_handler.send_arp_request(arp__tpa=ip4_address)
+        else:
+            __debug__ and log(
+                "arp-c",
+                f"Unable to find entry for {ip4_address}, ARP request "
+                f"rate-limited (last sent {now - pending.last_request_at:.2f}s ago)",
+            )
         return None

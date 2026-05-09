@@ -393,3 +393,297 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
             0,
             msg="Refresh path must zero hit_count so the next window starts clean.",
         )
+
+
+class TestArpCacheRequestRateLimit(_ArpCacheFixture):
+    """
+    The 'ArpCache.find_entry' per-destination ARP-Request
+    rate-limit tests. Pin the RFC 1122 §2.3.2.1 MUST that ARP
+    flooding (repeatedly sending an ARP Request for the same IP
+    address at a high rate) is prevented; the recommended
+    maximum is 1 per second per destination.
+    """
+
+    def test__arp_cache__find_entry_first_miss_emits_request(self) -> None:
+        """
+        Ensure the first cache miss for a given IP fires an ARP
+        Request — the rate-limit only gates subsequent misses
+        within the window, never the first.
+
+        Reference: RFC 1122 §2.3.2.1 (prevent ARP flooding).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        with (
+            patch("pytcp.stack.arp_cache.time.monotonic", return_value=1000.0),
+            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+        ):
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+
+        handler.send_arp_request.assert_called_once_with(arp__tpa=Ip4Address("10.0.0.5"))
+
+    def test__arp_cache__find_entry_second_within_rate_limit_skipped(self) -> None:
+        """
+        Ensure a second cache miss for the same IP within
+        ARP__REQUEST_RATE_LIMIT seconds of the first does NOT
+        fire a second ARP Request — the host MUST NOT flood
+        the link.
+
+        Reference: RFC 1122 §2.3.2.1 (prevent ARP flooding; max 1/sec/destination).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        with (
+            patch("pytcp.stack.arp_cache.time.monotonic", side_effect=[1000.0, 1000.5]),
+            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+        ):
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+
+        self.assertEqual(
+            handler.send_arp_request.call_count,
+            1,
+            msg=(
+                "A second cache miss 0.5 s after the first must NOT fire a "
+                "second ARP Request (within the 1-second-per-destination "
+                f"rate-limit). Got: {handler.send_arp_request.call_count} calls."
+            ),
+        )
+
+    def test__arp_cache__find_entry_after_rate_limit_re_emits(self) -> None:
+        """
+        Ensure a cache miss arriving more than
+        ARP__REQUEST_RATE_LIMIT seconds after the previous
+        Request re-arms the rate-limit and fires a fresh ARP
+        Request, AND a third miss immediately after the re-arm
+        is suppressed (proving the timestamp was correctly
+        updated on the second call, not that the rate-limit is
+        absent).
+
+        Reference: RFC 1122 §2.3.2.1 (rate-limit re-armed after the window).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        with (
+            patch(
+                "pytcp.stack.arp_cache.time.monotonic",
+                side_effect=[1000.0, 1001.5, 1002.0],
+            ),
+            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+        ):
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+
+        self.assertEqual(
+            handler.send_arp_request.call_count,
+            2,
+            msg=(
+                "Misses at t=1000 and t=1001.5 must each fire a Request (1.5 s "
+                "apart, past 1-second window); the third at t=1002.0 (0.5 s "
+                "after the re-arm) must be suppressed. Got: "
+                f"{handler.send_arp_request.call_count} calls."
+            ),
+        )
+
+    def test__arp_cache__find_entry_per_ip_independence(self) -> None:
+        """
+        Ensure the rate-limit is per-destination: a cache miss
+        on IP A does NOT suppress an ARP Request on IP B even
+        within the same window — two destinations are
+        independent rate-limit buckets. Drives a 3-miss
+        sequence (A, A, B) so the no-rate-limit case [A, A, B]
+        is distinguishable from the per-IP case [A, B].
+
+        Reference: RFC 1122 §2.3.2.1 (1/sec/destination granularity).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        with (
+            patch(
+                "pytcp.stack.arp_cache.time.monotonic",
+                side_effect=[1000.0, 1000.3, 1000.6],
+            ),
+            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+        ):
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.5"))
+            self._cache.find_entry(ip4_address=Ip4Address("10.0.0.6"))
+
+        self.assertEqual(
+            [call.kwargs["arp__tpa"] for call in handler.send_arp_request.call_args_list],
+            [Ip4Address("10.0.0.5"), Ip4Address("10.0.0.6")],
+            msg=(
+                "IP A: miss at t=1000 must fire; second at t=1000.3 must be "
+                "suppressed (within window). IP B: miss at t=1000.6 must fire "
+                "(separate per-IP bucket). Got: "
+                f"{[call.kwargs['arp__tpa'] for call in handler.send_arp_request.call_args_list]!r}"
+            ),
+        )
+
+    def test__arp_cache__find_entry_resolution_clears_pending_resolution(self) -> None:
+        """
+        Ensure a successful 'add_entry' for an IP clears its
+        in-progress-resolution state so a subsequent miss
+        (e.g. after the entry expires) starts a fresh
+        rate-limit window.
+
+        Reference: RFC 1122 §2.3.2.1 (rate-limit per resolution attempt).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        ip = Ip4Address("10.0.0.5")
+        mac = MacAddress("02:00:00:00:00:05")
+        handler = MagicMock(spec=PacketHandlerL2)
+        with (
+            patch("pytcp.stack.arp_cache.time.monotonic", side_effect=[1000.0, 1000.1]),
+            patch("pytcp.stack.arp_cache.stack.packet_handler", handler),
+        ):
+            self._cache.find_entry(ip4_address=ip)
+            # Resolution arrives — should clear the pending entry.
+            self._cache.add_entry(ip4_address=ip, mac_address=mac)
+            # Pop the cache entry to simulate later expiration so
+            # the next find_entry hits the rate-limit branch again.
+            del self._cache._arp_cache[ip]
+            self._cache.find_entry(ip4_address=ip)
+
+        self.assertEqual(
+            handler.send_arp_request.call_count,
+            2,
+            msg=(
+                "After 'add_entry' clears the pending resolution, a fresh "
+                "miss for the same IP must fire a new Request even when the "
+                f"original rate-limit window has not elapsed. Got: "
+                f"{handler.send_arp_request.call_count} calls."
+            ),
+        )
+
+
+class TestArpCachePendingPacketQueue(_ArpCacheFixture):
+    """
+    The 'ArpCache' pending-packet queue tests. Pin the RFC 1122
+    §2.3.2.2 SHOULD that the link layer save (rather than
+    discard) at least one packet per unresolved IP and transmit
+    the saved packet when the address has been resolved.
+    """
+
+    def test__arp_cache__enqueue_pending_stores_packet(self) -> None:
+        """
+        Ensure 'enqueue_pending' records the supplied packet
+        against the IP so a subsequent 'add_entry' can drain
+        it.
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
+        """
+
+        ip = Ip4Address("10.0.0.5")
+        packet = MagicMock()
+
+        self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=packet)
+
+        self.assertIs(
+            self._cache._pending_resolution[ip].queued_packet,
+            packet,
+            msg="enqueue_pending must store the EthernetAssembler keyed by IP.",
+        )
+
+    def test__arp_cache__enqueue_pending_overwrites_older_packet(self) -> None:
+        """
+        Ensure a second 'enqueue_pending' for the same IP
+        overwrites the first — only the most recently queued
+        packet is kept ("at least one (the latest)").
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one — the latest).
+        """
+
+        ip = Ip4Address("10.0.0.5")
+        first_packet = MagicMock(name="first")
+        second_packet = MagicMock(name="second")
+
+        self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=first_packet)
+        self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=second_packet)
+
+        self.assertIs(
+            self._cache._pending_resolution[ip].queued_packet,
+            second_packet,
+            msg="A second enqueue_pending must overwrite the older queued packet.",
+        )
+
+    def test__arp_cache__add_entry_flushes_queued_packet(self) -> None:
+        """
+        Ensure 'add_entry' on a successful resolution rewrites
+        the queued Ethernet packet's destination MAC to the
+        resolved MAC and re-enqueues it through the TX ring,
+        delivering the packet that would otherwise have been
+        lost on the cache miss.
+
+        Reference: RFC 1122 §2.3.2.2 (transmit the saved packet on resolution).
+        """
+
+        ip = Ip4Address("10.0.0.5")
+        mac = MacAddress("02:00:00:00:00:05")
+        packet = MagicMock()
+        tx_ring = MagicMock()
+
+        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+            self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=packet)
+            self._cache.add_entry(ip4_address=ip, mac_address=mac)
+
+        self.assertEqual(
+            packet.dst,
+            mac,
+            msg="Queued packet's Ethernet 'dst' must be set to the resolved MAC before TX.",
+        )
+        tx_ring.enqueue.assert_called_once_with(packet)
+
+    def test__arp_cache__add_entry_no_pending_packet_no_tx(self) -> None:
+        """
+        Ensure 'add_entry' for an IP with no queued packet does
+        not call into the TX ring — the flush is opt-in based
+        on whether 'enqueue_pending' was called for this IP.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ip = Ip4Address("10.0.0.5")
+        mac = MacAddress("02:00:00:00:00:05")
+        tx_ring = MagicMock()
+
+        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+            self._cache.add_entry(ip4_address=ip, mac_address=mac)
+
+        tx_ring.enqueue.assert_not_called()
+
+    def test__arp_cache__add_entry_clears_pending_after_flush(self) -> None:
+        """
+        Ensure 'add_entry' removes the pending-resolution entry
+        after flushing so a future miss (e.g. after the cache
+        entry expires) does not re-send the same stale queued
+        packet.
+
+        Reference: RFC 1122 §2.3.2.2 (one queued packet per resolution attempt).
+        """
+
+        ip = Ip4Address("10.0.0.5")
+        mac = MacAddress("02:00:00:00:00:05")
+        packet = MagicMock()
+        tx_ring = MagicMock()
+
+        with patch("pytcp.stack.arp_cache.stack.tx_ring", tx_ring):
+            self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=packet)
+            self._cache.add_entry(ip4_address=ip, mac_address=mac)
+
+        self.assertNotIn(
+            ip,
+            self._cache._pending_resolution,
+            msg="add_entry must remove the pending-resolution entry after flushing the queued packet.",
+        )
