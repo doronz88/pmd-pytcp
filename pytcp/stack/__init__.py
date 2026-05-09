@@ -195,7 +195,6 @@ packet_handler: PacketHandlerL2 | PacketHandlerL3
 stack_initialized: bool = False
 interface_mtu: int
 sockets: dict[SocketId, socket] = {}
-arp_probe_unicast_conflict: set[Ip4Address] = set()
 # RFC 1191 §3 / RFC 8201 §4 per-destination Path-MTU cache. Keyed
 # by remote IP (v4 or v6); value is the most recently learned next-
 # hop MTU. Populated by ICMP Frag-Needed / Packet-Too-Big handlers

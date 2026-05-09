@@ -141,6 +141,7 @@ class _StubHandler(PacketHandlerArpRx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_host = [STACK__IP4_HOST]
         self._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
+        self._arp_probe__unicast_conflict: set[Ip4Address] = set()
 
         self.arp_replies_sent: list[dict[str, object]] = []
         self.gratuitous_arps_sent: list[Ip4Address] = []
@@ -184,16 +185,12 @@ class _ArpRxTestBase(TestCase):
         self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock())
         self._arp_cache = self._arp_cache_patch.start()
 
-        self._conflict_patch = patch.object(stack, "arp_probe_unicast_conflict", set[Ip4Address]())
-        self._conflict_set = self._conflict_patch.start()
-
     def tearDown(self) -> None:
         """
         Restore the patched stack singletons.
         """
 
         self._arp_cache_patch.stop()
-        self._conflict_patch.stop()
 
 
 class TestPacketHandlerArpRxParseFail(_ArpRxTestBase):
@@ -352,8 +349,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         )
         self.assertIn(
             STACK__IP4_ADDRESS__CANDIDATE,
-            self._conflict_set,
-            msg="Probe-conflict IP must be registered in 'arp_probe_unicast_conflict'.",
+            self._handler._arp_probe__unicast_conflict,
+            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
         )
         self._arp_cache.add_entry.assert_not_called()
 
@@ -584,8 +581,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         )
         self.assertIn(
             STACK__IP4_ADDRESS__CANDIDATE,
-            self._conflict_set,
-            msg="Probe-conflict IP must be registered in 'arp_probe_unicast_conflict'.",
+            self._handler._arp_probe__unicast_conflict,
+            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
         )
 
     def test__stack__packet_handler__arp__rx__reply_direct_updates_cache(self) -> None:
@@ -672,7 +669,117 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         )
         self.assertIn(
             STACK__IP4_ADDRESS__CANDIDATE,
-            self._conflict_set,
-            msg="Probe-conflict IP must be registered in 'arp_probe_unicast_conflict'.",
+            self._handler._arp_probe__unicast_conflict,
+            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
         )
         self._arp_cache.add_entry.assert_not_called()
+
+
+class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
+    """
+    The 'PacketHandlerArpRx' probe-conflict per-instance-set tests.
+
+    Pin the requirement that probe conflicts the RX handler detects
+    are recorded on the same per-instance
+    'PacketHandler._arp_probe__unicast_conflict' set that the DAD
+    claim flow at '_create_stack_ip4_addressing'
+    (pytcp/stack/packet_handler/__init__.py) reads to decide
+    whether to admit a candidate to '_ip4_host'. The legacy
+    module-level 'stack.arp_probe_unicast_conflict' set is not
+    consulted by the DAD flow; a probe conflict written there
+    silently fails to abort the claim.
+    """
+
+    def test__stack__packet_handler__arp__rx__gratuitous_request_probe_conflict_writes_to_per_instance_set(
+        self,
+    ) -> None:
+        """
+        Ensure a gratuitous ARP Request whose SPA matches a
+        candidate address registers on the per-instance
+        '_arp_probe__unicast_conflict' set the DAD claim flow
+        actually reads.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REQUEST,
+            sha=HOST_A__MAC,
+            spa=STACK__IP4_ADDRESS__CANDIDATE,
+            tha=MAC__UNSPEC,
+            tpa=STACK__IP4_ADDRESS__CANDIDATE,
+        )
+        packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+
+        self._handler._phrx_arp(packet_rx)
+
+        self.assertIn(
+            STACK__IP4_ADDRESS__CANDIDATE,
+            self._handler._arp_probe__unicast_conflict,
+            msg=(
+                "Gratuitous-Request probe conflict must register on the per-instance "
+                "'_arp_probe__unicast_conflict' set; the DAD flow at "
+                "'_create_stack_ip4_addressing' reads this set, not the legacy "
+                "module-level 'stack.arp_probe_unicast_conflict'."
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__direct_reply_probe_conflict_writes_to_per_instance_set(self) -> None:
+        """
+        Ensure a direct unicast ARP Reply whose SPA matches a
+        candidate (TPA unspecified, L2 dst == our MAC) registers
+        on the per-instance '_arp_probe__unicast_conflict' set.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REPLY,
+            sha=HOST_A__MAC,
+            spa=STACK__IP4_ADDRESS__CANDIDATE,
+            tha=STACK__MAC_UNICAST,
+            tpa=IP4__UNSPEC,
+        )
+        packet_rx = _make_packet_rx(frame, ethernet_dst=STACK__MAC_UNICAST)
+
+        self._handler._phrx_arp(packet_rx)
+
+        self.assertIn(
+            STACK__IP4_ADDRESS__CANDIDATE,
+            self._handler._arp_probe__unicast_conflict,
+            msg=(
+                "Direct unicast ARP Reply probe conflict must register on the "
+                "per-instance '_arp_probe__unicast_conflict' set; the DAD flow "
+                "reads this set, not the legacy module-level global."
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__gratuitous_reply_probe_conflict_writes_to_per_instance_set(self) -> None:
+        """
+        Ensure a gratuitous ARP Reply (broadcast L2, SPA == TPA
+        matching a candidate) registers on the per-instance
+        '_arp_probe__unicast_conflict' set.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REPLY,
+            sha=HOST_A__MAC,
+            spa=STACK__IP4_ADDRESS__CANDIDATE,
+            tha=MAC__UNSPEC,
+            tpa=STACK__IP4_ADDRESS__CANDIDATE,
+        )
+        packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+
+        self._handler._phrx_arp(packet_rx)
+
+        self.assertIn(
+            STACK__IP4_ADDRESS__CANDIDATE,
+            self._handler._arp_probe__unicast_conflict,
+            msg=(
+                "Gratuitous-Reply probe conflict must register on the "
+                "per-instance '_arp_probe__unicast_conflict' set; the DAD "
+                "flow reads this set, not the legacy module-level global."
+            ),
+        )

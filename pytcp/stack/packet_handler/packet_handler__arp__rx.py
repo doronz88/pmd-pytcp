@@ -53,6 +53,7 @@ class PacketHandlerArpRx(ABC):
         _ip4_host: list[Ip4Host]
         _packet_stats_rx: PacketStatsRx
         _ip4_host_candidate: list[Ip4Host]
+        _arp_probe__unicast_conflict: set[Ip4Address]
 
         # pylint: disable=unused-argument
 
@@ -199,7 +200,7 @@ class PacketHandlerArpRx(ABC):
             # If we’re probing this address, mark conflict too.
             if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
                 self._packet_stats_rx.arp__op_request__probe_conflict__gratuitous += 1
-                stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+                self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
                 # Recommended during DAD: Don't learn ARP here.
                 return
 
@@ -289,7 +290,7 @@ class PacketHandlerArpRx(ABC):
                 f"conflict for IP {packet_rx.arp.spa} with host at "
                 f"{packet_rx.arp.sha}</>",
             )
-            stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+            self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
             # Recommended during DAD: Don't learn ARP here.
             return
 
@@ -317,7 +318,7 @@ class PacketHandlerArpRx(ABC):
 
             if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
                 self._packet_stats_rx.arp__op_reply__probe_conflict__gratuitous += 1
-                stack.arp_probe_unicast_conflict.add(packet_rx.arp.spa)
+                self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
                 # Recommended during DAD: Don't learn ARP here.
                 return
 
