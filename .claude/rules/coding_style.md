@@ -223,6 +223,79 @@ Rules:
   TCP__MIN_MSS = 536  # Minimum recommended MSS (RFC 879).
   ```
 
+### 6.1 Runtime-tunable constants (sysctls)
+
+Every module-level constant falls into one of two buckets;
+the classification matters because it determines whether the
+constant is **mutable at runtime through the public API** or
+not.
+
+| Bucket             | Mutable at runtime? | Examples                                                                                       |
+|--------------------|:-------------------:|------------------------------------------------------------------------------------------------|
+| **Policy**         | yes (sysctl)        | cache aging timeouts, rate-limits, retry counts, defaults the operator can sensibly override   |
+| **Protocol invariant** | no              | header struct sizes, RFC-pinned wire values, IANA codepoints, enum codepoints, struct pack codes |
+
+**Heuristic:** if Linux exposes the equivalent under
+`/proc/sys/net/`, it is policy; if Linux uses `#define` or an
+inline `const` in a kernel header, it is invariant. When
+ambiguous, default to **invariant** — every sysctl is a
+forever-load-bearing API the moment users start tuning it,
+and a wrong "make this mutable" decision is much harder to
+walk back than a wrong "keep this static" decision.
+
+**Policy constants** are registered with the central registry
+at `pytcp/lib/sysctl.py` so the operator can mutate them at
+runtime via `pytcp.stack.sysctl["arp.cache.max_age"] = 60`
+and at boot via `stack.init(arp_cache_max_age=60)`. The
+underlying ALL_CAPS module attribute remains the canonical
+storage; the registry is an index mapping the dotted-name
+canonical key (`arp.cache.max_age`) to the module attribute
+the runtime reads. Code that reads a policy constant uses
+**qualified module access** so each read re-resolves the
+current value:
+
+```python
+# library code reading a sysctl-backed policy constant
+from pytcp.protocols.arp import arp__constants
+
+now = time.monotonic()
+if now - entry.create_time > arp__constants.ARP__CACHE__ENTRY_MAX_AGE:
+    ...
+```
+
+NOT:
+
+```python
+# this captures the value at import time and locks it
+from pytcp.protocols.arp.arp__constants import ARP__CACHE__ENTRY_MAX_AGE
+
+if now - entry.create_time > ARP__CACHE__ENTRY_MAX_AGE:  # stale on mutation
+    ...
+```
+
+**Protocol invariants** stay as `from X import Y`-style local
+bindings. They never need to re-resolve because they never
+change.
+
+**Adding a new policy knob** — invoke the
+[`sysctl_knob`](../skills/sysctl_knob/SKILL.md) skill. It
+codifies the workflow: classify, register, optional explicit
+`stack.init()` kwarg, validator, tests-first, audit-doc
+Reference, §7.2 docstring audit, commit. The framework's full
+design (registry shape, naming, validation, migration phases)
+lives at `docs/refactor/sysctl_framework.md`.
+
+**Migration** of existing static constants to runtime-tunable
+proceeds **per-package, not per-constant** (see
+`sysctl_framework.md` §8). When you touch a package's
+`*__constants.py` for any feature reason, classify and
+migrate the whole file's policy constants in the same commit.
+Half-migrated packages are the failure mode the framework
+exists to prevent; piecemeal sweeps drift indefinitely. A
+`# Phase 2: per-interface` comment marks knobs that will
+become per-interface namespaces when multi-interface support
+lands.
+
 ## 7. Dataclasses
 
 All protocol headers and option payloads are `@dataclass` with the
