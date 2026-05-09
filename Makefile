@@ -111,24 +111,9 @@ profile__rx_ring: venv
 # Drive the stack from a SEPARATE terminal with one of the load
 # generators below; this target is the receiver side.
 benchmark: venv
-	@echo '<<< PYTCP BENCHMARK MODE (PYTHONOPTIMIZE=1, stats every 5s)'
+	@echo 'PyTCP benchmark mode. Drive from another terminal:'
 	@echo
-	@echo 'Drive the stack from a separate terminal. Replace'
-	@echo '<stack-ip> with the IP assigned to the stack.'
-	@echo
-	@echo '  # ICMP flood (saturates the RX -> handler -> TX echo path):'
 	@echo '  sudo hping3 --flood --icmp -d 1472 <stack-ip>'
-	@echo
-	@echo '  # UDP flood (requires examples/service__udp_echo.py instead'
-	@echo '  # of plain stack.py — kill this and re-launch the service):'
-	@echo '  python3.14 tools/udp_flood.py <stack-ip> 7'
-	@echo
-	@echo 'Recommended kernel-side prep (raises tap txqueuelen so the'
-	@echo "kernel's per-tap TX queue does not silently drop bursts):"
-	@echo
-	@echo '  sudo ip link set dev tap7 txqueuelen 10000'
-	@echo
-	@echo 'Stats snapshot prints every 5s. Ctrl-C to stop.'
 	@echo
 	@PYTCP_STATS_INTERVAL=5 PYTHONOPTIMIZE=1 PYTHONPATH=$(ROOT_PATH) \
 		./$(VENV)/bin/python3 examples/stack.py
