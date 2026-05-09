@@ -66,9 +66,16 @@ class _TxRingFixture(TestCase):
 
     def tearDown(self) -> None:
         """
-        Close the pipe endpoints and stop the log patches.
+        Close the pipe endpoints and the ring's eventfd, then stop
+        the log patches.
         """
 
+        # Close the ring's eventfd via _stop so the kernel resource
+        # is released back; '_stop' is idempotent.
+        try:
+            self._ring._stop()
+        except OSError:
+            pass
         try:
             os.close(self._read_fd)
         except OSError:
@@ -108,20 +115,21 @@ class TestTxRingInit(_TxRingFixture):
             msg="TxRing._queue_max_size must default to 1000.",
         )
 
-    def test__tx_ring__creates_empty_queue(self) -> None:
+    def test__tx_ring__creates_empty_deque(self) -> None:
         """
-        Ensure '__init__' creates a bounded queue whose maxsize
-        matches 'queue_max_size' and starts empty.
+        Ensure '__init__' creates an empty deque and a sane
+        configured queue cap.
         """
 
         self.assertEqual(
-            self._ring._tx_ring.maxsize,
+            self._ring._queue_max_size,
             1000,
-            msg="TxRing._tx_ring.maxsize must equal queue_max_size.",
+            msg="TxRing._queue_max_size must equal queue_max_size.",
         )
-        self.assertTrue(
-            self._ring._tx_ring.empty(),
-            msg="TxRing._tx_ring must start empty.",
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="TxRing._tx_deque must start empty.",
         )
 
 
@@ -132,29 +140,30 @@ class TestTxRingEnqueue(_TxRingFixture):
 
     def test__tx_ring__enqueue_appends_packet(self) -> None:
         """
-        Ensure enqueue() puts the packet on the internal queue.
+        Ensure enqueue() places the packet on the internal deque.
         """
 
         pkt = MagicMock(spec=EthernetAssembler)
         self._ring.enqueue(pkt)
         self.assertEqual(
-            self._ring._tx_ring.qsize(),
+            len(self._ring._tx_deque),
             1,
             msg="enqueue() must place the packet on the TX ring.",
         )
 
     def test__tx_ring__enqueue_drops_when_full(self) -> None:
         """
-        Ensure enqueue() silently drops the packet when the queue is
-        full rather than blocking — dropping an outbound frame is
-        preferable to stalling the caller.
+        Ensure enqueue() silently drops the packet when the deque is
+        at capacity rather than blocking — dropping an outbound
+        frame is preferable to stalling the caller.
         """
 
         ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
-        ring._tx_ring.put(MagicMock(spec=EthernetAssembler), block=False)
+        self.addCleanup(ring._stop)
+        ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
         ring.enqueue(MagicMock(spec=EthernetAssembler))  # must not raise
         self.assertEqual(
-            ring._tx_ring.qsize(),
+            len(ring._tx_deque),
             1,
             msg="enqueue() on a full TX ring must drop the new packet (size unchanged).",
         )
@@ -206,7 +215,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
 
         pkt = self._make_ethernet()
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -235,7 +244,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
         pkt.assemble.side_effect = lambda buffers: buffers.append(b"p6")
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -258,7 +267,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
         pkt.assemble.side_effect = lambda buffers: buffers.append(b"p4")
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -280,7 +289,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
         pkt.assemble.side_effect = lambda buffers: buffers.append(b"frag")
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -303,7 +312,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
         pkt.assemble.side_effect = lambda buffers: buffers.append(b"z")
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -319,7 +328,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt = self._make_ethernet()
         pkt.__len__.return_value = 65535  # way bigger than MTU + 14
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -333,7 +342,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
 
         pkt = self._make_ethernet()
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch(
             "pytcp.stack.tx_ring.os.writev",
@@ -352,7 +361,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
         pkt.assemble.side_effect = lambda buffers: buffers.append(b"x")
 
-        self._ring._tx_ring.put(pkt, block=False)
+        self._ring.enqueue(pkt)
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -394,7 +403,7 @@ class TestTxRingInnerDrain(_TxRingFixture):
 
         n_frames = 10
         for _ in range(n_frames):
-            self._ring._tx_ring.put(self._make_ethernet(), block=False)
+            self._ring.enqueue(self._make_ethernet())
 
         with patch("pytcp.stack.tx_ring.os.writev") as mock_writev:
             self._ring._subsystem_loop()
@@ -408,9 +417,10 @@ class TestTxRingInnerDrain(_TxRingFixture):
                 f"os.writev calls."
             ),
         )
-        self.assertTrue(
-            self._ring._tx_ring.empty(),
-            msg="After the inner drain the queue must be empty.",
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="After the inner drain the deque must be empty.",
         )
 
     def test__tx_ring__loop_inner_drain_breaks_on_writev_oserror(self) -> None:
@@ -424,7 +434,7 @@ class TestTxRingInnerDrain(_TxRingFixture):
         """
 
         for _ in range(5):
-            self._ring._tx_ring.put(self._make_ethernet(), block=False)
+            self._ring.enqueue(self._make_ethernet())
 
         with patch(
             "pytcp.stack.tx_ring.os.writev",
@@ -491,7 +501,8 @@ class TestTxRingDropCounters(_TxRingFixture):
         """
 
         ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
-        ring._tx_ring.put(MagicMock(spec=EthernetAssembler), block=False)
+        self.addCleanup(ring._stop)
+        ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
 
         ring.enqueue(MagicMock(spec=EthernetAssembler))
         ring.enqueue(MagicMock(spec=EthernetAssembler))
@@ -520,13 +531,15 @@ class TestTxRingDropCounters(_TxRingFixture):
             return pkt
 
         for _ in range(2):
-            self._ring._tx_ring.put(_make_pkt(), block=False)
+            self._ring.enqueue(_make_pkt())
 
         with patch(
             "pytcp.stack.tx_ring.os.writev",
             side_effect=OSError("link down"),
         ):
             self._ring._subsystem_loop()
+            # Inner drain re-armed the eventfd on break; second
+            # call processes the second packet.
             self._ring._subsystem_loop()
 
         self.assertEqual(

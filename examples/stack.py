@@ -67,7 +67,7 @@ def _capture_stats_snapshot() -> dict[str, int]:
     if hasattr(stack, "tx_ring") and stack.tx_ring is not None:
         snap["tx_ring__queue_full__drop"] = stack.tx_ring.queue_full_drop_count
         snap["tx_ring__os_error__drop"] = stack.tx_ring.os_error_drop_count
-        snap["tx_ring__qsize"] = stack.tx_ring._tx_ring.qsize()
+        snap["tx_ring__qsize"] = stack.tx_ring.qsize
     if hasattr(stack, "packet_handler") and stack.packet_handler is not None:
         rx_stats = stack.packet_handler.packet_stats_rx
         for field in (
