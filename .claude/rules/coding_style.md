@@ -200,6 +200,95 @@ Rules:
   deliberate and consistent across the codebase. Match it; do not
   "correct" it ad hoc.
 
+### 5.1 Cross-module visibility
+
+Each rule below is **MUST**, distilled from a real cleanup
+the `pytcp.lib.neighbor` / `pytcp.lib.sysctl` scaffolding
+needed after it shipped. The failure mode that motivated each
+rule is named in parentheses so future-you can judge edge
+cases.
+
+- **Never import a `_`-prefixed name from another module.**
+  The leading underscore says "internal to this module."
+  If module A is using `from B import _foo`, the right fix
+  is to **rename `_foo` to `foo` in B** — it is part of B's
+  public surface. Importing across the underscore boundary
+  is a classification bug; suppressing it with a wider
+  underscore is not. Failure mode the rule prevents: every
+  `*_constants.py` consumer reaching into `sysctl._register`
+  / `_is_positive_int` / `_finalize_validators`, blurring
+  the public API line until the registry could not be
+  refactored without breaking importers.
+
+- **Don't `_ = Name` to suppress unused-import warnings.**
+  If an import is unused, delete it. The `_ = X` idiom rots
+  — six months later the import is still there and nobody
+  knows whether to keep it. If a name is "held for future
+  signature use," add it when the future arrives.
+
+- **`from __future__ import annotations` is load-bearing
+  only when the module has `TYPE_CHECKING`-guarded names in
+  annotations.** On 3.14+ PEP 649 makes plain annotations
+  lazy by default; the future-import is redundant when every
+  annotation name is in runtime scope. Audit the pair
+  together — if you remove the `TYPE_CHECKING` guard, also
+  remove the future-import. Carrying the future-import
+  "just in case" hides which annotations actually need lazy
+  evaluation.
+
+- **Don't `TYPE_CHECKING`-guard imports that have no
+  circular-import risk.** The guard is for actual cycles
+  (e.g. `pytcp.lib.X` ↔ `pytcp.protocols.tcp.tcp__base`).
+  `net_addr` is the lowest layer in the dependency
+  graph — `Ip4Address`, `Ip6Address`, `MacAddress` import
+  at runtime. Wrapping a known-safe import in
+  `TYPE_CHECKING` forces every annotation that mentions
+  it into string-quoted form, which then propagates into
+  PEP 695 generic bounds and `type` aliases (next bullet).
+
+- **Don't quote PEP 695 bounds when the bound names are
+  visible at runtime.** Write `class Foo[T: Bar]:`, not
+  `class Foo[T: "Bar"]:`. The quoted form exists only to
+  work around `TYPE_CHECKING`-guarded names; if you removed
+  the guard (previous bullet), unquote the bounds at the
+  same time. The same rule applies to `type X = ...`
+  aliases — `type X = Bar | Baz`, not `type X = "Bar | Baz"`.
+
+- **Constants-module imports go at module top, not
+  function-local.** When code reads sysctl-backed values
+  per `§6.1`, the module-level form is:
+
+  ```python
+  # at module top
+  from pytcp.lib import neighbor__constants as nbr_const
+
+  # inside a method
+  if entry.probe_count >= nbr_const.NEIGHBOR__MAX_MULTICAST_SOLICIT:
+      ...
+  ```
+
+  Never:
+
+  ```python
+  def _subsystem_loop(self) -> None:
+      from pytcp.lib import neighbor__constants as nbr_const  # NO
+      ...
+  ```
+
+  Function-local imports re-execute import machinery on
+  every call AND defer the `*_constants.py` module's
+  registration side-effects until first invocation —
+  meaning the registry is empty at boot and operator
+  overrides racing the first method call hit `KeyError`.
+  The qualified-access pattern (`nbr_const.FIELD`) gives
+  you live re-resolution; the import location does not.
+
+- **Dead `type X = ...` aliases get deleted.** If the
+  alias has no callers, remove it the same commit you
+  remove the last user. A type alias that nothing
+  references is a comment that lies — it implies the
+  module exposes a typed surface it actually doesn't.
+
 ## 6. Module-level constants
 
 - Naming: ALL-CAPS, double-underscore segments encoding a hierarchy:
@@ -276,6 +365,17 @@ if now - entry.create_time > ARP__CACHE__ENTRY_MAX_AGE:  # stale on mutation
 **Protocol invariants** stay as `from X import Y`-style local
 bindings. They never need to re-resolve because they never
 change.
+
+**The qualified-module import goes at module top, not inside
+the function reading the constant.** Function-local imports of
+`*__constants.py` re-execute the import machinery on every
+call AND defer the constants module's `register(...)`
+side-effects until the first invocation — which means the
+sysctl registry is empty at boot, and operator overrides
+that race the first read hit `KeyError`. The qualified-access
+pattern at §6.1's first example is what gives you live
+re-resolution; the import location does not affect that. Put
+the import where every other import lives.
 
 **Adding a new policy knob** — invoke the
 [`sysctl_knob`](../skills/sysctl_knob/SKILL.md) skill. It
@@ -821,6 +921,35 @@ through the container.
   `def from_buffer(cls, buffer: Buffer, /) -> Self:`.
 - Decorate every override with `@override` (from `typing`). mypy
   strict will flag missing overrides.
+- **Don't `@override` a method that isn't a Liskov-compatible
+  override.** If a subclass method has a different signature
+  from the parent's (positional → kw-only with renamed
+  parameters, return type widened, etc.) it isn't an override;
+  it's a new method that happens to shadow. Drop `@override`
+  and refactor — see the next bullet.
+- **Never use `# type: ignore[override]` to silence a Liskov
+  violation.** The pattern it suppresses is always wrong.
+  Two valid fixes:
+  1. **Protected-hook pattern**: rename the parent method to
+     `_method_name` (protected hook) and have the subclass
+     provide a new public method that delegates via
+     `self._method_name(...)`. The subclass method is no
+     longer an override; no `@override`, no `# type: ignore`.
+     Used by `NeighborCache._find_entry` ↔
+     `ArpCache.find_entry(*, ip4_address=)`.
+  2. **Non-shadowing names**: pick a name that doesn't
+     collide with the parent (e.g. `lookup_arp` vs the
+     parent's `find_entry`). Parent's API stays untouched;
+     subclass adds a new public method.
+
+  If neither fix is workable, the design is wrong — re-think
+  the inheritance, don't suppress.
+- **Validator-factory return types are concrete
+  `Callable[[...], None]`, not `Any`.** A function that
+  returns a validator has a known callable shape; spell it
+  out so the caller can prove the result is callable.
+  `_is_non_negative_int(name: str) -> Callable[[Any], None]`,
+  not `-> Any`.
 - Positional-only `/` is used for any parameter that accepts a
   buffer, byte string, or container being mutated in place:
   ```python
@@ -1046,6 +1175,37 @@ not by a novel pattern introduced in a new file.
   relative to the underlying field.
 - Creating a subsystem without extending `Subsystem` — ad-hoc
   threading in `pytcp/` is a red flag.
+- **Importing a `_`-prefixed name from another module.**
+  Underscore prefix means "internal to this module." If a
+  consumer needs the name, rename it to public in the source
+  module — don't reach across the underscore boundary. (See
+  §5.1.)
+- **`_ = SomeName` at end-of-file** to silence unused-import
+  warnings. Just delete the import.
+- **`from __future__ import annotations` + `TYPE_CHECKING`
+  guard + string-quoted annotations all at once.** On 3.14+
+  the trio is at least one layer of redundancy. Audit the
+  three together; pick the minimum that lets names resolve.
+- **String-quoted PEP 695 generic bounds**
+  (`class Foo[T: "Bar"]`) when `Bar` is visible at runtime.
+  Drop the quotes. Same for `type X = "..."` aliases.
+- **Dead `type X = ...` aliases.** If nothing references
+  the alias, delete it.
+- **Function-local `from pytcp.lib import foo__constants`
+  inside a hot loop method.** The import goes at module top;
+  function-local hides registration timing and re-executes
+  import machinery on every loop tick. (See §5.1, §6.1.)
+- **`# type: ignore[override]` to paper over a kw-only /
+  positional signature mismatch.** Refactor — don't
+  suppress. See §19 for the protected-hook pattern.
+- **`@override` on a method that's actually a new public
+  method delegating to a protected hook.** The decorator
+  means "I am replacing the parent's behavior under the
+  same contract" — not "I share a name with a parent
+  method."
+- **Validator factories returning `Any`.** Spell out
+  `Callable[[Any], None]` so the caller's type checker can
+  prove the result is callable.
 
 ## 29. Workflow when adding a new protocol
 
