@@ -188,20 +188,19 @@ class TestNdCacheKwargAPI(_NdCacheFixture):
 
 class TestNdCacheSolicitCallback(_NdCacheFixture):
     """
-    The wire-level solicit-callback tests.
+    The wire-level solicit-callback dispatch tests.
     """
 
-    def test__nd_cache__solicit_fires_neighbor_solicitation(self) -> None:
+    def test__nd_cache__solicit_incomplete_fires_multicast_ns(self) -> None:
         """
-        Ensure '_solicit_ns(addr, cached_mac)' calls
+        Ensure '_solicit_ns(addr, cached_mac=None)' (the
+        INCOMPLETE-state solicit) calls
         'stack.packet_handler.send_icmp6_neighbor_solicitation
-        (icmp6_ns_target_address=addr)' regardless of
-        cached_mac. The existing TX helper handles the
-        multicast (INCOMPLETE) vs unicast (PROBE) wire-form
-        choice internally; this adapter does not split the
-        call paths today.
+        (icmp6_ns_target_address=addr)' — the multicast NS
+        wire form that targets the solicited-node multicast
+        group for first-resolution attempts.
 
-        Reference: RFC 4861 §7.2.2 (Neighbor Solicitation TX).
+        Reference: RFC 4861 §7.2.2 (multicast NS for INCOMPLETE).
         """
 
         from pytcp.stack.packet_handler import PacketHandlerL2
@@ -211,19 +210,37 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
 
         with patch("pytcp.protocols.icmp6.nd__cache.stack.packet_handler", handler):
             self._cache._solicit_ns(ip, None)
-            self._cache._solicit_ns(ip, MacAddress("02:00:00:00:00:01"))
 
-        self.assertEqual(
-            handler.send_icmp6_neighbor_solicitation.call_count,
-            2,
-            msg="_solicit_ns must fire send_icmp6_neighbor_solicitation on each invocation.",
+        handler.send_icmp6_neighbor_solicitation.assert_called_once_with(
+            icmp6_ns_target_address=ip,
         )
-        for call in handler.send_icmp6_neighbor_solicitation.call_args_list:
-            self.assertEqual(
-                call.kwargs,
-                {"icmp6_ns_target_address": ip},
-                msg="_solicit_ns must pass the target address as kw-only.",
-            )
+        handler.send_icmp6_neighbor_solicitation_unicast.assert_not_called()
+
+    def test__nd_cache__solicit_probe_fires_unicast_ns(self) -> None:
+        """
+        Ensure '_solicit_ns(addr, cached_mac=mac)' (the
+        PROBE-state solicit) calls
+        'send_icmp6_neighbor_solicitation_unicast(...)' — the
+        unicast NS wire form that targets the cached
+        neighbour directly (IPv6 analogue of RFC 1122
+        §2.3.2.1 IMPL (2)'s unicast ARP cache-refresh probe).
+
+        Reference: RFC 4861 §7.3.3 (unicast NS for PROBE).
+        """
+
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        ip = Ip6Address("2001:db8::1")
+        mac = MacAddress("02:00:00:00:00:01")
+
+        with patch("pytcp.protocols.icmp6.nd__cache.stack.packet_handler", handler):
+            self._cache._solicit_ns(ip, mac)
+
+        handler.send_icmp6_neighbor_solicitation_unicast.assert_called_once_with(
+            icmp6_ns_target_address=ip,
+        )
+        handler.send_icmp6_neighbor_solicitation.assert_not_called()
 
 
 class TestNdCacheConstruction(_NdCacheFixture):

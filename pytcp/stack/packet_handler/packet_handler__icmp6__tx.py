@@ -319,7 +319,10 @@ class PacketHandlerIcmp6Tx(ABC):
 
     def send_icmp6_neighbor_solicitation(self, *, icmp6_ns_target_address: Ip6Address) -> None:
         """
-        Enqueue ICMPv6 Neighbor Solicitation packet with TX ring.
+        Enqueue a multicast ICMPv6 Neighbor Solicitation — the
+        INCOMPLETE-state form (RFC 4861 §7.2.2). The IPv6
+        destination is the target's solicited-node multicast
+        address.
         """
 
         # Pick appropriate source address
@@ -348,6 +351,57 @@ class PacketHandlerIcmp6Tx(ABC):
             __debug__ and log(
                 "stack",
                 f"Failed to send out ICMPv6 ND Neighbor Solicitation, {tx_status}",
+            )
+
+    def send_icmp6_neighbor_solicitation_unicast(self, *, icmp6_ns_target_address: Ip6Address) -> None:
+        """
+        Enqueue a unicast ICMPv6 Neighbor Solicitation — the
+        NUD_PROBE-state form (RFC 4861 §7.3.3). The IPv6
+        destination is the target address itself, NOT the
+        solicited-node multicast group; the cached neighbour's
+        MAC resolves at the Ethernet TX layer via the ND
+        cache's PROBE-state entry. RFC 4861 §4.3 SHOULDs
+        including the SLLA option in unicast solicitations,
+        which we do (matches Linux).
+
+        Used by 'NdCache._solicit_ns' when the FSM enters
+        NUD_PROBE — the cached_mac is non-None, so the cache
+        already has a working entry and only needs to confirm
+        liveness. This saves segment-wide multicast bandwidth
+        relative to a full re-resolution.
+        """
+
+        # Pick appropriate source address — same logic as the
+        # multicast variant since the target is on a known
+        # local subnet (we already have a cache entry for it).
+        ip6__src = Ip6Address()
+        for ip6_host in self._ip6_host:
+            if icmp6_ns_target_address in ip6_host.network:
+                ip6__src = ip6_host.address
+
+        tx_status = self._phtx_icmp6(
+            ip6__src=ip6__src,
+            ip6__dst=icmp6_ns_target_address,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                target_address=icmp6_ns_target_address,
+                options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
+            ),
+        )
+
+        if tx_status in {
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            TxStatus.PASSED__IP6__TO_TX_RING,
+        }:
+            __debug__ and log(
+                "stack",
+                f"Sent out unicast ICMPv6 ND Neighbor Solicitation for {icmp6_ns_target_address}",
+            )
+        else:
+            __debug__ and log(
+                "stack",
+                f"Failed to send out unicast ICMPv6 ND Neighbor Solicitation for "
+                f"{icmp6_ns_target_address}, {tx_status}",
             )
 
     def send_icmp6_packet(

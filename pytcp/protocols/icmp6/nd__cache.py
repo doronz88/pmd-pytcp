@@ -139,23 +139,29 @@ class NdCache(NeighborCache["Ip6Address"]):
     def _solicit_ns(
         self,
         ip6_address: "Ip6Address",
-        cached_mac: "MacAddress | None",  # noqa: ARG002
+        cached_mac: "MacAddress | None",
     ) -> None:
         """
-        Fire an ICMPv6 Neighbor Solicitation. The existing
-        'send_icmp6_neighbor_solicitation' helper handles both
-        the multicast (INCOMPLETE) and unicast (PROBE) wire
-        forms internally based on the destination address; the
-        cached_mac argument is accepted for the callback
-        contract but not currently used for wire-form
-        differentiation. Future refinement: split into
-        multicast / unicast call paths the way ArpCache does.
+        Fire an ICMPv6 Neighbor Solicitation — multicast for
+        INCOMPLETE state (cached_mac is None; ip6__dst is the
+        solicited-node multicast group) or unicast for PROBE
+        state (cached_mac is non-None; ip6__dst is the target
+        address itself, with the cached MAC resolving at the
+        Ethernet TX layer). The unicast form is the IPv6
+        analogue of RFC 1122 §2.3.2.1 IMPL (2)'s unicast ARP
+        cache-refresh probe — saves segment-wide multicast
+        bandwidth on entries the cache already has.
 
         Routes through the live PacketHandler instance on
         'pytcp.stack'.
         """
 
         assert isinstance(stack.packet_handler, (stack.PacketHandlerL2, stack.PacketHandlerL3))
-        stack.packet_handler.send_icmp6_neighbor_solicitation(
-            icmp6_ns_target_address=ip6_address,
-        )
+        if cached_mac is None:
+            stack.packet_handler.send_icmp6_neighbor_solicitation(
+                icmp6_ns_target_address=ip6_address,
+            )
+        else:
+            stack.packet_handler.send_icmp6_neighbor_solicitation_unicast(
+                icmp6_ns_target_address=ip6_address,
+            )

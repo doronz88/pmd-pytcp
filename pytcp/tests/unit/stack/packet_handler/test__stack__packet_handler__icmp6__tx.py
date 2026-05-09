@@ -254,6 +254,32 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         self.assertEqual(call["ip6__hop"], 255)
         self.assertEqual(call["ip6__src"], STACK__IP6_ADDRESS)
 
+    def test__stack__packet_handler__icmp6__tx__neighbor_solicitation_unicast_targets_directly(self) -> None:
+        """
+        Ensure 'send_icmp6_neighbor_solicitation_unicast'
+        addresses the target IPv6 address directly (NOT the
+        solicited-node multicast group) with hop=255 — the
+        NUD_PROBE-state form. The cached neighbour's MAC
+        resolves at the Ethernet TX layer via the ND cache's
+        PROBE-state entry.
+
+        Reference: RFC 4861 §7.3.3 (unicast NS for PROBE).
+        """
+
+        target = HOST_A__IP6
+        self._handler.send_icmp6_neighbor_solicitation_unicast(icmp6_ns_target_address=target)
+
+        call = self._last_call()
+        self.assertEqual(
+            call["ip6__dst"],
+            target,
+            msg=(
+                "Unicast NS must use the target address itself as ip6__dst, " "not the solicited-node multicast group."
+            ),
+        )
+        self.assertEqual(call["ip6__hop"], 255)
+        self.assertEqual(call["ip6__src"], STACK__IP6_ADDRESS)
+
     def test__stack__packet_handler__icmp6__tx__send_icmp6_packet_forwards(self) -> None:
         """
         Ensure the public 'send_icmp6_packet' helper forwards its
