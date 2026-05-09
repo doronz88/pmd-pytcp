@@ -3281,6 +3281,27 @@ class TcpSession:
                     timeout=rack_timeout_ms,
                 )
 
+    def _confirm_neighbor_reachability(self) -> None:
+        """
+        RFC 4861 §7.3.1 upper-layer reachability confirmation
+        — feed the appropriate NUD cache (ARP for IPv4 peers,
+        ND for IPv6) the positive-evidence signal from a
+        cum-ACK that advanced SND.UNA. Promotes a STALE /
+        DELAY / PROBE entry directly to REACHABLE without
+        firing a unicast probe; no-op for entries in
+        INCOMPLETE / FAILED / PERMANENT or absent from the
+        cache.
+
+        Called from '_phase1_cum_ack_side_effects' after the
+        SND.UNA-advance check, so dup-ACKs and stale ACKs do
+        not fire the hook.
+        """
+
+        if isinstance(self._remote_ip_address, Ip4Address):
+            stack.arp_cache.confirm_reachability(ip4_address=self._remote_ip_address)
+        else:
+            stack.nd_cache.confirm_reachability(ip6_address=self._remote_ip_address)
+
     def _process_ack_packet(self, packet_rx_md: TcpMetadata) -> None:
         """
         Process regular data/ACK packet.
@@ -3352,6 +3373,16 @@ class TcpSession:
         # uses numerical order, which is wrong across the wrap.
         if not lt32(self._snd_seq.una, packet_rx_md.tcp__ack):
             return
+
+        # RFC 4861 §7.3.1 upper-layer reachability confirmation:
+        # an in-window cum-ACK that advances SND.UNA is positive
+        # evidence the neighbour is reachable; promote any
+        # STALE / DELAY / PROBE entry directly to REACHABLE
+        # without firing a unicast probe (ND for IPv6 peers,
+        # ARP for IPv4). Linux's 'NEIGH_UPDATE_F_USE' is the
+        # equivalent hook.
+        self._confirm_neighbor_reachability()
+
         # Modular bytes-acked computation per RFC 9293 §3.4
         # so the §3.1 cwnd growth formula gets the correct
         # delta when the cum-ACK straddles the 32-bit wrap.

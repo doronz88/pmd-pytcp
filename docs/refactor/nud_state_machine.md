@@ -431,7 +431,7 @@ Relocate `pytcp/stack/nd_cache.py` →
 out of `pytcp/stack/__init__.py` to a sibling
 `icmp6__nd__constants.py`.
 
-### Phase 4 — Reachability confirmation hook (#12)
+### Phase 4 — Reachability confirmation hook (#12) ✅ shipped (this commit)
 
 `NeighborCache.confirm_reachability` is already in Phase 1.
 This phase wires the TCP integration: in
