@@ -712,6 +712,28 @@ Work one test file at a time. For each file:
 - Bundling multiple RFC citations into one `Reference:` line. Each
   cited clause gets its own line so the citation is greppable and
   the commit-message audit trail stays clean.
+- **Stopping `patch.start()` calls in `tearDown` instead of via
+  `self.addCleanup(patch.stop)`.** unittest runs `tearDown`
+  BEFORE `doCleanups`, so patches stopped in `tearDown` are dead
+  by the time test-level `self.addCleanup(socket.close)` callbacks
+  fire — the close-time `log` call leaks straight to stdout. The
+  canonical pattern in setUp:
+
+  ```python
+  def setUp(self) -> None:
+      log_patch = patch("pytcp.socket.udp__socket.log")
+      log_patch.start()
+      self.addCleanup(log_patch.stop)  # runs LAST (LIFO)
+      ...
+  ```
+
+  Tests that create sockets / subsystems still use
+  `self.addCleanup(s.close)`; that callback runs FIRST in cleanup
+  while the log patch is still active. Symptom of the broken
+  ordering: `make test` output speckled with `[INET4/.../] -
+  Closed socket` lines mixed in among the `.` test progress
+  marks, or `STACK | Initializing ...` lines from a `stack.init()`
+  call inside a test.
 
 ## 12. Reference implementations
 

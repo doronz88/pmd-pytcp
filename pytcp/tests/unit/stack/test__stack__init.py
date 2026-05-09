@@ -642,8 +642,17 @@ class TestStackInitSharedPacketStats(TestCase):
     def setUp(self) -> None:
         """
         Snapshot the module-level singletons that 'stack.init()'
-        rebinds so each test can roll back cleanly.
+        rebinds so each test can roll back cleanly. Suppress the
+        'Initializing ...' subsystem-init log lines that leak from
+        the 'stack.init()' construction path.
         """
+
+        log_patch = patch("pytcp.stack.log")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+        subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        subsystem_log_patch.start()
+        self.addCleanup(subsystem_log_patch.stop)
 
         self._sentinel = object()
         self._snapshot = {
@@ -819,8 +828,17 @@ class TestStackInitArpCacheConfig(TestCase):
         """
         Snapshot the module-level singletons 'init()' rebinds so
         each test can roll back cleanly. Sysctl mutations are
-        rolled back via 'reset_to_defaults' in tearDown.
+        rolled back via 'reset_to_defaults' in tearDown. Suppress
+        the 'Initializing ...' log lines that 'stack.init()'
+        emits during subsystem construction.
         """
+
+        log_patch = patch("pytcp.stack.log")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+        subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        subsystem_log_patch.start()
+        self.addCleanup(subsystem_log_patch.stop)
 
         from pytcp.protocols.arp import arp__constants
 

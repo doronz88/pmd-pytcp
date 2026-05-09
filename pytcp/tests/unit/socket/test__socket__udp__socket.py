@@ -86,10 +86,18 @@ class _UdpSocketTestCase(TestCase):
         """
         Install the module-level stack patches and a fresh, empty
         socket registry.
+
+        Patches are torn down via 'addCleanup' rather than an
+        explicit 'tearDown' so test-level 'self.addCleanup(s.close)'
+        callbacks (registered later, LIFO-popped first) run while
+        the 'log' patch is still active. Otherwise socket close
+        logs leak through to stdout — see test-suite invariants
+        in unit_tests.md.
         """
 
         self._log_patch = patch("pytcp.socket.udp__socket.log")
         self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
 
         self._sockets: dict = {}
         self._sockets_patch = patch(
@@ -97,6 +105,7 @@ class _UdpSocketTestCase(TestCase):
             self._sockets,
         )
         self._sockets_patch.start()
+        self.addCleanup(self._sockets_patch.stop)
 
         self._handler = _make_packet_handler()
         self._handler_patch = patch(
@@ -104,6 +113,7 @@ class _UdpSocketTestCase(TestCase):
             self._handler,
         )
         self._handler_patch.start()
+        self.addCleanup(self._handler_patch.stop)
 
         # is_address_in_use reads stack.sockets directly, so mirror the
         # patch on that module as well.
@@ -112,16 +122,7 @@ class _UdpSocketTestCase(TestCase):
             self._sockets,
         )
         self._helper_sockets_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Tear down the module-level stack patches.
-        """
-
-        self._log_patch.stop()
-        self._sockets_patch.stop()
-        self._handler_patch.stop()
-        self._helper_sockets_patch.stop()
+        self.addCleanup(self._helper_sockets_patch.stop)
 
 
 class TestUdpSocketInit(_UdpSocketTestCase):

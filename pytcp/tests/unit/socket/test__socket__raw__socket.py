@@ -77,31 +77,32 @@ class _RawSocketTestCase(TestCase):
         """
         Patch logging, the socket registry, and the packet handler for
         the duration of the test.
+
+        Patches register their stops via 'addCleanup' so test-level
+        'self.addCleanup(s.close)' callbacks (LIFO-popped first) run
+        while the 'log' patch is still active. Otherwise socket close
+        logs leak through to stdout.
         """
 
         self._log_patch = patch("pytcp.socket.raw__socket.log")
         self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
+
         self._sockets: dict = {}
         self._sockets_patch = patch(
             "pytcp.socket.raw__socket.stack.sockets",
             self._sockets,
         )
         self._sockets_patch.start()
+        self.addCleanup(self._sockets_patch.stop)
+
         self._handler = _make_packet_handler()
         self._handler_patch = patch(
             "pytcp.socket.raw__socket.stack.packet_handler",
             self._handler,
         )
         self._handler_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Tear down the module-level stack patches.
-        """
-
-        self._log_patch.stop()
-        self._sockets_patch.stop()
-        self._handler_patch.stop()
+        self.addCleanup(self._handler_patch.stop)
 
 
 class TestRawSocketInit(_RawSocketTestCase):
