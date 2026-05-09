@@ -142,6 +142,7 @@ class _StubHandler(PacketHandlerArpRx):
         self._ip4_host = [STACK__IP4_HOST]
         self._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
         self._arp_probe__unicast_conflict: set[Ip4Address] = set()
+        self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
 
         self.arp_replies_sent: list[dict[str, object]] = []
         self.gratuitous_arps_sent: list[Ip4Address] = []
@@ -781,5 +782,159 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
                 "Gratuitous-Reply probe conflict must register on the "
                 "per-instance '_arp_probe__unicast_conflict' set; the DAD "
                 "flow reads this set, not the legacy module-level global."
+            ),
+        )
+
+
+HOST_C__MAC = MacAddress("02:00:00:00:00:93")
+STACK__IP4_HOST_2 = Ip4Host("10.0.1.8/24")
+STACK__IP4_ADDRESS_2 = STACK__IP4_HOST_2.address
+
+
+class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
+    """
+    The 'PacketHandlerArpRx' DEFEND_INTERVAL rate-limit tests.
+
+    Pin the requirement that defensive gratuitous ARPs are
+    emitted at most once per address per DEFEND_INTERVAL
+    (10 seconds). Without the rate-limit two hosts misconfigured
+    with the same IP can settle into an "endless loop flooding
+    the network with broadcast traffic" — each defending on
+    every conflicting packet they observe, generating more
+    conflicts to defend against. The rate-limit interval is
+    'stack.ARP__DEFEND_INTERVAL' (10 s, matching the RFC 5227
+    constant of the same name); the per-instance "last
+    defended at" timestamp dict is
+    'PacketHandler._arp_defend__last_emitted'.
+    """
+
+    def _drive_conflict(
+        self,
+        *,
+        spa: Ip4Address,
+        sha: MacAddress = HOST_A__MAC,
+    ) -> None:
+        """
+        Drive a conflicting unicast ARP Reply (SPA = a stack IP,
+        SHA != stack MAC) through the RX handler. Used by the
+        DEFEND_INTERVAL tests to trigger the §2.4 conflict-
+        defense path repeatedly.
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REPLY,
+            sha=sha,
+            spa=spa,
+            tha=STACK__MAC_UNICAST,
+            tpa=spa,
+        )
+        packet_rx = _make_packet_rx(
+            frame,
+            ethernet_dst=STACK__MAC_UNICAST,
+            ethernet_src=sha,
+        )
+        self._handler._phrx_arp(packet_rx)
+
+    def test__stack__packet_handler__arp__rx__defend_first_conflict_emits(self) -> None:
+        """
+        Ensure the first conflicting ARP packet for a given IP
+        emits a defensive gratuitous ARP — the rate-limit only
+        gates subsequent defenses within the window, not the
+        first one.
+
+        Reference: RFC 5227 §2.4 (ongoing conflict detection and defense).
+        """
+
+        with patch("time.monotonic", return_value=1000.0):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS],
+            msg="The first conflicting ARP packet must trigger a defensive gratuitous ARP.",
+        )
+
+    def test__stack__packet_handler__arp__rx__defend_second_within_interval_skipped(self) -> None:
+        """
+        Ensure a second conflicting ARP packet for the same IP
+        within DEFEND_INTERVAL seconds of the previous defense
+        does NOT emit another defensive gratuitous ARP — the
+        rate-limit prevents the host from contributing to a
+        broadcast storm under sustained conflict.
+
+        Reference: RFC 5227 §2.4(c) (MUST NOT defend within DEFEND_INTERVAL).
+        """
+
+        with patch("time.monotonic", side_effect=[1000.0, 1005.0]):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS],
+            msg=(
+                "A second conflict within DEFEND_INTERVAL (10 s) must NOT trigger a "
+                "second gratuitous ARP. Got: "
+                f"{self._handler.gratuitous_arps_sent!r}"
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__defend_after_interval_re_emits(self) -> None:
+        """
+        Ensure a conflicting ARP packet arriving more than
+        DEFEND_INTERVAL seconds after the previous defense
+        re-arms the defense and emits a fresh gratuitous ARP,
+        AND the re-arm correctly resets the timestamp so a
+        third conflict immediately after the re-arm is
+        suppressed (proving the dict was updated, not that
+        the rate-limit is absent).
+
+        Reference: RFC 5227 §2.4(c) (defense re-armed after DEFEND_INTERVAL).
+        """
+
+        with patch("time.monotonic", side_effect=[1000.0, 1010.5, 1011.0]):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS, STACK__IP4_ADDRESS],
+            msg=(
+                "Conflicts at t=1000 and t=1010.5 must each emit a defense (10.5 s "
+                "apart, past DEFEND_INTERVAL); the third at t=1011.0 (0.5 s after "
+                "the re-arm) must be suppressed. Got: "
+                f"{self._handler.gratuitous_arps_sent!r}"
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__defend_per_ip_independence(self) -> None:
+        """
+        Ensure the rate-limit is per-IP: a defense on IP A
+        does NOT suppress a defense on IP B, even within the
+        same DEFEND_INTERVAL window — two hosts contending
+        for two different stack IPs are independent failure
+        domains. Drives a 3-packet sequence (A, A, B) so the
+        no-rate-limit case [A, A, B] is distinguishable from
+        the per-IP rate-limit case [A, B].
+
+        Reference: RFC 5227 §2.4 (ongoing conflict detection and defense).
+        """
+
+        self._handler._ip4_host = [STACK__IP4_HOST, STACK__IP4_HOST_2]
+
+        with patch("time.monotonic", side_effect=[1000.0, 1001.0, 1002.0]):
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS)
+            self._drive_conflict(spa=STACK__IP4_ADDRESS_2, sha=HOST_C__MAC)
+
+        self.assertEqual(
+            self._handler.gratuitous_arps_sent,
+            [STACK__IP4_ADDRESS, STACK__IP4_ADDRESS_2],
+            msg=(
+                "Conflict on IP_A at t=1000 must defend; second conflict on IP_A "
+                "at t=1001 must be suppressed (within DEFEND_INTERVAL); conflict "
+                "on IP_B at t=1002 must defend (separate per-IP bucket). Got: "
+                f"{self._handler.gratuitous_arps_sent!r}"
             ),
         )

@@ -137,6 +137,15 @@ IP4__ACCEPT_SOURCE_ROUTE = False
 ARP__CACHE__ENTRY_MAX_AGE = 3600
 ARP__CACHE__ENTRY_REFRESH_TIME = 300
 
+# RFC 5227 §1.1 / §2.4(c) defensive-ARP rate-limit. After
+# emitting a defensive gratuitous ARP for an address, no
+# further defense for that address is emitted until at least
+# this many seconds have elapsed — prevents two hosts both
+# defending the same IP from generating an "endless loop
+# flooding the network with broadcast traffic" (the §2.4(c)
+# MUST NOT failure mode).
+ARP__DEFEND_INTERVAL = 10
+
 # ICMPv6 ND cache configuration.
 ICMP6__ND__CACHE__ENTRY_MAX_AGE = 3600
 ICMP6__ND__CACHE__ENTRY_REFRESH_TIME = 300

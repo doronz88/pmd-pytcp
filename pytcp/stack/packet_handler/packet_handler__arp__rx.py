@@ -30,6 +30,7 @@ pytcp/subsystems/packet_handler/packet_handler__arp__rx.py
 ver 3.0.4
 """
 
+import time
 from abc import ABC
 from typing import TYPE_CHECKING
 
@@ -54,6 +55,7 @@ class PacketHandlerArpRx(ABC):
         _packet_stats_rx: PacketStatsRx
         _ip4_host_candidate: list[Ip4Host]
         _arp_probe__unicast_conflict: set[Ip4Address]
+        _arp_defend__last_emitted: dict[Ip4Address, float]
 
         # pylint: disable=unused-argument
 
@@ -85,6 +87,21 @@ class PacketHandlerArpRx(ABC):
 
         @property
         def _ip4_unicast(self) -> list[Ip4Address]: ...
+
+    def _maybe_send_arp_defense(self, *, ip4_unicast: "Ip4Address") -> None:
+        """
+        Emit a defensive gratuitous ARP for 'ip4_unicast', gated by
+        the per-IP DEFEND_INTERVAL rate-limit. Skipped silently if a
+        defense for this IP was emitted within
+        'stack.ARP__DEFEND_INTERVAL' seconds of now.
+        """
+
+        now = time.monotonic()
+        last = self._arp_defend__last_emitted.get(ip4_unicast)
+        if last is not None and now - last < stack.ARP__DEFEND_INTERVAL:
+            return
+        self._arp_defend__last_emitted[ip4_unicast] = now
+        self._send_gratuitous_arp(ip4_unicast=ip4_unicast)
 
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         """
@@ -180,7 +197,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._send_gratuitous_arp(ip4_unicast=packet_rx.arp.spa)
+            self._maybe_send_arp_defense(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Note receiving gratuitous ARP request.
@@ -273,7 +290,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
                 f"conflict detected with host at {packet_rx.arp.sha}</>",
             )
-            self._send_gratuitous_arp(ip4_unicast=packet_rx.arp.spa)
+            self._maybe_send_arp_defense(ip4_unicast=packet_rx.arp.spa)
             return
 
         # Check for ARP reply that is response to our ARP probe, this indicates

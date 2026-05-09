@@ -466,6 +466,7 @@ class PacketHandlerL2(
     _mac_multicast: list[MacAddress]
     _mac_broadcast: MacAddress
     _arp_probe__unicast_conflict: set[Ip4Address]
+    _arp_defend__last_emitted: dict[Ip4Address, float]
     _icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None
     _icmp6_nd_dad__event: Semaphore
     _icmp6_nd_dad__tlla: MacAddress | None
@@ -519,6 +520,12 @@ class PacketHandlerL2(
 
         # Used for the ARP DAD process.
         self._arp_probe__unicast_conflict: set[Ip4Address] = set()
+
+        # RFC 5227 §2.4(c) DEFEND_INTERVAL rate-limit state: per-IP
+        # 'time.monotonic()' timestamp of the last defensive
+        # gratuitous ARP. Read+updated by '_maybe_send_arp_defense'
+        # in the RX mixin.
+        self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
 
         # Used for the ICMPv6 ND DAD process.
         self._icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None = None
