@@ -1256,3 +1256,64 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 "still receive a Reply — mode 2 only rejects off-subnet senders."
             ),
         )
+
+    def test__stack__packet_handler__arp__rx__arp_ignore_eight_drops_all_replies(self) -> None:
+        """
+        Ensure 'arp.ignore = 8' (kill switch) suppresses every
+        Reply regardless of sender subnet, target match, or any
+        other gate — Linux's mode 8 "do not reply for all local
+        addresses" semantics.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 kill-switch).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.ignore", 8):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=HOST_A__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            self._handler.arp_replies_sent,
+            [],
+            msg=(
+                "With arp.ignore=8, even a legitimate on-subnet Request for "
+                "our IP must NOT receive a Reply — kill switch is unconditional."
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__arp_ignore_eight_still_updates_cache(self) -> None:
+        """
+        Ensure 'arp.ignore = 8' suppresses only the Reply and
+        does NOT bypass cache learning — mode 8's contract is
+        "go silent on the wire," not "stop learning who is on
+        the segment." Cache updates from inbound ARP let TCP
+        reach the peer once it initiates traffic.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 affects reply path only).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.ignore", 8):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=HOST_A__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self._arp_cache.add_entry.assert_called_once_with(
+            ip4_address=HOST_A__IP4,
+            mac_address=HOST_A__MAC,
+        )

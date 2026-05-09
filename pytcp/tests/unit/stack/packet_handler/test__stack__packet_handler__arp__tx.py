@@ -32,7 +32,7 @@ ver 3.0.4
 
 from unittest import TestCase
 
-from net_addr import Ip4Address, MacAddress
+from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto import ArpAssembler, ArpOperation
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
@@ -76,7 +76,13 @@ class _StubHandler(PacketHandlerArpTx):
     Minimal concrete subclass of 'PacketHandlerArpTx' for testing.
     """
 
-    def __init__(self, *, ip4_support: bool = True, ip4_unicast: list[Ip4Address] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ip4_support: bool = True,
+        ip4_unicast: list[Ip4Address] | None = None,
+        ip4_host: list[Ip4Host] | None = None,
+    ) -> None:
         """
         Initialize the stub handler and record every _phtx_ethernet call.
         """
@@ -84,7 +90,12 @@ class _StubHandler(PacketHandlerArpTx):
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_support = ip4_support
-        self._ip4_unicast_list = list(ip4_unicast) if ip4_unicast is not None else [STACK__IP4_ADDRESS]
+        if ip4_host is not None:
+            self._ip4_host: list[Ip4Host] = list(ip4_host)
+            self._ip4_unicast_list = [host.address for host in self._ip4_host]
+        else:
+            self._ip4_unicast_list = list(ip4_unicast) if ip4_unicast is not None else [STACK__IP4_ADDRESS]
+            self._ip4_host = [Ip4Host(f"{addr}/24") for addr in self._ip4_unicast_list]
 
         # Spy: record every call to _phtx_ethernet.
         self.ethernet_tx_calls: list[dict[str, object]] = []
@@ -426,4 +437,153 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
             payload.tpa,
             HOST_A__IP4,
             msg="Target protocol address must be the IP whose entry is being refreshed.",
+        )
+
+
+class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
+    """
+    The 'arp.announce' source-IP-selection sysctl tests — pin
+    that 'send_arp_request' / 'send_arp_unicast_request' pick
+    the SPA according to the registered mode value.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a stub handler with two local IPv4 hosts on
+        distinct subnets so the subnet-match branch is
+        observable.
+        """
+
+        self._handler = _StubHandler(
+            ip4_host=[
+                Ip4Host("10.0.1.7/24"),
+                Ip4Host("192.168.5.20/24"),
+            ],
+        )
+
+    def tearDown(self) -> None:
+        """
+        Restore sysctl defaults so a per-test override never
+        leaks into a subsequent test's baseline.
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        sysctl_module.reset_to_defaults()
+
+    def test__stack__packet_handler__arp__tx__announce_default_uses_first_listed(self) -> None:
+        """
+        Ensure with the default 'arp.announce = 0',
+        'send_arp_request' uses the first listed local IPv4
+        address as SPA regardless of which subnet contains the
+        target — Linux's "use any local address" semantics.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 0 default).
+        """
+
+        self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
+
+        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.spa,
+            Ip4Address("10.0.1.7"),
+            msg=(
+                "arp.announce=0 must select the first listed local IPv4 "
+                "even when a different listed IP is in the target's subnet."
+            ),
+        )
+
+    def test__stack__packet_handler__arp__tx__announce_one_picks_subnet_match(self) -> None:
+        """
+        Ensure with 'arp.announce = 1', 'send_arp_request'
+        prefers the local IPv4 whose configured subnet contains
+        the target IP — Linux's "prefer in-subnet sender"
+        semantics.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 in-subnet).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.announce", 1):
+            self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
+
+        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.spa,
+            Ip4Address("192.168.5.20"),
+            msg=("arp.announce=1 must select the local IP whose subnet contains " "the target."),
+        )
+
+    def test__stack__packet_handler__arp__tx__announce_one_falls_back_when_no_subnet_match(self) -> None:
+        """
+        Ensure with 'arp.announce = 1', when no local IP's
+        subnet contains the target, the helper falls back to
+        the first listed IP (mode-0 default) rather than
+        sending with SPA = 0.0.0.0.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 fall back to mode 2 when no match).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.announce", 1):
+            self._handler.send_arp_request(arp__tpa=Ip4Address("172.16.0.1"))
+
+        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.spa,
+            Ip4Address("10.0.1.7"),
+            msg=("arp.announce=1 with no subnet match must fall back to the " "first listed local IP, not 0.0.0.0."),
+        )
+
+    def test__stack__packet_handler__arp__tx__announce_two_picks_subnet_match(self) -> None:
+        """
+        Ensure with 'arp.announce = 2', the helper picks the
+        same subnet-match-with-fallback as mode 1 — PyTCP has
+        no notion of "primary IP" beyond first-listed, so
+        modes 1 and 2 collapse to the same behaviour today.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 2 best-local-address).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.announce", 2):
+            self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
+
+        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.spa,
+            Ip4Address("192.168.5.20"),
+            msg="arp.announce=2 must pick the subnet-matching local IP.",
+        )
+
+    def test__stack__packet_handler__arp__tx__announce_unicast_request_honours_mode(self) -> None:
+        """
+        Ensure 'send_arp_unicast_request' (the cache-refresh
+        unicast probe) also routes its SPA selection through
+        the 'arp.announce' helper.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 in-subnet).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.announce", 1):
+            self._handler.send_arp_unicast_request(
+                arp__tpa=Ip4Address("192.168.5.99"),
+                ethernet__dst=MacAddress("02:00:00:00:00:91"),
+            )
+
+        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.spa,
+            Ip4Address("192.168.5.20"),
+            msg=("send_arp_unicast_request must honour 'arp.announce' the same " "way 'send_arp_request' does."),
         )

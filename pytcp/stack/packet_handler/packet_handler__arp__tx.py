@@ -33,10 +33,11 @@ ver 3.0.4
 from abc import ABC
 from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, MacAddress
+from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto import ArpAssembler, ArpOperation, Tracker
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.arp import arp__constants
 
 
 class PacketHandlerArpTx(ABC):
@@ -51,6 +52,7 @@ class PacketHandlerArpTx(ABC):
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip4_support: bool
+        _ip4_host: list[Ip4Host]
 
         # pylint: disable=unused-argument
 
@@ -66,6 +68,27 @@ class PacketHandlerArpTx(ABC):
 
         @property
         def _ip4_unicast(self) -> list[Ip4Address]: ...
+
+    def _select_arp_spa(self, /, arp__tpa: Ip4Address) -> Ip4Address:
+        """
+        Pick the Sender Protocol Address for an outbound ARP
+        Request to 'arp__tpa', honouring the live 'arp.announce'
+        sysctl. Mode 0 (Linux default) returns the first listed
+        local IP. Modes 1 and 2 prefer a local IP whose subnet
+        contains the target, falling back to the first listed
+        IP if none matches. Returns 0.0.0.0 when no local IPv4
+        address is configured.
+        """
+
+        if not self._ip4_unicast:
+            return Ip4Address()
+
+        if arp__constants.ARP__ANNOUNCE in (1, 2):
+            for host in self._ip4_host:
+                if arp__tpa in host.network:
+                    return host.address
+
+        return self._ip4_unicast[0]
 
     def _phtx_arp(
         self,
@@ -238,7 +261,7 @@ class PacketHandlerArpTx(ABC):
             ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
             arp__oper=ArpOperation.REQUEST,
             arp__sha=self._mac_unicast,
-            arp__spa=(self._ip4_unicast[0] if self._ip4_unicast else Ip4Address()),
+            arp__spa=self._select_arp_spa(arp__tpa),
             arp__tha=MacAddress(),
             arp__tpa=arp__tpa,
         )
@@ -273,7 +296,7 @@ class PacketHandlerArpTx(ABC):
             ethernet__dst=ethernet__dst,
             arp__oper=ArpOperation.REQUEST,
             arp__sha=self._mac_unicast,
-            arp__spa=(self._ip4_unicast[0] if self._ip4_unicast else Ip4Address()),
+            arp__spa=self._select_arp_spa(arp__tpa),
             arp__tha=MacAddress(),
             arp__tpa=arp__tpa,
         )

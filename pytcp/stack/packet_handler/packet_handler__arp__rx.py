@@ -332,27 +332,42 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
 
-            # 'arp.ignore = 2' (Linux mode 2) requires the
-            # sender IP to be on one of our local subnets before
-            # we send a Reply. Probes (SPA = 0) are exempted —
-            # the probe-reply branch above is the wire signal
-            # that the peer is checking address availability and
-            # has no SPA yet. The check runs after the existing
-            # TPA-match gate, so mode 2 only ever drops Replies
-            # we would otherwise have sent.
-            sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
-                packet_rx.arp.spa in host.network for host in self._ip4_host
-            )
-            if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
+            # Decide whether to emit a Reply. Modes 2 and 8 of
+            # 'arp.ignore' suppress the Reply; cache learning
+            # (the '__update_arp_cache' call below) still runs
+            # so the stack can reach the peer once outbound
+            # traffic initiates. Linux's per-mode semantics:
+            #   8 = kill switch — never reply (useful for
+            #       "stealth" interfaces in fail-over /
+            #       clustering that own the IP at L3 but should
+            #       not advertise it via ARP).
+            #   2 = sender-subnet-match — reply only when SPA is
+            #       on one of our local subnets (anti-spoof gate
+            #       on hosts that should answer only neighbours).
+            # Probes (SPA = 0) are exempt from the mode-2 check —
+            # a probe is the peer's "is this IP free?" wire
+            # signal and has no SPA yet.
+            should_reply = True
+            if arp__constants.ARP__IGNORE == 8:
                 __debug__ and log(
                     "arp",
-                    f"{packet_rx.tracker} - <INFO>arp.ignore=2 dropped Reply: "
-                    f"sender {packet_rx.arp.spa} is not on any local subnet",
+                    f"{packet_rx.tracker} - <INFO>arp.ignore=8 dropped Reply: " f"kill switch active",
                 )
-                return
+                should_reply = False
+            else:
+                sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
+                    packet_rx.arp.spa in host.network for host in self._ip4_host
+                )
+                if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
+                    __debug__ and log(
+                        "arp",
+                        f"{packet_rx.tracker} - <INFO>arp.ignore=2 dropped Reply: "
+                        f"sender {packet_rx.arp.spa} is not on any local subnet",
+                    )
+                    should_reply = False
 
             # Send ARP reply packet to requester.
-            if packet_rx.ethernet.dst.is_broadcast or packet_rx.ethernet.dst == self._mac_unicast:
+            if should_reply and (packet_rx.ethernet.dst.is_broadcast or packet_rx.ethernet.dst == self._mac_unicast):
                 self._packet_stats_rx.arp__op_request__respond += 1
                 self._send_arp_reply(
                     arp__spa=packet_rx.arp.tpa,

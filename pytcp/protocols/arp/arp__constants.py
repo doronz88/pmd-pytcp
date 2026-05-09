@@ -100,9 +100,48 @@ ARP__ACCEPT = 0
 #       (default, current PyTCP baseline).
 #   2 = also require the sender IP to be on one of our local
 #       subnets (sender-subnet-match anti-spoof).
-# Modes 3-8 (cluster / anycast variants) marked Phase 2 and
-# rejected by the validator until a real consumer surfaces.
+#   8 = never reply to any ARP request (kill switch — useful
+#       for "stealth" interfaces in fail-over / clustering
+#       setups where a host should not advertise itself via
+#       ARP yet still owns the IP at L3).
+# Modes 3 (scope=host), 4-7 (Linux reserved) are rejected by
+# the validator: mode 3 needs an address-scope concept PyTCP
+# does not have today; modes 4-7 are Linux-reserved unused
+# slots.
 ARP__IGNORE = 1
+
+# Linux net.ipv4.conf.<iface>.arp_announce policy. Controls
+# the source-IP selection for outbound ARP Requests when the
+# stack has multiple local IPv4 addresses configured on the
+# interface.
+#   0 = use any local address (PyTCP picks the first listed;
+#       Linux default).
+#   1 = prefer a local address whose subnet contains the
+#       target IP, fall back to mode 0's first-listed pick if
+#       none matches. Useful when peers gate replies on the
+#       sender IP being part of their network.
+#   2 = always use the "best local address" — same subnet-
+#       match-with-fallback as mode 1 in PyTCP, since PyTCP's
+#       address list has no notion of "primary" beyond first-
+#       listed. Mode 2 is the most restrictive in Linux; we
+#       collapse it to mode 1's selection for now.
+ARP__ANNOUNCE = 0
+
+# Linux net.ipv4.conf.<iface>.arp_filter policy. Multi-
+# interface ARP source-routing filter.
+#   0 = reply for any locally-configured target IP regardless
+#       of which interface received the Request (Linux default;
+#       and PyTCP's only feasible behaviour today since PyTCP
+#       runs on a single TAP/TUN interface).
+#   1 = reply only if the kernel would route a packet to the
+#       sender IP through the receiving interface (requires
+#       source-based routing; multi-interface only).
+# Phase 2: per-interface — mode 1 has no observable effect on
+# single-interface PyTCP today; the knob exists for parity
+# and for forward-compat with the eventual multi-interface
+# work. The receive path treats mode 1 as a no-op on the
+# single-interface path.
+ARP__FILTER = 0
 
 # Sysctl registration. Every constant above is a policy knob
 # (operator-tunable at boot via 'stack.init(sysctls={...})'
@@ -191,16 +230,40 @@ def _arp_accept_validator(value: object) -> None:
 
 def _arp_ignore_validator(value: object) -> None:
     """
-    Reject values outside the supported subset {0, 1, 2}.
-    Modes 3-8 (Linux cluster / anycast variants) are
-    deliberately rejected until a real PyTCP consumer surfaces.
+    Reject values outside the supported subset {0, 1, 2, 8}.
+    Mode 3 needs an address-scope concept PyTCP does not have
+    today (Linux's "scope=host vs link/global" distinction);
+    modes 4-7 are Linux-reserved unused slots. Mode 8 is a
+    kill switch (never reply) — implementable today.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1, 2, 8):
+        raise ValueError(
+            f"sysctl 'arp.ignore' must be 0, 1, 2, or 8 (mode 3 needs address-"
+            f"scope support; 4-7 are Linux-reserved); got {value!r}"
+        )
+
+
+def _arp_announce_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1, 2}. The Linux 'arp_announce'
+    accepts the same set; PyTCP collapses mode 2 to mode 1's
+    subnet-match-with-fallback semantics for now (no notion of
+    "primary IP" beyond first-listed in PyTCP's address list).
     """
 
     if isinstance(value, bool) or value not in (0, 1, 2):
-        raise ValueError(
-            f"sysctl 'arp.ignore' must be 0, 1, or 2 (modes 3-8 deferred to "
-            f"Phase 2 cluster / anycast support); got {value!r}"
-        )
+        raise ValueError(f"sysctl 'arp.announce' must be 0, 1, or 2; got {value!r}")
+
+
+def _arp_filter_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Mode 1 is a no-op on single-
+    interface PyTCP today (Phase 2 / multi-interface).
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'arp.filter' must be 0 or 1; got {value!r}")
 
 
 register(
@@ -217,7 +280,23 @@ register(
     attr="ARP__IGNORE",
     default=ARP__IGNORE,
     validator=_arp_ignore_validator,
-    description="Linux 'net.ipv4.conf.<iface>.arp_ignore' (0/1/2; modes 3-8 deferred).",
+    description="Linux 'net.ipv4.conf.<iface>.arp_ignore' (0/1/2/8; 3 needs scope, 4-7 reserved).",
+)
+register(
+    key="arp.announce",
+    module_name=__name__,
+    attr="ARP__ANNOUNCE",
+    default=ARP__ANNOUNCE,
+    validator=_arp_announce_validator,
+    description="Linux 'net.ipv4.conf.<iface>.arp_announce' (0/1/2 source-IP selection).",
+)
+register(
+    key="arp.filter",
+    module_name=__name__,
+    attr="ARP__FILTER",
+    default=ARP__FILTER,
+    validator=_arp_filter_validator,
+    description="Linux 'net.ipv4.conf.<iface>.arp_filter' (0/1; Phase 2 multi-interface).",
 )
 
 

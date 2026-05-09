@@ -33,7 +33,8 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 | 15 | Wall-clock → `time.monotonic` in cache aging | `1a46f28f` | (Linux parity) |
 | 16 | Configurable cache timeout (`stack.init` kwargs) | `a25603cb` | 1122 §2.3.2.1 SHOULD |
 | — | sysctl framework Phase 0 (registry) + Phase 1 (ARP package migration + #16 retrofit) | `8eb94ccb` + `586a693e` | (Linux parity) |
-| 17 (partial) | `arp.accept` + `arp.ignore` modes 0-2 sysctls | (this commit) | Linux parity |
+| 17 (partial) | `arp.accept` + `arp.ignore` modes 0-2 sysctls | (earlier commit) | Linux parity |
+| 17 | `arp.announce` (0/1/2), `arp.filter` (0/1), `arp.ignore` mode 8 | (this commit) | Linux parity |
 | — | Six RFC adherence audits (826/1027/1122/3927/5227/5494) | `03c0b678` | — |
 | — | `ArpTestCase` harness + smoke / DAD / DEFEND_INTERVAL / resolution-flow integration tests | various | — |
 | — | Code relocated from `pytcp/stack/` → `pytcp/protocols/arp/` | `e29e6b1e` | — |
@@ -334,21 +335,30 @@ Small (~30 lines + tests).
 ## §10 — Tier 3 #17: Linux sysctl knobs
 
 Default Linux exposes:
-- `arp_accept` (0/1) — accept ARP for IPs not on local subnets
-- `arp_announce` (0/1/2) — restrict source IP in outbound ARP
-- `arp_ignore` (0..8) — controls when to reply to ARP requests
-- `arp_filter` (0/1) — multi-interface ARP behaviour
+- `arp_accept` (0/1) — accept ARP for IPs not on local subnets — **shipped**.
+- `arp_announce` (0/1/2) — restrict source IP in outbound ARP — **shipped**.
+- `arp_ignore` (0..8) — controls when to reply to ARP requests —
+  **modes 0/1/2/8 shipped**; mode 3 needs an address-scope
+  concept PyTCP does not have today; modes 4-7 are Linux-
+  reserved unused slots.
+- `arp_filter` (0/1) — multi-interface ARP behaviour —
+  **shipped** as a registered sysctl. Mode 1 is a Phase 2
+  no-op today (single-interface PyTCP always passes the
+  source-routing-filter check); the knob exists for parity
+  and forward-compat with the eventual multi-interface work.
 
-PyTCP today encodes the conservative defaults (effectively
-`arp_announce=1`, `arp_ignore=1`, `arp_filter=0`,
-`arp_accept=0`) hardcoded in
-`packet_handler__arp__rx.py::__update_arp_cache` and the
-Request-handling logic.
+All four sysctls live in `pytcp/protocols/arp/arp__constants.py`
+under the `arp.*` registry namespace and are operator-tunable
+at boot via `stack.init(sysctls={...})` or at runtime via
+`pytcp.stack.sysctl["arp.<knob>"] = N`. The runtime branches
+that consume each knob are in
+`pytcp/stack/packet_handler/packet_handler__arp__{rx,tx}.py`.
 
 ### Effort
 
-Each knob: small (~30 lines + tests). All four together: ~150
-lines + comprehensive matrix tests. Mostly mechanical.
+Shipped in three commits (arp.accept + arp.ignore modes 0-2
+landed earlier; arp.announce + arp.filter + arp.ignore mode 8
+in the current commit).
 
 ---
 

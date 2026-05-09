@@ -33,11 +33,14 @@ ver 3.0.4
 
 from unittest import TestCase
 
+from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.arp.arp__constants import (
+    ARP__ANNOUNCE,
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
     ARP__ANNOUNCE_WAIT,
     ARP__DEFEND_INTERVAL,
+    ARP__FILTER,
     ARP__PROBE_MAX,
     ARP__PROBE_MIN,
     ARP__PROBE_NUM,
@@ -164,3 +167,150 @@ class TestArpConstants(TestCase):
             ARP__PROBE_MAX,
             msg="PROBE_MIN < PROBE_MAX is required by random.uniform.",
         )
+
+    def test__arp__constants__announce_default_matches_linux(self) -> None:
+        """
+        Ensure 'ARP__ANNOUNCE' defaults to 0 — Linux's
+        'arp_announce' default ("use any local address,
+        configured on any interface").
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 0 default).
+        """
+
+        self.assertEqual(
+            ARP__ANNOUNCE,
+            0,
+            msg=f"ARP__ANNOUNCE must default to 0 (mode 0). Got: {ARP__ANNOUNCE}.",
+        )
+
+    def test__arp__constants__filter_default_matches_linux(self) -> None:
+        """
+        Ensure 'ARP__FILTER' defaults to 0 — Linux's
+        'arp_filter' default (no source-routing filter; reply
+        regardless of receiving interface).
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_filter (mode 0 default).
+        """
+
+        self.assertEqual(
+            ARP__FILTER,
+            0,
+            msg=f"ARP__FILTER must default to 0 (mode 0). Got: {ARP__FILTER}.",
+        )
+
+
+class TestArpPolicySysctlValidators(TestCase):
+    """
+    The 'arp.announce' / 'arp.filter' / 'arp.ignore' validator
+    tests — pin which integer values each policy knob accepts.
+    """
+
+    def tearDown(self) -> None:
+        """
+        Restore sysctl defaults so a per-test mutation never
+        leaks into a subsequent test's baseline.
+        """
+
+        sysctl_module.reset_to_defaults()
+
+    def test__arp__sysctl__announce_accepts_zero_one_two(self) -> None:
+        """
+        Ensure the 'arp.announce' validator accepts each of
+        the Linux-defined modes 0, 1, 2 — the source-IP
+        selection alternatives PyTCP supports today.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (modes 0/1/2).
+        """
+
+        for mode in (0, 1, 2):
+            sysctl_module.set("arp.announce", mode)
+            self.assertEqual(
+                sysctl_module.get("arp.announce"),
+                mode,
+                msg=f"arp.announce must accept mode {mode}.",
+            )
+
+    def test__arp__sysctl__announce_rejects_out_of_range(self) -> None:
+        """
+        Ensure the 'arp.announce' validator rejects integers
+        outside {0, 1, 2} with a descriptive 'ValueError'.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_announce (no mode 3+).
+        """
+
+        for bad in (-1, 3, 99):
+            with self.assertRaises(ValueError) as ctx:
+                sysctl_module.set("arp.announce", bad)
+            self.assertIn(
+                "arp.announce",
+                str(ctx.exception),
+                msg=(f"Rejection message must surface the offending key for " f"value {bad!r}."),
+            )
+
+    def test__arp__sysctl__filter_accepts_zero_one(self) -> None:
+        """
+        Ensure the 'arp.filter' validator accepts the boolean
+        modes 0 and 1.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_filter (modes 0/1).
+        """
+
+        for mode in (0, 1):
+            sysctl_module.set("arp.filter", mode)
+            self.assertEqual(
+                sysctl_module.get("arp.filter"),
+                mode,
+                msg=f"arp.filter must accept mode {mode}.",
+            )
+
+    def test__arp__sysctl__filter_rejects_out_of_range(self) -> None:
+        """
+        Ensure the 'arp.filter' validator rejects values
+        outside {0, 1} with a descriptive 'ValueError'.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_filter (boolean 0/1 only).
+        """
+
+        for bad in (-1, 2, 99):
+            with self.assertRaises(ValueError) as ctx:
+                sysctl_module.set("arp.filter", bad)
+            self.assertIn(
+                "arp.filter",
+                str(ctx.exception),
+                msg=f"Rejection must surface the offending key for value {bad!r}.",
+            )
+
+    def test__arp__sysctl__ignore_accepts_mode_eight(self) -> None:
+        """
+        Ensure the 'arp.ignore' validator now accepts mode 8 —
+        the kill-switch ("never reply") that did not require
+        address-scope infrastructure.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 kill-switch).
+        """
+
+        sysctl_module.set("arp.ignore", 8)
+        self.assertEqual(
+            sysctl_module.get("arp.ignore"),
+            8,
+            msg="arp.ignore must accept mode 8 (kill-switch).",
+        )
+
+    def test__arp__sysctl__ignore_rejects_modes_three_through_seven(self) -> None:
+        """
+        Ensure the 'arp.ignore' validator still rejects modes
+        3-7. Mode 3 needs an address-scope concept PyTCP does
+        not have today; modes 4-7 are Linux-reserved unused
+        slots.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 3 needs scope; 4-7 reserved).
+        """
+
+        for bad in (3, 4, 5, 6, 7):
+            with self.assertRaises(ValueError) as ctx:
+                sysctl_module.set("arp.ignore", bad)
+            self.assertIn(
+                "arp.ignore",
+                str(ctx.exception),
+                msg=f"Rejection must surface the offending key for mode {bad!r}.",
+            )
