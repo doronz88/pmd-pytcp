@@ -62,9 +62,14 @@ class _RxRingFixture(TestCase):
 
     def tearDown(self) -> None:
         """
-        Close the pipe endpoints and stop the log patches.
+        Close the pipe endpoints, release the ring's selector +
+        eventfd via '_stop', and stop the log patches.
         """
 
+        try:
+            self._ring._stop()
+        except OSError:
+            pass
         try:
             os.close(self._read_fd)
         except OSError:
@@ -104,20 +109,21 @@ class TestRxRingInit(_RxRingFixture):
             msg="RxRing._queue_max_size must default to 1000.",
         )
 
-    def test__rx_ring__creates_queue(self) -> None:
+    def test__rx_ring__creates_deque(self) -> None:
         """
-        Ensure '__init__' creates an empty bounded queue whose maxsize
-        matches 'queue_max_size'.
+        Ensure '__init__' creates an empty deque and a sane
+        configured queue cap.
         """
 
         self.assertEqual(
-            self._ring._rx_ring.maxsize,
+            self._ring._queue_max_size,
             1000,
-            msg="RxRing._rx_ring.maxsize must equal queue_max_size.",
+            msg="RxRing._queue_max_size must equal queue_max_size.",
         )
-        self.assertTrue(
-            self._ring._rx_ring.empty(),
-            msg="RxRing._rx_ring must start empty.",
+        self.assertEqual(
+            len(self._ring._rx_deque),
+            0,
+            msg="RxRing._rx_deque must start empty.",
         )
 
     def test__rx_ring__custom_queue_size(self) -> None:
@@ -126,10 +132,11 @@ class TestRxRingInit(_RxRingFixture):
         """
 
         ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=7)
+        self.addCleanup(ring._stop)
         self.assertEqual(
-            ring._rx_ring.maxsize,
+            ring._queue_max_size,
             7,
-            msg="Custom queue_max_size must be propagated to the underlying Queue.",
+            msg="Custom queue_max_size must be propagated to the deque cap.",
         )
 
 
@@ -141,11 +148,11 @@ class TestRxRingDequeue(_RxRingFixture):
     def test__rx_ring__dequeue_returns_queued_packet(self) -> None:
         """
         Ensure 'dequeue()' returns the next queued 'PacketRx' in FIFO
-        order when data is already available.
+        order via the fast path (deque non-empty, no eventfd wait).
         """
 
         pkt = MagicMock(spec=PacketRx)
-        self._ring._rx_ring.put(pkt, block=False)
+        self._ring._rx_deque.append(pkt)
         self.assertIs(
             self._ring.dequeue(),
             pkt,
@@ -154,9 +161,9 @@ class TestRxRingDequeue(_RxRingFixture):
 
     def test__rx_ring__dequeue_returns_none_on_timeout(self) -> None:
         """
-        Ensure 'dequeue()' returns 'None' when the queue remains empty
-        past the subsystem-sleep timeout. Exercises the 'queue.Empty'
-        branch.
+        Ensure 'dequeue()' returns 'None' when the deque stays empty
+        past the subsystem-sleep timeout. Exercises the slow path
+        ('select.select' on the eventfd times out).
         """
 
         with patch(
@@ -165,8 +172,34 @@ class TestRxRingDequeue(_RxRingFixture):
         ):
             self.assertIsNone(
                 self._ring.dequeue(),
-                msg="dequeue() must return None when the queue stays empty past the timeout.",
+                msg="dequeue() must return None when the deque stays empty past the timeout.",
             )
+
+    def test__rx_ring__dequeue_drains_eventfd_signal_on_slow_path(self) -> None:
+        """
+        Ensure the slow-path 'dequeue()' calls 'os.eventfd_read'
+        once a 'select.select' wake fires so the kernel-side ready
+        bit clears. If the slow path didn't drain the eventfd,
+        subsequent calls would spin on stale signals.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Pre-signal the eventfd, leave deque empty so dequeue takes
+        # the slow path. Capture the eventfd_read call.
+        os.eventfd_write(self._ring._rx_event_fd, 1)
+
+        with patch(
+            "pytcp.stack.rx_ring.os.eventfd_read",
+            wraps=os.eventfd_read,
+        ) as mock_read:
+            with patch(
+                "pytcp.stack.rx_ring.SUBSYSTEM_SLEEP_TIME__SEC",
+                0.5,
+            ):
+                self._ring.dequeue()  # spurious wake — deque empty.
+
+        mock_read.assert_called_once_with(self._ring._rx_event_fd)
 
 
 class TestRxRingSubsystemLoop(_RxRingFixture):
@@ -212,7 +245,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             self._ring._subsystem_loop()
 
         self.assertEqual(
-            self._ring._rx_ring.qsize(),
+            len(self._ring._rx_deque),
             1,
             msg="_subsystem_loop must enqueue one PacketRx per readable event.",
         )
@@ -273,10 +306,12 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
 
         # Exhaust the queue first.
         ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
-        ring._rx_ring.put(MagicMock(spec=PacketRx), block=False)
-        self.assertTrue(
-            ring._rx_ring.full(),
-            msg="Precondition: the queue must be full before we exercise the drop path.",
+        self.addCleanup(ring._stop)
+        ring._rx_deque.append(MagicMock(spec=PacketRx))
+        self.assertEqual(
+            len(ring._rx_deque),
+            ring._queue_max_size,
+            msg="Precondition: the deque must be at capacity before we exercise the drop path.",
         )
 
         with (
@@ -293,7 +328,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             ring._subsystem_loop()  # must not raise
 
         self.assertEqual(
-            ring._rx_ring.qsize(),
+            len(ring._rx_deque),
             1,
             msg="On a full queue, the new frame must be dropped (queue size unchanged).",
         )
@@ -333,12 +368,12 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             ring._subsystem_loop()
 
         self.assertEqual(
-            ring._rx_ring.qsize(),
+            len(ring._rx_deque),
             n_frames,
             msg=(
                 f"A single _subsystem_loop wake must drain all {n_frames} "
                 f"pre-buffered frames in one pass. Got qsize="
-                f"{ring._rx_ring.qsize()}."
+                f"{len(ring._rx_deque)}."
             ),
         )
 
@@ -418,7 +453,8 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         """
 
         ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
-        ring._rx_ring.put(MagicMock(spec=PacketRx), block=False)
+        self.addCleanup(ring._stop)
+        ring._rx_deque.append(MagicMock(spec=PacketRx))
 
         with (
             patch.object(

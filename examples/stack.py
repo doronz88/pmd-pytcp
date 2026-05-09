@@ -63,7 +63,7 @@ def _capture_stats_snapshot() -> dict[str, int]:
     snap: dict[str, int] = {}
     if hasattr(stack, "rx_ring") and stack.rx_ring is not None:
         snap["rx_ring__queue_full__drop"] = stack.rx_ring.queue_full_drop_count
-        snap["rx_ring__qsize"] = stack.rx_ring._rx_ring.qsize()
+        snap["rx_ring__qsize"] = stack.rx_ring.qsize
     if hasattr(stack, "tx_ring") and stack.tx_ring is not None:
         snap["tx_ring__queue_full__drop"] = stack.tx_ring.queue_full_drop_count
         snap["tx_ring__os_error__drop"] = stack.tx_ring.os_error_drop_count
