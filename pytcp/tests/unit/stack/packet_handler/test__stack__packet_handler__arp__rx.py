@@ -208,6 +208,8 @@ class TestPacketHandlerArpRxParseFail(_ArpRxTestBase):
         """
         Ensure a truncated ARP frame fails parsing and is counted in
         'arp__failed_parse__drop'.
+
+        Reference: RFC 826 (ARP packet validation).
         """
 
         truncated = _arp_frame(
@@ -242,6 +244,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
         Ensure an ARP request originating from our own MAC is treated
         as a loop and dropped.
+
+        Reference: RFC 5227 §2.1.1 (self-loopback NOTE).
         """
 
         frame = _arp_frame(
@@ -274,6 +278,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
         Ensure an ARP request claiming one of our IPv4 addresses from
         another MAC triggers gratuitous-ARP defense.
+
+        Reference: RFC 5227 §2.4 (ongoing conflict detection).
         """
 
         frame = _arp_frame(
@@ -302,6 +308,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
         Ensure a broadcast gratuitous ARP request (spa == tpa) is
         counted and populates the ARP cache.
+
+        Reference: RFC 826 (gratuitous ARP wire shape).
         """
 
         frame = _arp_frame(
@@ -335,6 +343,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         Ensure a gratuitous ARP request colliding with a candidate
         address under DAD registers the probe conflict and does NOT
         learn the ARP cache entry.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict detection).
         """
 
         frame = _arp_frame(
@@ -364,6 +374,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
         Ensure an ARP request for a TPA not in our unicast list is
         counted and no reply is sent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         frame = _arp_frame(
@@ -393,6 +405,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         Ensure an ARP probe (spa=0.0.0.0) for one of our TPAs is
         counted, a reply is sent, and the cache is NOT updated (spa
         fails the 'in host.network' test).
+
+        Reference: RFC 5227 §2.5 (Reply to Probe Requests).
         """
 
         frame = _arp_frame(
@@ -432,6 +446,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
         Ensure a regular ARP request for one of our TPAs is counted,
         triggers a reply, and populates the ARP cache with spa<->sha.
+
+        Reference: RFC 826 (ARP request → reply + cache update).
         """
 
         frame = _arp_frame(
@@ -471,6 +487,8 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         rejected at parse time (sanity check), not by the handler's
         match-case fallthrough. The parser's sanity validation
         forbids 'is_unknown' operations.
+
+        Reference: RFC 826 (ARP operation field).
         """
 
         valid = bytearray(
@@ -511,6 +529,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         """
         Ensure an ARP reply originating from our own MAC is dropped
         as a loop.
+
+        Reference: RFC 5227 §2.1.1 (self-loopback NOTE).
         """
 
         frame = _arp_frame(
@@ -538,6 +558,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         """
         Ensure an ARP reply claiming one of our IPv4 addresses from
         another MAC triggers gratuitous-ARP defense.
+
+        Reference: RFC 5227 §2.4 (ongoing conflict detection on Reply).
         """
 
         frame = _arp_frame(
@@ -567,6 +589,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         Ensure an ARP reply to our probe (tpa=0.0.0.0, ethernet.dst=our
         MAC, tha=our MAC) with spa == candidate is registered as a
         probe conflict.
+
+        Reference: RFC 5227 §2.1.1 (probe-Reply conflict).
         """
 
         frame = _arp_frame(
@@ -595,6 +619,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         """
         Ensure a direct ARP reply (ethernet.dst == stack unicast MAC)
         is counted and updates the ARP cache.
+
+        Reference: RFC 826 (cache update on Reply).
         """
 
         frame = _arp_frame(
@@ -627,6 +653,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         """
         Ensure a broadcast gratuitous ARP reply (spa == tpa, tha=0) is
         counted and updates the ARP cache.
+
+        Reference: RFC 826 (gratuitous Reply wire shape).
         """
 
         frame = _arp_frame(
@@ -655,6 +683,8 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         Ensure a gratuitous ARP reply claiming one of our candidate
         addresses registers the probe conflict and does NOT update the
         ARP cache.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict via gratuitous Reply).
         """
 
         frame = _arp_frame(
