@@ -373,3 +373,57 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
             IP4__UNSPEC,
             msg="send_arp_request must fall back to spa=0.0.0.0 when no stack IPv4 is configured.",
         )
+
+    def test__stack__packet_handler__arp__tx__unicast_request_targets_cached_mac(self) -> None:
+        """
+        Ensure 'send_arp_unicast_request' emits an ARP Request
+        whose Ethernet destination is the caller-supplied MAC
+        (not the broadcast address), so a cache-refresh probe
+        wakes up only the cached neighbour rather than every
+        host on the segment.
+
+        Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast cache-refresh probe).
+        """
+
+        self._handler.send_arp_unicast_request(
+            arp__tpa=HOST_A__IP4,
+            ethernet__dst=HOST_A__MAC,
+        )
+
+        call = self._last_call()
+        self.assertEqual(
+            call["ethernet__src"],
+            STACK__MAC_UNICAST,
+            msg="Unicast refresh probe must use stack MAC as Ethernet source.",
+        )
+        self.assertEqual(
+            call["ethernet__dst"],
+            HOST_A__MAC,
+            msg=(
+                "Unicast refresh probe must use the cached neighbour MAC as "
+                "Ethernet destination, not the broadcast address — that is "
+                "the whole point of the unicast variant."
+            ),
+        )
+        payload = call["ethernet__payload"]
+        assert isinstance(payload, ArpAssembler)
+        self.assertEqual(
+            payload.oper,
+            ArpOperation.REQUEST,
+            msg="Unicast refresh probe is an ARP Request, not a Reply.",
+        )
+        self.assertEqual(
+            payload.sha,
+            STACK__MAC_UNICAST,
+            msg="Sender hardware address must be our own MAC.",
+        )
+        self.assertEqual(
+            payload.spa,
+            STACK__IP4_ADDRESS,
+            msg="Sender protocol address must be our own IPv4 (refresh probe is from us).",
+        )
+        self.assertEqual(
+            payload.tpa,
+            HOST_A__IP4,
+            msg="Target protocol address must be the IP whose entry is being refreshed.",
+        )

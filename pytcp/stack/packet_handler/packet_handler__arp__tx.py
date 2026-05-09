@@ -253,3 +253,38 @@ class PacketHandlerArpTx(ABC):
                 "stack",
                 f"Failed to send out ARP Request for {arp__tpa}, " f"tx_status: {tx_status}",
             )
+
+    def send_arp_unicast_request(
+        self,
+        *,
+        arp__tpa: Ip4Address,
+        ethernet__dst: MacAddress,
+    ) -> None:
+        """
+        Enqueue a unicast ARP cache-refresh probe addressed to
+        the cached neighbour MAC. Used by 'ArpCache' to refresh
+        an entry approaching expiry without broadcasting a
+        Request to the whole segment — only the actual owner
+        of the IP wakes up to reply.
+        """
+
+        tx_status = self._phtx_arp(
+            ethernet__src=self._mac_unicast,
+            ethernet__dst=ethernet__dst,
+            arp__oper=ArpOperation.REQUEST,
+            arp__sha=self._mac_unicast,
+            arp__spa=(self._ip4_unicast[0] if self._ip4_unicast else Ip4Address()),
+            arp__tha=MacAddress(),
+            arp__tpa=arp__tpa,
+        )
+
+        if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
+            __debug__ and log(
+                "stack",
+                f"Sent out unicast ARP Request for {arp__tpa} to {ethernet__dst}",
+            )
+        else:
+            __debug__ and log(
+                "stack",
+                f"Failed to send out unicast ARP Request for {arp__tpa} to " f"{ethernet__dst}, tx_status: {tx_status}",
+            )

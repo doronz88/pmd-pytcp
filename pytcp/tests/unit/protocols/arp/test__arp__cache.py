@@ -48,6 +48,8 @@ class TestArpCacheEntry(TestCase):
         """
         Ensure a fresh 'CacheEntry' starts non-permanent, with
         'hit_count' at 0 and 'create_time' populated by the factory.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         entry = CacheEntry(mac_address=MacAddress("02:00:00:00:00:01"))
@@ -71,6 +73,8 @@ class TestArpCacheEntry(TestCase):
         Ensure 'hit_count__increment' bumps 'hit_count' by 1, even
         though the dataclass is frozen — the method uses
         'object.__setattr__' to bypass the freeze.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         entry = CacheEntry(mac_address=MacAddress("02:00:00:00:00:01"))
@@ -86,6 +90,8 @@ class TestArpCacheEntry(TestCase):
         """
         Ensure 'hit_count__reset' zeroes 'hit_count' after any number
         of prior increments.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         entry = CacheEntry(mac_address=MacAddress("02:00:00:00:00:01"))
@@ -102,6 +108,8 @@ class TestArpCacheEntry(TestCase):
         """
         Ensure normal attribute assignment (without
         'object.__setattr__') is blocked by 'frozen=True'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         entry = CacheEntry(mac_address=MacAddress("02:00:00:00:00:01"))
@@ -144,6 +152,8 @@ class TestArpCacheAddFind(_ArpCacheFixture):
         """
         Ensure 'add_entry' inserts a 'CacheEntry' keyed by the IP
         address, with the supplied MAC.
+
+        Reference: RFC 826 (ARP cache add-on-Reply behaviour).
         """
 
         self._cache.add_entry(
@@ -162,6 +172,8 @@ class TestArpCacheAddFind(_ArpCacheFixture):
         Ensure calling 'add_entry' twice on the same IP replaces the
         old entry with a fresh one — creating a new CacheEntry per
         call is how refreshes happen.
+
+        Reference: RFC 826 (cache update on each ARP Reply).
         """
 
         self._cache.add_entry(
@@ -183,6 +195,8 @@ class TestArpCacheAddFind(_ArpCacheFixture):
         Ensure 'find_entry' returns the stored MAC and increments the
         hit counter — the counter drives the refresh logic in the
         background maintenance loop.
+
+        Reference: RFC 826 (ARP cache lookup).
         """
 
         self._cache.add_entry(
@@ -206,6 +220,8 @@ class TestArpCacheAddFind(_ArpCacheFixture):
         Ensure a miss returns None and dispatches an ARP request via
         'stack.packet_handler.send_arp_request' with the target IP as
         'arp__tpa'.
+
+        Reference: RFC 826 (ARP Request on cache miss).
         """
 
         from pytcp.stack.packet_handler import PacketHandlerL2
@@ -232,6 +248,8 @@ class TestArpCacheRepr(_ArpCacheFixture):
         """
         Ensure repr() of an empty cache is the repr of an empty dict
         — repr delegates directly to the underlying mapping.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -244,6 +262,8 @@ class TestArpCacheRepr(_ArpCacheFixture):
         """
         Ensure repr() shows the added entries by delegating to the
         underlying dict.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._cache.add_entry(
@@ -268,6 +288,8 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         Ensure permanent entries are never aged out regardless of how
         old they look. 'permanent' is the escape hatch for statically
         configured neighbors.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         from net_addr import MacAddress
@@ -303,6 +325,8 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         """
         Ensure a non-permanent entry older than
         'ARP__CACHE__ENTRY_MAX_AGE' is removed from the cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip = Ip4Address("10.0.0.1")
@@ -335,17 +359,24 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
 
     def test__arp_cache__loop_refreshes_near_expiry_used_entry(self) -> None:
         """
-        Ensure an entry that is between 'MAX_AGE - REFRESH_TIME' and
-        'MAX_AGE' and has a non-zero hit_count triggers an ARP request
-        to refresh it, and resets its hit_count.
+        Ensure an entry between 'MAX_AGE - REFRESH_TIME' and
+        'MAX_AGE' with a non-zero hit_count triggers a UNICAST
+        ARP refresh probe addressed to the cached MAC (not the
+        broadcast address), and resets its hit_count. The
+        cached MAC is used as the destination of the
+        cache-refresh Request so only the actual neighbour
+        wakes up to reply.
+
+        Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast cache-refresh probe).
         """
 
         from pytcp.stack.packet_handler import PacketHandlerL2
 
         ip = Ip4Address("10.0.0.1")
+        mac = MacAddress("02:00:00:00:00:01")
         self._cache.add_entry(
             ip4_address=ip,
-            mac_address=MacAddress("02:00:00:00:00:01"),
+            mac_address=mac,
         )
         # Simulate the entry having been hit since last refresh.
         self._cache._arp_cache[ip].hit_count__increment()
@@ -375,7 +406,11 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         ):
             self._cache._subsystem_loop()
 
-        handler.send_arp_request.assert_called_once_with(arp__tpa=ip)
+        handler.send_arp_unicast_request.assert_called_once_with(
+            arp__tpa=ip,
+            ethernet__dst=mac,
+        )
+        handler.send_arp_request.assert_not_called()
         self.assertEqual(
             self._cache._arp_cache[ip].hit_count,
             0,

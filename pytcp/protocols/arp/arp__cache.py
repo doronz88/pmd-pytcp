@@ -153,20 +153,25 @@ class ArpCache(Subsystem):
                 )
 
             # If entry age is close to maximum age but the entry has been
-            # used since last refresh then send out request in attempt
-            # to refresh it.
+            # used since last refresh then send out a unicast refresh
+            # probe addressed to the cached MAC (RFC 1122 §2.3.2.1
+            # IMPL (2)) — broadcasting the refresh would wake every
+            # host on the segment for a mapping we already have.
             elif (
                 time.monotonic() - self._arp_cache[ip4_address].create_time
                 > ARP__CACHE__ENTRY_MAX_AGE - ARP__CACHE__ENTRY_REFRESH_TIME
             ) and self._arp_cache[ip4_address].hit_count:
+                cached_mac = self._arp_cache[ip4_address].mac_address
                 self._arp_cache[ip4_address].hit_count__reset()
                 assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
-                stack.packet_handler.send_arp_request(arp__tpa=ip4_address)
+                stack.packet_handler.send_arp_unicast_request(
+                    arp__tpa=ip4_address,
+                    ethernet__dst=cached_mac,
+                )
                 __debug__ and log(
                     "arp-c",
-                    "Trying to refresh expiring ARP Cache entry for "
-                    f"{ip4_address} -> "
-                    f"{self._arp_cache[ip4_address].mac_address}",
+                    f"Trying to refresh expiring ARP Cache entry for "
+                    f"{ip4_address} -> {cached_mac} via unicast probe",
                 )
 
         # Put thread to sleep for a 100 milliseconds.

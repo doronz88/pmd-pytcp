@@ -156,22 +156,26 @@ satisfied.
 > and delete the entry if no ARP Reply is received from N
 > successive polls."
 
-**Adherence:** **partial — broadcast, not unicast**.
-PyTCP's near-expiry refresh path does poll, but the poll
-is sent as a **broadcast** Request via
-`stack.packet_handler.send_arp_request(arp__tpa=...)`
-(`pytcp/stack/arp_cache.py:131-133` →
-`pytcp/stack/packet_handler/packet_handler__arp__tx.py:231-244`).
-RFC 1122 §2.3.2.1 IMPLEMENTATION (2) explicitly calls for
-the **point-to-point** form. The broadcast variant
-converges (a peer that's still alive will reply) but
-consumes more link bandwidth than necessary.
+**Adherence:** **partial — unicast refresh implemented;
+no failed-poll counter**. PyTCP's near-expiry refresh path
+now sends the poll as a **unicast** ARP Request via
+`stack.packet_handler.send_arp_unicast_request(arp__tpa=...,
+ethernet__dst=cached_mac)`
+(`pytcp/protocols/arp/arp__cache.py` refresh branch →
+`pytcp/stack/packet_handler/packet_handler__arp__tx.py::send_arp_unicast_request`).
+RFC 1122 §2.3.2.1 IMPLEMENTATION (2) calls for the
+"point-to-point" form so that only the actual cached
+neighbour wakes up to reply rather than every host on the
+segment; this is what PyTCP does today.
 
-PyTCP also has no "delete after N successive failed polls"
+PyTCP still has no "delete after N successive failed polls"
 counter; expiry is purely age-driven. The entry is
 discarded once `create_time + MAX_AGE` is crossed,
 regardless of how many refresh attempts have failed in the
-preceding `REFRESH_TIME` window.
+preceding `REFRESH_TIME` window. The complete IMPLEMENTATION
+(2) form would add the failure counter; that work folds
+naturally into the NUD state machine (FAILED state). The
+unicast wire-form half is met.
 
 > "(3) Link-Layer Advice — If the link-layer driver
 > detects a delivery problem, flush the corresponding ARP
@@ -334,15 +338,17 @@ is chosen) and observes the eviction at the new threshold.
 
 ### §2.3.2.1 — Unicast vs broadcast refresh poll
 
-The current broadcast-refresh behaviour is captured by
-the `..._loop_refreshes_near_expiry_used_entry` test above
-(it asserts `send_arp_request` is called, which is the
-broadcast form). When the unicast variant is implemented
-the same test should split into "broadcast refresh path"
-and "unicast probe path" cases.
+The unicast-refresh behaviour is captured by the
+`..._loop_refreshes_near_expiry_used_entry` test (it
+asserts `send_arp_unicast_request` is called with
+`ethernet__dst=cached_mac`, and that the broadcast
+`send_arp_request` is **not** called) and by
+`..._unicast_request_targets_cached_mac` in the TX-side
+unit tests (which pins the wire-format invariants:
+Ethernet dst = cached MAC, ARP REQUEST oper, our SHA/SPA,
+target IP as TPA).
 
-**Status:** **locked in (broadcast form)**; unicast probe
-has no test surface yet.
+**Status:** **locked in**.
 
 ### §2.3.2.2 — Save unresolved packet (SHOULD, NOT MET)
 
@@ -370,7 +376,7 @@ assert exactly 1 packet is sent post-resolution.
 | §2.3.2.1  | Timeout restarted on refresh                          | locked in indirectly                                       |
 | §2.3.2.1  | ARP flood prevention                                  | n/a (gap not closed; add test with fix — see §2.3.2.1)     |
 | §2.3.2.1  | Timeout configurable                                  | n/a (gap not closed; add test with fix)                    |
-| §2.3.2.1  | Refresh-poll form (broadcast vs unicast)              | locked in (broadcast); unicast — gap not closed            |
+| §2.3.2.1  | Refresh-poll form (unicast IMPL (2))                  | locked in (unit: cache loop + arp__tx helper)              |
 | §2.3.2.2  | Save at least one unresolved packet                   | n/a (gap not closed; add test with fix — see §2.3.2.2)     |
 
 ---
@@ -383,7 +389,7 @@ assert exactly 1 packet is sent post-resolution.
 | Configurable timeout (SHOULD)          | partial (compile-time only; SHOULD-deviation)       |
 | Prevent ARP floods (MUST)              | **not met**                                         |
 | Timeout restarted on refresh           | met                                                 |
-| Refresh-poll form                      | partial (broadcast Request, not unicast as in (2))  |
+| Refresh-poll form                      | met (unicast IMPL (2)); failed-poll counter deferred to NUD work |
 | Save unresolved packet (SHOULD)        | **not met**                                         |
 | Trailer encapsulation                  | met (deliberate non-implementation; allowed)        |
 
