@@ -506,6 +506,56 @@ class TestArpDad(ArpTestCase):
             ),
         )
 
+    def test__arp__dad__simultaneous_probe_aborts_claim(self) -> None:
+        """
+        Ensure a peer's ARP Probe whose TPA matches our
+        candidate IP — but whose SPA is the all-zeroes
+        unspecified address (the wire signal that the peer is
+        also probing the same address) — flags the candidate
+        as conflicted and prevents admission. Without the
+        SPA = 0 detection branch the frame is silently dropped
+        as 'tpa_unknown' (the candidate is not yet in the
+        stack's unicast list during DAD).
+
+        Reference: RFC 5227 §2.1.1 (simultaneous-probe conflict).
+        """
+
+        candidate_address = STACK__IP4_HOST__CANDIDATE.address
+
+        def _inject_conflict(idx: int) -> None:
+            if idx == 1:  # first inter-probe sleep — within probe window
+                self._drive_arp(
+                    ethernet_dst=MAC__BROADCAST,
+                    ethernet_src=HOST_A__MAC_ADDRESS,
+                    arp_oper=ArpOperation.REQUEST,
+                    arp_sha=HOST_A__MAC_ADDRESS,
+                    arp_spa=IP4__UNSPECIFIED,
+                    arp_tha=MAC__UNSPECIFIED,
+                    arp_tpa=candidate_address,
+                )
+
+        self._drive_dad(on_sleep=_inject_conflict)
+
+        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        self.assertNotIn(
+            candidate_address,
+            addresses_after,
+            msg=(
+                "Candidate IP must NOT be admitted to '_ip4_host' when a peer "
+                "ARP Probe (SPA = 0) for the candidate arrives during the "
+                "probe window."
+            ),
+        )
+        self.assertIn(
+            candidate_address,
+            self._packet_handler._arp_probe__unicast_conflict,
+            msg=(
+                "Simultaneous-probe candidate IP must be registered in the "
+                "per-instance '_arp_probe__unicast_conflict' set so DAD "
+                "aborts the claim."
+            ),
+        )
+
     def test__arp__dad__conflict_during_announce_wait_aborts_claim(self) -> None:
         """
         Ensure a conflicting ARP packet arriving during the

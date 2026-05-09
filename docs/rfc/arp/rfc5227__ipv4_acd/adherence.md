@@ -158,22 +158,31 @@ never on RX-detected conflict).
 > the host's interfaces, then the host SHOULD similarly
 > treat this as an address conflict ..."
 
-**Adherence:** **partial — same disconnect bug**. The code
-path at `packet_handler__arp__rx.py:200-204` covers the
-gratuitous-probe case (SPA = candidate, broadcast L2
-destination, `arp.spa == arp.tpa`, `arp.tha` unspecified).
-The "two hosts simultaneously probing the same address"
-case (SPA = `0.0.0.0` from the other host but `tpa =
-candidate`) is **not** explicitly detected — PyTCP only
-checks `arp.spa in self._ip4_host_candidate`, which fails
-when SPA is `0.0.0.0`. RFC 5227 §2.1.1 specifically calls
-out this case ("two (or more) hosts have, for whatever
-reason, been inadvertently configured with the same address,
-and both are simultaneously in the process of probing").
+**Adherence:** **met**. Three RX paths cover the
+probe-conflict shapes:
 
-Even when the case *is* detected (gratuitous-probe form),
-the conflict goes into the wrong set and so does not abort
-the claim — same disconnect bug as above.
+- The gratuitous-probe case (peer's SPA = our candidate,
+  broadcast L2 dst, `arp.spa == arp.tpa`, `arp.tha`
+  unspecified) at `packet_handler__arp__rx.py:218-223`
+  registers the conflict on the per-instance
+  `_arp_probe__unicast_conflict` set the DAD flow reads.
+- The "two hosts simultaneously probing the same address"
+  case (peer's SPA = `0.0.0.0`, `tpa = our candidate`,
+  foreign SHA) is detected explicitly at
+  `packet_handler__arp__rx.py:204-217`. The earlier
+  loop-drop check filters our own SHA before this branch
+  fires, so it only triggers for genuine foreign probes.
+  Counted in `arp__op_request__simultaneous_probe`.
+- The probe-Reply case (`arp.spa = candidate`, `arp.tpa`
+  unspecified, L2 dst = our MAC) at
+  `packet_handler__arp__rx.py:299-313` covers a peer that
+  already owns the address replying to our probe.
+
+All three branches feed the same per-instance set the
+DAD claim flow reads, so the disconnect-bug is closed
+end-to-end. Test coverage at
+`pytcp/tests/integration/protocols/arp/test__arp__dad.py`
+covers each shape with a `_drive_dad(on_sleep=...)` test.
 
 > "NOTE: The check that the packet's 'sender hardware
 > address' is not the hardware address of any of the host's
@@ -610,7 +619,7 @@ would require this if implemented; see that audit.
 | §2.1.1  | Initial PROBE_WAIT (0–1 s)                                       | n/a (gap not closed; add test with fix)         |
 | §2.1.1  | RX-side conflict detection (probe window)                        | locked in (RX only; end-to-end has a bug)       |
 | §2.1.1  | RX-detected conflict aborts claim                                | n/a (gap not closed; disconnect-bug fix needed) |
-| §2.1.1  | Simultaneous-probe detection (SPA = 0)                           | n/a (gap not closed; add test with fix)         |
+| §2.1.1  | Simultaneous-probe detection (SPA = 0)                           | locked in (integration: test__arp__dad.py)      |
 | §2.1.1  | MAX_CONFLICTS / RATE_LIMIT_INTERVAL                              | n/a (gap not closed; add test with fix)         |
 | §2.1.1  | ANNOUNCE_WAIT post-probe quiet period                            | n/a (gap not closed; add test with fix)         |
 | §2.3    | Announcement wire format                                         | locked in                                       |
@@ -636,7 +645,7 @@ would require this if implemented; see that audit.
 | §2.1.1      | PROBE_WAIT initial 0–1 s random delay        | not implemented                                        |
 | §2.1.1      | RX-side conflict registration                | met (writes to module-level set)                       |
 | §2.1.1      | Conflict aborts claim                        | **broken** — disconnect between RX writer / DAD reader |
-| §2.1.1      | Simultaneous-probe (SPA = 0) detection       | not implemented                                        |
+| §2.1.1      | Simultaneous-probe (SPA = 0) detection       | met                                                    |
 | §2.1.1      | Self-loopback ignore (NOTE)                  | met                                                    |
 | §2.1.1      | MAX_CONFLICTS / RATE_LIMIT_INTERVAL          | not implemented (dormant in static-config model)       |
 | §2.1.1      | ANNOUNCE_WAIT post-probe quiet               | not implemented                                        |

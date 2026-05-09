@@ -201,6 +201,24 @@ class PacketHandlerArpRx(ABC):
             self._maybe_send_arp_defense(ip4_unicast=packet_rx.arp.spa)
             return
 
+        # RFC 5227 §2.1.1 simultaneous-probe conflict: a peer is probing
+        # the same address (their SPA = 0, TPA = our candidate). The
+        # gratuitous / direct-reply branches below all key on
+        # arp.spa being unicast / matching our candidate, so the SPA = 0
+        # case would otherwise fall through to the 'tpa_unknown' drop
+        # (a candidate is not yet in '_ip4_unicast' during DAD). The
+        # earlier loop-drop check already filtered out our own SHA.
+        if packet_rx.arp.spa.is_unspecified and packet_rx.arp.tpa in {c.address for c in self._ip4_host_candidate}:
+            self._packet_stats_rx.arp__op_request__simultaneous_probe += 1
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - <WARN>Simultaneous-probe conflict "
+                f"detected for candidate {packet_rx.arp.tpa} from peer "
+                f"{packet_rx.arp.sha}</>",
+            )
+            self._arp_probe__unicast_conflict.add(packet_rx.arp.tpa)
+            return
+
         # Note receiving gratuitous ARP request.
         if (
             packet_rx.ethernet.dst.is_broadcast
