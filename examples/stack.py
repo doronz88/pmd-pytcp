@@ -238,13 +238,14 @@ def cli(
                 subsystem.stack_ip4_address = stack__ip4_host.address if stack__ip4_host else Ip4Address()
             subsystem.start()
 
-        # Periodic stats snapshot — every 5 seconds during the run,
-        # print the ring drop counters + the per-protocol RX
-        # accept counts so flood-testing has live observability.
-        # Set 'PYTCP_STATS_INTERVAL' to override (0 disables).
+        # Periodic stats snapshot — disabled by default; opt-in for
+        # flood-testing / benchmarking by setting the
+        # 'PYTCP_STATS_INTERVAL' env var to a positive integer
+        # (seconds between snapshots). 'make benchmark' does this
+        # automatically; casual 'make run' stays quiet.
         import os as _os
 
-        _stats_interval = int(_os.environ.get("PYTCP_STATS_INTERVAL", "5"))
+        _stats_interval = int(_os.environ.get("PYTCP_STATS_INTERVAL", "0"))
         _last_stats = time.monotonic()
         _last_snapshot = _capture_stats_snapshot()
 
