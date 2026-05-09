@@ -374,7 +374,7 @@ class TestArpDad(ArpTestCase):
         Reference: RFC 5227 §2.3 (Announcements spaced ANNOUNCE_INTERVAL apart).
         """
 
-        from pytcp import stack as stack_mod
+        from pytcp.protocols.arp.arp__constants import ARP__ANNOUNCE_INTERVAL
 
         self._drive_dad()
 
@@ -393,10 +393,10 @@ class TestArpDad(ArpTestCase):
         )
         self.assertEqual(
             self._dad_sleep_durations[3],
-            stack_mod.ARP__ANNOUNCE_INTERVAL,
+            ARP__ANNOUNCE_INTERVAL,
             msg=(
                 "Sleep between Announcements (index 3, post-probe-loop) must "
-                f"equal stack.ARP__ANNOUNCE_INTERVAL = {stack_mod.ARP__ANNOUNCE_INTERVAL} s; "
+                f"equal ARP__ANNOUNCE_INTERVAL = {ARP__ANNOUNCE_INTERVAL} s; "
                 f"got {self._dad_sleep_durations[3]} s."
             ),
         )

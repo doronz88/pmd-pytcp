@@ -25,9 +25,9 @@
 """
 This module contains class supporting ARP Cache operations.
 
-pytcp/stack/arp_cache.py
+pytcp/protocols/arp/arp__cache.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations
@@ -40,6 +40,11 @@ from typing import TYPE_CHECKING, override
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+from pytcp.protocols.arp.arp__constants import (
+    ARP__CACHE__ENTRY_MAX_AGE,
+    ARP__CACHE__ENTRY_REFRESH_TIME,
+    ARP__REQUEST_RATE_LIMIT,
+)
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, MacAddress
@@ -81,7 +86,7 @@ class _PendingResolution:
     In-progress ARP resolution state for a single IPv4
     destination. Holds the 'time.monotonic()' timestamp of the
     most recent ARP Request emitted for the address (gates
-    subsequent Requests by 'stack.ARP__REQUEST_RATE_LIMIT' per
+    subsequent Requests by 'ARP__REQUEST_RATE_LIMIT' per
     RFC 1122 §2.3.2.1) and the most recently queued outbound
     Ethernet packet pending resolution (RFC 1122 §2.3.2.2).
     """
@@ -136,7 +141,7 @@ class ArpCache(Subsystem):
                 continue
 
             # If entry age is over maximum age then discard the entry.
-            if int(time.time()) - self._arp_cache[ip4_address].create_time > stack.ARP__CACHE__ENTRY_MAX_AGE:
+            if int(time.time()) - self._arp_cache[ip4_address].create_time > ARP__CACHE__ENTRY_MAX_AGE:
                 mac_address = self._arp_cache.pop(ip4_address).mac_address
                 __debug__ and log(
                     "arp-c",
@@ -148,7 +153,7 @@ class ArpCache(Subsystem):
             # to refresh it.
             elif (
                 int(time.time()) - self._arp_cache[ip4_address].create_time
-                > stack.ARP__CACHE__ENTRY_MAX_AGE - stack.ARP__CACHE__ENTRY_REFRESH_TIME
+                > ARP__CACHE__ENTRY_MAX_AGE - ARP__CACHE__ENTRY_REFRESH_TIME
             ) and self._arp_cache[ip4_address].hit_count:
                 self._arp_cache[ip4_address].hit_count__reset()
                 assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
@@ -241,7 +246,7 @@ class ArpCache(Subsystem):
             pending = _PendingResolution()
             self._pending_resolution[ip4_address] = pending
 
-        if now - pending.last_request_at >= stack.ARP__REQUEST_RATE_LIMIT:
+        if now - pending.last_request_at >= ARP__REQUEST_RATE_LIMIT:
             pending.last_request_at = now
             __debug__ and log(
                 "arp-c",

@@ -107,29 +107,6 @@ class TestStackModuleConstants(TestCase):
             msg="IP6__SUPPORT must default to True.",
         )
 
-    def test__stack__arp_cache_timers_are_positive(self) -> None:
-        """
-        Ensure the ARP cache maximum age and refresh window are both
-        positive, with refresh time strictly less than max age — the
-        invariant the refresh-path arithmetic relies on.
-        """
-
-        self.assertGreater(
-            stack.ARP__CACHE__ENTRY_MAX_AGE,
-            0,
-            msg="ARP__CACHE__ENTRY_MAX_AGE must be positive.",
-        )
-        self.assertGreater(
-            stack.ARP__CACHE__ENTRY_REFRESH_TIME,
-            0,
-            msg="ARP__CACHE__ENTRY_REFRESH_TIME must be positive.",
-        )
-        self.assertLess(
-            stack.ARP__CACHE__ENTRY_REFRESH_TIME,
-            stack.ARP__CACHE__ENTRY_MAX_AGE,
-            msg="REFRESH_TIME < MAX_AGE is required by the refresh-window arithmetic.",
-        )
-
     def test__stack__nd_cache_timers_are_positive(self) -> None:
         """
         Ensure the ICMPv6 ND cache maximum age and refresh window are

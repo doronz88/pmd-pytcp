@@ -42,7 +42,7 @@ from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, MacAddress
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
-from pytcp.stack.arp_cache import ArpCache
+from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.stack.nd_cache import NdCache
 from pytcp.stack.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
 from pytcp.stack.tx_ring import TxRing

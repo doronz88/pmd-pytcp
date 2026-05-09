@@ -42,10 +42,10 @@ from typing import TYPE_CHECKING, Any
 from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
+from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket.socket_id import SocketId
-from pytcp.stack.arp_cache import ArpCache
 from pytcp.stack.nd_cache import NdCache
 from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.stack.rx_ring import RxRing
@@ -133,36 +133,10 @@ IP4__SUPPORT = True
 # acceptance set this to True.
 IP4__ACCEPT_SOURCE_ROUTE = False
 
-# ARP cache configuration.
-ARP__CACHE__ENTRY_MAX_AGE = 3600
-ARP__CACHE__ENTRY_REFRESH_TIME = 300
-
-# RFC 5227 §1.1 / §2.4(c) defensive-ARP rate-limit. After
-# emitting a defensive gratuitous ARP for an address, no
-# further defense for that address is emitted until at least
-# this many seconds have elapsed — prevents two hosts both
-# defending the same IP from generating an "endless loop
-# flooding the network with broadcast traffic" (the §2.4(c)
-# MUST NOT failure mode).
-ARP__DEFEND_INTERVAL = 10
-
-# RFC 1122 §2.3.2.1 outbound-ARP-Request rate-limit. The host
-# MUST NOT flood the link with repeated Requests for the same
-# unresolved IP; the recommended maximum is 1 per second per
-# destination. Used by 'ArpCache.find_entry' to gate Request
-# emission via 'time.monotonic()' timestamps stored on the
-# per-destination '_pending_resolution' table.
-ARP__REQUEST_RATE_LIMIT = 1
-
-# RFC 5227 §1.1 / §2.3 ARP Announcement count and spacing.
-# After successful DAD, the host MUST broadcast ANNOUNCE_NUM
-# ARP Announcements spaced ANNOUNCE_INTERVAL seconds apart so
-# peers refresh any stale ARP cache entries left over from the
-# previous holder of the address. The host may begin using
-# the IP immediately after the first Announcement; the second
-# is insurance against peers that missed the first.
-ARP__ANNOUNCE_NUM = 2
-ARP__ANNOUNCE_INTERVAL = 2
+# ARP runtime configuration constants live alongside the ARP
+# protocol code at 'pytcp/protocols/arp/arp__constants.py'.
+# Importers should refer to that module directly rather than
+# reaching through 'pytcp.stack'.
 
 # ICMPv6 ND cache configuration.
 ICMP6__ND__CACHE__ENTRY_MAX_AGE = 3600

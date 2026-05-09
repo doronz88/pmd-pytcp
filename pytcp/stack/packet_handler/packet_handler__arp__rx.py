@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.arp.arp__constants import ARP__DEFEND_INTERVAL
 
 
 class PacketHandlerArpRx(ABC):
@@ -93,12 +94,12 @@ class PacketHandlerArpRx(ABC):
         Emit a defensive gratuitous ARP for 'ip4_unicast', gated by
         the per-IP DEFEND_INTERVAL rate-limit. Skipped silently if a
         defense for this IP was emitted within
-        'stack.ARP__DEFEND_INTERVAL' seconds of now.
+        'ARP__DEFEND_INTERVAL' seconds of now.
         """
 
         now = time.monotonic()
         last = self._arp_defend__last_emitted.get(ip4_unicast)
-        if last is not None and now - last < stack.ARP__DEFEND_INTERVAL:
+        if last is not None and now - last < ARP__DEFEND_INTERVAL:
             return
         self._arp_defend__last_emitted[ip4_unicast] = now
         self._send_gratuitous_arp(ip4_unicast=ip4_unicast)

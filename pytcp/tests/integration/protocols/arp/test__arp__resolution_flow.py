@@ -48,7 +48,7 @@ from net_addr import Ip4Address, MacAddress
 from net_proto import ArpOperation, ArpParser, Ip4Assembler
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
-from pytcp.stack.arp_cache import ArpCache
+from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.tests.lib.arp_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,

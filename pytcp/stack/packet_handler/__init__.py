@@ -53,6 +53,10 @@ from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.lib.subsystem import Subsystem
+from pytcp.protocols.arp.arp__constants import (
+    ARP__ANNOUNCE_INTERVAL,
+    ARP__ANNOUNCE_NUM,
+)
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
@@ -693,9 +697,9 @@ class PacketHandlerL2(
                 # The host can begin using the IP immediately
                 # after the first Announcement; the second is
                 # insurance against peers that missed the first.
-                for announce_idx in range(stack.ARP__ANNOUNCE_NUM):
+                for announce_idx in range(ARP__ANNOUNCE_NUM):
                     if announce_idx > 0:
-                        time.sleep(stack.ARP__ANNOUNCE_INTERVAL)
+                        time.sleep(ARP__ANNOUNCE_INTERVAL)
                     self._send_arp_announcement(ip4_unicast=ip4_host.address)
                 __debug__ and log(
                     "stack",
