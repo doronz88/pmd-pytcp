@@ -260,6 +260,11 @@ from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_solicitat
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdNeighborSolicitationCode,
 )
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__redirect import (
+    ICMP6__ND__REDIRECT__LEN,
+    Icmp6NdMessageRedirect,
+    Icmp6NdRedirectCode,
+)
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertisement import (
     ICMP6__ND__ROUTER_ADVERTISEMENT__LEN,
     Icmp6NdMessageRouterAdvertisement,
@@ -278,6 +283,10 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     ICMP6__ND__OPTION__PI__LEN,
     Icmp6NdOptionPi,
+)
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__redirected_header import (
+    ICMP6__ND__OPTION__REDIRECTED_HEADER__LEN,
+    Icmp6NdOptionRedirectedHeader,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
     ICMP6__ND__OPTION__SLLA__LEN,
@@ -537,8 +546,10 @@ __all__ = [
     "ICMP6__ND__NEIGHBOR_SOLICITATION__LEN",
     "ICMP6__ND__OPTION__LEN",
     "ICMP6__ND__OPTION__PI__LEN",
+    "ICMP6__ND__OPTION__REDIRECTED_HEADER__LEN",
     "ICMP6__ND__OPTION__SLLA__LEN",
     "ICMP6__ND__OPTION__TLLA__LEN",
+    "ICMP6__ND__REDIRECT__LEN",
     "ICMP6__ND__ROUTER_ADVERTISEMENT__LEN",
     "ICMP6__ND__ROUTER_SOLICITATION__LEN",
     "IP4__DEFAULT_TTL",
@@ -603,8 +614,11 @@ __all__ = [
     "Icmp6NdMessageNeighborAdvertisement",
     "Icmp6NdNeighborSolicitationCode",
     "Icmp6NdMessageNeighborSolicitation",
+    "Icmp6NdRedirectCode",
+    "Icmp6NdMessageRedirect",
     "Icmp6NdOption",
     "Icmp6NdOptionPi",
+    "Icmp6NdOptionRedirectedHeader",
     "Icmp6NdOptionSlla",
     "Icmp6NdOptionTlla",
     "Icmp6NdOptionType",

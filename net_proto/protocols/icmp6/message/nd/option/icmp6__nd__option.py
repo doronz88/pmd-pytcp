@@ -46,6 +46,7 @@ class Icmp6NdOptionType(ProtoOptionType):
     SLLA = 1
     TLLA = 2
     PI = 3
+    REDIRECTED_HEADER = 4
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

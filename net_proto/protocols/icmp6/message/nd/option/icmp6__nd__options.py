@@ -44,6 +44,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__redirected_header import (
+    Icmp6NdOptionRedirectedHeader,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
     Icmp6NdOptionSlla,
 )
@@ -150,6 +153,8 @@ class Icmp6NdOptions(ProtoOptions):
                     options.append(Icmp6NdOptionTlla.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.PI:
                     options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.REDIRECTED_HEADER:
+                    options.append(Icmp6NdOptionRedirectedHeader.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
 

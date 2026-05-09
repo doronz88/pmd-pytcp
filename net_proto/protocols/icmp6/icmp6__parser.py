@@ -72,6 +72,9 @@ from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_advertise
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__neighbor_solicitation import (
     Icmp6NdMessageNeighborSolicitation,
 )
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__redirect import (
+    Icmp6NdMessageRedirect,
+)
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertisement import (
     Icmp6NdMessageRouterAdvertisement,
 )
@@ -131,6 +134,8 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 return Icmp6NdMessageNeighborSolicitation
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
                 return Icmp6NdMessageNeighborAdvertisement
+            case Icmp6Type.ND__REDIRECT:
+                return Icmp6NdMessageRedirect
             case Icmp6Type.MLD2__REPORT:
                 return Icmp6Mld2MessageReport
             case _:
