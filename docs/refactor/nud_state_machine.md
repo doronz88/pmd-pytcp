@@ -385,7 +385,7 @@ Per-phase, each landing as one or more focused commits.
 Phases are mechanically reversible: each ends in a green
 test suite, lint clean, and shippable state.
 
-### Phase 1 — `NeighborCache[A]` module + unit tests
+### Phase 1 — `NeighborCache[A]` module + unit tests ✅ shipped (this commit)
 
 `pytcp/lib/neighbor.py` plus unit tests at
 `pytcp/tests/unit/lib/test__lib__neighbor.py`. The cache is

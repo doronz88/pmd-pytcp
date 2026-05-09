@@ -1,0 +1,418 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the generic Neighbour Unreachability
+Detection state machine — PyTCP's equivalent of Linux's
+'net/core/neighbour.c'. The 'NeighborCache[A]' class is
+generic over address type so the IPv4 ARP cache and the
+IPv6 ND cache share a single FSM implementation; per-protocol
+adapters supply only the wire-level solicit / flush hooks.
+
+State transitions follow RFC 4861 §7.3.2:
+
+    NUD_NONE → NUD_INCOMPLETE  (find_entry on miss)
+    NUD_INCOMPLETE → NUD_REACHABLE  (Reply received)
+    NUD_INCOMPLETE → NUD_FAILED  (after MAX_MULTICAST_SOLICIT)
+    NUD_REACHABLE → NUD_STALE  (after REACHABLE_TIME)
+    NUD_STALE → NUD_DELAY  (TX uses entry)
+    NUD_DELAY → NUD_PROBE  (after DELAY_FIRST_PROBE_TIME)
+    NUD_PROBE → NUD_REACHABLE  (Reply received)
+    NUD_PROBE → NUD_FAILED  (after MAX_UNICAST_SOLICIT)
+
+Plus the upper-layer fastpath:
+    {STALE, DELAY, PROBE} → NUD_REACHABLE  (confirm_reachability)
+
+PERMANENT entries skip every transition.
+
+Design + per-phase migration plan: docs/refactor/nud_state_machine.md
+
+pytcp/lib/neighbor.py
+
+ver 3.0.4
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from dataclasses import dataclass, field
+from enum import auto
+from typing import TYPE_CHECKING, Any, Callable, override
+
+from pytcp.lib.logger import log
+from pytcp.lib.name_enum import NameEnum
+from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+
+if TYPE_CHECKING:
+    from net_addr import Ip4Address, Ip6Address, MacAddress
+
+
+# Type alias for the address parameter — covered by net_addr's
+# Ip4Address and Ip6Address. Defined as a string here to avoid
+# importing the heavy address types at module load time.
+type _AddressT = "Ip4Address | Ip6Address"
+
+
+class NudState(NameEnum):
+    """
+    The NUD finite-state-machine states (RFC 4861 §7.3.2 +
+    PERMANENT for operator-configured static entries).
+    """
+
+    INCOMPLETE = auto()
+    REACHABLE = auto()
+    STALE = auto()
+    DELAY = auto()
+    PROBE = auto()
+    FAILED = auto()
+    PERMANENT = auto()
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class NeighborEntry[A: "Ip4Address | Ip6Address"]:
+    """
+    Per-neighbour FSM state. Frozen by codebase convention
+    (coding_style.md §7); state transitions use
+    'object.__setattr__' to mutate the instance — same pattern
+    as 'CacheEntry.hit_count__increment'.
+    """
+
+    address: A
+    mac_address: "MacAddress | None" = None
+    state: NudState = NudState.INCOMPLETE
+    state_changed_at: float = 0.0
+    probe_count: int = 0
+    queued_packet: object = field(default=None)
+    last_used_at: float = 0.0
+
+
+# Solicit callback signature: (address, cached_mac).
+# 'cached_mac' is None for INCOMPLETE-state solicits
+# (multicast NS / broadcast Request) and set to the cached
+# MAC for PROBE-state solicits (unicast).
+type SolicitCallback[A: "Ip4Address | Ip6Address"] = Callable[[A, "MacAddress | None"], None]
+
+# Flush callback signature: (queued_packet, resolved_mac).
+# Called from 'add_entry' once an INCOMPLETE entry resolves
+# and a packet was queued via 'enqueue_pending'.
+type FlushCallback = Callable[[object, "MacAddress"], None]
+
+
+class NeighborCache[A: "Ip4Address | Ip6Address"](Subsystem):
+    """
+    Generic neighbour cache implementing the RFC 4861 §7.3.2
+    NUD state machine, parameterised over address type so
+    ARP (IPv4) and ND (IPv6) share one FSM.
+    """
+
+    _entries: dict[A, NeighborEntry[A]]
+    _solicit_callback: SolicitCallback[A]
+    _flush_callback: "FlushCallback | None"
+    _lock: threading.Lock
+
+    @override
+    def __init__(
+        self,
+        *,
+        name: str,
+        solicit_callback: SolicitCallback[A],
+        flush_callback: "FlushCallback | None" = None,
+    ) -> None:
+        """
+        Initialise the cache with the protocol-specific TX
+        hooks. The 'solicit_callback' is mandatory; the
+        'flush_callback' is optional (caches without queued-
+        packet semantics can omit it).
+        """
+
+        # Set the Subsystem name BEFORE 'super().__init__' since
+        # the base class logs '_subsystem_name' in its init.
+        self._subsystem_name = name
+        super().__init__()
+
+        self._entries = {}
+        self._solicit_callback = solicit_callback
+        self._flush_callback = flush_callback
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------
+    # Public surface — RX / TX integration points.
+    # ------------------------------------------------------------
+
+    def find_entry(self, address: A) -> "MacAddress | None":
+        """
+        Look up the MAC for an address. Drives the on-TX
+        side of the FSM:
+            NONE / missing → create INCOMPLETE, fire solicit, return None.
+            INCOMPLETE → return None (loop drives retransmits).
+            REACHABLE → return MAC.
+            STALE → transition to DELAY, return MAC.
+            DELAY → return MAC.
+            PROBE → return MAC.
+            FAILED → return None (FSM has given up).
+            PERMANENT → return MAC.
+        """
+
+        with self._lock:
+            entry = self._entries.get(address)
+            now = time.monotonic()
+            if entry is None:
+                self._entries[address] = NeighborEntry(
+                    address=address,
+                    state=NudState.INCOMPLETE,
+                    state_changed_at=now,
+                    probe_count=1,
+                    last_used_at=now,
+                )
+                __debug__ and log(
+                    "stack",
+                    f"NUD: {address} INCOMPLETE — first solicit",
+                )
+                self._solicit_callback(address, None)
+                return None
+
+            object.__setattr__(entry, "last_used_at", now)
+
+            if entry.state in (NudState.REACHABLE, NudState.DELAY, NudState.PROBE, NudState.PERMANENT):
+                return entry.mac_address
+            if entry.state is NudState.STALE:
+                # First TX after staleness → DELAY (grace
+                # window for upper-layer reachability confirm
+                # to fire before we send a unicast probe).
+                self._transition(entry, NudState.DELAY, now)
+                return entry.mac_address
+            # INCOMPLETE / FAILED: no MAC available.
+            return None
+
+    def add_entry(self, address: A, mac_address: "MacAddress") -> None:
+        """
+        Drive the on-Reply side of the FSM. Transitions the
+        named entry to REACHABLE (creating it if absent) and
+        flushes any queued packet through the flush_callback.
+        PERMANENT entries are not overridden — operator-
+        configured static neighbours win over dynamic learning.
+        """
+
+        with self._lock:
+            now = time.monotonic()
+            entry = self._entries.get(address)
+
+            if entry is not None and entry.state is NudState.PERMANENT:
+                __debug__ and log(
+                    "stack",
+                    f"NUD: {address} add_entry skipped — entry is PERMANENT",
+                )
+                return
+
+            if entry is None:
+                entry = NeighborEntry(
+                    address=address,
+                    mac_address=mac_address,
+                    state=NudState.REACHABLE,
+                    state_changed_at=now,
+                    last_used_at=now,
+                )
+                self._entries[address] = entry
+                __debug__ and log(
+                    "stack",
+                    f"NUD: {address} → {mac_address} (REACHABLE, fresh)",
+                )
+                return
+
+            queued_packet = entry.queued_packet
+            object.__setattr__(entry, "mac_address", mac_address)
+            object.__setattr__(entry, "queued_packet", None)
+            object.__setattr__(entry, "probe_count", 0)
+            self._transition(entry, NudState.REACHABLE, now)
+
+            if queued_packet is not None and self._flush_callback is not None:
+                __debug__ and log(
+                    "stack",
+                    f"NUD: {address} resolved → flushing queued packet",
+                )
+                self._flush_callback(queued_packet, mac_address)
+
+    def add_permanent_entry(self, address: A, mac_address: "MacAddress") -> None:
+        """
+        Install a PERMANENT entry — an operator-configured
+        static neighbour that the FSM never ages out and
+        dynamic learning never overrides.
+        """
+
+        with self._lock:
+            now = time.monotonic()
+            self._entries[address] = NeighborEntry(
+                address=address,
+                mac_address=mac_address,
+                state=NudState.PERMANENT,
+                state_changed_at=now,
+                last_used_at=now,
+            )
+            __debug__ and log(
+                "stack",
+                f"NUD: {address} → {mac_address} (PERMANENT)",
+            )
+
+    def confirm_reachability(self, address: A) -> None:
+        """
+        Upper-layer fastpath: promote a STALE / DELAY / PROBE
+        entry directly to REACHABLE without firing a unicast
+        probe. Called by TCP on in-window ACK
+        (RFC 4861 §7.3.1). Silent no-op for INCOMPLETE,
+        FAILED, PERMANENT, and absent entries — the FSM has
+        nothing useful to do with the confirm in those states.
+        """
+
+        with self._lock:
+            entry = self._entries.get(address)
+            if entry is None:
+                return
+            if entry.state in (NudState.STALE, NudState.DELAY, NudState.PROBE):
+                self._transition(entry, NudState.REACHABLE, time.monotonic())
+                object.__setattr__(entry, "probe_count", 0)
+
+    def enqueue_pending(self, address: A, packet: object) -> None:
+        """
+        Save the most recent outbound packet for an
+        INCOMPLETE address so 'add_entry' can dispatch it
+        once the MAC is resolved (RFC 1122 §2.3.2.2).
+        Subsequent calls overwrite — only the latest is
+        kept, matching the SHOULD's "at least one (the
+        latest)" wording.
+        """
+
+        with self._lock:
+            entry = self._entries.get(address)
+            if entry is None:
+                # No outstanding INCOMPLETE entry — caller
+                # forgot to 'find_entry' first. Silently
+                # ignore rather than raise; the protocol's
+                # next find will create the entry.
+                return
+            object.__setattr__(entry, "queued_packet", packet)
+
+    # ------------------------------------------------------------
+    # Subsystem loop — timer-driven transitions.
+    # ------------------------------------------------------------
+
+    @override
+    def _subsystem_loop(self) -> None:
+        """
+        Per-iteration timer-driven transitions:
+            REACHABLE → STALE  after REACHABLE_TIME.
+            DELAY → PROBE  after DELAY_FIRST_PROBE_TIME (fires unicast solicit).
+            INCOMPLETE / PROBE  retransmit each RETRANS_TIMER until cap.
+            INCOMPLETE → FAILED  past MAX_MULTICAST_SOLICIT.
+            PROBE → FAILED  past MAX_UNICAST_SOLICIT.
+        """
+
+        # Read the live sysctl values once per loop iteration
+        # via qualified access — operator overrides land
+        # immediately on the next iteration.
+        from pytcp.lib import neighbor__constants as nbr_const
+
+        now = time.monotonic()
+        # Snapshot keys to allow mutation during iteration.
+        with self._lock:
+            addresses = list(self._entries.keys())
+
+        for address in addresses:
+            with self._lock:
+                entry = self._entries.get(address)
+                if entry is None:
+                    continue
+
+                state = entry.state
+                age = now - entry.state_changed_at
+
+                if state is NudState.REACHABLE and age >= nbr_const.NEIGHBOR__REACHABLE_TIME:
+                    self._transition(entry, NudState.STALE, now)
+                    continue
+
+                if state is NudState.DELAY and age >= nbr_const.NEIGHBOR__DELAY_FIRST_PROBE_TIME:
+                    self._transition(entry, NudState.PROBE, now)
+                    object.__setattr__(entry, "probe_count", 1)
+                    cached_mac = entry.mac_address
+                # Note: the unicast solicit fires below, OUTSIDE
+                # the lock, to avoid holding the lock through the
+                # callback (the protocol-side TX path may itself
+                # take other locks).
+                elif state is NudState.INCOMPLETE:
+                    if entry.probe_count >= nbr_const.NEIGHBOR__MAX_MULTICAST_SOLICIT:
+                        self._transition(entry, NudState.FAILED, now)
+                        continue
+                    if age >= nbr_const.NEIGHBOR__RETRANS_TIMER:
+                        object.__setattr__(entry, "probe_count", entry.probe_count + 1)
+                        object.__setattr__(entry, "state_changed_at", now)
+                        cached_mac = None
+                    else:
+                        continue
+                elif state is NudState.PROBE:
+                    if entry.probe_count >= nbr_const.NEIGHBOR__MAX_UNICAST_SOLICIT:
+                        self._transition(entry, NudState.FAILED, now)
+                        continue
+                    if age >= nbr_const.NEIGHBOR__RETRANS_TIMER:
+                        object.__setattr__(entry, "probe_count", entry.probe_count + 1)
+                        object.__setattr__(entry, "state_changed_at", now)
+                        cached_mac = entry.mac_address
+                    else:
+                        continue
+                else:
+                    continue
+
+            # Outside the lock — fire the solicit. The
+            # 'cached_mac' local was set above for the three
+            # branches that need to solicit (DELAY → PROBE,
+            # INCOMPLETE retrans, PROBE retrans).
+            self._solicit_callback(address, cached_mac)
+
+        # Inter-iteration sleep — Subsystem-base convention.
+        self._event__stop_subsystem.wait(SUBSYSTEM_SLEEP_TIME__SEC)
+
+    # ------------------------------------------------------------
+    # Internal helpers.
+    # ------------------------------------------------------------
+
+    def _transition(self, entry: NeighborEntry[A], new_state: NudState, now: float) -> None:
+        """
+        Update an entry's state + state_changed_at in lockstep.
+        The instance is frozen; mutation goes through
+        'object.__setattr__' (codebase convention).
+        """
+
+        old_state = entry.state
+        object.__setattr__(entry, "state", new_state)
+        object.__setattr__(entry, "state_changed_at", now)
+        __debug__ and log(
+            "stack",
+            f"NUD: {entry.address} {old_state} → {new_state}",
+        )
+
+
+# Suppress "unused import" diagnostics for symbols that are
+# part of the public surface but only consumed by sibling
+# modules (subclasses, tests) — pyright otherwise warns on
+# 'Any' which is held for future signature use.
+_ = Any
