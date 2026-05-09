@@ -319,6 +319,8 @@ def init(
     ip6_host: Ip6Host | None = (None if IP6_ADDRESS is None else Ip6Host(IP6_ADDRESS, gateway=IP6_GATEWAY)),
     ip6_gua_autoconfig: bool = True if IP6_ADDRESS is None else False,
     ip6_lla_autoconfig: bool = True,
+    arp_cache_max_age: int | None = None,
+    arp_cache_refresh_time: int | None = None,
 ) -> None:
     """
     Initialize stack components.
@@ -326,6 +328,27 @@ def init(
 
     global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler
     global interface_mtu, stack_initialized
+
+    # Apply user overrides for the ARP cache aging timeouts before
+    # any subsystem is constructed — sysctl-style mutation of the
+    # live constants in 'arp__constants' (Linux equivalent:
+    # net.ipv4.neigh.default.{base_reachable_time, gc_stale_time}).
+    # The ArpCache reads these via qualified access so a mutation
+    # here is picked up by the next loop iteration.
+    from pytcp.protocols.arp import arp__constants
+
+    new_max_age = arp_cache_max_age if arp_cache_max_age is not None else arp__constants.ARP__CACHE__ENTRY_MAX_AGE
+    new_refresh = (
+        arp_cache_refresh_time if arp_cache_refresh_time is not None else arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
+    )
+    if new_refresh >= new_max_age:
+        raise ValueError(
+            f"arp_cache_refresh_time ({new_refresh}) must be strictly less than "
+            f"arp_cache_max_age ({new_max_age}); the refresh-window arithmetic "
+            f"in the cache loop requires REFRESH_TIME < MAX_AGE."
+        )
+    arp__constants.ARP__CACHE__ENTRY_MAX_AGE = new_max_age
+    arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME = new_refresh
 
     timer = Timer()
 

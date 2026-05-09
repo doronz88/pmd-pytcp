@@ -802,6 +802,170 @@ class TestStackInitSharedPacketStats(TestCase):
         )
 
 
+class TestStackInitArpCacheConfig(TestCase):
+    """
+    The 'stack.init()' ARP-cache-timeout configuration tests.
+
+    Pin that the 'arp_cache_max_age' / 'arp_cache_refresh_time'
+    kwargs surface user-tunable equivalents of the Linux
+    sysctls 'net.ipv4.neigh.default.{base_reachable_time,
+    gc_stale_time}': when supplied, they override the
+    compile-time defaults that the ARP cache loop reads.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the constants (and any module-level singletons
+        'init()' rebinds) so each test can roll back cleanly.
+        """
+
+        from pytcp.protocols.arp import arp__constants
+
+        self._arp__constants = arp__constants
+        self._snapshot_max_age = arp__constants.ARP__CACHE__ENTRY_MAX_AGE
+        self._snapshot_refresh = arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in (
+                "timer",
+                "rx_ring",
+                "tx_ring",
+                "arp_cache",
+                "nd_cache",
+                "packet_handler",
+                "interface_mtu",
+                "stack_initialized",
+            )
+        }
+
+    def tearDown(self) -> None:
+        """
+        Restore the constants and module-level singletons.
+        """
+
+        self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE = self._snapshot_max_age
+        self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME = self._snapshot_refresh
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+
+    def _init_l2(self, **extra: object) -> None:
+        """
+        Run 'stack.init()' on the L2 path with the rings / handler
+        patched out so the kwargs path is exercised in isolation.
+        """
+
+        with (
+            patch.object(stack, "TxRing"),
+            patch.object(stack, "RxRing"),
+            patch.object(stack, "PacketHandlerL2"),
+            patch.object(stack, "ArpCache"),
+            patch.object(stack, "NdCache"),
+        ):
+            stack.init(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mtu=1500,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+                ip4_support=False,
+                ip4_host=None,
+                ip4_dhcp=False,
+                ip6_support=False,
+                ip6_host=None,
+                ip6_gua_autoconfig=False,
+                ip6_lla_autoconfig=False,
+                **extra,  # type: ignore[arg-type]
+            )
+
+    def test__stack__init__arp_cache_max_age_kwarg_overrides_constant(self) -> None:
+        """
+        Ensure 'stack.init(arp_cache_max_age=600)' sets the live
+        'ARP__CACHE__ENTRY_MAX_AGE' constant in 'arp__constants'
+        to 600 so the cache loop ages entries by the user value.
+
+        Reference: RFC 1122 §2.3.2.1 (cache timeout SHOULD be configurable).
+        """
+
+        self._init_l2(arp_cache_max_age=600, arp_cache_refresh_time=60)
+
+        self.assertEqual(
+            self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE,
+            600,
+            msg=(
+                "stack.init(arp_cache_max_age=600) must mutate "
+                "arp__constants.ARP__CACHE__ENTRY_MAX_AGE in place; "
+                "the cache loop reads this constant at runtime."
+            ),
+        )
+
+    def test__stack__init__arp_cache_refresh_time_kwarg_overrides_constant(self) -> None:
+        """
+        Ensure 'stack.init(arp_cache_refresh_time=60)' sets the
+        live 'ARP__CACHE__ENTRY_REFRESH_TIME' constant to 60.
+
+        Reference: RFC 1122 §2.3.2.1 (cache timeout SHOULD be configurable).
+        """
+
+        self._init_l2(arp_cache_max_age=600, arp_cache_refresh_time=60)
+
+        self.assertEqual(
+            self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME,
+            60,
+            msg=(
+                "stack.init(arp_cache_refresh_time=60) must mutate "
+                "arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME in place."
+            ),
+        )
+
+    def test__stack__init__arp_cache_default_kwargs_preserve_constants(self) -> None:
+        """
+        Ensure calling 'stack.init()' without the ARP-cache kwargs
+        leaves the compile-time defaults untouched — no kwarg, no
+        change to the live constants.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        before_max_age = self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE
+        before_refresh = self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
+
+        self._init_l2()
+
+        self.assertEqual(
+            self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE,
+            before_max_age,
+            msg="ARP__CACHE__ENTRY_MAX_AGE must be unchanged when no kwarg is passed.",
+        )
+        self.assertEqual(
+            self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME,
+            before_refresh,
+            msg="ARP__CACHE__ENTRY_REFRESH_TIME must be unchanged when no kwarg is passed.",
+        )
+
+    def test__stack__init__arp_cache_invalid_refresh_geq_max_rejected(self) -> None:
+        """
+        Ensure 'stack.init()' rejects a configuration where
+        'arp_cache_refresh_time' is greater than or equal to
+        'arp_cache_max_age'. The refresh-window arithmetic in the
+        cache loop relies on REFRESH_TIME < MAX_AGE; configurations
+        that violate this would either skip the refresh path
+        entirely (refresh == max) or compute a negative refresh
+        window (refresh > max).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            self._init_l2(arp_cache_max_age=10, arp_cache_refresh_time=10)
+
+        with self.assertRaises(ValueError):
+            self._init_l2(arp_cache_max_age=10, arp_cache_refresh_time=20)
+
+
 class TestStackPythonVersionGuard(TestCase):
     """
     The Python-version-guard tests at module import time.

@@ -40,11 +40,8 @@ from typing import TYPE_CHECKING, override
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
-from pytcp.protocols.arp.arp__constants import (
-    ARP__CACHE__ENTRY_MAX_AGE,
-    ARP__CACHE__ENTRY_REFRESH_TIME,
-    ARP__REQUEST_RATE_LIMIT,
-)
+from pytcp.protocols.arp import arp__constants
+from pytcp.protocols.arp.arp__constants import ARP__REQUEST_RATE_LIMIT
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, MacAddress
@@ -145,7 +142,11 @@ class ArpCache(Subsystem):
                 continue
 
             # If entry age is over maximum age then discard the entry.
-            if time.monotonic() - self._arp_cache[ip4_address].create_time > ARP__CACHE__ENTRY_MAX_AGE:
+            # Read the constants via qualified access on
+            # 'arp__constants' so 'stack.init(arp_cache_max_age=...,
+            # arp_cache_refresh_time=...)' overrides take effect at
+            # runtime — sysctl-style live mutability of the timeouts.
+            if time.monotonic() - self._arp_cache[ip4_address].create_time > arp__constants.ARP__CACHE__ENTRY_MAX_AGE:
                 mac_address = self._arp_cache.pop(ip4_address).mac_address
                 __debug__ and log(
                     "arp-c",
@@ -159,7 +160,7 @@ class ArpCache(Subsystem):
             # host on the segment for a mapping we already have.
             elif (
                 time.monotonic() - self._arp_cache[ip4_address].create_time
-                > ARP__CACHE__ENTRY_MAX_AGE - ARP__CACHE__ENTRY_REFRESH_TIME
+                > arp__constants.ARP__CACHE__ENTRY_MAX_AGE - arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
             ) and self._arp_cache[ip4_address].hit_count:
                 cached_mac = self._arp_cache[ip4_address].mac_address
                 self._arp_cache[ip4_address].hit_count__reset()

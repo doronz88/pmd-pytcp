@@ -309,7 +309,7 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
                 return_value=False,
             ),
             patch(
-                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
+                "pytcp.protocols.arp.arp__constants.ARP__CACHE__ENTRY_MAX_AGE",
                 1,
             ),
         ):
@@ -345,7 +345,7 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
                 return_value=False,
             ),
             patch(
-                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
+                "pytcp.protocols.arp.arp__constants.ARP__CACHE__ENTRY_MAX_AGE",
                 1,
             ),
         ):
@@ -395,11 +395,11 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
                 return_value=False,
             ),
             patch(
-                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_MAX_AGE",
+                "pytcp.protocols.arp.arp__constants.ARP__CACHE__ENTRY_MAX_AGE",
                 10,
             ),
             patch(
-                "pytcp.protocols.arp.arp__cache.ARP__CACHE__ENTRY_REFRESH_TIME",
+                "pytcp.protocols.arp.arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME",
                 8,
             ),
             patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),

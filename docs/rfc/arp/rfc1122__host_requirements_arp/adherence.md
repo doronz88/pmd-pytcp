@@ -62,18 +62,31 @@ detail and PyTCP's approach is consistent.
 > "If this mechanism involves a timeout, it SHOULD be
 > possible to configure the timeout value."
 
-**Adherence:** **partial**. The two timeout values
+**Adherence:** **met**. The two timeout values
 (`ARP__CACHE__ENTRY_MAX_AGE`,
-`ARP__CACHE__ENTRY_REFRESH_TIME`) live as module-level
-constants at `pytcp/stack/__init__.py:137-138`. They are
-"configurable" only by editing the source — there is no
-`stack.init()` parameter, no environment variable, and no
-sysctl-equivalent. RFC 1122 §2.3.2.1 IMPLEMENTATION (1)
-calls out "for proxy ARP situations, the timeout needs to
-be on the order of a minute" — PyTCP defaults to
-1 hour, which would be inappropriate on a proxy-ARP-heavy
-LAN, and there is no run-time override. SHOULD-strength
-deviation; not a blocker for typical host deployments.
+`ARP__CACHE__ENTRY_REFRESH_TIME`) live in
+`pytcp/protocols/arp/arp__constants.py` as the compile-time
+defaults (3600 s / 300 s). `pytcp.stack.init()` accepts
+`arp_cache_max_age=` and `arp_cache_refresh_time=` kwargs
+that override the live constants in place — sysctl-style
+mutation of the module attributes — so the cache loop reads
+the user value at runtime. The Linux equivalents are
+`net.ipv4.neigh.default.base_reachable_time` and
+`net.ipv4.neigh.default.gc_stale_time`. The cache loop reads
+both via qualified access on `arp__constants` so a mutation
+through `stack.init()` is picked up by the next iteration.
+A REFRESH_TIME < MAX_AGE invariant is enforced at init
+time; configurations that violate it raise `ValueError`.
+
+For RFC 1122 §2.3.2.1's proxy-ARP-on-the-order-of-a-minute
+guidance, an operator running on a proxy-ARP-heavy LAN can
+now run `stack.init(arp_cache_max_age=60,
+arp_cache_refresh_time=15)` to dial in the appropriate
+timeout without editing the source.
+
+Per-interface timeouts (Linux's
+`net.ipv4.neigh.<iface>.*` namespace) are out of scope
+until multi-interface support lands (Phase 2).
 
 > "A mechanism to prevent ARP flooding (repeatedly sending
 > an ARP Request for the same IP address, at a high rate)
@@ -270,7 +283,7 @@ requirements; pasting it here for traceability:
 |----------------------------------------------|-------------|------|--------|-----|-----------------------------|
 | Flush out-of-date ARP cache entries          | 2.3.2.1     | x    |        |     | met                         |
 | Prevent ARP floods                           | 2.3.2.1     | x    |        |     | **not met** — see §2.3.2.1  |
-| Cache timeout configurable                   | 2.3.2.1     |      | x      |     | partial (compile-time only) |
+| Cache timeout configurable                   | 2.3.2.1     |      | x      |     | met (stack.init kwargs)     |
 | Save at least one (latest) unresolved pkt    | 2.3.2.2     |      | x      |     | **not met** — see §2.3.2.2  |
 
 Two of the four requirements (one MUST, one SHOULD) are
@@ -375,7 +388,7 @@ assert exactly 1 packet is sent post-resolution.
 | §2.3.2.1  | Flush out-of-date entries via timeout                 | locked in                                                  |
 | §2.3.2.1  | Timeout restarted on refresh                          | locked in indirectly                                       |
 | §2.3.2.1  | ARP flood prevention                                  | n/a (gap not closed; add test with fix — see §2.3.2.1)     |
-| §2.3.2.1  | Timeout configurable                                  | n/a (gap not closed; add test with fix)                    |
+| §2.3.2.1  | Timeout configurable                                  | locked in (unit: TestStackInitArpCacheConfig)              |
 | §2.3.2.1  | Refresh-poll form (unicast IMPL (2))                  | locked in (unit: cache loop + arp__tx helper)              |
 | §2.3.2.2  | Save at least one unresolved packet                   | n/a (gap not closed; add test with fix — see §2.3.2.2)     |
 
@@ -386,7 +399,7 @@ assert exactly 1 packet is sent post-resolution.
 | Aspect                                 | Status                                              |
 |----------------------------------------|-----------------------------------------------------|
 | Flush out-of-date entries (MUST)       | met                                                 |
-| Configurable timeout (SHOULD)          | partial (compile-time only; SHOULD-deviation)       |
+| Configurable timeout (SHOULD)          | met (stack.init kwargs; per-interface deferred to Phase 2) |
 | Prevent ARP floods (MUST)              | **not met**                                         |
 | Timeout restarted on refresh           | met                                                 |
 | Refresh-poll form                      | met (unicast IMPL (2)); failed-poll counter deferred to NUD work |
