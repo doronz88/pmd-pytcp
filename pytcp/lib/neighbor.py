@@ -388,8 +388,112 @@ class NeighborCache[A: "Ip4Address | Ip6Address"](Subsystem):
             # INCOMPLETE retrans, PROBE retrans).
             self._solicit_callback(address, cached_mac)
 
+        # Phase 5 — bounded-cache GC pass. Runs after the
+        # state-transition pass so freshly-created FAILED
+        # entries are immediately eviction-eligible at the
+        # current cache size.
+        self._gc_pass(now)
+
         # Inter-iteration sleep — Subsystem-base convention.
         self._event__stop_subsystem.wait(SUBSYSTEM_SLEEP_TIME__SEC)
+
+    def _gc_pass(self, now: float) -> None:
+        """
+        Three-tier garbage-collection pass driven by the
+        Linux 'gc_thresh1' / 'gc_thresh2' / 'gc_thresh3'
+        sysctl trio:
+
+            size <= gc_thresh1  no-op (small caches never GC).
+            size <= gc_thresh2  evict FAILED entries only (cheap pruning).
+            size <= gc_thresh3  also evict STALE entries past gc_stale_time.
+            size  > gc_thresh3  hard cap; evict aggressively
+                                 (FAILED → STALE → REACHABLE LRU)
+                                 until size <= gc_thresh3.
+
+        Entries that are NEVER eviction-eligible:
+          - PERMANENT (operator-configured static neighbours).
+          - INCOMPLETE / PROBE / DELAY entries with a
+            'queued_packet' set (would lose the queued TX).
+
+        Eviction priority is deliberately conservative —
+        FAILED first (no working neighbour to lose), then
+        STALE oldest (last positive evidence of reachability
+        is the gc_stale_time-old timestamp), then REACHABLE
+        by 'last_used_at' LRU (active flows survive longest).
+        """
+
+        from pytcp.lib import neighbor__constants as nbr_const
+
+        with self._lock:
+            size = len(self._entries)
+            thresh1 = nbr_const.NEIGHBOR__GC_THRESH1
+            thresh2 = nbr_const.NEIGHBOR__GC_THRESH2
+            thresh3 = nbr_const.NEIGHBOR__GC_THRESH3
+            stale_time = nbr_const.NEIGHBOR__GC_STALE_TIME
+
+            if size <= thresh1:
+                return
+
+            evictable = [
+                entry
+                for entry in self._entries.values()
+                if entry.state is not NudState.PERMANENT and entry.queued_packet is None
+            ]
+
+            # Tier 1 — FAILED entries (oldest first).
+            failed = sorted(
+                (e for e in evictable if e.state is NudState.FAILED),
+                key=lambda e: e.state_changed_at,
+            )
+            for entry in failed:
+                del self._entries[entry.address]
+                size -= 1
+                __debug__ and log(
+                    "stack",
+                    f"NUD: GC evicted FAILED entry {entry.address}",
+                )
+
+            # Tier 2 — STALE entries past gc_stale_time (only
+            # when above gc_thresh2).
+            if size > thresh2:
+                stale_eligible = sorted(
+                    (
+                        e
+                        for e in evictable
+                        if e.state is NudState.STALE
+                        and now - e.state_changed_at >= stale_time
+                        and e.address in self._entries
+                    ),
+                    key=lambda e: e.state_changed_at,
+                )
+                for entry in stale_eligible:
+                    if size <= thresh2:
+                        break
+                    del self._entries[entry.address]
+                    size -= 1
+                    __debug__ and log(
+                        "stack",
+                        f"NUD: GC evicted STALE entry {entry.address}",
+                    )
+
+            # Tier 3 — hard cap. Evict any remaining entries
+            # in LRU order (oldest 'last_used_at' first) until
+            # size <= gc_thresh3. PERMANENT and queued-packet
+            # entries are still skipped.
+            if size > thresh3:
+                lru = sorted(
+                    (e for e in evictable if e.address in self._entries),
+                    key=lambda e: e.last_used_at,
+                )
+                for entry in lru:
+                    if size <= thresh3:
+                        break
+                    del self._entries[entry.address]
+                    size -= 1
+                    __debug__ and log(
+                        "stack",
+                        f"NUD: GC evicted (hard cap) {entry.address} state={entry.state}",
+                    )
 
     # ------------------------------------------------------------
     # Internal helpers.

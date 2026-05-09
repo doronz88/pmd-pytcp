@@ -439,7 +439,7 @@ This phase wires the TCP integration: in
 call the hook for the peer's IPv4 / IPv6 address. Effort
 ~20 lines + tests.
 
-### Phase 5 — Bounded cache + GC (#13)
+### Phase 5 — Bounded cache + GC (#13) ✅ shipped (this commit)
 
 `_gc_pass` implementation, three sysctl gc_thresh entries,
 eviction priority order. Effort ~50 lines + tests.

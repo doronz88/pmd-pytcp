@@ -81,6 +81,14 @@ NEIGHBOR__GC_THRESH1 = 128
 NEIGHBOR__GC_THRESH2 = 512
 NEIGHBOR__GC_THRESH3 = 1024
 
+# Time a STALE entry must persist before becoming
+# GC-eligible at gc_thresh2 (Linux 'net.ipv4.neigh.default.
+# gc_stale_time'; default 60 seconds). Distinct from
+# 'reachable_time' (which gates REACHABLE → STALE) — this
+# gates STALE → eviction once cache pressure crosses
+# gc_thresh2.
+NEIGHBOR__GC_STALE_TIME = 60
+
 
 def _is_non_negative_int(name: str) -> Any:
     """
@@ -162,6 +170,14 @@ _register(
     default=NEIGHBOR__GC_THRESH3,
     validator=_is_non_negative_int("neighbor.gc_thresh3"),
     description="GC hard cap; eviction MUST run above this size (default 1024).",
+)
+_register(
+    key="neighbor.gc_stale_time",
+    module_name=__name__,
+    attr="NEIGHBOR__GC_STALE_TIME",
+    default=NEIGHBOR__GC_STALE_TIME,
+    validator=_is_positive_int("neighbor.gc_stale_time"),
+    description="Time STALE entries must age before GC-eligible above gc_thresh2, seconds.",
 )
 
 

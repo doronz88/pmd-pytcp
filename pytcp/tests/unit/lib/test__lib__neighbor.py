@@ -834,3 +834,254 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
             30,
             msg="Override must restore the default on context exit.",
         )
+
+
+class TestNeighborCacheGcPass(_NeighborCacheFixture):
+    """
+    The bounded-cache GC tests (Phase 5 of the NUD plan).
+
+    Pin the three-tier eviction policy: below 'gc_thresh1'
+    no-op, above 'gc_thresh2' evict FAILED + stale-past-
+    'gc_stale_time' STALE, above 'gc_thresh3' hard cap forces
+    LRU eviction. PERMANENT entries and INCOMPLETE entries
+    holding a queued packet are never evicted regardless of
+    cache size.
+    """
+
+    def _populate(self, count: int, *, base: int = 1) -> list[Ip4Address]:
+        """
+        Bulk-populate the cache with REACHABLE entries at
+        sequential addresses. Returns the list of addresses
+        in insertion order.
+        """
+
+        addrs = [Ip4Address(f"10.0.{i // 256}.{i % 256}") for i in range(base, base + count)]
+        with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+            for a in addrs:
+                self._cache.add_entry(a, MAC_A)
+        return addrs
+
+    def _force_state(self, address: Ip4Address, state: NudState, *, when: float = 1000.0) -> None:
+        """
+        Drop an entry into the named state at a specific
+        'state_changed_at'. Bypasses the FSM transitions to
+        keep test setup tight.
+        """
+
+        entry = self._cache._entries[address]
+        object.__setattr__(entry, "state", state)
+        object.__setattr__(entry, "state_changed_at", when)
+
+    def test__lib__neighbor__gc_below_thresh1_is_no_op(self) -> None:
+        """
+        Ensure a cache populated below 'gc_thresh1' is left
+        intact by the GC pass — small caches never collect.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with sysctl_module.override("neighbor.gc_thresh1", 10):
+            self._populate(5)
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertEqual(
+                len(self._cache._entries),
+                5,
+                msg="GC must NOT evict any entry while size <= gc_thresh1.",
+            )
+
+    def test__lib__neighbor__gc_evicts_failed_above_thresh1(self) -> None:
+        """
+        Ensure the GC pass evicts FAILED entries first when
+        cache size crosses 'gc_thresh1'. FAILED is the
+        cheapest eviction — no working neighbour to lose.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with sysctl_module.override("neighbor.gc_thresh1", 2):
+            addrs = self._populate(5)
+            # Mark addrs[0] and addrs[1] as FAILED.
+            self._force_state(addrs[0], NudState.FAILED)
+            self._force_state(addrs[1], NudState.FAILED)
+
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertNotIn(
+                addrs[0],
+                self._cache._entries,
+                msg="FAILED entry must be evicted by GC above gc_thresh1.",
+            )
+            self.assertNotIn(
+                addrs[1],
+                self._cache._entries,
+                msg="FAILED entry must be evicted by GC above gc_thresh1.",
+            )
+            self.assertEqual(
+                len(self._cache._entries),
+                3,
+                msg="Only FAILED entries must be evicted at this tier; REACHABLE survive.",
+            )
+
+    def test__lib__neighbor__gc_evicts_stale_past_stale_time_above_thresh2(self) -> None:
+        """
+        Ensure STALE entries that have aged past
+        'gc_stale_time' become eviction-eligible once cache
+        size crosses 'gc_thresh2', and the OLDEST go first.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            sysctl_module.override("neighbor.gc_thresh1", 0),
+            sysctl_module.override("neighbor.gc_thresh2", 2),
+            sysctl_module.override("neighbor.gc_stale_time", 60),
+        ):
+            addrs = self._populate(5)
+            # Two old STALE entries, two recent STALE entries,
+            # one REACHABLE.
+            self._force_state(addrs[0], NudState.STALE, when=1000.0)
+            self._force_state(addrs[1], NudState.STALE, when=1100.0)
+            self._force_state(addrs[2], NudState.STALE, when=1980.0)
+            self._force_state(addrs[3], NudState.STALE, when=1990.0)
+            # addrs[4] stays REACHABLE.
+
+            # 'now' = 2000 → addrs[0] / [1] are 1000 / 900s
+            # stale (>60), addrs[2] / [3] are 20 / 10s stale
+            # (<60). Cache size 5 > gc_thresh2 (2) → eligible
+            # to evict 3 entries (5-2). Only 2 are aged past
+            # gc_stale_time, so only those 2 evict. Net size
+            # 5 → 3.
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertNotIn(
+                addrs[0],
+                self._cache._entries,
+                msg="Oldest stale entry must be evicted first.",
+            )
+            self.assertNotIn(
+                addrs[1],
+                self._cache._entries,
+                msg="Second-oldest stale entry must be evicted next.",
+            )
+            self.assertIn(
+                addrs[2],
+                self._cache._entries,
+                msg="Recent stale entry (within gc_stale_time) must NOT be evicted.",
+            )
+            self.assertIn(
+                addrs[3],
+                self._cache._entries,
+                msg="Recent stale entry (within gc_stale_time) must NOT be evicted.",
+            )
+            self.assertIn(
+                addrs[4],
+                self._cache._entries,
+                msg="REACHABLE entry must NOT be evicted at gc_thresh2 tier.",
+            )
+
+    def test__lib__neighbor__gc_hard_cap_evicts_lru_above_thresh3(self) -> None:
+        """
+        Ensure that above 'gc_thresh3', the GC pass evicts in
+        LRU order (oldest 'last_used_at' first) — including
+        REACHABLE entries — until size <= gc_thresh3. The
+        hard cap is a MUST.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            sysctl_module.override("neighbor.gc_thresh1", 0),
+            sysctl_module.override("neighbor.gc_thresh2", 0),
+            sysctl_module.override("neighbor.gc_thresh3", 3),
+        ):
+            addrs = self._populate(5)
+            # Vary last_used_at to set LRU order.
+            for i, a in enumerate(addrs):
+                object.__setattr__(self._cache._entries[a], "last_used_at", 1000.0 + i)
+            # addrs[0] is least-recently-used; addrs[4] most.
+
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertEqual(
+                len(self._cache._entries),
+                3,
+                msg="Hard cap must reduce cache size to gc_thresh3.",
+            )
+            self.assertNotIn(
+                addrs[0],
+                self._cache._entries,
+                msg="Least-recently-used entry must be evicted first by hard cap.",
+            )
+            self.assertNotIn(
+                addrs[1],
+                self._cache._entries,
+                msg="Second-LRU entry must be evicted by hard cap.",
+            )
+            self.assertIn(
+                addrs[4],
+                self._cache._entries,
+                msg="Most-recently-used entry must survive the hard cap.",
+            )
+
+    def test__lib__neighbor__gc_skips_permanent_entries(self) -> None:
+        """
+        Ensure PERMANENT entries are never evicted regardless
+        of cache size, GC tier, or how stale they look.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            sysctl_module.override("neighbor.gc_thresh1", 0),
+            sysctl_module.override("neighbor.gc_thresh3", 0),
+        ):
+            with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+                self._cache.add_permanent_entry(ADDR_A, MAC_A)
+                self._cache.add_entry(ADDR_B, MAC_B)
+            # Force the dynamic entry to STALE so it gets
+            # picked up by tier 2.
+            self._force_state(ADDR_B, NudState.STALE, when=1000.0)
+
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertIn(
+                ADDR_A,
+                self._cache._entries,
+                msg="PERMANENT entry must NOT be evicted by GC at any tier.",
+            )
+
+    def test__lib__neighbor__gc_skips_entries_with_queued_packet(self) -> None:
+        """
+        Ensure entries holding a queued packet (INCOMPLETE
+        with a TX waiting for resolution) are NOT evicted —
+        evicting would lose the queued frame and break the
+        link-layer-queue contract.
+
+        Reference: RFC 1122 §2.3.2.2 (queued-packet preservation).
+        """
+
+        with (
+            sysctl_module.override("neighbor.gc_thresh1", 0),
+            sysctl_module.override("neighbor.gc_thresh3", 0),
+        ):
+            with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+                self._cache.find_entry(ADDR_A)  # → INCOMPLETE
+                self._cache.enqueue_pending(ADDR_A, packet=object())
+
+            # Drive the entry to FAILED while keeping the
+            # queued_packet — represents the worst case
+            # (resolution gave up, but a packet is still
+            # held).
+            self._force_state(ADDR_A, NudState.FAILED)
+
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertIn(
+                ADDR_A,
+                self._cache._entries,
+                msg=(
+                    "Entry with queued_packet must NOT be evicted; doing so "
+                    "would lose the queued TX. RFC 1122 §2.3.2.2."
+                ),
+            )
