@@ -59,9 +59,13 @@ class CacheEntry:
 
     mac_address: MacAddress
     permanent: bool = False
-    create_time: int = field(
+    # Monotonic timestamp (seconds since arbitrary process-start
+    # epoch). 'time.time' is wall-clock and would let an NTP step
+    # adjustment mass-expire fresh entries; Linux's neighbour
+    # cache uses jiffies (monotonic) for the same reason.
+    create_time: float = field(
         init=False,
-        default_factory=lambda: int(time.time()),
+        default_factory=lambda: time.monotonic(),
     )
     hit_count: int = field(init=False, default=0)
 
@@ -141,7 +145,7 @@ class ArpCache(Subsystem):
                 continue
 
             # If entry age is over maximum age then discard the entry.
-            if int(time.time()) - self._arp_cache[ip4_address].create_time > ARP__CACHE__ENTRY_MAX_AGE:
+            if time.monotonic() - self._arp_cache[ip4_address].create_time > ARP__CACHE__ENTRY_MAX_AGE:
                 mac_address = self._arp_cache.pop(ip4_address).mac_address
                 __debug__ and log(
                     "arp-c",
@@ -152,7 +156,7 @@ class ArpCache(Subsystem):
             # used since last refresh then send out request in attempt
             # to refresh it.
             elif (
-                int(time.time()) - self._arp_cache[ip4_address].create_time
+                time.monotonic() - self._arp_cache[ip4_address].create_time
                 > ARP__CACHE__ENTRY_MAX_AGE - ARP__CACHE__ENTRY_REFRESH_TIME
             ) and self._arp_cache[ip4_address].hit_count:
                 self._arp_cache[ip4_address].hit_count__reset()
@@ -234,7 +238,7 @@ class ArpCache(Subsystem):
             __debug__ and log(
                 "arp-c",
                 f"Found {ip4_address} -> {arp_entry.mac_address} entry, "
-                f"age {int(time.time()) - arp_entry.create_time}s, "
+                f"age {time.monotonic() - arp_entry.create_time:.0f}s, "
                 f"hit_count {arp_entry.hit_count}",
             )
             return arp_entry.mac_address

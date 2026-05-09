@@ -14,7 +14,7 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 
 ---
 
-## §0 Status snapshot (2026-05-08)
+## §0 Status snapshot (2026-05-09)
 
 ### ✅ Shipped
 
@@ -28,14 +28,18 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 | 5 | ANNOUNCE_NUM = 2 (second Announcement after probe) | `3d7d276d` | 5227 §2.3 |
 | 6 | ANNOUNCE_WAIT (2 s post-probe quiet period) | `01841e10` | 5227 §2.1.1 |
 | 7 | PROBE_WAIT (initial 0–1 s random delay) + PROBE_NUM/MIN/MAX | `5777c00a` | 5227 §2.1.1 |
+| 8 | Simultaneous-probe (peer's SPA = 0, TPA = candidate) detection | `3f051584` | 5227 §2.1.1 |
+| 15 | Wall-clock → `time.monotonic` in cache aging | (this commit) | (Linux parity) |
 | — | Six RFC adherence audits (826/1027/1122/3927/5227/5494) | `03c0b678` | — |
 | — | `ArpTestCase` harness + smoke / DAD / DEFEND_INTERVAL / resolution-flow integration tests | various | — |
 | — | Code relocated from `pytcp/stack/` → `pytcp/protocols/arp/` | `e29e6b1e` | — |
+| — | `test__arp__cache.py` import fixups (follow-up to relocation) | `24eaa44d` | — |
+| — | `_ArpRxTestBase.setUp` `create=True` fix (unblock unit tests) | `f8cf5136` | — |
 
 ### 🔓 Remaining inventory
 
-- **Tier 2 (RFC 5227 finish):** §1 (#8), §2 (#9), §3 (#10) below.
-- **Tier 3 (Linux defaults):** §4–§10 below.
+- **Tier 2 (RFC 5227 finish):** §2 (#9), §3 (#10) below.
+- **Tier 3 (Linux defaults):** §4–§7, §9–§10 below (#15 shipped).
 - **Tier 4 (deferred):** §11 below.
 
 ---

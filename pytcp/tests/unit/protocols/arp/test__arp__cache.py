@@ -63,7 +63,7 @@ class TestArpCacheEntry(TestCase):
         self.assertGreater(
             entry.create_time,
             0,
-            msg="CacheEntry.create_time must be populated with a positive epoch timestamp.",
+            msg="CacheEntry.create_time must be populated with a positive monotonic timestamp.",
         )
 
     def test__arp_cache__entry_hit_count_increment(self) -> None:
@@ -278,9 +278,9 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
             permanent=True,
         )
 
-        # Force the entry's age to be > max age.
+        # Force the entry's monotonic age to be > max age.
         with (
-            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=10_000_000),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=10_000_000.0),
             patch.object(
                 self._cache._event__stop_subsystem,
                 "wait",
@@ -306,15 +306,15 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         """
 
         ip = Ip4Address("10.0.0.1")
-        # Build the entry at t=1000, then advance the clock to t=10000.
-        with patch("pytcp.protocols.arp.arp__cache.time.time", return_value=1000):
+        # Build the entry at monotonic t=1000, then advance to t=10000.
+        with patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=1000.0):
             self._cache.add_entry(
                 ip4_address=ip,
                 mac_address=MacAddress("02:00:00:00:00:01"),
             )
 
         with (
-            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=10_000),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=10_000.0),
             patch.object(
                 self._cache._event__stop_subsystem,
                 "wait",
@@ -355,7 +355,7 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
         # Age between (MAX_AGE - REFRESH_TIME)=2 and MAX_AGE=10 -> force 5.
         with (
             patch(
-                "pytcp.protocols.arp.arp__cache.time.time",
+                "pytcp.protocols.arp.arp__cache.time.monotonic",
                 side_effect=lambda: self._cache._arp_cache[ip].create_time + 5,
             ),
             patch.object(
@@ -380,6 +380,54 @@ class TestArpCacheSubsystemLoop(_ArpCacheFixture):
             self._cache._arp_cache[ip].hit_count,
             0,
             msg="Refresh path must zero hit_count so the next window starts clean.",
+        )
+
+    def test__arp_cache__loop_uses_monotonic_clock_for_aging(self) -> None:
+        """
+        Ensure the cache-aging arithmetic uses 'time.monotonic'
+        rather than 'time.time', so a wall-clock discontinuity
+        — an NTP step adjustment, suspend / resume, manual
+        date change — cannot mass-expire entries that are
+        monotonically still fresh. Add an entry under a stable
+        monotonic clock, then run the loop with a wall-clock
+        leap of MAX_AGE + 100 seconds while monotonic advances
+        only one second; the entry must remain in the cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.protocols.arp.arp__constants import ARP__CACHE__ENTRY_MAX_AGE
+
+        ip = Ip4Address("10.0.0.1")
+        with (
+            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=1000.0),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=2000.0),
+        ):
+            self._cache.add_entry(
+                ip4_address=ip,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+            )
+
+        forward_jumped_wall = 1000.0 + ARP__CACHE__ENTRY_MAX_AGE + 100.0
+        with (
+            patch("pytcp.protocols.arp.arp__cache.time.time", return_value=forward_jumped_wall),
+            patch("pytcp.protocols.arp.arp__cache.time.monotonic", return_value=2001.0),
+            patch.object(
+                self._cache._event__stop_subsystem,
+                "wait",
+                return_value=False,
+            ),
+        ):
+            self._cache._subsystem_loop()
+
+        self.assertIn(
+            ip,
+            self._cache._arp_cache,
+            msg=(
+                "ArpCache._subsystem_loop must use 'time.monotonic' for "
+                "aging — a forward NTP step in 'time.time' must not be "
+                "able to mass-expire entries that are monotonically fresh."
+            ),
         )
 
 
@@ -532,8 +580,14 @@ class TestArpCacheRequestRateLimit(_ArpCacheFixture):
         ip = Ip4Address("10.0.0.5")
         mac = MacAddress("02:00:00:00:00:05")
         handler = MagicMock(spec=PacketHandlerL2)
+        # Three monotonic reads: first 'find_entry' (rate-limit
+        # gate), 'add_entry' (CacheEntry.create_time factory),
+        # second 'find_entry' (rate-limit gate again).
         with (
-            patch("pytcp.protocols.arp.arp__cache.time.monotonic", side_effect=[1000.0, 1000.1]),
+            patch(
+                "pytcp.protocols.arp.arp__cache.time.monotonic",
+                side_effect=[1000.0, 1000.05, 1000.1],
+            ),
             patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler),
         ):
             self._cache.find_entry(ip4_address=ip)
