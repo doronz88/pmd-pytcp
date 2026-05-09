@@ -1289,6 +1289,44 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
             ),
         )
 
+    def test__stack__packet_handler__arp__rx__arp_ignore_two_still_updates_cache(self) -> None:
+        """
+        Ensure 'arp.ignore = 2' suppresses only the Reply and
+        does NOT bypass cache learning when an off-subnet
+        sender is admitted via 'arp.accept = 1'. Pins the fix
+        for a latent bug where mode-2 used 'return' to drop the
+        Reply, which also short-circuited the unconditional
+        cache-update tail and silently ate every cache learn
+        from off-subnet neighbours during anti-spoof mode.
+        Linux's 'arp_ignore' affects only the reply path; cache
+        behaviour is gated by 'arp_accept'.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2 affects reply path only).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.ignore", 2), sysctl_module.override("arp.accept", 1):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=OFF_NET__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            self._handler.arp_replies_sent,
+            [],
+            msg="arp.ignore=2 must drop the Reply when SPA is off-subnet.",
+        )
+        self._arp_cache.add_entry.assert_called_once_with(
+            ip4_address=OFF_NET__IP4,
+            mac_address=HOST_A__MAC,
+        )
+
     def test__stack__packet_handler__arp__rx__arp_ignore_eight_still_updates_cache(self) -> None:
         """
         Ensure 'arp.ignore = 8' suppresses only the Reply and
