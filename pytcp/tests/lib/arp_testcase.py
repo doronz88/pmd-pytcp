@@ -116,11 +116,14 @@ class ArpTestCase(NetworkTestCase):
 
         super().setUp()
 
-        # Clock for RFC 5227 §2.4(c) DEFEND_INTERVAL rate-limit.
-        # The rate-limit reads 'time.monotonic()' inside the
-        # 'pytcp.stack.packet_handler.packet_handler__arp__rx'
-        # module; patch the import-path that module uses so the
-        # production code sees the test-controlled clock.
+        # Clock for time-sensitive ARP behaviours. The harness
+        # patches 'time.monotonic' in every ARP-related production
+        # module so the same test-controlled clock is observed by:
+        #
+        #   - 'packet_handler__arp__rx._maybe_send_arp_defense'
+        #     (RFC 5227 §2.4(c) DEFEND_INTERVAL)
+        #   - 'arp_cache.find_entry' (RFC 1122 §2.3.2.1
+        #     per-destination ARP-Request rate-limit)
         self._monotonic_t = 0.0
 
         def _read_monotonic() -> float:
@@ -131,6 +134,11 @@ class ArpTestCase(NetworkTestCase):
             side_effect=_read_monotonic,
         )
         self._monotonic_patch.start()
+        self._arp_cache_monotonic_patch = patch(
+            "pytcp.stack.arp_cache.time.monotonic",
+            side_effect=_read_monotonic,
+        )
+        self._arp_cache_monotonic_patch.start()
 
         # FIFO of callbacks invoked one per 'time.sleep' call from
         # 'PacketHandlerL2._create_stack_ip4_addressing'. The DAD
@@ -155,6 +163,7 @@ class ArpTestCase(NetworkTestCase):
         """
 
         self._sleep_patch.stop()
+        self._arp_cache_monotonic_patch.stop()
         self._monotonic_patch.stop()
 
         super().tearDown()
