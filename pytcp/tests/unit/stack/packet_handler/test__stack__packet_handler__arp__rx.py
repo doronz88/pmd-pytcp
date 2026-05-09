@@ -973,3 +973,176 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
                 f"{self._handler.gratuitous_arps_sent!r}"
             ),
         )
+
+
+class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
+    """
+    The 'arp.accept' / 'arp.ignore' RX-policy sysctl tests.
+
+    Pin that the inbound-ARP handling honours the registered
+    sysctl values: 'arp.accept' gates whether off-subnet
+    senders update the cache, and 'arp.ignore = 2' drops
+    Requests whose sender IP is not on any of our local
+    subnets (Linux's 'net.ipv4.conf.<iface>.arp_ignore' mode
+    2 semantics).
+    """
+
+    def tearDown(self) -> None:
+        """
+        Restore sysctl defaults so a per-test override does not
+        leak into subsequent tests' baselines.
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        sysctl_module.reset_to_defaults()
+        super().tearDown()
+
+    def test__stack__packet_handler__arp__rx__arp_accept_default_drops_off_subnet_cache_update(self) -> None:
+        """
+        Ensure that with the default 'arp.accept = 0', an ARP
+        Request whose sender IP is NOT on any of our local
+        subnets does NOT update the ARP cache. The conservative
+        default protects against trusting ARP from unknown
+        networks (gratuitous-ARP cache poisoning from off-link
+        attackers).
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_accept (mode 0: reject off-subnet).
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REQUEST,
+            sha=HOST_A__MAC,
+            spa=OFF_NET__IP4,
+            tha=MAC__UNSPEC,
+            tpa=STACK__IP4_ADDRESS,
+        )
+        packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+
+        self._handler._phrx_arp(packet_rx)
+
+        self._arp_cache.add_entry.assert_not_called()
+
+    def test__stack__packet_handler__arp__rx__arp_accept_one_admits_off_subnet_cache_update(self) -> None:
+        """
+        Ensure that with 'arp.accept = 1', an ARP Request
+        whose sender IP is NOT on any of our local subnets
+        DOES update the cache. Operators on multi-VLAN setups
+        or behind ARP proxies may need this to learn next-hops
+        outside their primary subnet.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_accept (mode 1: admit off-subnet).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.accept", 1):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=OFF_NET__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self._arp_cache.add_entry.assert_called_once_with(
+            ip4_address=OFF_NET__IP4,
+            mac_address=HOST_A__MAC,
+        )
+
+    def test__stack__packet_handler__arp__rx__arp_ignore_default_replies(self) -> None:
+        """
+        Ensure that with the default 'arp.ignore = 1', an ARP
+        Request from an on-subnet sender for one of our
+        configured IPs receives a Reply — current PyTCP
+        baseline behaviour, restated against the live sysctl
+        value.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 1: reply only if target configured).
+        """
+
+        frame = _arp_frame(
+            oper=ArpOperation.REQUEST,
+            sha=HOST_A__MAC,
+            spa=HOST_A__IP4,
+            tha=MAC__UNSPEC,
+            tpa=STACK__IP4_ADDRESS,
+        )
+        packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+
+        self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            len(self._handler.arp_replies_sent),
+            1,
+            msg="With arp.ignore=1 (default), an on-subnet Request for our IP must trigger a Reply.",
+        )
+
+    def test__stack__packet_handler__arp__rx__arp_ignore_two_drops_off_subnet_sender(self) -> None:
+        """
+        Ensure that with 'arp.ignore = 2', an ARP Request
+        whose sender IP (SPA) is NOT on any of our local
+        subnets is silently dropped without sending a Reply,
+        even when its target IP IS one of ours. Linux's mode-2
+        "sender-subnet-match" semantics — used to tighten
+        anti-spoofing on hosts that should only answer ARPs
+        from neighbours.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2: sender-subnet-match).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.ignore", 2):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=OFF_NET__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            self._handler.arp_replies_sent,
+            [],
+            msg=(
+                "With arp.ignore=2, an off-subnet sender must NOT receive an ARP "
+                "Reply even when the target IP is one of ours."
+            ),
+        )
+
+    def test__stack__packet_handler__arp__rx__arp_ignore_two_still_replies_on_subnet_sender(self) -> None:
+        """
+        Ensure 'arp.ignore = 2' still permits Replies when the
+        sender IS on one of our local subnets — mode 2 is
+        about REJECTING off-subnet senders, not about adding
+        an extra rejection on legitimate neighbours.
+
+        Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2: on-subnet sender admitted).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("arp.ignore", 2):
+            frame = _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=HOST_A__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            )
+            packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
+            self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            len(self._handler.arp_replies_sent),
+            1,
+            msg=(
+                "With arp.ignore=2, an on-subnet sender for our target IP must "
+                "still receive a Reply — mode 2 only rejects off-subnet senders."
+            ),
+        )

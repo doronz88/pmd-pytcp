@@ -364,8 +364,20 @@ in-progress-resolution gate without adding operational
 benefit. Re-classify when there's a real consumer for a
 runtime override.
 
-### Phase 2 — Ship #17 (`arp_accept` / `arp_announce` /
-`arp_ignore` / `arp_filter`) on the registry
+### Phase 2 — Ship #17 (`arp_accept` / `arp_ignore` modes 0–2) ✅ shipped (this commit)
+
+`arp_announce` and `arp_filter` are deferred until PyTCP grows
+real multi-subnet / multi-interface support — registering them
+as no-ops would violate this plan's §9 "no API surface without
+a consumer" anti-pattern. They land in the per-package sweep
+that introduces multi-interface (Phase 4 territory).
+
+`arp_ignore` modes 3-8 (Linux cluster / anycast variants) are
+explicitly rejected by the validator with the message "modes
+3-8 deferred to Phase 2 cluster / anycast support" until a real
+consumer surfaces.
+
+Original Phase 2 description (kept for archaeology):
 
 Each Linux ARP-policy knob becomes a registry entry. The RX
 handler reads them via the registry on each frame (i.e. via

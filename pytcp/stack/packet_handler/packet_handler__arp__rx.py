@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.arp.arp__constants import ARP__DEFEND_INTERVAL
 
 
@@ -146,14 +147,19 @@ class PacketHandlerArpRx(ABC):
         Update ARP cache with the SPA<->SHA mapping if the packet is intended for us.
         """
 
-        # If SPA matches on of our subnets then update ARP cache with the SPA<->SHA mapping.
-        # Also ensure we update cache only if the packet is either direct or broadcast to
-        # avoid updating cache with packets not intended for us in case interface is in
-        # promiscuous mode.
-        # Finally, do not update cache if SPA matches one of our IP addresses to avoid
-        # updating cache with our own IP address that could be spoofed by an attacker.
+        # If SPA matches one of our subnets — or 'arp.accept = 1'
+        # admits off-subnet senders (Linux
+        # net.ipv4.conf.<iface>.arp_accept) — update ARP cache
+        # with the SPA<->SHA mapping. Also ensure we update cache
+        # only if the packet is either direct or broadcast to
+        # avoid updating cache with packets not intended for us
+        # in case the interface is in promiscuous mode. Finally,
+        # do not update cache if SPA matches one of our IP
+        # addresses to avoid updating cache with our own IP
+        # address that could be spoofed by an attacker.
+        spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._ip4_host)
         if (
-            any(packet_rx.arp.spa in host.network for host in self._ip4_host)
+            (spa_on_local_subnet or arp__constants.ARP__ACCEPT == 1)
             and (packet_rx.ethernet.dst == self._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
             and packet_rx.arp.spa not in self._ip4_unicast
         ):
@@ -267,6 +273,25 @@ class PacketHandlerArpRx(ABC):
                     f"{packet_rx.tracker} - <INFO>Replying to ARP request for TPA "
                     f"{packet_rx.arp.tpa} from {packet_rx.arp.spa}</>",
                 )
+
+            # 'arp.ignore = 2' (Linux mode 2) requires the
+            # sender IP to be on one of our local subnets before
+            # we send a Reply. Probes (SPA = 0) are exempted —
+            # the probe-reply branch above is the wire signal
+            # that the peer is checking address availability and
+            # has no SPA yet. The check runs after the existing
+            # TPA-match gate, so mode 2 only ever drops Replies
+            # we would otherwise have sent.
+            sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
+                packet_rx.arp.spa in host.network for host in self._ip4_host
+            )
+            if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
+                __debug__ and log(
+                    "arp",
+                    f"{packet_rx.tracker} - <INFO>arp.ignore=2 dropped Reply: "
+                    f"sender {packet_rx.arp.spa} is not on any local subnet",
+                )
+                return
 
             # Send ARP reply packet to requester.
             if packet_rx.ethernet.dst.is_broadcast or packet_rx.ethernet.dst == self._mac_unicast:

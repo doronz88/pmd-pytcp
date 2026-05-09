@@ -32,7 +32,8 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 | 14 | Unicast cache-refresh probe (replaces broadcast) | `30aaa98a` | 1122 §2.3.2.1 IMPL (2) |
 | 15 | Wall-clock → `time.monotonic` in cache aging | `1a46f28f` | (Linux parity) |
 | 16 | Configurable cache timeout (`stack.init` kwargs) | `a25603cb` | 1122 §2.3.2.1 SHOULD |
-| — | sysctl framework Phase 0 (registry) + Phase 1 (ARP package migration + #16 retrofit) | `8eb94ccb` + (this commit) | (Linux parity) |
+| — | sysctl framework Phase 0 (registry) + Phase 1 (ARP package migration + #16 retrofit) | `8eb94ccb` + `586a693e` | (Linux parity) |
+| 17 (partial) | `arp.accept` + `arp.ignore` modes 0-2 sysctls | (this commit) | Linux parity |
 | — | Six RFC adherence audits (826/1027/1122/3927/5227/5494) | `03c0b678` | — |
 | — | `ArpTestCase` harness + smoke / DAD / DEFEND_INTERVAL / resolution-flow integration tests | various | — |
 | — | Code relocated from `pytcp/stack/` → `pytcp/protocols/arp/` | `e29e6b1e` | — |

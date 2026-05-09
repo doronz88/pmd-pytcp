@@ -85,6 +85,25 @@ ARP__PROBE_MAX = 2
 # loop ends.
 ARP__ANNOUNCE_WAIT = 2
 
+# Linux net.ipv4.conf.<iface>.arp_accept policy. Controls
+# whether the cache is updated from ARP Requests / Replies
+# whose sender IP is NOT on any of our local subnets.
+#   0 = reject off-subnet senders (default, conservative).
+#   1 = admit off-subnet senders (multi-VLAN / proxy-ARP setups).
+ARP__ACCEPT = 0
+
+# Linux net.ipv4.conf.<iface>.arp_ignore policy. Controls when
+# we reply to inbound ARP Requests.
+#   0 = reply for any local IP (PyTCP's single-subnet config
+#       makes this functionally equivalent to mode 1).
+#   1 = reply only when the target IP is one of ours
+#       (default, current PyTCP baseline).
+#   2 = also require the sender IP to be on one of our local
+#       subnets (sender-subnet-match anti-spoof).
+# Modes 3-8 (cluster / anycast variants) marked Phase 2 and
+# rejected by the validator until a real consumer surfaces.
+ARP__IGNORE = 1
+
 # Sysctl registration. Every constant above except
 # 'ARP__REQUEST_RATE_LIMIT' is a policy knob (operator-tunable
 # at boot via 'stack.init()' or at runtime via
@@ -174,6 +193,49 @@ _register(
     default=ARP__ANNOUNCE_WAIT,
     validator=_is_positive_int("arp.announce_wait"),
     description="RFC 5227 §2.1.1 ANNOUNCE_WAIT — post-probe quiet period before first Announcement, seconds.",
+)
+
+
+def _arp_accept_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected too —
+    'isinstance(True, int)' is True in Python and we want
+    the reject path to surface explicit type/value errors.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'arp.accept' must be 0 or 1; got {value!r}")
+
+
+def _arp_ignore_validator(value: object) -> None:
+    """
+    Reject values outside the supported subset {0, 1, 2}.
+    Modes 3-8 (Linux cluster / anycast variants) are
+    deliberately rejected until a real PyTCP consumer surfaces.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1, 2):
+        raise ValueError(
+            f"sysctl 'arp.ignore' must be 0, 1, or 2 (modes 3-8 deferred to "
+            f"Phase 2 cluster / anycast support); got {value!r}"
+        )
+
+
+_register(
+    key="arp.accept",
+    module_name=__name__,
+    attr="ARP__ACCEPT",
+    default=ARP__ACCEPT,
+    validator=_arp_accept_validator,
+    description="Linux 'net.ipv4.conf.<iface>.arp_accept' (0=reject off-subnet, 1=admit).",
+)
+_register(
+    key="arp.ignore",
+    module_name=__name__,
+    attr="ARP__IGNORE",
+    default=ARP__IGNORE,
+    validator=_arp_ignore_validator,
+    description="Linux 'net.ipv4.conf.<iface>.arp_ignore' (0/1/2; modes 3-8 deferred).",
 )
 
 
