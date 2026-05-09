@@ -116,6 +116,8 @@ class TestPacketHandlerArpTx(TestCase):
         """
         Ensure the handler drops ARP packets when IPv4 is disabled and
         does not invoke the Ethernet TX path.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip4_support=False)
@@ -150,6 +152,8 @@ class TestPacketHandlerArpTx(TestCase):
         """
         Ensure an ARP request is counted, assembled, and forwarded to
         the Ethernet TX layer with the assembled ARP payload.
+
+        Reference: RFC 826 (ARP Request wire format).
         """
 
         handler = _StubHandler()
@@ -205,6 +209,8 @@ class TestPacketHandlerArpTx(TestCase):
         """
         Ensure an ARP reply increments 'arp__op_reply__send' and
         forwards the assembled packet.
+
+        Reference: RFC 826 (ARP Reply wire format).
         """
 
         handler = _StubHandler()
@@ -261,6 +267,8 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
         Ensure '_send_arp_announcement' sends a REQUEST with spa == tpa
         == self IP, broadcast dst, stack src.
+
+        Reference: RFC 5227 §2.3 (Announcement wire format).
         """
 
         self._handler._send_arp_announcement(ip4_unicast=STACK__IP4_ADDRESS)
@@ -280,6 +288,8 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
         Ensure '_send_gratuitous_arp' sends a REPLY with spa == tpa ==
         self IP, broadcast dst, stack src.
+
+        Reference: RFC 5227 §2.4(b) (defensive gratuitous ARP wire format).
         """
 
         self._handler._send_gratuitous_arp(ip4_unicast=STACK__IP4_ADDRESS)
@@ -293,7 +303,9 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
     def test__stack__packet_handler__arp__tx__probe_uses_unspecified_spa(self) -> None:
         """
         Ensure '_send_arp_probe' sends a REQUEST with spa == 0.0.0.0
-        per RFC 5227.
+        as the probe wire signal.
+
+        Reference: RFC 5227 §2.1.1 (Probe wire format: spa = 0.0.0.0).
         """
 
         self._handler._send_arp_probe(ip4_unicast=HOST_A__IP4)
@@ -308,6 +320,8 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
         Ensure '_send_arp_reply' unicasts a REPLY back to the requester
         MAC with stack MAC as src.
+
+        Reference: RFC 826 (ARP Reply unicast back to requester).
         """
 
         self._handler._send_arp_reply(
@@ -330,6 +344,8 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
         Ensure 'send_arp_request' uses the first stack IPv4 unicast
         address as spa when one is configured.
+
+        Reference: RFC 826 (Sender Protocol Address sourcing).
         """
 
         self._handler.send_arp_request(arp__tpa=HOST_A__IP4)
@@ -343,6 +359,8 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
         Ensure 'send_arp_request' falls back to spa = 0.0.0.0 when the
         stack has no IPv4 unicast address.
+
+        Reference: RFC 826 (Sender Protocol Address sourcing).
         """
 
         handler = _StubHandler(ip4_unicast=[])
