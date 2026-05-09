@@ -62,3 +62,12 @@ ARP__REQUEST_RATE_LIMIT = 1
 # is insurance against peers that missed the first.
 ARP__ANNOUNCE_NUM = 2
 ARP__ANNOUNCE_INTERVAL = 2
+
+# RFC 5227 §1.1 / §2.1.1 ANNOUNCE_WAIT post-probe quiet period.
+# After the last ARP Probe is transmitted, the host waits this
+# many seconds before emitting the first Announcement. Late
+# conflicting ARPs arriving in this window must still be
+# observable so the claim can be aborted; without the wait,
+# the host would commit to the address the instant the probe
+# loop ends.
+ARP__ANNOUNCE_WAIT = 2

@@ -56,6 +56,7 @@ from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
+    ARP__ANNOUNCE_WAIT,
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
@@ -677,6 +678,13 @@ class PacketHandlerL2(
                     self._send_arp_probe(ip4_unicast=ip4_unicast)
                     __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
             time.sleep(random.uniform(1, 2))
+
+        # RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period.
+        # Wait this long after the last Probe before emitting any
+        # Announcements so a late conflicting ARP arriving here
+        # can still flag the candidate via the RX path and be
+        # observed by the admit-loop below.
+        time.sleep(ARP__ANNOUNCE_WAIT)
 
         for ip4_unicast in self._arp_probe__unicast_conflict:
             __debug__ and log(

@@ -261,6 +261,7 @@ class ArpTestCase(NetworkTestCase):
         self,
         *,
         on_sleep: Callable[[int], None] | None = None,
+        num_sleep_callbacks: int = 3,
     ) -> None:
         """
         Drive 'PacketHandlerL2._create_stack_ip4_addressing'
@@ -270,13 +271,18 @@ class ArpTestCase(NetworkTestCase):
         test-supplied callback).
 
         If 'on_sleep' is provided, it is invoked once per sleep
-        with the iteration index (0, 1, 2). Tests can use this
-        hook to inject conflicting RX frames into the probe
+        with the iteration index (0, 1, 2, ...). Tests can use
+        this hook to inject conflicting RX frames into the probe
         window via '_drive_arp' to exercise §2.1.1 conflict
-        detection.
+        detection. 'num_sleep_callbacks' controls how many
+        callback slots are registered — the default 3 covers
+        the probe-loop iterations; tests targeting later sleeps
+        (RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period
+        at index 3, §2.3 ANNOUNCE_INTERVAL between Announcements
+        at index 4) pass higher counts.
         """
 
         if on_sleep is not None:
-            self._dad_sleep_callbacks = [partial(on_sleep, i) for i in range(3)]
+            self._dad_sleep_callbacks = [partial(on_sleep, i) for i in range(num_sleep_callbacks)]
 
         self._packet_handler._create_stack_ip4_addressing()

@@ -36,6 +36,7 @@ from unittest import TestCase
 from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
+    ARP__ANNOUNCE_WAIT,
     ARP__CACHE__ENTRY_MAX_AGE,
     ARP__CACHE__ENTRY_REFRESH_TIME,
     ARP__DEFEND_INTERVAL,
@@ -131,4 +132,20 @@ class TestArpConstants(TestCase):
             ARP__ANNOUNCE_INTERVAL,
             2,
             msg=f"ANNOUNCE_INTERVAL must equal 2 s. Got: {ARP__ANNOUNCE_INTERVAL}.",
+        )
+
+    def test__arp__constants__announce_wait_matches_rfc_5227(self) -> None:
+        """
+        Ensure 'ARP__ANNOUNCE_WAIT' equals 2 seconds — the
+        post-probe quiet period during which a late conflicting
+        ARP can still abort the claim before the first
+        Announcement is emitted.
+
+        Reference: RFC 5227 §1.1 (ANNOUNCE_WAIT = 2 seconds).
+        """
+
+        self.assertEqual(
+            ARP__ANNOUNCE_WAIT,
+            2,
+            msg=f"ANNOUNCE_WAIT must equal 2 s. Got: {ARP__ANNOUNCE_WAIT}.",
         )

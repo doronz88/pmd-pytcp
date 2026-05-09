@@ -380,23 +380,105 @@ class TestArpDad(ArpTestCase):
 
         # Sleep order from '_create_stack_ip4_addressing':
         #   indexes 0..2 — three probe-loop sleeps (random.uniform(1,2))
-        #   index 3       — between Announcement 1 and Announcement 2
-        #                   (ARP__ANNOUNCE_INTERVAL = 2 s)
+        #   index 3       — ANNOUNCE_WAIT post-probe quiet period
+        #   index 4       — ANNOUNCE_INTERVAL between Announcements
+        self.assertGreaterEqual(
+            len(self._dad_sleep_durations),
+            5,
+            msg=(
+                "Expected at least 5 'time.sleep' calls (3 probe-loop sleeps + "
+                "1 ANNOUNCE_WAIT + 1 ANNOUNCE_INTERVAL). Got: "
+                f"{len(self._dad_sleep_durations)}"
+            ),
+        )
+        self.assertEqual(
+            self._dad_sleep_durations[4],
+            ARP__ANNOUNCE_INTERVAL,
+            msg=(
+                "Sleep between Announcements (index 4, after ANNOUNCE_WAIT) must "
+                f"equal ARP__ANNOUNCE_INTERVAL = {ARP__ANNOUNCE_INTERVAL} s; "
+                f"got {self._dad_sleep_durations[4]} s."
+            ),
+        )
+
+    def test__arp__dad__announce_wait_post_probe_quiet_period(self) -> None:
+        """
+        Ensure the host waits ARP__ANNOUNCE_WAIT seconds after
+        the last ARP Probe before emitting the first
+        Announcement. Late conflicting ARPs arriving in this
+        quiet window must still be observable so the claim can
+        be aborted; without the wait, the host would commit to
+        the address the instant the probe loop ends.
+
+        Reference: RFC 5227 §2.1.1 (ANNOUNCE_WAIT post-probe quiet period).
+        """
+
+        from pytcp.protocols.arp.arp__constants import ARP__ANNOUNCE_WAIT
+
+        self._drive_dad()
+
         self.assertGreaterEqual(
             len(self._dad_sleep_durations),
             4,
             msg=(
-                "Expected at least 4 'time.sleep' calls (3 probe-loop "
-                "sleeps + 1 announce-spacing sleep). Got: "
+                "Expected at least 4 'time.sleep' calls — the 4th is the "
+                "ANNOUNCE_WAIT post-probe quiet period. Got: "
                 f"{len(self._dad_sleep_durations)}"
             ),
         )
         self.assertEqual(
             self._dad_sleep_durations[3],
-            ARP__ANNOUNCE_INTERVAL,
+            ARP__ANNOUNCE_WAIT,
             msg=(
-                "Sleep between Announcements (index 3, post-probe-loop) must "
-                f"equal ARP__ANNOUNCE_INTERVAL = {ARP__ANNOUNCE_INTERVAL} s; "
+                "Sleep at index 3 (post-probe-loop, pre-announce) must equal "
+                f"ARP__ANNOUNCE_WAIT = {ARP__ANNOUNCE_WAIT} s; "
                 f"got {self._dad_sleep_durations[3]} s."
+            ),
+        )
+
+    def test__arp__dad__conflict_during_announce_wait_aborts_claim(self) -> None:
+        """
+        Ensure a conflicting ARP packet arriving during the
+        ANNOUNCE_WAIT post-probe quiet period — that is, after
+        the last probe but before the first announcement —
+        flags the candidate as conflicted and prevents
+        admission. This is the late-conflict-detection branch
+        the ANNOUNCE_WAIT window exists to enable.
+
+        Reference: RFC 5227 §2.1.1 (late conflicts during ANNOUNCE_WAIT abort claim).
+        """
+
+        candidate_address = STACK__IP4_HOST__CANDIDATE.address
+
+        def _inject_conflict(idx: int) -> None:
+            if idx == 3:  # ANNOUNCE_WAIT sleep — after all probes, before announcements
+                self._drive_arp(
+                    ethernet_dst=MAC__BROADCAST,
+                    ethernet_src=HOST_A__MAC_ADDRESS,
+                    arp_oper=ArpOperation.REQUEST,
+                    arp_sha=HOST_A__MAC_ADDRESS,
+                    arp_spa=candidate_address,
+                    arp_tha=MAC__UNSPECIFIED,
+                    arp_tpa=candidate_address,
+                )
+
+        self._drive_dad(on_sleep=_inject_conflict, num_sleep_callbacks=4)
+
+        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        self.assertNotIn(
+            candidate_address,
+            addresses_after,
+            msg=(
+                "Candidate IP must NOT be admitted to '_ip4_host' when a "
+                "conflicting ARP arrives during the ANNOUNCE_WAIT window."
+            ),
+        )
+        self.assertIn(
+            candidate_address,
+            self._packet_handler._arp_probe__unicast_conflict,
+            msg=(
+                "Late-conflict candidate IP must be registered in the "
+                "per-instance '_arp_probe__unicast_conflict' set so the "
+                "post-window admit-loop skips it."
             ),
         )
