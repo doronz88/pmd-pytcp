@@ -99,10 +99,11 @@ class TestArpDad(ArpTestCase):
         )
         self.assertEqual(
             len(self._frames_tx),
-            4,
+            5,
             msg=(
-                "Expected exactly four wire frames after DAD: 3 ARP Probes + 1 "
-                f"ARP Announcement. Got: {len(self._frames_tx)} frames."
+                "Expected exactly five wire frames after DAD: 3 ARP Probes + 2 "
+                f"ARP Announcements (RFC 5227 §2.3 ANNOUNCE_NUM). Got: "
+                f"{len(self._frames_tx)} frames."
             ),
         )
 
@@ -317,5 +318,85 @@ class TestArpDad(ArpTestCase):
             msg=(
                 "Pre-existing stack IPs must remain in '_ip4_host' across the "
                 "DAD run; only candidates participate in the probe loop."
+            ),
+        )
+
+    def test__arp__dad__no_conflict_emits_two_announcements(self) -> None:
+        """
+        Ensure a successful DAD claim emits exactly
+        ANNOUNCE_NUM = 2 ARP Announcements on the wire — the
+        first lets the host begin using the IP immediately,
+        the second insures against stale ARP cache entries on
+        peers that may have missed the first.
+
+        Reference: RFC 5227 §2.3 (MUST broadcast ANNOUNCE_NUM Announcements).
+        """
+
+        from net_proto import ArpOperation, ArpParser
+        from net_proto.lib.packet_rx import PacketRx
+
+        self._drive_dad()
+
+        candidate_address = STACK__IP4_HOST__CANDIDATE.address
+        announcement_count = 0
+        for frame in self._frames_tx:
+            if frame[12:14] != b"\x08\x06":
+                continue
+            packet_rx = PacketRx(frame[14:])
+            ArpParser(packet_rx)
+            # An RFC 5227 §2.3 Announcement is an ARP Request
+            # with SPA == TPA == the address being claimed and
+            # SHA == our MAC.
+            if (
+                packet_rx.arp.oper is ArpOperation.REQUEST
+                and packet_rx.arp.spa == candidate_address
+                and packet_rx.arp.tpa == candidate_address
+                and packet_rx.arp.sha == STACK__MAC_ADDRESS
+            ):
+                announcement_count += 1
+
+        self.assertEqual(
+            announcement_count,
+            2,
+            msg=(
+                "RFC 5227 §2.3 mandates ANNOUNCE_NUM = 2 ARP Announcements "
+                f"per claim; got {announcement_count} on the wire."
+            ),
+        )
+
+    def test__arp__dad__announcements_spaced_by_announce_interval(self) -> None:
+        """
+        Ensure the second ARP Announcement is sent
+        ANNOUNCE_INTERVAL = 2 seconds after the first — pinning
+        that the announcement loop uses the correct constant
+        rather than 'time.sleep(0)' or a different value.
+
+        Reference: RFC 5227 §2.3 (Announcements spaced ANNOUNCE_INTERVAL apart).
+        """
+
+        from pytcp import stack as stack_mod
+
+        self._drive_dad()
+
+        # Sleep order from '_create_stack_ip4_addressing':
+        #   indexes 0..2 — three probe-loop sleeps (random.uniform(1,2))
+        #   index 3       — between Announcement 1 and Announcement 2
+        #                   (ARP__ANNOUNCE_INTERVAL = 2 s)
+        self.assertGreaterEqual(
+            len(self._dad_sleep_durations),
+            4,
+            msg=(
+                "Expected at least 4 'time.sleep' calls (3 probe-loop "
+                "sleeps + 1 announce-spacing sleep). Got: "
+                f"{len(self._dad_sleep_durations)}"
+            ),
+        )
+        self.assertEqual(
+            self._dad_sleep_durations[3],
+            stack_mod.ARP__ANNOUNCE_INTERVAL,
+            msg=(
+                "Sleep between Announcements (index 3, post-probe-loop) must "
+                f"equal stack.ARP__ANNOUNCE_INTERVAL = {stack_mod.ARP__ANNOUNCE_INTERVAL} s; "
+                f"got {self._dad_sleep_durations[3]} s."
             ),
         )

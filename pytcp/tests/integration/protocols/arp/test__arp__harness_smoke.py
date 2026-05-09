@@ -203,25 +203,26 @@ class TestArpHarnessSmoke(ArpTestCase):
             ),
         )
 
-    def test__arp__harness__drive_dad_no_callback_emits_three_probes_and_one_announcement(self) -> None:
+    def test__arp__harness__drive_dad_no_callback_emits_three_probes_and_two_announcements(self) -> None:
         """
         Ensure '_drive_dad' with no 'on_sleep' callback runs the
         three-iteration probe loop synchronously and emits the
-        canonical 3 probes + 1 announcement = 4 wire frames the
-        legacy DAD flow produces. Pins the harness's
-        'time.sleep' patch against the production loop.
+        canonical 3 probes + 2 announcements = 5 wire frames the
+        DAD flow produces (per RFC 5227 §2.3 ANNOUNCE_NUM = 2).
+        Pins the harness's 'time.sleep' patch against the
+        production loop.
 
         Reference: RFC 5227 §2.1 (MUST probe before use).
-        Reference: RFC 5227 §2.3 (MUST announce after probe).
+        Reference: RFC 5227 §2.3 (MUST announce ANNOUNCE_NUM = 2).
         """
 
         self._drive_dad()
 
         self.assertEqual(
             len(self._frames_tx),
-            4,
+            5,
             msg=(
-                "Expected exactly 4 wire frames (3 probes + 1 announcement) for "
+                "Expected exactly 5 wire frames (3 probes + 2 announcements) for "
                 f"a clean DAD run; got {len(self._frames_tx)}."
             ),
         )

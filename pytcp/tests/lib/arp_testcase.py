@@ -106,6 +106,7 @@ class ArpTestCase(NetworkTestCase):
 
     _monotonic_t: float
     _dad_sleep_callbacks: list[Callable[[], None]]
+    _dad_sleep_durations: list[float]
 
     def setUp(self) -> None:
         """
@@ -147,7 +148,15 @@ class ArpTestCase(NetworkTestCase):
         # for a no-injection run).
         self._dad_sleep_callbacks = []
 
-        def _patched_sleep(_dur: float) -> None:
+        # Records every 'time.sleep(dur)' the patched sleep
+        # observes, in order. Lets tests assert on the timing
+        # pattern of the DAD flow (probe-loop intervals,
+        # ANNOUNCE_INTERVAL between Announcements, ANNOUNCE_WAIT
+        # post-probe quiet period, etc.).
+        self._dad_sleep_durations = []
+
+        def _patched_sleep(dur: float) -> None:
+            self._dad_sleep_durations.append(dur)
             if self._dad_sleep_callbacks:
                 self._dad_sleep_callbacks.pop(0)()
 

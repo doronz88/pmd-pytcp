@@ -686,7 +686,17 @@ class PacketHandlerL2(
             self._ip4_host_candidate.remove(ip4_host)
             if ip4_host.address not in self._arp_probe__unicast_conflict:
                 self._ip4_host.append(ip4_host)
-                self._send_arp_announcement(ip4_unicast=ip4_host.address)
+                # RFC 5227 §2.3: broadcast ANNOUNCE_NUM ARP
+                # Announcements spaced ANNOUNCE_INTERVAL seconds
+                # apart so peers refresh any stale ARP cache
+                # entries left over from the previous holder.
+                # The host can begin using the IP immediately
+                # after the first Announcement; the second is
+                # insurance against peers that missed the first.
+                for announce_idx in range(stack.ARP__ANNOUNCE_NUM):
+                    if announce_idx > 0:
+                        time.sleep(stack.ARP__ANNOUNCE_INTERVAL)
+                    self._send_arp_announcement(ip4_unicast=ip4_host.address)
                 __debug__ and log(
                     "stack",
                     f"Successfully claimed IPv4 address {ip4_host.address}",

@@ -154,6 +154,16 @@ ARP__DEFEND_INTERVAL = 10
 # per-destination '_pending_resolution' table.
 ARP__REQUEST_RATE_LIMIT = 1
 
+# RFC 5227 §1.1 / §2.3 ARP Announcement count and spacing.
+# After successful DAD, the host MUST broadcast ANNOUNCE_NUM
+# ARP Announcements spaced ANNOUNCE_INTERVAL seconds apart so
+# peers refresh any stale ARP cache entries left over from the
+# previous holder of the address. The host may begin using
+# the IP immediately after the first Announcement; the second
+# is insurance against peers that missed the first.
+ARP__ANNOUNCE_NUM = 2
+ARP__ANNOUNCE_INTERVAL = 2
+
 # ICMPv6 ND cache configuration.
 ICMP6__ND__CACHE__ENTRY_MAX_AGE = 3600
 ICMP6__ND__CACHE__ENTRY_REFRESH_TIME = 300
