@@ -84,3 +84,131 @@ ARP__PROBE_MAX = 2
 # the host would commit to the address the instant the probe
 # loop ends.
 ARP__ANNOUNCE_WAIT = 2
+
+# Sysctl registration. Every constant above except
+# 'ARP__REQUEST_RATE_LIMIT' is a policy knob (operator-tunable
+# at boot via 'stack.init()' or at runtime via
+# 'pytcp.stack.sysctl["arp...."] = N'). The exception
+# 'ARP__REQUEST_RATE_LIMIT' is RFC 1122 §2.3.2.1-pinned at 1 s
+# "recommended" and PyTCP's rate-limit gate currently treats
+# the recommendation as a hard floor — re-classify when there
+# is a real consumer for a runtime override.
+from pytcp.lib.sysctl import _finalize_validators, _is_positive_int, _register, get  # noqa: E402
+
+_register(
+    key="arp.cache.max_age",
+    module_name=__name__,
+    attr="ARP__CACHE__ENTRY_MAX_AGE",
+    default=ARP__CACHE__ENTRY_MAX_AGE,
+    validator=_is_positive_int("arp.cache.max_age"),
+    description="ARP cache entry lifetime, seconds.",
+)
+_register(
+    key="arp.cache.refresh_time",
+    module_name=__name__,
+    attr="ARP__CACHE__ENTRY_REFRESH_TIME",
+    default=ARP__CACHE__ENTRY_REFRESH_TIME,
+    validator=_is_positive_int("arp.cache.refresh_time"),
+    description="ARP cache refresh-window window, seconds; must be < arp.cache.max_age.",
+)
+_register(
+    key="arp.defend_interval",
+    module_name=__name__,
+    attr="ARP__DEFEND_INTERVAL",
+    default=ARP__DEFEND_INTERVAL,
+    validator=_is_positive_int("arp.defend_interval"),
+    description="RFC 5227 §2.4(c) DEFEND_INTERVAL — defensive-ARP rate-limit window, seconds.",
+)
+_register(
+    key="arp.probe_wait",
+    module_name=__name__,
+    attr="ARP__PROBE_WAIT",
+    default=ARP__PROBE_WAIT,
+    validator=_is_positive_int("arp.probe_wait"),
+    description="RFC 5227 §2.1.1 PROBE_WAIT — upper bound of initial random delay before first ARP Probe, seconds.",
+)
+_register(
+    key="arp.probe_num",
+    module_name=__name__,
+    attr="ARP__PROBE_NUM",
+    default=ARP__PROBE_NUM,
+    validator=_is_positive_int("arp.probe_num"),
+    description="RFC 5227 §2.1.1 PROBE_NUM — number of ARP Probes per candidate.",
+)
+_register(
+    key="arp.probe_min",
+    module_name=__name__,
+    attr="ARP__PROBE_MIN",
+    default=ARP__PROBE_MIN,
+    validator=_is_positive_int("arp.probe_min"),
+    description="RFC 5227 §2.1.1 PROBE_MIN — lower bound of inter-probe spacing, seconds; must be < arp.probe_max.",
+)
+_register(
+    key="arp.probe_max",
+    module_name=__name__,
+    attr="ARP__PROBE_MAX",
+    default=ARP__PROBE_MAX,
+    validator=_is_positive_int("arp.probe_max"),
+    description="RFC 5227 §2.1.1 PROBE_MAX — upper bound of inter-probe spacing, seconds.",
+)
+_register(
+    key="arp.announce_num",
+    module_name=__name__,
+    attr="ARP__ANNOUNCE_NUM",
+    default=ARP__ANNOUNCE_NUM,
+    validator=_is_positive_int("arp.announce_num"),
+    description="RFC 5227 §2.3 ANNOUNCE_NUM — number of ARP Announcements after successful DAD.",
+)
+_register(
+    key="arp.announce_interval",
+    module_name=__name__,
+    attr="ARP__ANNOUNCE_INTERVAL",
+    default=ARP__ANNOUNCE_INTERVAL,
+    validator=_is_positive_int("arp.announce_interval"),
+    description="RFC 5227 §2.3 ANNOUNCE_INTERVAL — spacing between back-to-back Announcements, seconds.",
+)
+_register(
+    key="arp.announce_wait",
+    module_name=__name__,
+    attr="ARP__ANNOUNCE_WAIT",
+    default=ARP__ANNOUNCE_WAIT,
+    validator=_is_positive_int("arp.announce_wait"),
+    description="RFC 5227 §2.1.1 ANNOUNCE_WAIT — post-probe quiet period before first Announcement, seconds.",
+)
+
+
+def _finalize__refresh_lt_max_age() -> None:
+    """
+    Cross-knob constraint — 'arp.cache.refresh_time' must be
+    strictly less than 'arp.cache.max_age'. The refresh-window
+    arithmetic in 'ArpCache._subsystem_loop' assumes
+    REFRESH < MAX; equality skips the refresh path entirely
+    and inversion produces a negative window.
+    """
+
+    if get("arp.cache.refresh_time") >= get("arp.cache.max_age"):
+        raise ValueError(
+            f"sysctl 'arp.cache.refresh_time' ({get('arp.cache.refresh_time')}) must be "
+            f"strictly less than 'arp.cache.max_age' ({get('arp.cache.max_age')}); the "
+            f"refresh-window arithmetic in the cache loop requires REFRESH < MAX."
+        )
+
+
+def _finalize__probe_min_lt_probe_max() -> None:
+    """
+    Cross-knob constraint — 'arp.probe_min' must be strictly
+    less than 'arp.probe_max'. The probe-spacing draw uses
+    'random.uniform(probe_min, probe_max)' which requires a
+    non-degenerate range.
+    """
+
+    if get("arp.probe_min") >= get("arp.probe_max"):
+        raise ValueError(
+            f"sysctl 'arp.probe_min' ({get('arp.probe_min')}) must be strictly less than "
+            f"'arp.probe_max' ({get('arp.probe_max')}); the inter-probe random.uniform "
+            f"draw requires MIN < MAX."
+        )
+
+
+_finalize_validators.append(_finalize__refresh_lt_max_age)
+_finalize_validators.append(_finalize__probe_min_lt_probe_max)

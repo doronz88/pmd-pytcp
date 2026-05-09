@@ -321,6 +321,7 @@ def init(
     ip6_lla_autoconfig: bool = True,
     arp_cache_max_age: int | None = None,
     arp_cache_refresh_time: int | None = None,
+    sysctls: dict[str, Any] | None = None,
 ) -> None:
     """
     Initialize stack components.
@@ -330,25 +331,26 @@ def init(
     global interface_mtu, stack_initialized
 
     # Apply user overrides for the ARP cache aging timeouts before
-    # any subsystem is constructed — sysctl-style mutation of the
-    # live constants in 'arp__constants' (Linux equivalent:
-    # net.ipv4.neigh.default.{base_reachable_time, gc_stale_time}).
-    # The ArpCache reads these via qualified access so a mutation
-    # here is picked up by the next loop iteration.
-    from pytcp.protocols.arp import arp__constants
+    # any subsystem is constructed. Both the explicit kwargs and
+    # the 'sysctls={...}' bag route through 'pytcp.lib.sysctl.set'
+    # so the per-knob validators run; cross-knob constraints
+    # (e.g. refresh < max_age) run after every kwarg has been
+    # applied, via 'finalize_validators'.
+    #
+    # Importing 'arp__constants' triggers its module-level
+    # '_register' calls, populating the registry before we set
+    # any values.
+    from pytcp.lib import sysctl as sysctl_module
+    from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
 
-    new_max_age = arp_cache_max_age if arp_cache_max_age is not None else arp__constants.ARP__CACHE__ENTRY_MAX_AGE
-    new_refresh = (
-        arp_cache_refresh_time if arp_cache_refresh_time is not None else arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME
-    )
-    if new_refresh >= new_max_age:
-        raise ValueError(
-            f"arp_cache_refresh_time ({new_refresh}) must be strictly less than "
-            f"arp_cache_max_age ({new_max_age}); the refresh-window arithmetic "
-            f"in the cache loop requires REFRESH_TIME < MAX_AGE."
-        )
-    arp__constants.ARP__CACHE__ENTRY_MAX_AGE = new_max_age
-    arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME = new_refresh
+    if arp_cache_max_age is not None:
+        sysctl_module.set("arp.cache.max_age", arp_cache_max_age)
+    if arp_cache_refresh_time is not None:
+        sysctl_module.set("arp.cache.refresh_time", arp_cache_refresh_time)
+    if sysctls is not None:
+        for key, value in sysctls.items():
+            sysctl_module.set(key, value)
+    sysctl_module.finalize_validators()
 
     timer = Timer()
 
@@ -444,3 +446,11 @@ def stop() -> None:
     if hasattr(packet_handler, "arp_cache"):
         arp_cache.stop()
     nd_cache.stop()
+
+    # Restore every registered sysctl to its compile-time default
+    # so a follow-up 'stack.init()' (typical in long-running test
+    # harnesses) starts from a clean baseline rather than
+    # inheriting overrides from the prior run.
+    from pytcp.lib import sysctl as sysctl_module
+
+    sysctl_module.reset_to_defaults()

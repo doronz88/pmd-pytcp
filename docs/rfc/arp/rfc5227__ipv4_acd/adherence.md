@@ -249,12 +249,19 @@ finished iterating).
 > different hosts on a link are using different timing
 > parameters, this does not cause any problems."
 
-**Adherence:** **met (no deviation)**. PyTCP uses the
-default constants implicitly inlined at
-`pytcp/stack/packet_handler/__init__.py:663,668`. There is
-no per-link override mechanism, but RFC 5227 itself
-acknowledges that mixed timing parameters are
-non-disruptive.
+**Adherence:** **met (no deviation; tunable)**. PyTCP uses
+the default constants from
+`pytcp/protocols/arp/arp__constants.py`. Each timing
+constant (PROBE_WAIT, PROBE_NUM, PROBE_MIN, PROBE_MAX,
+ANNOUNCE_NUM, ANNOUNCE_INTERVAL, ANNOUNCE_WAIT,
+DEFEND_INTERVAL) is registered with the `pytcp.lib.sysctl`
+registry, so an operator on a fast network technology can
+shorten any of them via
+`stack.init(sysctls={"arp.probe_wait": 0, ...})` at boot or
+`pytcp.stack.sysctl["arp.probe_min"] = 0` at runtime. There
+is no per-link override mechanism (deferred to Phase 2
+multi-interface), but RFC 5227 itself acknowledges that
+mixed timing parameters are non-disruptive.
 
 ---
 

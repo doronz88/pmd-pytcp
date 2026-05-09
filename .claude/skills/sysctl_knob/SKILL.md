@@ -57,10 +57,11 @@ Before touching code:
    `<package>.<subject>.<field>` snake_case. Examples in
    `sysctl_framework.md` §3.
 3. **Decide whether the knob gets an explicit `stack.init()`
-   kwarg or rides the `**sysctls` catch-all.** Explicit if
-   most users will tune it; catch-all if niche. The decision
-   is reversible — promoting a niche knob to explicit later
-   is a one-line addition.
+   kwarg or rides the `sysctls={...}` bag.** Explicit if
+   most users will tune it; bag if niche. The decision is
+   reversible — promoting a niche knob to explicit later is
+   a one-line addition. The bag is keyed by the canonical
+   dotted name (no underscore→dot auto-conversion).
 
 ## Output diff (canonical shape)
 
@@ -143,12 +144,13 @@ def init(
     layer: InterfaceLayer,
     # ...
     arp_cache_max_age: int | None = None,    # new explicit kwarg
-    **sysctls: Any,                          # catch-all stays
+    sysctls: dict[str, Any] | None = None,    # bag stays (dotted-name keys)
 ) -> None:
     if arp_cache_max_age is not None:
         sysctl.set("arp.cache.max_age", arp_cache_max_age)
-    for key, value in sysctls.items():
-        sysctl.set(key.replace("_", "."), value)
+    if sysctls is not None:
+        for key, value in sysctls.items():
+            sysctl.set(key, value)
     sysctl.finalize_validators()
     # ... rest of init
 ```
@@ -282,16 +284,16 @@ Co-Authored-By: ...
   supposed to be there.
 - **Validators that don't include the offending key in the
   error message.** Without the key, a `ValueError` from a
-  `**sysctls` dict tells the user nothing.
+  `sysctls={...}` bag tells the user nothing.
 - **Half-migrating a package.** If a sweep migrates 5 of 10
   policy constants in a `*__constants.py` and stops, the
   remaining 5 sit as second-class citizens — operators will
   be confused which knob is mutable. Always finish the
   package.
 - **Promoting a knob to explicit kwarg "just in case."**
-  Catch-all `**sysctls` is the default; explicit kwargs are
-  for knobs that genuinely warrant the type-safety + IDE
-  autocomplete tax. Reversible later.
+  The `sysctls={...}` bag is the default surface; explicit
+  kwargs are for knobs that genuinely warrant the type-safety
+  + IDE autocomplete tax. Reversible later.
 - **Adding a sysctl whose only consumer is a test.** That's
   a test-scaffolding need, not a public-API need; patch the
   module attribute directly. The framework is for surfaces

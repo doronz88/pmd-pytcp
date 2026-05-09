@@ -170,10 +170,16 @@ on the kwarg means "leave the registry default in place."
 
 The `init()` function should NOT enumerate every knob — that
 would couple `init()`'s signature to the registry's
-membership. Instead, accept `**sysctls: Any` after the
-explicit named kwargs, route each through the registry. Names
-must match a registered key or `init()` raises
-`ValueError("unknown sysctl: <name>")`.
+membership. Instead, accept a single `sysctls: dict[str, Any]
+| None = None` bag kwarg after the explicit named kwargs and
+route each entry through the registry. Names must match a
+registered key or the registry raises `KeyError("unknown
+sysctl: '<name>'")`. The bag form is keyed by the canonical
+dotted name (`"arp.defend_interval"`) — there is no
+`underscore_form → dotted.form` auto-conversion to avoid
+ambiguity when a key has mid-segment underscores
+(`arp.cache.max_age` vs hypothetical `arp.cache_max.age`
+would both derive `arp_cache_max_age`).
 
 ```python
 def init(
@@ -184,7 +190,7 @@ def init(
     arp_cache_max_age: int | None = None,    # explicit for type safety + autocomplete
     arp_cache_refresh_time: int | None = None,
     # ... future explicit kwargs as they're added ...
-    **sysctls: Any,                           # catch-all for less-common knobs
+    sysctls: dict[str, Any] | None = None,    # bag for less-common knobs (dotted-name keys)
 ) -> None: ...
 ```
 
@@ -192,7 +198,8 @@ The "promote a knob to an explicit kwarg" decision is
 ergonomic: if the knob is one most users will tune
 (documented in the README, mentioned in tutorials), make it
 explicit. Otherwise leave it accessible only through
-`**sysctls` / `stack.sysctl["..."] = ...`.
+`sysctls={"<dotted.key>": value}` at boot or via
+`stack.sysctl["<dotted.key>"] = value` at runtime.
 
 ---
 
@@ -301,7 +308,7 @@ WHOLE `*__constants.py` file's policy knobs in the same
 commit. This avoids both the multi-week wholesale sweep and
 the slow drift of pure-lazy migration.
 
-### Phase 0 — Build registry (prep commit)
+### Phase 0 — Build registry ✅ shipped `8eb94ccb`
 
 Write `pytcp/lib/sysctl.py` with:
 - `_register`, `get`, `set`, `list_keys`, `describe`,
@@ -324,7 +331,7 @@ Unit tests at `pytcp/tests/unit/lib/test__lib__sysctl.py`:
 
 No source migration in this commit. Pure infrastructure.
 
-### Phase 1 — Migrate `arp__constants.py` policy knobs (#16 retrofit + #17 prep)
+### Phase 1 — Migrate `arp__constants.py` policy knobs (#16 retrofit + #17 prep) ✅ shipped (this commit)
 
 Walk every constant in `pytcp/protocols/arp/arp__constants.py`,
 classify each, register the policy ones with the registry.

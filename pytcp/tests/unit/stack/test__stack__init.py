@@ -844,6 +844,15 @@ class TestStackInitArpCacheConfig(TestCase):
         Restore the constants and module-level singletons.
         """
 
+        # The registry's reset_to_defaults handles every
+        # registered policy knob (covers ARP cache + RFC 5227
+        # timing constants etc.); the explicit restore of the
+        # two cache constants is belt-and-braces in case the
+        # registry default has drifted between registration
+        # time and now.
+        from pytcp.lib import sysctl as sysctl_module
+
+        sysctl_module.reset_to_defaults()
         self._arp__constants.ARP__CACHE__ENTRY_MAX_AGE = self._snapshot_max_age
         self._arp__constants.ARP__CACHE__ENTRY_REFRESH_TIME = self._snapshot_refresh
         for name, value in self._snapshot.items():
@@ -964,6 +973,79 @@ class TestStackInitArpCacheConfig(TestCase):
 
         with self.assertRaises(ValueError):
             self._init_l2(arp_cache_max_age=10, arp_cache_refresh_time=20)
+
+    def test__stack__init__sysctls_bag_propagates_through_registry(self) -> None:
+        """
+        Ensure 'stack.init(sysctls={"arp.defend_interval": 20})'
+        routes the dotted-name bag entry through the registry
+        and writes the new value to the backing constant —
+        the documented path for tuning a knob that does not have
+        an explicit kwarg.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._init_l2(sysctls={"arp.defend_interval": 20})
+
+        self.assertEqual(
+            self._arp__constants.ARP__DEFEND_INTERVAL,
+            20,
+            msg=(
+                "stack.init(sysctls={'arp.defend_interval': 20}) must mutate "
+                "ARP__DEFEND_INTERVAL via the sysctl registry."
+            ),
+        )
+
+    def test__stack__init__sysctls_bag_unknown_key_raises(self) -> None:
+        """
+        Ensure an unknown key in 'sysctls={...}' raises
+        'KeyError' from the registry — operators get a clear
+        error rather than a silent typo.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(KeyError):
+            self._init_l2(sysctls={"arp.no_such_knob": 1})
+
+    def test__stack__init__sysctls_bag_validator_rejection(self) -> None:
+        """
+        Ensure a 'sysctls={...}' entry that fails its per-knob
+        validator raises 'ValueError' with the offending key
+        in the message — the registry write does not bypass
+        validation just because it came from the bag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError) as ctx:
+            self._init_l2(sysctls={"arp.defend_interval": -5})
+        self.assertIn(
+            "arp.defend_interval",
+            str(ctx.exception),
+            msg="Bag-kwarg validator rejection must surface the offending key.",
+        )
+
+    def test__stack__init__cross_knob_probe_min_lt_probe_max_enforced(self) -> None:
+        """
+        Ensure the 'arp.probe_min < arp.probe_max' cross-knob
+        constraint runs at the end of 'init()' via
+        'finalize_validators', rejecting a configuration where
+        each individual knob passes its own validator but the
+        pair is inconsistent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError) as ctx:
+            self._init_l2(sysctls={"arp.probe_min": 5, "arp.probe_max": 3})
+        self.assertIn(
+            "arp.probe_min",
+            str(ctx.exception),
+            msg=(
+                "The cross-knob finalize validator must reject probe_min >= probe_max " "and surface the offending key."
+            ),
+        )
 
 
 class TestStackPythonVersionGuard(TestCase):
