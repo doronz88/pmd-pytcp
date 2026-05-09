@@ -203,9 +203,17 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
         Reference: RFC 1122 §2.3.2.2 (queued-packet semantics).
         """
 
+        from pytcp.stack.packet_handler import PacketHandlerL2
+
         ip = Ip4Address("10.0.0.1")
-        # find_entry on miss creates the INCOMPLETE anchor.
-        self._cache.find_entry(ip4_address=ip)
+        # 'find_entry' on miss creates the INCOMPLETE anchor and
+        # fires the solicit callback, which asserts on
+        # 'stack.packet_handler' — stub it for the duration.
+        with patch(
+            "pytcp.protocols.arp.arp__cache.stack.packet_handler",
+            MagicMock(spec=PacketHandlerL2),
+        ):
+            self._cache.find_entry(ip4_address=ip)
         # Use a real EthernetAssembler so the type guard in
         # '_flush_packet' has something genuine to dispatch.
         eth = EthernetAssembler()
