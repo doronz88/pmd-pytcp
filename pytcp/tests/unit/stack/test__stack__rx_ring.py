@@ -441,6 +441,52 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
             msg="A fresh RxRing must report queue_full_drop_count == 0.",
         )
 
+    def test__rx_ring__os_error_drop_count_starts_at_zero(self) -> None:
+        """
+        Ensure 'os_error_drop_count' starts at 0 on a freshly
+        constructed ring so monitors have a clean baseline.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            0,
+            msg="A fresh RxRing must report os_error_drop_count == 0.",
+        )
+
+    def test__rx_ring__loop_swallows_os_read_oserror(self) -> None:
+        """
+        Ensure 'os.read' raising 'OSError' does not crash the RX
+        subsystem thread. Transient kernel errors (EINTR on
+        signal, EBADF on shutdown race, EIO on hardware glitches)
+        must be caught and counted, not propagated to the
+        Subsystem driver where they would silently kill the
+        thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch.object(
+                self._ring._selector,
+                "select",
+                side_effect=[[MagicMock()], []],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                side_effect=OSError("transient kernel error"),
+            ),
+        ):
+            # Must not propagate the OSError.
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            1,
+            msg="os.read OSError must bump 'os_error_drop_count' by exactly one.",
+        )
+
     def test__rx_ring__loop_increments_drop_count_on_full_queue(self) -> None:
         """
         Ensure 'queue_full_drop_count' increments by exactly one each

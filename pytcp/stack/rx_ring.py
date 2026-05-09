@@ -67,6 +67,7 @@ class RxRing(Subsystem):
     _selector: selectors.DefaultSelector
     _rx_event_fd: int
     _queue_full_drop_count: int
+    _os_error_drop_count: int
 
     @override
     def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
@@ -93,6 +94,7 @@ class RxRing(Subsystem):
         self._selector.register(self._fd, selectors.EVENT_READ)
         self._rx_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
         self._queue_full_drop_count = 0
+        self._os_error_drop_count = 0
 
     @property
     def queue_full_drop_count(self) -> int:
@@ -104,6 +106,18 @@ class RxRing(Subsystem):
         """
 
         return self._queue_full_drop_count
+
+    @property
+    def os_error_drop_count(self) -> int:
+        """
+        Get the cumulative count of inbound frames dropped because
+        'os.read' raised 'OSError' (transient kernel errors: EINTR
+        on signal, EBADF on shutdown race, EIO on hardware glitches,
+        ENOMEM on tight memory). Without the counter, these errors
+        would silently kill the RX subsystem thread.
+        """
+
+        return self._os_error_drop_count
 
     @property
     def qsize(self) -> int:
@@ -134,7 +148,21 @@ class RxRing(Subsystem):
             return
 
         while True:
-            packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
+            try:
+                packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
+            except OSError as error:
+                # Transient kernel errors (EINTR / EBADF on
+                # shutdown race / EIO / ENOMEM) — drop the read
+                # attempt, count it, and break the inner drain so
+                # the outer loop can take a fresh tick (and check
+                # the stop event).
+                self._os_error_drop_count += 1
+                __debug__ and log(
+                    "rx-ring",
+                    f"<CRIT>RX read failed, OSError: {error}</>",
+                )
+                break
+
             __debug__ and log(
                 "rx-ring",
                 f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
