@@ -497,6 +497,40 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
             msg="IPv4 localnet ARP cache miss must drop with DST_ARP_CACHE_MISS.",
         )
 
+    def test__stack__packet_handler__ethernet__tx__ip4_localnet_arp_miss_enqueues_pending(self) -> None:
+        """
+        Ensure an IPv4 on-link destination that misses the ARP cache
+        also calls 'arp_cache.enqueue_pending(...)' so the dropped
+        Ethernet packet can be redelivered once an ARP Reply
+        resolves the destination MAC.
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
+        """
+
+        self._arp_cache.find_entry.return_value = None
+
+        ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=HOST_B__IP4)
+        self._handler._phtx_ethernet(ethernet__payload=ip4)
+
+        self._arp_cache.enqueue_pending.assert_called_once()
+        kwargs = self._arp_cache.enqueue_pending.call_args.kwargs
+        self.assertEqual(
+            kwargs["ip4_address"],
+            HOST_B__IP4,
+            msg=(
+                "enqueue_pending must be keyed by the unresolved destination IP "
+                "so 'add_entry' on the matching ARP Reply can find and flush it."
+            ),
+        )
+        self.assertIs(
+            kwargs["ethernet_packet_tx"].payload,
+            ip4,
+            msg=(
+                "The queued EthernetAssembler must wrap the original IPv4 "
+                "payload so the post-resolution flush re-emits the same packet."
+            ),
+        )
+
     def test__stack__packet_handler__ethernet__tx__ip4_extnet_uses_gateway_mac(self) -> None:
         """
         Ensure an IPv4 off-link destination resolves via the gateway MAC
@@ -552,6 +586,42 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
             status,
             TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
             msg="IPv4 extnet with a gateway but ARP miss must drop with DST_GATEWAY_ARP_CACHE_MISS.",
+        )
+
+    def test__stack__packet_handler__ethernet__tx__ip4_extnet_gateway_arp_miss_enqueues_pending(self) -> None:
+        """
+        Ensure an IPv4 off-link destination whose gateway misses the
+        ARP cache calls 'arp_cache.enqueue_pending(...)' keyed by the
+        gateway IP (not the off-subnet destination IP) so the
+        dropped Ethernet packet can be redelivered once the
+        gateway's MAC has been resolved.
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
+        """
+
+        self._arp_cache.find_entry.return_value = None
+
+        ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=HOST_C__IP4)
+        self._handler._phtx_ethernet(ethernet__payload=ip4)
+
+        self._arp_cache.enqueue_pending.assert_called_once()
+        kwargs = self._arp_cache.enqueue_pending.call_args.kwargs
+        self.assertEqual(
+            kwargs["ip4_address"],
+            STACK__IP4_GATEWAY,
+            msg=(
+                "enqueue_pending for an off-subnet destination must be keyed by "
+                "the gateway IP — that's the IP the future ARP Reply resolves, "
+                f"not the original packet's IP destination ({HOST_C__IP4})."
+            ),
+        )
+        self.assertIs(
+            kwargs["ethernet_packet_tx"].payload,
+            ip4,
+            msg=(
+                "The queued EthernetAssembler must wrap the original IPv4 "
+                "payload so the post-resolution flush re-emits the same packet."
+            ),
         )
 
     def test__stack__packet_handler__ethernet__tx__ip4_frag_payload_routes_like_ip4(self) -> None:
