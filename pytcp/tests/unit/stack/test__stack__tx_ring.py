@@ -459,6 +459,74 @@ class TestTxRingInnerDrain(_TxRingFixture):
         )
 
 
+class TestTxRingSharedPacketStats(_TxRingFixture):
+    """
+    The 'TxRing' shared-PacketStats integration tests.
+    """
+
+    def test__tx_ring__queue_full_drop_increments_shared_stats(self) -> None:
+        """
+        Ensure that when a 'PacketStatsTx' instance is wired in via
+        the constructor's 'packet_stats=' kwarg, queue-full drops
+        bump 'stats.tx_ring__queue_full__drop' instead of the
+        ring's private internal counter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsTx
+
+        stats = PacketStatsTx()
+        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1, packet_stats=stats)
+        self.addCleanup(ring._stop)
+        ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
+
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+
+        self.assertEqual(
+            stats.tx_ring__queue_full__drop,
+            2,
+            msg="Each enqueue-on-full drop must bump the shared PacketStatsTx field.",
+        )
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            2,
+            msg="queue_full_drop_count property must read the shared stats value.",
+        )
+
+    def test__tx_ring__os_error_drop_increments_shared_stats(self) -> None:
+        """
+        Ensure that 'os.writev' OSError increments
+        'stats.tx_ring__os_error__drop' when stats are shared.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsTx
+
+        stats = PacketStatsTx()
+        ring = TxRing(fd=self._write_fd, mtu=1500, packet_stats=stats)
+        self.addCleanup(ring._stop)
+
+        pkt = MagicMock(spec=EthernetAssembler)
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+        ring.enqueue(pkt)
+
+        with patch(
+            "pytcp.stack.tx_ring.os.writev",
+            side_effect=OSError("link down"),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            stats.tx_ring__os_error__drop,
+            1,
+            msg="os.writev OSError must bump the shared PacketStatsTx field.",
+        )
+
+
 class TestTxRingDropCounters(_TxRingFixture):
     """
     The 'TxRing' drop-counter observability tests.

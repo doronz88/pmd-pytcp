@@ -328,13 +328,25 @@ def init(
     global interface_mtu, stack_initialized
 
     timer = Timer()
+
+    # Construct stats objects up front so the rings and the packet
+    # handler share the same instances — ring drop counters and
+    # per-protocol counters end up on a single dataclass for
+    # unified-stats consumers.
+    from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+
+    _packet_stats_rx = PacketStatsRx()
+    _packet_stats_tx = PacketStatsTx()
+
     tx_ring = TxRing(
         fd=fd,
         mtu=mtu,
+        packet_stats=_packet_stats_tx,
     )
     rx_ring = RxRing(
         fd=fd,
         mtu=mtu,
+        packet_stats=_packet_stats_rx,
     )
     nd_cache = NdCache()
 
@@ -352,6 +364,8 @@ def init(
                 ip6_host=ip6_host,
                 ip6_gua_autoconfig=ip6_gua_autoconfig,
                 ip6_lla_autoconfig=ip6_lla_autoconfig,
+                packet_stats_rx=_packet_stats_rx,
+                packet_stats_tx=_packet_stats_tx,
             )
         case InterfaceLayer.L3:
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
@@ -361,6 +375,8 @@ def init(
                 ip4_host=ip4_host,
                 ip6_support=ip6_support,
                 ip6_host=ip6_host,
+                packet_stats_rx=_packet_stats_rx,
+                packet_stats_tx=_packet_stats_tx,
             )
 
     interface_mtu = mtu

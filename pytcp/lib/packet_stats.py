@@ -46,6 +46,15 @@ class PacketStatsRx(PacketStats):
     Data store for the RX packet handler statistics.
     """
 
+    # Pre-protocol-handler RX-ring counters. Bumped by 'RxRing'
+    # when packets are dropped before reaching the handler. A
+    # non-zero rate-of-change indicates kernel-side saturation
+    # ('rx_ring__queue_full__drop': consumer can't keep up) or
+    # transient kernel errors on 'os.read' ('rx_ring__os_error__drop':
+    # EINTR / EBADF / EIO / ENOMEM).
+    rx_ring__queue_full__drop: int = 0
+    rx_ring__os_error__drop: int = 0
+
     ethernet__pre_parse: int = 0
     ethernet__failed_parse__drop: int = 0
     ethernet__no_proto_support__drop: int = 0
@@ -207,6 +216,14 @@ class PacketStatsTx(PacketStats):
     """
     Data store for the TX packet handler statistics.
     """
+
+    # Post-protocol-handler TX-ring counters. Bumped by 'TxRing'
+    # when packets are dropped after the handler emits them.
+    # 'tx_ring__queue_full__drop': producer outpaced 'os.writev'
+    # drain. 'tx_ring__os_error__drop': 'os.writev' raised
+    # 'OSError' (typically ENOBUFS / ENETDOWN / EIO).
+    tx_ring__queue_full__drop: int = 0
+    tx_ring__os_error__drop: int = 0
 
     ethernet__pre_assemble: int = 0
     ethernet__src_unspec__fill: int = 0

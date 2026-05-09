@@ -523,6 +523,125 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         )
 
 
+class TestRxRingSharedPacketStats(_RxRingFixture):
+    """
+    The 'RxRing' shared-PacketStats integration tests.
+    """
+
+    def test__rx_ring__queue_full_drop_increments_shared_stats(self) -> None:
+        """
+        Ensure that when a 'PacketStatsRx' instance is wired in via
+        the constructor's 'packet_stats=' kwarg, queue-full drops
+        bump 'stats.rx_ring__queue_full__drop' instead of the ring's
+        private internal counter. Lets monitoring tools see ring
+        drops alongside per-protocol drops in one dataclass.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsRx
+
+        stats = PacketStatsRx()
+        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1, packet_stats=stats)
+        self.addCleanup(ring._stop)
+        ring._rx_deque.append(MagicMock(spec=PacketRx))  # fill to cap
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                side_effect=[[MagicMock()], []],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                return_value=b"\x00" * 64,
+            ),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            stats.rx_ring__queue_full__drop,
+            1,
+            msg="Queue-full drop must bump the shared PacketStatsRx field.",
+        )
+        # The ring's property should now read from the shared field.
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            1,
+            msg="queue_full_drop_count property must read the shared stats value.",
+        )
+
+    def test__rx_ring__os_error_drop_increments_shared_stats(self) -> None:
+        """
+        Ensure that 'os.read' OSError increments
+        'stats.rx_ring__os_error__drop' when stats are shared.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.lib.packet_stats import PacketStatsRx
+
+        stats = PacketStatsRx()
+        ring = RxRing(fd=self._read_fd, mtu=1500, packet_stats=stats)
+        self.addCleanup(ring._stop)
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                side_effect=[[MagicMock()], []],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                side_effect=OSError("transient kernel error"),
+            ),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            stats.rx_ring__os_error__drop,
+            1,
+            msg="os.read OSError must bump the shared PacketStatsRx field.",
+        )
+
+    def test__rx_ring__without_shared_stats_uses_internal_counters(self) -> None:
+        """
+        Ensure that when no 'packet_stats' is provided, the ring
+        falls back to its private internal counters — the
+        standalone-bench / unit-test path stays working unchanged.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
+        self.addCleanup(ring._stop)
+        ring._rx_deque.append(MagicMock(spec=PacketRx))
+
+        with (
+            patch.object(
+                ring._selector,
+                "select",
+                side_effect=[[MagicMock()], []],
+            ),
+            patch(
+                "pytcp.stack.rx_ring.os.read",
+                return_value=b"\x00" * 64,
+            ),
+        ):
+            ring._subsystem_loop()
+
+        self.assertEqual(
+            ring._queue_full_drop_count,
+            1,
+            msg="With no shared stats, drop must increment the internal counter.",
+        )
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            1,
+            msg="Property must read the internal counter when no stats are shared.",
+        )
+
+
 class TestRxRingStopReleasesSelector(_RxRingFixture):
     """
     The 'RxRing._stop' selector-cleanup tests.

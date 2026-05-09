@@ -115,6 +115,8 @@ class PacketHandler(Subsystem, ABC):
         ip4_support: bool,
         ip6_host: Ip6Host | None = None,
         ip4_host: Ip4Host | None = None,
+        packet_stats_rx: PacketStatsRx | None = None,
+        packet_stats_tx: PacketStatsTx | None = None,
     ) -> None:
         """
         Class constructor.
@@ -122,9 +124,13 @@ class PacketHandler(Subsystem, ABC):
 
         super().__init__()
 
-        # Initialize data stores for packet statistics used in unit testing.
-        self._packet_stats_rx = PacketStatsRx()
-        self._packet_stats_tx = PacketStatsTx()
+        # Initialize data stores for packet statistics. When the
+        # caller supplies pre-constructed stats objects (the
+        # 'stack.init()' path does this so the rings can share
+        # them), reuse — otherwise default to fresh instances for
+        # standalone unit-test callers.
+        self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
+        self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
 
         # Initialize the interface mtu.
         self._interface_mtu = interface_mtu
@@ -479,6 +485,8 @@ class PacketHandlerL2(
         ip6_host: Ip6Host | None = None,
         ip6_lla_autoconfig: bool = True,
         ip6_gua_autoconfig: bool = True,
+        packet_stats_rx: PacketStatsRx | None = None,
+        packet_stats_tx: PacketStatsTx | None = None,
     ) -> None:
         """
         Class constructor.
@@ -490,6 +498,8 @@ class PacketHandlerL2(
             ip4_support=ip4_support,
             ip6_host=ip6_host,
             ip4_host=ip4_host,
+            packet_stats_rx=packet_stats_rx,
+            packet_stats_tx=packet_stats_tx,
         )
 
         self._ip4_dhcp = ip4_dhcp

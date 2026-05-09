@@ -38,6 +38,7 @@ from typing import override
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.logger import log
+from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # Per-read kernel-buffer headroom over the configured L3 MTU. Sized
@@ -68,9 +69,17 @@ class RxRing(Subsystem):
     _rx_event_fd: int
     _queue_full_drop_count: int
     _os_error_drop_count: int
+    _packet_stats: PacketStatsRx | None
 
     @override
-    def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
+    def __init__(
+        self,
+        *,
+        fd: int,
+        mtu: int,
+        queue_max_size: int = 1000,
+        packet_stats: PacketStatsRx | None = None,
+    ) -> None:
         """
         Initialize access to RX file descriptor and the inbound queue.
         """
@@ -95,6 +104,13 @@ class RxRing(Subsystem):
         self._rx_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
         self._queue_full_drop_count = 0
         self._os_error_drop_count = 0
+        # Optional shared 'PacketStatsRx' object — when set, ring
+        # drop counters live as fields on the shared stats instead
+        # of on the ring's private ints, so unified-stats consumers
+        # see ring drops alongside per-protocol drops in one
+        # dataclass. Ring properties below transparently dispatch
+        # to whichever source is authoritative.
+        self._packet_stats = packet_stats
 
     @property
     def queue_full_drop_count(self) -> int:
@@ -103,8 +119,12 @@ class RxRing(Subsystem):
         the RX ring was at capacity. Useful as a saturation signal
         for monitoring — a non-zero rate-of-change indicates the
         consumer is not keeping up with kernel-side packet arrivals.
+        Sources from the shared 'PacketStatsRx' field when wired,
+        falls back to the internal counter otherwise.
         """
 
+        if self._packet_stats is not None:
+            return self._packet_stats.rx_ring__queue_full__drop
         return self._queue_full_drop_count
 
     @property
@@ -117,6 +137,8 @@ class RxRing(Subsystem):
         would silently kill the RX subsystem thread.
         """
 
+        if self._packet_stats is not None:
+            return self._packet_stats.rx_ring__os_error__drop
         return self._os_error_drop_count
 
     @property
@@ -156,7 +178,10 @@ class RxRing(Subsystem):
                 # attempt, count it, and break the inner drain so
                 # the outer loop can take a fresh tick (and check
                 # the stop event).
-                self._os_error_drop_count += 1
+                if self._packet_stats is not None:
+                    self._packet_stats.rx_ring__os_error__drop += 1
+                else:
+                    self._os_error_drop_count += 1
                 __debug__ and log(
                     "rx-ring",
                     f"<CRIT>RX read failed, OSError: {error}</>",
@@ -169,7 +194,10 @@ class RxRing(Subsystem):
             )
 
             if len(self._rx_deque) >= self._queue_max_size:
-                self._queue_full_drop_count += 1
+                if self._packet_stats is not None:
+                    self._packet_stats.rx_ring__queue_full__drop += 1
+                else:
+                    self._queue_full_drop_count += 1
                 __debug__ and log(
                     "rx-ring",
                     f"{packet_rx.tracker} - RX Queue is full, dropping packet",

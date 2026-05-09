@@ -48,6 +48,7 @@ from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     ETHERNET_802_3__HEADER__LEN,
 )
 from pytcp.lib.logger import log
+from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # Per-protocol-class dispatch table mapping the TX-side Assembler
@@ -83,9 +84,17 @@ class TxRing(Subsystem):
     _tx_event_fd: int
     _queue_full_drop_count: int
     _os_error_drop_count: int
+    _packet_stats: PacketStatsTx | None
 
     @override
-    def __init__(self, *, fd: int, mtu: int, queue_max_size: int = 1000) -> None:
+    def __init__(
+        self,
+        *,
+        fd: int,
+        mtu: int,
+        queue_max_size: int = 1000,
+        packet_stats: PacketStatsTx | None = None,
+    ) -> None:
         """
         Initialize access to TX file descriptor and the outbound queue.
         """
@@ -107,6 +116,11 @@ class TxRing(Subsystem):
         self._tx_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
         self._queue_full_drop_count = 0
         self._os_error_drop_count = 0
+        # Optional shared 'PacketStatsTx' object — see RxRing for
+        # the same pattern; ring drop counters live as fields on
+        # the shared stats when wired so unified-stats consumers
+        # see them alongside per-protocol drops.
+        self._packet_stats = packet_stats
 
     @property
     def queue_full_drop_count(self) -> int:
@@ -114,9 +128,13 @@ class TxRing(Subsystem):
         Get the cumulative count of outbound packets dropped because
         the TX ring was at capacity at 'enqueue' time. A non-zero
         rate signals the producer (the packet handler) is generating
-        packets faster than 'os.writev' can drain them.
+        packets faster than 'os.writev' can drain them. Sources from
+        the shared 'PacketStatsTx' field when wired, falls back to
+        the internal counter otherwise.
         """
 
+        if self._packet_stats is not None:
+            return self._packet_stats.tx_ring__queue_full__drop
         return self._queue_full_drop_count
 
     @property
@@ -129,6 +147,8 @@ class TxRing(Subsystem):
         into.
         """
 
+        if self._packet_stats is not None:
+            return self._packet_stats.tx_ring__os_error__drop
         return self._os_error_drop_count
 
     @property
@@ -238,7 +258,10 @@ class TxRing(Subsystem):
         try:
             os.writev(self._fd, buffers)
         except OSError as error:
-            self._os_error_drop_count += 1
+            if self._packet_stats is not None:
+                self._packet_stats.tx_ring__os_error__drop += 1
+            else:
+                self._os_error_drop_count += 1
             __debug__ and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - <CRIT>Unable to send frame, " f"OSError: {error}</>",
@@ -266,7 +289,10 @@ class TxRing(Subsystem):
         """
 
         if len(self._tx_deque) >= self._queue_max_size:
-            self._queue_full_drop_count += 1
+            if self._packet_stats is not None:
+                self._packet_stats.tx_ring__queue_full__drop += 1
+            else:
+                self._queue_full_drop_count += 1
             __debug__ and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - TX Queue is full, dropping packet",

@@ -56,34 +56,29 @@ from pytcp import stack
 
 def _capture_stats_snapshot() -> dict[str, int]:
     """
-    Snapshot the live ring + packet-handler counters. Returns a
-    flat dict so deltas are trivial.
+    Snapshot the live packet-handler stats + ring qsize observables.
+    Iterates the 'PacketStatsRx' / 'PacketStatsTx' dataclass fields
+    generically so any new counter (including ring-level drops, now
+    living on the same dataclass via the shared-stats refactor)
+    appears in the output without a curated list.
     """
 
+    import dataclasses
+
     snap: dict[str, int] = {}
+    if hasattr(stack, "packet_handler") and stack.packet_handler is not None:
+        for prefix, stats in (
+            ("rx", stack.packet_handler.packet_stats_rx),
+            ("tx", stack.packet_handler.packet_stats_tx),
+        ):
+            for field in dataclasses.fields(stats):
+                snap[f"{prefix}__{field.name}"] = getattr(stats, field.name)
+    # qsize is a live gauge, not a counter — keep it explicit so
+    # the renderer can show it even when delta is zero.
     if hasattr(stack, "rx_ring") and stack.rx_ring is not None:
-        snap["rx_ring__queue_full__drop"] = stack.rx_ring.queue_full_drop_count
         snap["rx_ring__qsize"] = stack.rx_ring.qsize
     if hasattr(stack, "tx_ring") and stack.tx_ring is not None:
-        snap["tx_ring__queue_full__drop"] = stack.tx_ring.queue_full_drop_count
-        snap["tx_ring__os_error__drop"] = stack.tx_ring.os_error_drop_count
         snap["tx_ring__qsize"] = stack.tx_ring.qsize
-    if hasattr(stack, "packet_handler") and stack.packet_handler is not None:
-        rx_stats = stack.packet_handler.packet_stats_rx
-        for field in (
-            "ethernet__pre_parse",
-            "ip4__pre_parse",
-            "ip4__defrag",
-            "ip4__frag__overlap__drop",
-            "ip6__pre_parse",
-            "ip6_frag__overlap__drop",
-            "icmp4__echo_request",
-            "icmp6__echo_request",
-            "tcp__pre_parse",
-            "udp__pre_parse",
-        ):
-            if hasattr(rx_stats, field):
-                snap[f"rx__{field}"] = getattr(rx_stats, field)
     return snap
 
 
