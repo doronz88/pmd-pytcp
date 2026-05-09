@@ -35,7 +35,7 @@ Companion documents:
 | ND wire format — NS / NA / RS / RA messages | parser + assembler under `net_proto/protocols/icmp6/message/nd/` | 4861 §4.1-§4.4 |
 | ND options — SLLA / TLLA / PI | parser + assembler under `.../message/nd/option/` | 4861 §4.6.1-§4.6.2 |
 | Generic NUD FSM (NeighborCache) | shared with IPv4 ARP; INCOMPLETE / REACHABLE / STALE / DELAY / PROBE / FAILED / PERMANENT | 4861 §7.3.2 |
-| `NdCache` adapter — `pytcp/protocols/icmp6/nd__cache.py` | kw-only public surface; protected-hook delegation; multicast-vs-unicast NS dispatch | (PyTCP) |
+| `NdCache` adapter — `pytcp/protocols/icmp6/nd/nd__cache.py` | kw-only public surface; protected-hook delegation; multicast-vs-unicast NS dispatch | (PyTCP) |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -308,7 +308,7 @@ analogue today — every constant is hardcoded.
 
 ### Implementation sketch
 
-New `pytcp/protocols/icmp6/icmp6__nd__constants.py` registering:
+New `pytcp/protocols/icmp6/nd/nd__constants.py` registering:
 - `icmp6.dad_transmits` (RFC 4862 §5.1, default 1)
 - `icmp6.retrans_timer_ms` (RFC 4861 §10, default 1000)
 - `icmp6.reachable_time_ms` (RFC 4861 §10, default 30000)
@@ -780,7 +780,13 @@ net_proto/protocols/icmp6/
 
 pytcp/protocols/icmp6/
 ├── icmp6__echo_gate.py
-└── nd__cache.py                                # NeighborCache adapter (shipped)
+└── nd/
+    └── nd__cache.py                            # NeighborCache adapter (shipped)
+    └── (nd__constants.py)                      # MISSING — Tier 2 §9
+    └── (nd__redirect_handler.py)               # MISSING — Phase 1B (Tier 1 §1)
+    └── (nd__dad.py)                            # MISSING — Tier 2 §8 / §10
+    └── (nd__router_state.py)                   # MISSING — Tier 3 §11–§14
+    └── (nd__slaac.py)                          # MISSING — Tier 3 §12 / Tier 4 §17–§18
 
 pytcp/stack/packet_handler/
 ├── packet_handler__icmp6__rx.py                # RX dispatch

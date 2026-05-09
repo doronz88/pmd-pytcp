@@ -43,7 +43,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.protocols.arp.arp__cache import ArpCache
-from pytcp.protocols.icmp6.nd__cache import NdCache
+from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.stack.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
 from pytcp.stack.tx_ring import TxRing
 

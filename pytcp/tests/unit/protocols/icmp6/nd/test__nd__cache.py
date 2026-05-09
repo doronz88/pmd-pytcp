@@ -44,7 +44,7 @@ from unittest.mock import MagicMock, patch
 from net_addr import Ip6Address, MacAddress
 from pytcp.lib import sysctl as sysctl_module
 from pytcp.lib.neighbor import NudState
-from pytcp.protocols.icmp6.nd__cache import NdCache
+from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 
 
 class _NdCacheFixture(TestCase):
@@ -208,7 +208,7 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip6Address("2001:db8::1")
 
-        with patch("pytcp.protocols.icmp6.nd__cache.stack.packet_handler", handler):
+        with patch("pytcp.protocols.icmp6.nd.nd__cache.stack.packet_handler", handler):
             self._cache._solicit_ns(ip, None)
 
         handler.send_icmp6_neighbor_solicitation.assert_called_once_with(
@@ -234,7 +234,7 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         ip = Ip6Address("2001:db8::1")
         mac = MacAddress("02:00:00:00:00:01")
 
-        with patch("pytcp.protocols.icmp6.nd__cache.stack.packet_handler", handler):
+        with patch("pytcp.protocols.icmp6.nd.nd__cache.stack.packet_handler", handler):
             self._cache._solicit_ns(ip, mac)
 
         handler.send_icmp6_neighbor_solicitation_unicast.assert_called_once_with(

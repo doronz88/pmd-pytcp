@@ -43,7 +43,7 @@ from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
-from pytcp.protocols.icmp6.nd__cache import NdCache
+from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket.socket_id import SocketId
