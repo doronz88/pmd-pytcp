@@ -422,7 +422,7 @@ become deprecated aliases for `neighbor.reachable_time` and
 the analogous `gc_stale_time`; existing call sites continue
 to work.
 
-### Phase 3 — NdCache adapter + ND cache relocation
+### Phase 3 — NdCache adapter + ND cache relocation ✅ shipped (this commit)
 
 Relocate `pytcp/stack/nd_cache.py` →
 `pytcp/protocols/icmp6/nd__cache.py` (matching commit

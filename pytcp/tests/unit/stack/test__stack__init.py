@@ -113,28 +113,30 @@ class TestStackModuleConstants(TestCase):
             msg="IP6__SUPPORT must default to True.",
         )
 
-    def test__stack__nd_cache_timers_are_positive(self) -> None:
+    def test__stack__neighbor_cache_timers_are_positive(self) -> None:
         """
-        Ensure the ICMPv6 ND cache maximum age and refresh window are
-        both positive with refresh time strictly less than max age.
+        Ensure the generic NeighborCache aging timers
+        ('neighbor.reachable_time' / 'neighbor.retrans_timer')
+        are both positive at module load — the FSM relies on
+        these for REACHABLE → STALE and inter-solicit
+        retransmit cadence. The IPv6 ND cache reads these
+        directly via 'pytcp.lib.neighbor' as of Phase 3 of
+        the NUD migration.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
+        from pytcp.lib import neighbor__constants
+
         self.assertGreater(
-            stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE,
+            neighbor__constants.NEIGHBOR__REACHABLE_TIME,
             0,
-            msg="ICMP6__ND__CACHE__ENTRY_MAX_AGE must be positive.",
+            msg="NEIGHBOR__REACHABLE_TIME must be positive.",
         )
         self.assertGreater(
-            stack.ICMP6__ND__CACHE__ENTRY_REFRESH_TIME,
+            neighbor__constants.NEIGHBOR__RETRANS_TIMER,
             0,
-            msg="ICMP6__ND__CACHE__ENTRY_REFRESH_TIME must be positive.",
-        )
-        self.assertLess(
-            stack.ICMP6__ND__CACHE__ENTRY_REFRESH_TIME,
-            stack.ICMP6__ND__CACHE__ENTRY_MAX_AGE,
-            msg="REFRESH_TIME < MAX_AGE is required by the refresh-window arithmetic.",
+            msg="NEIGHBOR__RETRANS_TIMER must be positive.",
         )
 
     def test__stack__ephemeral_port_range(self) -> None:

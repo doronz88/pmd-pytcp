@@ -43,10 +43,10 @@ from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
+from pytcp.protocols.icmp6.nd__cache import NdCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket.socket_id import SocketId
-from pytcp.stack.nd_cache import NdCache
 from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.stack.rx_ring import RxRing
 from pytcp.stack.timer import Timer
@@ -138,9 +138,14 @@ IP4__ACCEPT_SOURCE_ROUTE = False
 # Importers should refer to that module directly rather than
 # reaching through 'pytcp.stack'.
 
-# ICMPv6 ND cache configuration.
-ICMP6__ND__CACHE__ENTRY_MAX_AGE = 3600
-ICMP6__ND__CACHE__ENTRY_REFRESH_TIME = 300
+# ICMPv6 ND cache aging timers moved to the generic NUD
+# framework at 'pytcp/lib/neighbor__constants.py' alongside
+# their IPv4 ARP counterparts. The 'NdCache' is now a thin
+# adapter on 'NeighborCache[Ip6Address]' that reads
+# 'neighbor.reachable_time' / 'neighbor.retrans_timer' / etc.
+# Operators tune these via 'pytcp.stack.sysctl["neighbor.X"]'
+# or the 'sysctls={"neighbor.X": ...}' bag kwarg on
+# 'stack.init()'.
 
 # IPv4 and IPv6 fragmnt flow expiration time, determines for how many seconds
 # IP fragment flow is considered valid. Fragemnt flows are being cleaned up prior
