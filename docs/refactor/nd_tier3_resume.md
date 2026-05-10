@@ -104,7 +104,7 @@ time (check before ad-libbing).
 ## RFC clauses to cite per §
 
 Use the trailing `Reference:` line per
-`unit_tests.md` §7. Canonical pickers:
+`unit_testing.md` §7. Canonical pickers:
 
 | § | RFC clause |
 |---|---|

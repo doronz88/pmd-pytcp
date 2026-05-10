@@ -491,7 +491,7 @@ before any code:
   1. CLAUDE.md (Project North Star, Phase 1 vs Phase 2 split)
   2. .claude/rules/feature_implementation.md (tests-first MUST,
      §7.2 audit before commit, commit discipline)
-  3. .claude/rules/unit_tests.md (test authoring conventions,
+  3. .claude/rules/unit_testing.md (test authoring conventions,
      §7.2 audit script)
   4. .claude/rules/coding_style.md (source authoring;
      §6.1 sysctl pattern applies to NUD timing constants)

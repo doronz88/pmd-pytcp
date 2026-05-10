@@ -461,7 +461,7 @@ plan with §0 motivation, §1 classification rule, §2-§7 design,
   1. CLAUDE.md (Project North Star)
   2. .claude/rules/feature_implementation.md (tests-first MUST,
      §7.2 audit)
-  3. .claude/rules/unit_tests.md (test conventions)
+  3. .claude/rules/unit_testing.md (test conventions)
   4. .claude/rules/coding_style.md §6.1 (sysctl pattern)
   5. .claude/skills/sysctl_knob/SKILL.md (workflow for adding
      a knob)

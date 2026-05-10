@@ -171,7 +171,7 @@ single-knob addition, the failing test typically pins:
   through to the registered value.
 
 Test file location follows
-`.claude/rules/unit_tests.md` §3 — typically
+`.claude/rules/unit_testing.md` §3 — typically
 `pytcp/tests/unit/<package>/test__<...>.py` or a new
 `pytcp/tests/unit/lib/test__lib__sysctl.py` for registry-level
 behavior.
@@ -207,7 +207,7 @@ the index stays current.
 
 ### 8. Run §7.2 docstring audit
 
-`.claude/rules/unit_tests.md` §7.2 audit on every test file
+`.claude/rules/unit_testing.md` §7.2 audit on every test file
 touched. Any output is a blocker.
 
 ```bash
@@ -240,7 +240,7 @@ EOF
 
 If a touched test file has pre-existing violations, the
 clean-up obligation is the whole file (per
-`unit_tests.md` §7.2). Either bundle the cleanup with this
+`unit_testing.md` §7.2). Either bundle the cleanup with this
 commit or land a prep commit first.
 
 ### 9. Lint + test

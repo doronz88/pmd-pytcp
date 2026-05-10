@@ -11,27 +11,55 @@ files required for each protocol.
 
 ---
 
-## 1. Framework
+## 1. Framework and toolchain
 
-- Use **native `unittest`** from the standard library. Do **not** use
-  `testslide`.
-- Import: `from unittest import TestCase`.
-- Parameterization uses `parameterized` (already a dev dependency) via
-  `@parameterized_class`:
+- Use **native `unittest`** from the standard library. Do **not**
+  use `testslide`, `pytest`, or any other test framework.
+  `unittest` is stdlib, has no runtime cost, and matches the
+  project's zero-runtime-dependency floor.
+- Import: `from unittest import TestCase`. For async tests use
+  `from unittest import IsolatedAsyncioTestCase`.
+- Parameterization uses `parameterized` (already a dev
+  dependency) via `@parameterized_class`:
   ```python
   from parameterized import parameterized_class  # type: ignore
   ```
-- Zero runtime dependencies outside stdlib still holds for the stack
-  itself; `parameterized` is test-only and acceptable.
+  Zero runtime dependencies outside stdlib still holds for the
+  stack itself; `parameterized` is test-only and acceptable.
+  For tight in-method parametric loops prefer the stdlib
+  `subTest` context manager (see §10b.6).
+- **Python 3.14+ floor.** Tests use the same modern Python
+  features as production source per
+  [`python_features.md`](python_features.md). The
+  test-author-relevant subset is §10b below — `@override` on
+  every `setUp` / `tearDown`, `enterContext` (3.11+) for
+  patches, walrus operator on captured assertions, PEP 604
+  unions, lowercase builtin generics. The pre-3.10 `typing`
+  forms (`Optional`, `Union`, `List`, `Dict`, `TypeVar`,
+  `Generic`) are **forbidden** in test files exactly as they
+  are in production.
+- **mypy strict applies to tests.** Every test file MUST pass
+  `make lint` with no `# type: ignore` unless the ignore
+  comment carries an inline justification.
+- **Mocking is strict.** See §6a — every `Mock` is spec'd
+  with `create_autospec(Cls, spec_set=True)` or
+  `patch(..., autospec=True, spec_set=True)`. Bare
+  `MagicMock()` / `Mock()` is **forbidden** in new code and
+  on-touch in legacy code.
+- **Test isolation is enforced.** See §10a — no real time,
+  network, filesystem, or threads leaking across tests. The
+  full suite is run in alphabetical filename order; no
+  individual test may rely on that ordering.
 
 ## 2. File structure
 
-Every test file follows the exact same file-level skeleton as the rest
-of the codebase (see `CLAUDE.md §Coding Style Rules / File Structure`):
+Test files are **library modules** — they are imported by
+the test runner, not executed directly — so they carry no
+shebang and no executable bit. The file-level skeleton:
 
-1. `#!/usr/bin/env python3` shebang
-2. The 80-char `#`-bordered copyright/license block (verbatim, no edits)
-3. Module docstring:
+1. The 80-char `#`-bordered copyright/license block (verbatim,
+   no edits) starting on line 1.
+2. Module docstring:
    ```python
    """
    <one-sentence description>.
@@ -41,16 +69,45 @@ of the codebase (see `CLAUDE.md §Coding Style Rules / File Structure`):
    ver 3.0.x
    """
    ```
-4. Imports — stdlib first, then `parameterized`, then local packages
-   (`net_addr`, `net_proto`, `pytcp`). Multi-import from one module uses
-   parentheses, never backslash continuation.
-5. Module-level constants (baseline frames, shared fixtures).
-6. `TestCase` classes.
+3. Imports — stdlib first, then `parameterized`, then local
+   packages (`net_addr`, `net_proto`, `pytcp`). Multi-import
+   from one module uses parentheses, never backslash
+   continuation.
+4. Module-level constants (baseline frames, shared fixtures).
+5. `TestCase` classes.
 
-No `__all__`. No module-level code between the constants and the first
-class.
+No `__all__`. No `if __name__ == "__main__":` block. No
+shebang. No module-level code between the constants and the
+first class.
+
+The pre-3.10 `typing` legacy guards
+(`from __future__ import annotations` + `TYPE_CHECKING` +
+string-quoted annotations) are **forbidden** in new test
+files. PEP 649 (3.14+) handles forward references natively;
+see [`python_features.md`](python_features.md) §17.
 
 ## 3. File naming and placement
+
+**Canonical pattern (memorise this).** Unit tests for a
+source file at `<pkg>/<subpkg>/<source>.py` live at
+`<pkg>/tests/unit/<subpkg>/test__<subdir>__<source>.py`.
+The filename alone identifies which area of the codebase
+and which aspect is under test:
+
+```
+SOURCE                                       TEST
+────────────────────────────────────────     ─────────────────────────────────────────────────────────────
+net_proto/protocols/udp/udp__parser.py    →  net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py
+net_proto/protocols/udp/udp__header.py    →  net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
+net_proto/lib/inet_cksum.py               →  net_proto/tests/unit/lib/test__lib__inet_cksum.py
+pytcp/lib/ip6_source_selection.py         →  pytcp/tests/unit/lib/test__lib__ip6_source_selection.py
+pytcp/socket/raw__socket.py               →  pytcp/tests/unit/socket/test__socket__raw__socket.py
+pytcp/protocols/tcp/tcp__session.py       →  pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
+                                             pytcp/tests/unit/protocols/tcp/test__tcp__session__fsm.py
+                                             ... (one file per aspect; see §3.3)
+```
+
+Rules:
 
 - Files go under `<package>/tests/unit/…` mirroring the source layout.
   For a protocol at `net_proto/protocols/<proto>/`, tests live at
@@ -264,11 +321,44 @@ form the protocol's `*Error` class produces (e.g.
 `[SANITY ERROR][UDP] `, `[INTEGRITY ERROR][TCP] `). Do **not** hand-roll
 the prefix in test fixtures.
 
+**Argument ordering.** `assertEqual(actual, expected, msg=...)`
+is the canonical form — actual first, expected second. The
+unittest convention is `assertEqual(first, second)` with
+historically symmetric meaning, but PyTCP fixes the convention
+so failure diffs read consistently across the codebase. Same
+for `assertIs`, `assertGreater`, etc.
+
+**Pick the tightest assertion.** Use the most specific
+assertion method available — not just `assertEqual`:
+
+| Use | When |
+|---|---|
+| `assertEqual(a, b, msg=)` | values must be equal by `==` |
+| `assertIs(a, b, msg=)` | values must be the *same object* (enums, sentinels) |
+| `assertIn(a, container, msg=)` | membership test |
+| `assertIsNone(x, msg=)` | `x is None` (NOT `assertEqual(x, None)`) |
+| `assertIsInstance(x, T, msg=)` | type check |
+| `assertGreater(a, b, msg=)` | `a > b` (NOT `assertTrue(a > b)`) |
+| `assertAlmostEqual(a, b, msg=)` | floats with default 7-digit tolerance |
+| `assertRaises(Exc) as ctx:` | exception type + message capture |
+| `assertCountEqual(a, b, msg=)` | unordered sequence equality |
+
 Prohibited:
 
-- `assertTrue(a == b)` — use `assertEqual(a, b, msg=...)`.
-- `assertEqual(a, b)` without `msg=` in new code.
-- Parentheses around a single string literal in a dict value:
+- **`assertTrue(a == b)`** — use `assertEqual(a, b, msg=...)`.
+- **`assertTrue(x is None)`** — use `assertIsNone(x, msg=...)`.
+- **`assertTrue(x > y)`** — use `assertGreater(x, y, msg=...)`.
+- **`assertFalse(...)`** for anything other than a genuine
+  boolean — pick the inverse positive form.
+- **`assertEqual(a, b)`** without `msg=` in new code.
+- **`assert ...`** (Python's `assert` statement) inside test
+  bodies — use `self.assert*` so the failure message and
+  context surface to the runner. `assert` is acceptable inside
+  test *helpers* that narrow types for mypy.
+- **Bare `assertRaises(Exc)`** without capturing — every raise
+  test MUST assert on the message text, not just the type.
+- **Parentheses around a single string literal in a dict
+  value:**
   ```python
   # Bad
   "__repr__": ("UdpHeader(sport=0, dport=0, plen=0, cksum=0)"),
@@ -277,8 +367,136 @@ Prohibited:
   ```
   The parenthesized form is a leftover from multi-line string
   concatenation — drop them when the value fits on one line.
+- **Bare `mock.assert_called()`** without `_once_with` /
+  `_with` — see §6a.4.
 
-Prefer `!r` inside f-string assertion messages for values (`Got: {value!r}`).
+Prefer `!r` inside f-string assertion messages for values
+(`Got: {value!r}`). For multi-value diagnostic context use the
+f-string `=` debug form: `f"Got: {value=}, {expected=}"`.
+
+## 6a. Mocking discipline (MANDATORY)
+
+Every `Mock` instance in a PyTCP test MUST be spec'd. Bare
+`MagicMock()` / `Mock()` is **forbidden** because a typo or
+signature mismatch on a mock attribute silently passes —
+defeating the purpose of the test. Two canonical spelled-out
+forms cover every case the project needs.
+
+### 6a.1 `create_autospec(Cls, spec_set=True)` for owned fixtures
+
+When the test constructs the mock directly (in `setUp` or as
+a module-level helper):
+
+```python
+from unittest.mock import create_autospec
+from pytcp.lib.tx_ring import TxRing
+
+@override
+def setUp(self) -> None:
+    self._tx_ring = create_autospec(TxRing, spec_set=True)
+    self._tx_ring.enqueue.return_value = None
+```
+
+`spec_set=True` MUST be present. Without it, callers can
+*write* to attributes that the real class does not define —
+the bare `spec=` only prevents reads. `spec_set=True` locks
+both directions.
+
+### 6a.2 `patch(..., autospec=True, spec_set=True)` for context-managed patches
+
+Use the 3.11+ `TestCase.enterContext()` helper to register the
+patcher and its automatic cleanup in one line — this is the
+canonical modern form:
+
+```python
+@override
+def setUp(self) -> None:
+    self._tx_ring = self.enterContext(
+        patch.object(stack, "tx_ring", autospec=True, spec_set=True),
+    )
+    self._log = self.enterContext(patch("pytcp.lib.log"))
+    self._handler = _StubHandler()
+```
+
+`enterContext` runs the cleanup via `addCleanup` automatically;
+no manual `patcher.start()` / `addCleanup(patcher.stop)` pair
+is needed. The legacy manual form is acceptable only on the
+pre-3.11 boundary (which PyTCP does not have today).
+
+### 6a.3 Forbidden mock patterns
+
+- **Bare `MagicMock()` / `Mock()`** with no spec.
+- **`patch("module.func")`** without `autospec=True`. mypy
+  cannot type-check the resulting mock, and signature drift
+  in the real `func` silently leaves the mock accepting any
+  arguments.
+- **`patch.object(target, attr, MagicMock())`** passing a
+  pre-built bare mock as the replacement. Use `autospec=True`
+  in the patcher itself.
+- **`return_value=` chains without verification.** A
+  `mock.method.return_value = X` line configures the mock but
+  does not assert the method was called. Pair every non-trivial
+  `return_value` with an `assert_called_once_with(...)` or
+  equivalent assertion in the test body.
+- **Decorator-style `@patch` chains.** Use `enterContext`
+  inside `setUp` instead — the decorator form injects mocks
+  as positional arguments which is fragile when the chain
+  grows.
+- **Patching at module scope.** All `patch` calls go inside
+  `setUp` (or per-test in the body); never at module load
+  time.
+
+### 6a.4 Assertions on mock state
+
+Pick the strictest assertion form:
+
+```python
+# Strongest — checks count AND arguments
+self._tx_ring.enqueue.assert_called_once_with(eth_packet)
+
+# Acceptable when the count is intentionally flexible
+self.assertEqual(
+    self._tx_ring.enqueue.call_count,
+    2,
+    msg="enqueue must be called once per fragment.",
+)
+self.assertEqual(
+    self._tx_ring.enqueue.call_args_list,
+    [call(frag_1), call(frag_2)],
+    msg="enqueue must be called with each fragment in order.",
+)
+
+# Forbidden — too loose
+self._tx_ring.enqueue.assert_called()
+self.assertTrue(self._tx_ring.enqueue.called)
+self.assertEqual(self._tx_ring.enqueue.call_count, 1)  # without args check
+```
+
+`assert_called_once_with` is the canonical form. `assert_any_call`,
+`assert_has_calls` are acceptable when the call ordering is
+genuinely flexible — never as a "I don't want to write the
+exact args" shortcut.
+
+### 6a.5 `side_effect` for sequenced returns
+
+When a mocked method must return different values across
+calls:
+
+```python
+# Good
+self._nd_cache.find_entry.side_effect = [None, GATEWAY_MAC, None]
+
+# Or a callable for state-driven returns
+def _fake_find(*, ip6_address: Ip6Address) -> MacAddress | None:
+    return _LOOKUP_TABLE.get(ip6_address)
+
+self._nd_cache.find_entry.side_effect = _fake_find
+```
+
+The callable form is strongly preferred over a hard-coded
+list when the lookup is keyed by argument value — failures
+point at the missing key rather than at "ran off the end of
+the list" which is opaque.
 
 ## 7. Test-method docstrings
 
@@ -289,13 +507,8 @@ Prefer `!r` inside f-string assertion messages for values (`Got: {value!r}`).
 > repeatedly ignored historically; the audit step is now
 > non-negotiable.
 
-Every test method has a docstring with a **canonical three-part shape**:
-
-1. A description that starts with the word **"Ensure"** and states
-   the behavioral guarantee from the caller's perspective.
-2. A blank line.
-3. A single trailing line per cited RFC clause:
-   `Reference: RFC <number> §<section> (<short description>).`
+**Canonical shape (memorise this).** Every test method has a
+docstring with exactly three parts in this order:
 
 ```python
 def test__udp__parser__integrity__zero_cksum_skips_validation(self) -> None:
@@ -306,6 +519,14 @@ def test__udp__parser__integrity__zero_cksum_skips_validation(self) -> None:
     Reference: RFC 768 (UDP checksum optional / zero bypass).
     """
 ```
+
+The three parts:
+
+1. **Description**, opening word `Ensure`, stating the
+   behavioural guarantee from the caller's perspective.
+2. **Blank line.**
+3. **One `Reference:` line per cited RFC clause** in the form
+   `Reference: RFC <number> §<section> (<short description>).`
 
 Rules (each is **MUST** / **MUST NOT**, not SHOULD):
 
@@ -685,6 +906,340 @@ Work one test file at a time. For each file:
    notes in the body.
 6. Push/sync before moving to the next file.
 
+## 10a. Test isolation and determinism (MANDATORY)
+
+Every test MUST be deterministic and order-independent. The
+full suite (`make test`) is run in alphabetical filename
+order, but no individual test may rely on that ordering —
+running any single test in isolation must produce the same
+result the full-suite run does. Two recurring failure modes
+this rule guards against: tests that pass alone but fail in
+suite (leaked state from an earlier test), and tests that
+pass in suite but fail alone (depending on a side effect of
+an earlier test's setup).
+
+### 10a.1 Forbidden runtime dependencies
+
+| Forbidden | Use instead |
+|---|---|
+| `time.sleep(N)` | `patch("<module>.time.monotonic", return_value=...)` and advance the clock manually |
+| `time.time()` direct read | `patch("<module>.time.time", return_value=...)` |
+| Real `random` output | `patch("<module>.random.uniform", return_value=...)` or seed with `random.seed(N)` |
+| Real socket / TAP / TUN I/O | `create_autospec(TxRing, spec_set=True)` fixture, mock `socket.socket`, etc. |
+| Real filesystem writes | `tempfile.TemporaryDirectory` registered via `addCleanup(td.cleanup)` |
+| Real DNS / `getaddrinfo` | mock `socket.getaddrinfo` |
+| Real `os.urandom` / cryptographic randomness | mock `secrets.token_bytes` / patch the consumer |
+| Real environment variables | snapshot/restore `os.environ` |
+
+The general rule: if the test depends on anything outside the
+process (clock, network, disk, environment), patch it.
+
+### 10a.2 Module-level state snapshot/restore
+
+If a test mutates module-level state (e.g. attributes on
+`pytcp.stack` or `pytcp.lib.sysctl`), the fixture MUST
+snapshot the original state and restore it on cleanup.
+Otherwise the mutation leaks to subsequent tests and silently
+corrupts results.
+
+```python
+@override
+def setUp(self) -> None:
+    self._stack__attr_snapshot = stack.__dict__.copy()
+    # ... fixture construction ...
+
+@override
+def tearDown(self) -> None:
+    stack.__dict__.update(self._stack__attr_snapshot)
+    super().tearDown()
+```
+
+For sysctl overrides specifically, use the existing
+`sysctl_module.override(key, value)` context manager — it
+auto-restores on exit:
+
+```python
+with sysctl_module.override("icmp6.use_tempaddr", 2):
+    result = self._packet_handler._select_ip6_source(...)
+```
+
+Or restore module-wide on `tearDown`:
+
+```python
+@override
+def tearDown(self) -> None:
+    sysctl_module.reset_to_defaults()
+    super().tearDown()
+```
+
+The integration `NetworkTestCase` already snapshots
+`stack.__dict__`; new fixtures touching module state MUST
+follow the pattern. **Adding module-level state to
+`pytcp/stack/__init__.py` REQUIRES the same commit to update
+`TcpSessionTestCase` `setUp`/`tearDown` (or `NetworkTestCase`
+where applicable)** — otherwise the "passes alone, fails in
+suite" bug leaks in.
+
+### 10a.3 Subsystem threads
+
+Tests that construct a `Subsystem` subclass (or any class
+spawning background threads) MUST ensure the thread is
+stopped before the test exits:
+
+```python
+@override
+def setUp(self) -> None:
+    self._cache = NdCache()
+    self._cache.start()
+    self.addCleanup(self._cache.stop)
+```
+
+Use `addCleanup` rather than `tearDown` so the stop is
+registered *immediately* after construction — if the test
+body raises, the cleanup still fires. The same pattern
+applies to any `threading.Thread` started during `setUp` or
+in a test body.
+
+For thread-spawning code under test (e.g.
+`_claim_ip6_address_async`), patch the thread spawn or wait
+for the thread inline with a short timeout. Never let a
+daemon thread outlive the test.
+
+### 10a.4 No print, no real log output
+
+Tests MUST NOT emit output to stdout or to the project log
+channels. The `make test` run shows progress as `.` per
+passing test; spurious output between the dots indicates a
+missing log patch. Two canonical forms:
+
+**Module-level silence** (cheapest, applies to every test
+in the module):
+
+```python
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+def setUpModule() -> None:
+    stack.LOG__CHANNEL = set()
+
+def tearDownModule() -> None:
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
+```
+
+**Per-test patch** (when the log call is itself an assertion
+target):
+
+```python
+@override
+def setUp(self) -> None:
+    self._log = self.enterContext(patch("pytcp.<module>.log"))
+```
+
+Symptom of broken log patching: `make test` output speckled
+with `[INET6/.../] - Resolved ...` lines mixed in among the
+`.` test progress marks, or `STACK | Initializing ...` lines
+from a `stack.init()` call leaking out.
+
+### 10a.5 No shared mutable state between tests
+
+Each `test__*` method gets a fresh fixture via `setUp`. Never:
+
+- Mutate class-level attributes on the SUT type — mutate
+  instance state on a fresh fixture.
+- Cache expensive setup at class level and mutate it across
+  tests. If construction is genuinely expensive, use
+  `setUpClass` to build a *read-only* fixture and document
+  the read-only contract — but prefer per-test
+  reconstruction unless the cost is provably significant.
+- Mutate fixture state from a test method and rely on the
+  mutation in a sibling method — the test order is not
+  guaranteed.
+
+### 10a.6 Test naming for isolation discovery
+
+Use `python -m unittest <single-test>` regularly during
+development to catch isolation bugs early. If a test passes
+in suite but fails alone, the fixture is depending on a
+leaked side effect from earlier in the run. Fix the fixture,
+not the test.
+
+## 10b. Modern Python features in tests
+
+Test files follow the same language-feature rules as
+production source — see
+[`python_features.md`](python_features.md). The subset most
+relevant to test authoring is enumerated here so the audit
+can short-circuit "is this test using a modern form".
+
+### 10b.1 `@override` on setUp / tearDown / runTest
+
+`unittest.TestCase` declares `setUp`, `tearDown`,
+`setUpClass`, `tearDownClass`, `addCleanup`, and others as
+parent methods. Every override MUST carry `@override`:
+
+```python
+from typing import override
+
+class TestUdpParser(TestCase):
+    @override
+    def setUp(self) -> None:
+        self._frame = _BASELINE_FRAME
+
+    @override
+    def tearDown(self) -> None:
+        sysctl_module.reset_to_defaults()
+        super().tearDown()
+```
+
+mypy strict catches missing decorators. The decorator also
+serves as inline documentation that the method is part of
+the unittest contract.
+
+### 10b.2 `enterContext` / `enterClassContext` / `enterModuleContext` (3.11+)
+
+The 3.11+ `TestCase.enterContext()` method registers a
+context manager and schedules its `__exit__` via
+`addCleanup` automatically. This is the canonical modern
+form for patches and any context-managed fixture:
+
+```python
+@override
+def setUp(self) -> None:
+    self._log = self.enterContext(patch("pytcp.<module>.log"))
+    self._tx_ring = self.enterContext(
+        patch.object(stack, "tx_ring", autospec=True, spec_set=True),
+    )
+    self._tmp = self.enterContext(tempfile.TemporaryDirectory())
+```
+
+`enterClassContext()` is the equivalent inside `setUpClass`
+— shared fixtures whose construction is expensive enough to
+amortise across all tests in a class. Use sparingly; per-test
+fixtures are easier to reason about.
+
+`enterModuleContext()` for module-level fixtures inside
+`setUpModule`. Use very sparingly — module-level state is
+the most fragile kind.
+
+The pre-3.11 manual form (`patcher = patch(...); patcher.start();
+self.addCleanup(patcher.stop)`) is acceptable as the **fix**
+when refactoring legacy `tearDown`-based patch.stop teardown
+(see §11), but new code in modern files uses `enterContext`.
+
+### 10b.3 PEP 604 unions and PEP 585 lowercase generics
+
+Test annotations use the same modern syntax as production
+code. The pre-3.10 `typing` forms are **forbidden**:
+
+```python
+# Good
+_args: list[Any]
+_kwargs: dict[str, Any]
+_results: dict[str, Any]
+_mocked_values: dict[str, Any] | None
+_callback: Callable[[int, str], None] | None
+
+# Forbidden
+from typing import List, Dict, Optional, Tuple
+_args: List[Any]
+_kwargs: Dict[str, Any]
+_results: Optional[Dict[str, Any]]
+_pair: Tuple[int, str]
+```
+
+The class-level parametrized attribute annotations required
+by §4 MUST use the modern forms.
+
+### 10b.4 Walrus in `assertRaises` context managers
+
+The walrus operator pairs naturally with `assertRaises`
+when the exception's message is the assertion target:
+
+```python
+with self.assertRaises(UdpIntegrityError) as ctx:
+    UdpParser(self._packet_rx)
+
+self.assertEqual(
+    str(ctx.exception),
+    f"[INTEGRITY ERROR][UDP] {self._error_message}",
+    msg=f"Unexpected integrity-error message for case: {self._description}",
+)
+```
+
+### 10b.5 f-string `=` debug form in assertion messages
+
+For multi-value diagnostic context use the f-string `=`
+debug form (3.8+):
+
+```python
+# Good
+self.assertEqual(
+    parser.header.plen,
+    expected_plen,
+    msg=(
+        f"Unexpected plen for case: {self._description}. "
+        f"Got: {parser.header.plen=}, {expected_plen=}, "
+        f"{len(parser._frame)=}"
+    ),
+)
+```
+
+The `=` form emits `name=value` automatically so adding /
+removing diagnostic values from a message is one identifier
+edit, not a manual string-concat update.
+
+### 10b.6 `subTest` for tight parametric loops
+
+For parametric variations that don't justify a full
+`parameterized_class` (small fixed set, single test method,
+not reused elsewhere) use the stdlib `subTest` context
+manager — every failing iteration surfaces independently
+without short-circuiting the loop:
+
+```python
+def test__some_property(self) -> None:
+    """
+    Ensure ...
+
+    Reference: RFC X §Y (...).
+    """
+
+    for input_, expected in [
+        ("a", 1),
+        ("b", 2),
+        ("c", 3),
+    ]:
+        with self.subTest(input=input_):
+            self.assertEqual(
+                process(input_),
+                expected,
+                msg=f"process({input_!r}) must return {expected}",
+            )
+```
+
+When to choose which:
+
+| `parameterized_class` | `subTest` |
+|---|---|
+| Multiple test methods share the same case list | Single test method has a small fixed variant set |
+| Cases carry multiple inputs / expected outputs | One input → one expected output |
+| Test discovery + naming benefits ("Test...01...02...03") matter | The iteration is internal to one method |
+
+### 10b.7 PEP 695 generics in fixture base classes
+
+When a test fixture base class is generic over the type
+under test, use PEP 695 syntax (3.12+):
+
+```python
+class _NeighborCacheFixture[A: Ip4Address | Ip6Address, P = object](TestCase):
+    """Shared fixture for both ArpCache and NdCache tests."""
+
+    _cache: NeighborCache[A, P]
+    ...
+```
+
+The pre-PEP-695 forms (`TypeVar`, `Generic`) are forbidden
+exactly as in production.
+
 ## 11. Anti-patterns to avoid
 
 - Mixing multiple unrelated assertions in one `test__*` method.
@@ -717,7 +1272,8 @@ Work one test file at a time. For each file:
   BEFORE `doCleanups`, so patches stopped in `tearDown` are dead
   by the time test-level `self.addCleanup(socket.close)` callbacks
   fire — the close-time `log` call leaks straight to stdout. The
-  canonical pattern in setUp:
+  3.11+ canonical pattern is `self.enterContext(patch(...))` in
+  `setUp` (see §6a.2 / §10b.2); the pre-3.11 fallback is:
 
   ```python
   def setUp(self) -> None:
@@ -734,6 +1290,38 @@ Work one test file at a time. For each file:
   Closed socket` lines mixed in among the `.` test progress
   marks, or `STACK | Initializing ...` lines from a `stack.init()`
   call inside a test.
+- **Bare `MagicMock()` / `Mock()`** instead of
+  `create_autospec(Cls, spec_set=True)` (see §6a.1). Always
+  forbidden.
+- **`patch("module.func")`** without `autospec=True`
+  (see §6a.2). The patched callable accepts any signature
+  silently, masking signature drift in the real `func`.
+- **`assert_called()`** without `_once` / `_with`
+  (see §6a.4). Generic "was it called" is too loose — assert
+  the exact count and arguments.
+- **Decorator-style `@patch` chains** on test methods. Inject
+  via `enterContext` inside `setUp` instead (see §6a.2).
+- **`time.sleep()`, real `random.uniform()`, real socket I/O**
+  in tests (see §10a.1). Patch the source.
+- **Module-level mutation of `stack` / `os.environ` / `sys.path`**
+  without snapshot/restore (see §10a.2). The leaked state
+  produces "passes alone, fails in suite" or vice versa.
+- **Background `Subsystem` thread left running** past the
+  test (see §10a.3). Always `self.addCleanup(s.stop)`
+  immediately after `s.start()`.
+- **`assert ...`** (Python `assert` statement) in test body
+  (see §6). Use `self.assert*` so the unittest runner
+  surfaces failure context.
+- **`from __future__ import annotations` + `TYPE_CHECKING` +
+  string-quoted annotations** in a new test file (see §2 and
+  [`python_features.md`](python_features.md) §17). PEP 649
+  (3.14+) handles forward references natively.
+- **Pre-3.10 `typing` imports** (`Optional`, `Union`, `List`,
+  `Dict`, `Tuple`, `TypeVar`, `Generic`) in tests. Same
+  forbidden as production source (see §10b.3).
+- **Shared mutable fixture state between sibling test
+  methods** (see §10a.5). Each `test__*` gets a fresh
+  fixture via `setUp`.
 
 ## 12. Reference implementations
 
@@ -764,3 +1352,24 @@ When in doubt, mirror the structure of:
 These files are the canonical examples. Any deviation from this rule
 should be justified by something that appears in one of them — not by
 novel patterns introduced in a new file.
+
+## 13. Cross-references
+
+- [`integration_testing.md`](integration_testing.md) — integration-test
+  authoring (harness hierarchy on top of `NetworkTestCase`, drive_rx /
+  probe / fluent-assert pattern, stat-counter assertions). The
+  docstring shape (§7) and §7.2 audit script in this file apply
+  identically to integration tests.
+- [`python_features.md`](python_features.md) — modern Python 3.10–3.14
+  features test files MUST use; forbidden pre-3.10 fallbacks.
+- [`typing.md`](typing.md) — annotation discipline, generics,
+  `Self` / `@override`, `Protocol` / `TypedDict`, `cast` and
+  `# type: ignore` policy. Applies to test files exactly as to
+  production source.
+- [`feature_implementation.md`](feature_implementation.md) §2 — the
+  tests-first workflow that drives every behavioural change. The
+  rule that says "write the failing test first" is here.
+- [`coding_style.md`](coding_style.md) — PyTCP source-file
+  conventions. Test files share the file-skeleton, copyright-block,
+  and module-docstring conventions but skip the per-protocol six-file
+  layout and the dataclass / parser / assembler / error patterns.

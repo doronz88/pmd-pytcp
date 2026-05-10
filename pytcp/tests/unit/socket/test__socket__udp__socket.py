@@ -92,7 +92,7 @@ class _UdpSocketTestCase(TestCase):
         callbacks (registered later, LIFO-popped first) run while
         the 'log' patch is still active. Otherwise socket close
         logs leak through to stdout — see test-suite invariants
-        in unit_tests.md.
+        in unit_testing.md.
         """
 
         self._log_patch = patch("pytcp.socket.udp__socket.log")

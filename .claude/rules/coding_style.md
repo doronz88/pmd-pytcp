@@ -5,50 +5,44 @@ PyTCP. It is distilled from the current state of `net_addr/`,
 `net_proto/`, and `pytcp/` (excluding `tests/`). Every new or
 rewritten source file MUST follow it.
 
-The rule covers: toolchain, file skeleton, imports, module constants,
-dataclasses, the per-protocol class hierarchy
-(`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
-`*Errors`), options-bearing protocols, enums, the `Subsystem` runtime,
-the socket API, naming, type annotations, validation idioms,
-docstrings, inline comments, formatting, and the recurring buffer /
-struct conventions.
+The rule covers PyTCP source-file conventions that are not
+already captured by the language-feature rule
+([`python_features.md`](python_features.md)) or the typing
+rule ([`typing.md`](typing.md)): file skeleton, copyright
+block, module docstring, imports (ordering + cross-module
+visibility), module constants, dataclasses, the per-protocol
+class hierarchy (`*Header` / `*HeaderProperties` / `*Base` /
+`*Parser` / `*Assembler` / `*Errors`), options-bearing
+protocols, enums, the `Subsystem` runtime, the socket API,
+naming, validation idioms, docstrings, inline comments,
+formatting, and the recurring buffer / struct conventions.
 
-Test files are governed by a separate rule:
-[`.claude/rules/unit_tests.md`](unit_tests.md). Follow that rule for
-anything under `tests/`.
+Test files are governed by separate rules:
+[`unit_testing.md`](unit_testing.md) for unit tests,
+[`integration_testing.md`](integration_testing.md) for
+integration tests. Toolchain / Python-feature / typing
+concerns live in
+[`python_features.md`](python_features.md) and
+[`typing.md`](typing.md) — this file does not duplicate them.
 
 ---
 
-## 1. Language, toolchain, dependencies
+## 1. Runtime dependencies
 
-- Target **Python 3.14+**. The project ships on 3.14 and uses the
-  modern features available through that version:
-  - 3.10+ union syntax (`A | B`) — never `Optional[X]` / `Union[A, B]`.
-  - 3.10+ `match` / `case`.
-  - 3.10+ `int.bit_count()` for popcount — never a string-format scan.
-  - 3.11+ `typing.Self` for self-returning classmethods.
-  - 3.12+ PEP 695 generic-class syntax (`class Foo[T]: ...`) and
-    `type X = ...` aliases — preferred over `TypeVar` / `TypeAlias`.
-  - 3.12+ `typing.override` on every method that overrides a parent.
-  - 3.13+ PEP 696 type-parameter defaults (`class Foo[T = int]: ...`).
-  - 3.14+ PEP 649 lazy annotation evaluation — annotations are stored
-    as `__annotate__` closures and only evaluated on access. A plain
-    `foo: Ip4Address` in a signature no longer requires
-    `from __future__ import annotations` provided the name is in
-    runtime scope.
-- The stack itself has **zero runtime dependencies outside the
-  standard library**. The only permitted non-stdlib imports in
-  non-test source are:
-  - `aenum` — used by `net_proto/lib/proto_enum.py` to dynamically
-    extend enums with unknown values.
-  - `click` — used by `net_addr` CLI helpers only.
-  If you need anything else at runtime, stop and justify it before
-  adding it.
-- Linting is authoritative: `make lint` (codespell + isort + black +
-  flake8 + mypy + pylint) must pass. Line length is **120**. `mypy`
-  runs in strict mode.
-- Prefer `memoryview` / the buffer protocol for packet data. Never
-  copy bytes you can slice.
+The stack itself has **zero runtime dependencies outside the
+standard library**. The only permitted non-stdlib imports in
+non-test source are:
+
+- `aenum` — used by `net_proto/lib/proto_enum.py` to
+  dynamically extend enums with unknown values.
+- `click` — used by `net_addr` CLI helpers only.
+
+If you need anything else at runtime, stop and justify it
+before adding it.
+
+Prefer `memoryview` / the buffer protocol for packet data;
+never copy bytes you can slice. Line length is **120**
+(black / isort configured at 120).
 
 ## 2. File skeleton
 
@@ -178,8 +172,8 @@ Order (each group separated by one blank line):
 Rules:
 
 - **Only absolute imports.** Never `from ..lib import foo`.
-- Multi-import from one module uses parentheses, one name per line,
-  trailing comma:
+- Multi-import from one module uses parentheses, one name
+  per line, trailing comma:
   ```python
   from net_proto.lib.int_checks import (
       is_4_byte_alligned,
@@ -189,16 +183,13 @@ Rules:
   )
   ```
   Never backslash-continued.
-- Circular-import avoidance uses `TYPE_CHECKING`:
-  ```python
-  from typing import TYPE_CHECKING
-
-  if TYPE_CHECKING:
-      from net_proto.protocols.tcp.tcp__base import Tcp
-  ```
 - Note the spelling `is_4_byte_alligned` (double-l) — it is
-  deliberate and consistent across the codebase. Match it; do not
-  "correct" it ad hoc.
+  deliberate and consistent across the codebase. Match it;
+  do not "correct" it ad hoc.
+- `TYPE_CHECKING`-guarded imports + `from __future__ import
+  annotations` rules live in [`typing.md`](typing.md) §20
+  (lazy annotations and forward references). The trio is
+  forbidden when no genuine circular-import exists.
 
 ### 5.1 Cross-module visibility
 
@@ -226,33 +217,11 @@ cases.
   knows whether to keep it. If a name is "held for future
   signature use," add it when the future arrives.
 
-- **`from __future__ import annotations` is load-bearing
-  only when the module has `TYPE_CHECKING`-guarded names in
-  annotations.** On 3.14+ PEP 649 makes plain annotations
-  lazy by default; the future-import is redundant when every
-  annotation name is in runtime scope. Audit the pair
-  together — if you remove the `TYPE_CHECKING` guard, also
-  remove the future-import. Carrying the future-import
-  "just in case" hides which annotations actually need lazy
-  evaluation.
-
-- **Don't `TYPE_CHECKING`-guard imports that have no
-  circular-import risk.** The guard is for actual cycles
-  (e.g. `pytcp.lib.X` ↔ `pytcp.protocols.tcp.tcp__base`).
-  `net_addr` is the lowest layer in the dependency
-  graph — `Ip4Address`, `Ip6Address`, `MacAddress` import
-  at runtime. Wrapping a known-safe import in
-  `TYPE_CHECKING` forces every annotation that mentions
-  it into string-quoted form, which then propagates into
-  PEP 695 generic bounds and `type` aliases (next bullet).
-
-- **Don't quote PEP 695 bounds when the bound names are
-  visible at runtime.** Write `class Foo[T: Bar]:`, not
-  `class Foo[T: "Bar"]:`. The quoted form exists only to
-  work around `TYPE_CHECKING`-guarded names; if you removed
-  the guard (previous bullet), unquote the bounds at the
-  same time. The same rule applies to `type X = ...`
-  aliases — `type X = Bar | Baz`, not `type X = "Bar | Baz"`.
+  (Rules about `from __future__ import annotations`,
+  `TYPE_CHECKING` guards, quoted PEP 695 bounds, and dead
+  `type X = ...` aliases live in
+  [`typing.md`](typing.md) §20–§23. The trio rules apply
+  to source files exactly as they apply to test files.)
 
 - **Constants-module imports go at module top, not
   function-local.** When code reads sysctl-backed values
@@ -282,12 +251,6 @@ cases.
   overrides racing the first method call hit `KeyError`.
   The qualified-access pattern (`nbr_const.FIELD`) gives
   you live re-resolution; the import location does not.
-
-- **Dead `type X = ...` aliases get deleted.** If the
-  alias has no callers, remove it the same commit you
-  remove the last user. A type alias that nothing
-  references is a comment that lies — it implies the
-  module exposes a typed surface it actually doesn't.
 
 ## 6. Module-level constants
 
@@ -471,11 +434,12 @@ Reference (canonical minimum): `net_proto/protocols/udp/` (no
 options, no enums — the simplest possible protocol).
 Reference (full): `net_proto/protocols/tcp/` (options container, per-option files, enums).
 
-The `net_addr/` package does **not** follow this layout — it is a
-pure value-type library (address classes, masks, hosts). It still
-obeys §1–§7, §11–§14, §17–§21, but ignores §8–§10 (no parser /
-assembler / errors triad). If you add code there, mirror existing
-modules like `net_addr/address.py`.
+The `net_addr/` package does **not** follow this layout —
+it is a pure value-type library (address classes, masks,
+hosts). It still obeys the general file-skeleton / docstring
+/ naming / formatting rules but skips §8–§14 (no parser /
+assembler / errors / options triad). If you add code there,
+mirror existing modules like `net_addr/address.py`.
 
 ## 9. `*Header` + `*HeaderProperties` (`<proto>__header.py`)
 
@@ -913,57 +877,14 @@ through the container.
 
 ## 19. Type annotations
 
-- Use 3.10+ pipe unions: `Tracker | None`, never `Optional[Tracker]`
-  or `Union[Tracker, None]`.
-- Use lowercase builtin generics: `list[Buffer]`, `dict[str, Any]`,
-  `tuple[int, int]`. Never `List[...]`, `Dict[...]`.
-- Use `typing.Self` for self-returning classmethods:
-  `def from_buffer(cls, buffer: Buffer, /) -> Self:`.
-- Decorate every override with `@override` (from `typing`). mypy
-  strict will flag missing overrides.
-- **Don't `@override` a method that isn't a Liskov-compatible
-  override.** If a subclass method has a different signature
-  from the parent's (positional → kw-only with renamed
-  parameters, return type widened, etc.) it isn't an override;
-  it's a new method that happens to shadow. Drop `@override`
-  and refactor — see the next bullet.
-- **Never use `# type: ignore[override]` to silence a Liskov
-  violation.** The pattern it suppresses is always wrong.
-  Two valid fixes:
-  1. **Protected-hook pattern**: rename the parent method to
-     `_method_name` (protected hook) and have the subclass
-     provide a new public method that delegates via
-     `self._method_name(...)`. The subclass method is no
-     longer an override; no `@override`, no `# type: ignore`.
-     Used by `NeighborCache._find_entry` ↔
-     `ArpCache.find_entry(*, ip4_address=)`.
-  2. **Non-shadowing names**: pick a name that doesn't
-     collide with the parent (e.g. `lookup_arp` vs the
-     parent's `find_entry`). Parent's API stays untouched;
-     subclass adds a new public method.
-
-  If neither fix is workable, the design is wrong — re-think
-  the inheritance, don't suppress.
-- **Validator-factory return types are concrete
-  `Callable[[...], None]`, not `Any`.** A function that
-  returns a validator has a known callable shape; spell it
-  out so the caller can prove the result is callable.
-  `_is_non_negative_int(name: str) -> Callable[[Any], None]`,
-  not `-> Any`.
-- Positional-only `/` is used for any parameter that accepts a
-  buffer, byte string, or container being mutated in place:
-  ```python
-  def assemble(self, buffers: list[Buffer], /) -> None: ...
-  def from_buffer(cls, buffer: Buffer, /) -> Self: ...
-  def __init__(self, message: str, /) -> None: ...
-  ```
-- Keyword-only `*` is mandatory on assembler constructors (§12) and
-  on any factory where the call site benefits from named arguments.
-- `Buffer` is a module-level type alias (`type Buffer = bytes |
-  bytearray | memoryview`, `net_proto/lib/buffer.py`). Use it instead
-  of re-spelling the union.
-- PEP 695 class generics (`class Foo[T]: ...`) are preferred over
-  `TypeVar` for new code.
+Annotation discipline, generics syntax, `typing.Self`,
+`@override`, the Liskov / protected-hook pattern,
+validator-factory return types, positional-only `/`,
+keyword-only `*`, the `Buffer` alias, PEP 695 generics,
+and the forbidden-`# type: ignore[override]` rule all live
+in [`typing.md`](typing.md). This file does not duplicate
+them — when in doubt about how to type a signature or
+attribute, read `typing.md`.
 
 ## 20. Validation helpers (`net_proto/lib/int_checks.py`)
 
@@ -977,20 +898,24 @@ through the container.
   are the canonical bounds — reference them in tests rather than
   hard-coding `65535`.
 
-## 21. Error messages and assertion style
+## 21. Error message templates
 
-- Prefer `!r` in assert / error interpolation for values:
-  `f"Got: {self.sport!r}"`. Plain `{value}` is acceptable in sanity
-  checks where the field is an integer and `!r` adds noise.
-- For multi-value integrity errors, use the f-string `=` debug form:
-  `f"Got: {UDP__HEADER__LEN=}, {plen=}, {self._ip__payload_len=}"`.
-- Message template: `"The '<field>' field must be <constraint>. Got: <value>"`
+f-string mechanics (`!r`, `=` debug form, no `%`/`.format()`)
+live in [`python_features.md`](python_features.md) §20.
+PyTCP-specific message-template conventions:
+
+- Message template:
+  `"The '<field>' field must be <constraint>. Got: <value>"`
   or `"The condition '<expression>' must be met. Got: <values>"`.
-  Keep phrasing identical across protocols so the tests' string
-  matching stays robust.
-- Never hand-roll the `[INTEGRITY ERROR]` / `[SANITY ERROR]` prefix
-  in message text. Raise the protocol-specific exception class and
-  let the base class prepend the tag (§13).
+  Keep phrasing identical across protocols so the tests'
+  string matching stays robust across the codebase.
+- Never hand-roll the `[INTEGRITY ERROR]` / `[SANITY ERROR]`
+  prefix in message text. Raise the protocol-specific
+  exception class and let the base class prepend the tag
+  (§13).
+- In sanity checks, plain `{value}` is acceptable where the
+  field is an integer and `!r` adds noise; in integrity
+  checks the multi-value `{name=}` debug form is canonical.
 
 ## 22. Buffer / struct conventions
 
@@ -1034,13 +959,12 @@ standard Python protocols (`__init__`, `__len__`, `__str__`,
 ## 24. Formatting
 
 - **120-char** hard line limit (black / isort configured at 120).
-- Opening paren on the same line as the callable / class; arguments
-  indented 4 spaces; closing paren on its own line at the original
-  indent level. Trailing comma on the last element of any multi-line
-  call, tuple, list, or dict.
-- Prefer f-strings; never `%` formatting or `.format()`.
-- Bit-field packing uses one operand per line, operator at the
-  start of the continuation line, aligned:
+- Opening paren on the same line as the callable / class;
+  arguments indented 4 spaces; closing paren on its own line
+  at the original indent level. Trailing comma on the last
+  element of any multi-line call, tuple, list, or dict.
+- Bit-field packing uses one operand per line, operator at
+  the start of the continuation line, aligned:
   ```python
   self.hlen << 10
   | self.flag_ns << 8
@@ -1048,10 +972,12 @@ standard Python protocols (`__init__`, `__len__`, `__str__`,
   | self.flag_ece << 6
   ...
   ```
-  This pattern appears in every header that packs flag bits (TCP,
-  IPv4, IPv6). Match it.
-- Walrus `:=` inside `if`/`while` conditions is idiomatic for
-  "check a value and capture it for the error message" (§11).
+  This pattern appears in every header that packs flag bits
+  (TCP, IPv4, IPv6). Match it.
+
+f-string mandate, `%`/`.format()` ban, and the walrus
+operator are in
+[`python_features.md`](python_features.md) §19–§20.
 
 ## 25. Inline comments
 
@@ -1144,68 +1070,51 @@ not by a novel pattern introduced in a new file.
 
 ## 28. Anti-patterns to avoid
 
-- Writing a new header without the matching `<Proto>HeaderProperties`
-  mixin, or skipping a property because "callers can just read
-  `header.<field>` directly."
-- Merging integrity and sanity checks into a single method, or
-  interleaving parsing into the validation pass.
-- Assembling the checksum inside the header's `__buffer__` instead
-  of letting the base class / assembler inject it after full
-  concatenation.
-- Hand-rolling the `[INTEGRITY ERROR]` / `[SANITY ERROR]` prefix in
-  a message string instead of raising the canonical exception class.
-- Inlining `struct` format strings instead of defining a module
-  constant.
-- Using `%` formatting, `.format()`, or string concatenation with
-  `+` for user-visible messages. Always f-strings.
-- `typing.Optional`, `typing.Union`, `typing.List`, `typing.Dict` —
-  use `X | None`, `X | Y`, `list[X]`, `dict[X, Y]`.
-- Forgetting `@override` on a method that implements an abstract
-  parent. mypy strict will fail; catching it locally is cheaper than
-  a CI round-trip.
-- Relative imports (`from ..lib import foo`). Always absolute.
+This section lists PyTCP-architecture-specific
+anti-patterns. Language / typing anti-patterns
+(`typing.Optional`, `# type: ignore[override]`,
+`from __future__ import annotations` trio, etc.) live in
+[`python_features.md`](python_features.md) §22 and
+[`typing.md`](typing.md) §23.
+
+- Writing a new header without the matching
+  `<Proto>HeaderProperties` mixin, or skipping a property
+  because "callers can just read `header.<field>` directly."
+- Merging integrity and sanity checks into a single method,
+  or interleaving parsing into the validation pass.
+- Assembling the checksum inside the header's `__buffer__`
+  instead of letting the base class / assembler inject it
+  after full concatenation.
+- Hand-rolling the `[INTEGRITY ERROR]` / `[SANITY ERROR]`
+  prefix in a message string instead of raising the
+  canonical exception class.
+- Inlining `struct` format strings instead of defining a
+  module constant.
+- Relative imports (`from ..lib import foo`). Always
+  absolute.
 - `__all__` in a non-`__init__.py` source module.
-- Trailing underscore on a public name (`type_` is fine as a
-  keyword-collision workaround in `socket.__new__`; no other uses).
-- Comments that narrate the code (`# Set sport to 0`) instead of
-  explaining a non-obvious *why*.
-- New runtime dependencies outside the stdlib (plus the two allowed
-  above).
-- Silently tightening or widening a type annotation on a property
-  relative to the underlying field.
-- Creating a subsystem without extending `Subsystem` — ad-hoc
-  threading in `pytcp/` is a red flag.
+- Trailing underscore on a public name (`type_` is fine
+  as a keyword-collision workaround in `socket.__new__`;
+  no other uses).
+- Comments that narrate the code (`# Set sport to 0`)
+  instead of explaining a non-obvious *why*.
+- New runtime dependencies outside the stdlib (plus the
+  two allowed by §1).
+- Silently tightening or widening a type annotation on a
+  property relative to the underlying field.
+- Creating a subsystem without extending `Subsystem` —
+  ad-hoc threading in `pytcp/` is a red flag.
 - **Importing a `_`-prefixed name from another module.**
   Underscore prefix means "internal to this module." If a
-  consumer needs the name, rename it to public in the source
-  module — don't reach across the underscore boundary. (See
-  §5.1.)
-- **`_ = SomeName` at end-of-file** to silence unused-import
-  warnings. Just delete the import.
-- **`from __future__ import annotations` + `TYPE_CHECKING`
-  guard + string-quoted annotations all at once.** On 3.14+
-  the trio is at least one layer of redundancy. Audit the
-  three together; pick the minimum that lets names resolve.
-- **String-quoted PEP 695 generic bounds**
-  (`class Foo[T: "Bar"]`) when `Bar` is visible at runtime.
-  Drop the quotes. Same for `type X = "..."` aliases.
-- **Dead `type X = ...` aliases.** If nothing references
-  the alias, delete it.
+  consumer needs the name, rename it to public in the
+  source module. (See §5.1.)
+- **`_ = SomeName` at end-of-file** to silence
+  unused-import warnings. Just delete the import.
 - **Function-local `from pytcp.lib import foo__constants`
-  inside a hot loop method.** The import goes at module top;
-  function-local hides registration timing and re-executes
-  import machinery on every loop tick. (See §5.1, §6.1.)
-- **`# type: ignore[override]` to paper over a kw-only /
-  positional signature mismatch.** Refactor — don't
-  suppress. See §19 for the protected-hook pattern.
-- **`@override` on a method that's actually a new public
-  method delegating to a protected hook.** The decorator
-  means "I am replacing the parent's behavior under the
-  same contract" — not "I share a name with a parent
-  method."
-- **Validator factories returning `Any`.** Spell out
-  `Callable[[Any], None]` so the caller's type checker can
-  prove the result is callable.
+  inside a hot loop method.** The import goes at module
+  top; function-local hides registration timing and
+  re-executes import machinery on every loop tick.
+  (See §5.1, §6.1.)
 
 ## 29. Workflow when adding a new protocol
 
@@ -1221,7 +1130,7 @@ not by a novel pattern introduced in a new file.
 8. Wire the protocol into the dispatch tables
    (`net_proto/lib/enums.py`'s `from_proto`, the relevant packet
    handler in `pytcp/stack/packet_handler/`).
-9. Write tests per [`.claude/rules/unit_tests.md`](unit_tests.md).
+9. Write tests per [`.claude/rules/unit_testing.md`](unit_testing.md).
    Do **not** skip the header-asserts / parser-integrity /
    parser-sanity / parser-operation / assembler-operation matrix.
 10. Run `make lint && make test`. Both must pass with zero output

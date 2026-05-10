@@ -4,10 +4,26 @@ Canonical workflow for implementing new features, closing
 spec-conformance gaps, and shipping behaviour changes in
 PyTCP. Every non-trivial code change should follow it.
 
-For test-file specifics see
-[`unit_tests.md`](unit_tests.md). For source-file
-authoring conventions see
-[`coding_style.md`](coding_style.md).
+Companion rules — read these for the topical specifics this
+rule references:
+
+- [`unit_testing.md`](unit_testing.md) — unit test
+  authoring (framework, file layout, mocking discipline,
+  isolation, the §7.2 docstring audit).
+- [`integration_testing.md`](integration_testing.md) —
+  integration test authoring (harness hierarchy, drive_rx /
+  probe / fluent-assert pattern, stat-counter assertions).
+- [`python_features.md`](python_features.md) — Python
+  3.10–3.14 language features PyTCP MUST use; forbidden
+  pre-3.10 fallbacks.
+- [`typing.md`](typing.md) — type-system discipline (PEP 604
+  unions, PEP 585 generics, PEP 695 generic syntax,
+  `Self` / `@override`, `Protocol` / `TypedDict`, `cast`
+  policy, `# type: ignore` policy, forward references).
+- [`coding_style.md`](coding_style.md) — PyTCP source-file
+  conventions (file skeleton, copyright block, module
+  docstring, per-protocol six-file layout, dataclass shape,
+  parser / assembler / error patterns, `Subsystem` runtime).
 
 ---
 
@@ -82,7 +98,7 @@ tests that pin the spec requirement:
    reason** — wrong-failure-mode tests don't lock anything
    in. If it unexpectedly passes, the gap was already
    closed (rare; double-check before claiming "done").
-3. Test docstrings follow `unit_tests.md` §7: opening
+3. Test docstrings follow `unit_testing.md` §7: opening
    `Ensure …`, blank line, trailing
    `Reference: RFC X §Y (desc).` line per cited clause.
 4. Run the §7.2 audit script before staging.
@@ -92,10 +108,10 @@ tests that pin the spec requirement:
 PyTCP has two distinct test layers; new features need
 coverage at **every layer that applies**, not just one:
 
-| Layer       | Path                                                     | What it covers                                                                                |
-|-------------|----------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| Unit        | `<pkg>/tests/unit/...`                                   | Pure-function helpers, dataclass invariants, parser/assembler wire format, header asserts     |
-| Integration | `pytcp/tests/integration/...` (driven by `TcpSessionTestCase`) | FSM transitions, wire-level interactions across multiple segments, timer-driven behaviour, socket-API plumbing |
+| Layer       | Path                                                     | Harness                                                                | What it covers                                                                                |
+|-------------|----------------------------------------------------------|------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| Unit        | `<pkg>/tests/unit/...`                                   | `unittest.TestCase`                                                    | Pure-function helpers, dataclass invariants, parser / assembler wire format, header asserts   |
+| Integration | `pytcp/tests/integration/...`                            | `NetworkTestCase` / `IcmpTestCase` / `NdTestCase` / `ArpTestCase` / `TcpSessionTestCase` (see [`integration_testing.md`](integration_testing.md) §4) | FSM transitions, wire-level RX→TX interactions, timer-driven behaviour, socket-API plumbing  |
 
 Heuristic for which layer(s) apply:
 
@@ -136,20 +152,29 @@ integration test before claiming done.
 
 ### 2.2 Test paths
 
-| Source location                | Test path                                                                                |
-|--------------------------------|------------------------------------------------------------------------------------------|
-| `net_proto/protocols/<p>/*`    | `net_proto/tests/unit/protocols/<p>/`                                                    |
-| `net_proto/lib/*`              | `net_proto/tests/unit/lib/`                                                              |
-| `pytcp/protocols/tcp/*.py`     | `pytcp/tests/unit/protocols/tcp/` (unit) **and** `pytcp/tests/integration/protocols/tcp/` (integration) |
-| `pytcp/socket/*.py`            | `pytcp/tests/unit/socket/` (unit) and integration via `TcpSessionTestCase`               |
-| `pytcp/lib/*`                  | `pytcp/tests/unit/lib/`                                                                  |
-| `pytcp/stack/packet_handler/*` | `pytcp/tests/integration/...` (RX/TX behaviour against a mock TAP)                       |
+| Source location                                | Test path                                                                                                              |
+|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `net_proto/protocols/<proto>/*.py`             | `net_proto/tests/unit/protocols/<proto>/test__<proto>__<aspect>.py`                                                    |
+| `net_proto/lib/*.py`                           | `net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
+| `net_addr/*.py`                                | `net_addr/tests/unit/test__<source>.py`                                                                                |
+| `pytcp/lib/*.py`                               | `pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
+| `pytcp/socket/*.py`                            | `pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
+| `pytcp/protocols/tcp/*.py`                     | `pytcp/tests/unit/protocols/tcp/...` (unit) **and** `pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
+| `pytcp/protocols/icmp6/nd/*.py`                | `pytcp/tests/unit/protocols/icmp6/nd/...` (unit) **and** `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py` (integration) |
+| `pytcp/stack/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `pytcp/tests/integration/test__packet_handler__<proto>__<rx\|tx>.py` (per-handler smoke)              |
+| Cross-cutting RFC mechanism                    | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<rfc-mechanism>.py`                                          |
 
-Test docstring conventions (`Ensure …` opener,
-trailing `Reference:` line, no inline RFC citations,
-no `[FLAGS BUG]` markers) apply at **both** layers
-identically. The §7.2 audit script runs against any
-test file you write or modify, regardless of layer.
+The full per-aspect splits for `net_proto` per-protocol
+files (header / parser / assembler / options) live in
+[`unit_testing.md`](unit_testing.md) §3. The full
+integration-test path matrix lives in
+[`integration_testing.md`](integration_testing.md) §3.
+
+Test docstring conventions (`Ensure …` opener, trailing
+`Reference:` line, no inline RFC citations, no
+`[FLAGS BUG]` markers) apply at **both** layers identically.
+The §7.2 audit script runs against any test file you write
+or modify, regardless of layer.
 
 ## 3. Implementation
 
@@ -165,7 +190,23 @@ Once the failing tests are in place:
 3. **Cite the RFC clause with an inline comment** at the
    hook point if the *why* is non-obvious. Don't narrate
    *what* the code does — names and types do that.
-4. Verify the originally-failing tests now pass and the
+4. **Follow the modern-Python / typing rules.** New code
+   uses the forms documented in
+   [`python_features.md`](python_features.md) (PEP 604
+   unions, PEP 585 lowercase generics, PEP 695 generic
+   syntax, `match`/`case`, `int.bit_count()`, etc.) and
+   [`typing.md`](typing.md) (mypy strict, `Self`,
+   `@override`, `Protocol`, `TypedDict`, `cast` policy,
+   `# type: ignore` policy). On-touch in legacy code: fix
+   the obsolete forms (`Optional`, `Union`, `TypeVar`,
+   `Generic`, `from __future__ import annotations` + the
+   `TYPE_CHECKING` trio) in the same commit.
+5. **Match PyTCP source-file conventions** for any new
+   file — file skeleton (copyright block, module
+   docstring, imports), naming, the per-protocol six-file
+   layout, dataclass shape per
+   [`coding_style.md`](coding_style.md).
+6. Verify the originally-failing tests now pass and the
    full suite still passes (`make validate`).
 
 When a feature is large enough to warrant phasing, each
@@ -181,12 +222,27 @@ mechanically reversible.
 | Tests + impl together when atomic | Reader sees the spec mapping in one place |
 | Cite the RFC clause in commit body | Future archaeology has the link |
 | `make lint` + `make test` clean before commit | No broken intermediate states |
+| §7.2 docstring audit clean before commit | Test docstrings stay greppable |
+| Modernise legacy forms on touch (not in a separate sweep commit) | The fix lands with the feature that touched the file |
 | Never `--no-verify`, never `--no-gpg-sign`, never amend published commits | Hooks and signatures are load-bearing |
 | User-explicit only for `git push` | Never push without a clear ask |
 
 Commit message body should say what flipped green and
-which RFC clause it pins. The §7.2 audit line ("X tests
-passing, Y skipped") is a convention worth keeping.
+which RFC clause it pins. The "<N> passing, <M> skipped"
+counts line is a convention worth keeping.
+
+**Modernisation-on-touch.** When you edit a file that
+contains an obsolete typing form (`Optional`, `Union`,
+`List`, `Dict`, `TypeVar`, `Generic`,
+`from __future__ import annotations` + `TYPE_CHECKING`
+trio in a file without a real circular import, etc.), fix
+it in the same commit. Do not file a follow-up "modernise
+typing in X" task — the next person to touch the file is
+you, the fix is mechanical, and a separate sweep commit
+loses the lockstep with the feature work. See
+[`python_features.md`](python_features.md) §22 and
+[`typing.md`](typing.md) §23 for the full forbidden-form
+catalogue.
 
 ## 5. Scope discipline
 
@@ -213,13 +269,31 @@ emphasis here:
   the current (wrong) value codifies the bug. Update the
   test to match the spec; the failure surfaces the work.
 - **Bypassing safety checks.** No `--no-verify` to skip
-  hooks, no `# type: ignore` without a one-line WHY, no
-  `try: …; except: pass` to make a failing path quiet.
-  Fix the root cause.
+  hooks, no bare `# type: ignore` (see
+  [`typing.md`](typing.md) §21 for the narrow forms that
+  are acceptable), no `try: …; except: pass` to make a
+  failing path quiet. Fix the root cause.
 - **Citing the RFC inline AND in `Reference:`.** The
-  trailing `Reference:` line is canonical;
-  duplicating in the description is forbidden by
-  `unit_tests.md` §7.
+  trailing `Reference:` line is canonical; duplicating in
+  the description is forbidden by
+  [`unit_testing.md`](unit_testing.md) §7 and
+  [`integration_testing.md`](integration_testing.md) §9.
+- **Skipping the integration test for a protocol-level
+  behaviour.** A wire-format change / FSM transition /
+  socket-API change MUST land with an integration test —
+  see §2.1. Unit-only coverage of session-touching code
+  routinely misses real bugs.
+- **Adding module-level state to `pytcp/stack/__init__.py`
+  without updating the test harness in the same commit.**
+  Snapshots and restores live in
+  `NetworkTestCase` / `IcmpTestCase` setUp/tearDown — see
+  [`integration_testing.md`](integration_testing.md) §5.4.
+  Without the harness update, the test passes alone and
+  fails in suite (or vice versa).
+- **Bare `MagicMock()` in tests.** Always
+  `create_autospec(Cls, spec_set=True)` or
+  `patch(..., autospec=True, spec_set=True)` — see
+  [`unit_testing.md`](unit_testing.md) §6a.
 - **Reusing rule-file or prior-record content for an
   audit or test.** Re-derive from code and the RFC.
   Prior records can sanity-check after the fact.
@@ -244,8 +318,38 @@ pinned before.
 
 ## 8. Cross-references
 
-- Test authoring: [`unit_tests.md`](unit_tests.md)
-- Source authoring: [`coding_style.md`](coding_style.md)
-- Per-RFC adherence: `docs/rfc/tcp/rfcXXXX__*/adherence.md`
-- Audit skill:
+- Unit-test authoring:
+  [`unit_testing.md`](unit_testing.md) — framework, file
+  layout, parameterization pattern, byte-frame
+  annotations, mocking discipline (§6a), test isolation
+  (§10a), modern Python features in tests (§10b), the §7.2
+  docstring audit.
+- Integration-test authoring:
+  [`integration_testing.md`](integration_testing.md) —
+  harness hierarchy (`NetworkTestCase`/`IcmpTestCase`/
+  `NdTestCase`/`ArpTestCase`/`TcpSessionTestCase`),
+  drive_rx / advance / probe / fluent-assert pattern,
+  stat-counter assertions, frame builders.
+- Python language-feature inventory:
+  [`python_features.md`](python_features.md) — modern
+  Python 3.10–3.14 features PyTCP MUST use; pre-3.10
+  fallbacks that are forbidden.
+- Typing discipline: [`typing.md`](typing.md) — mypy
+  strict, annotation discipline, PEP 604 / 585 / 695
+  generic syntax, `Self`, `@override`, `Protocol`,
+  `TypedDict`, `cast` policy, `# type: ignore` policy,
+  forward references / PEP 649 lazy annotations.
+- PyTCP source-file authoring:
+  [`coding_style.md`](coding_style.md) — file skeleton,
+  copyright block, module docstring, imports, naming,
+  the per-protocol six-file layout, dataclass shape,
+  parser / assembler / error / options patterns,
+  `Subsystem` runtime, validation helpers, error message
+  templates, buffer / struct conventions.
+- Per-RFC adherence audits:
+  `docs/rfc/<family>/rfcXXXX__*/adherence.md` (TCP, IP6,
+  ICMP6, ICMP4, ARP families). The
   [`rfc_adherence_audit`](../skills/rfc_adherence_audit/SKILL.md)
+  skill adds or refreshes an entry.
+- Sysctl knob workflow:
+  [`sysctl_knob`](../skills/sysctl_knob/SKILL.md) skill.

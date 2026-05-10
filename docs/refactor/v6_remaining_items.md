@@ -214,7 +214,7 @@ fresh agent will hit them too without warning.
 
 1. **Tests-first MUST applies (CLAUDE.md).** Every behavioural
    change opens with a failing test. The §7.2 audit script in
-   `.claude/rules/unit_tests.md` runs against any test file
+   `.claude/rules/unit_testing.md` runs against any test file
    you write or modify. No `Per RFC X §Y` inline in
    docstrings — use the trailing `Reference:` line.
 
@@ -285,7 +285,7 @@ Read these in order before any code:
   3. .claude/rules/feature_implementation.md (commit
      discipline; tests-first procedure; "Linux as tiebreaker"
      rule)
-  4. .claude/rules/unit_tests.md (test-authoring rule;
+  4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script is non-negotiable per commit)
   5. .claude/rules/coding_style.md (source-authoring rule)
 

@@ -762,7 +762,7 @@ Read these in order before any code:
      deliberate-skip categories)
   3. .claude/rules/feature_implementation.md (commit
      discipline; tests-first; Linux-as-tiebreaker rule)
-  4. .claude/rules/unit_tests.md (test-authoring rule;
+  4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script blocks every commit)
   5. .claude/rules/coding_style.md (source-authoring rule)
   6. The current pytcp/socket/ tree

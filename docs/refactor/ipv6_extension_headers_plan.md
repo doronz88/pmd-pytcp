@@ -15,7 +15,7 @@ A fresh agent picking this up MUST read, in order:
    Tests First MUST, file-naming + linting conventions.
 3. `.claude/rules/feature_implementation.md` — commit discipline,
    tests-first procedure, "Linux as tiebreaker" rule.
-4. `.claude/rules/unit_tests.md` — full test-authoring rule
+4. `.claude/rules/unit_testing.md` — full test-authoring rule
    including the §7.2 self-audit script (BLOCKER — non-negotiable
    before every commit).
 5. `.claude/rules/coding_style.md` — source authoring rule
@@ -1115,7 +1115,7 @@ Read these in order before any code:
   3. .claude/rules/feature_implementation.md (commit
      discipline; tests-first procedure; "Linux as tiebreaker"
      rule)
-  4. .claude/rules/unit_tests.md (test-authoring rule;
+  4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script is non-negotiable per commit)
   5. .claude/rules/coding_style.md (source-authoring rule;
      six-file per-protocol layout; license block; dataclass
