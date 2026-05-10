@@ -113,6 +113,13 @@ class PacketHandlerIcmp6Rx(ABC):
             echo_tracker: Tracker | None = None,
         ) -> None: ...
 
+        def _update_icmp6_default_router(
+            self,
+            *,
+            address: Ip6Address,
+            router_lifetime: int,
+        ) -> None: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -757,6 +764,19 @@ class PacketHandlerIcmp6Rx(ABC):
 
         self._icmp6_ra__prefixes = admitted
         self._icmp6_ra__event.release()
+
+        # RFC 4861 §6.3.4 default-router list maintenance —
+        # independent of the SLAAC prefix path above. Gated by the
+        # 'icmp6.accept_ra_defrtr' Linux-parity sysctl: when 0 the
+        # host still consumes the prefix-info options but does not
+        # learn the RA source as a default router.
+        if nd__constants.ICMP6__ACCEPT_RA_DEFRTR:
+            self._update_icmp6_default_router(
+                address=packet_rx.ip6.src,
+                router_lifetime=packet_rx.icmp6.message.router_lifetime,
+            )
+        else:
+            self._packet_stats_rx.icmp6__nd_router_advertisement__defrtr__drop += 1
 
     def __phrx_icmp6__nd_neighbor_solicitation(self, packet_rx: PacketRx) -> None:
         """

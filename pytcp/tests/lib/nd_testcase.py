@@ -45,6 +45,8 @@ from net_proto import (
     Icmp6Assembler,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRedirect,
+    Icmp6NdMessageRouterAdvertisement,
+    Icmp6NdOption,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdOptionTlla,
@@ -139,6 +141,57 @@ class NdTestCase(IcmpTestCase):
         message = Icmp6NdMessageNeighborSolicitation(
             target_address=target,
             options=Icmp6NdOptions(*options_list),
+        )
+
+        return bytes(
+            EthernetAssembler(
+                ethernet__src=eth_src,
+                ethernet__dst=eth_dst,
+                ethernet__payload=Ip6Assembler(
+                    ip6__src=ip6_src,
+                    ip6__dst=ip6_dst,
+                    ip6__hop=255,
+                    ip6__payload=Icmp6Assembler(icmp6__message=message),
+                ),
+            )
+        )
+
+    def _make_nd_ra_frame(
+        self,
+        *,
+        eth_src: MacAddress,
+        eth_dst: MacAddress,
+        ip6_src: Ip6Address,
+        ip6_dst: Ip6Address,
+        router_lifetime: int,
+        hop: int = 0,
+        flag_m: bool = False,
+        flag_o: bool = False,
+        reachable_time: int = 0,
+        retrans_timer: int = 0,
+        options: list[Icmp6NdOption] | None = None,
+    ) -> bytes:
+        """
+        Build an Ethernet/IPv6/ICMPv6 Router Advertisement frame
+        for RX injection. Defaults the IPv6 hop limit to 255 — the
+        value RFC 4861 §6.1.2 mandates for any inbound RA. The RA
+        source ('ip6_src') must be link-local per the same clause;
+        callers pick a 'fe80::*' address.
+
+        Pass 'router_lifetime=0' for the "no longer a default
+        router" form per RFC 4861 §6.3.4. The 'options' kwarg
+        defaults to an empty list — callers add Prefix-Information,
+        SLLA, MTU, RDNSS etc. as their tests need.
+        """
+
+        message = Icmp6NdMessageRouterAdvertisement(
+            hop=hop,
+            flag_m=flag_m,
+            flag_o=flag_o,
+            router_lifetime=router_lifetime,
+            reachable_time=reachable_time,
+            retrans_timer=retrans_timer,
+            options=Icmp6NdOptions(*(options or [])),
         )
 
         return bytes(

@@ -72,6 +72,17 @@ ICMP6__DAD_TRANSMITS = 1
 # 'net.ipv6.conf.<iface>.retrans_time_ms'.
 ICMP6__RETRANS_TIMER_MS = 1000
 
+# Linux net.ipv6.conf.<iface>.accept_ra_defrtr policy. Controls
+# whether inbound RA messages with a non-zero Router Lifetime
+# install / refresh an entry in the host's default-router list
+# (RFC 4861 §6.3.4).
+#   0 = drop default-router learning entirely (host sees the RA's
+#       prefix-info options but never gains a default route from
+#       it — useful for static-routing or isolated deployments).
+#   1 = process default-router updates per RFC 4861 §6.3.4 (Linux
+#       host default).
+ICMP6__ACCEPT_RA_DEFRTR = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -113,6 +124,16 @@ def _retrans_timer_ms_validator(value: Any) -> None:
         raise ValueError(f"sysctl 'icmp6.retrans_timer_ms' must be a positive int; got {value!r}")
 
 
+def _accept_ra_defrtr_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected explicitly
+    because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'icmp6.accept_ra_defrtr' must be 0 or 1; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -144,4 +165,15 @@ register(
     default=ICMP6__RETRANS_TIMER_MS,
     validator=_retrans_timer_ms_validator,
     description="Inter-probe wait between DAD probes in milliseconds (RFC 4861 §10 RetransTimer; default 1000).",
+)
+register(
+    key="icmp6.accept_ra_defrtr",
+    module_name=__name__,
+    attr="ICMP6__ACCEPT_RA_DEFRTR",
+    default=ICMP6__ACCEPT_RA_DEFRTR,
+    validator=_accept_ra_defrtr_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.accept_ra_defrtr' "
+        "(0 = drop default-router learning; 1 = process RFC 4861 §6.3.4)."
+    ),
 )

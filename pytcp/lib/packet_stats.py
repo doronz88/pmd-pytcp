@@ -190,6 +190,9 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_router_solicitation: int = 0
     icmp6__nd_router_advertisement: int = 0
     icmp6__nd_router_advertisement__prefix_info__drop: int = 0
+    icmp6__nd_router_advertisement__update_router: int = 0
+    icmp6__nd_router_advertisement__remove_router: int = 0
+    icmp6__nd_router_advertisement__defrtr__drop: int = 0
     icmp6__nd_redirect: int = 0
     icmp6__nd_redirect__update_nd_cache: int = 0
     icmp6__nd_redirect__bad_target__drop: int = 0

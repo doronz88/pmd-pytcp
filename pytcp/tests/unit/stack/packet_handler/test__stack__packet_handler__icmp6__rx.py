@@ -111,6 +111,14 @@ class _StubHandler(PacketHandlerIcmp6Rx):
     def send_icmp6_neighbor_advertisement(self, **kwargs: object) -> None:
         self.icmp6_tx_calls.append(kwargs)
 
+    # Stub the default-router-list mutator added with the §11
+    # parity work. The test base only exercises the prefix
+    # harvest path; the default-router list is covered by the
+    # integration tests in
+    # 'pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py'.
+    def _update_icmp6_default_router(self, **kwargs: object) -> None:
+        self.icmp6_tx_calls.append({"_update_icmp6_default_router": kwargs})
+
 
 def _packet_rx_from_ip6_icmp6(ip6_frame: bytes) -> PacketRx:
     """

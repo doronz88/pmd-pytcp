@@ -707,9 +707,13 @@ class TestIcmp6Rx__RouterAdvertisement(IcmpTestCase):
 
     def test__icmp6__rx__router_advertisement__packet_stats_rx(self) -> None:
         """
-        Ensure the RA handler bumps 'icmp6__nd_router_advertisement'.
+        Ensure the RA handler bumps 'icmp6__nd_router_advertisement'
+        and — because the fixture frame carries a non-zero
+        router_lifetime — also the §11 default-router-list
+        'update_router' counter.
 
         Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 4861 §6.3.4 (RA processing — default-router list).
         """
 
         self._drive_rx(frame=_FRAME_RX__ROUTER_ADVERTISEMENT)
@@ -721,6 +725,7 @@ class TestIcmp6Rx__RouterAdvertisement(IcmpTestCase):
             ip6__dst_unicast=1,
             icmp6__pre_parse=1,
             icmp6__nd_router_advertisement=1,
+            icmp6__nd_router_advertisement__update_router=1,
         )
 
     def test__icmp6__rx__router_advertisement__packet_stats_tx(self) -> None:

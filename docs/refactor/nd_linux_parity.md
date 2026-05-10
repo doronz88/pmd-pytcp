@@ -46,6 +46,7 @@ Companion documents:
 | **§6 Gratuitous NA on DAD success** | New `send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast)` TX helper emits `icmp6.gratuitous_na_count` (default 1; 0 = kill switch) unsolicited NAs to ff02::1 with flag_o=True. Hooked from `_perform_ip6_nd_dad`'s no-duplicate branch — the IPv6 analogue of the IPv4 ARP Announcement we already ship | RFC 9131 §3 |
 | **§8 Multi-probe DAD with RetransTimer** | `_perform_ip6_nd_dad` loops `icmp6.dad_transmits` times (default 1) spaced by `icmp6.retrans_timer_ms` (default 1000ms); a conflict event released mid-loop short-circuits further probing per RFC 4862 §5.4.5. Setting `icmp6.dad_transmits=0` disables DAD entirely | RFC 4862 §5.1, §5.4.5; RFC 4861 §10 RetransTimer |
 | **§9 partial — `icmp6.dad_transmits` + `icmp6.retrans_timer_ms` sysctls** | First two timing knobs in the `icmp6.*` namespace beyond `accept_redirects` and `gratuitous_na_count`; further RFC 4861 §10 knobs (`reachable_time_ms`, `max_rtr_solicitations`, `accept_ra_*`) land with their consumers per "no API surface without consumer" rule | RFC 4861 §10 |
+| **§11 default-router list with Router Lifetime** | `Icmp6DefaultRouter(address, lifetime, expires_at)` dataclass + per-RA `_update_icmp6_default_router` mutator + lazy-aged `get_icmp6_default_routers()` accessor; `icmp6.accept_ra_defrtr` sysctl gates the path; new RX counters `update_router` / `remove_router` / `defrtr__drop`. Prf field deferred to §14 | RFC 4861 §6.3.4 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -373,32 +374,54 @@ RFC 4862 §5.4.3.
 
 ---
 
-## §11 — Tier 3: Default router list with Router Lifetime (RFC 4861 §6.3.4) ⚠
+## §11 — Tier 3: Default router list with Router Lifetime (RFC 4861 §6.3.4) ✓
 
-PyTCP today stores a single `gateway` from the most recent
-RA (overwritten each time). Linux maintains a list of
-default routers, keyed on the (RA source address, RA
-Router Lifetime) pair, and ages out routers whose lifetime
-expires.
+**Shipped.** `Icmp6DefaultRouter(address, lifetime, expires_at)` frozen
+dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`; the host's
+list lives on `PacketHandler._icmp6_default_routers` (init in
+`PacketHandlerL2.__init__`). RA RX (`__phrx_icmp6__nd_router_advertisement`)
+calls `_update_icmp6_default_router(address=ip6.src, router_lifetime=msg.router_lifetime)`:
+non-zero lifetime installs / refreshes the entry, zero lifetime removes
+it. The public accessor `get_icmp6_default_routers()` lazy-ages: entries
+past `expires_at` are filtered at access time, mirroring how Linux's
+`rt6_check_expired` is invoked on demand.
 
-### Implementation sketch
+Three new RX counters track the cardinality of state changes:
+`icmp6__nd_router_advertisement__update_router`,
+`icmp6__nd_router_advertisement__remove_router`,
+`icmp6__nd_router_advertisement__defrtr__drop` (latter incremented when
+the `icmp6.accept_ra_defrtr` sysctl is 0).
 
-1. New `_icmp6_default_routers: list[(addr, lifetime, expires_at, prf)]`
-   on the packet handler.
-2. RA RX appends / updates entries.
-3. Background subsystem ages out expired entries.
-4. Outbound routing picks from the list per RFC 4191 §2.1
-   preference rule (Prf field; default 0 = medium).
+The Prf field on the entry is **deferred to §14** — the RA-header parser
+does not yet extract bits 3-4 of the flags byte. The
+`_icmp6_default_routers` list shape will gain a `prf` column when §14
+ships; `Icmp6DefaultRouter` is currently 3-field. The `Icmp6NdRoutePreference`
+enum from §4 will be reused when §14 lands.
 
-### Effort
+### Sysctl
 
-Medium — ~120 lines + integration tests. Foundation for §4,
-§14, §15, §22.
+`icmp6.accept_ra_defrtr` registered with default 1 (Linux host default;
+0 disables default-router learning entirely). Validator rejects booleans
+and values outside {0, 1}.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py`:
+- `nonzero_lifetime_adds_default_router` — entry shape + monotonic deadline.
+- `update_router_packet_stats` — RX counter pinned.
+- `second_ra_updates_lifetime_in_place` — refresh idempotent on (address).
+- `separate_routers_separate_entries` — distinct sources → distinct entries.
+- `zero_lifetime_removes_default_router` — RFC 4861 §6.3.4 immediate timeout.
+- `zero_lifetime_remove_packet_stats` — `remove_router` counter pinned.
+- `expired_filtered` — lazy-ageing accessor honest.
+- `accept_ra_defrtr_zero_drops_update` — sysctl kill-switch.
+- `builder_emits_parseable_frame` — harness regression net for `_make_nd_ra_frame()`.
 
 ### RFC reference
 
-RFC 4861 §6.3.4 (router lifetime), RFC 4191 §2.1
-(preference).
+RFC 4861 §6.3.4 (RA processing — default-router list maintenance).
+Linux: `net/ipv6/ndisc.c::ndisc_router_discovery`,
+`net.ipv6.conf.<iface>.accept_ra_defrtr`.
 
 ---
 

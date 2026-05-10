@@ -63,6 +63,7 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__PROBE_WAIT,
 )
 from pytcp.protocols.icmp6.nd import nd__constants
+from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DefaultRouter
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
@@ -115,6 +116,7 @@ class PacketHandler(Subsystem, ABC):
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
+    _icmp6_default_routers: list[Icmp6DefaultRouter]
 
     @override
     def __init__(
@@ -439,6 +441,52 @@ class PacketHandler(Subsystem, ABC):
 
         return self._ip4_broadcast
 
+    def _update_icmp6_default_router(
+        self,
+        *,
+        address: Ip6Address,
+        router_lifetime: int,
+    ) -> None:
+        """
+        Apply an inbound RA's Router Lifetime to the default-
+        router list per RFC 4861 §6.3.4. A non-zero lifetime
+        installs / refreshes the entry; a zero lifetime removes
+        it. Bumps 'update_router' or 'remove_router' counters
+        only when the list actually changes.
+        """
+
+        existing = next(
+            (r for r in self._icmp6_default_routers if r.address == address),
+            None,
+        )
+
+        if router_lifetime > 0:
+            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
+            self._icmp6_default_routers.append(
+                Icmp6DefaultRouter(
+                    address=address,
+                    lifetime=router_lifetime,
+                    expires_at=time.monotonic() + router_lifetime,
+                ),
+            )
+            self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
+            return
+
+        if existing is not None:
+            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
+            self._packet_stats_rx.icmp6__nd_router_advertisement__remove_router += 1
+
+    def get_icmp6_default_routers(self) -> list[Icmp6DefaultRouter]:
+        """
+        Get the list of currently-active default-router entries
+        per RFC 4861 §6.3.4. Lazy-aged: entries whose 'expires_at'
+        deadline has passed are filtered out at access time
+        instead of removed by a background sweep.
+        """
+
+        now = time.monotonic()
+        return [r for r in self._icmp6_default_routers if r.expires_at > now]
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -555,6 +603,14 @@ class PacketHandlerL2(
         # Used for the ICMPv6 ND RA address auto configuration.
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
         self._icmp6_ra__event: Semaphore = threading.Semaphore(0)
+
+        # RFC 4861 §6.3.4 default-router list — entries learned
+        # from inbound RAs, indexed implicitly by RA source link-
+        # local. Lazy-aged: 'get_icmp6_default_routers()' filters
+        # out entries whose 'expires_at' is in the past instead of
+        # a background sweep, mirroring how Linux's
+        # 'rt6_check_expired' is invoked on demand.
+        self._icmp6_default_routers: list[Icmp6DefaultRouter] = []
 
     @override
     def _subsystem_loop(self) -> None:
