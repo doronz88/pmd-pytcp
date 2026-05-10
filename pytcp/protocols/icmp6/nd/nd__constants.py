@@ -60,6 +60,18 @@ ICMP6__ACCEPT_REDIRECTS = 1
 # switch for stealth deployments).
 ICMP6__GRATUITOUS_NA_COUNT = 1
 
+# Number of DAD (Duplicate Address Detection) probes emitted
+# per candidate address per RFC 4862 §5.1 ('DupAddrDetectTransmits',
+# default 1). Linux exposes this as 'net.ipv6.conf.<iface>.
+# dad_transmits'. A value of 0 disables DAD entirely.
+ICMP6__DAD_TRANSMITS = 1
+
+# Inter-probe wait between successive DAD probes, in
+# milliseconds, per RFC 4861 §10 ('RetransTimer', default
+# 1000ms). Linux exposes this as
+# 'net.ipv6.conf.<iface>.retrans_time_ms'.
+ICMP6__RETRANS_TIMER_MS = 1000
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -81,6 +93,26 @@ def _gratuitous_na_count_validator(value: Any) -> None:
         raise ValueError(f"sysctl 'icmp6.gratuitous_na_count' must be a non-negative int; got {value!r}")
 
 
+def _dad_transmits_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero is
+    explicitly admitted (DAD disabled).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"sysctl 'icmp6.dad_transmits' must be a non-negative int; got {value!r}")
+
+
+def _retrans_timer_ms_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive values
+    — RetransTimer = 0 would tight-loop the probe sender.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"sysctl 'icmp6.retrans_timer_ms' must be a positive int; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -96,4 +128,20 @@ register(
     default=ICMP6__GRATUITOUS_NA_COUNT,
     validator=_gratuitous_na_count_validator,
     description="Number of gratuitous NAs emitted on host attachment (RFC 9131 §3); 0 = kill switch.",
+)
+register(
+    key="icmp6.dad_transmits",
+    module_name=__name__,
+    attr="ICMP6__DAD_TRANSMITS",
+    default=ICMP6__DAD_TRANSMITS,
+    validator=_dad_transmits_validator,
+    description="Number of DAD probes per candidate address (RFC 4862 §5.1 DupAddrDetectTransmits); 0 disables DAD.",
+)
+register(
+    key="icmp6.retrans_timer_ms",
+    module_name=__name__,
+    attr="ICMP6__RETRANS_TIMER_MS",
+    default=ICMP6__RETRANS_TIMER_MS,
+    validator=_retrans_timer_ms_validator,
+    description="Inter-probe wait between DAD probes in milliseconds (RFC 4861 §10 RetransTimer; default 1000).",
 )

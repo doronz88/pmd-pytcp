@@ -62,6 +62,7 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__PROBE_NUM,
     ARP__PROBE_WAIT,
 )
+from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
@@ -572,6 +573,14 @@ class PacketHandlerL2(
     def _perform_ip6_nd_dad(self, *, ip6_unicast_candidate: Ip6Address) -> bool:
         """
         Perform IPv6 ND Duplicate Address Detection, return True if passed.
+
+        Per RFC 4862 §5.1 the host emits 'icmp6.dad_transmits'
+        probes spaced by 'icmp6.retrans_timer_ms' milliseconds
+        before declaring the address verified. A conflict event
+        released at any point during the loop short-circuits
+        further probing — the host MUST NOT continue once a
+        duplicate has been signaled. 'dad_transmits = 0'
+        disables DAD entirely (Linux parity).
         """
 
         __debug__ and log(
@@ -580,11 +589,17 @@ class PacketHandlerL2(
         )
 
         self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
-
         self._assign_ip6_multicast(ip6_multicast=ip6_unicast_candidate.solicited_node_multicast)
-        self._send_icmp6_nd_dad_message(ip6_unicast_candidate=ip6_unicast_candidate)
 
-        if event := self._icmp6_nd_dad__event.acquire(timeout=1):
+        retrans_timer_s = nd__constants.ICMP6__RETRANS_TIMER_MS / 1000.0
+        event = False
+        for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
+            self._send_icmp6_nd_dad_message(ip6_unicast_candidate=ip6_unicast_candidate)
+            if self._icmp6_nd_dad__event.acquire(timeout=retrans_timer_s):
+                event = True
+                break
+
+        if event:
             __debug__ and log(
                 "stack",
                 "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
