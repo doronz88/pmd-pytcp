@@ -25,10 +25,12 @@
 """
 This module contains the generic Neighbour Unreachability
 Detection state machine — PyTCP's equivalent of Linux's
-'net/core/neighbour.c'. The 'NeighborCache[A]' class is
-generic over address type so the IPv4 ARP cache and the
-IPv6 ND cache share a single FSM implementation; per-protocol
-adapters supply only the wire-level solicit / flush hooks.
+'net/core/neighbour.c'. The 'NeighborCache[A, P]' class is
+generic over address type 'A' and queued-packet type 'P' so
+the IPv4 ARP cache and the IPv6 ND cache share a single FSM
+implementation; per-protocol adapters supply only the
+wire-level solicit / flush hooks and bind 'P' to their
+concrete payload type.
 
 State transitions follow RFC 4861 §7.3.2:
 
@@ -82,12 +84,19 @@ class NudState(NameEnum):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class NeighborEntry[A: Ip4Address | Ip6Address]:
+class NeighborEntry[A: Ip4Address | Ip6Address, P = object]:
     """
     Per-neighbour FSM state. Frozen by codebase convention
     (coding_style.md §7); state transitions use
     'object.__setattr__' to mutate the instance — same pattern
     as 'CacheEntry.hit_count__increment'.
+
+    Generic over both address type 'A' and queued-packet type
+    'P'. Adapters bind 'P' to their wire-format type
+    ('EthernetAssembler' for ARP / ND) so the flush callback
+    receives a strongly-typed payload; the default 'P = object'
+    keeps the unit-test fixture (which only exercises the FSM)
+    free of a 'net_proto' dependency.
     """
 
     address: A
@@ -95,7 +104,7 @@ class NeighborEntry[A: Ip4Address | Ip6Address]:
     state: NudState = NudState.INCOMPLETE
     state_changed_at: float = 0.0
     probe_count: int = 0
-    queued_packet: object = field(default=None)
+    queued_packet: P | None = field(default=None)
     last_used_at: float = 0.0
 
 
@@ -107,20 +116,26 @@ type SolicitCallback[A: Ip4Address | Ip6Address] = Callable[[A, MacAddress | Non
 
 # Flush callback signature: (queued_packet, resolved_mac).
 # Called from 'add_entry' once an INCOMPLETE entry resolves
-# and a packet was queued via 'enqueue_pending'.
-type FlushCallback = Callable[[object, MacAddress], None]
+# and a packet was queued via 'enqueue_pending'. Generic over
+# packet type 'P' so adapters get a strongly-typed callback
+# signature without runtime 'isinstance' narrowing.
+type FlushCallback[P] = Callable[[P, MacAddress], None]
 
 
-class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
+class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
     """
     Generic neighbour cache implementing the RFC 4861 §7.3.2
-    NUD state machine, parameterised over address type so
-    ARP (IPv4) and ND (IPv6) share one FSM.
+    NUD state machine, parameterised over address type 'A' and
+    queued-packet type 'P' so ARP (IPv4) and ND (IPv6) share
+    one FSM. Adapters bind 'P' to their wire-format type
+    ('EthernetAssembler' in both cases today); the default
+    'P = object' lets the unit-test fixture exercise the FSM
+    without a 'net_proto' dependency.
     """
 
-    _entries: dict[A, NeighborEntry[A]]
+    _entries: dict[A, NeighborEntry[A, P]]
     _solicit_callback: SolicitCallback[A]
-    _flush_callback: FlushCallback | None
+    _flush_callback: FlushCallback[P] | None
     _lock: threading.Lock
 
     # Per-cache REACHABLE-state timeout override. Defaults to
@@ -191,7 +206,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
             entry = self._entries.get(address)
             now = time.monotonic()
             if entry is None:
-                self._entries[address] = NeighborEntry(
+                self._entries[address] = NeighborEntry[A, P](
                     address=address,
                     state=NudState.INCOMPLETE,
                     state_changed_at=now,
@@ -239,7 +254,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
                 return
 
             if entry is None:
-                entry = NeighborEntry(
+                entry = NeighborEntry[A, P](
                     address=address,
                     mac_address=mac_address,
                     state=NudState.REACHABLE,
@@ -275,7 +290,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
 
         with self._lock:
             now = time.monotonic()
-            self._entries[address] = NeighborEntry(
+            self._entries[address] = NeighborEntry[A, P](
                 address=address,
                 mac_address=mac_address,
                 state=NudState.PERMANENT,
@@ -516,7 +531,7 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
     # Internal helpers.
     # ------------------------------------------------------------
 
-    def _transition(self, entry: NeighborEntry[A], new_state: NudState, now: float) -> None:
+    def _transition(self, entry: NeighborEntry[A, P], new_state: NudState, now: float) -> None:
         """
         Update an entry's state + state_changed_at in lockstep.
         The instance is frozen; mutation goes through

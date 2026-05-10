@@ -314,19 +314,6 @@ class TestArpCacheFlushCallback(_ArpCacheFixture):
         )
         tx_ring.enqueue.assert_called_once_with(eth)
 
-    def test__arp_cache__flush_rejects_non_ethernet_payload(self) -> None:
-        """
-        Ensure '_flush_packet' assertion-rejects a non-
-        EthernetAssembler payload — the cache only knows how
-        to flush Ethernet frames; a different protocol
-        layering would be a programming error.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(AssertionError):
-            self._cache._flush_packet(b"not an ethernet assembler", MacAddress())
-
 
 class TestArpCacheConstruction(_ArpCacheFixture):
     """

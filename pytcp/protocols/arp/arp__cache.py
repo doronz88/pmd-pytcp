@@ -24,7 +24,7 @@
 
 """
 This module contains the IPv4 ARP cache — a thin adapter on
-top of the generic 'NeighborCache[A]' NUD state machine at
+top of the generic 'NeighborCache[A, P]' NUD state machine at
 'pytcp/lib/neighbor.py'. Phase 2 of the NUD migration plan
 ('docs/refactor/nud_state_machine.md').
 
@@ -38,22 +38,18 @@ pytcp/protocols/arp/arp__cache.py
 ver 3.0.4
 """
 
-from __future__ import annotations
+from typing import override
 
-from typing import TYPE_CHECKING, override
-
+from net_addr import Ip4Address, MacAddress
+from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.lib.neighbor import NeighborCache
 
-if TYPE_CHECKING:
-    from net_addr import Ip4Address, MacAddress
-    from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 
-
-class ArpCache(NeighborCache["Ip4Address"]):
+class ArpCache(NeighborCache[Ip4Address, EthernetAssembler]):
     """
     The IPv4 ARP cache. Inherits the full NUD state machine
-    from 'NeighborCache[Ip4Address]' and supplies the wire-
+    from 'NeighborCache[Ip4Address, EthernetAssembler]' and supplies the wire-
     level callbacks ('_solicit_arp', '_flush_packet'). The
     public surface ('find_entry', 'add_entry',
     'enqueue_pending', 'add_permanent_entry',
@@ -83,7 +79,7 @@ class ArpCache(NeighborCache["Ip4Address"]):
     # parent surface, so there is no Liskov violation to ignore.
     # ------------------------------------------------------------
 
-    def find_entry(self, *, ip4_address: "Ip4Address") -> "MacAddress | None":
+    def find_entry(self, *, ip4_address: Ip4Address) -> MacAddress | None:
         """
         Look up the MAC for an IPv4 address; on miss, fire a
         broadcast ARP Request and return None. See
@@ -95,8 +91,8 @@ class ArpCache(NeighborCache["Ip4Address"]):
     def add_entry(
         self,
         *,
-        ip4_address: "Ip4Address",
-        mac_address: "MacAddress",
+        ip4_address: Ip4Address,
+        mac_address: MacAddress,
     ) -> None:
         """
         Install / refresh the IPv4-MAC mapping in response to
@@ -109,8 +105,8 @@ class ArpCache(NeighborCache["Ip4Address"]):
     def add_permanent_entry(
         self,
         *,
-        ip4_address: "Ip4Address",
-        mac_address: "MacAddress",
+        ip4_address: Ip4Address,
+        mac_address: MacAddress,
     ) -> None:
         """
         Install a PERMANENT static-neighbour entry. Dynamic
@@ -119,7 +115,7 @@ class ArpCache(NeighborCache["Ip4Address"]):
 
         self._add_permanent_entry(ip4_address, mac_address)
 
-    def confirm_reachability(self, *, ip4_address: "Ip4Address") -> None:
+    def confirm_reachability(self, *, ip4_address: Ip4Address) -> None:
         """
         Upper-layer fastpath: promote a STALE / DELAY / PROBE
         entry directly to REACHABLE without firing a unicast
@@ -131,8 +127,8 @@ class ArpCache(NeighborCache["Ip4Address"]):
     def enqueue_pending(
         self,
         *,
-        ip4_address: "Ip4Address",
-        ethernet_packet_tx: "EthernetAssembler",
+        ip4_address: Ip4Address,
+        ethernet_packet_tx: EthernetAssembler,
     ) -> None:
         """
         Save the most recently dropped outbound Ethernet
@@ -148,8 +144,8 @@ class ArpCache(NeighborCache["Ip4Address"]):
 
     def _solicit_arp(
         self,
-        ip4_address: "Ip4Address",
-        cached_mac: "MacAddress | None",
+        ip4_address: Ip4Address,
+        cached_mac: MacAddress | None,
     ) -> None:
         """
         Fire an ARP Request — broadcast for INCOMPLETE state
@@ -172,21 +168,14 @@ class ArpCache(NeighborCache["Ip4Address"]):
                 ethernet__dst=cached_mac,
             )
 
-    def _flush_packet(self, packet: object, mac_address: "MacAddress") -> None:
+    def _flush_packet(self, packet: EthernetAssembler, mac_address: MacAddress) -> None:
         """
         Dispatch a queued Ethernet packet through the TX ring
         with the destination MAC rewritten to the resolved
-        value. The 'object' parameter type comes from the
-        generic 'NeighborCache' surface; the actual type at
-        runtime is always 'EthernetAssembler' for ARP.
+        value. The packet type is bound by the
+        'NeighborCache[Ip4Address, EthernetAssembler]'
+        subscription on the class header.
         """
 
-        from net_proto.protocols.ethernet.ethernet__assembler import (
-            EthernetAssembler,
-        )
-
-        assert isinstance(
-            packet, EthernetAssembler
-        ), f"ArpCache._flush_packet got non-Ethernet payload: {type(packet)!r}"
         packet.dst = mac_address
         stack.tx_ring.enqueue(packet)

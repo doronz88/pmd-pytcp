@@ -24,10 +24,11 @@
 
 """
 This module contains the IPv6 Neighbor Discovery cache — a
-thin adapter on top of the generic 'NeighborCache[A]' NUD
-state machine at 'pytcp/lib/neighbor.py'. Phase 3 of the NUD
-migration plan ('docs/refactor/nud_state_machine.md') and the
-mirror of the IPv4 ARP cache adapter shipped in Phase 2.
+thin adapter on top of the generic
+'NeighborCache[A, P]' NUD state machine at
+'pytcp/lib/neighbor.py'. Phase 3 of the NUD migration plan
+('docs/refactor/nud_state_machine.md') and the mirror of the
+IPv4 ARP cache adapter shipped in Phase 2.
 
 The adapter supplies the IPv6-specific solicit callback —
 ICMPv6 Neighbor Solicitation — and inherits everything else
@@ -39,22 +40,18 @@ pytcp/protocols/icmp6/nd__cache.py
 ver 3.0.4
 """
 
-from __future__ import annotations
+from typing import override
 
-from typing import TYPE_CHECKING, override
-
+from net_addr import Ip6Address, MacAddress
+from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.lib.neighbor import NeighborCache
 
-if TYPE_CHECKING:
-    from net_addr import Ip6Address, MacAddress
-    from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 
-
-class NdCache(NeighborCache["Ip6Address"]):
+class NdCache(NeighborCache[Ip6Address, EthernetAssembler]):
     """
     The IPv6 Neighbor Discovery cache. Inherits the full NUD
-    state machine from 'NeighborCache[Ip6Address]' and supplies
+    state machine from 'NeighborCache[Ip6Address, EthernetAssembler]' and supplies
     the wire-level solicit callback (ICMPv6 Neighbor Solicitation
     via 'PacketHandler.send_icmp6_neighbor_solicitation'). The
     public surface is overridden with kw-only wrappers
@@ -90,7 +87,7 @@ class NdCache(NeighborCache["Ip6Address"]):
     # parent surface, so there is no Liskov violation to ignore.
     # ------------------------------------------------------------
 
-    def find_entry(self, *, ip6_address: "Ip6Address") -> "MacAddress | None":
+    def find_entry(self, *, ip6_address: Ip6Address) -> MacAddress | None:
         """
         Look up the MAC for an IPv6 address; on miss, fire a
         multicast Neighbor Solicitation and return None.
@@ -101,8 +98,8 @@ class NdCache(NeighborCache["Ip6Address"]):
     def add_entry(
         self,
         *,
-        ip6_address: "Ip6Address",
-        mac_address: "MacAddress",
+        ip6_address: Ip6Address,
+        mac_address: MacAddress,
     ) -> None:
         """
         Install / refresh the IPv6-MAC mapping in response to
@@ -115,8 +112,8 @@ class NdCache(NeighborCache["Ip6Address"]):
     def add_permanent_entry(
         self,
         *,
-        ip6_address: "Ip6Address",
-        mac_address: "MacAddress",
+        ip6_address: Ip6Address,
+        mac_address: MacAddress,
     ) -> None:
         """
         Install a PERMANENT static-neighbour entry. Dynamic ND
@@ -125,7 +122,7 @@ class NdCache(NeighborCache["Ip6Address"]):
 
         self._add_permanent_entry(ip6_address, mac_address)
 
-    def confirm_reachability(self, *, ip6_address: "Ip6Address") -> None:
+    def confirm_reachability(self, *, ip6_address: Ip6Address) -> None:
         """
         Upper-layer fastpath: promote a STALE / DELAY / PROBE
         entry directly to REACHABLE without firing a unicast
@@ -137,8 +134,8 @@ class NdCache(NeighborCache["Ip6Address"]):
     def enqueue_pending(
         self,
         *,
-        ip6_address: "Ip6Address",
-        ethernet_packet_tx: "EthernetAssembler",
+        ip6_address: Ip6Address,
+        ethernet_packet_tx: EthernetAssembler,
     ) -> None:
         """
         Save the most recently dropped outbound Ethernet
@@ -156,8 +153,8 @@ class NdCache(NeighborCache["Ip6Address"]):
 
     def _solicit_ns(
         self,
-        ip6_address: "Ip6Address",
-        cached_mac: "MacAddress | None",
+        ip6_address: Ip6Address,
+        cached_mac: MacAddress | None,
     ) -> None:
         """
         Fire an ICMPv6 Neighbor Solicitation — multicast for
@@ -184,21 +181,14 @@ class NdCache(NeighborCache["Ip6Address"]):
                 icmp6_ns_target_address=ip6_address,
             )
 
-    def _flush_packet(self, packet: object, mac_address: "MacAddress") -> None:
+    def _flush_packet(self, packet: EthernetAssembler, mac_address: MacAddress) -> None:
         """
         Dispatch a queued Ethernet packet through the TX ring
         with the destination MAC rewritten to the resolved
-        value. The 'object' parameter type comes from the
-        generic 'NeighborCache' surface; the actual type at
-        runtime is always 'EthernetAssembler' for ND.
+        value. The packet type is bound by the
+        'NeighborCache[Ip6Address, EthernetAssembler]'
+        subscription on the class header.
         """
 
-        from net_proto.protocols.ethernet.ethernet__assembler import (
-            EthernetAssembler,
-        )
-
-        assert isinstance(
-            packet, EthernetAssembler
-        ), f"NdCache._flush_packet got non-Ethernet payload: {type(packet)!r}"
         packet.dst = mac_address
         stack.tx_ring.enqueue(packet)
