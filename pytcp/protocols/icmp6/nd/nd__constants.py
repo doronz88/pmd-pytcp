@@ -39,6 +39,8 @@ pytcp/protocols/icmp6/nd/nd__constants.py
 ver 3.0.4
 """
 
+from typing import Any
+
 from pytcp.lib.sysctl import register
 
 # Linux net.ipv6.conf.<iface>.accept_redirects policy. Controls
@@ -51,6 +53,13 @@ from pytcp.lib.sysctl import register
 #       gates (host-side default; matches Linux's host default).
 ICMP6__ACCEPT_REDIRECTS = 1
 
+# Number of gratuitous Neighbor Advertisement messages emitted
+# on host attachment (RFC 9131 §3 — the IPv6 analogue of
+# RFC 5227 §2.3 ARP Announcement). Linux's default is 1; a
+# value of 0 suppresses gratuitous-NA emission entirely (kill
+# switch for stealth deployments).
+ICMP6__GRATUITOUS_NA_COUNT = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -62,6 +71,16 @@ def _accept_redirects_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.accept_redirects' must be 0 or 1; got {value!r}")
 
 
+def _gratuitous_na_count_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero is
+    explicitly admitted (kill switch).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"sysctl 'icmp6.gratuitous_na_count' must be a non-negative int; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -69,4 +88,12 @@ register(
     default=ICMP6__ACCEPT_REDIRECTS,
     validator=_accept_redirects_validator,
     description="Linux 'net.ipv6.conf.<iface>.accept_redirects' (0 = drop all RFC 4861 §8 Redirects; 1 = process).",
+)
+register(
+    key="icmp6.gratuitous_na_count",
+    module_name=__name__,
+    attr="ICMP6__GRATUITOUS_NA_COUNT",
+    default=ICMP6__GRATUITOUS_NA_COUNT,
+    validator=_gratuitous_na_count_validator,
+    description="Number of gratuitous NAs emitted on host attachment (RFC 9131 §3); 0 = kill switch.",
 )

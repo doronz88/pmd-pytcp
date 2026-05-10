@@ -46,8 +46,6 @@ from net_proto import (
     Icmp6NdMessageRedirect,
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdMessageRouterSolicitation,
-    Icmp6NdOptions,
-    Icmp6NdOptionTlla,
     Icmp6Parser,
     Icmp6Type,
     IpProto,
@@ -101,6 +99,19 @@ class PacketHandlerIcmp6Rx(ABC):
             icmp6__message: Icmp6Message,
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
+
+        def send_icmp6_neighbor_advertisement(
+            self,
+            *,
+            ip6__src: Ip6Address,
+            ip6__dst: Ip6Address,
+            target_address: Ip6Address,
+            flag_r: bool = False,
+            flag_s: bool = False,
+            flag_o: bool = False,
+            include_tlla: bool = True,
+            echo_tracker: Tracker | None = None,
+        ) -> None: ...
 
         # pylint: disable=missing-function-docstring
 
@@ -816,22 +827,20 @@ class PacketHandlerIcmp6Rx(ABC):
         if ip6_nd_dad := packet_rx.ip6.src.is_unspecified:
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad += 1
 
-        # Send response.
+        # Send response. Routes through the public NA emission
+        # helper rather than inlining '_phtx_icmp6' (the helper
+        # is shared with the DAD-success gratuitous-NA path —
+        # see 'send_icmp6_neighbor_advertisement_gratuitous').
         self._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_stack__respond += 1
-        self._phtx_icmp6(
+        self.send_icmp6_neighbor_advertisement(
             ip6__src=packet_rx.icmp6.message.target_address,
             ip6__dst=(
                 Ip6Address("ff02::1") if ip6_nd_dad else packet_rx.ip6.src
             ),  # Use ff02::1 destination address when responding to DAD request.
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
-                flag_s=not ip6_nd_dad,  # No S flag when responding to DAD request.
-                flag_o=ip6_nd_dad,  # The O flag when responding to DAD request (not necessary but Linux uses it).
-                target_address=packet_rx.icmp6.message.target_address,
-                options=Icmp6NdOptions(
-                    Icmp6NdOptionTlla(tlla=self._mac_unicast),
-                ),
-            ),
+            target_address=packet_rx.icmp6.message.target_address,
+            flag_s=not ip6_nd_dad,  # No S flag when responding to DAD request.
+            flag_o=ip6_nd_dad,  # The O flag when responding to DAD request (not necessary but Linux uses it).
+            include_tlla=True,
             echo_tracker=packet_rx.tracker,
         )
         return

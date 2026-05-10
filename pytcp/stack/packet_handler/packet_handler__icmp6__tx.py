@@ -42,10 +42,12 @@ from net_proto import (
     Icmp6Mld2MessageReport,
     Icmp6Mld2MulticastAddressRecord,
     Icmp6Mld2MulticastAddressRecordType,
+    Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
+    Icmp6NdOptionTlla,
     Icmp6Type,
     IpProto,
     Tracker,
@@ -61,6 +63,7 @@ from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__router_alert import (
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__options import Ip6HbhOptions
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd import nd__constants
 
 
 class PacketHandlerIcmp6Tx(ABC):
@@ -402,6 +405,82 @@ class PacketHandlerIcmp6Tx(ABC):
                 "stack",
                 f"Failed to send out unicast ICMPv6 ND Neighbor Solicitation for "
                 f"{icmp6_ns_target_address}, {tx_status}",
+            )
+
+    def send_icmp6_neighbor_advertisement(
+        self,
+        *,
+        ip6__src: Ip6Address,
+        ip6__dst: Ip6Address,
+        target_address: Ip6Address,
+        flag_r: bool = False,
+        flag_s: bool = False,
+        flag_o: bool = False,
+        include_tlla: bool = True,
+        echo_tracker: Tracker | None = None,
+    ) -> None:
+        """
+        Enqueue an ICMPv6 ND Neighbor Advertisement (RFC 4861
+        §4.4 wire format). Hop limit hard-set to 255 per
+        §7.1.2.
+
+        The 'flag_r' / 'flag_s' / 'flag_o' kwargs map to the
+        wire R(outer) / S(olicited) / O(verride) flags. The
+        canonical solicited-NA reply path uses flag_s=True; the
+        gratuitous form (RFC 9131 §3) uses flag_o=True with
+        flag_s=False. 'include_tlla' attaches the host's MAC
+        as a TLLA option — required for solicited replies and
+        for gratuitous announcements.
+        """
+
+        options = Icmp6NdOptions(Icmp6NdOptionTlla(tlla=self._mac_unicast)) if include_tlla else Icmp6NdOptions()
+
+        self._phtx_icmp6(
+            ip6__src=ip6__src,
+            ip6__dst=ip6__dst,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
+                flag_r=flag_r,
+                flag_s=flag_s,
+                flag_o=flag_o,
+                target_address=target_address,
+                options=options,
+            ),
+            echo_tracker=echo_tracker,
+        )
+
+    def send_icmp6_neighbor_advertisement_gratuitous(
+        self,
+        *,
+        ip6_unicast: Ip6Address,
+    ) -> None:
+        """
+        Enqueue 'icmp6.gratuitous_na_count' gratuitous Neighbor
+        Advertisement messages for 'ip6_unicast' — the IPv6
+        analogue of RFC 5227 §2.3 ARP Announcement, formalised
+        by RFC 9131 §3 (host attachment). The wire shape:
+
+          - Target Address = 'ip6_unicast'
+          - flag_o (Override) = True (overrides any cache
+            entry for this address — the whole point)
+          - flag_s (Solicited) = False (unsolicited)
+          - Destination = ff02::1 (all-nodes link-local
+            multicast — every on-link host receives it)
+          - TLLA option carries the host's MAC
+
+        Operators tune the emit count via the
+        'icmp6.gratuitous_na_count' sysctl (default 1; 0 is the
+        kill switch).
+        """
+
+        for _ in range(nd__constants.ICMP6__GRATUITOUS_NA_COUNT):
+            self.send_icmp6_neighbor_advertisement(
+                ip6__src=ip6_unicast,
+                ip6__dst=Ip6Address("ff02::1"),
+                target_address=ip6_unicast,
+                flag_s=False,
+                flag_o=True,
+                include_tlla=True,
             )
 
     def send_icmp6_packet(

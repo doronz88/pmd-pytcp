@@ -298,6 +298,214 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         self.assertEqual(self._handler._packet_stats_tx.icmp6__echo_request__send, 1)
 
 
+class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
+    """
+    The 'send_icmp6_neighbor_advertisement' helper tests
+    (nd_linux_parity §5 — refactor of the previously-inline NA
+    emission code from the NS RX handler into a public TX
+    helper).
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a stub handler.
+        """
+
+        self._handler = _StubHandler()
+
+    def _last_payload(self) -> object:
+        """
+        Return the ICMPv6 message object inside the last
+        '_phtx_ip6' call's payload.
+        """
+
+        from net_proto import Icmp6Assembler
+
+        self.assertEqual(len(self._handler.ip6_tx_calls), 1)
+        payload = self._handler.ip6_tx_calls[0]["ip6__payload"]
+        assert isinstance(payload, Icmp6Assembler)
+        return payload._message
+
+    def test__stack__packet_handler__icmp6__tx__send_na__solicited_with_tlla(self) -> None:
+        """
+        Ensure 'send_icmp6_neighbor_advertisement' with
+        flag_s=True, flag_o=False emits a solicited NA carrying
+        the stack's TLLA at hop_limit=255.
+
+        Reference: RFC 4861 §4.4 (NA wire format), §7.2.4 (NS-response NA).
+        """
+
+        from net_proto import Icmp6NdMessageNeighborAdvertisement
+
+        self._handler.send_icmp6_neighbor_advertisement(
+            ip6__src=STACK__IP6_ADDRESS,
+            ip6__dst=HOST_A__IP6,
+            target_address=STACK__IP6_ADDRESS,
+            flag_r=False,
+            flag_s=True,
+            flag_o=False,
+        )
+
+        call = self._handler.ip6_tx_calls[0]
+        self.assertEqual(call["ip6__hop"], 255)
+        msg = self._last_payload()
+        assert isinstance(msg, Icmp6NdMessageNeighborAdvertisement)
+        self.assertEqual(msg.flag_s, True)
+        self.assertEqual(msg.flag_o, False)
+        self.assertEqual(msg.target_address, STACK__IP6_ADDRESS)
+        self.assertEqual(msg.options.tlla, STACK__MAC_UNICAST)
+
+    def test__stack__packet_handler__icmp6__tx__send_na__unsolicited_override(self) -> None:
+        """
+        Ensure 'send_icmp6_neighbor_advertisement' with
+        flag_s=False, flag_o=True emits an unsolicited
+        override NA — the wire shape RFC 9131 §3 mandates for
+        gratuitous announcements.
+
+        Reference: RFC 9131 §3 (gratuitous NA wire format).
+        """
+
+        from net_proto import Icmp6NdMessageNeighborAdvertisement
+
+        self._handler.send_icmp6_neighbor_advertisement(
+            ip6__src=STACK__IP6_ADDRESS,
+            ip6__dst=Ip6Address("ff02::1"),
+            target_address=STACK__IP6_ADDRESS,
+            flag_r=False,
+            flag_s=False,
+            flag_o=True,
+        )
+
+        msg = self._last_payload()
+        assert isinstance(msg, Icmp6NdMessageNeighborAdvertisement)
+        self.assertEqual(msg.flag_s, False)
+        self.assertEqual(msg.flag_o, True)
+        self.assertEqual(self._handler.ip6_tx_calls[0]["ip6__dst"], Ip6Address("ff02::1"))
+
+
+class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
+    """
+    The 'send_icmp6_neighbor_advertisement_gratuitous' tests —
+    nd_linux_parity §6 (RFC 9131 §3).
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a stub handler. Restore sysctl defaults at
+        teardown so per-test overrides do not leak.
+        """
+
+        self._handler = _StubHandler()
+        self.addCleanup(self._reset_sysctls)
+
+    def _reset_sysctls(self) -> None:
+        """
+        Roll any per-test 'icmp6.gratuitous_na_count' override
+        back to the registered default.
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        sysctl_module.reset_to_defaults()
+
+    def test__stack__packet_handler__icmp6__tx__gratuitous_na__default_count_emits_one(self) -> None:
+        """
+        Ensure with the default 'icmp6.gratuitous_na_count = 1'
+        the gratuitous-NA helper emits exactly one NA targeting
+        the all-nodes link-local multicast (ff02::1) with the
+        unsolicited+override flag pattern.
+
+        Reference: RFC 9131 §3 (gratuitous NA on host attachment).
+        """
+
+        from net_proto import Icmp6NdMessageNeighborAdvertisement
+
+        self._handler.send_icmp6_neighbor_advertisement_gratuitous(
+            ip6_unicast=STACK__IP6_ADDRESS,
+        )
+
+        self.assertEqual(
+            len(self._handler.ip6_tx_calls),
+            1,
+            msg="Default icmp6.gratuitous_na_count must produce exactly one NA.",
+        )
+        call = self._handler.ip6_tx_calls[0]
+        self.assertEqual(
+            call["ip6__src"],
+            STACK__IP6_ADDRESS,
+            msg="Gratuitous NA src must be the host's address.",
+        )
+        self.assertEqual(
+            call["ip6__dst"],
+            Ip6Address("ff02::1"),
+            msg="Gratuitous NA dst must be all-nodes link-local multicast.",
+        )
+        from net_proto import Icmp6Assembler
+
+        payload = call["ip6__payload"]
+        assert isinstance(payload, Icmp6Assembler)
+        msg = payload._message
+        assert isinstance(msg, Icmp6NdMessageNeighborAdvertisement)
+        self.assertFalse(msg.flag_s, msg="Gratuitous NA must NOT set the Solicited flag.")
+        self.assertTrue(msg.flag_o, msg="Gratuitous NA MUST set the Override flag.")
+        self.assertEqual(
+            msg.target_address,
+            STACK__IP6_ADDRESS,
+            msg="Gratuitous NA target must be the host's address.",
+        )
+        self.assertEqual(
+            msg.options.tlla,
+            STACK__MAC_UNICAST,
+            msg="Gratuitous NA must carry the host's TLLA.",
+        )
+
+    def test__stack__packet_handler__icmp6__tx__gratuitous_na__sysctl_override_emits_three(self) -> None:
+        """
+        Ensure 'icmp6.gratuitous_na_count = 3' produces exactly
+        three NAs — the loop honours the live sysctl value
+        rather than baking the count at import time.
+
+        Reference: PyTCP sysctl framework (operator-tunable count).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("icmp6.gratuitous_na_count", 3):
+            self._handler.send_icmp6_neighbor_advertisement_gratuitous(
+                ip6_unicast=STACK__IP6_ADDRESS,
+            )
+
+        self.assertEqual(
+            len(self._handler.ip6_tx_calls),
+            3,
+            msg="Three NAs must be emitted when icmp6.gratuitous_na_count = 3.",
+        )
+
+    def test__stack__packet_handler__icmp6__tx__gratuitous_na__sysctl_count_zero_emits_none(self) -> None:
+        """
+        Ensure 'icmp6.gratuitous_na_count = 0' suppresses
+        gratuitous NA emission entirely — operators who need
+        the kill-switch (security-sensitive deployments where
+        announcement is unwelcome) get it for free from the
+        registered count.
+
+        Reference: PyTCP sysctl framework (zero-count kill switch).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("icmp6.gratuitous_na_count", 0):
+            self._handler.send_icmp6_neighbor_advertisement_gratuitous(
+                ip6_unicast=STACK__IP6_ADDRESS,
+            )
+
+        self.assertEqual(
+            self._handler.ip6_tx_calls,
+            [],
+            msg="Zero-count must suppress gratuitous NA emission entirely.",
+        )
+
+
 class TestPacketHandlerIcmp6TxUnsupported(TestCase):
     """
     The unsupported-type behaviour tests.

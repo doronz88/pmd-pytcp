@@ -104,6 +104,13 @@ class _StubHandler(PacketHandlerIcmp6Rx):
         self.icmp6_tx_calls.append(kwargs)
         return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
+    # Stub the cross-mixin TX helper that the NS RX handler now
+    # delegates to (post-§5 refactor). Records the call into the
+    # same 'icmp6_tx_calls' list used by '_phtx_icmp6' so existing
+    # assertions on TX dispatch continue to work.
+    def send_icmp6_neighbor_advertisement(self, **kwargs: object) -> None:
+        self.icmp6_tx_calls.append(kwargs)
+
 
 def _packet_rx_from_ip6_icmp6(ip6_frame: bytes) -> PacketRx:
     """
@@ -148,7 +155,12 @@ class _Icmp6RxTestBase(TestCase):
         self._handler = _StubHandler()
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
-        self._nd_cache_patch = patch.object(stack, "nd_cache", object())
+        # 'stack.nd_cache' is forward-declared at module scope but
+        # is only bound at runtime by 'stack.init()' / 'mock__init()'.
+        # Pass 'create=True' so this fixture works in isolation as
+        # well as inside a suite that also runs integration tests.
+        # Mirrors the ARP equivalent fix at commit f8cf5136.
+        self._nd_cache_patch = patch.object(stack, "nd_cache", object(), create=True)
         self._nd_cache_patch.start()
 
     def tearDown(self) -> None:

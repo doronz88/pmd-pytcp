@@ -596,6 +596,12 @@ class PacketHandlerL2(
                 "stack",
                 "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
             )
+            # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
+            # on host attachment so peers preemptively populate
+            # their neighbour cache for our newly-claimed
+            # address. Operator-tunable count via
+            # 'icmp6.gratuitous_na_count' (default 1; 0 disables).
+            self.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast_candidate)
 
         self._icmp6_nd_dad__ip6_unicast_candidate = None
         self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
