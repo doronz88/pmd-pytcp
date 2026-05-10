@@ -626,6 +626,14 @@ class PacketHandler(Subsystem, ABC):
         if reachable_time_ms > 0:
             new_reach = reachable_time_ms
             self._packet_stats_rx.icmp6__nd_router_advertisement__reachable_time__update += 1
+            # RFC 4861 §6.3.4 wires the captured value through
+            # to the IPv6 NUD cache as a per-cache override; ARP
+            # is unaffected. Guarded for the early-RX path where
+            # 'stack.nd_cache' has not yet been bound (test
+            # fixtures, mock__init).
+            nd_cache = getattr(stack, "nd_cache", None)
+            if nd_cache is not None:
+                nd_cache.set_reachable_time_override_ms(reachable_time_ms)
 
         if retrans_timer_ms > 0:
             new_retrans = retrans_timer_ms
@@ -646,6 +654,20 @@ class PacketHandler(Subsystem, ABC):
         """
 
         return self._icmp6_ra_parameters
+
+    def _effective_ip6_hop_limit(self) -> int:
+        """
+        Get the effective default Hop Limit for outbound IPv6
+        traffic per RFC 4861 §6.3.4: the most recent RA-
+        advertised Cur-Hop-Limit if observed, otherwise the
+        protocol default (RFC 8200 §3 — 64). Callers that
+        protocol-mandate a specific value (e.g. ND with 255,
+        MLD with 1) bypass this helper.
+        """
+
+        from net_proto import IP6__DEFAULT_HOP_LIMIT
+
+        return self._icmp6_ra_parameters.cur_hop_limit or IP6__DEFAULT_HOP_LIMIT
 
 
 class PacketHandlerL2(
@@ -827,7 +849,11 @@ class PacketHandlerL2(
         self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
         self._assign_ip6_multicast(ip6_multicast=ip6_unicast_candidate.solicited_node_multicast)
 
-        retrans_timer_s = nd__constants.ICMP6__RETRANS_TIMER_MS / 1000.0
+        # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
+        # supersedes the operator-configured sysctl default. The
+        # mirror is captured by §13a; consumer wiring is §13b.
+        effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or nd__constants.ICMP6__RETRANS_TIMER_MS
+        retrans_timer_s = effective_retrans_timer_ms / 1000.0
         event = False
         for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
             self._send_icmp6_nd_dad_message(ip6_unicast_candidate=ip6_unicast_candidate)

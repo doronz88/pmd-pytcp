@@ -35,7 +35,6 @@ from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
-    IP6__DEFAULT_HOP_LIMIT,
     Icmp6,
     Icmp6Mld2MessageReport,
     Icmp6NdMessage,
@@ -78,6 +77,8 @@ class PacketHandlerIp6Tx(ABC):
 
         def _phtx_ip6_frag(self, *, ip6_packet_tx: Ip6Assembler) -> TxStatus: ...
 
+        def _effective_ip6_hop_limit(self) -> int: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -88,15 +89,26 @@ class PacketHandlerIp6Tx(ABC):
         *,
         ip6__dst: Ip6Address,
         ip6__src: Ip6Address,
-        ip6__hop: int = IP6__DEFAULT_HOP_LIMIT,
+        ip6__hop: int | None = None,
         ip6__ecn: int = 0,
         ip6__payload: Ip6Payload = RawAssembler(),
     ) -> TxStatus:
         """
         Handle outbound IP packets.
+
+        'ip6__hop=None' (the default) lets the packet handler
+        pick the effective Hop Limit per RFC 4861 §6.3.4: the
+        most recent RA-advertised Cur-Hop-Limit if observed,
+        otherwise IP6__DEFAULT_HOP_LIMIT (64). Callers that
+        protocol-mandate a specific value (e.g. ND with 255,
+        MLD with 1) pass it explicitly and short-circuit the
+        lookup.
         """
 
         self._packet_stats_tx.ip6__pre_assemble += 1
+
+        if ip6__hop is None:
+            ip6__hop = self._effective_ip6_hop_limit()
 
         assert 0 < ip6__hop < 256
 

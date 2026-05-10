@@ -531,7 +531,7 @@ Linux: `net/ipv6/addrconf.c::addrconf_prefix_rcv`,
 
 ---
 
-## §13 — Tier 3: Cur-Hop-Limit / ReachableTime / RetransTimer from RA (RFC 4861 §6.3.4) ✓ (mirror) / ⚠ (consumers)
+## §13 — Tier 3: Cur-Hop-Limit / ReachableTime / RetransTimer from RA (RFC 4861 §6.3.4) ✓
 
 ### §13a (shipped) — Wire-state mirror ✓
 
@@ -556,25 +556,33 @@ Four new RX counters: `cur_hop_limit__update`,
 `cur_hop_limit__floor__drop`, `reachable_time__update`,
 `retrans_timer__update`.
 
-### §13b (deferred) — Consumer integration
+### §13b (shipped) — Consumer integration ✓
 
-Three TX-/NUD-/DAD-side consumers will fall back to the captured
-mirror values when set, otherwise to operator-configured sysctl
-defaults:
+Three consumer call paths now fall back to the captured mirror
+values when set, otherwise to their existing operator-configured
+sysctl / hardcoded defaults:
 
-- **TX hop limit**: outbound IPv6 frames from the stack pick up
-  `cur_hop_limit` when set, else the existing per-call default
-  (currently 64 hardcoded in `Ip6Assembler`).
-- **NUD reachable time**: the ND cache's REACHABLE-state timeout
-  reads `reachable_time_ms` when set, else
-  `pytcp.lib.neighbor__constants.NEIGHBOR__REACHABLE_TIME_MS`.
-- **DAD retrans pacing**: `_perform_ip6_nd_dad` reads
-  `retrans_timer_ms` when set, else `icmp6.retrans_timer_ms`
-  sysctl (Phase 2 — currently always reads the sysctl).
-
-These wirings are deferred because the consumers' current code
-paths bypass the mirror — adding them is its own grain of work.
-The wire-state pin is the foundation each consumer rests on.
+- **TX hop limit**: `_phtx_ip6` parameter `ip6__hop` is now
+  `int | None = None`. When the caller omits it (TCP / UDP /
+  ICMPv6 echo paths), the helper resolves to
+  `_effective_ip6_hop_limit()` which returns the RA-advertised
+  `cur_hop_limit` if set, else `IP6__DEFAULT_HOP_LIMIT` (64).
+  Callers that protocol-mandate a specific value (ND with 255,
+  MLD with 1) pass it explicitly and short-circuit the lookup.
+  All cross-mixin TYPE_CHECKING forward declarations of
+  `_phtx_ip6` / `_phtx_icmp6` updated to match.
+- **NUD reachable time**: new `NeighborCache._reachable_time_override_s`
+  class attribute (default None, picked up by autospec fixtures)
+  + new public `set_reachable_time_override_ms(value_ms | None)`
+  setter. `_subsystem_loop` reads
+  `override_s if override_s is not None else nbr_const.NEIGHBOR__REACHABLE_TIME`.
+  The packet handler's `_update_icmp6_ra_parameters` calls
+  `stack.nd_cache.set_reachable_time_override_ms(...)` after a
+  non-zero RA Reachable-Time advertisement; ARP cache stays at
+  None and reads the sysctl.
+- **DAD retrans pacing**: `_perform_ip6_nd_dad` now reads
+  `effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or nd__constants.ICMP6__RETRANS_TIMER_MS`
+  before computing the inter-probe wait.
 
 ### Sysctl
 
@@ -583,7 +591,7 @@ host default; 0 accepts any advertised Hop Limit).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py`:
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py` (§13a wire state):
 - `initial_state_all_none` — fresh handler exposes None values.
 - `cur_hop_limit_nonzero_stored` — captured into mirror.
 - `cur_hop_limit_zero_does_not_overwrite` — RFC 4861 §4.2 unspecified.
@@ -593,13 +601,23 @@ host default; 0 accepts any advertised Hop Limit).
 - `reachable_time_zero_does_not_overwrite` — unspecified.
 - `retrans_timer_nonzero_stored` — captured into mirror.
 - `retrans_timer_zero_does_not_overwrite` — unspecified.
-- `all_three_fields_bump_distinct_counters` — counters
-  independent.
+- `all_three_fields_bump_distinct_counters` — counters independent.
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_consumers.py` (§13b wirings):
+- `cur_hop_limit_consumed_by_tx` — TCP/UDP-style outbound IPv6 frame
+  picks up RA Cur-Hop-Limit when caller omits `ip6__hop`.
+- `tx__without_ra_uses_default_hop_limit` — fallback to 64.
+- `tx__explicit_hop_overrides_ra_default` — explicit value wins.
+- `retrans_timer_consumed_by_dad` — DAD inter-probe wait honors
+  RA Retrans-Timer over the sysctl default.
+- `reachable_time_pushes_to_nd_cache` — IPv6 NUD cache receives
+  the override; IPv4 ARP cache is not invoked.
 
 ### Effort
 
 §13a — Small — ~70 lines + integration tests.
-§13b — Small per-consumer; ~3 individual grain-sized commits.
+§13b — Small-medium — ~120 lines + integration tests across all
+three consumer call paths (TX hop, DAD pacing, NUD reachable).
 
 ### RFC reference
 

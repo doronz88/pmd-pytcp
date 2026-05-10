@@ -113,7 +113,7 @@ class PacketHandlerIp6Rx(ABC):
             *,
             ip6__src: Ip6Address,
             ip6__dst: Ip6Address,
-            ip6__hop: int = 64,
+            ip6__hop: int | None = None,
             icmp6__message: Icmp6Message,
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...

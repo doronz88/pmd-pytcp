@@ -123,6 +123,15 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
     _flush_callback: FlushCallback | None
     _lock: threading.Lock
 
+    # Per-cache REACHABLE-state timeout override. Defaults to
+    # None — the FSM falls back to the operator-configured
+    # 'neighbor.reachable_time' sysctl. The IPv6 NdCache mutates
+    # this when an RA carries a non-zero Reachable Time field
+    # (RFC 4861 §6.3.4); the IPv4 ArpCache leaves it None so its
+    # REACHABLE_TIME comes from the sysctl. Class-level default
+    # so 'create_autospec(...)' fixtures pick it up.
+    _reachable_time_override_s: float | None = None
+
     @override
     def __init__(
         self,
@@ -147,6 +156,18 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
         self._solicit_callback = solicit_callback
         self._flush_callback = flush_callback
         self._lock = threading.Lock()
+
+    def set_reachable_time_override_ms(self, value_ms: int | None) -> None:
+        """
+        Set or clear the per-cache REACHABLE-state timeout
+        override. Pass an integer milliseconds value to install
+        the override; pass None to revert to the operator-
+        configured 'neighbor.reachable_time' sysctl. Used by the
+        IPv6 NdCache to wire RA-driven Reachable Time updates per
+        RFC 4861 §6.3.4.
+        """
+
+        self._reachable_time_override_s = value_ms / 1000.0 if value_ms is not None else None
 
     # ------------------------------------------------------------
     # Public surface — RX / TX integration points.
@@ -337,7 +358,15 @@ class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
                 state = entry.state
                 age = now - entry.state_changed_at
 
-                if state is NudState.REACHABLE and age >= nbr_const.NEIGHBOR__REACHABLE_TIME:
+                # RFC 4861 §6.3.4 RA-driven Reachable Time wins
+                # over the operator default when set; ARP leaves
+                # the override None.
+                effective_reachable_time = (
+                    self._reachable_time_override_s
+                    if self._reachable_time_override_s is not None
+                    else nbr_const.NEIGHBOR__REACHABLE_TIME
+                )
+                if state is NudState.REACHABLE and age >= effective_reachable_time:
                     self._transition(entry, NudState.STALE, now)
                     continue
 

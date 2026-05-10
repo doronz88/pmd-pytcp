@@ -87,7 +87,7 @@ class PacketHandlerIcmp6Tx(ABC):
             *,
             ip6__dst: Ip6Address,
             ip6__src: Ip6Address,
-            ip6__hop: int = IP6__DEFAULT_HOP_LIMIT,
+            ip6__hop: int | None = None,
             ip6__ecn: int = 0,
             ip6__payload: Ip6Payload = RawAssembler(),
         ) -> TxStatus: ...
@@ -102,7 +102,7 @@ class PacketHandlerIcmp6Tx(ABC):
         *,
         ip6__src: Ip6Address,
         ip6__dst: Ip6Address,
-        ip6__hop: int = 64,
+        ip6__hop: int | None = None,
         icmp6__message: Icmp6Message,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
@@ -488,7 +488,7 @@ class PacketHandlerIcmp6Tx(ABC):
         *,
         ip6__local_address: Ip6Address,
         ip6__remote_address: Ip6Address,
-        ip6__hop: int = 64,
+        ip6__hop: int | None = None,
         icmp6__message: Icmp6Message,
     ) -> TxStatus:
         """

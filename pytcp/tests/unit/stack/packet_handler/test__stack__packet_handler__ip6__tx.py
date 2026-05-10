@@ -109,6 +109,14 @@ class _StubHandler(PacketHandlerIp6Tx):
         self.frag_tx_calls.append(ip6_packet_tx)
         return self.frag_tx_status
 
+    # Stub the cross-mixin helper added with the §13b parity
+    # work. This unit test exercises only the gating /
+    # validation / fragmentation paths; the RA-aware effective
+    # default is covered by the integration tests in
+    # 'pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_consumers.py'.
+    def _effective_ip6_hop_limit(self) -> int:
+        return 64
+
 
 class TestPacketHandlerIp6TxGating(TestCase):
     """

@@ -92,7 +92,7 @@ class PacketHandlerIp6FragTx(ABC):
             *,
             ip6__dst: Ip6Address,
             ip6__src: Ip6Address,
-            ip6__hop: int = IP6__DEFAULT_HOP_LIMIT,
+            ip6__hop: int | None = None,
             ip6__payload: Ip6Payload = RawAssembler(),
         ) -> TxStatus: ...
 
