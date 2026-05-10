@@ -7,6 +7,32 @@ to its own document because RFC 6724 is fundamentally a
 source-address-selection concern rather than a
 Neighbor-Discovery concern.
 
+## What's already in place (state at HEAD `4229c1a7`)
+
+ND parity is **substantially complete** in terms of address
+lifecycle:
+
+- `_ip6_host` is fully dynamic — stable SLAAC addresses are
+  claimed at boot AND on post-boot PI admission (§12a.runtime);
+  RFC 8981 temp addresses are minted per-PI (§18b), regenerated
+  before preferred-lifetime expiry (§18c.2), and swept from both
+  the tracking table and `_ip6_host` at valid-lifetime expiry
+  (§18c.1, §12a.runtime).
+- DAD is async and per-address (§20.1); failures retry with
+  `dad_counter` increment up to `icmp6.idgen_retries` (§20.3);
+  modes gated by `icmp6.accept_dad` 0/1/2 (§20.4); RFC 4429
+  Optimistic DAD via `icmp6.optimistic_dad` (§20).
+- `_icmp6_slaac_addresses` records per-prefix
+  PREFERRED/DEPRECATED state per RFC 4862 §5.5.4 (§12b).
+- `_icmp6_temp_addresses` records per-prefix temp addresses
+  with `created_at`, `preferred_until`, `valid_until`
+  (§18b/c).
+
+**The single remaining piece is source-address selection.** The
+addresses cycle correctly at the lifecycle level; the TX path
+just needs to consult their state when picking a source. That's
+what RFC 6724 closes.
+
 ## Why it matters
 
 Without RFC 6724 source-address selection, several behaviours
@@ -65,7 +91,10 @@ a rule-based candidate sort.
 
 ### Current state
 
-`pytcp/stack/packet_handler/packet_handler__ip6__tx.py:174-289`:
+`pytcp/stack/packet_handler/packet_handler__ip6__tx.py`:
+the source-validation logic lives in
+`__validate_src_ip6_address` (around line 173, ~115 lines).
+Today it does:
 
 - Reject if `ip6__src` not owned.
 - If `ip6__src` is multicast → swap with first unicast.
@@ -75,6 +104,10 @@ a rule-based candidate sort.
   pick first host with gateway.
 - Special cases for DAD probe (src=::) and MLDv2 report
   (src=::).
+
+Verify the current line range with
+`grep -n "def __validate_src_ip6_address" pytcp/stack/packet_handler/packet_handler__ip6__tx.py`
+before editing — the file has been growing.
 
 ### Target shape
 
@@ -184,6 +217,36 @@ follow-ups that close the long-tail RFC compliance gaps.
 Each phase is tests-first per
 [`.claude/rules/feature_implementation.md`](../../.claude/rules/feature_implementation.md)
 §2.
+
+## Resume prompt (paste into a fresh session)
+
+> Resume RFC 6724 source-address selection work in PyTCP.
+> State at HEAD `4229c1a7` on branch
+> `PyTCP_3_0__pre_release` (all prior session commits
+> pushed). Read `docs/refactor/rfc6724_source_selection.md`
+> first — it captures what's already in place (full IPv6
+> address lifecycle is dynamic; only source-selection
+> remains) and the §12c.1 → §12c.2 → §12c.3 → §12c.4 phase
+> split.
+>
+> Recommended cut: §12c.1 + §12c.2 in one or two commits.
+> §12c.1 establishes the rule-based source-selection
+> framework (rules 1, 2, 3, 8) replacing the monolithic
+> `__validate_src_ip6_address` algorithm; §12c.2 layers on
+> rule 7 (temp-address preference) which finally makes the
+> §18 RFC 8981 privacy benefit observable on the wire. The
+> per-RFC adherence record at
+> `docs/rfc/ip6/rfc6724__default_address_selection/` does
+> not exist yet — create it as part of §12c.1.
+>
+> §12c.3 (RFC 6724 §10.3 policy table) and §12c.4 (IPv4
+> source-selection symmetry) are reasonable follow-ups but
+> can defer.
+>
+> Tests-first per `.claude/rules/feature_implementation.md`
+> §2. Run `make lint && make test` first to confirm green
+> baseline (expected: lint clean, 10032 passing, 4
+> skipped).
 
 ## Cross-references
 
