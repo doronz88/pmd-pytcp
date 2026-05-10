@@ -52,6 +52,7 @@ Companion documents:
 | **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
 | **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
+| **§15a RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. Consumer (DNS resolver) deferred to §15b | RFC 8106 §5.1, §5.2 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -676,29 +677,61 @@ encoding + RESERVED normalisation).
 
 ---
 
-## §15 — Tier 3: RDNSS / DNSSL options (RFC 8106) ✗
+## §15 — Tier 3: RDNSS / DNSSL options (RFC 8106) ✓ (wire format) / ⚠ (consumer)
 
-Recursive DNS Server (type 25) and DNS Search List (type 31)
-options in RA. Carry DNS configuration directly. Linux honours
-both via `accept_ra_rdnss` / `accept_ra_dnssl` sysctls.
+### §15a (shipped) — Wire-format parse + assemble ✓
 
-PyTCP today has no DNS resolver, so the consumer doesn't
-exist yet. **This item is dormant — defer until PyTCP grows
-a resolver consumer**, mirroring how RFC 5227 §2.1.1
-MAX_CONFLICTS / RATE_LIMIT_INTERVAL is dormant in ARP-parity §3.
+Both options now have full parser + assembler support:
 
-The two options' wire-format modules are still worth shipping
-once §1's option-table machinery is in place; parsing them
-into a discardable list is forward-compat (the sysctl
-defaults to ignoring them anyway).
+* `Icmp6NdOptionRdnss(lifetime, addresses)` at
+  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__rdnss.py`.
+  Type 25, length-units = 1 + 2N where N is the server count;
+  on-wire byte length = 8 + 16N. The parser rejects an
+  even-numbered length-field as malformed (it would imply a
+  non-integer server count).
+* `Icmp6NdOptionDnssl(lifetime, domains)` at
+  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__dnssl.py`.
+  Type 31, RFC 1035 §3.1 label-sequence encoding terminated
+  by zero-length label, padded to 8-octet alignment with zero
+  bytes. Constructor enforces label ≤ 63 octets and ASCII-only
+  per RFC 8106 §3.1; parser silently ignores trailing pad
+  zeros and bails on malformed labels per RFC 8106 §5.2
+  ("MUST silently ignore any Search Domain Name field that is
+  not well-formed").
+* Dispatch wired in `Icmp6NdOptions.from_buffer` so an inbound
+  RA carrying RDNSS / DNSSL parses without falling back to
+  `Icmp6NdOptionUnknown`.
 
-### Effort
+### §15b (deferred) — Consumer integration
 
-Small — ~80 lines for both options + tests. Dormant runtime.
+PyTCP has no DNS resolver, so RDNSS / DNSSL state has no
+runtime consumer. The wire-format pin shipped here is
+forward-compat: a future resolver subsystem can iterate
+`packet_rx.icmp6.message.options` and pull RDNSS / DNSSL
+entries when it's introduced. The `accept_ra_rdnss` /
+`accept_ra_dnssl` Linux-parity sysctls land with the consumer.
+
+### Tests
+
+`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__rdnss.py`:
+- Per-server-count assembly (N=1, N=2, lifetime=0).
+- Round-trip parse for the same fixtures.
+- Header-only (length=1, no addresses).
+- Even-length-field rejection (integrity error).
+
+`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__dnssl.py`:
+- Per-domain-count assembly with 8-octet padding.
+- Round-trip parse.
+- Header-only (no domains).
+- Constructor rejects labels > 63 octets.
+- Constructor rejects non-ASCII labels.
 
 ### RFC reference
 
-RFC 8106 §5.1, §5.2.
+RFC 8106 §5.1 (RDNSS), §5.2 (DNSSL).
+RFC 1035 §3.1 (domain-name label encoding).
+Linux: `net.ipv6.conf.<iface>.accept_ra_rdnss`,
+`net.ipv6.conf.<iface>.accept_ra_dnssl`.
 
 ---
 

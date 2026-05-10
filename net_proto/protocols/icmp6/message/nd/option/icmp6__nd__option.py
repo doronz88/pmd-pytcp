@@ -49,6 +49,8 @@ class Icmp6NdOptionType(ProtoOptionType):
     REDIRECTED_HEADER = 4
     MTU = 5
     ROUTE_INFO = 24
+    RDNSS = 25
+    DNSSL = 31
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

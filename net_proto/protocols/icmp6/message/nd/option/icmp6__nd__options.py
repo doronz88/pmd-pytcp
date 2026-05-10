@@ -40,12 +40,18 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__dnssl import (
+    Icmp6NdOptionDnssl,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__mtu import (
     Icmp6NdOptionMtu,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
+)
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__rdnss import (
+    Icmp6NdOptionRdnss,
 )
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__redirected_header import (
     Icmp6NdOptionRedirectedHeader,
@@ -165,6 +171,10 @@ class Icmp6NdOptions(ProtoOptions):
                     options.append(Icmp6NdOptionMtu.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.ROUTE_INFO:
                     options.append(Icmp6NdOptionRouteInfo.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.RDNSS:
+                    options.append(Icmp6NdOptionRdnss.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.DNSSL:
+                    options.append(Icmp6NdOptionDnssl.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
 
