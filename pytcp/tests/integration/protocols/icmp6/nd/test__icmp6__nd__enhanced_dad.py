@@ -42,6 +42,7 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py
 ver 3.0.4
 """
 
+import threading
 from typing import Any, cast
 
 from net_addr import Ip6Address, MacAddress
@@ -87,14 +88,15 @@ class TestIcmp6Nd__EnhancedDad__LoopHairpinDropped(NdTestCase):
         """
         Ensure an inbound NS(DAD) targeting our tentative
         address with a Nonce we already emitted is dropped
-        silently and does NOT release the DAD wait semaphore.
+        silently and does NOT signal the per-address DAD Event.
 
         Reference: RFC 7527 §4.2 (matching nonce → drop, not conflict).
         """
 
         our_nonce = b"\xab\xcd\xef\x12\x34\x56"
-        self._packet_handler._icmp6_nd_dad__ip6_unicast_candidate = CANDIDATE
-        self._packet_handler._icmp6_nd_dad__nonces.add(our_nonce)
+        self._packet_handler._icmp6_nd_dad__events[CANDIDATE] = threading.Event()
+        self._packet_handler._icmp6_nd_dad__nonces[CANDIDATE] = {our_nonce}
+        self._packet_handler._icmp6_nd_dad__tllas[CANDIDATE] = None
         _join_candidate_multicast(self._packet_handler)
 
         frame = self._make_nd_ns_frame(
@@ -109,8 +111,8 @@ class TestIcmp6Nd__EnhancedDad__LoopHairpinDropped(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertFalse(
-            self._packet_handler._icmp6_nd_dad__event.acquire(blocking=False),
-            msg="Loop-hairpin echo must NOT release the DAD wait semaphore.",
+            self._packet_handler._icmp6_nd_dad__events[CANDIDATE].is_set(),
+            msg="Loop-hairpin echo must NOT signal the per-address DAD Event.",
         )
         self.assertEqual(
             self._packet_handler._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop,
@@ -142,13 +144,14 @@ class TestIcmp6Nd__EnhancedDad__NonMatchingNonceTreatedAsConflict(NdTestCase):
         """
         Ensure an inbound NS(DAD) targeting our tentative
         address with a Nonce we did NOT emit triggers the
-        existing DAD-conflict path (release semaphore).
+        existing DAD-conflict path (per-address Event set).
 
         Reference: RFC 7527 §4.2 (no match → DAD failure).
         """
 
-        self._packet_handler._icmp6_nd_dad__ip6_unicast_candidate = CANDIDATE
-        self._packet_handler._icmp6_nd_dad__nonces.add(b"\xab\xcd\xef\x12\x34\x56")
+        self._packet_handler._icmp6_nd_dad__events[CANDIDATE] = threading.Event()
+        self._packet_handler._icmp6_nd_dad__nonces[CANDIDATE] = {b"\xab\xcd\xef\x12\x34\x56"}
+        self._packet_handler._icmp6_nd_dad__tllas[CANDIDATE] = None
         _join_candidate_multicast(self._packet_handler)
 
         peer_nonce = b"\xff\xff\xff\xff\xff\xff"
@@ -164,8 +167,8 @@ class TestIcmp6Nd__EnhancedDad__NonMatchingNonceTreatedAsConflict(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__event.acquire(blocking=False),
-            msg="Non-matching nonce must release the DAD wait semaphore (genuine conflict).",
+            self._packet_handler._icmp6_nd_dad__events[CANDIDATE].is_set(),
+            msg="Non-matching nonce must set the per-address DAD Event (genuine conflict).",
         )
         self.assertEqual(
             self._packet_handler._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict,
@@ -252,7 +255,7 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
         """
         Ensure 'icmp6.enhanced_dad=0' makes
         '_perform_ip6_nd_dad' emit DAD probes without a Nonce
-        option and leaves '_icmp6_nd_dad__nonces' empty.
+        option and clears the per-address nonce slot on exit.
 
         Reference: Linux 'enhanced_dad' (kill switch).
         """
@@ -283,9 +286,9 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
             dad_message.option_nonce,
             msg=("enhanced_dad=0 must suppress the Nonce option on probes. " f"Got: {dad_message.option_nonce!r}"),
         )
-        self.assertEqual(
+        self.assertNotIn(
+            CANDIDATE,
             self._packet_handler._icmp6_nd_dad__nonces,
-            set(),
             msg=(
                 "enhanced_dad=0 must leave the nonce-tracking set empty. "
                 f"Got: {self._packet_handler._icmp6_nd_dad__nonces!r}"

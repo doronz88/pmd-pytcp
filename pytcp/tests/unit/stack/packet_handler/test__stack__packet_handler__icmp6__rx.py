@@ -88,9 +88,9 @@ class _StubHandler(PacketHandlerIcmp6Rx):
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
         self._mac_unicast = STACK__MAC_UNICAST
-        self._icmp6_nd_dad__ip6_unicast_candidate = None
-        self._icmp6_nd_dad__event = threading.Semaphore(0)
-        self._icmp6_nd_dad__tlla = None
+        self._icmp6_nd_dad__events: dict[Ip6Address, threading.Event] = {}
+        self._icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]] = {}
+        self._icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None] = {}
         self._icmp6_ra__event = threading.Semaphore(0)
         self._icmp6_ra__prefixes = []
 

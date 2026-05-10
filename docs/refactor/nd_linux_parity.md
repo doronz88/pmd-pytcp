@@ -924,6 +924,117 @@ Doc-only edit. Shipped.
 
 ---
 
+## §20.1 — Async per-address DAD refactor (Tier 5 plumbing) ✓
+
+**Shipped.** Replaced the single-in-flight DAD model
+(`_icmp6_nd_dad__ip6_unicast_candidate` + one
+`threading.Semaphore` + one nonce-set + one tlla slot) with
+per-address dicts:
+
+```
+_icmp6_nd_dad__events: dict[Ip6Address, threading.Event]
+_icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]]
+_icmp6_nd_dad__tllas:  dict[Ip6Address, MacAddress | None]
+```
+
+The RX path now keys on inbound NS / NA `target_address`
+to look up the right slot, so multiple addresses can DAD
+concurrently in separate worker threads. New
+`_claim_ip6_address_async(ip6_host=)` helper spawns a
+daemon thread that runs the synchronous claim path
+(`_perform_ip6_nd_dad` plus `_assign_ip6_host`, or
+`_claim_ip6_address_optimistic` when `icmp6.optimistic_dad
+== 1`) and returns the Thread handle. The boot loop
+`.join()`s under `optimistic_dad=0` (preserving today's
+"address available only after DAD passes" semantic but
+permitting parallel DAD across candidates) and
+fires-and-forgets under `=1`.
+
+This is pure plumbing — no new feature surface, no new
+sysctl. It unblocks RFC 8981 temp-address regen (§18b /
+§18c) and runtime PI-arrival claims, neither of which can
+block the RX subsystem thread.
+
+### Implementation
+
+* `_perform_ip6_nd_dad` opens by populating the per-address
+  slots BEFORE the first probe TX (so the RX dispatch can
+  find the right Event when peer NS / NA arrives) and pops
+  them on exit. Setup → probe loop → state transition →
+  cleanup, all keyed on the candidate address.
+* `__phrx_icmp6__nd_neighbor_solicitation` (NS-during-DAD
+  path) tests `target_address in self._icmp6_nd_dad__events`
+  instead of the singleton candidate; nonce-match check
+  reads `self._icmp6_nd_dad__nonces.get(target, set())`;
+  conflict signal does
+  `self._icmp6_nd_dad__events[target].set()` after writing
+  `tllas[target] = None`.
+* `__phrx_icmp6__nd_neighbor_advertisement` (NA-DAD path)
+  same dispatch — looks up by `target_address`, captures
+  TLLA into `tllas[target]`, sets `events[target]`.
+* `_claim_ip6_address_async` is the canonical entry point
+  for new claim work; the boot loop, future runtime PI
+  arrivals, and §18b/§18c regen all flow through it.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__async_dad.py`:
+- `TestIcmp6Nd__AsyncDad__ConcurrentClaims` — two
+  `_perform_ip6_nd_dad` calls running in different threads
+  at the same time both succeed and both end up VALID.
+- `TestIcmp6Nd__AsyncDad__PerTargetRxDispatch` — an NS
+  targeting candidate A signals A's Event, B's Event stays
+  unset; nonce known to A is a hairpin drop for A but a
+  peer conflict for B.
+- `TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread` —
+  `_claim_ip6_address_async` returns a started daemon
+  Thread; under `optimistic_dad=1` the worker pre-claims
+  the address as OPTIMISTIC immediately (visible while the
+  caller is still waiting on `.join()`).
+
+Existing tests that referenced the singleton attributes
+(`test__icmp6__nd__simultaneous_probe.py`,
+`test__icmp6__nd__multi_probe_dad.py`,
+`test__icmp6__nd__optimistic_dad.py`,
+`test__icmp6__nd__enhanced_dad.py`,
+`test__icmp6__nd__ra_parameter_consumers.py`,
+`test__icmp6__rx.py`, `_StubHandler` in
+`test__stack__packet_handler__icmp6__rx.py`) all updated
+to use the per-address dict forms.
+
+### Effort
+
+Shipped in ~150 LOC source + 5 new tests. The refactor is
+mechanical once the per-address dicts are in place; the
+trickier piece was preserving the multicast-join sentinel
+(`joined_for_dad`) so optimistic-claim's earlier
+`_assign_ip6_host` doesn't double-add the solicited-node
+group.
+
+### What's still missing relative to Linux DAD
+
+This refactor brings the *architectural* model to Linux
+parity (per-address state, async, concurrent). Three
+behavioural gaps remain, each a small follow-up:
+
+- **§20.2 — Random initial probe delay (RFC 4862 §5.4.2).**
+  Linux delays the first probe by `random(0,
+  MAX_RTR_SOLICITATION_DELAY=1s)` to avoid synchronized
+  DAD storms in fleets.
+- **§20.3 — DAD-failure retry with `dad_counter`
+  increment (RFC 7217 §6, RFC 8981 §3.3.3).** Linux
+  re-derives the IID and retries up to `IDGEN_RETRIES=3`
+  on collision.
+- **§20.4 — `accept_dad` sysctl modes 0/1/2.** Linux's
+  `accept_dad=2` disables IPv6 entirely on DAD failure.
+
+### RFC reference
+
+RFC 4861 §7.2.2 (NS RX dispatch); RFC 4862 §5.4.3 case (b)
+(NS-during-DAD conflict signalling).
+
+---
+
 ## §20 — Tier 5: Optimistic DAD (RFC 4429) ✓
 
 **Shipped.** PyTCP supports RFC 4429 Optimistic DAD on the

@@ -185,13 +185,15 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
         Reference: RFC 4862 §5.4.5 (DAD failure on duplicate detection).
         """
 
-        # Release the conflict event from a background thread
-        # ~5ms after the DAD call starts. Using a long retrans
-        # timer (200ms) so the wait actually blocks long enough
-        # for the background release to land before the first
-        # probe's wait would otherwise time out.
+        # Set the conflict event from a background thread ~5ms
+        # after the DAD call starts. Using a long retrans timer
+        # (200ms) so the wait actually blocks long enough for the
+        # background set to land before the first probe's wait
+        # would otherwise time out.
         def _trigger_conflict() -> None:
-            self._packet_handler._icmp6_nd_dad__event.release()
+            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
+            if event is not None:
+                event.set()
 
         with sysctl_module.override("icmp6.dad_transmits", 3):
             with sysctl_module.override("icmp6.retrans_timer_ms", 200):

@@ -45,6 +45,7 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_consume
 ver 3.0.4
 """
 
+import threading
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -227,18 +228,21 @@ class TestIcmp6Nd__RaConsumer__DadRetransTimer(NdTestCase):
         )
 
         # Set the sysctl to a much larger value so we can prove
-        # the override is what won.
+        # the override is what won. Patch threading.Event.wait
+        # at the class level — the per-address Event is created
+        # inside '_perform_ip6_nd_dad' so we cannot patch a
+        # specific instance before the call.
         with sysctl_module.override("icmp6.retrans_timer_ms", 60000):
             with patch.object(
-                self._packet_handler._icmp6_nd_dad__event,
-                "acquire",
+                threading.Event,
+                "wait",
                 return_value=False,
-            ) as mock_acquire:
+            ) as mock_wait:
                 self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=Ip6Address("2001:db8:0:1::42"),
                 )
 
-        timeout = mock_acquire.call_args.kwargs.get("timeout")
+        timeout = mock_wait.call_args.kwargs.get("timeout")
         self.assertAlmostEqual(
             cast(float, timeout),
             0.250,

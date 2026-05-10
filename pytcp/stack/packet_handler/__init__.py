@@ -850,10 +850,9 @@ class PacketHandlerL2(
     _mac_broadcast: MacAddress
     _arp_probe__unicast_conflict: set[Ip4Address]
     _arp_defend__last_emitted: dict[Ip4Address, float]
-    _icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None
-    _icmp6_nd_dad__event: Semaphore
-    _icmp6_nd_dad__tlla: MacAddress | None
-    _icmp6_nd_dad__nonces: set[bytes]
+    _icmp6_nd_dad__events: dict[Ip6Address, threading.Event]
+    _icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None]
+    _icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
 
@@ -921,15 +920,16 @@ class PacketHandlerL2(
         # ('_abandon_ipv4_address').
         self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
 
-        # Used for the ICMPv6 ND DAD process.
-        self._icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None = None
-        self._icmp6_nd_dad__event: Semaphore = threading.Semaphore(0)
-        self._icmp6_nd_dad__tlla: MacAddress | None = None
-        # RFC 7527 Enhanced DAD nonce tracker: every NS(DAD)
-        # probe carries a fresh random nonce; this set holds
-        # the ones we've emitted in the current DAD session so
-        # the NS-RX path can drop loop-hairpin echoes.
-        self._icmp6_nd_dad__nonces: set[bytes] = set()
+        # Used for the ICMPv6 ND DAD process. Per-address state
+        # (events, peer TLLA capture, RFC 7527 Enhanced DAD nonce
+        # trackers) lives in dicts keyed by the candidate
+        # address so multiple addresses can DAD concurrently.
+        # The RX path looks up the right slot by inbound NS / NA
+        # 'target_address'; an entry's presence means a worker
+        # is in DAD for that address.
+        self._icmp6_nd_dad__events: dict[Ip6Address, threading.Event] = {}
+        self._icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None] = {}
+        self._icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]] = {}
 
         # RFC 7217 §5 secret_key — generated once per process
         # at handler init. PyTCP doesn't persist this to disk;
@@ -1022,14 +1022,20 @@ class PacketHandlerL2(
         duplicate has been signaled. 'dad_transmits = 0'
         disables DAD entirely (Linux parity).
 
-        The candidate's per-address DAD state is recorded in
-        '_icmp6_dad__states' for the duration of the call:
+        Per-address DAD state lives in 'self._icmp6_nd_dad__events'
+        / '_nonces' / '_tllas' dicts keyed by the candidate
+        address, so multiple addresses can DAD concurrently in
+        separate worker threads. Each call populates its own
+        slot on entry and pops it on exit — the RX path uses
+        the dict membership to dispatch inbound NS / NA
+        signals to the right Event. The candidate's lifecycle
+        state is also recorded in '_icmp6_dad__states':
         TENTATIVE while probes are in flight, VALID on success,
-        and removed from the map on conflict. The Optimistic-DAD
-        helper '_claim_ip6_address_optimistic' overrides the
-        TENTATIVE entry with OPTIMISTIC before invoking us so the
-        NA emit path consulting the state map sees the relaxed
-        Override-flag rule per RFC 4429 §3.3.
+        removed on conflict. The Optimistic-DAD helper
+        '_claim_ip6_address_optimistic' overrides the TENTATIVE
+        entry with OPTIMISTIC before invoking us so the NA emit
+        path sees the relaxed Override-flag rule per RFC 4429
+        §3.3.
         """
 
         __debug__ and log(
@@ -1037,8 +1043,12 @@ class PacketHandlerL2(
             f"ICMPv6 ND DAD - Starting process for {ip6_unicast_candidate}",
         )
 
-        self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
-        self._icmp6_nd_dad__nonces.clear()
+        # Per-address DAD slot. Populated BEFORE the first probe
+        # TX so the RX dispatch can find this candidate's Event /
+        # nonce-set / tlla slot when peer NS / NA arrives.
+        self._icmp6_nd_dad__events[ip6_unicast_candidate] = threading.Event()
+        self._icmp6_nd_dad__nonces[ip6_unicast_candidate] = set()
+        self._icmp6_nd_dad__tllas[ip6_unicast_candidate] = None
         # Default to TENTATIVE; the Optimistic-DAD wrapper
         # promotes this to OPTIMISTIC before invoking us.
         self._icmp6_dad__states.setdefault(ip6_unicast_candidate, Icmp6DadState.TENTATIVE)
@@ -1056,30 +1066,32 @@ class PacketHandlerL2(
         # mirror is captured by §13a; consumer wiring is §13b.
         effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or nd__constants.ICMP6__RETRANS_TIMER_MS
         retrans_timer_s = effective_retrans_timer_ms / 1000.0
-        event = False
+        dad_event = self._icmp6_nd_dad__events[ip6_unicast_candidate]
+        nonce_set = self._icmp6_nd_dad__nonces[ip6_unicast_candidate]
+        conflict = False
         for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
             # RFC 7527 §4.1: every NS(DAD) carries a fresh
             # random nonce when Enhanced DAD is enabled. The
-            # nonce is tracked in '_icmp6_nd_dad__nonces' so the
-            # NS-RX path can drop loop-hairpin echoes.
+            # nonce is tracked per-candidate so the NS-RX path
+            # can drop loop-hairpin echoes.
             nonce: bytes | None = None
             if nd__constants.ICMP6__ENHANCED_DAD:
                 nonce = secrets.token_bytes(6)
-                self._icmp6_nd_dad__nonces.add(nonce)
+                nonce_set.add(nonce)
             self._send_icmp6_nd_dad_message(
                 ip6_unicast_candidate=ip6_unicast_candidate,
                 nonce=nonce,
             )
-            if self._icmp6_nd_dad__event.acquire(timeout=retrans_timer_s):
-                event = True
+            if dad_event.wait(timeout=retrans_timer_s):
+                conflict = True
                 break
 
-        if event:
+        if conflict:
             __debug__ and log(
                 "stack",
                 "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
                 f"{ip6_unicast_candidate} advertised by "
-                f"{self._icmp6_nd_dad__tlla}</>",
+                f"{self._icmp6_nd_dad__tllas[ip6_unicast_candidate]}</>",
             )
             # Conflict — drop the per-address state entry; the
             # caller is responsible for reverting any pre-claim
@@ -1104,10 +1116,15 @@ class PacketHandlerL2(
             # 'icmp6.gratuitous_na_count' (default 1; 0 disables).
             self.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast_candidate)
 
-        self._icmp6_nd_dad__ip6_unicast_candidate = None
+        # Pop per-address DAD slot. Order: clear the Event slot
+        # AFTER the state-transition above so the RX dispatch
+        # cannot signal a slot that's about to be popped.
+        self._icmp6_nd_dad__events.pop(ip6_unicast_candidate, None)
+        self._icmp6_nd_dad__nonces.pop(ip6_unicast_candidate, None)
+        self._icmp6_nd_dad__tllas.pop(ip6_unicast_candidate, None)
         if joined_for_dad:
             self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
-        return not event
+        return not conflict
 
     def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6Host) -> bool:
         """
@@ -1131,21 +1148,33 @@ class PacketHandlerL2(
         self._remove_ip6_host(ip6_host=ip6_host)
         return False
 
-    @override
-    def _create_stack_ip6_addressing(self) -> None:
+    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
         """
-        Create lists of IPv6 unicast and multicast addresses stack
-        should listen on.
+        Spawn a daemon worker thread that runs the DAD claim for
+        'ip6_host' (synchronous '_perform_ip6_nd_dad' or
+        '_claim_ip6_address_optimistic' depending on
+        'icmp6.optimistic_dad'). Returns the worker thread so
+        callers that need to wait for completion can '.join()'
+        it; callers that fire-and-forget simply discard the
+        returned handle.
+
+        Multiple addresses can be claimed concurrently — each
+        worker owns its own slot in the per-address DAD dicts
+        ('_icmp6_nd_dad__events' / '_nonces' / '_tllas') and the
+        RX dispatch keys on inbound NS / NA 'target_address' to
+        signal the right slot. This is what unblocks RFC 8981
+        temp-address regen (§18b/c) and runtime PI-arrival
+        claims, neither of which can block the RX subsystem
+        thread.
         """
 
-        def _claim_ip6_address(ip6_host: Ip6Host) -> None:
+        def _worker() -> None:
             if nd__constants.ICMP6__OPTIMISTIC_DAD == 1:
                 ok = self._claim_ip6_address_optimistic(ip6_host=ip6_host)
             else:
                 ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address)
                 if ok:
                     self._assign_ip6_host(ip6_host=ip6_host)
-
             if ok:
                 __debug__ and log("stack", f"Successfully claimed IPv6 address {ip6_host}")
             else:
@@ -1153,6 +1182,34 @@ class PacketHandlerL2(
                     "stack",
                     f"<WARN>Unable to claim IPv6 address {ip6_host}</>",
                 )
+
+        thread = threading.Thread(
+            target=_worker,
+            daemon=True,
+            name=f"DAD-{ip6_host.address}",
+        )
+        thread.start()
+        return thread
+
+    @override
+    def _create_stack_ip6_addressing(self) -> None:
+        """
+        Create lists of IPv6 unicast and multicast addresses stack
+        should listen on.
+
+        Each address claim spawns a daemon DAD worker thread via
+        '_claim_ip6_address_async'. With 'icmp6.optimistic_dad=0'
+        the boot path '.join()'s every worker (preserving today's
+        "address available only after DAD passes" semantic but
+        permitting parallel DAD across candidates); with =1 the
+        boot path fires-and-forgets so the workers transition
+        OPTIMISTIC → VALID after boot has returned.
+        """
+
+        def _claim_ip6_address(ip6_host: Ip6Host) -> None:
+            thread = self._claim_ip6_address_async(ip6_host=ip6_host)
+            if nd__constants.ICMP6__OPTIMISTIC_DAD == 0:
+                thread.join()
 
         # Assign IPv6 All Nodes multicast address.
         self._assign_ip6_multicast(Ip6Address("ff02::1"))

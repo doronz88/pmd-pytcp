@@ -209,7 +209,9 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
         """
 
         def _trigger_conflict() -> None:
-            self._packet_handler._icmp6_nd_dad__event.release()
+            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
+            if event is not None:
+                event.set()
 
         with sysctl_module.override("icmp6.retrans_timer_ms", 200):
             threading.Timer(0.005, _trigger_conflict).start()
@@ -254,7 +256,9 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         def _trigger_conflict() -> None:
             captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_host]
             captured["state_during_wait"] = self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE)
-            self._packet_handler._icmp6_nd_dad__event.release()
+            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
+            if event is not None:
+                event.set()
 
         with sysctl_module.override("icmp6.optimistic_dad", 1):
             with sysctl_module.override("icmp6.retrans_timer_ms", 200):
@@ -308,7 +312,9 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         """
 
         def _trigger_conflict() -> None:
-            self._packet_handler._icmp6_nd_dad__event.release()
+            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
+            if event is not None:
+                event.set()
 
         with sysctl_module.override("icmp6.optimistic_dad", 1):
             with sysctl_module.override("icmp6.retrans_timer_ms", 200):
@@ -445,7 +451,9 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
         def _trigger_conflict() -> None:
             captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_host]
             captured["state_during_wait"] = self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE)
-            self._packet_handler._icmp6_nd_dad__event.release()
+            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
+            if event is not None:
+                event.set()
 
         with sysctl_module.override("icmp6.retrans_timer_ms", 200):
             threading.Timer(0.010, _trigger_conflict).start()
