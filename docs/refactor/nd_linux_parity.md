@@ -953,6 +953,84 @@ Doc-only edit. Shipped.
 
 ---
 
+## §20.3 — DAD-failure retry with `dad_counter` ✓
+
+**Shipped.** On DAD failure the host now re-derives the
+IID and retries up to `icmp6.idgen_retries` times before
+giving up — RFC 7217 §6 (stable opaque IIDs) and RFC
+8981 §3.3.3 (temporary addresses) both mandate this. The
+`_claim_ip6_address_async` helper grew an optional
+`regenerate: Callable[[], Ip6Host] | None` kwarg; on DAD
+failure the worker calls it to mint a fresh candidate and
+runs another full DAD cycle.
+
+### Implementation
+
+* New `ICMP6__IDGEN_RETRIES = 3` constant + sysctl
+  `icmp6.idgen_retries` with non-negative-int validator.
+  Default 3 (RFC 7217 §6); 0 disables retry entirely.
+* `_claim_ip6_address_async` retry loop: tries
+  `1 + idgen_retries` candidates total; on each failure
+  calls `regenerate()` to get the next address; the
+  first one to pass DAD is installed via
+  `_assign_ip6_host` (or `_claim_ip6_address_optimistic`
+  for OPTIMISTIC mode).
+* `accept_dad=2` fail-hard hook (§20.4) only fires
+  AFTER all retries have exhausted, not on intermediate
+  failures.
+* New helper `_make_rfc7217_regenerator(*, ip6_network,
+  gateway)` returns a closure that re-derives via
+  `Ip6Host.from_rfc7217(..., dad_counter=N)` with the
+  counter incremented per call; returns `None` when
+  EUI-64 is active (deterministic, retry doesn't help).
+* Boot-loop callers (link-local autoconfig + RA-driven
+  GUA SLAAC) pass the RFC 7217 regenerator. Static
+  candidates pass `None` — the operator picked the
+  exact address; we cannot substitute.
+* §18b temp-address mutator passes an RFC 8981
+  regenerator that calls `Ip6Host.from_rfc8981_temp`
+  fresh on each retry (random IID, no counter needed).
+* L3 stub accepts the kwarg for signature parity but
+  ignores it (no DAD on L3, no retry needed).
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__idgen_retries.py`:
+- Sysctl registered with default 3; validator accepts 0
+  (kill switch); rejects negatives and booleans.
+- Worker retry loop: candidate sequence of three
+  addresses where the third passes; verifies all three
+  attempts run in order and the third is installed.
+- Exhaustion: when DAD fails on every retry, exactly
+  `1 + idgen_retries` total attempts run, no address
+  installed.
+- Backwards-compatibility: legacy callers (no
+  `regenerate` kwarg) do NOT retry — preserves the
+  pre-§20.3 behaviour exactly.
+- `idgen_retries=0` suppresses retries even when a
+  regenerator is supplied.
+- `accept_dad=2` compose: `_ip6_support` stays True
+  during retries; flipped only after exhaustion.
+
+### What this closes
+
+This was the last of the three behaviour gaps surfaced
+by §20.1. PyTCP's DAD now matches Linux's host-side
+DAD architecture and behaviour:
+
+- §20.1 — Async per-address DAD ✓
+- §20.2 — Random initial probe delay ✓
+- §20.3 — DAD-failure retry with `dad_counter` ✓ (this)
+- §20.4 — `accept_dad` modes 0/1/2 ✓
+
+### RFC reference
+
+RFC 7217 §6 (IDGEN_RETRIES default 3, retry on collision).
+RFC 8981 §3.3.3 (temporary-address regeneration on DAD
+failure, also bounded by IDGEN_RETRIES).
+
+---
+
 ## §20.4 — `accept_dad` sysctl modes 0/1/2 ✓
 
 **Shipped.** New `icmp6.accept_dad` sysctl mirrors Linux's

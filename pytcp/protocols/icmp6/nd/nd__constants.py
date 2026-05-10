@@ -144,6 +144,18 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# RFC 7217 §6 IDGEN_RETRIES — the host re-derives the
+# Interface Identifier and retries DAD up to this many times
+# on collision before giving up. RFC 7217 §6 specifies 3 as
+# the default; RFC 8981 §3.3.3 reuses the same constant for
+# temporary-address regeneration on DAD failure. PyTCP exposes
+# this as 'icmp6.idgen_retries'; the boot loop wires it for
+# RFC 7217 stable addresses (re-deriving with an incremented
+# 'dad_counter') and the §18b temp-address mutator wires it
+# for RFC 8981 (each retry mints a fresh random IID). A value
+# of 0 disables retry entirely (give up on first DAD failure).
+ICMP6__IDGEN_RETRIES = 3
+
 # Linux net.ipv6.conf.<iface>.accept_dad policy. Tristate
 # matching Linux's host-side semantics:
 #   0 = skip DAD entirely. The candidate goes straight to
@@ -354,6 +366,18 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _idgen_retries_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero
+    is admitted (kill switch — disables retry).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(
+            f"sysctl 'icmp6.idgen_retries' must be a non-negative int; got {value!r}",
+        )
+
+
 def _accept_dad_validator(value: object) -> None:
     """
     Reject values outside {0, 1, 2}. Booleans are rejected
@@ -550,6 +574,18 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.idgen_retries",
+    module_name=__name__,
+    attr="ICMP6__IDGEN_RETRIES",
+    default=ICMP6__IDGEN_RETRIES,
+    validator=_idgen_retries_validator,
+    description=(
+        "RFC 7217 §6 IDGEN_RETRIES — number of times the host "
+        "re-derives the IID and retries DAD on collision; "
+        "default 3. 0 disables retry (give up on first failure)."
     ),
 )
 register(

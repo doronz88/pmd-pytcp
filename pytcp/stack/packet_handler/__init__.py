@@ -37,6 +37,7 @@ import secrets
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING, override
 
 from net_addr import (
@@ -330,11 +331,22 @@ class PacketHandler(Subsystem, ABC):
         self._remove_ip6_multicast(ip6_host.address.solicited_node_multicast)
 
     @abstractmethod
-    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
+    def _claim_ip6_address_async(
+        self,
+        *,
+        ip6_host: Ip6Host,
+        regenerate: Callable[[], Ip6Host] | None = None,
+    ) -> threading.Thread:
         """
         Claim 'ip6_host' on a daemon worker thread (DAD on L2,
         direct assign on L3). Returns the worker so callers
         that need to wait can '.join()'.
+
+        When 'regenerate' is supplied, on DAD failure the
+        worker calls it up to 'icmp6.idgen_retries' times to
+        get a fresh candidate (RFC 7217 §6 / RFC 8981 §3.3.3).
+        Each retry runs a full DAD cycle; the worker installs
+        the first candidate that passes.
         """
 
         raise NotImplementedError
@@ -704,10 +716,23 @@ class PacketHandler(Subsystem, ABC):
                 router_address=router_address,
             ),
         )
+
+        # RFC 8981 §3.3.3 — on DAD failure, retry with a fresh
+        # random IID up to 'icmp6.idgen_retries' times. Each
+        # call to 'from_rfc8981_temp' yields a different IID
+        # (no 'dad_counter' is needed; the random generator is
+        # stateless).
+        def _regenerate() -> Ip6Host:
+            host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+            host.gateway = router_address
+            return host
+
         # Spawn async DAD claim. The worker will assign the
-        # address into '_ip6_host' on success or remove the
-        # temp-table entry on collision.
-        self._claim_ip6_address_async(ip6_host=temp_host)
+        # address into '_ip6_host' on success or fall through
+        # to the failure path on collision (where retries
+        # exhaust before the temp-table entry is left
+        # orphaned).
+        self._claim_ip6_address_async(ip6_host=temp_host, regenerate=_regenerate)
 
     def get_icmp6_temp_addresses(self) -> list[Icmp6TempAddress]:
         """
@@ -1295,7 +1320,12 @@ class PacketHandlerL2(
         return False
 
     @override
-    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
+    def _claim_ip6_address_async(
+        self,
+        *,
+        ip6_host: Ip6Host,
+        regenerate: Callable[[], Ip6Host] | None = None,
+    ) -> threading.Thread:
         """
         Spawn a daemon worker thread that runs the DAD claim for
         'ip6_host' (synchronous '_perform_ip6_nd_dad' or
@@ -1313,31 +1343,56 @@ class PacketHandlerL2(
         temp-address regen (§18b/c) and runtime PI-arrival
         claims, neither of which can block the RX subsystem
         thread.
+
+        When 'regenerate' is supplied (RFC 7217 §6 / RFC 8981
+        §3.3.3), on DAD failure the worker calls it up to
+        'icmp6.idgen_retries' times to mint a fresh candidate
+        for the same prefix. The first candidate that DAD
+        passes is installed; if all retries fail the
+        accept_dad=2 fail-hard hook (§20.4) fires.
         """
 
-        def _worker() -> None:
+        def _attempt_claim(candidate: Ip6Host) -> bool:
             if nd__constants.ICMP6__OPTIMISTIC_DAD == 1:
-                ok = self._claim_ip6_address_optimistic(ip6_host=ip6_host)
-            else:
-                ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address)
-                if ok:
-                    self._assign_ip6_host(ip6_host=ip6_host)
+                return self._claim_ip6_address_optimistic(ip6_host=candidate)
+            ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=candidate.address)
             if ok:
-                __debug__ and log("stack", f"Successfully claimed IPv6 address {ip6_host}")
-            else:
-                __debug__ and log(
-                    "stack",
-                    f"<WARN>Unable to claim IPv6 address {ip6_host}</>",
-                )
-                # 'icmp6.accept_dad=2' fail-hard: any DAD
-                # failure disables IPv6 on the interface
-                # entirely. Linux 'accept_dad=2' parity.
-                if nd__constants.ICMP6__ACCEPT_DAD == 2:
+                self._assign_ip6_host(ip6_host=candidate)
+            return ok
+
+        def _worker() -> None:
+            max_retries = nd__constants.ICMP6__IDGEN_RETRIES if regenerate is not None else 0
+            current = ip6_host
+            for attempt in range(max_retries + 1):
+                ok = _attempt_claim(current)
+                if ok:
+                    __debug__ and log("stack", f"Successfully claimed IPv6 address {current}")
+                    return
+                if attempt < max_retries:
+                    # RFC 7217 §6 / RFC 8981 §3.3.3 — re-derive
+                    # the IID and retry. The closure owns the
+                    # 'dad_counter' / random-IID logic.
+                    assert regenerate is not None
                     __debug__ and log(
                         "stack",
-                        f"<CRIT>icmp6.accept_dad=2 — DAD failure on {ip6_host} " "disables IPv6 on this interface</>",
+                        f"<WARN>DAD failure on {current}; regenerating " f"(attempt {attempt + 1}/{max_retries})</>",
                     )
-                    self._ip6_support = False
+                    current = regenerate()
+
+            __debug__ and log(
+                "stack",
+                f"<WARN>Unable to claim IPv6 address {current}; gave up " f"after {max_retries} retries</>",
+            )
+            # 'icmp6.accept_dad=2' fail-hard: any DAD failure
+            # (after retries are exhausted) disables IPv6 on
+            # the interface entirely. Linux 'accept_dad=2'
+            # parity.
+            if nd__constants.ICMP6__ACCEPT_DAD == 2:
+                __debug__ and log(
+                    "stack",
+                    f"<CRIT>icmp6.accept_dad=2 — DAD failure on {current} " "disables IPv6 on this interface</>",
+                )
+                self._ip6_support = False
 
         thread = threading.Thread(
             target=_worker,
@@ -1346,6 +1401,40 @@ class PacketHandlerL2(
         )
         thread.start()
         return thread
+
+    def _make_rfc7217_regenerator(
+        self,
+        *,
+        ip6_network: Ip6Network,
+        gateway: Ip6Address | None,
+    ) -> Callable[[], Ip6Host] | None:
+        """
+        Build a DAD-failure regenerator for an RFC 7217 stable
+        opaque IID address (RFC 7217 §6 retry on collision).
+        Each invocation re-derives with an incremented
+        'dad_counter'. Returns None when EUI-64 derivation is
+        active ('icmp6.use_rfc7217 = 0') because EUI-64 is
+        deterministic from the MAC and re-derivation would
+        produce the same address.
+        """
+
+        if not nd__constants.ICMP6__USE_RFC7217:
+            return None
+
+        counter = [0]
+
+        def _regenerate() -> Ip6Host:
+            counter[0] += 1
+            host = Ip6Host.from_rfc7217(
+                ip6_network=ip6_network,
+                mac_address=self._mac_unicast,
+                secret_key=self._icmp6_slaac__secret_key,
+                dad_counter=counter[0],
+            )
+            host.gateway = gateway
+            return host
+
+        return _regenerate
 
     @override
     def _create_stack_ip6_addressing(self) -> None:
@@ -1360,10 +1449,23 @@ class PacketHandlerL2(
         permitting parallel DAD across candidates); with =1 the
         boot path fires-and-forgets so the workers transition
         OPTIMISTIC → VALID after boot has returned.
+
+        For auto-configured addresses (link-local autoconfig,
+        RA-driven SLAAC) the boot path passes an RFC 7217
+        regenerator so DAD failures retry up to
+        'icmp6.idgen_retries' times with an incremented
+        'dad_counter' before giving up. Statically-configured
+        candidates pass no regenerator — the operator picked
+        the exact address; we cannot substitute a different
+        one.
         """
 
-        def _claim_ip6_address(ip6_host: Ip6Host) -> None:
-            thread = self._claim_ip6_address_async(ip6_host=ip6_host)
+        def _claim_ip6_address(
+            ip6_host: Ip6Host,
+            *,
+            regenerate: Callable[[], Ip6Host] | None = None,
+        ) -> None:
+            thread = self._claim_ip6_address_async(ip6_host=ip6_host, regenerate=regenerate)
             if nd__constants.ICMP6__OPTIMISTIC_DAD == 0:
                 thread.join()
 
@@ -1378,9 +1480,13 @@ class PacketHandlerL2(
 
         # Configure Link Local address automatically.
         if self._ip6_lla_autoconfig:
-            ip6_host = self._derive_ip6_host(ip6_network=Ip6Network("fe80::/64"))
+            lla_network = Ip6Network("fe80::/64")
+            ip6_host = self._derive_ip6_host(ip6_network=lla_network)
             ip6_host.gateway = None
-            _claim_ip6_address(ip6_host)
+            _claim_ip6_address(
+                ip6_host,
+                regenerate=self._make_rfc7217_regenerator(ip6_network=lla_network, gateway=None),
+            )
 
         # If we don't have any link local address then disable
         # IPv6 protocol operations.
@@ -1409,7 +1515,10 @@ class PacketHandlerL2(
                 )
                 ip6_address = self._derive_ip6_host(ip6_network=prefix)
                 ip6_address.gateway = gateway
-                _claim_ip6_address(ip6_address)
+                _claim_ip6_address(
+                    ip6_address,
+                    regenerate=self._make_rfc7217_regenerator(ip6_network=prefix, gateway=gateway),
+                )
 
     @override
     def _create_stack_ip4_addressing(self) -> None:
@@ -1605,14 +1714,22 @@ class PacketHandlerL3(
                     )
 
     @override
-    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
+    def _claim_ip6_address_async(
+        self,
+        *,
+        ip6_host: Ip6Host,
+        regenerate: Callable[[], Ip6Host] | None = None,
+    ) -> threading.Thread:
         """
         L3 has no DAD — claims complete synchronously via
-        '_assign_ip6_host'. The returned Thread is a no-op
-        helper that has already finished, so callers
-        '.join()'ing it return immediately.
+        '_assign_ip6_host'. The 'regenerate' callback is
+        accepted for signature parity with L2 but never
+        invoked (no DAD failure to retry). The returned
+        Thread is a no-op helper that has already finished,
+        so callers '.join()'ing it return immediately.
         """
 
+        del regenerate  # unused on L3 — no DAD, no retry
         self._assign_ip6_host(ip6_host=ip6_host)
         thread = threading.Thread(target=lambda: None, daemon=True, name=f"DAD-{ip6_host.address}")
         thread.start()
