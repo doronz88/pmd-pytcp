@@ -50,6 +50,7 @@ class Icmp6NdOptionType(ProtoOptionType):
     MTU = 5
     ROUTE_INFO = 24
     RDNSS = 25
+    RA_FLAGS_EXTENSION = 26
     DNSSL = 31
 
 

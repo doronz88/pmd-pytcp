@@ -291,6 +291,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     ICMP6__ND__OPTION__PI__LEN,
     Icmp6NdOptionPi,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__ra_flags import (
+    Icmp6NdOptionRaFlags,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__rdnss import (
     Icmp6NdOptionRdnss,
 )
@@ -635,6 +638,7 @@ __all__ = [
     "Icmp6NdOptionMtu",
     "Icmp6NdOptionPi",
     "Icmp6NdOptionDnssl",
+    "Icmp6NdOptionRaFlags",
     "Icmp6NdOptionRdnss",
     "Icmp6NdOptionRedirectedHeader",
     "Icmp6NdOptionRouteInfo",

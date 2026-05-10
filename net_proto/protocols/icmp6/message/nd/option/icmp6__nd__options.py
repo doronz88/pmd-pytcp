@@ -50,6 +50,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__ra_flags import (
+    Icmp6NdOptionRaFlags,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__rdnss import (
     Icmp6NdOptionRdnss,
 )
@@ -173,6 +176,8 @@ class Icmp6NdOptions(ProtoOptions):
                     options.append(Icmp6NdOptionRouteInfo.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.RDNSS:
                     options.append(Icmp6NdOptionRdnss.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.RA_FLAGS_EXTENSION:
+                    options.append(Icmp6NdOptionRaFlags.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.DNSSL:
                     options.append(Icmp6NdOptionDnssl.from_buffer(buffer[offset:]))
                 case _:

@@ -1013,22 +1013,37 @@ RFC 4311 §3.
 
 ---
 
-## §25 — Tier 6: RA Flags option (RFC 5175) ✗
+## §25 — Tier 6: RA Flags option (RFC 5175) ✓
 
-Type 26. Extends the RA Reserved word with additional
-reachability-and-managed-flag bits. Currently no consumer
-on the host side beyond what the RA header already carries.
+**Shipped.** Type 26. The option carries a 48-bit big-endian
+flag-bits field reserved for future allocation by the IETF;
+PyTCP parses and emits it opaquely so the wire format
+round-trips even though no bits are currently consumed by the
+host.
 
-Mark as low-priority. Wire-format module + parser; no
-runtime branch needed unless a real consumer surfaces.
+### Implementation
 
-### Effort
+* `Icmp6NdOptionType.RA_FLAGS_EXTENSION = 26` enum member.
+* `Icmp6NdOptionRaFlags(flags: int)` frozen dataclass at
+  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__ra_flags.py`.
+  Length fixed at 1 (8 bytes total: type + length + 6 flag
+  bytes). Constructor enforces `0 ≤ flags ≤ 2^48 - 1`.
+* Dispatch wired in `Icmp6NdOptions.from_buffer`.
+* No runtime consumer — the field has no allocated bits in
+  RFC 5175. When the IETF allocates a flag, callers can mask
+  it out of the integer.
 
-Tiny — ~30 lines wire format, no runtime.
+### Tests
+
+`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__ra_flags.py`:
+- All-zero / all-ones / single-bit MSB assembly + parse
+  round-trips.
+- Constructor rejects negative or > 48-bit `flags`.
+- Parser rejects length-field ≠ 1.
 
 ### RFC reference
 
-RFC 5175.
+RFC 5175 §3.
 
 ---
 
