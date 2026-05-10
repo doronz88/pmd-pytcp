@@ -1120,23 +1120,35 @@ RFC 8028 §3 (first-hop selection by source).
 
 ---
 
-## §24 — Tier 6: Host-to-router load sharing (RFC 4311) ✗
+## §24 — Tier 6: Host-to-router load sharing (RFC 4311) ✓
 
-When multiple equal-preference default routers exist, RFC
-4311 §3 SHOULD distribute traffic across them in proportion
-to a host-side load-sharing policy. Linux implements
-weighted round-robin.
+**Shipped.** Per-destination distribution across the
+highest-preference equivalence class. New
+`get_icmp6_default_router_for_destination(destination)`
+accessor returns the router at index
+`int(destination) % len(highest_preference_set)`.
 
-Couples with §11 + §23. Lower priority (informational
-nice-to-have on a single-WAN host).
+The picker is deterministic per destination so TCP flows
+aren't reordered, but distinct destinations spread across
+all highest-preference routers. The §14 RFC 4191 preference
+rule is preserved — a LOW router never gets traffic when a
+HIGH router is available.
 
-### Effort
+### Tests
 
-Small — ~30 lines once §11 + §23 land.
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_load_sharing.py`:
+- `same_dest_same_router` — deterministic per destination
+  (10 calls, same destination, same router).
+- `distributes_across_routers` — 100 distinct destinations
+  cover all three equal-preference routers.
+- `low_pref_never_picked` — LOW router excluded when HIGH
+  routers exist.
+- `empty_returns_none` — no routers tracked → None.
 
 ### RFC reference
 
-RFC 4311 §3.
+RFC 4311 §3 (per-destination load sharing).
+RFC 4191 §2.1 (preference precedence).
 
 ---
 

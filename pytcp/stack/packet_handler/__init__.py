@@ -594,6 +594,45 @@ class PacketHandler(Subsystem, ABC):
         now = time.monotonic()
         return [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
 
+    def get_icmp6_default_router_for_destination(
+        self,
+        *,
+        destination: Ip6Address,
+    ) -> Icmp6DefaultRouter | None:
+        """
+        Pick a default router for outbound traffic to
+        'destination' using deterministic per-destination
+        distribution across the highest-preference equivalence
+        class per RFC 4311 §3 host-to-router load sharing.
+
+        The same destination always selects the same router so
+        TCP flows aren't reordered, but distinct destinations
+        spread across all highest-preference routers (preserving
+        the §14 RFC 4191 preference rule — a LOW router never
+        gets traffic when a HIGH router is available). The
+        index is computed as
+        'int(destination) % len(highest_preference_set)'.
+
+        Returns None when no default routers are tracked.
+
+        Reference: RFC 4311 §3 (per-destination load sharing).
+        Reference: RFC 4191 §2.1 (preference precedence).
+        """
+
+        active_routers = self.get_icmp6_default_routers()
+        if not active_routers:
+            return None
+
+        # 'get_icmp6_default_routers()' returns the active list
+        # sorted by §14 preference (HIGH > MEDIUM > LOW). The
+        # highest-preference equivalence class is the prefix of
+        # entries sharing the head's prf value.
+        head_prf = active_routers[0].prf
+        candidates = [r for r in active_routers if r.prf == head_prf]
+
+        index = int(destination) % len(candidates)
+        return candidates[index]
+
     def get_icmp6_default_router_for_source(
         self,
         *,
