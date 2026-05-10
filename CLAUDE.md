@@ -8,10 +8,21 @@ PyTCP is a pure Python TCP/IP stack (Python 3.14+) built on TAP/TUN interfaces. 
 
 ## Project North Star
 
-PyTCP's goal is to be a pure-Python TCP/IP stack that is **feature-equivalent to the Linux kernel network stack**, in two phases:
+PyTCP's goal is to be a pure-Python TCP/IP stack that is **feature-equivalent to the Linux kernel network stack**, in three phases:
 
 - **Phase 1 (current):** host-stack parity. Default-configured Linux host coverage — every protocol mechanism a Linux host runs by default.
 - **Phase 2 (future):** router-grade parity. Full forwarding plane: FIB, IP forwarding, ICMP Redirect generation, PMTU advertising on transit, RFC 1812 router requirements, IGMP/MLD querier role.
+- **Phase 3 (future):** kernel/userspace boundary. PyTCP becomes a self-contained "kernel" exposing a small Linux-mirrored set of user-facing APIs. Everything else is internal to the stack. Consumers — tests, examples, CLI tools, eventually external applications — interact with PyTCP only through these surfaces, the way a Linux process talks to its kernel.
+
+  | PyTCP API | Plane | Linux equivalent |
+  |-----------|-------|------------------|
+  | BSD-style `socket()` factory + methods | Data | `socket(2)` |
+  | `pytcp.stack.sysctl` registry | Protocol-policy control | `/proc/sys/net/` |
+  | Link API (interface up/down/MTU/MAC) | Link control | `ip link` / RTNETLINK `RTM_NEWLINK` |
+  | Address API (assign / remove IPv4 / IPv6 host per interface) | Network-layer control | `ip addr` / `RTM_NEWADDR` |
+  | Route API (add / remove / list routes, gateways) | Routing control | `ip route` / `RTM_NEWROUTE` |
+  | Neighbor API (permanent / static ARP & ND entries; cache flush) | Neighbor control | `ip neighbor` / `RTM_NEWNEIGH` |
+  | Introspection API (read-only route table, neighbor cache, socket list, per-interface counters) | State observation | `/proc/net/route`, `/proc/net/arp`, `ss`, `/proc/net/dev` |
 
 Design decisions made in Phase 1 must not foreclose Phase 2. Concretely:
 
@@ -19,6 +30,16 @@ Design decisions made in Phase 1 must not foreclose Phase 2. Concretely:
 - **Parse extension headers / options as full typed objects, not opaque blobs**, even when the host has no semantic use for them — Phase 2 needs to forward them faithfully (RH preservation, HBH walking, etc.).
 - **Per-destination routing state must be representable** in the eventual data model. Single-gateway shortcuts are tolerated as Phase 1 simplifications; they should be marked with a `# Phase 2: ...` comment so the upgrade path is greppable.
 - **Hop-Limit / TTL handling, ICMP error rate-limiting, embedded-data preservation** — already wired host-side, designed once with forwarding in mind.
+
+Design decisions made in Phase 1 / Phase 2 must not foreclose Phase 3. Concretely:
+
+- **Every new user-observable knob lands on one of the sanctioned APIs.** Socket option, socket method, sysctl entry, or one of the link / address / route / neighbor / introspection APIs above. Never as a direct attribute on a `PacketHandler` / `TcpStack` / `NdCache` instance that consumers are expected to read or write.
+- **No "userspace" reach-through to stack internals.** Consumers MUST NOT import from `pytcp.stack.packet_handler.*`, `pytcp.protocols.tcp.tcp__session`, or any other implementation-detail module. If a piece of state needs to be visible outside the stack, expose it through `getsockopt` / `setsockopt`, a sysctl, or one of the dedicated control APIs (link / address / route / neighbor / introspection). Mark Phase-1/2 reach-throughs in tests with `# Phase 3: ...` so the cleanup path is greppable.
+- **Configuration mutations go through the API for their plane.** Address changes go through the address API, not `packet_handler._ip6_host.append(...)`. Route changes go through the route API, not `Ip4Host.gateway = ...`. Sysctl changes go through `sysctl_module.override(...)` or `pytcp.stack.sysctl["key"] = value`, not direct module-attribute assignment. Each plane's API is the boundary; the underlying attribute is implementation.
+- **State introspection is read-only and copy-by-value.** Route-table / neighbor-cache / socket-list / packet-counter accessors return immutable snapshots, never live references the caller could mutate. The Linux equivalent is `/proc/net/*` text — readable, never writable by reading.
+- **Stack lifecycle is its own API surface.** `stack.init()` / `stack.shutdown()` (and the `mock__init` test affordance) are the boundary; treat them like `clone(2)` / `exit(2)` rather than ordinary function calls. Adding a new stack-wide singleton means extending that boundary, not piggy-backing on import-time module state.
+- **The socket factory's `__new__` dispatch is the user/kernel transition.** Keep it dumb — argument validation, family / type / proto match, allocate the per-flavour socket object. Putting protocol logic in the factory pulls Phase-3 work into the wrong layer.
+- **Asymmetric data path / control path is fine.** The data path stays per-socket and high-throughput; the control APIs are coarse-grained, low-frequency, and OK with full-table copies on each call. Don't conflate the performance budgets — Linux makes the same split between `sendmsg(2)` and netlink.
 
 Conformance precedence:
 
@@ -34,7 +55,11 @@ Explicit non-goals (out of scope regardless of phase):
 - Mobility extensions (MIPv6, NEMO, RH2 mobility processing)
 - Userspace routing protocols (BGP, OSPF, RIP — these belong outside the stack)
 
-Feature triage uses this north star: a gap that exists in PyTCP but not in Linux as host (Phase 1) or router (Phase 2) is on-list. Phase-2 items are tracked but deferrable; Phase-1 items are not.
+Feature triage uses this north star:
+
+- A gap that exists in PyTCP but not in Linux as host (Phase 1) or router (Phase 2) is on-list.
+- A consumer surface that bypasses the socket / sysctl boundary (Phase 3) is on-list — even if functionally correct today.
+- Phase-1 items are not deferrable; Phase-2 and Phase-3 items are tracked but deferrable. Phase-3 cleanups land naturally as code touches the boundary; resist large dedicated sweeps.
 
 ## Commands
 
