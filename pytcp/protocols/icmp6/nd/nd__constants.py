@@ -144,6 +144,18 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# Interval (seconds) between RFC 8981 temporary-address
+# sweeps. The PacketHandler subsystem loop wakes up at
+# least this often to inspect '_icmp6_temp_addresses' and
+# remove entries whose 'valid_until' deadline has passed.
+# Default 60 seconds — a balance between cleanup latency
+# and per-tick overhead. Linux drives the equivalent via
+# 'addr_chk_timer'; the value isn't directly user-tunable
+# in the kernel, but PyTCP exposes it for test runs that
+# want a tighter sweep interval. Must be > 0 (a zero
+# interval would tight-loop).
+ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S = 60
+
 # RFC 7217 §6 IDGEN_RETRIES — the host re-derives the
 # Interface Identifier and retries DAD up to this many times
 # on collision before giving up. RFC 7217 §6 specifies 3 as
@@ -366,6 +378,19 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _temp_addr_sweep_interval_s_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive
+    values. A zero-interval sweep would tight-loop the
+    subsystem; a negative interval is meaningless.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"sysctl 'icmp6.temp_addr_sweep_interval_s' must be a positive int; got {value!r}",
+        )
+
+
 def _idgen_retries_validator(value: Any) -> None:
     """
     Reject non-integer values, booleans, and negatives. Zero
@@ -574,6 +599,18 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.temp_addr_sweep_interval_s",
+    module_name=__name__,
+    attr="ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S",
+    default=ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S,
+    validator=_temp_addr_sweep_interval_s_validator,
+    description=(
+        "Interval (seconds) between RFC 8981 temporary-address "
+        "sweeps; default 60. Removes entries past 'valid_until' "
+        "from both the temp-address table and '_ip6_host'."
     ),
 )
 register(

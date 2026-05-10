@@ -898,7 +898,45 @@ Four new knobs, Linux-parity defaults:
   typoed `temp_prefered_lft`.
 - `icmp6.max_desync_factor_s` — default 600 (10 minutes).
 
-### §18c (deferred) — Regeneration subsystem
+### §18c.1 (shipped) — Temp-address cleanup sweep ✓
+
+The PacketHandler subsystem loop now runs a periodic
+sweep that removes temp addresses past their `valid_until`
+deadline from BOTH `_icmp6_temp_addresses` AND `_ip6_host`
+(the hot list the RX dispatch and TX source-address
+selection walk directly). Sweep cadence is gated by the
+new `icmp6.temp_addr_sweep_interval_s` sysctl (default 60
+seconds). The lazy accessor `get_icmp6_temp_addresses()`
+already filtered expired entries at read time, but
+`_ip6_host` was never pruned — leaving the host
+sourcing/receiving on addresses past their valid lifetime.
+
+Implementation:
+
+* New `_icmp6_sweep_temp_addresses()` method on
+  `PacketHandler` base. Best-effort removal: the address
+  may already be absent from `_ip6_host` (manual operator
+  action) and the solicited-node multicast may already be
+  unjoined; both are tolerated.
+* `_maybe_run_periodic_tasks()` helper rate-limits sweep
+  invocations via the `_last_temp_addr_sweep_at:
+  float = 0.0` timestamp.
+* Hooked into `PacketHandlerL2._subsystem_loop` after the
+  RX dispatch.
+
+Tests
+(`test__icmp6__nd__temp_addr_sweep.py`, 9 cases):
+- Sysctl registered with default 60; rejects 0,
+  negatives, booleans.
+- Sweep removes expired entries from
+  `_icmp6_temp_addresses`.
+- Sweep removes expired entries from `_ip6_host`.
+- Sweep preserves non-expired entries.
+- Sweep is no-op when no entries are expired.
+- Sweep does not touch non-temp `_ip6_host` entries
+  (e.g. stable SLAAC).
+
+### §18c.2 (deferred) — Regeneration subsystem
 
 Background thread rotates the temp address before its
 preferred lifetime expires (RFC 8981 §3.4 regeneration cycle,

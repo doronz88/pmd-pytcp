@@ -745,6 +745,53 @@ class PacketHandler(Subsystem, ABC):
         now = time.monotonic()
         return [t for t in self._icmp6_temp_addresses if t.valid_until > now]
 
+    def _icmp6_sweep_temp_addresses(self) -> None:
+        """
+        Remove temporary addresses whose 'valid_until'
+        deadline has passed from BOTH '_icmp6_temp_addresses'
+        AND '_ip6_host'. The lazy accessor
+        ('get_icmp6_temp_addresses') already filters out
+        expired entries at read time, but '_ip6_host' is the
+        hot list that the RX dispatch and TX source-address
+        selection both walk directly — leaving expired
+        entries there would mean the host kept receiving on
+        and sourcing from addresses whose valid lifetime has
+        elapsed.
+
+        Invoked periodically from the subsystem loop, rate-
+        limited by 'icmp6.temp_addr_sweep_interval_s'.
+
+        Reference: RFC 8981 §3.4 (expired temp address must
+                                  not be used for new traffic).
+        """
+
+        now = time.monotonic()
+        expired = [t for t in self._icmp6_temp_addresses if t.valid_until <= now]
+        if not expired:
+            return
+
+        for entry in expired:
+            __debug__ and log(
+                "stack",
+                f"<INFO>RFC 8981 sweep: temp address {entry.address} "
+                f"(prefix {entry.prefix}) past valid_until — removing</>",
+            )
+            # Drop from '_ip6_host'. The address may already
+            # be absent (e.g. if a manual operator action
+            # removed it). The solicited-node multicast may
+            # already be absent too (manual cleanup, never
+            # joined). Both are tolerated — best-effort.
+            for ip6_host in list(self._ip6_host):
+                if ip6_host.address == entry.address:
+                    self._ip6_host.remove(ip6_host)
+                    snm = ip6_host.address.solicited_node_multicast
+                    if snm in self._ip6_multicast:
+                        self._remove_ip6_multicast(snm)
+                    break
+
+        # Drop from the temp-address table.
+        self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
+
     def get_icmp6_default_router_for_destination(
         self,
         *,
@@ -1109,6 +1156,13 @@ class PacketHandlerL2(
         # like '_icmp6_slaac_addresses'.
         self._icmp6_temp_addresses: list[Icmp6TempAddress] = []
 
+        # RFC 8981 §3.4 sweep timestamp — '_subsystem_loop'
+        # rate-limits sweep invocations via this monotonic
+        # timestamp. Initialised to 0.0 so the first iteration
+        # of the loop runs the sweep immediately (which is
+        # cheap on an empty table).
+        self._last_temp_addr_sweep_at: float = 0.0
+
         # RFC 4861 §6.3.4 RA-header parameter mirror —
         # Cur-Hop-Limit, Reachable Time, Retrans Timer values
         # observed from the most recent RA carrying a non-zero
@@ -1125,6 +1179,8 @@ class PacketHandlerL2(
     def _subsystem_loop(self) -> None:
         """
         Pick up incoming packets from RX Ring and processes them.
+        Also runs periodic housekeeping (RFC 8981 temp-address
+        sweep) rate-limited by 'icmp6.temp_addr_sweep_interval_s'.
         """
 
         from pytcp.stack import rx_ring
@@ -1134,6 +1190,24 @@ class PacketHandlerL2(
                 self._phrx_ethernet_802_3(packet_rx)
             else:
                 self._phrx_ethernet(packet_rx)
+
+        self._maybe_run_periodic_tasks()
+
+    def _maybe_run_periodic_tasks(self) -> None:
+        """
+        Run periodic housekeeping tasks at most once per
+        'icmp6.temp_addr_sweep_interval_s' seconds. Today this
+        is just the RFC 8981 temp-address sweep; future
+        background work (§18c.2 regen, NUD ageing) can land
+        here too.
+        """
+
+        now = time.monotonic()
+        interval = nd__constants.ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S
+        if now - self._last_temp_addr_sweep_at < interval:
+            return
+        self._last_temp_addr_sweep_at = now
+        self._icmp6_sweep_temp_addresses()
 
     def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:
         """
