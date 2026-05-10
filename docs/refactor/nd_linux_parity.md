@@ -953,6 +953,67 @@ Doc-only edit. Shipped.
 
 ---
 
+## §20.2 — Random initial DAD probe delay (RFC 4862 §5.4.2) ✓
+
+**Shipped.** `_perform_ip6_nd_dad` now sleeps for a uniform
+random duration in `[0, MAX_RTR_SOLICITATION_DELAY)` before
+the first DAD probe, alleviating fleet-wide synchronisation
+when many hosts boot at the same instant. The ceiling is
+the new `icmp6.max_rtr_solicitation_delay_ms` sysctl,
+default 1000 ms (RFC 4861 §10
+`MAX_RTR_SOLICITATION_DELAY = 1 second`). Setting the
+sysctl to 0 disables the delay (kill switch — useful for
+low-latency boot environments where the operator accepts
+the synchronisation risk).
+
+### Implementation
+
+* New `ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000`
+  constant in `nd__constants.py` + sysctl with non-negative
+  int validator.
+* `_perform_ip6_nd_dad` adds
+  `time.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))`
+  immediately after per-address slot setup but BEFORE the
+  multicast join (matching the RFC's "delay joining the
+  solicited-node multicast" wording). The strict and
+  optimistic paths both pay the delay.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_initial_delay.py`:
+- Sysctl registered with default 1000; validator accepts
+  0 (kill switch); rejects negatives and booleans.
+- `_perform_ip6_nd_dad` calls `time.sleep` exactly once
+  before the probe loop with duration in
+  `[0, max_rtr_solicitation_delay_ms / 1000.0)`.
+- Sysctl-zero suppresses the call entirely.
+- Custom ceiling (e.g. 200 ms) caps the delay correctly.
+
+The test suite runtime grew from ~40 s to ~47 s because
+the default 1 s delay applies on each
+`_perform_ip6_nd_dad` call across ~10 DAD-direct tests.
+This is acceptable and matches Linux's behaviour; tests
+that want to skip the delay can wrap the call in
+`sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0)`.
+
+### What this closes
+
+This was one of three behaviour gaps surfaced by the
+§20.1 refactor:
+
+- **§20.2 (this) — Random initial probe delay** ✓
+- §20.3 — DAD-failure retry with `dad_counter` increment
+  (RFC 7217 §6, RFC 8981 §3.3.3) — still owed.
+- §20.4 — `accept_dad` sysctl modes 0/1/2 — still owed.
+
+### RFC reference
+
+RFC 4862 §5.4.2 (delay before joining solicited-node
+multicast / before first probe).
+RFC 4861 §10 (MAX_RTR_SOLICITATION_DELAY = 1 second).
+
+---
+
 ## §20.1 — Async per-address DAD refactor (Tier 5 plumbing) ✓
 
 **Shipped.** Replaced the single-in-flight DAD model

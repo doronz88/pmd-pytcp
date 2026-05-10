@@ -1179,6 +1179,17 @@ class PacketHandlerL2(
         # Default to TENTATIVE; the Optimistic-DAD wrapper
         # promotes this to OPTIMISTIC before invoking us.
         self._icmp6_dad__states.setdefault(ip6_unicast_candidate, Icmp6DadState.TENTATIVE)
+
+        # RFC 4862 §5.4.2 — random initial delay before the
+        # first DAD probe to alleviate fleet-wide
+        # synchronisation when many hosts boot at the same
+        # instant. Ceiling is 'icmp6.max_rtr_solicitation_delay_ms'
+        # (default 1000 ms = RFC 4861 §10). Setting the sysctl
+        # to 0 disables.
+        max_initial_delay_ms = nd__constants.ICMP6__MAX_RTR_SOLICITATION_DELAY_MS
+        if max_initial_delay_ms > 0:
+            time.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
+
         # The optimistic wrapper has already joined the
         # solicited-node multicast group via '_assign_ip6_host';
         # in the strict path the multicast must be joined here

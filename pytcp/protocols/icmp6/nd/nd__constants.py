@@ -144,6 +144,18 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# RFC 4861 §10 MAX_RTR_SOLICITATION_DELAY — the upper bound
+# on the random initial delay before the first DAD probe (RFC
+# 4862 §5.4.2) and the first Router Solicitation (RFC 4861
+# §6.3.7). The host SHOULD wait a uniform random duration in
+# [0, MAX_RTR_SOLICITATION_DELAY) before transmitting either
+# message; this alleviates fleet-wide synchronisation when
+# many hosts boot at the same instant. Default 1000 ms (1 s)
+# per RFC 4861 §10. A value of 0 disables the delay entirely
+# (kill switch — useful for low-latency boot environments
+# where the operator accepts the synchronisation risk).
+ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000
+
 # Linux net.ipv6.conf.<iface>.use_tempaddr policy. Controls
 # whether RFC 8981 temporary addresses are generated alongside
 # the stable SLAAC address for each admitted PI. Tristate
@@ -327,6 +339,19 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _max_rtr_solicitation_delay_ms_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero
+    is admitted (kill switch — disables the random initial
+    delay).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(
+            f"sysctl 'icmp6.max_rtr_solicitation_delay_ms' must be a non-negative int; got {value!r}",
+        )
+
+
 def _use_tempaddr_validator(value: object) -> None:
     """
     Reject values outside {0, 1, 2}. Booleans are rejected
@@ -499,6 +524,19 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.max_rtr_solicitation_delay_ms",
+    module_name=__name__,
+    attr="ICMP6__MAX_RTR_SOLICITATION_DELAY_MS",
+    default=ICMP6__MAX_RTR_SOLICITATION_DELAY_MS,
+    validator=_max_rtr_solicitation_delay_ms_validator,
+    description=(
+        "RFC 4861 §10 MAX_RTR_SOLICITATION_DELAY — random "
+        "initial delay ceiling for the first DAD probe (RFC "
+        "4862 §5.4.2) and first RS (RFC 4861 §6.3.7); default "
+        "1000 ms. 0 disables the delay (kill switch)."
     ),
 )
 register(
