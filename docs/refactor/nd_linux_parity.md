@@ -49,6 +49,7 @@ Companion documents:
 | **§11 default-router list with Router Lifetime** | `Icmp6DefaultRouter(address, lifetime, expires_at)` dataclass + per-RA `_update_icmp6_default_router` mutator + lazy-aged `get_icmp6_default_routers()` accessor; `icmp6.accept_ra_defrtr` sysctl gates the path; new RX counters `update_router` / `remove_router` / `defrtr__drop`. Prf field deferred to §14 | RFC 4861 §6.3.4 |
 | **§12a SLAAC per-address lifetime tracking** | `Icmp6SlaacAddress(address, prefix, preferred_until, valid_until)` dataclass + per-PI `_update_icmp6_slaac_address` mutator + lazy-aged `get_icmp6_slaac_addresses()` accessor; EUI-64 address derivation; `icmp6.accept_ra_pinfo` sysctl gates the path; new RX counters `pi__update_address` / `pi__remove_address` / `pi__pinfo_disabled__drop` | RFC 4862 §5.5.3 |
 | **§12b SLAAC per-address state machine + 2-hour rule** | `Icmp6SlaacAddressState` enum (`PREFERRED`/`DEPRECATED`) computed lazily from `time.monotonic()`; `get_icmp6_slaac_address_state(prefix=...)` accessor; (e)(6) 2-hour rule clamps refresh on existing entries (cases a/b/c); new RX counter `pi__2hour_rule_ignored__drop`. RFC 6724 source-address-selection consumer deferred to §12c | RFC 4862 §5.5.3 (e)(6), §5.5.4 |
+| **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -530,29 +531,82 @@ Linux: `net/ipv6/addrconf.c::addrconf_prefix_rcv`,
 
 ---
 
-## §13 — Tier 3: Cur-Hop-Limit / ReachableTime / RetransTimer from RA (RFC 4861 §6.3.4) ✗
+## §13 — Tier 3: Cur-Hop-Limit / ReachableTime / RetransTimer from RA (RFC 4861 §6.3.4) ✓ (mirror) / ⚠ (consumers)
 
-These three fields in the RA header tell the host what
-defaults to use. PyTCP ignores all three.
+### §13a (shipped) — Wire-state mirror ✓
 
-### Implementation sketch
+`Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)`
+frozen dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`;
+the host's snapshot lives on `PacketHandler._icmp6_ra_parameters`,
+initialised to all-None. RA RX
+(`__phrx_icmp6__nd_router_advertisement`) calls
+`_update_icmp6_ra_parameters(cur_hop_limit=..., reachable_time_ms=..., retrans_timer_ms=...)`
+on every admitted RA. RFC 4861 §4.2 reserves field value 0 as
+"unspecified by this router" — zero advertisements MUST NOT
+overwrite a previously-captured value, and the helper enforces
+this invariant per-field.
 
-1. `Cur-Hop-Limit` → write through to the IPv6 TX hop-limit
-   default (gated by §9's `icmp6.accept_ra_hop_limit`
-   sysctl).
-2. `Reachable Time` → set `neighbor.reachable_time`
-   sysctl (within sane bounds; clamp).
-3. `Retrans Timer` → set `neighbor.retrans_timer` sysctl.
+The Cur-Hop-Limit field is additionally floored by the
+`icmp6.accept_ra_min_hop_limit` Linux-parity sysctl (default 1).
+Values strictly below the floor are silently dropped and bump
+`cur_hop_limit__floor__drop`. Public lazy accessor
+`get_icmp6_ra_parameters()` exposes the snapshot.
 
-Trivial wire-format work; the gates are policy.
+Four new RX counters: `cur_hop_limit__update`,
+`cur_hop_limit__floor__drop`, `reachable_time__update`,
+`retrans_timer__update`.
+
+### §13b (deferred) — Consumer integration
+
+Three TX-/NUD-/DAD-side consumers will fall back to the captured
+mirror values when set, otherwise to operator-configured sysctl
+defaults:
+
+- **TX hop limit**: outbound IPv6 frames from the stack pick up
+  `cur_hop_limit` when set, else the existing per-call default
+  (currently 64 hardcoded in `Ip6Assembler`).
+- **NUD reachable time**: the ND cache's REACHABLE-state timeout
+  reads `reachable_time_ms` when set, else
+  `pytcp.lib.neighbor__constants.NEIGHBOR__REACHABLE_TIME_MS`.
+- **DAD retrans pacing**: `_perform_ip6_nd_dad` reads
+  `retrans_timer_ms` when set, else `icmp6.retrans_timer_ms`
+  sysctl (Phase 2 — currently always reads the sysctl).
+
+These wirings are deferred because the consumers' current code
+paths bypass the mirror — adding them is its own grain of work.
+The wire-state pin is the foundation each consumer rests on.
+
+### Sysctl
+
+`icmp6.accept_ra_min_hop_limit` registered with default 1 (Linux
+host default; 0 accepts any advertised Hop Limit).
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py`:
+- `initial_state_all_none` — fresh handler exposes None values.
+- `cur_hop_limit_nonzero_stored` — captured into mirror.
+- `cur_hop_limit_zero_does_not_overwrite` — RFC 4861 §4.2 unspecified.
+- `cur_hop_limit_below_floor_dropped` — sysctl floor enforced.
+- `cur_hop_limit_at_floor_accepted` — ≥ semantics.
+- `reachable_time_nonzero_stored` — captured into mirror.
+- `reachable_time_zero_does_not_overwrite` — unspecified.
+- `retrans_timer_nonzero_stored` — captured into mirror.
+- `retrans_timer_zero_does_not_overwrite` — unspecified.
+- `all_three_fields_bump_distinct_counters` — counters
+  independent.
 
 ### Effort
 
-Small — ~50 lines + tests.
+§13a — Small — ~70 lines + integration tests.
+§13b — Small per-consumer; ~3 individual grain-sized commits.
 
 ### RFC reference
 
-RFC 4861 §6.3.4.
+RFC 4861 §6.3.4 (RA processing — host parameter copy), §4.2
+(zero is "unspecified by this router"). Linux:
+`net/ipv6/ndisc.c::ndisc_router_discovery`,
+`net.ipv6.conf.<iface>.accept_ra_min_hop_limit`.
 
 ---
 

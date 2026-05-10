@@ -106,3 +106,23 @@ class Icmp6SlaacAddress:
         if now >= self.preferred_until:
             return Icmp6SlaacAddressState.DEPRECATED
         return Icmp6SlaacAddressState.PREFERRED
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6RaParameters:
+    """
+    Host-parameter values learned from RA-header fields per
+    RFC 4861 §6.3.4. Each field is None until the host has
+    observed at least one RA carrying a non-zero advertisement
+    of that field — RFC 4861 §4.2 reserves zero as "unspecified
+    by this router" so a zero advertisement must not overwrite
+    a previously-captured value.
+
+    Phase 2: TX-side / NUD / DAD consumers will fall back to
+    these values when set, otherwise to the operator-configured
+    sysctl defaults.
+    """
+
+    cur_hop_limit: int | None
+    reachable_time_ms: int | None
+    retrans_timer_ms: int | None

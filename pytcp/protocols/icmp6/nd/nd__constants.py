@@ -103,6 +103,15 @@ ICMP6__ACCEPT_RA_PINFO = 1
 # Linux exposes no knob for it (RFC compliance).
 ICMP6__SLAAC__TWO_HOUR_RULE_S = 7200
 
+# Linux net.ipv6.conf.<iface>.accept_ra_min_hop_limit policy.
+# Floors the Cur-Hop-Limit values that PyTCP will accept from
+# inbound RAs (RFC 4861 §6.3.4). Values strictly below this
+# threshold are dropped — a defense against routers that
+# advertise pathologically low Hop Limits which would cause
+# legitimate destinations to become unreachable. Linux's
+# default is 1.
+ICMP6__ACCEPT_RA_MIN_HOP_LIMIT = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -164,6 +173,20 @@ def _accept_ra_pinfo_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.accept_ra_pinfo' must be 0 or 1; got {value!r}")
 
 
+def _accept_ra_min_hop_limit_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and out-of-range
+    values — Cur-Hop-Limit is an 8-bit unsigned field, so the
+    floor must fit in [0, 255]. Zero accepts any advertised
+    Hop Limit.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+        raise ValueError(
+            f"sysctl 'icmp6.accept_ra_min_hop_limit' must be an int in [0, 255]; got {value!r}",
+        )
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -215,5 +238,16 @@ register(
     validator=_accept_ra_pinfo_validator,
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_pinfo' " "(0 = drop PI consumption; 1 = process RFC 4862 §5.5.3)."
+    ),
+)
+register(
+    key="icmp6.accept_ra_min_hop_limit",
+    module_name=__name__,
+    attr="ICMP6__ACCEPT_RA_MIN_HOP_LIMIT",
+    default=ICMP6__ACCEPT_RA_MIN_HOP_LIMIT,
+    validator=_accept_ra_min_hop_limit_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.accept_ra_min_hop_limit' "
+        "(floor for accepting Cur-Hop-Limit; 0 accepts any value)."
     ),
 )

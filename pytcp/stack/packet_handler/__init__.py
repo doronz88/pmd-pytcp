@@ -65,6 +65,7 @@ from pytcp.protocols.arp.arp__constants import (
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6DefaultRouter,
+    Icmp6RaParameters,
     Icmp6SlaacAddress,
     Icmp6SlaacAddressState,
 )
@@ -123,6 +124,7 @@ class PacketHandler(Subsystem, ABC):
     _mac_unicast: MacAddress
     _icmp6_default_routers: list[Icmp6DefaultRouter]
     _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
+    _icmp6_ra_parameters: Icmp6RaParameters
 
     @override
     def __init__(
@@ -593,6 +595,58 @@ class PacketHandler(Subsystem, ABC):
             return None
         return entry.state(now)
 
+    def _update_icmp6_ra_parameters(
+        self,
+        *,
+        cur_hop_limit: int,
+        reachable_time_ms: int,
+        retrans_timer_ms: int,
+    ) -> None:
+        """
+        Apply the three RA-header host-parameter fields to
+        '_icmp6_ra_parameters' per RFC 4861 §6.3.4. Each field
+        with value 0 is "unspecified by this router" per §4.2
+        and MUST NOT overwrite the existing host value. The
+        Cur-Hop-Limit advertisement is additionally floored by
+        'icmp6.accept_ra_min_hop_limit' (Linux parity).
+        """
+
+        prior = self._icmp6_ra_parameters
+        new_hop = prior.cur_hop_limit
+        new_reach = prior.reachable_time_ms
+        new_retrans = prior.retrans_timer_ms
+
+        if cur_hop_limit > 0:
+            if cur_hop_limit >= nd__constants.ICMP6__ACCEPT_RA_MIN_HOP_LIMIT:
+                new_hop = cur_hop_limit
+                self._packet_stats_rx.icmp6__nd_router_advertisement__cur_hop_limit__update += 1
+            else:
+                self._packet_stats_rx.icmp6__nd_router_advertisement__cur_hop_limit__floor__drop += 1
+
+        if reachable_time_ms > 0:
+            new_reach = reachable_time_ms
+            self._packet_stats_rx.icmp6__nd_router_advertisement__reachable_time__update += 1
+
+        if retrans_timer_ms > 0:
+            new_retrans = retrans_timer_ms
+            self._packet_stats_rx.icmp6__nd_router_advertisement__retrans_timer__update += 1
+
+        self._icmp6_ra_parameters = Icmp6RaParameters(
+            cur_hop_limit=new_hop,
+            reachable_time_ms=new_reach,
+            retrans_timer_ms=new_retrans,
+        )
+
+    def get_icmp6_ra_parameters(self) -> Icmp6RaParameters:
+        """
+        Get the most recent RA-header parameter snapshot per
+        RFC 4861 §6.3.4. Each field is None until the host has
+        observed at least one RA carrying a non-zero (and floor-
+        passing) advertisement of that field.
+        """
+
+        return self._icmp6_ra_parameters
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -725,6 +779,18 @@ class PacketHandlerL2(
         # lazily from the deadlines per §5.5.4. Same lazy-ageing
         # pattern as the default-router list above.
         self._icmp6_slaac_addresses: list[Icmp6SlaacAddress] = []
+
+        # RFC 4861 §6.3.4 RA-header parameter mirror —
+        # Cur-Hop-Limit, Reachable Time, Retrans Timer values
+        # observed from the most recent RA carrying a non-zero
+        # advertisement of each field. Phase 2: TX / NUD / DAD
+        # consumers will fall back to these when set, otherwise
+        # to operator-configured sysctl defaults.
+        self._icmp6_ra_parameters: Icmp6RaParameters = Icmp6RaParameters(
+            cur_hop_limit=None,
+            reachable_time_ms=None,
+            retrans_timer_ms=None,
+        )
 
     @override
     def _subsystem_loop(self) -> None:

@@ -128,6 +128,14 @@ class PacketHandlerIcmp6Rx(ABC):
             preferred_lifetime: int,
         ) -> None: ...
 
+        def _update_icmp6_ra_parameters(
+            self,
+            *,
+            cur_hop_limit: int,
+            reachable_time_ms: int,
+            retrans_timer_ms: int,
+        ) -> None: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -800,6 +808,15 @@ class PacketHandlerIcmp6Rx(ABC):
             )
         else:
             self._packet_stats_rx.icmp6__nd_router_advertisement__defrtr__drop += 1
+
+        # RFC 4861 §6.3.4 host-parameter mirror — Cur-Hop-Limit /
+        # Reachable Time / Retrans Timer. Always processed; field
+        # value 0 ("unspecified") preserves the prior host value.
+        self._update_icmp6_ra_parameters(
+            cur_hop_limit=packet_rx.icmp6.message.hop,
+            reachable_time_ms=packet_rx.icmp6.message.reachable_time,
+            retrans_timer_ms=packet_rx.icmp6.message.retrans_timer,
+        )
 
     def __phrx_icmp6__nd_neighbor_solicitation(self, packet_rx: PacketRx) -> None:
         """
