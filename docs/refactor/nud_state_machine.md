@@ -496,7 +496,7 @@ before any code:
   1. CLAUDE.md (Project North Star)
   2. .claude/rules/feature_implementation.md (tests-first MUST)
   3. .claude/rules/unit_testing.md (test conventions)
-  4. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` (source authoring;
+  4. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` (source authoring;
      §6.1 sysctl pattern applies to NUD timing constants)
   5. .claude/skills/sysctl_knob/SKILL.md (NUD timing
      constants register through this workflow)

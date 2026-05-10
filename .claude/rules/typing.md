@@ -1198,11 +1198,11 @@ same commit:
   pre-commit checklist gates `make lint` (mypy strict).
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming).
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   the dataclass shape (`frozen=True, kw_only=True,
   slots=True`), parser / assembler / error-class patterns
   rely on the typing rules in this file.
-- [`stack_runtime.md`](stack_runtime.md) — the `Subsystem`
+- [`pytcp.md`](pytcp.md) — the `Subsystem`
   base and packet-handler mixin composition that consume
   PEP 695 generics and `@override`.
 - mypy strict configuration: see `pyproject.toml`.

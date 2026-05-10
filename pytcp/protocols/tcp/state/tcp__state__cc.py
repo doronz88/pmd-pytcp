@@ -44,7 +44,7 @@ shuffles.
 Mutability mirrors 'HyStartState' in 'tcp__hystart.py': '@dataclass(
 slots=True)' rather than 'frozen=True' because CC state evolves on
 every cum-ACK and every RTO. The frozen-protocol-header convention
-from 'protocol_architecture.md' §2 applies to wire-format dataclasses,
+from 'net_proto.md' §2 applies to wire-format dataclasses,
 not session state.
 
 pytcp/protocols/tcp/state/tcp__state__cc.py

@@ -18,7 +18,7 @@ A fresh agent picking this up MUST read, in order:
 4. `.claude/rules/unit_testing.md` — full test-authoring rule
    including the §7.2 self-audit script (BLOCKER — non-negotiable
    before every commit).
-5. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` — source authoring rule
+5. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` — source authoring rule
    (file skeleton, license block, dataclass conventions, six-file
    per-protocol layout).
 6. `docs/refactor/icmp_demux_pmtud_plan.md` — the precedent plan
@@ -1117,7 +1117,7 @@ Read these in order before any code:
      rule)
   4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script is non-negotiable per commit)
-  5. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` (source-authoring rule;
+  5. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` (source-authoring rule;
      six-file per-protocol layout; license block; dataclass
      conventions)
   6. docs/refactor/icmp_demux_pmtud_plan.md (precedent plan

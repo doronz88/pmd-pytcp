@@ -778,11 +778,11 @@ When refactoring legacy code that pre-dates this rule:
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming,
   formatting).
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   PyTCP protocol patterns that consume these features
   (six-file layout, dataclass shape, parser three-phase
   pipeline, assembler PEP 695 generic stacking).
-- [`stack_runtime.md`](stack_runtime.md) — `Subsystem`,
+- [`pytcp.md`](pytcp.md) — `Subsystem`,
   packet handlers, sysctls.
 - CPython "What's New" pages — authoritative source for
   per-version feature inventories:

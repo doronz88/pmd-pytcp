@@ -10,12 +10,12 @@ subpackages (`net_addr/`, `net_proto/`, `pytcp/`). Two
 companion rules layer protocol- and runtime-specific
 conventions on top:
 
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   the per-protocol six-file pattern (`*Header` /
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`) plus options, enums, dataclass shape, validation
   helpers, error templates, buffer/struct conventions.
-- [`stack_runtime.md`](stack_runtime.md) — the `pytcp/`
+- [`pytcp.md`](pytcp.md) — the `pytcp/`
   runtime: `Subsystem`, packet-handler mixins, BSD socket
   facade, sysctl registry, stack configuration.
 
@@ -225,7 +225,7 @@ rule is named in parentheses.
   use," add it when the future arrives.
 
 - **Constants-module imports go at module top, not
-  function-local.** See [`stack_runtime.md`](stack_runtime.md)
+  function-local.** See [`pytcp.md`](pytcp.md)
   §2 for the sysctl-backed-constants access pattern.
   Function-local imports re-execute import machinery on every
   call AND defer the constants module's registration
@@ -262,7 +262,7 @@ rule is named in parentheses.
   - **Property accessors on `*HeaderProperties`**: exactly
     `Get the <PROTO> header '<field>' field.` — don't
     paraphrase. See
-    [`protocol_architecture.md`](protocol_architecture.md)
+    [`net_proto.md`](net_proto.md)
     §6 for the full property-mixin pattern.
 - Module docstrings follow §4 exactly (description + path +
   `ver`).
@@ -331,7 +331,7 @@ operator are in [`python_features.md`](python_features.md)
   covers structure.
 - Exceptions — write a comment only when it earns its keep:
   1. **RFC packet diagrams** above module constants (see
-     [`protocol_architecture.md`](protocol_architecture.md) §3).
+     [`net_proto.md`](net_proto.md) §3).
   2. **RFC citations** on constants whose value needs a
      source (`# Minimum recommended MSS (RFC 879).`).
   3. **Non-obvious workarounds**, especially when bypassing
@@ -352,8 +352,8 @@ operator are in [`python_features.md`](python_features.md)
 
 General source-file anti-patterns. Protocol-architecture and
 stack-runtime anti-patterns live in
-[`protocol_architecture.md`](protocol_architecture.md) §17
-and [`stack_runtime.md`](stack_runtime.md) §6. Language and
+[`net_proto.md`](net_proto.md) §17
+and [`pytcp.md`](pytcp.md) §6. Language and
 typing anti-patterns live in
 [`python_features.md`](python_features.md) §22 and
 [`typing.md`](typing.md) §23.
@@ -379,7 +379,7 @@ typing anti-patterns live in
   inside a hot loop method.** The import goes at module top;
   function-local hides registration timing and re-executes
   import machinery on every loop tick. See
-  [`stack_runtime.md`](stack_runtime.md) §2 for the
+  [`pytcp.md`](pytcp.md) §2 for the
   qualified-module-access pattern.
 - **Missing module / class / method docstring.** Every
   module, class, and method has one. Use the triple-quoted
@@ -387,10 +387,10 @@ typing anti-patterns live in
 
 ## 11. Cross-references
 
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   per-protocol six-file pattern, dataclass shape, validation
   helpers, error templates, buffer/struct conventions.
-- [`stack_runtime.md`](stack_runtime.md) — `Subsystem`,
+- [`pytcp.md`](pytcp.md) — `Subsystem`,
   packet handlers, sockets, sysctl framework, stack
   configuration.
 - [`python_features.md`](python_features.md) — Python

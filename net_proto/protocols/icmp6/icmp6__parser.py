@@ -176,7 +176,7 @@ class Icmp6Parser(Icmp6, ProtoParser):
         packet handler's standard 'PacketValidationError'
         catch path drops the frame instead of crashing the RX
         subsystem. Mirrors the codebase pattern documented at
-        protocol_architecture.md §7 (DHCP4's from_buffer wrapping).
+        net_proto.md §7 (DHCP4's from_buffer wrapping).
         """
 
         try:

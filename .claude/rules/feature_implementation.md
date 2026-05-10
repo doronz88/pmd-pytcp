@@ -23,12 +23,12 @@ rule references:
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, module
   docstring, imports, naming, formatting, inline comments).
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   `net_proto/` per-protocol six-file layout (`*Header` /
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`), options, enums, validation helpers, error
   templates, buffer/struct conventions.
-- [`stack_runtime.md`](stack_runtime.md) — `pytcp/` runtime
+- [`pytcp.md`](pytcp.md) — `pytcp/` runtime
   services (`Subsystem`, packet-handler mixins, BSD socket
   facade, sysctl registry, stack configuration).
 
@@ -213,9 +213,9 @@ Once the failing tests are in place:
    imports, naming, formatting per
    [`source_files.md`](source_files.md); the per-protocol
    six-file layout + dataclass shape per
-   [`protocol_architecture.md`](protocol_architecture.md);
+   [`net_proto.md`](net_proto.md);
    the `Subsystem` / packet-handler / socket / sysctl
-   patterns per [`stack_runtime.md`](stack_runtime.md).
+   patterns per [`pytcp.md`](pytcp.md).
 6. Verify the originally-failing tests now pass and the
    full suite still passes (`make validate`).
 
@@ -354,13 +354,13 @@ pinned before.
   copyright block, module docstring, imports, naming,
   formatting, inline comments, source docstrings.
 - Protocol authoring (under `net_proto/protocols/`):
-  [`protocol_architecture.md`](protocol_architecture.md) —
+  [`net_proto.md`](net_proto.md) —
   the per-protocol six-file layout, dataclass shape,
   parser three-phase pipeline, assembler kw-only ctor,
   error / options / enums patterns, validation helpers,
   error message templates, buffer / struct conventions.
 - Stack-runtime authoring (under `pytcp/`):
-  [`stack_runtime.md`](stack_runtime.md) — `Subsystem`
+  [`pytcp.md`](pytcp.md) — `Subsystem`
   base, packet-handler mixin composition, BSD socket
   facade, sysctl registry, stack configuration.
 - Per-RFC adherence audits:

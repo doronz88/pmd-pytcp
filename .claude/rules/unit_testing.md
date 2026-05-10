@@ -1372,8 +1372,8 @@ novel patterns introduced in a new file.
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions. Test files share the file-skeleton,
   copyright-block, and module-docstring conventions.
-- [`protocol_architecture.md`](protocol_architecture.md) and
-  [`stack_runtime.md`](stack_runtime.md) — what the SUT is
+- [`net_proto.md`](net_proto.md) and
+  [`pytcp.md`](pytcp.md) — what the SUT is
   shaped like for `net_proto/` and `pytcp/` respectively;
   read these when writing tests for the corresponding
   source files.

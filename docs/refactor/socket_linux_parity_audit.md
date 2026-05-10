@@ -764,7 +764,7 @@ Read these in order before any code:
      discipline; tests-first; Linux-as-tiebreaker rule)
   4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script blocks every commit)
-  5. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` (source-authoring rule)
+  5. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` (source-authoring rule)
   6. The current pytcp/socket/ tree
 
 After reading, confirm you understand:

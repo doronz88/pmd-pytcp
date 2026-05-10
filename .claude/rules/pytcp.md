@@ -5,7 +5,7 @@ services are authored: the `Subsystem` base class, packet
 handlers, the BSD-socket facade, the sysctl registry, and
 stack-wide configuration. It complements
 [`source_files.md`](source_files.md) (general file mechanics)
-and [`protocol_architecture.md`](protocol_architecture.md)
+and [`net_proto.md`](net_proto.md)
 (per-protocol packet authoring under `net_proto/`).
 
 The Project North Star's Phase 3 (kernel/userspace boundary —
@@ -26,7 +26,7 @@ double-underscore segments encoding hierarchy:
 
 Struct format strings, when needed by stack code, are also
 defined as module constants — never inlined — per
-[`protocol_architecture.md`](protocol_architecture.md) §11.
+[`net_proto.md`](net_proto.md) §11.
 
 ## 2. Runtime-tunable constants (sysctls)
 
@@ -239,7 +239,7 @@ without exercising the real init.
 Stack-runtime anti-patterns. General source-file
 anti-patterns live in [`source_files.md`](source_files.md)
 §10; protocol-authoring anti-patterns live in
-[`protocol_architecture.md`](protocol_architecture.md) §17.
+[`net_proto.md`](net_proto.md) §17.
 
 - **Creating a subsystem without extending `Subsystem`** —
   ad-hoc threading in `pytcp/` is a red flag. Background
@@ -280,7 +280,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, module
   docstring, imports, naming, formatting).
-- [`protocol_architecture.md`](protocol_architecture.md) —
+- [`net_proto.md`](net_proto.md) —
   per-protocol six-file pattern under `net_proto/`.
 - [`python_features.md`](python_features.md) — Python
   3.10–3.14 features and forbidden pre-3.10 fallbacks.

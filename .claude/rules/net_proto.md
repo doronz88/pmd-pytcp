@@ -1,4 +1,4 @@
-# PyTCP — Protocol Architecture Rule
+# PyTCP — `net_proto/` Authoring Rule
 
 This rule codifies the architecture of every protocol family
 under `net_proto/protocols/<proto>/`: the per-protocol
@@ -8,19 +8,15 @@ protocols, enums, dataclass shape, validation helpers, error
 message templates, and the buffer / struct conventions every
 header packs and unpacks against.
 
-It complements [`source_files.md`](source_files.md) (the
-general file-mechanics rule) and
-[`stack_runtime.md`](stack_runtime.md) (the `pytcp/` runtime
-services). When in doubt about a generic question (file
-skeleton, imports, naming), look in `source_files.md`. When
-the question is about a protocol header / parser / assembler,
-this is the rule.
+It complements [`source_files.md`](source_files.md) (general
+file mechanics applied to every subpackage) and the two
+sibling subpackage rules — [`net_addr.md`](net_addr.md) for
+the value-type library `net_addr/` and
+[`pytcp.md`](pytcp.md) for the runtime services in `pytcp/`.
 
-The `net_addr/` package does **not** follow this layout — it
-is a pure value-type library (address classes, masks, hosts).
-If you add code there, mirror existing modules like
-`net_addr/address.py`; the file-mechanics rule applies but
-this rule does not.
+The `net_addr/` package does **not** follow the six-file
+protocol layout — it is a pure value-type library. See
+[`net_addr.md`](net_addr.md) for its authoring rules.
 
 ---
 
@@ -649,7 +645,7 @@ file.
 Protocol-architecture anti-patterns. General source-file
 anti-patterns live in [`source_files.md`](source_files.md)
 §10; stack-runtime anti-patterns live in
-[`stack_runtime.md`](stack_runtime.md) §7. Language /
+[`pytcp.md`](pytcp.md) §7. Language /
 typing anti-patterns live in
 [`python_features.md`](python_features.md) §22 and
 [`typing.md`](typing.md) §23.
@@ -707,7 +703,7 @@ typing anti-patterns live in
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, imports,
   naming, formatting).
-- [`stack_runtime.md`](stack_runtime.md) — `pytcp/` runtime
+- [`pytcp.md`](pytcp.md) — `pytcp/` runtime
   services (`Subsystem`, packet handlers, sockets, sysctls).
 - [`python_features.md`](python_features.md) — modern Python
   features (PEP 604 / 585 / 695 / 696 / 698 / 649) consumed
