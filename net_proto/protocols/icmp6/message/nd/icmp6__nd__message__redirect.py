@@ -195,9 +195,13 @@ class Icmp6NdMessageRedirect(Icmp6NdMessage):
     def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
         """
         Ensure sanity of the ICMPv6 ND Redirect message after parsing it.
-        Implements the RFC 4861 §8.1 acceptance gates: Hop Limit MUST
-        be 255, IP Source Address MUST be the link-local address of
-        the redirecting router.
+        Implements the parse-time RFC 4861 §8.1 acceptance gates:
+        Hop Limit MUST be 255, IP Source Address MUST be the link-
+        local address of the redirecting router, and the ICMP
+        Destination Address field MUST NOT be a multicast address.
+        Runtime gates that need stack state (sender-is-first-hop-
+        router, accept_redirects sysctl, target acceptability) are
+        enforced at the RX-handler level.
         """
 
         if ip6__hop != 255:
@@ -208,6 +212,12 @@ class Icmp6NdMessageRedirect(Icmp6NdMessage):
         if not ip6__src.is_link_local:
             raise Icmp6SanityError(
                 f"ND Redirect - [RFC 4861] The 'ip6__src' address must be link-local. Got: {ip6__src!r}",
+            )
+
+        if self.destination_address.is_multicast:
+            raise Icmp6SanityError(
+                "ND Redirect - [RFC 4861] The 'destination_address' field must not "
+                f"be multicast. Got: {self.destination_address!r}",
             )
 
     @override

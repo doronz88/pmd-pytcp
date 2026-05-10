@@ -345,6 +345,7 @@ def init(
     from pytcp.lib import neighbor__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.lib import sysctl as sysctl_module
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
+    from pytcp.protocols.icmp6.nd import nd__constants  # noqa: F401  pylint: disable=unused-import
 
     if sysctls is not None:
         for key, value in sysctls.items():

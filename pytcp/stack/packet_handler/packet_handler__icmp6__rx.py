@@ -43,6 +43,7 @@ from net_proto import (
     Icmp6MessageTimeExceeded,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
+    Icmp6NdMessageRedirect,
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
@@ -56,6 +57,7 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
+from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
@@ -135,6 +137,7 @@ class PacketHandlerIcmp6Rx(ABC):
             Icmp6Type.ND__ROUTER_ADVERTISEMENT,
             Icmp6Type.ND__NEIGHBOR_SOLICITATION,
             Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
+            Icmp6Type.ND__REDIRECT,
         }:
             self._packet_stats_rx.icmp6__nd_message__fragmented__drop += 1
             __debug__ and log(
@@ -165,6 +168,8 @@ class PacketHandlerIcmp6Rx(ABC):
                 self.__phrx_icmp6__nd_neighbor_solicitation(packet_rx)
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
                 self.__phrx_icmp6__nd_neighbor_advertisement(packet_rx)
+            case Icmp6Type.ND__REDIRECT:
+                self.__phrx_icmp6__nd_redirect(packet_rx)
             case Icmp6Type.MLD2__REPORT:
                 self.__phrx_icmp6__mld2_report(packet_rx)
             case _:
@@ -836,6 +841,69 @@ class PacketHandlerIcmp6Rx(ABC):
                 mac_address=packet_rx.icmp6.message.option_tlla,
             )
             return
+
+    def __phrx_icmp6__nd_redirect(self, packet_rx: PacketRx) -> None:
+        """
+        Handle inbound ICMPv6 ND Redirect packets (RFC 4861 §8).
+
+        The ICMPv6 parser's 'validate_sanity' already enforced the
+        parse-time §8.1 gates (Hop Limit = 255, source link-local,
+        Destination Address not multicast). This handler enforces
+        the runtime-state §8.1 gates plus the §8.3 conceptual-
+        data-structure update:
+
+          1. 'icmp6.accept_redirects' sysctl gate (Linux parity).
+          2. ICMP Target Address MUST be link-local OR equal to
+             ICMP Destination Address (§8.1's "either-or" rule).
+          3. If a TLLA option is present, learn (Target, TLLA)
+             into the neighbour cache (§8.3).
+
+        Phase 2: §8.1's "IP source MUST be the current first-hop
+        router for the specified ICMP Destination Address" check
+        is deferred until the default-router list lands
+        (nd_linux_parity §11). Without router-state tracking the
+        host cannot verify the originator was the actual first-hop
+        for the redirected flow.
+        """
+
+        assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRedirect)
+
+        self._packet_stats_rx.icmp6__nd_redirect += 1
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - Received ICMPv6 Redirect "
+            f"target {packet_rx.icmp6.message.target_address} "
+            f"destination {packet_rx.icmp6.message.destination_address} "
+            f"from {packet_rx.ip6.src}",
+        )
+
+        # 1. 'icmp6.accept_redirects' kill switch.
+        if nd__constants.ICMP6__ACCEPT_REDIRECTS == 0:
+            self._packet_stats_rx.icmp6__nd_redirect__accept_redirects_zero__drop += 1
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - <INFO>icmp6.accept_redirects=0 " f"dropped Redirect</>",
+            )
+            return
+
+        # 2. Target must be link-local or equal to Destination.
+        target = packet_rx.icmp6.message.target_address
+        destination = packet_rx.icmp6.message.destination_address
+        if not target.is_link_local and target != destination:
+            self._packet_stats_rx.icmp6__nd_redirect__bad_target__drop += 1
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - <WARN>Redirect Target {target} is "
+                f"neither link-local nor equal to Destination {destination} "
+                f"— dropping</>",
+            )
+            return
+
+        # 3. §8.3 cache override: learn (Target, TLLA) if option present.
+        tlla = packet_rx.icmp6.message.options.tlla
+        if tlla is not None:
+            self._packet_stats_rx.icmp6__nd_redirect__update_nd_cache += 1
+            stack.nd_cache.add_entry(ip6_address=target, mac_address=tlla)
 
     def __phrx_icmp6__mld2_report(self, packet_rx: PacketRx) -> None:
         """
