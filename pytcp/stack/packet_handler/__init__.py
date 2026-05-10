@@ -65,7 +65,8 @@ from pytcp.protocols.arp.arp__constants import (
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6DefaultRouter,
-    Icmp6SlaacPrefix,
+    Icmp6SlaacAddress,
+    Icmp6SlaacAddressState,
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
@@ -119,8 +120,9 @@ class PacketHandler(Subsystem, ABC):
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
+    _mac_unicast: MacAddress
     _icmp6_default_routers: list[Icmp6DefaultRouter]
-    _icmp6_slaac_prefixes: list[Icmp6SlaacPrefix]
+    _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
 
     @override
     def __init__(
@@ -491,7 +493,7 @@ class PacketHandler(Subsystem, ABC):
         now = time.monotonic()
         return [r for r in self._icmp6_default_routers if r.expires_at > now]
 
-    def _update_icmp6_slaac_prefix(
+    def _update_icmp6_slaac_address(
         self,
         *,
         prefix: Ip6Network,
@@ -500,48 +502,96 @@ class PacketHandler(Subsystem, ABC):
     ) -> None:
         """
         Apply an inbound Prefix-Information option to the SLAAC
-        prefix table per RFC 4862 §5.5.3. A non-zero
+        address table per RFC 4862 §5.5.3. A non-zero
         'valid_lifetime' installs / refreshes the entry; zero
         'valid_lifetime' removes a matching entry (the §5.5.3
         (e)(6)(a) "advertised lifetime overwrites address valid
-        lifetime" rule collapses to removal at value 0). Bumps
-        'pi__update_prefix' / 'pi__remove_prefix' counters only
-        when the table actually changes. Phase 2: §12b will add
-        the (e)(6)(b)/(c) 2-hour-rule clamp.
+        lifetime" rule collapses to removal at value 0). The
+        2-hour rule (e)(6)(b)/(c) clamps refresh on existing
+        entries: an unauthenticated router cannot shorten an
+        address's remaining lifetime below 2 hours unless the
+        existing remaining is already ≤ 2 hours. Bumps
+        'pi__update_address' / 'pi__remove_address' /
+        'pi__2hour_rule_ignored__drop' counters per the path
+        actually taken.
         """
 
         existing = next(
-            (p for p in self._icmp6_slaac_prefixes if p.prefix == prefix),
+            (a for a in self._icmp6_slaac_addresses if a.prefix == prefix),
             None,
         )
 
-        if valid_lifetime > 0:
-            now = time.monotonic()
-            self._icmp6_slaac_prefixes = [p for p in self._icmp6_slaac_prefixes if p.prefix != prefix]
-            self._icmp6_slaac_prefixes.append(
-                Icmp6SlaacPrefix(
-                    prefix=prefix,
-                    preferred_until=now + preferred_lifetime,
-                    valid_until=now + valid_lifetime,
-                ),
-            )
-            self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_prefix += 1
+        if valid_lifetime == 0:
+            if existing is not None:
+                self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
+                self._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_address += 1
             return
 
-        if existing is not None:
-            self._icmp6_slaac_prefixes = [p for p in self._icmp6_slaac_prefixes if p.prefix != prefix]
-            self._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_prefix += 1
+        now = time.monotonic()
 
-    def get_icmp6_slaac_prefixes(self) -> list[Icmp6SlaacPrefix]:
+        # RFC 4862 §5.5.3 (e)(6) 2-hour rule. Only applies on
+        # refresh (existing is not None); first-install bypasses
+        # the safeguard entirely. PyTCP has no SEND support so
+        # case (b) is unconditional.
+        new_valid_lifetime = valid_lifetime
+        if existing is not None:
+            remaining = existing.valid_until - now
+            two_hour_s = nd__constants.ICMP6__SLAAC__TWO_HOUR_RULE_S
+            if valid_lifetime > two_hour_s or valid_lifetime > remaining:
+                new_valid_lifetime = valid_lifetime
+            elif remaining <= two_hour_s:
+                self._packet_stats_rx.icmp6__nd_router_advertisement__pi__2hour_rule_ignored__drop += 1
+                return
+            else:
+                new_valid_lifetime = two_hour_s
+
+        address = Ip6Host.from_eui64(
+            mac_address=self._mac_unicast,
+            ip6_network=prefix,
+        ).address
+
+        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
+        self._icmp6_slaac_addresses.append(
+            Icmp6SlaacAddress(
+                address=address,
+                prefix=prefix,
+                preferred_until=now + preferred_lifetime,
+                valid_until=now + new_valid_lifetime,
+            ),
+        )
+        self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address += 1
+
+    def get_icmp6_slaac_addresses(self) -> list[Icmp6SlaacAddress]:
         """
-        Get the list of currently-active SLAAC prefix entries
+        Get the list of currently-active SLAAC address entries
         per RFC 4862 §5.5.3. Lazy-aged: entries whose
         'valid_until' deadline has passed are filtered out at
         access time instead of removed by a background sweep.
         """
 
         now = time.monotonic()
-        return [p for p in self._icmp6_slaac_prefixes if p.valid_until > now]
+        return [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+
+    def get_icmp6_slaac_address_state(
+        self,
+        *,
+        prefix: Ip6Network,
+    ) -> Icmp6SlaacAddressState | None:
+        """
+        Get the lifecycle state of the SLAAC address derived
+        from the given prefix per RFC 4862 §5.5.4. Returns
+        None when no entry exists or when the entry has been
+        REMOVED (valid_until passed).
+        """
+
+        now = time.monotonic()
+        entry = next(
+            (a for a in self._icmp6_slaac_addresses if a.prefix == prefix),
+            None,
+        )
+        if entry is None:
+            return None
+        return entry.state(now)
 
 
 class PacketHandlerL2(
@@ -668,13 +718,13 @@ class PacketHandlerL2(
         # 'rt6_check_expired' is invoked on demand.
         self._icmp6_default_routers: list[Icmp6DefaultRouter] = []
 
-        # RFC 4862 §5.5.3 SLAAC prefix table — per-prefix
+        # RFC 4862 §5.5.3 SLAAC address table — per-address
         # preferred / valid lifetime state harvested from RA
-        # Prefix-Information options. Same lazy-ageing pattern as
-        # the default-router list above. Phase 2: per-address
-        # state machine (PREFERRED → DEPRECATED → REMOVED) lands
-        # in §12b; this dataclass tracks lifetimes only.
-        self._icmp6_slaac_prefixes: list[Icmp6SlaacPrefix] = []
+        # Prefix-Information options, plus the per-address
+        # lifecycle state (PREFERRED / DEPRECATED) computed
+        # lazily from the deadlines per §5.5.4. Same lazy-ageing
+        # pattern as the default-router list above.
+        self._icmp6_slaac_addresses: list[Icmp6SlaacAddress] = []
 
     @override
     def _subsystem_loop(self) -> None:

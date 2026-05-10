@@ -122,8 +122,8 @@ class _StubHandler(PacketHandlerIcmp6Rx):
     # Stub the SLAAC prefix-table mutator added with the §12a
     # parity work. Same rationale as above — covered by
     # 'pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_prefix_tracking.py'.
-    def _update_icmp6_slaac_prefix(self, **kwargs: object) -> None:
-        self.icmp6_tx_calls.append({"_update_icmp6_slaac_prefix": kwargs})
+    def _update_icmp6_slaac_address(self, **kwargs: object) -> None:
+        self.icmp6_tx_calls.append({"_update_icmp6_slaac_address": kwargs})
 
 
 def _packet_rx_from_ip6_icmp6(ip6_frame: bytes) -> PacketRx:

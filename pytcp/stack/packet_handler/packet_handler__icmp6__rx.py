@@ -120,7 +120,7 @@ class PacketHandlerIcmp6Rx(ABC):
             router_lifetime: int,
         ) -> None: ...
 
-        def _update_icmp6_slaac_prefix(
+        def _update_icmp6_slaac_address(
             self,
             *,
             prefix: Ip6Network,
@@ -777,7 +777,7 @@ class PacketHandlerIcmp6Rx(ABC):
             # '_icmp6_ra__prefixes' below; the new table tracks
             # lifetimes for §12b state-machine work.
             if accept_pinfo:
-                self._update_icmp6_slaac_prefix(
+                self._update_icmp6_slaac_address(
                     prefix=option.prefix,
                     valid_lifetime=option.valid_lifetime,
                     preferred_lifetime=option.preferred_lifetime,

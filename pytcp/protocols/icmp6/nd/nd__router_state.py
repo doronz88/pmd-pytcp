@@ -25,15 +25,17 @@
 """
 This module contains the IPv6 Neighbor Discovery state PyTCP
 maintains across RA RX events: default-router list (§11) and
-SLAAC per-prefix lifetime tracking (§12a). Mirrors the conceptual
-data structures of RFC 4861 §6.3.4 ('Default Router List') and
-RFC 4862 §5.5.3 ('Address Lifetime' state).
+SLAAC per-address lifetime + state-machine tracking (§12a/b).
+Mirrors the conceptual data structures of RFC 4861 §6.3.4
+('Default Router List') and RFC 4862 §5.5.3 / §5.5.4 (SLAAC
+address-lifetime state).
 
-Future Tier-3 phases will grow this module with the per-address
-state machine (§12b: PREFERRED → DEPRECATED → REMOVED), the
-RA-header mirror state (§13: cur-hop-limit / reachable-time /
-retrans-timer), and the Prf field on Icmp6DefaultRouter once §14
-lands the RA-header parser extension.
+Future Tier-3 phases will grow this module with the RA-header
+mirror state (§13: cur-hop-limit / reachable-time / retrans-timer)
+and the Prf field on Icmp6DefaultRouter once §14 lands the
+RA-header parser extension. RFC 6724 source-address-selection
+integration (the consumer of the per-address state machine) is a
+separate phase tracked outside §12.
 
 pytcp/protocols/icmp6/nd/nd__router_state.py
 
@@ -41,6 +43,7 @@ ver 3.0.4
 """
 
 from dataclasses import dataclass
+from enum import Enum
 
 from net_addr import Ip6Address, Ip6Network
 
@@ -59,17 +62,47 @@ class Icmp6DefaultRouter:
     expires_at: float
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class Icmp6SlaacPrefix:
+class Icmp6SlaacAddressState(Enum):
     """
-    A single SLAAC-eligible prefix learned from an RA's
-    Prefix-Information option per RFC 4862 §5.5.3. Both
-    deadlines are 'time.monotonic()' offsets of the advertised
-    Valid / Preferred Lifetime values; the accessor on the
-    packet handler filters out entries whose 'valid_until' has
-    passed (lazy ageing).
+    The lifecycle phase of an SLAAC-derived address per
+    RFC 4862 §5.5.4. PREFERRED is the steady state during
+    preferred_lifetime; DEPRECATED is the post-preferred but
+    pre-valid window where the address is usable for established
+    flows but should not be selected for new ones (RFC 6724 source-
+    address selection consumes this distinction). REMOVED is
+    represented in PyTCP by the absence of the entry from the
+    accessor — there is no explicit 'REMOVED' member.
     """
 
+    PREFERRED = "PREFERRED"
+    DEPRECATED = "DEPRECATED"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6SlaacAddress:
+    """
+    A single SLAAC-derived address learned from an RA's Prefix-
+    Information option per RFC 4862 §5.5.3. 'address' is the
+    EUI-64-derived host address; 'prefix' is the on-link prefix
+    the address came from. Both deadlines are 'time.monotonic()'
+    offsets of the advertised Valid / Preferred Lifetime values.
+    """
+
+    address: Ip6Address
     prefix: Ip6Network
     preferred_until: float
     valid_until: float
+
+    def state(self, now: float) -> Icmp6SlaacAddressState | None:
+        """
+        Compute the address's lifecycle state at the given
+        'time.monotonic()' value. Returns None when 'now' has
+        crossed valid_until (the entry is REMOVED — accessors
+        filter it out).
+        """
+
+        if now >= self.valid_until:
+            return None
+        if now >= self.preferred_until:
+            return Icmp6SlaacAddressState.DEPRECATED
+        return Icmp6SlaacAddressState.PREFERRED

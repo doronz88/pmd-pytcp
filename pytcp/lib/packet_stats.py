@@ -193,9 +193,10 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_router_advertisement__update_router: int = 0
     icmp6__nd_router_advertisement__remove_router: int = 0
     icmp6__nd_router_advertisement__defrtr__drop: int = 0
-    icmp6__nd_router_advertisement__pi__update_prefix: int = 0
-    icmp6__nd_router_advertisement__pi__remove_prefix: int = 0
+    icmp6__nd_router_advertisement__pi__update_address: int = 0
+    icmp6__nd_router_advertisement__pi__remove_address: int = 0
     icmp6__nd_router_advertisement__pi__pinfo_disabled__drop: int = 0
+    icmp6__nd_router_advertisement__pi__2hour_rule_ignored__drop: int = 0
     icmp6__nd_redirect: int = 0
     icmp6__nd_redirect__update_nd_cache: int = 0
     icmp6__nd_redirect__bad_target__drop: int = 0

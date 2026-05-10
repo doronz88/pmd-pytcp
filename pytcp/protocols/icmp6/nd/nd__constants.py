@@ -93,6 +93,16 @@ ICMP6__ACCEPT_RA_DEFRTR = 1
 #       default).
 ICMP6__ACCEPT_RA_PINFO = 1
 
+# RFC 4862 §5.5.3 (e)(6) 2-hour rule constant. Defends an
+# existing autoconfigured address from a router that advertises
+# a short remaining lifetime: an unauthenticated router cannot
+# shrink an address's valid lifetime below this floor unless
+# the existing remaining is already at or below it. Per spec
+# fixed at 2 hours = 7200 seconds; not user-tunable. Defined
+# here as a protocol invariant rather than a sysctl because
+# Linux exposes no knob for it (RFC compliance).
+ICMP6__SLAAC__TWO_HOUR_RULE_S = 7200
+
 
 def _accept_redirects_validator(value: object) -> None:
     """

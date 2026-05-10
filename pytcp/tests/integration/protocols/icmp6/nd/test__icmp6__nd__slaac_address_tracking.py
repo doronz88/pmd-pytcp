@@ -33,7 +33,7 @@ lifetime tracking — the wire-state half of nd_linux_parity §12.
 PyTCP previously consumed each RA's Prefix-Information options once
 at boot to derive an EUI-64 SLAAC address, then forgot the
 preferred / valid lifetime values. The host now stores a per-prefix
-'Icmp6SlaacPrefix(prefix, preferred_until, valid_until)' entry per
+'Icmp6SlaacAddress(prefix, preferred_until, valid_until)' entry per
 admitted PI option, refreshes it on each subsequent RA, and removes
 it when an inbound PI advertises 'valid_lifetime=0' (RFC 4862
 §5.5.3 (e)(4) / (e)(6)(a) interaction). The full 2-hour rule
@@ -90,7 +90,7 @@ def _pi_option(
 
 class TestIcmp6Nd__SlaacPrefix__Install(NdTestCase):
     """
-    A non-zero-lifetime PI installs an Icmp6SlaacPrefix entry.
+    A non-zero-lifetime PI installs an Icmp6SlaacAddress entry.
     """
 
     def tearDown(self) -> None:
@@ -104,7 +104,7 @@ class TestIcmp6Nd__SlaacPrefix__Install(NdTestCase):
     def test__icmp6__nd__pi__nonzero_lifetimes_install_entry(self) -> None:
         """
         Ensure an admitted PI option with a non-zero valid
-        lifetime installs an Icmp6SlaacPrefix entry whose
+        lifetime installs an Icmp6SlaacAddress entry whose
         deadlines are 'time.monotonic()' offsets of the
         advertised values.
 
@@ -130,7 +130,7 @@ class TestIcmp6Nd__SlaacPrefix__Install(NdTestCase):
 
         self._drive_rx(frame=frame)
 
-        prefixes = self._packet_handler._icmp6_slaac_prefixes
+        prefixes = self._packet_handler._icmp6_slaac_addresses
         self.assertEqual(
             len(prefixes),
             1,
@@ -153,10 +153,10 @@ class TestIcmp6Nd__SlaacPrefix__Install(NdTestCase):
             msg=f"preferred_until must be at least now + advertised preferred_lifetime. Got: {entry!r}",
         )
 
-    def test__icmp6__nd__pi__update_prefix_packet_stats(self) -> None:
+    def test__icmp6__nd__pi__update_address_packet_stats(self) -> None:
         """
         Ensure an admitted non-zero-lifetime PI bumps the
-        'icmp6__nd_router_advertisement__pi__update_prefix'
+        'icmp6__nd_router_advertisement__pi__update_address'
         counter.
 
         Reference: RFC 4862 §5.5.3 (e)(4) (autoconfig install path).
@@ -180,7 +180,7 @@ class TestIcmp6Nd__SlaacPrefix__Install(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertEqual(
-            self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_prefix,
+            self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address,
             1,
             msg="Admitted non-zero-lifetime PI must bump the update_prefix counter.",
         )
@@ -241,7 +241,7 @@ class TestIcmp6Nd__SlaacPrefix__Refresh(NdTestCase):
         before_second = time.monotonic()
         self._drive_rx(frame=second)
 
-        prefixes = self._packet_handler._icmp6_slaac_prefixes
+        prefixes = self._packet_handler._icmp6_slaac_addresses
         self.assertEqual(
             len(prefixes),
             1,
@@ -303,7 +303,7 @@ class TestIcmp6Nd__SlaacPrefix__MultiplePrefixes(NdTestCase):
 
         self._drive_rx(frame=frame)
 
-        prefixes = {entry.prefix for entry in self._packet_handler._icmp6_slaac_prefixes}
+        prefixes = {entry.prefix for entry in self._packet_handler._icmp6_slaac_addresses}
         self.assertEqual(
             prefixes,
             {PREFIX_A, PREFIX_B},
@@ -369,18 +369,18 @@ class TestIcmp6Nd__SlaacPrefix__ZeroValidLifetimeRemoves(NdTestCase):
         )
 
         self.assertEqual(
-            self._packet_handler._icmp6_slaac_prefixes,
+            self._packet_handler._icmp6_slaac_addresses,
             [],
             msg=(
                 "valid_lifetime=0 PI must remove the matching SLAAC entry. "
-                f"Got: {self._packet_handler._icmp6_slaac_prefixes!r}"
+                f"Got: {self._packet_handler._icmp6_slaac_addresses!r}"
             ),
         )
 
     def test__icmp6__nd__pi__valid_lifetime_zero_remove_packet_stats(self) -> None:
         """
         Ensure the zero-lifetime PI invalidation path bumps the
-        'icmp6__nd_router_advertisement__pi__remove_prefix'
+        'icmp6__nd_router_advertisement__pi__remove_address'
         counter when an entry actually existed.
 
         Reference: RFC 4862 §5.5.3 (e)(6)(a) (advertised lifetime overwrites address valid lifetime).
@@ -403,7 +403,7 @@ class TestIcmp6Nd__SlaacPrefix__ZeroValidLifetimeRemoves(NdTestCase):
             ),
         )
 
-        before = self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_prefix
+        before = self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_address
 
         self._drive_rx(
             frame=self._make_nd_ra_frame(
@@ -422,7 +422,7 @@ class TestIcmp6Nd__SlaacPrefix__ZeroValidLifetimeRemoves(NdTestCase):
             ),
         )
 
-        after = self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_prefix
+        after = self._packet_handler._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_address
         self.assertEqual(
             after - before,
             1,
@@ -432,7 +432,7 @@ class TestIcmp6Nd__SlaacPrefix__ZeroValidLifetimeRemoves(NdTestCase):
 
 class TestIcmp6Nd__SlaacPrefix__LazyAgeing(NdTestCase):
     """
-    The accessor 'get_icmp6_slaac_prefixes' filters out entries past
+    The accessor 'get_icmp6_slaac_addresses' filters out entries past
     their valid_until deadline.
     """
 
@@ -446,7 +446,7 @@ class TestIcmp6Nd__SlaacPrefix__LazyAgeing(NdTestCase):
 
     def test__icmp6__nd__slaac_prefixes__expired_filtered(self) -> None:
         """
-        Ensure 'get_icmp6_slaac_prefixes()' omits entries whose
+        Ensure 'get_icmp6_slaac_addresses()' omits entries whose
         valid_until is in the past — lazy ageing, no background
         sweep needed.
 
@@ -479,7 +479,7 @@ class TestIcmp6Nd__SlaacPrefix__LazyAgeing(NdTestCase):
             "pytcp.stack.packet_handler.time.monotonic",
             return_value=2000.0 + 121,
         ):
-            active = self._packet_handler.get_icmp6_slaac_prefixes()
+            active = self._packet_handler.get_icmp6_slaac_addresses()
 
         self.assertEqual(
             active,
@@ -529,11 +529,11 @@ class TestIcmp6Nd__SlaacPrefix__SysctlAcceptRaPinfo(NdTestCase):
             )
 
         self.assertEqual(
-            self._packet_handler._icmp6_slaac_prefixes,
+            self._packet_handler._icmp6_slaac_addresses,
             [],
             msg=(
                 "accept_ra_pinfo=0 must suppress SLAAC entry installation. "
-                f"Got: {self._packet_handler._icmp6_slaac_prefixes!r}"
+                f"Got: {self._packet_handler._icmp6_slaac_addresses!r}"
             ),
         )
         self.assertEqual(
@@ -587,11 +587,11 @@ class TestIcmp6Nd__SlaacPrefix__IndependentFromRouterLifetime(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertEqual(
-            len(self._packet_handler._icmp6_slaac_prefixes),
+            len(self._packet_handler._icmp6_slaac_addresses),
             1,
             msg=(
                 "PI must be consumed even when router_lifetime=0. "
-                f"Got: {self._packet_handler._icmp6_slaac_prefixes!r}"
+                f"Got: {self._packet_handler._icmp6_slaac_addresses!r}"
             ),
         )
         self.assertEqual(
