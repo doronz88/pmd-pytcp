@@ -85,6 +85,7 @@ class _StubHandler(PacketHandlerIcmp6Tx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip6_host = [STACK__IP6_HOST]
         self._ip6_multicast = ip6_multicast if ip6_multicast is not None else []
+        self._icmp6_dad__states = {}
 
         self.ip6_tx_calls: list[dict[str, object]] = []
         self.ip6_tx_status: TxStatus = TxStatus.PASSED__ETHERNET__TO_TX_RING

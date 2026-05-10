@@ -118,6 +118,26 @@ class Icmp6SlaacAddress:
         return Icmp6SlaacAddressState.PREFERRED
 
 
+class Icmp6DadState(Enum):
+    """
+    The per-address Duplicate Address Detection state. TENTATIVE
+    is the strict RFC 4862 §5.4 lifecycle phase: the address is
+    not in '_ip6_host' yet, and DAD probes are in flight.
+    OPTIMISTIC (RFC 4429 §3.1) is the relaxed lifecycle phase the
+    'icmp6.optimistic_dad' sysctl unlocks: the address is already
+    in '_ip6_host' and usable as outbound source, but Neighbor
+    Advertisements emitted while OPTIMISTIC clear the Override
+    flag per §3.3 so peers do not overwrite a possibly-existing
+    cache entry on the basis of an unverified address. VALID is
+    the steady state. Failed DAD removes the entry (no FAILED
+    member — accessors filter it out).
+    """
+
+    TENTATIVE = "TENTATIVE"
+    OPTIMISTIC = "OPTIMISTIC"
+    VALID = "VALID"
+
+
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6RaParameters:
     """

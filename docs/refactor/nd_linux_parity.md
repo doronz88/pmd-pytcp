@@ -26,7 +26,7 @@ Companion documents:
 
 ---
 
-## §0 Status snapshot (2026-05-09)
+## §0 Status snapshot (2026-05-10)
 
 ### ✅ Shipped (already in tree)
 
@@ -53,6 +53,7 @@ Companion documents:
 | **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
 | **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
+| **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_host` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -923,26 +924,94 @@ Doc-only edit. Shipped.
 
 ---
 
-## §20 — Tier 5: Optimistic DAD (RFC 4429) ✗
+## §20 — Tier 5: Optimistic DAD (RFC 4429) ✓
 
-Lets the host begin **using** the tentative address
-immediately (subject to restrictions) rather than waiting
-for DAD to complete. Linux supports it via
-`optimistic_dad = 1`.
+**Shipped.** PyTCP supports RFC 4429 Optimistic DAD on the
+address-claim path, gated by the `icmp6.optimistic_dad`
+sysctl (default 0, Linux parity). When the sysctl is 1
+the candidate address is installed into `_ip6_host` as
+OPTIMISTIC *before* the DAD probe sequence begins; the
+address is usable as outbound source for the duration of
+the wait. NAs emitted while the address is OPTIMISTIC
+clear the Override (O) flag per §3.3 step 5 so peers do
+not overwrite an existing cache entry on the basis of an
+unverified address. On DAD success the per-address state
+transitions to VALID; on collision the address is removed
+from `_ip6_host` and the per-address state cleared.
 
-### Implementation sketch
+### Implementation
 
-1. New address state OPTIMISTIC alongside TENTATIVE / VALID.
-2. Outbound path admits OPTIMISTIC addresses for sending
-   (with the Override flag clear in any NA emission, per
-   RFC 4429 §3.3).
-3. DAD result transitions OPTIMISTIC → VALID on success or
-   tears down on conflict.
+* New `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` /
+  `VALID`) on `pytcp/protocols/icmp6/nd/nd__router_state.py`.
+  Failed DAD removes the entry — no `FAILED` member.
+* Per-address state map
+  `_icmp6_dad__states: dict[Ip6Address, Icmp6DadState]` on
+  `PacketHandler` base. Public accessor
+  `get_icmp6_dad_state(address)` returns `None` when no DAD
+  activity has been recorded.
+* `_perform_ip6_nd_dad` now records state at every
+  transition: defaults to `TENTATIVE` on entry; on success
+  promotes to `VALID` *before* the gratuitous NA fires (so
+  RFC 9131 §3 announcement carries Override=1 unmolested);
+  on collision the entry is dropped from the state map.
+* `_perform_ip6_nd_dad` skips the multicast-join when the
+  solicited-node group is already joined — the optimistic
+  wrapper joins it via `_assign_ip6_host` before invoking
+  the DAD function, avoiding a duplicate entry.
+* New `_claim_ip6_address_optimistic(ip6_host=)` helper:
+  marks the address `OPTIMISTIC`, calls `_assign_ip6_host`
+  to install it into `_ip6_host`, then runs DAD; on
+  collision rolls back via `_remove_ip6_host`.
+* `_create_stack_ip6_addressing` dispatches to the
+  optimistic wrapper when `icmp6.optimistic_dad == 1`,
+  else to the strict path (assign-on-success).
+* `send_icmp6_neighbor_advertisement` consults
+  `_icmp6_dad__states[ip6__src]`; if `OPTIMISTIC`, the
+  Override flag is forcibly cleared regardless of the
+  caller-requested value.
+
+### Sysctl
+
+`icmp6.optimistic_dad` registered with default 0 (Linux
+host parity; RFC 8504 §6.3 marks RFC 4429 as optional /
+MAY for general-purpose devices). Setting 1 enables the
+pre-claim and Override-flag suppression. Validator
+rejects values outside `{0, 1}` and explicit `bool`
+arguments.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`:
+- Sysctl registration + validator (`default=0`, rejects
+  `2`, rejects `True`).
+- `get_icmp6_dad_state` returns `None` for unknown
+  addresses.
+- Synchronous-DAD state lifecycle: state goes
+  `TENTATIVE → VALID` on success; cleared on collision.
+- Optimistic-DAD pre-claim: address is in `_ip6_host` and
+  `OPTIMISTIC` *during* the DAD wait; transitions to
+  `VALID` on success; removed on collision.
+- NA Override-flag clearing: differential test driving a
+  DAD-form NS into the RX path — when the target is
+  `OPTIMISTIC` the emitted NA has `flag_o=False` even
+  though the RX handler requested `True`; when `VALID` the
+  flag is preserved.
+- Sysctl-off path: address is NOT pre-claimed; state is
+  `TENTATIVE` during the wait (regression check on the
+  strict RFC 4862 §5.4 path).
+
+### Adherence
+
+`docs/rfc/icmp6/rfc4429__optimistic_dad/adherence.md`
+flipped from "deferred stub" to a full audit covering
+§3.1 / §3.2 / §3.3 / §3.4 / §4 mechanism inventory plus
+the test matrix above.
 
 ### Effort
 
-Medium — ~120 lines + integration tests. Couples with §11
-and §12.
+Shipped in ~150 LOC + integration tests. The strict and
+optimistic paths share `_perform_ip6_nd_dad`; the
+boot-loop dispatch is a single `if` on the sysctl.
 
 ### RFC reference
 
@@ -1264,7 +1333,7 @@ Every adherence record under `docs/rfc/icmp6/`:
 | 3810 | MLDv2 | stub (host-listener role shipped; querier Phase 2) | §26 |
 | 4191 | Default Router Preferences | stub | §14 (parse Prf), §11 (router list) |
 | 4311 | Host-to-router load sharing | stub | §24 |
-| 4429 | Optimistic DAD | stub | §20 |
+| 4429 | Optimistic DAD | shipped | §20 |
 | 4443 | ICMPv6 base | stub | (already shipped; refresh after Tier 2) |
 | 4861 | IPv6 ND | stub | §1, §5, §7, §10, §11, §13 |
 | 4862 | SLAAC | stub | §8, §10, §12, §17, §18 |

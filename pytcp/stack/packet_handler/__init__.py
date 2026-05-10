@@ -65,6 +65,7 @@ from pytcp.protocols.arp.arp__constants import (
 )
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
+    Icmp6DadState,
     Icmp6DefaultRouter,
     Icmp6RaParameters,
     Icmp6SlaacAddress,
@@ -127,6 +128,7 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
     _icmp6_slaac__secret_key: bytes
     _icmp6_ra_parameters: Icmp6RaParameters
+    _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
 
     @override
     def __init__(
@@ -183,6 +185,12 @@ class PacketHandler(Subsystem, ABC):
 
         # Used for IPv4 and IPv6 address configuration.
         self._ip_configuration_in_progress: Semaphore = threading.Semaphore(0)
+
+        # RFC 4429 §3.1 Optimistic DAD per-address state map.
+        # Populated by the DAD-claim path; consulted by the NA
+        # emit path to clear the Override flag on outbound NAs
+        # whose source is in OPTIMISTIC state per §3.3.
+        self._icmp6_dad__states: dict[Ip6Address, Icmp6DadState] = {}
 
         # Assign IP addresses statically.
         if ip6_host is not None:
@@ -673,6 +681,19 @@ class PacketHandler(Subsystem, ABC):
         # router (the accessor returns the list pre-sorted).
         return active_routers[0]
 
+    def get_icmp6_dad_state(self, *, address: Ip6Address) -> Icmp6DadState | None:
+        """
+        Get the per-address Duplicate Address Detection state
+        (RFC 4862 §5.4 + RFC 4429 §3.1). Returns None when no
+        DAD activity has been recorded for 'address' — either
+        the host never started DAD on it or DAD failed and the
+        entry was cleaned up. The NA emit path consults this
+        accessor to clear the Override flag for OPTIMISTIC
+        sources per RFC 4429 §3.3.
+        """
+
+        return self._icmp6_dad__states.get(address)
+
     def get_icmp6_slaac_address_state(
         self,
         *,
@@ -1000,6 +1021,15 @@ class PacketHandlerL2(
         further probing — the host MUST NOT continue once a
         duplicate has been signaled. 'dad_transmits = 0'
         disables DAD entirely (Linux parity).
+
+        The candidate's per-address DAD state is recorded in
+        '_icmp6_dad__states' for the duration of the call:
+        TENTATIVE while probes are in flight, VALID on success,
+        and removed from the map on conflict. The Optimistic-DAD
+        helper '_claim_ip6_address_optimistic' overrides the
+        TENTATIVE entry with OPTIMISTIC before invoking us so the
+        NA emit path consulting the state map sees the relaxed
+        Override-flag rule per RFC 4429 §3.3.
         """
 
         __debug__ and log(
@@ -1009,7 +1039,17 @@ class PacketHandlerL2(
 
         self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
         self._icmp6_nd_dad__nonces.clear()
-        self._assign_ip6_multicast(ip6_multicast=ip6_unicast_candidate.solicited_node_multicast)
+        # Default to TENTATIVE; the Optimistic-DAD wrapper
+        # promotes this to OPTIMISTIC before invoking us.
+        self._icmp6_dad__states.setdefault(ip6_unicast_candidate, Icmp6DadState.TENTATIVE)
+        # The optimistic wrapper has already joined the
+        # solicited-node multicast group via '_assign_ip6_host';
+        # in the strict path the multicast must be joined here
+        # so DAD probes can be received back from peers.
+        solicited_node = ip6_unicast_candidate.solicited_node_multicast
+        joined_for_dad = solicited_node not in self._ip6_multicast
+        if joined_for_dad:
+            self._assign_ip6_multicast(ip6_multicast=solicited_node)
 
         # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
         # supersedes the operator-configured sysctl default. The
@@ -1041,11 +1081,22 @@ class PacketHandlerL2(
                 f"{ip6_unicast_candidate} advertised by "
                 f"{self._icmp6_nd_dad__tlla}</>",
             )
+            # Conflict — drop the per-address state entry; the
+            # caller is responsible for reverting any pre-claim
+            # (Optimistic-DAD wrapper removes the address from
+            # '_ip6_host'; the strict path never assigned it).
+            self._icmp6_dad__states.pop(ip6_unicast_candidate, None)
         else:
             __debug__ and log(
                 "stack",
                 "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
             )
+            # Promote the per-address state to VALID before the
+            # gratuitous NA goes out so the NA emit path's
+            # OPTIMISTIC-source Override-flag suppression no
+            # longer applies (RFC 9131 §3 announcement carries
+            # Override=1 by design, RFC 4429 §3.3 step 5).
+            self._icmp6_dad__states[ip6_unicast_candidate] = Icmp6DadState.VALID
             # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
             # on host attachment so peers preemptively populate
             # their neighbour cache for our newly-claimed
@@ -1054,8 +1105,31 @@ class PacketHandlerL2(
             self.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast_candidate)
 
         self._icmp6_nd_dad__ip6_unicast_candidate = None
-        self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
+        if joined_for_dad:
+            self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
         return not event
+
+    def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6Host) -> bool:
+        """
+        Claim 'ip6_host' using RFC 4429 §3 Optimistic DAD: the
+        address is installed into '_ip6_host' as OPTIMISTIC
+        before the DAD probes are emitted, then the DAD probe
+        loop runs as in the strict path. On success the state
+        is promoted to VALID; on collision the address is
+        removed and the per-address state cleared.
+
+        Returns True on DAD success, False on collision.
+        """
+
+        self._icmp6_dad__states[ip6_host.address] = Icmp6DadState.OPTIMISTIC
+        self._assign_ip6_host(ip6_host=ip6_host)
+        if self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address):
+            return True
+        # Collision: roll back the optimistic assignment. The
+        # per-address state was already cleared inside
+        # '_perform_ip6_nd_dad'.
+        self._remove_ip6_host(ip6_host=ip6_host)
+        return False
 
     @override
     def _create_stack_ip6_addressing(self) -> None:
@@ -1065,10 +1139,14 @@ class PacketHandlerL2(
         """
 
         def _claim_ip6_address(ip6_host: Ip6Host) -> None:
-            if self._perform_ip6_nd_dad(
-                ip6_unicast_candidate=ip6_host.address,
-            ):
-                self._assign_ip6_host(ip6_host=ip6_host)
+            if nd__constants.ICMP6__OPTIMISTIC_DAD == 1:
+                ok = self._claim_ip6_address_optimistic(ip6_host=ip6_host)
+            else:
+                ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address)
+                if ok:
+                    self._assign_ip6_host(ip6_host=ip6_host)
+
+            if ok:
                 __debug__ and log("stack", f"Successfully claimed IPv6 address {ip6_host}")
             else:
                 __debug__ and log(

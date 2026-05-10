@@ -144,6 +144,20 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# Linux net.ipv6.conf.<iface>.optimistic_dad policy. Controls
+# whether RFC 4429 Optimistic DAD is used: when enabled, a
+# tentative address is installed into '_ip6_host' as OPTIMISTIC
+# immediately rather than waiting for DAD to pass. The address
+# is usable as outbound source during the DAD probe period, but
+# Neighbor Advertisements emitted while OPTIMISTIC clear the
+# Override flag per RFC 4429 §3.3 so peers do not overwrite a
+# possibly-existing cache entry on the basis of an unverified
+# address. Default 0 (off) — Linux defaults to 0 too. RFC 8504
+# §6.3 marks the feature as optional / MAY for general-purpose
+# devices; it is primarily a mobility / fast-handover
+# optimisation.
+ICMP6__OPTIMISTIC_DAD = 0
+
 # RFC 7217 stable opaque IIDs — when enabled, SLAAC derives
 # the Interface Identifier via SHA-256(prefix || mac ||
 # dad_counter || secret_key) instead of the legacy EUI-64
@@ -277,6 +291,16 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _optimistic_dad_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected explicitly
+    because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'icmp6.optimistic_dad' must be 0 or 1; got {value!r}")
+
+
 def _use_rfc7217_validator(value: object) -> None:
     """
     Reject values outside {0, 1}. Booleans are rejected explicitly
@@ -389,6 +413,16 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.optimistic_dad",
+    module_name=__name__,
+    attr="ICMP6__OPTIMISTIC_DAD",
+    default=ICMP6__OPTIMISTIC_DAD,
+    validator=_optimistic_dad_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.optimistic_dad' (RFC 4429 §3.1); " "default 0. 1 enables Optimistic DAD."
     ),
 )
 register(

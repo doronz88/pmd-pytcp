@@ -76,11 +76,13 @@ class PacketHandlerIcmp6Tx(ABC):
     if TYPE_CHECKING:
         from net_proto import IP6__DEFAULT_HOP_LIMIT, Ip6Payload, RawAssembler
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
 
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip6_multicast: list[Ip6Address]
         _ip6_host: list[Ip6Host]
+        _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
 
         # pylint: disable=unused-argument
 
@@ -446,7 +448,18 @@ class PacketHandlerIcmp6Tx(ABC):
         flag_s=False. 'include_tlla' attaches the host's MAC
         as a TLLA option — required for solicited replies and
         for gratuitous announcements.
+
+        RFC 4429 §3.3: when 'ip6__src' is currently OPTIMISTIC
+        the Override flag is forcibly cleared regardless of the
+        caller-requested value, so peers do not overwrite an
+        existing cache entry on the basis of an unverified
+        address.
         """
+
+        from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
+
+        if self._icmp6_dad__states.get(ip6__src) is Icmp6DadState.OPTIMISTIC:
+            flag_o = False
 
         options = Icmp6NdOptions(Icmp6NdOptionTlla(tlla=self._mac_unicast)) if include_tlla else Icmp6NdOptions()
 
