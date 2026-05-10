@@ -144,6 +144,18 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# RFC 8981 §3.8 REGEN_ADVANCE — number of seconds before
+# a temporary address's preferred lifetime expires that the
+# host should generate a replacement. The §3.8 formula is
+# 2 + (TEMP_IDGEN_RETRIES * RetransTimer / 1000), which
+# yields ~5 seconds for default DAD parameters
+# (DupAddrDetectTransmits=1, RetransTimer=1000ms,
+# TEMP_IDGEN_RETRIES=3). PyTCP uses 5 as a flat default.
+# Setting to 0 disables advance regeneration (the host
+# regenerates exactly at preferred_until expiry, leaving
+# no overlap window).
+ICMP6__REGEN_ADVANCE_S = 5
+
 # Interval (seconds) between RFC 8981 temporary-address
 # sweeps. The PacketHandler subsystem loop wakes up at
 # least this often to inspect '_icmp6_temp_addresses' and
@@ -378,6 +390,18 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _regen_advance_s_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero
+    is admitted (regen exactly at preferred_until expiry).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(
+            f"sysctl 'icmp6.regen_advance_s' must be a non-negative int; got {value!r}",
+        )
+
+
 def _temp_addr_sweep_interval_s_validator(value: Any) -> None:
     """
     Reject non-integer values, booleans, and non-positive
@@ -599,6 +623,18 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.regen_advance_s",
+    module_name=__name__,
+    attr="ICMP6__REGEN_ADVANCE_S",
+    default=ICMP6__REGEN_ADVANCE_S,
+    validator=_regen_advance_s_validator,
+    description=(
+        "RFC 8981 §3.8 REGEN_ADVANCE — seconds before "
+        "preferred_lifetime expiry that a fresh temp address "
+        "is regenerated; default 5. 0 disables advance regen."
     ),
 )
 register(

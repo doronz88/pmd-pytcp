@@ -792,6 +792,91 @@ class PacketHandler(Subsystem, ABC):
         # Drop from the temp-address table.
         self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
 
+    def _icmp6_regen_temp_addresses(self) -> None:
+        """
+        For each prefix represented in '_icmp6_temp_addresses',
+        check whether the newest entry is approaching its
+        REGEN_ADVANCE threshold (preferred_until - REGEN_ADVANCE
+        <= now). If so, mint a fresh random IID for the same
+        prefix and append it to the table — both the old and
+        new entries coexist during the rotation-overlap window
+        per RFC 8981 §3.4. Skip prefixes where a sibling entry
+        is already past the regen threshold (the regen has
+        already happened).
+
+        No-op when 'icmp6.use_tempaddr=0'.
+
+        Reference: RFC 8981 §3.4 (regenerate REGEN_ADVANCE
+                                  before preferred lifetime
+                                  expires).
+        """
+
+        if nd__constants.ICMP6__USE_TEMPADDR == 0:
+            return
+        if not self._icmp6_temp_addresses:
+            return
+
+        now = time.monotonic()
+        regen_advance_s = nd__constants.ICMP6__REGEN_ADVANCE_S
+
+        # Group entries by prefix; for each prefix, find the
+        # newest 'preferred_until'. If that newest entry is at
+        # or past its regen-advance threshold, regenerate.
+        prefixes_seen: set[Ip6Network] = set()
+        for entry in list(self._icmp6_temp_addresses):
+            prefix = entry.prefix
+            if prefix in prefixes_seen:
+                continue
+            prefixes_seen.add(prefix)
+
+            siblings = [t for t in self._icmp6_temp_addresses if t.prefix == prefix]
+            newest = max(siblings, key=lambda t: t.preferred_until)
+
+            # If the newest is far from the regen threshold,
+            # nothing to do for this prefix.
+            if newest.preferred_until - regen_advance_s > now:
+                continue
+
+            # Mint a fresh random IID for the same prefix.
+            try:
+                temp_host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+            except RuntimeError:
+                continue
+            temp_host.gateway = newest.router_address
+
+            # Append a NEW entry alongside (not replacing) the
+            # existing one. Lifetimes derived from the same
+            # TEMP_*_LIFETIME ceilings as §18b.
+            desync = random.uniform(0, nd__constants.ICMP6__MAX_DESYNC_FACTOR_S)
+            clamped_valid = nd__constants.ICMP6__TEMP_VALID_LIFETIME_S
+            clamped_preferred = max(0.0, nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S - desync)
+
+            self._icmp6_temp_addresses.append(
+                Icmp6TempAddress(
+                    address=temp_host.address,
+                    prefix=prefix,
+                    preferred_until=now + clamped_preferred,
+                    valid_until=now + clamped_valid,
+                    created_at=now,
+                    router_address=newest.router_address,
+                ),
+            )
+
+            # RFC 8981 §3.3.3 regen via §20.3 retry: each retry
+            # mints a fresh random IID.
+            def _regenerate(p: Ip6Network = prefix, ra: Ip6Address = newest.router_address) -> Ip6Host:
+                host = Ip6Host.from_rfc8981_temp(ip6_network=p)
+                host.gateway = ra
+                return host
+
+            __debug__ and log(
+                "stack",
+                f"<INFO>RFC 8981 regen: minting new temp address {temp_host} "
+                f"for prefix {prefix} (existing {newest.address} approaching "
+                "preferred-lifetime expiry)</>",
+            )
+            self._claim_ip6_address_async(ip6_host=temp_host, regenerate=_regenerate)
+
     def get_icmp6_default_router_for_destination(
         self,
         *,
@@ -1196,10 +1281,9 @@ class PacketHandlerL2(
     def _maybe_run_periodic_tasks(self) -> None:
         """
         Run periodic housekeeping tasks at most once per
-        'icmp6.temp_addr_sweep_interval_s' seconds. Today this
-        is just the RFC 8981 temp-address sweep; future
-        background work (§18c.2 regen, NUD ageing) can land
-        here too.
+        'icmp6.temp_addr_sweep_interval_s' seconds. Both the
+        RFC 8981 §3.4 cleanup sweep (§18c.1) and the
+        regen-before-expiry mint (§18c.2) run here.
         """
 
         now = time.monotonic()
@@ -1207,6 +1291,11 @@ class PacketHandlerL2(
         if now - self._last_temp_addr_sweep_at < interval:
             return
         self._last_temp_addr_sweep_at = now
+        # Regen first so freshly-minted entries don't get
+        # sweep-removed by an unlikely valid_until=now race
+        # in the same tick (the cleanup sweep filters strictly
+        # on valid_until <= now).
+        self._icmp6_regen_temp_addresses()
         self._icmp6_sweep_temp_addresses()
 
     def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:

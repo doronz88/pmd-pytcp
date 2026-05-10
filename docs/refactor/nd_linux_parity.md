@@ -936,12 +936,31 @@ Tests
 - Sweep does not touch non-temp `_ip6_host` entries
   (e.g. stable SLAAC).
 
-### §18c.2 (deferred) — Regeneration subsystem
+### §18c.2 (shipped) — Regeneration subsystem ✓
 
-Background thread rotates the temp address before its
-preferred lifetime expires (RFC 8981 §3.4 regeneration cycle,
-with the DESYNC_FACTOR random offset to prevent host-fleet
-synchronisation).
+The temp-address sweep now runs the regen branch first
+each tick: for each prefix in `_icmp6_temp_addresses`,
+find the newest entry; if its `preferred_until -
+REGEN_ADVANCE` has been crossed, mint a fresh random IID
+and append it as a sibling entry (both old and new
+coexist during rotation). Sysctl
+`icmp6.regen_advance_s` (default 5, RFC 8981 §3.8) gates
+the advance window. Skips prefixes where a fresh sibling
+already exists (regen already done).
+
+Implementation: `_icmp6_regen_temp_addresses()` on
+PacketHandler base; called from
+`_maybe_run_periodic_tasks` before
+`_icmp6_sweep_temp_addresses`. Each new entry spawns its
+own DAD claim via `_claim_ip6_address_async` with an
+RFC 8981 regenerator (so collisions retry per §20.3).
+
+Tests
+(`test__icmp6__nd__temp_addr_regen.py`, 9 cases): sysctl
+registration + validator, sysctl=0 no-op, regen creates
+second entry on threshold-crossing, no regen on fresh
+entries, no double-regen when fresh sibling exists,
+multiple prefixes handled independently.
 
 ### §18d (deferred) — RFC 6724 source-address selection consumer
 
