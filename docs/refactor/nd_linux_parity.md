@@ -921,25 +921,50 @@ RFC 7527 §4.
 
 ---
 
-## §22 — Tier 6: RS exponential backoff (RFC 7559) ✗
+## §22 — Tier 6: RS exponential backoff (RFC 7559) ✓
 
-Today PyTCP sends a fixed number of RSs at fixed spacing.
-RFC 7559 prescribes randomised exponential backoff to avoid
-synchronised RS storms when many hosts boot together.
+**Shipped.** PyTCP previously sent a single RS at boot then
+waited a fixed 1 second for an RA — neither the RFC 4861 §6.3.7
+"3 RSs at 4-second spacing" nor RFC 7559 §2 (exponential
+backoff). The host now follows the RFC 7559 algorithm.
 
-### Implementation sketch
+### Implementation
 
-Replace the fixed-interval RS loop with the RFC 7559
-algorithm: start at `RTR_SOLICITATION_INTERVAL` (4 s),
-multiply by 2 each iteration, cap at 3600 s, randomise ±10%.
+`PacketHandlerL2._send_icmp6_nd_router_solicitations_with_backoff()`
+loops up to `icmp6.max_rtr_solicitations` times. Each iteration:
+sends an RS, waits the current RT (with ±10% randomisation),
+then doubles RT (capped at `icmp6.rtr_solicitation_max_rt_ms`).
+Returns early on the first `_icmp6_ra__event.acquire(timeout=)`
+success — i.e. as soon as an RA is observed by the RX handler.
 
-### Effort
+The boot flow at `_create_stack_ip6_addressing()` was updated
+to call the new helper; the previous one-shot `acquire(timeout=1)`
+is gone.
 
-Small — ~30 lines + tests.
+### Sysctls
+
+Three new knobs in `nd__constants.py`:
+
+- `icmp6.rtr_solicitation_interval_ms` (default 4000) —
+  RFC 7559 §2 IRT.
+- `icmp6.rtr_solicitation_max_rt_ms` (default 3600000) —
+  RFC 7559 §2 MRT cap.
+- `icmp6.max_rtr_solicitations` (default 3 per RFC 4861 §6.3.7).
+  A value of 0 is the kill switch — no RS is emitted at all.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`:
+- `no_ra_sends_max_rtr_solicitations` — full loop count.
+- `ra_after_first_rs_stops_loop` — RA short-circuits.
+- `timeouts_double_each_round` — IRT, 2*IRT, 4*IRT (random factor mocked to 0).
+- `timeouts_capped_at_mrt` — clamping kicks in once doubling exceeds MRT.
+- `zero_max_attempts_sends_no_rs` — sysctl kill switch.
 
 ### RFC reference
 
-RFC 7559 §2.
+RFC 4861 §6.3.7 (MAX_RTR_SOLICITATIONS / RTR_SOLICITATION_INTERVAL).
+RFC 7559 §2 (truncated binary exponential backoff).
 
 ---
 

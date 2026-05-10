@@ -112,6 +112,27 @@ ICMP6__SLAAC__TWO_HOUR_RULE_S = 7200
 # default is 1.
 ICMP6__ACCEPT_RA_MIN_HOP_LIMIT = 1
 
+# RFC 4861 §6.3.7 RTR_SOLICITATION_INTERVAL — the initial
+# retransmission timeout for the host's Router Solicitation
+# loop, in milliseconds. RFC 7559 §2 amends this to be the
+# IRT base for truncated binary exponential backoff. Default
+# 4000 ms (4 s).
+ICMP6__RTR_SOLICITATION_INTERVAL_MS = 4000
+
+# RFC 7559 §2 maximum retransmission timeout (MRT cap) for
+# the RS exponential-backoff loop, in milliseconds. Default
+# 3 600 000 ms (1 hour). Combined with MAX_RTR_SOLICITATIONS
+# this bounds how long a host pauses between unsuccessful RS
+# retransmissions.
+ICMP6__RTR_SOLICITATION_MAX_RT_MS = 3600000
+
+# RFC 4861 §6.3.7 MAX_RTR_SOLICITATIONS — the maximum number
+# of RS messages the host emits before giving up on RA-driven
+# auto-configuration. Default 3 per RFC 4861. A value of 0
+# disables RS entirely (kill switch for static-config-only
+# deployments).
+ICMP6__MAX_RTR_SOLICITATIONS = 3
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -187,6 +208,43 @@ def _accept_ra_min_hop_limit_validator(value: Any) -> None:
         )
 
 
+def _rtr_solicitation_interval_ms_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive
+    values — IRT = 0 would tight-loop the RS sender.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"sysctl 'icmp6.rtr_solicitation_interval_ms' must be a positive int; got {value!r}",
+        )
+
+
+def _rtr_solicitation_max_rt_ms_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive
+    values — MRT must be at least the IRT default to give
+    backoff room. Tests use much smaller values via override.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"sysctl 'icmp6.rtr_solicitation_max_rt_ms' must be a positive int; got {value!r}",
+        )
+
+
+def _max_rtr_solicitations_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero
+    is admitted (kill switch).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(
+            f"sysctl 'icmp6.max_rtr_solicitations' must be a non-negative int; got {value!r}",
+        )
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -250,4 +308,33 @@ register(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_min_hop_limit' "
         "(floor for accepting Cur-Hop-Limit; 0 accepts any value)."
     ),
+)
+register(
+    key="icmp6.rtr_solicitation_interval_ms",
+    module_name=__name__,
+    attr="ICMP6__RTR_SOLICITATION_INTERVAL_MS",
+    default=ICMP6__RTR_SOLICITATION_INTERVAL_MS,
+    validator=_rtr_solicitation_interval_ms_validator,
+    description=(
+        "RFC 7559 §2 IRT (initial retransmission timeout) for " "the RS exponential-backoff loop; default 4000 ms."
+    ),
+)
+register(
+    key="icmp6.rtr_solicitation_max_rt_ms",
+    module_name=__name__,
+    attr="ICMP6__RTR_SOLICITATION_MAX_RT_MS",
+    default=ICMP6__RTR_SOLICITATION_MAX_RT_MS,
+    validator=_rtr_solicitation_max_rt_ms_validator,
+    description=(
+        "RFC 7559 §2 MRT (maximum retransmission timeout) cap "
+        "for the RS exponential-backoff loop; default 3600000 ms."
+    ),
+)
+register(
+    key="icmp6.max_rtr_solicitations",
+    module_name=__name__,
+    attr="ICMP6__MAX_RTR_SOLICITATIONS",
+    default=ICMP6__MAX_RTR_SOLICITATIONS,
+    validator=_max_rtr_solicitations_validator,
+    description=("RFC 4861 §6.3.7 MAX_RTR_SOLICITATIONS; default 3. " "0 disables RS entirely (kill switch)."),
 )

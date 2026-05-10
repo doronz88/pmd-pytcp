@@ -847,6 +847,33 @@ class PacketHandlerL2(
             else:
                 self._phrx_ethernet(packet_rx)
 
+    def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:
+        """
+        Send up to 'icmp6.max_rtr_solicitations' Router
+        Solicitations spaced by RFC 7559 §2 truncated binary
+        exponential backoff with ±10% randomisation. Each
+        inter-message wait is at least
+        'icmp6.rtr_solicitation_interval_ms', doubles each
+        round, and is capped at 'icmp6.rtr_solicitation_max_rt_ms'.
+        Returns early on the first RA receipt (the RX handler
+        releases '_icmp6_ra__event'). 'max_rtr_solicitations = 0'
+        is the kill switch — no RS is emitted.
+        """
+
+        max_attempts = nd__constants.ICMP6__MAX_RTR_SOLICITATIONS
+        if max_attempts <= 0:
+            return
+
+        rt_ms = nd__constants.ICMP6__RTR_SOLICITATION_INTERVAL_MS
+        mrt_ms = nd__constants.ICMP6__RTR_SOLICITATION_MAX_RT_MS
+
+        for _ in range(max_attempts):
+            self._send_icmp6_nd_router_solicitation()
+            wait_s = (rt_ms + random.uniform(-0.1, 0.1) * rt_ms) / 1000.0
+            if self._icmp6_ra__event.acquire(timeout=wait_s):
+                return
+            rt_ms = min(2 * rt_ms, mrt_ms)
+
     def _perform_ip6_nd_dad(self, *, ip6_unicast_candidate: Ip6Address) -> bool:
         """
         Perform IPv6 ND Duplicate Address Detection, return True if passed.
@@ -955,12 +982,11 @@ class PacketHandlerL2(
             self._ip6_host_candidate.remove(ip6_host)
             _claim_ip6_address(ip6_host)
 
-        # Send out IPv6 Router Solicitation message and wait for response
-        # in attempt to auto configure addresses based on
-        # ICMPv6 Router Advertisement.
+        # Send out IPv6 Router Solicitation messages with
+        # RFC 7559 §2 exponential backoff and wait for an RA
+        # so SLAAC can pick up the advertised prefix.
         if self._ip6_gua_autoconfig:
-            self._send_icmp6_nd_router_solicitation()
-            self._icmp6_ra__event.acquire(timeout=1)
+            self._send_icmp6_nd_router_solicitations_with_backoff()
             for prefix, gateway in list(self._icmp6_ra__prefixes):
                 __debug__ and log(
                     "stack",
