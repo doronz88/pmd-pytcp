@@ -50,6 +50,8 @@ Companion documents:
 | **§12a SLAAC per-address lifetime tracking** | `Icmp6SlaacAddress(address, prefix, preferred_until, valid_until)` dataclass + per-PI `_update_icmp6_slaac_address` mutator + lazy-aged `get_icmp6_slaac_addresses()` accessor; EUI-64 address derivation; `icmp6.accept_ra_pinfo` sysctl gates the path; new RX counters `pi__update_address` / `pi__remove_address` / `pi__pinfo_disabled__drop` | RFC 4862 §5.5.3 |
 | **§12b SLAAC per-address state machine + 2-hour rule** | `Icmp6SlaacAddressState` enum (`PREFERRED`/`DEPRECATED`) computed lazily from `time.monotonic()`; `get_icmp6_slaac_address_state(prefix=...)` accessor; (e)(6) 2-hour rule clamps refresh on existing entries (cases a/b/c); new RX counter `pi__2hour_rule_ignored__drop`. RFC 6724 source-address-selection consumer deferred to §12c | RFC 4862 §5.5.3 (e)(6), §5.5.4 |
 | **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
+| **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
+| **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -628,22 +630,49 @@ RFC 4861 §6.3.4 (RA processing — host parameter copy), §4.2
 
 ---
 
-## §14 — Tier 3: Router Preference (RFC 4191) ✗
+## §14 — Tier 3: Router Preference (RFC 4191) ✓
 
-The Prf field in the RA Reserved word indicates router
-preference: 01=high, 00=medium (default), 11=low, 10=reserved.
-Used by the default-router-list ordering (§11).
+**Shipped.** The 2-bit Prf field rides in bits 3-4 of the
+RA-header flags byte (between the `O` flag and the IPv6 mobility
+`H` flag, per RFC 4191 §2.2).
 
-Implementation: parse the Prf field at RA RX; store in the
-default-router-list entry; sort by preference. Couples with §11.
+**Wire format.** `Icmp6NdMessageRouterAdvertisement` gained a
+`prf: Icmp6NdRoutePreference = MEDIUM` field. The assembler
+packs `(int(prf) << 3)` into the flags byte alongside `(flag_m
+<< 7) | (flag_o << 6)`. The parser extracts via
+`Icmp6NdRoutePreference((flags >> 3) & 0b11)`. The
+`Icmp6NdRoutePreference` enum was already shipped in §4 commit
+`e6ad1030` for the Route Information option; §14 reuses it.
 
-### Effort
+**Receiver behaviour.** `_update_icmp6_default_router` accepts a
+`prf` kwarg (defaulting to MEDIUM for backward compatibility),
+normalises RESERVED → MEDIUM per RFC 4191 §2.2 mandate
+("Reserved value MUST be treated as if it were Medium"), and
+stores it on the `Icmp6DefaultRouter` entry. `get_icmp6_default_routers()`
+sorts entries by preference (HIGH > MEDIUM > LOW) so a TX-side
+consumer that picks the first valid entry naturally selects the
+most-preferred router.
 
-Small — ~25 lines once §11 lands.
+### Tests
+
+`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__prf.py`:
+- Per-Prf-value flags-byte assembly (HIGH=0x08, MEDIUM=0x00,
+  LOW=0x18, RESERVED=0x10).
+- `flag_m`/`flag_o` non-corruption when Prf packed alongside.
+- Round-trip via `from_buffer`.
+- Default-MEDIUM and per-member constructor acceptance.
+- Non-enum rejection.
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_preference.py`:
+- HIGH / LOW / default-MEDIUM stored on the entry.
+- RESERVED → MEDIUM normalization at `_update_icmp6_default_router`.
+- `get_icmp6_default_routers()` returns entries sorted by
+  preference regardless of learning order.
 
 ### RFC reference
 
-RFC 4191 §2.1.
+RFC 4191 §2.1 (default-router preference rule), §2.2 (Prf wire
+encoding + RESERVED normalisation).
 
 ---
 

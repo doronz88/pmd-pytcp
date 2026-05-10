@@ -76,7 +76,7 @@ class PacketHandlerIcmp6Rx(ABC):
         from threading import Semaphore
 
         from net_addr import Ip6Network, MacAddress
-        from net_proto import Icmp6Message, Tracker
+        from net_proto import Icmp6Message, Icmp6NdRoutePreference, Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 
@@ -118,6 +118,7 @@ class PacketHandlerIcmp6Rx(ABC):
             *,
             address: Ip6Address,
             router_lifetime: int,
+            prf: Icmp6NdRoutePreference = ...,
         ) -> None: ...
 
         def _update_icmp6_slaac_address(
@@ -805,6 +806,7 @@ class PacketHandlerIcmp6Rx(ABC):
             self._update_icmp6_default_router(
                 address=packet_rx.ip6.src,
                 router_lifetime=packet_rx.icmp6.message.router_lifetime,
+                prf=packet_rx.icmp6.message.prf,
             )
         else:
             self._packet_stats_rx.icmp6__nd_router_advertisement__defrtr__drop += 1

@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from net_addr import Ip6Address, Ip6Network
+from net_proto import Icmp6NdRoutePreference
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -54,12 +55,16 @@ class Icmp6DefaultRouter:
     A single entry in the host's default-router list per
     RFC 4861 §6.3.4. 'expires_at' is a 'time.monotonic()'
     deadline; the accessor on the packet handler filters out
-    entries whose deadline has passed (lazy ageing).
+    entries whose deadline has passed (lazy ageing). 'prf'
+    captures the router's RFC 4191 Default Router Preference;
+    the accessor sorts entries by 'prf' so consumers
+    naturally pick the most-preferred router.
     """
 
     address: Ip6Address
     lifetime: int
     expires_at: float
+    prf: Icmp6NdRoutePreference = Icmp6NdRoutePreference.MEDIUM
 
 
 class Icmp6SlaacAddressState(Enum):

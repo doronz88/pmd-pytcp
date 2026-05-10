@@ -48,6 +48,9 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 from net_proto.protocols.icmp6.message.nd.icmp6__nd__message import (
     Icmp6NdMessage,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__route_info import (
+    Icmp6NdRoutePreference,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
@@ -97,6 +100,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
     hop: int
     flag_m: bool = False
     flag_o: bool = False
+    prf: Icmp6NdRoutePreference = Icmp6NdRoutePreference.MEDIUM
     router_lifetime: int
     reachable_time: int
     retrans_timer: int
@@ -119,6 +123,10 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
         assert isinstance(self.flag_m, bool), f"The 'flag_m' field must be a boolean. Got: {type(self.flag_m)!r}"
 
         assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. Got: {type(self.flag_o)!r}"
+
+        assert isinstance(
+            self.prf, Icmp6NdRoutePreference
+        ), f"The 'prf' field must be an Icmp6NdRoutePreference. Got: {type(self.prf)!r}"
 
         assert is_uint16(
             self.router_lifetime
@@ -189,7 +197,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             int(self.code),
             0,
             self.hop,
-            (self.flag_m << 7) | (self.flag_o << 6),
+            (self.flag_m << 7) | (self.flag_o << 6) | (int(self.prf) << 3),
             self.router_lifetime,
             self.reachable_time,
             self.retrans_timer,
@@ -271,6 +279,7 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
             hop=hop,
             flag_m=bool(flags & 0b10000000),
             flag_o=bool(flags & 0b01000000),
+            prf=Icmp6NdRoutePreference((flags >> 3) & 0b11),
             router_lifetime=router_lifetime,
             reachable_time=reachable_time,
             retrans_timer=retrans_timer,

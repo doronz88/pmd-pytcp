@@ -50,6 +50,7 @@ from net_proto import (
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdOptionTlla,
+    Icmp6NdRoutePreference,
     Ip6Assembler,
 )
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
@@ -167,6 +168,7 @@ class NdTestCase(IcmpTestCase):
         hop: int = 0,
         flag_m: bool = False,
         flag_o: bool = False,
+        prf: Icmp6NdRoutePreference = Icmp6NdRoutePreference.MEDIUM,
         reachable_time: int = 0,
         retrans_timer: int = 0,
         options: list[Icmp6NdOption] | None = None,
@@ -179,15 +181,18 @@ class NdTestCase(IcmpTestCase):
         callers pick a 'fe80::*' address.
 
         Pass 'router_lifetime=0' for the "no longer a default
-        router" form per RFC 4861 §6.3.4. The 'options' kwarg
-        defaults to an empty list — callers add Prefix-Information,
-        SLLA, MTU, RDNSS etc. as their tests need.
+        router" form per RFC 4861 §6.3.4. 'prf' defaults to
+        MEDIUM per RFC 4191 §2.2 (the wire encoding 00). The
+        'options' kwarg defaults to an empty list — callers add
+        Prefix-Information, SLLA, MTU, RDNSS etc. as their tests
+        need.
         """
 
         message = Icmp6NdMessageRouterAdvertisement(
             hop=hop,
             flag_m=flag_m,
             flag_o=flag_o,
+            prf=prf,
             router_lifetime=router_lifetime,
             reachable_time=reachable_time,
             retrans_timer=retrans_timer,

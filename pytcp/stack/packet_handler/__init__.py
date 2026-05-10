@@ -46,7 +46,7 @@ from net_addr import (
     Ip6Network,
     MacAddress,
 )
-from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType
+from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType, Icmp6NdRoutePreference
 from pytcp import stack
 from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -454,13 +454,17 @@ class PacketHandler(Subsystem, ABC):
         *,
         address: Ip6Address,
         router_lifetime: int,
+        prf: Icmp6NdRoutePreference = Icmp6NdRoutePreference.MEDIUM,
     ) -> None:
         """
         Apply an inbound RA's Router Lifetime to the default-
         router list per RFC 4861 §6.3.4. A non-zero lifetime
         installs / refreshes the entry; a zero lifetime removes
-        it. Bumps 'update_router' or 'remove_router' counters
-        only when the list actually changes.
+        it. The RFC 4191 Default Router Preference is captured
+        on the entry; RFC 4191 §2.2 mandates that a RESERVED
+        (binary 10) advertisement be normalised to MEDIUM at the
+        receiver. Bumps 'update_router' or 'remove_router'
+        counters only when the list actually changes.
         """
 
         existing = next(
@@ -469,12 +473,14 @@ class PacketHandler(Subsystem, ABC):
         )
 
         if router_lifetime > 0:
+            normalised_prf = Icmp6NdRoutePreference.MEDIUM if prf is Icmp6NdRoutePreference.RESERVED else prf
             self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
             self._icmp6_default_routers.append(
                 Icmp6DefaultRouter(
                     address=address,
                     lifetime=router_lifetime,
                     expires_at=time.monotonic() + router_lifetime,
+                    prf=normalised_prf,
                 ),
             )
             self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
@@ -487,13 +493,26 @@ class PacketHandler(Subsystem, ABC):
     def get_icmp6_default_routers(self) -> list[Icmp6DefaultRouter]:
         """
         Get the list of currently-active default-router entries
-        per RFC 4861 §6.3.4. Lazy-aged: entries whose 'expires_at'
+        per RFC 4861 §6.3.4 sorted by RFC 4191 preference
+        (HIGH > MEDIUM > LOW) so a TX-side consumer that picks
+        the first valid entry naturally selects the most-
+        preferred router. Lazy-aged: entries whose 'expires_at'
         deadline has passed are filtered out at access time
         instead of removed by a background sweep.
         """
 
         now = time.monotonic()
-        return [r for r in self._icmp6_default_routers if r.expires_at > now]
+        prf_rank = {
+            Icmp6NdRoutePreference.HIGH: 0,
+            Icmp6NdRoutePreference.MEDIUM: 1,
+            Icmp6NdRoutePreference.LOW: 2,
+        }
+        active = [r for r in self._icmp6_default_routers if r.expires_at > now]
+        # 'RESERVED' was normalised to MEDIUM at install time; the
+        # rank dict has no entry for it, so a defensive fallback
+        # places any stray RESERVED at MEDIUM rank.
+        active.sort(key=lambda r: prf_rank.get(r.prf, prf_rank[Icmp6NdRoutePreference.MEDIUM]))
+        return active
 
     def _update_icmp6_slaac_address(
         self,
