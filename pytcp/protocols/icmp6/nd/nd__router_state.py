@@ -139,6 +139,31 @@ class Icmp6DadState(Enum):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6TempAddress:
+    """
+    A temporary SLAAC-derived address per RFC 8981. 'address'
+    is the random-IID-derived host address; 'prefix' is the
+    on-link /64 it came from. 'preferred_until' / 'valid_until'
+    are 'time.monotonic()' deadlines clamped at creation time
+    to TEMP_PREFERRED_LIFETIME / TEMP_VALID_LIFETIME (RFC 8981
+    §3.4 / §3.8). 'created_at' is the 'time.monotonic()' value
+    at which the address was generated — the §18c regeneration
+    subsystem will use it to schedule rotation before
+    preferred_lifetime expires. 'router_address' captures the
+    RA source so the address remains tied to the gateway that
+    advertised the prefix, mirroring 'Icmp6SlaacAddress' for
+    RFC 8028 first-hop selection consumers.
+    """
+
+    address: Ip6Address
+    prefix: Ip6Network
+    preferred_until: float
+    valid_until: float
+    created_at: float
+    router_address: Ip6Address
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6RaParameters:
     """
     Host-parameter values learned from RA-header fields per

@@ -144,6 +144,42 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# Linux net.ipv6.conf.<iface>.use_tempaddr policy. Controls
+# whether RFC 8981 temporary addresses are generated alongside
+# the stable SLAAC address for each admitted PI. Tristate
+# matching Linux:
+#   0 = disabled — no temp addresses (default; privacy-conservative
+#       deployments rely on RFC 7217 stable opaque IIDs alone).
+#   1 = enabled, no preference — temp addresses are generated and
+#       DAD-claimed but the source-address selector does not
+#       prefer them (matches Linux 'use_tempaddr=1').
+#   2 = enabled, prefer temp — RFC 6724 rule 7 makes the temp
+#       address the default outbound source. Today PyTCP has no
+#       RFC 6724 source-address selector so values 1 and 2 are
+#       observably the same; the tristate is wired for forward-
+#       compat with §12c / §18d.
+ICMP6__USE_TEMPADDR = 0
+
+# RFC 8981 §3.8 TEMP_VALID_LIFETIME — total valid lifetime cap
+# for temporary addresses. Default 7 days (604800 seconds).
+# Linux exposes this as 'net.ipv6.conf.<iface>.temp_valid_lft'.
+ICMP6__TEMP_VALID_LIFETIME_S = 604800
+
+# RFC 8981 §3.8 TEMP_PREFERRED_LIFETIME — preferred lifetime cap
+# for temporary addresses. Default 1 day (86400 seconds). Linux
+# exposes this as 'net.ipv6.conf.<iface>.temp_prefered_lft'
+# (note the kernel's spelling 'prefered' without the second 'r'
+# — a long-standing typo PyTCP does NOT propagate; PyTCP uses
+# the correct 'preferred' spelling).
+ICMP6__TEMP_PREFERRED_LIFETIME_S = 86400
+
+# RFC 8981 §3.8 MAX_DESYNC_FACTOR — upper bound on the random
+# offset subtracted from TEMP_PREFERRED_LIFETIME at address
+# creation, preventing fleet-wide synchronised regeneration.
+# Default 600 seconds (10 minutes). Linux exposes this as
+# 'net.ipv6.conf.<iface>.max_desync_factor'.
+ICMP6__MAX_DESYNC_FACTOR_S = 600
+
 # Linux net.ipv6.conf.<iface>.optimistic_dad policy. Controls
 # whether RFC 4429 Optimistic DAD is used: when enabled, a
 # tentative address is installed into '_ip6_host' as OPTIMISTIC
@@ -291,6 +327,56 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _use_tempaddr_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1, 2}. Booleans are rejected
+    explicitly because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1, 2):
+        raise ValueError(f"sysctl 'icmp6.use_tempaddr' must be 0, 1, or 2; got {value!r}")
+
+
+def _temp_valid_lifetime_s_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive
+    values — TEMP_VALID_LIFETIME=0 would mean every temp
+    address expires immediately on creation.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"sysctl 'icmp6.temp_valid_lifetime_s' must be a positive int; got {value!r}",
+        )
+
+
+def _temp_preferred_lifetime_s_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and non-positive
+    values. RFC 8981 §3.4 requires preferred ≤ valid; the
+    cross-knob check is left to the consumer (the mutator
+    clamps preferred against valid).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"sysctl 'icmp6.temp_preferred_lifetime_s' must be a positive int; got {value!r}",
+        )
+
+
+def _max_desync_factor_s_validator(value: Any) -> None:
+    """
+    Reject non-integer values, booleans, and negatives. Zero
+    disables the desync jitter (deterministic regeneration —
+    not recommended but a valid kill switch).
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(
+            f"sysctl 'icmp6.max_desync_factor_s' must be a non-negative int; got {value!r}",
+        )
+
+
 def _optimistic_dad_validator(value: object) -> None:
     """
     Reject values outside {0, 1}. Booleans are rejected explicitly
@@ -413,6 +499,49 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.use_tempaddr",
+    module_name=__name__,
+    attr="ICMP6__USE_TEMPADDR",
+    default=ICMP6__USE_TEMPADDR,
+    validator=_use_tempaddr_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.use_tempaddr' (RFC 8981); "
+        "tristate 0/1/2. 0=off, 1=generate without preference, "
+        "2=generate and prefer (RFC 6724 rule 7)."
+    ),
+)
+register(
+    key="icmp6.temp_valid_lifetime_s",
+    module_name=__name__,
+    attr="ICMP6__TEMP_VALID_LIFETIME_S",
+    default=ICMP6__TEMP_VALID_LIFETIME_S,
+    validator=_temp_valid_lifetime_s_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.temp_valid_lft' " "(RFC 8981 §3.8 TEMP_VALID_LIFETIME); default 604800 (7d)."
+    ),
+)
+register(
+    key="icmp6.temp_preferred_lifetime_s",
+    module_name=__name__,
+    attr="ICMP6__TEMP_PREFERRED_LIFETIME_S",
+    default=ICMP6__TEMP_PREFERRED_LIFETIME_S,
+    validator=_temp_preferred_lifetime_s_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.temp_prefered_lft' "
+        "(RFC 8981 §3.8 TEMP_PREFERRED_LIFETIME); default 86400 (1d)."
+    ),
+)
+register(
+    key="icmp6.max_desync_factor_s",
+    module_name=__name__,
+    attr="ICMP6__MAX_DESYNC_FACTOR_S",
+    default=ICMP6__MAX_DESYNC_FACTOR_S,
+    validator=_max_desync_factor_s_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.max_desync_factor' " "(RFC 8981 §3.8 MAX_DESYNC_FACTOR); default 600 (10m)."
     ),
 )
 register(

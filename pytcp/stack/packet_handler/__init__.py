@@ -70,6 +70,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6RaParameters,
     Icmp6SlaacAddress,
     Icmp6SlaacAddressState,
+    Icmp6TempAddress,
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
@@ -126,6 +127,7 @@ class PacketHandler(Subsystem, ABC):
     _mac_unicast: MacAddress
     _icmp6_default_routers: list[Icmp6DefaultRouter]
     _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
+    _icmp6_temp_addresses: list[Icmp6TempAddress]
     _icmp6_slaac__secret_key: bytes
     _icmp6_ra_parameters: Icmp6RaParameters
     _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
@@ -326,6 +328,16 @@ class PacketHandler(Subsystem, ABC):
         __debug__ and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
         self._remove_ip6_multicast(ip6_host.address.solicited_node_multicast)
+
+    @abstractmethod
+    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
+        """
+        Claim 'ip6_host' on a daemon worker thread (DAD on L2,
+        direct assign on L3). Returns the worker so callers
+        that need to wait can '.join()'.
+        """
+
+        raise NotImplementedError
 
     @abstractmethod
     def _assign_ip6_multicast(self, /, ip6_multicast: Ip6Address) -> None:
@@ -601,6 +613,112 @@ class PacketHandler(Subsystem, ABC):
 
         now = time.monotonic()
         return [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+
+    def _update_icmp6_temp_address(
+        self,
+        *,
+        prefix: Ip6Network,
+        valid_lifetime: int,
+        preferred_lifetime: int,
+        router_address: Ip6Address,
+    ) -> None:
+        """
+        Apply an inbound Prefix-Information option to the
+        RFC 8981 §3 temporary-address table. No-op when
+        'icmp6.use_tempaddr=0'. Otherwise:
+
+        - 'valid_lifetime=0' removes any existing entry for
+          the prefix (RFC 4862 §5.5.3 (e)(4) interaction
+          applied to the temp table).
+        - Existing entry: refresh the 'preferred_until' /
+          'valid_until' deadlines but preserve the address
+          (regeneration is §18c, not §18b).
+        - New entry: generate a random IID via
+          'Ip6Host.from_rfc8981_temp', spawn an async DAD
+          claim via '_claim_ip6_address_async', and append
+          to '_icmp6_temp_addresses'.
+
+        Lifetimes are clamped to TEMP_VALID_LIFETIME /
+        TEMP_PREFERRED_LIFETIME (RFC 8981 §3.4 / §3.8). The
+        preferred deadline is further offset by a random
+        DESYNC_FACTOR to prevent fleet-wide synchronised
+        regeneration; the §18c regeneration subsystem will
+        consume the offset to schedule rotation.
+        """
+
+        if nd__constants.ICMP6__USE_TEMPADDR == 0:
+            return
+
+        existing = next(
+            (t for t in self._icmp6_temp_addresses if t.prefix == prefix),
+            None,
+        )
+
+        if valid_lifetime == 0:
+            if existing is not None:
+                self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
+            return
+
+        # RFC 8981 §3.4 lifetime clamps. The preferred lifetime
+        # is reduced by a random DESYNC_FACTOR offset so a fleet
+        # of hosts created together don't all rotate at the same
+        # instant.
+        now = time.monotonic()
+        desync = random.uniform(0, nd__constants.ICMP6__MAX_DESYNC_FACTOR_S)
+        clamped_valid = min(valid_lifetime, nd__constants.ICMP6__TEMP_VALID_LIFETIME_S)
+        clamped_preferred_base = min(preferred_lifetime, nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S)
+        clamped_preferred = max(0.0, clamped_preferred_base - desync)
+
+        if existing is not None:
+            # Refresh deadlines, preserve address. Drop the old
+            # entry and append a new one with the same address.
+            refreshed = Icmp6TempAddress(
+                address=existing.address,
+                prefix=prefix,
+                preferred_until=now + clamped_preferred,
+                valid_until=now + clamped_valid,
+                created_at=existing.created_at,
+                router_address=router_address,
+            )
+            self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
+            self._icmp6_temp_addresses.append(refreshed)
+            return
+
+        # New entry — generate random IID, spawn DAD claim.
+        try:
+            temp_host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+        except RuntimeError:
+            # Reserved-IID retry exhaustion (broken random
+            # source). Skip the temp address; the stable SLAAC
+            # entry still carries the prefix.
+            return
+        temp_host.gateway = router_address
+
+        self._icmp6_temp_addresses.append(
+            Icmp6TempAddress(
+                address=temp_host.address,
+                prefix=prefix,
+                preferred_until=now + clamped_preferred,
+                valid_until=now + clamped_valid,
+                created_at=now,
+                router_address=router_address,
+            ),
+        )
+        # Spawn async DAD claim. The worker will assign the
+        # address into '_ip6_host' on success or remove the
+        # temp-table entry on collision.
+        self._claim_ip6_address_async(ip6_host=temp_host)
+
+    def get_icmp6_temp_addresses(self) -> list[Icmp6TempAddress]:
+        """
+        Get the list of currently-active RFC 8981 temporary
+        addresses. Lazy-aged: entries whose 'valid_until'
+        deadline has passed are filtered out at access time
+        instead of removed by a background sweep.
+        """
+
+        now = time.monotonic()
+        return [t for t in self._icmp6_temp_addresses if t.valid_until > now]
 
     def get_icmp6_default_router_for_destination(
         self,
@@ -957,6 +1075,15 @@ class PacketHandlerL2(
         # pattern as the default-router list above.
         self._icmp6_slaac_addresses: list[Icmp6SlaacAddress] = []
 
+        # RFC 8981 SLAAC temporary-address table — populated
+        # alongside '_icmp6_slaac_addresses' when
+        # 'icmp6.use_tempaddr' is non-zero. Each entry mints a
+        # random-IID address via 'Ip6Host.from_rfc8981_temp' and
+        # claims it via the §20.1 async DAD worker. Lifetimes
+        # are clamped to TEMP_*_LIFETIME at creation. Lazy-aged
+        # like '_icmp6_slaac_addresses'.
+        self._icmp6_temp_addresses: list[Icmp6TempAddress] = []
+
         # RFC 4861 §6.3.4 RA-header parameter mirror —
         # Cur-Hop-Limit, Reachable Time, Retrans Timer values
         # observed from the most recent RA carrying a non-zero
@@ -1148,6 +1275,7 @@ class PacketHandlerL2(
         self._remove_ip6_host(ip6_host=ip6_host)
         return False
 
+    @override
     def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
         """
         Spawn a daemon worker thread that runs the DAD claim for
@@ -1447,6 +1575,20 @@ class PacketHandlerL3(
                         "stack",
                         f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
                     )
+
+    @override
+    def _claim_ip6_address_async(self, *, ip6_host: Ip6Host) -> threading.Thread:
+        """
+        L3 has no DAD — claims complete synchronously via
+        '_assign_ip6_host'. The returned Thread is a no-op
+        helper that has already finished, so callers
+        '.join()'ing it return immediately.
+        """
+
+        self._assign_ip6_host(ip6_host=ip6_host)
+        thread = threading.Thread(target=lambda: None, daemon=True, name=f"DAD-{ip6_host.address}")
+        thread.start()
+        return thread
 
     @override
     def _create_stack_ip6_addressing(self) -> None:

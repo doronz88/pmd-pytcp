@@ -125,6 +125,13 @@ class _StubHandler(PacketHandlerIcmp6Rx):
     def _update_icmp6_slaac_address(self, **kwargs: object) -> None:
         self.icmp6_tx_calls.append({"_update_icmp6_slaac_address": kwargs})
 
+    # Stub the temporary-address mutator added with the §18b
+    # RFC 8981 wiring. Records the call into the same
+    # 'icmp6_tx_calls' list so existing assertions on TX
+    # dispatch continue to work.
+    def _update_icmp6_temp_address(self, **kwargs: object) -> None:
+        self.icmp6_tx_calls.append({"_update_icmp6_temp_address": kwargs})
+
     # Stub the RA-header parameter-mirror mutator added with the
     # §13 parity work. Covered by integration tests in
     # 'pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py'.

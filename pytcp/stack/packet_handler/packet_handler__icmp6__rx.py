@@ -122,6 +122,15 @@ class PacketHandlerIcmp6Rx(ABC):
             prf: Icmp6NdRoutePreference = ...,
         ) -> None: ...
 
+        def _update_icmp6_temp_address(
+            self,
+            *,
+            prefix: Ip6Network,
+            valid_lifetime: int,
+            preferred_lifetime: int,
+            router_address: Ip6Address,
+        ) -> None: ...
+
         def _update_icmp6_slaac_address(
             self,
             *,
@@ -789,6 +798,17 @@ class PacketHandlerIcmp6Rx(ABC):
             # lifetimes for §12b state-machine work.
             if accept_pinfo:
                 self._update_icmp6_slaac_address(
+                    prefix=option.prefix,
+                    valid_lifetime=option.valid_lifetime,
+                    preferred_lifetime=option.preferred_lifetime,
+                    router_address=packet_rx.ip6.src,
+                )
+                # RFC 8981 §3.3 temporary-address mint. The
+                # mutator is a no-op when 'icmp6.use_tempaddr=0'
+                # (default); when enabled it generates a random
+                # IID, claims via the §20.1 async DAD worker,
+                # and tracks the entry in '_icmp6_temp_addresses'.
+                self._update_icmp6_temp_address(
                     prefix=option.prefix,
                     valid_lifetime=option.valid_lifetime,
                     preferred_lifetime=option.preferred_lifetime,

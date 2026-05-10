@@ -859,15 +859,44 @@ lands.
 Forward-compat utility — nothing in the stack calls the
 generator yet. The full feature requires §18b/c/d below.
 
-### §18b (deferred) — SLAAC integration
+### §18b (shipped) — SLAAC integration ✓
 
-New per-prefix temp-address table parallel to
-`_icmp6_slaac_addresses` (§12a). When a PI is admitted AND
-`icmp6.use_tempaddr` is non-zero, generate a temp address,
-claim it via DAD, and insert into `_ip6_host`. RFC 8981 §3.4
-lifetimes (TEMP_PREFERRED_LIFETIME default 1 day;
-TEMP_VALID_LIFETIME default 7 days) clamp the PI's
-advertised lifetimes.
+Per-prefix temp-address table `_icmp6_temp_addresses`
+parallel to `_icmp6_slaac_addresses`. The mutator
+`_update_icmp6_temp_address(*, prefix, valid_lifetime,
+preferred_lifetime, router_address)` is invoked from the
+RA RX path immediately after the stable
+`_update_icmp6_slaac_address` call. Sysctl-gated by
+`icmp6.use_tempaddr` (default 0 — Linux parity). On a
+new prefix the mutator generates a random IID via
+`Ip6Host.from_rfc8981_temp`, spawns an async DAD claim
+through the §20.1 `_claim_ip6_address_async` helper
+(non-blocking from the RX path), and tracks the entry.
+On an existing prefix it refreshes deadlines but
+preserves the address (regeneration is §18c). On
+`valid_lifetime=0` it removes the entry.
+
+Lifetimes are clamped at creation:
+
+- `valid_until = now + min(advertised, TEMP_VALID_LIFETIME)`
+- `preferred_until = now + max(0, min(advertised, TEMP_PREFERRED_LIFETIME) - DESYNC)`
+
+with `DESYNC = random.uniform(0, MAX_DESYNC_FACTOR)`.
+
+### Sysctls
+
+Four new knobs, Linux-parity defaults:
+
+- `icmp6.use_tempaddr` — tristate {0, 1, 2}; default 0.
+  Values 1 and 2 are observably the same today since
+  there's no RFC 6724 selector (§18d) to honour the
+  preference distinction; the tristate is wired for
+  forward-compat.
+- `icmp6.temp_valid_lifetime_s` — default 604800 (7 days).
+- `icmp6.temp_preferred_lifetime_s` — default 86400 (1 day).
+  PyTCP uses the corrected spelling rather than Linux's
+  typoed `temp_prefered_lft`.
+- `icmp6.max_desync_factor_s` — default 600 (10 minutes).
 
 ### §18c (deferred) — Regeneration subsystem
 
