@@ -37,7 +37,7 @@ Design decisions made in Phase 1 / Phase 2 must not foreclose Phase 3. Concretel
 - **No "userspace" reach-through to stack internals.** Consumers MUST NOT import from `pytcp.stack.packet_handler.*`, `pytcp.protocols.tcp.tcp__session`, or any other implementation-detail module. If a piece of state needs to be visible outside the stack, expose it through `getsockopt` / `setsockopt`, a sysctl, or one of the dedicated control APIs (link / address / route / neighbor / introspection). Mark Phase-1/2 reach-throughs in tests with `# Phase 3: ...` so the cleanup path is greppable.
 - **Configuration mutations go through the API for their plane.** Address changes go through the address API, not `packet_handler._ip6_host.append(...)`. Route changes go through the route API, not `Ip4Host.gateway = ...`. Sysctl changes go through `sysctl_module.override(...)` or `pytcp.stack.sysctl["key"] = value`, not direct module-attribute assignment. Each plane's API is the boundary; the underlying attribute is implementation.
 - **State introspection is read-only and copy-by-value.** Route-table / neighbor-cache / socket-list / packet-counter accessors return immutable snapshots, never live references the caller could mutate. The Linux equivalent is `/proc/net/*` text — readable, never writable by reading.
-- **Stack lifecycle is its own API surface.** `stack.init()` / `stack.shutdown()` (and the `mock__init` test affordance) are the boundary; treat them like `clone(2)` / `exit(2)` rather than ordinary function calls. Adding a new stack-wide singleton means extending that boundary, not piggy-backing on import-time module state.
+- **Stack lifecycle is its own API surface.** `stack.init()` / `stack.start()` / `stack.stop()` (and the `stack.mock__init()` test affordance) are the boundary; treat them like `clone(2)` / `exit(2)` rather than ordinary function calls. Adding a new stack-wide singleton means extending that boundary, not piggy-backing on import-time module state.
 - **The socket factory's `__new__` dispatch is the user/kernel transition.** Keep it dumb — argument validation, family / type / proto match, allocate the per-flavour socket object. Putting protocol logic in the factory pulls Phase-3 work into the wrong layer.
 - **Asymmetric data path / control path is fine.** The data path stays per-socket and high-throughput; the control APIs are coarse-grained, low-frequency, and OK with full-table copies on each call. Don't conflate the performance budgets — Linux makes the same split between `sendmsg(2)` and netlink.
 
@@ -112,21 +112,21 @@ TAP/TUN fd
                      <── Socket send / ARP probe / ICMPv6 ND / DHCP
 ```
 
-RX and TX handlers live in `pytcp/stack/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are ~19 handler files covering Ethernet, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, UDP, and 802.3.
+RX and TX handlers live in `pytcp/stack/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are 20 handler files covering Ethernet, 802.3, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, and UDP — one RX file and one TX file per protocol.
 
 The stack is threaded; every subsystem extends `pytcp/lib/subsystem.py` (`Subsystem` base class) and implements `_subsystem_loop()`. Startup / shutdown use `threading.Event`.
 
-The socket API (`pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `RawSocket` are returned by a factory `__new__` on the abstract `socket` class. TCP's FSM is a separate runtime under `pytcp/protocols/tcp/`, decomposed into `tcp__session.py` (the `TcpSession` class), `tcp__enums.py`, `tcp__constants.py`, `tcp__fsm.py` (the dispatch table), and one `tcp__fsm__<state>.py` free-function module per FSM state. `pytcp/socket/tcp__socket.py` is the BSD-facade shim that delegates to `TcpSession`.
+The socket API (`pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `RawSocket` are returned by a factory `__new__` on the abstract `socket` class. TCP's FSM is a separate runtime under `pytcp/protocols/tcp/`, with `tcp__session.py` (the `TcpSession` class), `tcp__enums.py`, `tcp__constants.py`, plus a dedicated `pytcp/protocols/tcp/fsm/` subdirectory containing the dispatch table `tcp__fsm.py` and one `tcp__fsm__<state>.py` free-function module per FSM state. `pytcp/socket/tcp__socket.py` is the BSD-facade shim that delegates to `TcpSession`.
 
 Stack-wide configuration constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, logger channels) live in `pytcp/stack/__init__.py`.
 
 ### Per-RFC adherence
 
-Per-RFC adherence audits live at `docs/rfc/<family>/rfcXXXX__<name>/adherence.md` across TCP, IP6, ICMP6, ICMP4, ARP families. Use the [`rfc_adherence_audit`](.claude/skills/rfc_adherence_audit/SKILL.md) skill to add or refresh an entry.
+Per-RFC adherence audits live at `docs/rfc/<family>/rfcXXXX__<name>/adherence.md` across the `tcp`, `ip6`, `ip4`, `icmp6`, `icmp4`, and `arp` families. Use the [`rfc_adherence_audit`](.claude/skills/rfc_adherence_audit/SKILL.md) skill to add or refresh an entry.
 
 ## Canonical Rules
 
-PyTCP has six canonical rule files in `.claude/rules/`. They are auto-loaded into the session context — read the relevant one before any non-trivial change. CLAUDE.md does not duplicate their content; when something feels missing here, it lives in one of the rules below.
+PyTCP has nine canonical rule files in `.claude/rules/`. They are auto-loaded into the session context — read the relevant one before any non-trivial change. CLAUDE.md does not duplicate their content; when something feels missing here, it lives in one of the rules below.
 
 | Rule | What it covers | Read when |
 |---|---|---|

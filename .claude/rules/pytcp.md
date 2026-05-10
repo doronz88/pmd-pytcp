@@ -213,11 +213,13 @@ timers, MTU, port ranges, logger channels) live in
 following the §1 naming convention (`STACK__MAC_ADDRESS`,
 `ARP_CACHE__ENTRY_MAX_AGE__SEC`, etc.).
 
-### 6.1 `stack.init()` / `stack.shutdown()` boundary
+### 6.1 `stack.init()` / `stack.start()` / `stack.stop()` boundary
 
-`stack.init()` and `stack.shutdown()` are the canonical
-stack-lifecycle entry points. Per the CLAUDE.md Phase-3
-design implications:
+`stack.init()` (build singletons from config),
+`stack.start()` (spawn subsystem threads), and
+`stack.stop()` (signal subsystems to wind down) are the
+canonical stack-lifecycle entry points. Per the CLAUDE.md
+Phase-3 design implications:
 
 - Treat them like `clone(2)` / `exit(2)` rather than
   ordinary function calls.
