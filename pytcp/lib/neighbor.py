@@ -87,7 +87,7 @@ class NudState(NameEnum):
 class NeighborEntry[A: Ip4Address | Ip6Address, P = object]:
     """
     Per-neighbour FSM state. Frozen by codebase convention
-    (coding_style.md §7); state transitions use
+    (protocol_architecture.md §2); state transitions use
     'object.__setattr__' to mutate the instance — same pattern
     as 'CacheEntry.hit_count__increment'.
 

@@ -775,10 +775,15 @@ When refactoring legacy code that pre-dates this rule:
 - [`feature_implementation.md`](feature_implementation.md)
   for the tests-first workflow, the modernise-on-touch
   rule, and the docstring audit.
-- [`coding_style.md`](coding_style.md) — PyTCP source-file
-  conventions that consume these features (six-file
-  protocol layout, dataclass shape, parser / assembler /
-  error patterns).
+- [`source_files.md`](source_files.md) — general PyTCP
+  source-file conventions (file skeleton, imports, naming,
+  formatting).
+- [`protocol_architecture.md`](protocol_architecture.md) —
+  PyTCP protocol patterns that consume these features
+  (six-file layout, dataclass shape, parser three-phase
+  pipeline, assembler PEP 695 generic stacking).
+- [`stack_runtime.md`](stack_runtime.md) — `Subsystem`,
+  packet handlers, sysctls.
 - CPython "What's New" pages — authoritative source for
   per-version feature inventories:
   [3.10](https://docs.python.org/3/whatsnew/3.10.html),

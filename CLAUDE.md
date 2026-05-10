@@ -133,7 +133,9 @@ PyTCP has six canonical rule files in `.claude/rules/`. They are auto-loaded int
 | [`feature_implementation.md`](.claude/rules/feature_implementation.md) | tests-first workflow, spec grounding, commit discipline, phase reporting | Every code change |
 | [`python_features.md`](.claude/rules/python_features.md) | Python 3.10–3.14 language features (PEP 604 / 585 / 695 / 696 / 698 / 649); forbidden pre-3.10 fallbacks | Any new file or refactor |
 | [`typing.md`](.claude/rules/typing.md) | mypy strict, annotations, generics, `Self` / `@override`, `Protocol` / `TypedDict`, `cast` and `# type: ignore` policy | Any annotation |
-| [`coding_style.md`](.claude/rules/coding_style.md) | PyTCP source-file conventions (file skeleton, copyright block, six-file protocol layout, dataclass shape, parser / assembler / error patterns, `Subsystem` runtime) | Any new source file |
+| [`source_files.md`](.claude/rules/source_files.md) | general source-file mechanics — file skeleton, copyright block, module docstring, imports, naming, formatting, inline comments, source docstrings | Any new source file |
+| [`protocol_architecture.md`](.claude/rules/protocol_architecture.md) | `net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `net_proto/protocols/` |
+| [`stack_runtime.md`](.claude/rules/stack_runtime.md) | `pytcp/` runtime services — `Subsystem` base, packet-handler mixins, BSD socket facade, sysctl registry, stack configuration | Any new runtime service under `pytcp/` |
 | [`unit_testing.md`](.claude/rules/unit_testing.md) | unit tests (framework, mocking discipline §6a, isolation §10a, modern Python features §10b, the §7.2 docstring audit) | Any new unit test |
 | [`integration_testing.md`](.claude/rules/integration_testing.md) | integration tests (harness hierarchy, drive_rx / probe / fluent-assert pattern, stat-counter assertions) | Any new integration test |
 

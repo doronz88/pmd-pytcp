@@ -462,7 +462,7 @@ plan with §0 motivation, §1 classification rule, §2-§7 design,
   2. .claude/rules/feature_implementation.md (tests-first MUST,
      §7.2 audit)
   3. .claude/rules/unit_testing.md (test conventions)
-  4. .claude/rules/coding_style.md §6.1 (sysctl pattern)
+  4. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` §6.1 (sysctl pattern)
   5. .claude/skills/sysctl_knob/SKILL.md (workflow for adding
      a knob)
   6. The current state of pytcp/lib/sysctl.py if it exists,
@@ -487,7 +487,7 @@ Branch: PyTCP_3_0__pre_release. No push without ask.
 
 - Skill: `.claude/skills/sysctl_knob/SKILL.md` (workflow for
   adding a single knob — when this plan's phases require it).
-- Rule: `.claude/rules/coding_style.md` §6.1 (the
+- Rule: `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` §6.1 (the
   classification rule + qualified-access pattern, as a
   reading reference for any new code).
 - Per-RFC adherence: knob's audit-doc Reference cites the

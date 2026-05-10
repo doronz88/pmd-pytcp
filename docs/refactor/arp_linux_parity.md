@@ -493,7 +493,7 @@ before any code:
      §7.2 audit before commit, commit discipline)
   3. .claude/rules/unit_testing.md (test authoring conventions,
      §7.2 audit script)
-  4. .claude/rules/coding_style.md (source authoring;
+  4. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` (source authoring;
      §6.1 sysctl pattern applies to NUD timing constants)
   5. .claude/skills/sysctl_knob/SKILL.md (workflow when
      adding a registered policy knob)

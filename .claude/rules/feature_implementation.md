@@ -20,10 +20,17 @@ rule references:
   unions, PEP 585 generics, PEP 695 generic syntax,
   `Self` / `@override`, `Protocol` / `TypedDict`, `cast`
   policy, `# type: ignore` policy, forward references).
-- [`coding_style.md`](coding_style.md) — PyTCP source-file
-  conventions (file skeleton, copyright block, module
-  docstring, per-protocol six-file layout, dataclass shape,
-  parser / assembler / error patterns, `Subsystem` runtime).
+- [`source_files.md`](source_files.md) — general source-file
+  mechanics (file skeleton, copyright block, module
+  docstring, imports, naming, formatting, inline comments).
+- [`protocol_architecture.md`](protocol_architecture.md) —
+  `net_proto/` per-protocol six-file layout (`*Header` /
+  `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
+  `*Errors`), options, enums, validation helpers, error
+  templates, buffer/struct conventions.
+- [`stack_runtime.md`](stack_runtime.md) — `pytcp/` runtime
+  services (`Subsystem`, packet-handler mixins, BSD socket
+  facade, sysctl registry, stack configuration).
 
 ---
 
@@ -202,10 +209,13 @@ Once the failing tests are in place:
    `Generic`, `from __future__ import annotations` + the
    `TYPE_CHECKING` trio) in the same commit.
 5. **Match PyTCP source-file conventions** for any new
-   file — file skeleton (copyright block, module
-   docstring, imports), naming, the per-protocol six-file
-   layout, dataclass shape per
-   [`coding_style.md`](coding_style.md).
+   file — file skeleton, copyright block, module docstring,
+   imports, naming, formatting per
+   [`source_files.md`](source_files.md); the per-protocol
+   six-file layout + dataclass shape per
+   [`protocol_architecture.md`](protocol_architecture.md);
+   the `Subsystem` / packet-handler / socket / sysctl
+   patterns per [`stack_runtime.md`](stack_runtime.md).
 6. Verify the originally-failing tests now pass and the
    full suite still passes (`make validate`).
 
@@ -339,13 +349,20 @@ pinned before.
   generic syntax, `Self`, `@override`, `Protocol`,
   `TypedDict`, `cast` policy, `# type: ignore` policy,
   forward references / PEP 649 lazy annotations.
-- PyTCP source-file authoring:
-  [`coding_style.md`](coding_style.md) — file skeleton,
+- General source-file authoring:
+  [`source_files.md`](source_files.md) — file skeleton,
   copyright block, module docstring, imports, naming,
+  formatting, inline comments, source docstrings.
+- Protocol authoring (under `net_proto/protocols/`):
+  [`protocol_architecture.md`](protocol_architecture.md) —
   the per-protocol six-file layout, dataclass shape,
-  parser / assembler / error / options patterns,
-  `Subsystem` runtime, validation helpers, error message
-  templates, buffer / struct conventions.
+  parser three-phase pipeline, assembler kw-only ctor,
+  error / options / enums patterns, validation helpers,
+  error message templates, buffer / struct conventions.
+- Stack-runtime authoring (under `pytcp/`):
+  [`stack_runtime.md`](stack_runtime.md) — `Subsystem`
+  base, packet-handler mixin composition, BSD socket
+  facade, sysctl registry, stack configuration.
 - Per-RFC adherence audits:
   `docs/rfc/<family>/rfcXXXX__*/adherence.md` (TCP, IP6,
   ICMP6, ICMP4, ARP families). The

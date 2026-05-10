@@ -1196,10 +1196,15 @@ same commit:
 - [`feature_implementation.md`](feature_implementation.md) §3
   — modernise legacy typing forms on touch; the
   pre-commit checklist gates `make lint` (mypy strict).
-- [`coding_style.md`](coding_style.md) — PyTCP source-file
-  conventions. The dataclass shape (`frozen=True, kw_only=True,
+- [`source_files.md`](source_files.md) — general PyTCP
+  source-file conventions (file skeleton, imports, naming).
+- [`protocol_architecture.md`](protocol_architecture.md) —
+  the dataclass shape (`frozen=True, kw_only=True,
   slots=True`), parser / assembler / error-class patterns
   rely on the typing rules in this file.
+- [`stack_runtime.md`](stack_runtime.md) — the `Subsystem`
+  base and packet-handler mixin composition that consume
+  PEP 695 generics and `@override`.
 - mypy strict configuration: see `pyproject.toml`.
 - CPython "What's New" for the per-version typing additions:
   [3.10](https://docs.python.org/3/whatsnew/3.10.html),

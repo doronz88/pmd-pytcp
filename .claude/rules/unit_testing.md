@@ -1369,7 +1369,11 @@ novel patterns introduced in a new file.
 - [`feature_implementation.md`](feature_implementation.md) §2 — the
   tests-first workflow that drives every behavioural change. The
   rule that says "write the failing test first" is here.
-- [`coding_style.md`](coding_style.md) — PyTCP source-file
-  conventions. Test files share the file-skeleton, copyright-block,
-  and module-docstring conventions but skip the per-protocol six-file
-  layout and the dataclass / parser / assembler / error patterns.
+- [`source_files.md`](source_files.md) — general PyTCP
+  source-file conventions. Test files share the file-skeleton,
+  copyright-block, and module-docstring conventions.
+- [`protocol_architecture.md`](protocol_architecture.md) and
+  [`stack_runtime.md`](stack_runtime.md) — what the SUT is
+  shaped like for `net_proto/` and `pytcp/` respectively;
+  read these when writing tests for the corresponding
+  source files.

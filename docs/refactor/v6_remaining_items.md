@@ -287,7 +287,7 @@ Read these in order before any code:
      rule)
   4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script is non-negotiable per commit)
-  5. .claude/rules/coding_style.md (source-authoring rule)
+  5. `.claude/rules/source_files.md` / `protocol_architecture.md` / `stack_runtime.md` (source-authoring rule)
 
 After reading, confirm you understand:
 
