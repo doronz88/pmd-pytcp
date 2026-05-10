@@ -52,7 +52,7 @@ Companion documents:
 | **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
 | **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
-| **§15a RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. Consumer (DNS resolver) deferred to §15b | RFC 8106 §5.1, §5.2 |
+| **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -677,11 +677,46 @@ encoding + RESERVED normalisation).
 
 ---
 
-## §15 — Tier 3: RDNSS / DNSSL options (RFC 8106) ✓ (wire format) / ⚠ (consumer)
+## §15 — Tier 3: RDNSS / DNSSL options (RFC 8106) ✓
 
-### §15a (shipped) — Wire-format parse + assemble ✓
+### Why this is in scope (and why "consumer" is not)
 
-Both options now have full parser + assembler support:
+DNS resolution is L7 — not part of an L2-L4 stack. Linux's
+kernel has no DNS resolver; RDNSS / DNSSL on Linux are
+consumed by *userspace* daemons (`systemd-resolved`,
+NetworkManager, `rdisc6`) that watch RAs and rewrite
+`/etc/resolv.conf`. PyTCP's `pytcp/socket/__init__.py`
+explicitly punts hostname resolution to CPython's stdlib
+`socket.getaddrinfo` with the comment "DNS / hostname
+resolution lives outside the TCP/IP stack scope." So this
+item is **not** about adding a DNS resolver to the stack.
+
+What §15 *is* about is the
+CLAUDE.md North Star principle for Phase-2 router-grade work:
+
+> Parse extension headers / options as full typed objects,
+> not opaque blobs, even when the host has no semantic use
+> for them — Phase 2 needs to forward them faithfully.
+
+For RA options, that means PyTCP must recognise type-25
+(RDNSS) and type-31 (DNSSL) as typed dataclasses rather than
+letting them fall through to `Icmp6NdOptionUnknown`. Three
+concrete payoffs:
+
+- **Phase-2 router emission**: a router-grade PyTCP will emit
+  RAs and may need to advertise its own RDNSS / DNSSL — the
+  assembler half lets that work without touching wire-format
+  code in a future refactor.
+- **Forwarding fidelity**: an RA-relay path can preserve /
+  inspect these options end-to-end.
+- **Phase-1 visibility**: logs / debug output show
+  `dnssl (lifetime 600, domains [example.com])` instead of
+  `Unknown option type=31`. External tools (a userspace
+  resolver script reading from a debug API) can pull typed
+  values out of `packet_rx.icmp6.message.options` without
+  re-parsing raw bytes.
+
+### What shipped
 
 * `Icmp6NdOptionRdnss(lifetime, addresses)` at
   `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__rdnss.py`.
@@ -702,14 +737,10 @@ Both options now have full parser + assembler support:
   RA carrying RDNSS / DNSSL parses without falling back to
   `Icmp6NdOptionUnknown`.
 
-### §15b (deferred) — Consumer integration
-
-PyTCP has no DNS resolver, so RDNSS / DNSSL state has no
-runtime consumer. The wire-format pin shipped here is
-forward-compat: a future resolver subsystem can iterate
-`packet_rx.icmp6.message.options` and pull RDNSS / DNSSL
-entries when it's introduced. The `accept_ra_rdnss` /
-`accept_ra_dnssl` Linux-parity sysctls land with the consumer.
+`accept_ra_rdnss` / `accept_ra_dnssl` Linux sysctls are
+**not** added — they gate what userspace resolver daemons do
+with the options, not what the kernel does. They have no
+analogue in PyTCP's L2-L4 surface.
 
 ### Tests
 
@@ -728,10 +759,8 @@ entries when it's introduced. The `accept_ra_rdnss` /
 
 ### RFC reference
 
-RFC 8106 §5.1 (RDNSS), §5.2 (DNSSL).
+RFC 8106 §5.1 (RDNSS wire format), §5.2 (DNSSL wire format).
 RFC 1035 §3.1 (domain-name label encoding).
-Linux: `net.ipv6.conf.<iface>.accept_ra_rdnss`,
-`net.ipv6.conf.<iface>.accept_ra_dnssl`.
 
 ---
 
