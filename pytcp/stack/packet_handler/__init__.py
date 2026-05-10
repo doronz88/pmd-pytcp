@@ -45,6 +45,7 @@ from net_addr import (
     Ip4Host,
     Ip6Address,
     Ip6Host,
+    Ip6Mask,
     Ip6Network,
     MacAddress,
 )
@@ -132,6 +133,7 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_slaac__secret_key: bytes
     _icmp6_ra_parameters: Icmp6RaParameters
     _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
+    _ip6_addressing_complete: bool
 
     @override
     def __init__(
@@ -194,6 +196,15 @@ class PacketHandler(Subsystem, ABC):
         # emit path to clear the Override flag on outbound NAs
         # whose source is in OPTIMISTIC state per §3.3.
         self._icmp6_dad__states: dict[Ip6Address, Icmp6DadState] = {}
+
+        # Flips True at the end of '_create_stack_ip6_addressing'.
+        # Gates runtime stable-SLAAC claim in the RX path: a
+        # PI for a new prefix that arrives DURING the boot
+        # window updates the SLAAC tracking table only (the
+        # boot loop owns the claim ordering); a PI that
+        # arrives AFTER the boot window also spawns a fresh
+        # '_claim_ip6_address_async' worker.
+        self._ip6_addressing_complete: bool = False
 
         # Assign IP addresses statically.
         if ip6_host is not None:
@@ -615,6 +626,25 @@ class PacketHandler(Subsystem, ABC):
         )
         self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address += 1
 
+        # Runtime stable-address claim: a brand-new prefix
+        # admitted AFTER boot-time addressing completed needs
+        # a DAD claim — boot loop only handles prefixes that
+        # arrived during the boot window. The
+        # '_ip6_addressing_complete' flag gates this so the
+        # boot loop's own claim path doesn't double up. On
+        # refresh ('existing is not None') no claim is needed
+        # — the stable address is already in '_ip6_host'.
+        if existing is None and self._ip6_addressing_complete:
+            ip6_host = Ip6Host((address, Ip6Mask("/64")))
+            ip6_host.gateway = router_address
+            self._claim_ip6_address_async(
+                ip6_host=ip6_host,
+                regenerate=self._make_rfc7217_regenerator(
+                    ip6_network=prefix,
+                    gateway=router_address,
+                ),
+            )
+
     def get_icmp6_slaac_addresses(self) -> list[Icmp6SlaacAddress]:
         """
         Get the list of currently-active SLAAC address entries
@@ -877,6 +907,45 @@ class PacketHandler(Subsystem, ABC):
             )
             self._claim_ip6_address_async(ip6_host=temp_host, regenerate=_regenerate)
 
+    def _icmp6_sweep_slaac_addresses(self) -> None:
+        """
+        Remove stable SLAAC entries past 'valid_until' from
+        BOTH '_icmp6_slaac_addresses' AND '_ip6_host'. The
+        lazy accessor 'get_icmp6_slaac_addresses()' already
+        filters expired entries at read time, but '_ip6_host'
+        is the hot list TX and RX walk directly — the stable
+        address must be pruned there too once its valid
+        lifetime has elapsed.
+
+        Invoked periodically from '_maybe_run_periodic_tasks'
+        alongside the §18c.1 temp-address sweep.
+
+        Reference: RFC 4862 §5.5.3 (e)(7) (expired stable
+                                           address must not
+                                           be used).
+        """
+
+        now = time.monotonic()
+        expired = [a for a in self._icmp6_slaac_addresses if a.valid_until <= now]
+        if not expired:
+            return
+
+        for entry in expired:
+            __debug__ and log(
+                "stack",
+                f"<INFO>SLAAC sweep: stable address {entry.address} "
+                f"(prefix {entry.prefix}) past valid_until — removing</>",
+            )
+            for ip6_host in list(self._ip6_host):
+                if ip6_host.address == entry.address:
+                    self._ip6_host.remove(ip6_host)
+                    snm = ip6_host.address.solicited_node_multicast
+                    if snm in self._ip6_multicast:
+                        self._remove_ip6_multicast(snm)
+                    break
+
+        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+
     def get_icmp6_default_router_for_destination(
         self,
         *,
@@ -1072,6 +1141,40 @@ class PacketHandler(Subsystem, ABC):
             mac_address=self._mac_unicast,
             ip6_network=ip6_network,
         )
+
+    def _make_rfc7217_regenerator(
+        self,
+        *,
+        ip6_network: Ip6Network,
+        gateway: Ip6Address | None,
+    ) -> Callable[[], Ip6Host] | None:
+        """
+        Build a DAD-failure regenerator for an RFC 7217 stable
+        opaque IID address (RFC 7217 §6 retry on collision).
+        Each invocation re-derives with an incremented
+        'dad_counter'. Returns None when EUI-64 derivation is
+        active ('icmp6.use_rfc7217 = 0') because EUI-64 is
+        deterministic from the MAC and re-derivation would
+        produce the same address.
+        """
+
+        if not nd__constants.ICMP6__USE_RFC7217:
+            return None
+
+        counter = [0]
+
+        def _regenerate() -> Ip6Host:
+            counter[0] += 1
+            host = Ip6Host.from_rfc7217(
+                ip6_network=ip6_network,
+                mac_address=self._mac_unicast,
+                secret_key=self._icmp6_slaac__secret_key,
+                dad_counter=counter[0],
+            )
+            host.gateway = gateway
+            return host
+
+        return _regenerate
 
     def _effective_ip6_hop_limit(self) -> int:
         """
@@ -1297,6 +1400,9 @@ class PacketHandlerL2(
         # on valid_until <= now).
         self._icmp6_regen_temp_addresses()
         self._icmp6_sweep_temp_addresses()
+        # Stable-SLAAC sweep — symmetric to the temp sweep,
+        # for §12a.runtime lifecycle close-out.
+        self._icmp6_sweep_slaac_addresses()
 
     def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:
         """
@@ -1565,40 +1671,6 @@ class PacketHandlerL2(
         thread.start()
         return thread
 
-    def _make_rfc7217_regenerator(
-        self,
-        *,
-        ip6_network: Ip6Network,
-        gateway: Ip6Address | None,
-    ) -> Callable[[], Ip6Host] | None:
-        """
-        Build a DAD-failure regenerator for an RFC 7217 stable
-        opaque IID address (RFC 7217 §6 retry on collision).
-        Each invocation re-derives with an incremented
-        'dad_counter'. Returns None when EUI-64 derivation is
-        active ('icmp6.use_rfc7217 = 0') because EUI-64 is
-        deterministic from the MAC and re-derivation would
-        produce the same address.
-        """
-
-        if not nd__constants.ICMP6__USE_RFC7217:
-            return None
-
-        counter = [0]
-
-        def _regenerate() -> Ip6Host:
-            counter[0] += 1
-            host = Ip6Host.from_rfc7217(
-                ip6_network=ip6_network,
-                mac_address=self._mac_unicast,
-                secret_key=self._icmp6_slaac__secret_key,
-                dad_counter=counter[0],
-            )
-            host.gateway = gateway
-            return host
-
-        return _regenerate
-
     @override
     def _create_stack_ip6_addressing(self) -> None:
         """
@@ -1682,6 +1754,15 @@ class PacketHandlerL2(
                     ip6_address,
                     regenerate=self._make_rfc7217_regenerator(ip6_network=prefix, gateway=gateway),
                 )
+
+        # Open the runtime-claim gate. From here on, any PI
+        # arriving at the RX path for a brand-new prefix
+        # (existing SLAAC entry is None) triggers an
+        # immediate '_claim_ip6_address_async' for the
+        # stable address. Boot-window PIs only updated the
+        # tracking table and relied on the loop above for
+        # their claim ordering.
+        self._ip6_addressing_complete = True
 
     @override
     def _create_stack_ip4_addressing(self) -> None:
