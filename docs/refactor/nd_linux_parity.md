@@ -953,6 +953,66 @@ Doc-only edit. Shipped.
 
 ---
 
+## §20.4 — `accept_dad` sysctl modes 0/1/2 ✓
+
+**Shipped.** New `icmp6.accept_dad` sysctl mirrors Linux's
+`net.ipv6.conf.<iface>.accept_dad` tristate semantics:
+
+- `0` — skip DAD entirely. The candidate goes straight to
+  VALID; no probes are emitted; no initial random delay
+  is taken. Equivalent in effect to `dad_transmits=0`.
+- `1` — normal DAD (default). DAD failure removes the
+  candidate from the host's address list but leaves IPv6
+  enabled.
+- `2` — strict DAD. Any DAD failure additionally disables
+  IPv6 on the interface (`_ip6_support = False`). Used by
+  paranoid deployments where conflicting addresses are
+  treated as a security incident.
+
+### Implementation
+
+* `accept_dad=0` short-circuit at the top of
+  `_perform_ip6_nd_dad`: state goes to `VALID` immediately,
+  function returns `True`. No slot setup, no probes, no
+  delay.
+* `accept_dad=2` fail-hard hook in
+  `_claim_ip6_address_async._worker`: on the failure
+  branch, after the standard "address removed" path runs,
+  the worker sets `self._ip6_support = False`.
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__accept_dad.py`:
+- Sysctl registered with default 1; validator accepts
+  tristate {0,1,2}; rejects 3 and booleans.
+- `accept_dad=0` short-circuits: returns True, no TX
+  frames emitted.
+- `accept_dad=2` + DAD failure flips `_ip6_support` to
+  False and removes the address.
+- `accept_dad=1` + DAD failure does NOT flip
+  `_ip6_support` (regression check).
+- `accept_dad=2` + DAD success does NOT flip
+  `_ip6_support` (failure-only side effect).
+
+### What this closes
+
+Last of the three behaviour gaps surfaced by §20.1.
+Status:
+
+- §20.2 — Random initial probe delay ✓
+- §20.4 — `accept_dad` modes ✓ (this commit)
+- §20.3 — DAD-failure retry with `dad_counter` (RFC 7217
+  §6, RFC 8981 §3.3.3) — still owed.
+
+### RFC reference
+
+Linux `net/ipv6/addrconf.c::addrconf_dad_failure`
+(`accept_dad=2` disable-IPv6 path); no specific RFC clause
+mandates the `=2` behaviour — it is a Linux-specific
+hardening knob.
+
+---
+
 ## §20.2 — Random initial DAD probe delay (RFC 4862 §5.4.2) ✓
 
 **Shipped.** `_perform_ip6_nd_dad` now sleeps for a uniform

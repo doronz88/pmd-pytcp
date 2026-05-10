@@ -1170,6 +1170,14 @@ class PacketHandlerL2(
             f"ICMPv6 ND DAD - Starting process for {ip6_unicast_candidate}",
         )
 
+        # 'icmp6.accept_dad=0' short-circuits DAD entirely:
+        # candidate goes straight to VALID with no probes
+        # emitted, no initial delay taken, and no per-address
+        # DAD-state slot. Linux 'accept_dad=0' parity.
+        if nd__constants.ICMP6__ACCEPT_DAD == 0:
+            self._icmp6_dad__states[ip6_unicast_candidate] = Icmp6DadState.VALID
+            return True
+
         # Per-address DAD slot. Populated BEFORE the first probe
         # TX so the RX dispatch can find this candidate's Event /
         # nonce-set / tlla slot when peer NS / NA arrives.
@@ -1321,6 +1329,15 @@ class PacketHandlerL2(
                     "stack",
                     f"<WARN>Unable to claim IPv6 address {ip6_host}</>",
                 )
+                # 'icmp6.accept_dad=2' fail-hard: any DAD
+                # failure disables IPv6 on the interface
+                # entirely. Linux 'accept_dad=2' parity.
+                if nd__constants.ICMP6__ACCEPT_DAD == 2:
+                    __debug__ and log(
+                        "stack",
+                        f"<CRIT>icmp6.accept_dad=2 — DAD failure on {ip6_host} " "disables IPv6 on this interface</>",
+                    )
+                    self._ip6_support = False
 
         thread = threading.Thread(
             target=_worker,

@@ -144,6 +144,21 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# Linux net.ipv6.conf.<iface>.accept_dad policy. Tristate
+# matching Linux's host-side semantics:
+#   0 = skip DAD entirely. The candidate goes straight to
+#       VALID; no probes are emitted; no initial random delay
+#       is taken. Equivalent in effect to 'dad_transmits=0'.
+#   1 = normal DAD (default). DAD failure removes the
+#       candidate from the host's address list but leaves
+#       IPv6 enabled.
+#   2 = strict DAD. Any DAD failure additionally disables
+#       IPv6 on the interface ('_ip6_support = False'). Used
+#       by paranoid deployments where conflicting addresses
+#       are treated as a security incident. Linux's kernel
+#       has the same behaviour.
+ICMP6__ACCEPT_DAD = 1
+
 # RFC 4861 §10 MAX_RTR_SOLICITATION_DELAY — the upper bound
 # on the random initial delay before the first DAD probe (RFC
 # 4862 §5.4.2) and the first Router Solicitation (RFC 4861
@@ -339,6 +354,17 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _accept_dad_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1, 2}. Booleans are rejected
+    explicitly because 'isinstance(True, int)' is True in
+    Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1, 2):
+        raise ValueError(f"sysctl 'icmp6.accept_dad' must be 0, 1, or 2; got {value!r}")
+
+
 def _max_rtr_solicitation_delay_ms_validator(value: Any) -> None:
     """
     Reject non-integer values, booleans, and negatives. Zero
@@ -524,6 +550,18 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.accept_dad",
+    module_name=__name__,
+    attr="ICMP6__ACCEPT_DAD",
+    default=ICMP6__ACCEPT_DAD,
+    validator=_accept_dad_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.accept_dad' tristate "
+        "{0,1,2}; 0=skip DAD, 1=normal (default), 2=fail-hard "
+        "(disable IPv6 on DAD failure)."
     ),
 )
 register(
