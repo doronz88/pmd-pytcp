@@ -13,8 +13,8 @@ Neighbor-Discovery concern.
 |---------|------------------------------------------------|-------------|
 | §12c.1  | Rules 1, 2, 3, 8 + adherence record            | **shipped** |
 | §12c.2  | Rule 7 (temp-address preference)               | **shipped** |
-| §12c.3  | Rule 6 (RFC 6724 §10.3 policy table)           | deferred    |
-| §12c.4  | IPv4 source-selection symmetry                 | deferred    |
+| §12c.3  | Rule 6 (RFC 6724 §10.3 policy table)           | **shipped** |
+| §12c.4  | IPv4 source-selection symmetry                 | next        |
 
 ## What's already in place (state at HEAD `4229c1a7`)
 

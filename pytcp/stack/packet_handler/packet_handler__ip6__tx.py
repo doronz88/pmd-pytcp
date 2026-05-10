@@ -45,6 +45,7 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.ip6_policy_table import lookup as ip6_policy_lookup
 from pytcp.lib.ip6_source_selection import (
     common_prefix_len,
     ip6_address_scope,
@@ -315,16 +316,17 @@ class PacketHandlerIp6Tx(ABC):
         rule 1 short-circuits when the destination is itself
         owned. Otherwise the candidates are sorted by a
         lexicographic key that encodes rules 2 (scope), 3 (avoid
-        deprecated), 7 (temp-address preference), and 8 (longest
-        matching prefix), in that priority order. Rule 7 is
-        gated on the 'icmp6.use_tempaddr' sysctl: only
-        'use_tempaddr=2' triggers a positive preference; values
-        0 (no temp addresses to prefer) and 1 (no preference)
-        leave the rule as a no-op. Rules 4 (home address), 5
-        (outgoing interface), 5.5 (next-hop), and 6 (matching
-        label) are out of scope for this phase: 4/5/5.5 do not
-        apply to a single-interface host stack and rule 6 needs
-        the §10.3 policy table.
+        deprecated), 6 (matching label), 7 (temp-address
+        preference), and 8 (longest matching prefix), in that
+        priority order. Rule 7 is gated on the
+        'icmp6.use_tempaddr' sysctl: only 'use_tempaddr=2'
+        triggers a positive preference; values 0 (no temp
+        addresses to prefer) and 1 (no preference) leave the
+        rule as a no-op. Rule 6 consults the RFC 6724 §10.3
+        default policy table for label assignment. Rules 4
+        (home address), 5 (outgoing interface), and 5.5
+        (next-hop) are out of scope: 4/5/5.5 do not apply to a
+        single-interface host stack.
 
         Returns None when no candidate exists. The TX path
         falls back to the existing
@@ -358,10 +360,11 @@ class PacketHandlerIp6Tx(ABC):
         prefer_temp = nd__constants.ICMP6__USE_TEMPADDR == 2
         temp_addresses = {entry.address for entry in self._icmp6_temp_addresses} if prefer_temp else set()
         dst_scope = ip6_address_scope(ip6__dst)
+        _, dst_label = ip6_policy_lookup(ip6__dst)
 
-        def sort_key(src: Ip6Address) -> tuple[tuple[int, int], int, int, int]:
+        def sort_key(src: Ip6Address) -> tuple[tuple[int, int], int, int, int, int]:
             """
-            Build the rule-2/3/7/8 lexicographic sort key.
+            Build the rule-2/3/6/7/8 lexicographic sort key.
             Higher tuples win under descending sort.
             """
 
@@ -376,6 +379,11 @@ class PacketHandlerIp6Tx(ABC):
                 rule2 = (0, src_scope)
             # Rule 3 — prefer non-deprecated.
             rule3 = 0 if src in deprecated_addresses else 1
+            # Rule 6 — prefer source whose policy-table label
+            # matches the destination's. The §10.3 default
+            # table is consulted via 'ip6_policy_lookup'.
+            _, src_label = ip6_policy_lookup(src)
+            rule6 = 1 if src_label == dst_label else 0
             # Rule 7 — prefer temporary addresses when the
             # 'use_tempaddr' policy says so. With sysctl=0 or 1
             # 'temp_addresses' is empty so the score is 0 for
@@ -383,7 +391,7 @@ class PacketHandlerIp6Tx(ABC):
             rule7 = 1 if src in temp_addresses else 0
             # Rule 8 — prefer longest common prefix.
             rule8 = common_prefix_len(src, ip6__dst)
-            return (rule2, rule3, rule7, rule8)
+            return (rule2, rule3, rule6, rule7, rule8)
 
         candidates.sort(key=sort_key, reverse=True)
         return candidates[0]
