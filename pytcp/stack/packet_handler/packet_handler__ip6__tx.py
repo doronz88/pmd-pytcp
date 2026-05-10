@@ -51,6 +51,7 @@ from pytcp.lib.ip6_source_selection import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddressState
 
 
@@ -63,7 +64,10 @@ class PacketHandlerIp6Tx(ABC):
         from net_addr import Ip6Host
         from net_proto import EthernetPayload, Ip6Payload, Tracker
         from pytcp.lib.packet_stats import PacketStatsTx
-        from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
+        from pytcp.protocols.icmp6.nd.nd__router_state import (
+            Icmp6SlaacAddress,
+            Icmp6TempAddress,
+        )
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
@@ -72,6 +76,7 @@ class PacketHandlerIp6Tx(ABC):
         _ip6_support: bool
         _interface_mtu: int
         _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
+        _icmp6_temp_addresses: list[Icmp6TempAddress]
 
         # pylint: disable=unused-argument
 
@@ -310,13 +315,16 @@ class PacketHandlerIp6Tx(ABC):
         rule 1 short-circuits when the destination is itself
         owned. Otherwise the candidates are sorted by a
         lexicographic key that encodes rules 2 (scope), 3 (avoid
-        deprecated), and 8 (longest matching prefix), in that
-        priority order. Rules 4 (home address), 5 (outgoing
-        interface), 5.5 (next-hop), 6 (matching label), and 7
-        (temp-address preference) are out of scope for this
-        phase. Rules 4/5/5.5 do not apply to a single-interface
-        host stack; rule 6 (policy table) and rule 7 ship in
-        follow-up phases.
+        deprecated), 7 (temp-address preference), and 8 (longest
+        matching prefix), in that priority order. Rule 7 is
+        gated on the 'icmp6.use_tempaddr' sysctl: only
+        'use_tempaddr=2' triggers a positive preference; values
+        0 (no temp addresses to prefer) and 1 (no preference)
+        leave the rule as a no-op. Rules 4 (home address), 5
+        (outgoing interface), 5.5 (next-hop), and 6 (matching
+        label) are out of scope for this phase: 4/5/5.5 do not
+        apply to a single-interface host stack and rule 6 needs
+        the §10.3 policy table.
 
         Returns None when no candidate exists. The TX path
         falls back to the existing
@@ -337,12 +345,24 @@ class PacketHandlerIp6Tx(ABC):
             for entry in self._icmp6_slaac_addresses
             if entry.state(now) is Icmp6SlaacAddressState.DEPRECATED
         }
+        # RFC 8981 temp addresses share the §5.5.4 PREFERRED /
+        # DEPRECATED semantics with their stable siblings —
+        # 'preferred_until <= now < valid_until' is DEPRECATED.
+        deprecated_addresses |= {
+            entry.address for entry in self._icmp6_temp_addresses if entry.preferred_until <= now < entry.valid_until
+        }
+        # Only collect temp-address membership when the policy
+        # actively prefers them ('use_tempaddr=2'); for values 0
+        # and 1 the rule-7 score is 0 for every candidate and
+        # the membership set never needs to be consulted.
+        prefer_temp = nd__constants.ICMP6__USE_TEMPADDR == 2
+        temp_addresses = {entry.address for entry in self._icmp6_temp_addresses} if prefer_temp else set()
         dst_scope = ip6_address_scope(ip6__dst)
 
-        def sort_key(src: Ip6Address) -> tuple[tuple[int, int], int, int]:
+        def sort_key(src: Ip6Address) -> tuple[tuple[int, int], int, int, int]:
             """
-            Build the rule-2/3/8 lexicographic sort key. Higher
-            tuples win under descending sort.
+            Build the rule-2/3/7/8 lexicographic sort key.
+            Higher tuples win under descending sort.
             """
 
             src_scope = ip6_address_scope(src)
@@ -356,9 +376,14 @@ class PacketHandlerIp6Tx(ABC):
                 rule2 = (0, src_scope)
             # Rule 3 — prefer non-deprecated.
             rule3 = 0 if src in deprecated_addresses else 1
+            # Rule 7 — prefer temporary addresses when the
+            # 'use_tempaddr' policy says so. With sysctl=0 or 1
+            # 'temp_addresses' is empty so the score is 0 for
+            # every candidate and rule 7 collapses to a no-op.
+            rule7 = 1 if src in temp_addresses else 0
             # Rule 8 — prefer longest common prefix.
             rule8 = common_prefix_len(src, ip6__dst)
-            return (rule2, rule3, rule8)
+            return (rule2, rule3, rule7, rule8)
 
         candidates.sort(key=sort_key, reverse=True)
         return candidates[0]

@@ -92,6 +92,7 @@ class _StubHandler(PacketHandlerIp6Tx):
         self._ip6_host = ip6_hosts if ip6_hosts is not None else [STACK__IP6_HOST]
         self._ip6_multicast = [STACK__IP6_MULTICAST]
         self._icmp6_slaac_addresses = []
+        self._icmp6_temp_addresses = []
 
         self.ethernet_tx_calls: list[dict[str, object]] = []
         self.frag_tx_calls: list[Ip6Assembler] = []

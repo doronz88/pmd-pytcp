@@ -217,10 +217,11 @@ ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000
 #       DAD-claimed but the source-address selector does not
 #       prefer them (matches Linux 'use_tempaddr=1').
 #   2 = enabled, prefer temp — RFC 6724 rule 7 makes the temp
-#       address the default outbound source. Today PyTCP has no
-#       RFC 6724 source-address selector so values 1 and 2 are
-#       observably the same; the tristate is wired for forward-
-#       compat with §12c / §18d.
+#       address the default outbound source. Wired through the
+#       PacketHandler '_select_ip6_source' selector at
+#       'pytcp/stack/packet_handler/packet_handler__ip6__tx.py';
+#       values 0 and 1 leave rule 7 as a no-op and rule 8
+#       decides.
 ICMP6__USE_TEMPADDR = 0
 
 # RFC 8981 §3.8 TEMP_VALID_LIFETIME — total valid lifetime cap

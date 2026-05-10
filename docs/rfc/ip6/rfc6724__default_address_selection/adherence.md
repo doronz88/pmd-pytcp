@@ -8,7 +8,7 @@
 | Date        | September 2012                                                   |
 | Source text | [`rfc6724.txt`](rfc6724.txt)                                     |
 
-## Status: PARTIAL (source-selection rules 1, 2, 3, 8 shipped)
+## Status: PARTIAL (source-selection rules 1, 2, 3, 7, 8 shipped)
 
 PyTCP runs the RFC 6724 §5 default source-address-selection
 algorithm on every outbound IPv6 packet whose source is
@@ -16,15 +16,22 @@ unspecified (`::`). The selector is `_select_ip6_source` on
 the IPv6 TX mixin
 (`pytcp/stack/packet_handler/packet_handler__ip6__tx.py`); it
 enumerates candidate sources from `_ip6_host`, applies a
-lexicographic sort encoded with rules 1, 2, 3, and 8, and
+lexicographic sort encoded with rules 1, 2, 3, 7, and 8, and
 returns the winner. The pure helpers — RFC 4007/4291 scope
 extraction and the §2.2 CommonPrefixLen — live in
 `pytcp/lib/ip6_source_selection.py`. Rules 4 (home address),
-5 (outgoing interface), 5.5 (next-hop), 6 (matching label),
-and 7 (temp-address preference) are tracked separately:
-rules 4/5/5.5 are no-ops on a single-interface host stack
-and rule 6 needs the §10.3 policy table; rule 7 ships in
-the next phase as the §18 RFC 8981 privacy consumer.
+5 (outgoing interface), 5.5 (next-hop), and 6 (matching label)
+are tracked separately: rules 4/5/5.5 are no-ops on a
+single-interface host stack and rule 6 needs the §10.3 policy
+table.
+
+Rule 7 is gated by the `icmp6.use_tempaddr` sysctl matching
+Linux semantics: `0` (no temp addresses to prefer), `1`
+(temp addresses generated, no preference at TX), `2` (prefer
+temp addresses at TX). With `use_tempaddr=2` the §18 RFC 8981
+privacy benefit becomes observable on the wire — peers see
+the random-IID temp source rather than the stable RFC 7217
+IID.
 
 The DAD probe (NS with src=:: and no SLLA) and MLDv2 report
 (src=::) short-circuit the selector — they MUST keep
@@ -44,7 +51,7 @@ Per-RFC mechanism inventory:
 | §5 rule 5  | Prefer outgoing interface                                  | not applicable (single interface)  | single-interface host stack; multi-interface support is a future Phase 2 concern                 |
 | §5 rule 5.5| Prefer source whose first-hop matches next-hop (RFC 8028)  | not implemented (RFC 8028 deferred)| see `docs/refactor/nd_linux_parity.md` §23                                                       |
 | §5 rule 6  | Prefer matching label (policy table)                       | not implemented (Phase §12c.3)     | requires §10.3 policy table                                                                      |
-| §5 rule 7  | Prefer temporary addresses                                 | not implemented (Phase §12c.2)     | scheduled next; makes the RFC 8981 §18 privacy benefit observable                                |
+| §5 rule 7  | Prefer temporary addresses                                 | met                                | gated by `icmp6.use_tempaddr=2`; rule-7 score in `_select_ip6_source` sort key                   |
 | §5 rule 8  | Use longest matching prefix                                | met                                | sort-key tiebreak after rules 1/2/3                                                              |
 | §6         | Destination address selection                              | not implemented                    | DNS-resolution selection (rules D1-D8) is out of scope at the stack layer                        |
 | §10.3      | Default policy table                                       | not implemented (Phase §12c.3)     | required by rules 6 and 8b                                                                       |
@@ -73,11 +80,21 @@ Per-RFC mechanism inventory:
   - `TestRfc6724SelectorBoundaries` — empty candidate set
     returns `None`; rule order is preserved
     (rule 1 > rule 3)
+- `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_7.py`
+  - `TestRfc6724Rule7TempPreferenceEnabled` — `use_tempaddr=2`
+    prefers temp over stable; outranks rule 8; rule 3
+    (PREFERRED-over-DEPRECATED) still wins
+  - `TestRfc6724Rule7TempNoPreference` — `use_tempaddr=1`
+    leaves rule 8 to decide
+  - `TestRfc6724Rule7TempDisabled` — `use_tempaddr=0` keeps
+    rule 7 a no-op even if a temp address slips into the
+    candidate set
 
 ## Cross-references
 
 - `docs/refactor/rfc6724_source_selection.md` — multi-commit
-  implementation plan (this commit ships §12c.1; §12c.2 next)
+  implementation plan (§12c.1 + §12c.2 shipped; §12c.3 / §12c.4
+  deferred)
 - `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md` §6.6 —
   parent classification (MUST)
 - `docs/rfc/icmp6/rfc4862__ipv6_slaac/adherence.md` §5.5.4 —
