@@ -40,6 +40,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__mtu import (
+    Icmp6NdOptionMtu,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
@@ -155,6 +158,8 @@ class Icmp6NdOptions(ProtoOptions):
                     options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.REDIRECTED_HEADER:
                     options.append(Icmp6NdOptionRedirectedHeader.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.MTU:
+                    options.append(Icmp6NdOptionMtu.from_buffer(buffer[offset:]))
                 case _:
                     options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
 

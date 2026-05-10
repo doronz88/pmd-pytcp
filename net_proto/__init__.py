@@ -280,6 +280,10 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option import (
     Icmp6NdOption,
     Icmp6NdOptionType,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__mtu import (
+    ICMP6__ND__OPTION__MTU__LEN,
+    Icmp6NdOptionMtu,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     ICMP6__ND__OPTION__PI__LEN,
     Icmp6NdOptionPi,
@@ -545,6 +549,7 @@ __all__ = [
     "ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN",
     "ICMP6__ND__NEIGHBOR_SOLICITATION__LEN",
     "ICMP6__ND__OPTION__LEN",
+    "ICMP6__ND__OPTION__MTU__LEN",
     "ICMP6__ND__OPTION__PI__LEN",
     "ICMP6__ND__OPTION__REDIRECTED_HEADER__LEN",
     "ICMP6__ND__OPTION__SLLA__LEN",
@@ -617,6 +622,7 @@ __all__ = [
     "Icmp6NdRedirectCode",
     "Icmp6NdMessageRedirect",
     "Icmp6NdOption",
+    "Icmp6NdOptionMtu",
     "Icmp6NdOptionPi",
     "Icmp6NdOptionRedirectedHeader",
     "Icmp6NdOptionSlla",
