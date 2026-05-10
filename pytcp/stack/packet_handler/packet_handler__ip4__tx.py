@@ -27,7 +27,7 @@ This module contains packet handler for the outbound IPv4 packets.
 
 pytcp/subsystems/packet_handler/packet_handler__ip4__tx.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from abc import ABC
@@ -48,6 +48,10 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.ip4_source_selection import (
+    common_prefix_len,
+    ip4_address_scope,
+)
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -315,37 +319,11 @@ class PacketHandlerIp4Tx(ABC):
                 )
                 return ip4__src
 
-        # If source is unspecified and destination belongs to any of local networks
-        # then pick source address from that network.
-        if ip4__src.is_unspecified:
-            for ip4_host in self._ip4_host:
-                if ip4__dst in ip4_host.network:
-                    self._packet_stats_tx.ip4__src_network_unspecified__replace_local += 1
-                    ip4__src = ip4_host.address
-                    __debug__ and log(
-                        "ip4",
-                        f"{tracker} - Packet source is unspecified, replaced "
-                        f"source with IPv4 address {ip4__src} from the local "
-                        "destination subnet",
-                    )
-                    return ip4__src
-
-        # If source is unspecified and destination is external pick source from
-        # first network that has default gateway set.
-        if ip4__src.is_unspecified:
-            for ip4_host in self._ip4_host:
-                if ip4_host.gateway:
-                    self._packet_stats_tx.ip4__src_network_unspecified__replace_external += 1
-                    ip4__src = ip4_host.address
-                    __debug__ and log(
-                        "ip4",
-                        f"{tracker} - Packet source is unspecified, replaced "
-                        f"source with IPv4 address {ip4__src} that has gateway "
-                        "available",
-                    )
-                    return ip4__src
-
         # If src is unspecified and stack is sending DHCP packet.
+        # Per RFC 2131 §3.1 a DHCPDISCOVER / DHCPREQUEST MUST
+        # carry src=0.0.0.0 — keep the unspec-src short-circuit
+        # before RFC 6724 source selection so the selector
+        # cannot replace it with an owned address.
         if (
             ip4__src.is_unspecified
             and isinstance(ip4__payload, UdpAssembler)
@@ -359,6 +337,26 @@ class PacketHandlerIp4Tx(ABC):
             )
             return ip4__src
 
+        # If source is unspecified, run RFC 6724 §6 default
+        # source-address selection (rules 1, 2, and 8 — the
+        # only ones applicable to IPv4) across the owned
+        # candidate set. The local/external split is preserved
+        # at the stat-counter level for backwards compatibility
+        # with existing observability dashboards.
+        if ip4__src.is_unspecified:
+            selected = self._select_ip4_source(ip4__dst=ip4__dst)
+            if selected is not None:
+                if any(ip4__dst in host.network for host in self._ip4_host):
+                    self._packet_stats_tx.ip4__src_network_unspecified__replace_local += 1
+                else:
+                    self._packet_stats_tx.ip4__src_network_unspecified__replace_external += 1
+                __debug__ and log(
+                    "ip4",
+                    f"{tracker} - Packet source is unspecified, RFC 6724 "
+                    f"selector picked source IPv4 address {selected}",
+                )
+                return selected
+
         # If src is unspecified and stack can't replace it.
         if ip4__src.is_unspecified:
             self._packet_stats_tx.ip4__src_unspecified__drop += 1
@@ -370,6 +368,52 @@ class PacketHandlerIp4Tx(ABC):
 
         # If nothing above applies return the src address intact.
         return ip4__src
+
+    def _select_ip4_source(self, *, ip4__dst: Ip4Address) -> Ip4Address | None:
+        """
+        Run RFC 6724 §6 default source-address selection over
+        the candidate set in '_ip4_host' and return the winner.
+
+        Only rules 1 (same address), 2 (scope), and 8 (longest
+        matching prefix) apply to IPv4: rule 3 (avoid
+        deprecated) has no IPv4 equivalent (no SLAAC), rule 6
+        (matching label) and rule 7 (temp addresses) likewise
+        have no IPv4 analog, and rules 4 / 5 / 5.5 are no-ops on
+        a single-interface host stack. The lex-tuple sort key
+        encodes rules 2 and 8 in priority order; rule 1
+        short-circuits.
+
+        Returns None when no candidate exists. The TX path
+        falls back to the existing
+        DROPPED__IP4__SRC_UNSPECIFIED handling.
+        """
+
+        candidates = [host.address for host in self._ip4_host]
+        if not candidates:
+            return None
+
+        # Rule 1 — prefer same address.
+        if ip4__dst in candidates:
+            return ip4__dst
+
+        dst_scope = ip4_address_scope(ip4__dst)
+
+        def sort_key(src: Ip4Address) -> tuple[tuple[int, int], int]:
+            """
+            Build the rule-2/8 lexicographic sort key. Higher
+            tuples win under descending sort.
+            """
+
+            src_scope = ip4_address_scope(src)
+            if src_scope >= dst_scope:
+                rule2 = (1, -src_scope)
+            else:
+                rule2 = (0, src_scope)
+            rule8 = common_prefix_len(src, ip4__dst)
+            return (rule2, rule8)
+
+        candidates.sort(key=sort_key, reverse=True)
+        return candidates[0]
 
     def __validate_dst_ip4_address(
         self,

@@ -14,7 +14,7 @@ Neighbor-Discovery concern.
 | §12c.1  | Rules 1, 2, 3, 8 + adherence record            | **shipped** |
 | §12c.2  | Rule 7 (temp-address preference)               | **shipped** |
 | §12c.3  | Rule 6 (RFC 6724 §10.3 policy table)           | **shipped** |
-| §12c.4  | IPv4 source-selection symmetry                 | next        |
+| §12c.4  | IPv4 source-selection symmetry                 | **shipped** |
 
 ## What's already in place (state at HEAD `4229c1a7`)
 
@@ -227,35 +227,29 @@ Each phase is tests-first per
 [`.claude/rules/feature_implementation.md`](../../.claude/rules/feature_implementation.md)
 §2.
 
-## Resume prompt (paste into a fresh session)
+## Done
 
-> Resume RFC 6724 source-address selection work in PyTCP.
-> State at HEAD `4229c1a7` on branch
-> `PyTCP_3_0__pre_release` (all prior session commits
-> pushed). Read `docs/refactor/rfc6724_source_selection.md`
-> first — it captures what's already in place (full IPv6
-> address lifecycle is dynamic; only source-selection
-> remains) and the §12c.1 → §12c.2 → §12c.3 → §12c.4 phase
-> split.
->
-> Recommended cut: §12c.1 + §12c.2 in one or two commits.
-> §12c.1 establishes the rule-based source-selection
-> framework (rules 1, 2, 3, 8) replacing the monolithic
-> `__validate_src_ip6_address` algorithm; §12c.2 layers on
-> rule 7 (temp-address preference) which finally makes the
-> §18 RFC 8981 privacy benefit observable on the wire. The
-> per-RFC adherence record at
-> `docs/rfc/ip6/rfc6724__default_address_selection/` does
-> not exist yet — create it as part of §12c.1.
->
-> §12c.3 (RFC 6724 §10.3 policy table) and §12c.4 (IPv4
-> source-selection symmetry) are reasonable follow-ups but
-> can defer.
->
-> Tests-first per `.claude/rules/feature_implementation.md`
-> §2. Run `make lint && make test` first to confirm green
-> baseline (expected: lint clean, 10032 passing, 4
-> skipped).
+All four phases shipped. The kick-off arc is complete; the
+adherence record at
+[`docs/rfc/ip6/rfc6724__default_address_selection/adherence.md`](../rfc/ip6/rfc6724__default_address_selection/adherence.md)
+is the canonical state-of-affairs.
+
+Remaining sub-tasks that *could* extend the arc but are not
+blocking:
+
+- **Sysctl-driven policy-table override.** The §10.3 default
+  table is hard-coded; a future change could add a sysctl key
+  (e.g. `ip.policy_table`) accepting a list of `(prefix,
+  precedence, label)` triples to override the default. Not
+  needed for default-Linux-host parity since the default
+  table matches `/etc/gai.conf`.
+- **Destination address selection (RFC 6724 §6 DAS rules
+  D1–D8).** This is a DNS-resolution-time concern (picking
+  among multiple AAAA / A answers) rather than a stack-TX
+  concern; PyTCP does not perform DNS resolution at the
+  stack layer, so there is no consumer to wire it into.
+  Out of scope unless a future PyTCP socket-API change adds
+  resolver behavior.
 
 ## Cross-references
 

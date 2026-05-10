@@ -8,7 +8,7 @@
 | Date        | September 2012                                                   |
 | Source text | [`rfc6724.txt`](rfc6724.txt)                                     |
 
-## Status: PARTIAL (source-selection rules 1, 2, 3, 6, 7, 8 shipped)
+## Status: PARTIAL (source-selection rules 1, 2, 3, 6, 7, 8 shipped; IPv4 symmetry shipped; DAS / sysctl override deferred)
 
 PyTCP runs the RFC 6724 §5 default source-address-selection
 algorithm on every outbound IPv6 packet whose source is
@@ -61,7 +61,8 @@ Per-RFC mechanism inventory:
 | §5 rule 6  | Prefer matching label (policy table)                       | met                                | `_select_ip6_source` sort key consults `ip6_policy_table.lookup`                                 |
 | §5 rule 7  | Prefer temporary addresses                                 | met                                | gated by `icmp6.use_tempaddr=2`; rule-7 score in `_select_ip6_source` sort key                   |
 | §5 rule 8  | Use longest matching prefix                                | met                                | sort-key tiebreak after rules 1/2/3                                                              |
-| §6         | Destination address selection                              | not implemented                    | DNS-resolution selection (rules D1-D8) is out of scope at the stack layer                        |
+| §6 (v4)    | IPv4 source-selection symmetry                             | met (rules 1, 2, 8)                | `_select_ip4_source` mirrors `_select_ip6_source` for the v4 family at TX                        |
+| §6 (DAS)   | Destination address selection                              | not implemented                    | DNS-resolution selection (rules D1-D8) is out of scope at the stack layer                        |
 | §10.3      | Default policy table                                       | met                                | `DEFAULT_POLICY_TABLE` mirrors RFC figure verbatim; sysctl-driven override deferred              |
 
 ## Test coverage
@@ -109,12 +110,29 @@ Per-RFC mechanism inventory:
     longer non-matching prefix (rule 6 > rule 8); ULA
     source for ULA destination; rule 8 fallback when rule 6
     ties; rule 3 outranks rule 6
+- `pytcp/tests/unit/lib/test__lib__ip4_source_selection.py`
+  - `TestIp4AddressScope` — loopback / link-local / global
+    scope mapping for the v4 family
+  - `TestIp4CommonPrefixLen` — 32-bit common-prefix
+    arithmetic; symmetric, bounded
+  - `TestIp4SourceSelectionInvariants` — scope monotonicity,
+    `[0, 32]` bounds
+- `pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
+  - `TestRfc6724Ip4Rule1SameAddress` — rule 1 short-circuit
+  - `TestRfc6724Ip4Rule2Scope` — global-dst picks global
+    source; link-local-dst picks link-local source
+  - `TestRfc6724Ip4Rule8LongestMatch` — longest common
+    prefix wins; deterministic outcome for unrelated dst
+  - `TestRfc6724Ip4SelectorBoundaries` — empty candidate
+    set returns `None`; rule 1 outranks rule 8
 
 ## Cross-references
 
 - `docs/refactor/rfc6724_source_selection.md` — multi-commit
-  implementation plan (§12c.1, §12c.2, §12c.3 shipped; §12c.4
-  IPv4 symmetry pending)
+  implementation plan (§12c.1 → §12c.4 all shipped; only
+  §10.3 sysctl-driven policy-table override and §6
+  destination-address selection remain as out-of-scope or
+  deferred sub-tasks)
 - `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md` §6.6 —
   parent classification (MUST)
 - `docs/rfc/icmp6/rfc4862__ipv6_slaac/adherence.md` §5.5.4 —
