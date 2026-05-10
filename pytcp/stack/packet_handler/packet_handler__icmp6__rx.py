@@ -128,6 +128,7 @@ class PacketHandlerIcmp6Rx(ABC):
             prefix: Ip6Network,
             valid_lifetime: int,
             preferred_lifetime: int,
+            router_address: Ip6Address,
         ) -> None: ...
 
         def _update_icmp6_ra_parameters(
@@ -791,6 +792,7 @@ class PacketHandlerIcmp6Rx(ABC):
                     prefix=option.prefix,
                     valid_lifetime=option.valid_lifetime,
                     preferred_lifetime=option.preferred_lifetime,
+                    router_address=packet_rx.ip6.src,
                 )
             else:
                 self._packet_stats_rx.icmp6__nd_router_advertisement__pi__pinfo_disabled__drop += 1

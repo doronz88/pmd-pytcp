@@ -1073,28 +1073,50 @@ RFC 7559 §2 (truncated binary exponential backoff).
 
 ---
 
-## §23 — Tier 6: First-hop router selection in multi-prefix networks (RFC 8028) ✗
+## §23 — Tier 6: First-hop router selection in multi-prefix networks (RFC 8028) ✓
 
-When the host has addresses from multiple prefixes (e.g.
-two ISPs), pick the default router whose advertised prefix
-covers the source address being used. Couples with §11
-(default router list) and §12 (per-address state) plus
-RFC 6724 source-address selection.
+**Shipped.** When more than one default router exists and the
+host has addresses from different routers' RA prefixes (the
+multi-WAN / dual-ISP scenario), the new
+`get_icmp6_default_router_for_source(source)` accessor returns
+the router whose advertised prefix covers `source`, falling
+back to the overall highest-preference router when no match
+exists.
 
-### Implementation sketch
+### Implementation
 
-In the outbound TX path, when more than one default router
-exists, prefer the one whose RA prefix matches the source
-address. Fall back to the highest-preference router if no
-match.
+* `Icmp6SlaacAddress` grew a `router_address: Ip6Address` field
+  capturing the link-local source of the RA whose PI created
+  the entry. Threaded through from
+  `__phrx_icmp6__nd_router_advertisement` →
+  `_update_icmp6_slaac_address(router_address=packet_rx.ip6.src)`.
+* New `get_icmp6_default_router_for_source(*, source)` accessor
+  on PacketHandler:
+  - Active-router shortlist via `get_icmp6_default_routers()`
+    (already prefix-sorted by §14 preference).
+  - Look up SLAAC entry by `address == source`; if found,
+    return the default-router entry whose address equals
+    `slaac_entry.router_address`.
+  - Otherwise (no SLAAC binding), return the first entry of
+    the active list (highest preference per §14).
+  - Empty active list → None.
 
-### Effort
+The TX-path consumer ("when picking a next-hop, call
+`get_icmp6_default_router_for_source`") is the natural follow-up
+once PyTCP grows multi-router routing semantics; today the
+accessor's value is observability + readiness for that wiring.
 
-Small — ~40 lines once §11 lands.
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__multi_prefix_router.py`:
+- Source in router A's prefix → returns router A.
+- Source in router B's prefix → returns router B.
+- Unknown-prefix source with mixed Prf → returns highest-preference.
+- Empty router list → returns None.
 
 ### RFC reference
 
-RFC 8028 §3.
+RFC 8028 §3 (first-hop selection by source).
 
 ---
 

@@ -522,6 +522,7 @@ class PacketHandler(Subsystem, ABC):
         prefix: Ip6Network,
         valid_lifetime: int,
         preferred_lifetime: int,
+        router_address: Ip6Address,
     ) -> None:
         """
         Apply an inbound Prefix-Information option to the SLAAC
@@ -577,6 +578,7 @@ class PacketHandler(Subsystem, ABC):
                 prefix=prefix,
                 preferred_until=now + preferred_lifetime,
                 valid_until=now + new_valid_lifetime,
+                router_address=router_address,
             ),
         )
         self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address += 1
@@ -591,6 +593,46 @@ class PacketHandler(Subsystem, ABC):
 
         now = time.monotonic()
         return [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+
+    def get_icmp6_default_router_for_source(
+        self,
+        *,
+        source: Ip6Address,
+    ) -> Icmp6DefaultRouter | None:
+        """
+        Pick the default router whose RA-advertised prefix
+        covers 'source', falling back to the highest-preference
+        default router when no source-matching entry exists per
+        RFC 8028 §3 first-hop selection in multi-prefix
+        networks. Returns None when no default routers are
+        tracked.
+
+        The host MUST emit a packet whose source is in ISP A's
+        prefix via ISP A's router (not via a randomly-picked
+        default), otherwise the upstream anti-spoofing filter
+        drops it.
+
+        Reference: RFC 8028 §3 (first-hop selection by source).
+        """
+
+        active_routers = self.get_icmp6_default_routers()
+        if not active_routers:
+            return None
+
+        # Find the SLAAC entry whose address equals 'source';
+        # its 'router_address' names the announcing router.
+        slaac_entry = next(
+            (a for a in self._icmp6_slaac_addresses if a.address == source),
+            None,
+        )
+        if slaac_entry is not None:
+            for router in active_routers:
+                if router.address == slaac_entry.router_address:
+                    return router
+
+        # No SLAAC binding — fall back to the highest-preference
+        # router (the accessor returns the list pre-sorted).
+        return active_routers[0]
 
     def get_icmp6_slaac_address_state(
         self,

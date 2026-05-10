@@ -91,12 +91,17 @@ class Icmp6SlaacAddress:
     EUI-64-derived host address; 'prefix' is the on-link prefix
     the address came from. Both deadlines are 'time.monotonic()'
     offsets of the advertised Valid / Preferred Lifetime values.
+    'router_address' is the link-local source of the RA that
+    carried the PI — used by RFC 8028 §3 first-hop selection
+    (nd_linux_parity §23) to pick the default router whose
+    advertised prefix covers an outbound source address.
     """
 
     address: Ip6Address
     prefix: Ip6Network
     preferred_until: float
     valid_until: float
+    router_address: Ip6Address
 
     def state(self, now: float) -> Icmp6SlaacAddressState | None:
         """
