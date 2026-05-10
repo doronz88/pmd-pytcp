@@ -76,3 +76,12 @@ class Icmp6NdMessage(Icmp6Message):
         """
 
         return self.options.pi
+
+    @property
+    def option_nonce(self) -> bytes | None:
+        """
+        Get the value of the ICMPv6 ND Nonce option if present
+        (RFC 3971 §5.3.2 / RFC 7527 §4.1).
+        """
+
+        return self.options.nonce

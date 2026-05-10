@@ -133,6 +133,17 @@ ICMP6__RTR_SOLICITATION_MAX_RT_MS = 3600000
 # deployments).
 ICMP6__MAX_RTR_SOLICITATIONS = 3
 
+# RFC 7527 Enhanced DAD — when enabled, every NS(DAD) probe
+# carries a randomly-generated 6-byte Nonce option. The host
+# tracks emitted nonces during the DAD session and silently
+# drops inbound NS messages whose Nonce matches one of ours
+# (loop-hairpin detection — distinguishes a switch echoing
+# our probe back from a genuine peer DAD conflict). Default
+# 1 per RFC 7527 / Linux 'enhanced_dad'. 0 disables the
+# feature; DAD then uses RFC 4861 plain semantics where any
+# NS targeting our tentative address aborts the claim.
+ICMP6__ENHANCED_DAD = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -245,6 +256,16 @@ def _max_rtr_solicitations_validator(value: Any) -> None:
         )
 
 
+def _enhanced_dad_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected explicitly
+    because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -337,4 +358,15 @@ register(
     default=ICMP6__MAX_RTR_SOLICITATIONS,
     validator=_max_rtr_solicitations_validator,
     description=("RFC 4861 §6.3.7 MAX_RTR_SOLICITATIONS; default 3. " "0 disables RS entirely (kill switch)."),
+)
+register(
+    key="icmp6.enhanced_dad",
+    module_name=__name__,
+    attr="ICMP6__ENHANCED_DAD",
+    default=ICMP6__ENHANCED_DAD,
+    validator=_enhanced_dad_validator,
+    description=(
+        "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
+        "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
 )

@@ -85,6 +85,7 @@ class PacketHandlerIcmp6Rx(ABC):
         _icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None
         _icmp6_nd_dad__event: Semaphore
         _icmp6_nd_dad__tlla: MacAddress | None
+        _icmp6_nd_dad__nonces: set[bytes]
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
 
@@ -842,6 +843,22 @@ class PacketHandlerIcmp6Rx(ABC):
             self._icmp6_nd_dad__ip6_unicast_candidate is not None
             and packet_rx.icmp6.message.target_address == self._icmp6_nd_dad__ip6_unicast_candidate
         ):
+            # RFC 7527 §4.2 Enhanced DAD: a Nonce option matching
+            # one of our own emitted nonces means this NS is a
+            # loop-hairpin echo of our own probe (a switch
+            # reflecting traffic back). Drop silently — DON'T
+            # release the DAD wait semaphore.
+            inbound_nonce = packet_rx.icmp6.message.option_nonce
+            if inbound_nonce is not None and inbound_nonce in self._icmp6_nd_dad__nonces:
+                self._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
+                __debug__ and log(
+                    "icmp6",
+                    f"{packet_rx.tracker} - <INFO>Loop-hairpin DAD echo "
+                    f"detected (Nonce match) for "
+                    f"{self._icmp6_nd_dad__ip6_unicast_candidate}; dropped</>",
+                )
+                return
+
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
             __debug__ and log(
                 "icmp6",

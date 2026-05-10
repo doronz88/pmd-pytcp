@@ -45,6 +45,8 @@ from net_proto import (
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRouterSolicitation,
+    Icmp6NdOption,
+    Icmp6NdOptionNonce,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdOptionTlla,
@@ -161,10 +163,23 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__payload=icmp6_packet_tx,
         )
 
-    def _send_icmp6_nd_dad_message(self, *, ip6_unicast_candidate: Ip6Address) -> None:
+    def _send_icmp6_nd_dad_message(
+        self,
+        *,
+        ip6_unicast_candidate: Ip6Address,
+        nonce: bytes | None = None,
+    ) -> None:
         """
         Send out ICMPv6 ND Duplicate Address Detection message.
+        When 'nonce' is supplied, the probe carries a Nonce option
+        per RFC 7527 §4.1 (Enhanced DAD); the caller tracks the
+        emitted nonce so the NS-RX path can drop loop-hairpin
+        echoes of our own probe.
         """
+
+        options: list[Icmp6NdOption] = []
+        if nonce is not None:
+            options.append(Icmp6NdOptionNonce(nonce=nonce))
 
         tx_status = self._phtx_icmp6(
             ip6__src=Ip6Address(),
@@ -172,7 +187,7 @@ class PacketHandlerIcmp6Tx(ABC):
             ip6__hop=255,
             icmp6__message=Icmp6NdMessageNeighborSolicitation(
                 target_address=ip6_unicast_candidate,
-                options=Icmp6NdOptions(),  # ND DAD message has no options.
+                options=Icmp6NdOptions(*options),
             ),
         )
 

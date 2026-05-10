@@ -47,6 +47,7 @@ from net_proto import (
     Icmp6NdMessageRedirect,
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOption,
+    Icmp6NdOptionNonce,
     Icmp6NdOptions,
     Icmp6NdOptionSlla,
     Icmp6NdOptionTlla,
@@ -122,6 +123,7 @@ class NdTestCase(IcmpTestCase):
         ip6_dst: Ip6Address,
         target: Ip6Address,
         slla: MacAddress | None = None,
+        nonce: bytes | None = None,
     ) -> bytes:
         """
         Build an Ethernet/IPv6/ICMPv6 Neighbor Solicitation frame
@@ -133,11 +135,17 @@ class NdTestCase(IcmpTestCase):
         (RFC 4862 §5.4.2) callers pass 'ip6_src=Ip6Address("::")'
         and 'slla=None' — RFC 4861 §7.2.2 forbids the SLLA option
         on a DAD probe.
+
+        When 'nonce' is supplied, the message carries a Nonce
+        option (RFC 7527 §4.1 Enhanced DAD); pass a 6-byte
+        bytes value.
         """
 
-        options_list: list[Icmp6NdOptionSlla] = []
+        options_list: list[Icmp6NdOption] = []
         if slla is not None:
             options_list.append(Icmp6NdOptionSlla(slla=slla))
+        if nonce is not None:
+            options_list.append(Icmp6NdOptionNonce(nonce=nonce))
 
         message = Icmp6NdMessageNeighborSolicitation(
             target_address=target,

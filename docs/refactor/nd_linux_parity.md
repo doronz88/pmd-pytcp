@@ -895,29 +895,79 @@ RFC 4429.
 
 ---
 
-## §21 — Tier 5: Enhanced DAD with Nonce option (RFC 7527) ✗
+## §21 — Tier 5: Enhanced DAD with Nonce option (RFC 7527) ✓
 
-Mitigates loop-hairpin false-positive DAD failures (where
-our own probe loops back through a switch and we mistake
-it for a peer's NS). The Nonce option (type 14) lets us
-match outbound probe to inbound echo and drop the echo
-without aborting DAD.
+**Shipped.** PyTCP previously aborted DAD on any inbound NS
+targeting its tentative address — including loop-hairpin
+echoes of its own probe (when a switch reflects multicast
+back). The host now follows RFC 7527 §4: every NS(DAD) probe
+carries a fresh random Nonce option (type 14, RFC 3971
+§5.3.2), and inbound NS messages are checked against the
+emitted set; a match means loop-hairpin and the NS is
+dropped silently rather than failing DAD.
 
-### Implementation sketch
+### Implementation
 
-1. New Nonce option module under `nd/option/`.
-2. DAD probe TX includes a Nonce.
-3. NS RX during DAD: if the inbound NS carries a Nonce we
-   sent, drop it (we're hearing our own echo).
+* New `Icmp6NdOptionType.NONCE = 14` enum member.
+* `Icmp6NdOptionNonce(nonce: bytes)` frozen dataclass with
+  parser + assembler. 6-byte nonce (length=1, 8 bytes total
+  on the wire). Constructor enforces exactly 6 bytes.
+* Dispatch wired in `Icmp6NdOptions.from_buffer`.
+* `Icmp6NdMessage.option_nonce` accessor for ergonomic
+  per-message lookup.
+* `_icmp6_nd_dad__nonces: set[bytes]` tracker on the packet
+  handler. Cleared at the start of each `_perform_ip6_nd_dad`
+  call.
+* `_perform_ip6_nd_dad` generates `secrets.token_bytes(6)`
+  per probe (when `icmp6.enhanced_dad` is non-zero), adds it
+  to the tracker, and passes it to `_send_icmp6_nd_dad_message`.
+* `_send_icmp6_nd_dad_message` grew an optional `nonce: bytes
+  | None = None` kwarg; when supplied, the NS carries an
+  `Icmp6NdOptionNonce` option.
+* NS-during-DAD RX path: if the inbound NS carries a Nonce
+  matching one in `_icmp6_nd_dad__nonces`, the path bumps
+  `icmp6__nd_neighbor_solicitation__loop_hairpin__drop` and
+  returns early (does NOT release the DAD wait semaphore).
+  No nonce / non-matching nonce → the existing
+  simultaneous-probe conflict path runs (genuine peer DAD).
 
-### Effort
+### TX-path fix bundled in
 
-Small — ~60 lines + integration test simulating the loop-
-hairpin.
+The IP6 TX `__validate_src_ip6_address` previously used "ND
+message with no options" as the proxy for "is this a DAD
+probe?". Adding a Nonce broke that proxy — the NS got
+dropped as `DROPPED__IP6__SRC_UNSPECIFIED`. Fixed by
+matching on `Icmp6NdMessageNeighborSolicitation` type and
+absence of SLLA option (the canonical DAD signature per
+RFC 4861 §7.2.2).
+
+### Sysctl
+
+`icmp6.enhanced_dad` registered with default 1 (Linux
+parity). Setting 0 reverts DAD to RFC 4861 plain semantics
+— probes carry no Nonce option, NS RX during DAD treats any
+target match as a conflict regardless of nonce.
+
+### Tests
+
+`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__nonce.py`:
+- Per-nonce assembly + parse round-trips.
+- Constructor rejects nonces shorter / longer than 6 bytes.
+- Parser rejects length=0.
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`:
+- `matching_nonce_drops_ns` — loop-hairpin echo dropped, no
+  conflict.
+- `non_matching_nonce_aborts_dad` — peer NS with foreign
+  nonce triggers conflict.
+- `probe_carries_tracked_nonce` — outbound DAD probe carries
+  a Nonce option.
+- `sysctl_zero_emits_no_nonce` — `enhanced_dad=0` kill switch.
 
 ### RFC reference
 
-RFC 7527 §4.
+RFC 3971 §5.3.2 (Nonce wire format).
+RFC 7527 §4 (Enhanced DAD algorithm + sender / receiver rules).
 
 ---
 

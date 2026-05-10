@@ -46,6 +46,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__dnssl import
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__mtu import (
     Icmp6NdOptionMtu,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__nonce import (
+    Icmp6NdOptionNonce,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     Icmp6NdOptionPi,
     NdPrefixInfo,
@@ -99,6 +102,19 @@ class Icmp6NdOptions(ProtoOptions):
         for option in self._options:
             if isinstance(option, Icmp6NdOptionTlla):
                 return option.tlla
+
+        return None
+
+    @property
+    def nonce(self) -> bytes | None:
+        """
+        Get the value of the ICMPv6 ND Nonce option if present
+        (RFC 3971 §5.3.2 / RFC 7527 §4.1).
+        """
+
+        for option in self._options:
+            if isinstance(option, Icmp6NdOptionNonce):
+                return option.nonce
 
         return None
 
@@ -172,6 +188,8 @@ class Icmp6NdOptions(ProtoOptions):
                     options.append(Icmp6NdOptionRedirectedHeader.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.MTU:
                     options.append(Icmp6NdOptionMtu.from_buffer(buffer[offset:]))
+                case Icmp6NdOptionType.NONCE:
+                    options.append(Icmp6NdOptionNonce.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.ROUTE_INFO:
                     options.append(Icmp6NdOptionRouteInfo.from_buffer(buffer[offset:]))
                 case Icmp6NdOptionType.RDNSS:

@@ -33,6 +33,7 @@ ver 3.0.3
 from __future__ import annotations
 
 import random
+import secrets
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -729,6 +730,7 @@ class PacketHandlerL2(
     _icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None
     _icmp6_nd_dad__event: Semaphore
     _icmp6_nd_dad__tlla: MacAddress | None
+    _icmp6_nd_dad__nonces: set[bytes]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
 
@@ -800,6 +802,11 @@ class PacketHandlerL2(
         self._icmp6_nd_dad__ip6_unicast_candidate: Ip6Address | None = None
         self._icmp6_nd_dad__event: Semaphore = threading.Semaphore(0)
         self._icmp6_nd_dad__tlla: MacAddress | None = None
+        # RFC 7527 Enhanced DAD nonce tracker: every NS(DAD)
+        # probe carries a fresh random nonce; this set holds
+        # the ones we've emitted in the current DAD session so
+        # the NS-RX path can drop loop-hairpin echoes.
+        self._icmp6_nd_dad__nonces: set[bytes] = set()
 
         # Used for the ICMPv6 ND RA address auto configuration.
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
@@ -893,6 +900,7 @@ class PacketHandlerL2(
         )
 
         self._icmp6_nd_dad__ip6_unicast_candidate = ip6_unicast_candidate
+        self._icmp6_nd_dad__nonces.clear()
         self._assign_ip6_multicast(ip6_multicast=ip6_unicast_candidate.solicited_node_multicast)
 
         # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
@@ -902,7 +910,18 @@ class PacketHandlerL2(
         retrans_timer_s = effective_retrans_timer_ms / 1000.0
         event = False
         for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
-            self._send_icmp6_nd_dad_message(ip6_unicast_candidate=ip6_unicast_candidate)
+            # RFC 7527 §4.1: every NS(DAD) carries a fresh
+            # random nonce when Enhanced DAD is enabled. The
+            # nonce is tracked in '_icmp6_nd_dad__nonces' so the
+            # NS-RX path can drop loop-hairpin echoes.
+            nonce: bytes | None = None
+            if nd__constants.ICMP6__ENHANCED_DAD:
+                nonce = secrets.token_bytes(6)
+                self._icmp6_nd_dad__nonces.add(nonce)
+            self._send_icmp6_nd_dad_message(
+                ip6_unicast_candidate=ip6_unicast_candidate,
+                nonce=nonce,
+            )
             if self._icmp6_nd_dad__event.acquire(timeout=retrans_timer_s):
                 event = True
                 break

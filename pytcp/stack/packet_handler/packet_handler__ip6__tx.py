@@ -37,7 +37,7 @@ from net_addr import Ip6Address, MacAddress
 from net_proto import (
     Icmp6,
     Icmp6Mld2MessageReport,
-    Icmp6NdMessage,
+    Icmp6NdMessageNeighborSolicitation,
     Ip6Assembler,
     IpProto,
     RawAssembler,
@@ -249,12 +249,19 @@ class PacketHandlerIp6Tx(ABC):
                     )
                     return ip6__src
 
-        # If src is unspecified and stack is sending ICMPv6 ND DAD packet
+        # If src is unspecified and stack is sending an ICMPv6
+        # ND Neighbor Solicitation. Per RFC 4861 §4.3 / §7.2.2 a
+        # DAD probe is the canonical NS form with src=:: and
+        # targets the solicited-node multicast; it MUST NOT carry
+        # an SLLA option (RFC 4861 §7.2.2). RFC 7527 §4.1
+        # additionally allows a Nonce option for Enhanced DAD,
+        # so the option list is no longer a reliable
+        # "is DAD probe" proxy — match on message type instead.
         if (
             ip6__src.is_unspecified
             and isinstance(ip6__payload, Icmp6)
-            and isinstance(ip6__payload.message, Icmp6NdMessage)
-            and not ip6__payload.message.options
+            and isinstance(ip6__payload.message, Icmp6NdMessageNeighborSolicitation)
+            and ip6__payload.message.option_slla is None
         ):
             self._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(

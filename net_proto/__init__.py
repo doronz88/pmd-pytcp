@@ -287,6 +287,9 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__mtu import (
     ICMP6__ND__OPTION__MTU__LEN,
     Icmp6NdOptionMtu,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__nonce import (
+    Icmp6NdOptionNonce,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
     ICMP6__ND__OPTION__PI__LEN,
     Icmp6NdOptionPi,
@@ -636,6 +639,7 @@ __all__ = [
     "Icmp6NdMessageRedirect",
     "Icmp6NdOption",
     "Icmp6NdOptionMtu",
+    "Icmp6NdOptionNonce",
     "Icmp6NdOptionPi",
     "Icmp6NdOptionDnssl",
     "Icmp6NdOptionRaFlags",

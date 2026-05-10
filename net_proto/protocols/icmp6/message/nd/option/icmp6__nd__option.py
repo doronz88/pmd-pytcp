@@ -48,6 +48,7 @@ class Icmp6NdOptionType(ProtoOptionType):
     PI = 3
     REDIRECTED_HEADER = 4
     MTU = 5
+    NONCE = 14
     ROUTE_INFO = 24
     RDNSS = 25
     RA_FLAGS_EXTENSION = 26
