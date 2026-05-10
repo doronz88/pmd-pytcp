@@ -840,35 +840,65 @@ Linux: `net.ipv6.conf.<iface>.addr_gen_mode = 2`.
 
 ---
 
-## §18 — Tier 4: RFC 8981 temporary addresses (privacy)
+## §18 — Tier 4: RFC 8981 temporary addresses (privacy) ⚠
 
-Generates an additional **random IID** per prefix (parallel
-to the stable address) for outbound flows. Linux's
-`use_tempaddr = 2` enables this by default.
+### §18a (shipped) — Random IID generator ✓
 
-Builds on §12 (address deprecation), §11 (per-address state),
-§17 (the recipe-style IID generator). Source-address
-selection (RFC 6724 rule 7) prefers temporary for
-outbound.
+`Ip6Host.from_rfc8981_temp(*, ip6_network)` at
+`net_addr/ip6_host.py`. Each call produces a fresh 64-bit
+random IID via `secrets.token_bytes(8)`, regenerates if the
+draw lands in the RFC 5453 reserved range (Subnet-Router
+Anycast IID==0 or 0xfdff_ffff_ffff_ff80..ffff Reserved
+Subnet Anycast), and gives up after 10 retries (safeguard
+against a broken random source). Module-level
+`_is_reserved_iid()` helper is exposed so §17's RFC 7217
+generator can reuse it when its own reserved-IID check
+lands.
 
-### Implementation sketch
+Forward-compat utility — nothing in the stack calls the
+generator yet. The full feature requires §18b/c/d below.
 
-1. Random IID generator avoiding RFC 5453 reserved IIDs.
-2. Per-prefix temporary-address table parallel to the
-   stable address.
-3. Regeneration cycle (RFC 8981 §3.4): preferred-lifetime
-   ~24h, valid-lifetime ~7d, regenerate at preferred-1h.
-4. Source-address selection updates.
+### §18b (deferred) — SLAAC integration
 
-### Effort
+New per-prefix temp-address table parallel to
+`_icmp6_slaac_addresses` (§12a). When a PI is admitted AND
+`icmp6.use_tempaddr` is non-zero, generate a temp address,
+claim it via DAD, and insert into `_ip6_host`. RFC 8981 §3.4
+lifetimes (TEMP_PREFERRED_LIFETIME default 1 day;
+TEMP_VALID_LIFETIME default 7 days) clamp the PI's
+advertised lifetimes.
 
-Large — ~250 lines + integration tests covering address
-regeneration and DAD-conflict handling on regenerated IIDs.
-Couples with the RFC 8981 stub adherence record.
+### §18c (deferred) — Regeneration subsystem
+
+Background thread rotates the temp address before its
+preferred lifetime expires (RFC 8981 §3.4 regeneration cycle,
+with the DESYNC_FACTOR random offset to prevent host-fleet
+synchronisation).
+
+### §18d (deferred) — RFC 6724 source-address selection consumer
+
+Without this, the temp address is created and DADed but TX
+still picks the stable RFC 7217 address. RFC 6724 rule 7
+("prefer temporary addresses") makes the privacy benefit
+observable. Tracked under nd_linux_parity §12c — its own
+separate phase since RFC 6724 also affects IPv4 source
+selection.
+
+### Tests
+
+`net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc8981Temp`:
+- Output keeps source /64 prefix.
+- Two consecutive calls yield different IIDs.
+- /64 mask required.
+- Reserved-IID values regenerated to non-reserved.
+- Retry exhaustion raises RuntimeError.
 
 ### RFC reference
 
-RFC 8981 §3.
+RFC 8981 §3.3.2 (random IID generation), §3.4 (regeneration
+cycle), §3.5 (DESYNC_FACTOR).
+RFC 5453 / RFC 2526 §3 (reserved IIDs).
+Linux: `net.ipv6.conf.<iface>.use_tempaddr` (0/1/2).
 
 ---
 

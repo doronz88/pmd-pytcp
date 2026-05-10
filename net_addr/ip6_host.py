@@ -31,6 +31,7 @@ ver 3.0.4
 """
 
 import hashlib
+import secrets
 import time
 from typing import Self, override
 
@@ -48,6 +49,32 @@ from net_addr.ip6_network import Ip6Network
 from net_addr.ip_host import IpHost
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MacAddress
+
+# RFC 5453 / RFC 2526 §3 reserved IID range. The Subnet-Router
+# Anycast (RFC 4291 §2.6.1) is IID == 0; the Reserved Subnet
+# Anycast IIDs are 0xfdff_ffff_ffff_ff80..0xfdff_ffff_ffff_ffff.
+# RFC 7217 §5 step 2 and RFC 8981 §3.3.2 both require generators
+# to compare against this range and regenerate on a hit.
+_RESERVED_SUBNET_ANYCAST_LO = 0xFDFF_FFFF_FFFF_FF80
+_RESERVED_SUBNET_ANYCAST_HI = 0xFDFF_FFFF_FFFF_FFFF
+
+# Practical upper bound on retry attempts when the random IID
+# happens to land in a reserved range. With 64-bit randomness the
+# expected hit rate is ~129 / 2^64 ≈ 7e-18, so any hit beyond a
+# handful of retries indicates a broken random source.
+_RFC8981__MAX_RETRIES = 10
+
+
+def _is_reserved_iid(iid: int) -> bool:
+    """
+    Return True if 'iid' falls in the RFC 5453 / RFC 2526 §3
+    reserved range — Subnet-Router Anycast (all-zero) or
+    Reserved Subnet Anycast (0xfdff_ffff_ffff_ff80..ffff).
+    """
+
+    if iid == 0:
+        return True
+    return _RESERVED_SUBNET_ANYCAST_LO <= iid <= _RESERVED_SUBNET_ANYCAST_HI
 
 
 class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
@@ -150,6 +177,46 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
                 Ip6Address(int(ip6_network.address) | interface_id),
                 Ip6Mask("/64"),
             )
+        )
+
+    @classmethod
+    def from_rfc8981_temp(cls, *, ip6_network: Ip6Network) -> Self:
+        """
+        Create an IPv6 host address with a random Interface
+        Identifier per RFC 8981 §3.3.2 (temporary addresses).
+
+        The IID is a fresh 64-bit random draw, regenerated if
+        it lands in the RFC 5453 reserved range. Unlike
+        'from_rfc7217' (which is deterministic per
+        {prefix, mac, secret}), each call returns a different
+        IID — the regeneration cycle that gives temporary
+        addresses their privacy property.
+
+        Phase 2: callers will pair this generator with the
+        per-prefix temp-address state machine and the RFC 6724
+        source-address-selection consumer; nd_linux_parity §18b/c.
+
+        Reference: RFC 8981 §3.3.2 (random IID generation).
+        Reference: RFC 5453 (reserved IIDs).
+        """
+
+        assert (
+            len(ip6_network.mask) == 64
+        ), f"The IPv6 RFC 8981 temp network address mask must be /64. Got: {ip6_network.mask}"
+
+        for _ in range(_RFC8981__MAX_RETRIES):
+            iid = int.from_bytes(secrets.token_bytes(8), byteorder="big")
+            if not _is_reserved_iid(iid):
+                return cls(
+                    (
+                        Ip6Address((int(ip6_network.address) & ((1 << 128) - (1 << 64))) | iid),
+                        Ip6Mask("/64"),
+                    )
+                )
+
+        raise RuntimeError(
+            f"RFC 8981 temp-IID generator failed to produce a non-reserved IID after "
+            f"{_RFC8981__MAX_RETRIES} retries — random source may be broken."
         )
 
     @classmethod

@@ -731,7 +731,7 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
     def test__net_addr__ip6_host__from_rfc7217__rejects_short_secret_key(self) -> None:
         """
         Ensure 'from_rfc7217()' rejects a secret_key shorter
-        than 16 bytes — RFC 7217 §5 mandates ≥ 128 bits.
+        than 16 bytes (the spec-mandated minimum).
 
         Reference: RFC 7217 §5 (secret_key SHOULD be ≥ 128 bits).
         """
@@ -745,6 +745,129 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 secret_key=b"too-short",
             )
+
+
+class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
+    """
+    The NetAddr IPv6 host 'from_rfc8981_temp()' classmethod
+    tests — random IIDs for RFC 8981 temporary addresses.
+    """
+
+    def test__net_addr__ip6_host__from_rfc8981_temp__keeps_prefix(self) -> None:
+        """
+        Ensure the resulting host keeps the source /64 network
+        and that the address upper-64 bits equal the prefix.
+
+        Reference: RFC 8981 §3.3.2 (random IID + prefix concat).
+        """
+
+        prefix = Ip6Network("2001:db8:cafe::/64")
+        host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+
+        self.assertEqual(
+            host.network,
+            prefix,
+            msg=f"Temporary host must keep the source /64 network. Got: {host!r}",
+        )
+        self.assertEqual(
+            int(host.address) >> 64,
+            int(Ip6Address("2001:db8:cafe::")) >> 64,
+            msg=f"Address upper-64 must equal prefix. Got: {host.address!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc8981_temp__different_each_call(self) -> None:
+        """
+        Ensure two consecutive calls yield different IIDs —
+        the IID is derived from a fresh 64-bit random draw, so
+        collision probability is negligible.
+
+        Reference: RFC 8981 §3.3.2 (random IID).
+        """
+
+        prefix = Ip6Network("2001:db8::/64")
+        host_a = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+        host_b = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+
+        self.assertNotEqual(
+            host_a.address,
+            host_b.address,
+            msg=f"Two random IIDs must differ. Got: {host_a!r} vs {host_b!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc8981_temp__non_64_mask_raises(self) -> None:
+        """
+        Ensure 'from_rfc8981_temp()' rejects a network whose
+        mask is not /64 (the IID width is fixed at 64 bits).
+
+        Reference: RFC 4291 §2.5.1 (IIDs are 64 bits for unicast addresses).
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="from_rfc8981_temp() must reject a network whose mask is not /64.",
+        ):
+            Ip6Host.from_rfc8981_temp(ip6_network=Ip6Network("2001:db8::/48"))
+
+    def test__net_addr__ip6_host__from_rfc8981_temp__avoids_reserved_iid(self) -> None:
+        """
+        Ensure the generator regenerates if the random draw
+        produces a reserved IID — Subnet-Router Anycast
+        (all-zero IID) and Reserved Subnet Anycast IIDs must
+        NOT be returned.
+
+        Reference: RFC 5453 (reserved IIDs).
+        Reference: RFC 8981 §3.3.2 (avoidance requirement).
+        """
+
+        from unittest.mock import patch
+
+        prefix = Ip6Network("2001:db8::/64")
+        # First three draws return reserved IIDs; the fourth
+        # returns a usable random value.
+        reserved_iids = [
+            (0).to_bytes(8, "big"),  # Subnet-Router Anycast.
+            (0xFDFFFFFFFFFFFF80).to_bytes(8, "big"),  # Reserved Anycast lower bound.
+            (0xFDFFFFFFFFFFFFFF).to_bytes(8, "big"),  # Reserved Anycast upper bound.
+            (0x1234567890ABCDEF).to_bytes(8, "big"),  # Acceptable random value.
+        ]
+        with patch(
+            "net_addr.ip6_host.secrets.token_bytes",
+            side_effect=reserved_iids,
+        ):
+            host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+
+        self.assertEqual(
+            int(host.address) & ((1 << 64) - 1),
+            0x1234567890ABCDEF,
+            msg=(
+                "Generator must regenerate past reserved IIDs and return "
+                f"the first acceptable random value. Got: {host!r}"
+            ),
+        )
+
+    def test__net_addr__ip6_host__from_rfc8981_temp__exhaustion_raises(self) -> None:
+        """
+        Ensure the generator raises after exhausting its retry
+        budget without finding a non-reserved IID — protects
+        against a (practically impossible) starvation loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from unittest.mock import patch
+
+        prefix = Ip6Network("2001:db8::/64")
+        # Every draw returns a reserved IID; the generator
+        # should give up.
+        with patch(
+            "net_addr.ip6_host.secrets.token_bytes",
+            return_value=(0).to_bytes(8, "big"),
+        ):
+            with self.assertRaises(
+                RuntimeError,
+                msg="Exhausting reserved-IID retries must raise RuntimeError.",
+            ):
+                Ip6Host.from_rfc8981_temp(ip6_network=prefix)
 
 
 @parameterized_class(
