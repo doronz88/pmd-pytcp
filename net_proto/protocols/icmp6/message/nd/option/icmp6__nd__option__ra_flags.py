@@ -104,11 +104,18 @@ class Icmp6NdOptionRaFlags(Icmp6NdOption):
     def __buffer__(self, _: int) -> memoryview:
         """
         Get the ICMPv6 ND RA Flags option as a memoryview.
+
+        Per RFC 5175 §4 senders MUST emit Length=1 (8 bytes
+        total). 'self.len' may be larger when this instance was
+        parsed from a future-RFC-extended frame (so the option-
+        dispatcher loop knows how to skip the unrecognized tail
+        on receive), but the canonical-sender output is always
+        the 8-byte form.
         """
 
         buffer = bytearray(ICMP6__ND__OPTION__RA_FLAGS__LEN)
         buffer[0] = int(self.type)
-        buffer[1] = self.len >> 3
+        buffer[1] = ICMP6__ND__OPTION__RA_FLAGS__LEN >> 3
         buffer[2 : 2 + ICMP6__ND__OPTION__RA_FLAGS__FLAGS_BYTES] = self.flags.to_bytes(
             ICMP6__ND__OPTION__RA_FLAGS__FLAGS_BYTES,
             byteorder="big",
@@ -118,19 +125,24 @@ class Icmp6NdOptionRaFlags(Icmp6NdOption):
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
         """
-        Ensure integrity of the ICMPv6 ND RA Flags option before parsing it.
+        Ensure integrity of the ICMPv6 ND RA Flags option before
+        parsing it. Per RFC 5175 §4 receivers MUST accept any
+        length ≥ 1 (8 bytes total) — a future RFC may extend
+        the option with additional flag bytes — and MUST ignore
+        the option if Length is less than 1.
         """
 
-        if (value := buffer[1] << 3) != ICMP6__ND__OPTION__RA_FLAGS__LEN:
+        encoded_len = buffer[1] << 3
+        if encoded_len < ICMP6__ND__OPTION__RA_FLAGS__LEN:
             raise Icmp6IntegrityError(
-                f"The ICMPv6 ND RA Flags option length value must be "
-                f"{ICMP6__ND__OPTION__RA_FLAGS__LEN} bytes. Got: {value!r}"
+                "The ICMPv6 ND RA Flags option length value must be at least "
+                f"{ICMP6__ND__OPTION__RA_FLAGS__LEN} bytes. Got: {encoded_len!r}"
             )
 
-        if (value := buffer[1] << 3) > len(buffer):
+        if encoded_len > len(buffer):
             raise Icmp6IntegrityError(
                 f"The ICMPv6 ND RA Flags option length value must be less than or equal to "
-                f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
+                f"the length of provided bytes ({len(buffer)}). Got: {encoded_len!r}"
             )
 
     @override
@@ -138,6 +150,13 @@ class Icmp6NdOptionRaFlags(Icmp6NdOption):
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
         Initialize the ICMPv6 ND RA Flags option from buffer.
+
+        Per RFC 5175 §4 the parser captures the first 6 flag
+        bytes (the recognized region) and stores the on-wire
+        Length so the options-dispatcher loop advances past any
+        unrecognized tail. The assembler still emits Length=1
+        for any instance — senders MUST conform to this
+        specification's fixed length.
         """
 
         assert (value := len(buffer)) >= ICMP6__ND__OPTION__LEN, (
@@ -156,5 +175,15 @@ class Icmp6NdOptionRaFlags(Icmp6NdOption):
             bytes(buffer[2 : 2 + ICMP6__ND__OPTION__RA_FLAGS__FLAGS_BYTES]),
             byteorder="big",
         )
+        instance = cls(flags=flags)
 
-        return cls(flags=flags)
+        # Stash the actual on-wire length so the option-
+        # dispatcher loop can skip over any unrecognized tail
+        # bytes from a future-RFC extension. The dataclass'
+        # default len=8 is preserved for instances built via
+        # the kw-only constructor.
+        encoded_len = buffer[1] << 3
+        if encoded_len > ICMP6__ND__OPTION__RA_FLAGS__LEN:
+            object.__setattr__(instance, "len", encoded_len)
+
+        return instance

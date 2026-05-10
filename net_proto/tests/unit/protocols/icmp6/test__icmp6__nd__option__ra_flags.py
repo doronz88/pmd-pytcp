@@ -8,15 +8,13 @@
 ##   the Free Software Foundation, either version 3 of the License, or        ##
 ##   (at your option) any later version.                                      ##
 ##                                                                            ##
-##   This program is free software: you can redistribute it and/or modify     ##
-##   it under the terms of the GNU General Public License as published by     ##
-##   the Free Software Foundation, either version 3 of the License, or        ##
-##   (at your option) any later version.                                      ##
-##                                                                            ##
 ##   This program is distributed in the hope that it will be useful,          ##
 ##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
 ##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
 ##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
 ##                                                                            ##
 ##   Author's email: ccie18643@gmail.com                                      ##
 ##   Github repository: https://github.com/ccie18643/PyTCP                    ##
@@ -207,19 +205,88 @@ class TestIcmp6NdOptionRaFlagsAsserts(TestCase):
 
 class TestIcmp6NdOptionRaFlagsIntegrity(TestCase):
     """
-    Integrity-check rejection cases for the RA Flags option parser.
+    Integrity-check rejection / acceptance cases for the RA
+    Flags option parser. Per RFC 5175 §4 senders MUST emit
+    length=1 but receivers MUST accept length ≥ 1 to allow
+    future-RFC bit allocations to extend the option without
+    breaking older parsers.
     """
 
-    def test__icmp6__nd__option__ra_flags__from_buffer__wrong_length_rejected(self) -> None:
+    def test__icmp6__nd__option__ra_flags__from_buffer__zero_length_rejected(self) -> None:
         """
-        Ensure a length-field other than 1 is rejected as an
-        integrity violation — the option is fixed at 8 bytes.
+        Ensure a length-field of 0 is rejected — length=0 means
+        a zero-byte option, which would loop the option
+        dispatcher and is forbidden by the receiver "MUST
+        ignore the option if the Length is less than 1" rule.
 
-        Reference: RFC 5175 §3 (RA Flags fixed length 1).
+        Reference: RFC 5175 §4 (length < 1 ignore rule).
         """
 
-        # Length=2 (16 bytes) — not legal per RFC 5175.
-        bad = b"\x1a\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        bad = b"\x1a\x00\x00\x00\x00\x00\x00\x00"
 
         with self.assertRaises(Icmp6IntegrityError):
             Icmp6NdOptionRaFlags.from_buffer(bad)
+
+    def test__icmp6__nd__option__ra_flags__from_buffer__length_two_accepted(self) -> None:
+        """
+        Ensure a length-field of 2 (a future-RFC extension that
+        adds 8 more flag bytes after the spec's first six)
+        parses without error. The parser captures only the
+        first 6 flag bytes (the spec-defined region) and stores
+        the on-wire length so the option dispatcher skips the
+        rest correctly.
+
+        Reference: RFC 5175 §4 (receiver MUST recognize length and skip unrecognized bits).
+        """
+
+        # Length=2 → 16 bytes total. First 6 bytes are the
+        # recognized flag region; remaining 8 bytes are
+        # "unrecognized" by this specification but the parser
+        # MUST accept the option.
+        wire = (
+            b"\x1a\x02"
+            b"\xab\xcd\xef\x12\x34\x56"  # recognized flags
+            b"\xde\xad\xbe\xef\xca\xfe\xba\xbe"  # unrecognized tail
+        )
+
+        option = Icmp6NdOptionRaFlags.from_buffer(wire)
+
+        self.assertEqual(
+            option.flags,
+            0xABCDEF123456,
+            msg=f"Parser must extract the first 6 flag bytes regardless of total length. Got: {option.flags!r}",
+        )
+        self.assertEqual(
+            option.len,
+            16,
+            msg=(
+                "Parsed option's 'len' must reflect the on-wire length so "
+                "the option-dispatcher loop advances past the unrecognized "
+                f"tail. Got: {option.len!r}"
+            ),
+        )
+
+    def test__icmp6__nd__option__ra_flags__assembler_always_emits_length_one(self) -> None:
+        """
+        Ensure the assembler always emits Length=1 per the
+        sender requirement, regardless of how a parsed instance
+        was constructed.
+
+        Reference: RFC 5175 §4 ("An implementation of this specification MUST set the Length to 1").
+        """
+
+        # Construct via parse from a length=2 frame, then re-emit.
+        wire = b"\x1a\x02" b"\xab\xcd\xef\x12\x34\x56" b"\xde\xad\xbe\xef\xca\xfe\xba\xbe"
+        option = Icmp6NdOptionRaFlags.from_buffer(wire)
+        emitted = bytes(option)
+
+        self.assertEqual(
+            len(emitted),
+            8,
+            msg=f"Assembler must emit 8 bytes (length=1) regardless of parsed length. Got: {len(emitted)}",
+        )
+        self.assertEqual(
+            emitted[1],
+            1,
+            msg=f"Assembler Length byte must be 1. Got: {emitted[1]}",
+        )
