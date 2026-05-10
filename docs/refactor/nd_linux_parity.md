@@ -80,8 +80,9 @@ Companion documents:
 
 ### 🔓 Remaining inventory
 
-ND parity in PyTCP is now **substantially complete**. All
-Tier 1-6 items have shipped:
+ND parity in PyTCP is **complete**. All Tier 1-6 items have
+shipped, and the RFC 6724 source-selection arc that was
+the last ND-adjacent track has shipped its four phases.
 
 - **Tier 1** (wire-format completeness §1-§4): ✓ closed.
 - **Tier 2** (RFC 4861 / 4862 core finish §5-§10): ✓ closed.
@@ -95,30 +96,34 @@ Tier 1-6 items have shipped:
 - **Tier 6** (RS hardening + multi-router §22-§25): ✓ closed.
 - **Tier 7** (Phase 2 / deferred §26): out of scope per
   CLAUDE.md North Star.
+- **§12c / §18d — RFC 6724 source-address selection**:
+  ✓ closed (§12c.1 → §12c.4 all shipped). Tracked at
+  `docs/refactor/rfc6724_source_selection.md`; per-RFC
+  adherence audit at
+  `docs/rfc/ip6/rfc6724__default_address_selection/`.
 
-#### Single remaining item: §12c / §18d — RFC 6724 source-address selection
+#### Open follow-ups (not blocking ND parity)
 
-Tracked as its own multi-commit phase at
-`docs/refactor/rfc6724_source_selection.md`. It is the
-only piece of ND-adjacent work still outstanding. Without
-it the §18 RFC 8981 privacy story is observably theatre —
-the temp addresses are minted, claimed, and rotated, but
-TX still picks the stable RFC 7217 address as source.
+These touch ND-adjacent behaviour but are not host-stack
+parity gaps:
 
-Phase split for §12c:
-
-| Phase | Scope | RFC clauses |
-|---|---|---|
-| §12c.1 | Rules 1, 2, 3, 8 + adherence record | RFC 6724 §5 rules 1/2/3/8 |
-| §12c.2 | Rule 7 (temp-address preference) | RFC 6724 §5 rule 7 |
-| §12c.3 | Rule 6 (policy table from §10.3) | RFC 6724 §5 rule 6, §10.3 |
-| §12c.4 | IPv4 source-selection symmetry | RFC 6724 §6 |
-
-§12c is a routing/selection concern rather than a
-Neighbor-Discovery concern; it deserves its own
-per-RFC adherence audit at
-`docs/rfc/ip6/rfc6724__default_address_selection/` and
-its own implementation arc.
+- **Cache-miss packet queue.** On a TX-time ND cache miss
+  PyTCP fires the solicit asynchronously but **drops the
+  packet** that triggered the miss
+  (`DROPPED__ETHERNET__DST_ND_CACHE_MISS` /
+  `..._ARP_CACHE_MISS`); Linux queues up to
+  `unres_qlen_bytes` of pending packets on the neighbor
+  entry and flushes them when the resolution lands. Same
+  behaviour for ARP. Generic-neighbor concern, not
+  ND-specific.
+- **`ip addrlabel`-style runtime override of the RFC 6724
+  §10.3 policy table.** Default table matches Linux
+  `/etc/gai.conf`; override deferred until a real consumer
+  asks.
+- **RFC 6724 §6 destination-address selection (rules
+  D1-D8).** A DNS-resolution-time concern; PyTCP delegates
+  to stdlib `getaddrinfo`, so there is no stack-layer
+  consumer.
 
 ---
 
